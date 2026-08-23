@@ -522,3 +522,22 @@ export async function fetchExpiryOutlook(rewardId, days = 14) {
         horizonDays: days,
     };
 }
+
+// Claimable pool depth for every reward in one call, keyed by reward id.
+// "Claimable" is what claim_pool_code will actually serve — status
+// available AND still inside its batch expiry — so the admin Vault's
+// supply column matches what a member gets, not what was uploaded.
+// Throws rather than falling back to a row scan: PostgREST would cap the
+// scan at 1000 rows and quietly under-report a 1,000-code pool, and a
+// wrong supply number is exactly the bug this replaces.
+export async function fetchRewardCodeSupply() {
+    const { data, error } = await supabase.rpc('get_reward_code_supply');
+    if (error) throw error;
+    return Object.fromEntries((data ?? []).map(row => [row.reward_id, {
+        claimable: Number(row.claimable) || 0,
+        lapsed: Number(row.lapsed) || 0,
+        reserved: Number(row.reserved) || 0,
+        used: Number(row.used) || 0,
+        soonestExpiry: row.soonest_expiry ?? null,
+    }]));
+}

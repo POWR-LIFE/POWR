@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import * as XLSX from 'xlsx';
-import { parseCodes, parseReconciliationCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, fetchExpiryOutlook, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus, updateCodeExpiry, bulkUpdateExpiry } from '../../lib/promoCodes';
+import { parseCodes, parseReconciliationCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, fetchExpiryOutlook, fetchRewardCodeSupply, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus, updateCodeExpiry, bulkUpdateExpiry } from '../../lib/promoCodes';
 import BrandPortalAccess from '../../components/BrandPortalAccess';
 import BrandAccessPanel from '../../components/BrandAccessPanel';
 import BrandRewardLimit from '../../components/BrandRewardLimit';
@@ -163,7 +163,10 @@ export default function RewardManager() {
     const [codeStats, setCodeStats] = useState(null);
     const [expiryOutlook, setExpiryOutlook] = useState(null);
     const [codeWorkspaceMode, setCodeWorkspaceMode] = useState('manage');
-    const [availableCodeCounts, setAvailableCodeCounts] = useState({});
+    // reward id → { claimable, lapsed, reserved, used, soonestExpiry }. null
+    // until the first load lands (or if it fails) — the supply column says so
+    // rather than guessing.
+    const [codeSupply, setCodeSupply] = useState(null);
     const [bulkCodesText, setBulkCodesText] = useState('');
     const [uploadingCodes, setUploadingCodes] = useState(false);
     const [reconciliationText, setReconciliationText] = useState('');
@@ -240,16 +243,10 @@ export default function RewardManager() {
                 category: normalizeRewardCategory(reward.category),
             }));
             setRewards(normalized);
-            const pools = normalized.filter(reward => reward.reward_kind === 'digital' && reward.integration_type === 'POOL' && !reward.promo_code?.trim());
-            const counts = await Promise.all(pools.map(async reward => {
-                const { count } = await supabase
-                    .from('redemption_codes')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('reward_id', reward.id)
-                    .eq('status', 'available');
-                return [reward.id, count ?? 0];
-            }));
-            setAvailableCodeCounts(Object.fromEntries(counts));
+            // One rollup for the whole vault: claimable = what claim_pool_code
+            // will actually hand out (available AND inside its batch expiry).
+            try { setCodeSupply(await fetchRewardCodeSupply()); }
+            catch { setCodeSupply(null); toast.error('Could not read code supply'); }
         }
         if (part.data) setPartners(part.data);
         setLoading(false);
@@ -262,6 +259,10 @@ export default function RewardManager() {
         catch { setCodeStats(null); }
         try { setExpiryOutlook(await fetchExpiryOutlook(rewardId)); }
         catch { setExpiryOutlook(null); }
+        // Keep the listing's Inventory column honest after codes are added,
+        // toggled or re-dated in the editor.
+        try { setCodeSupply(await fetchRewardCodeSupply()); }
+        catch { /* leave the last good rollup in place */ }
     };
 
     const refreshCodePool = async (rewardId, page = 0, status = 'all', search = codeSearch) => {
@@ -293,14 +294,49 @@ export default function RewardManager() {
             return r.partner_id === filterPartner;
         });
 
+    // What actually caps this reward. redeem-reward never reads rewards.stock,
+    // so a POOL reward's real supply is its claimable code pool — an affiliate
+    // link or a shared promo_code short-circuits the pool entirely and is the
+    // only genuinely unlimited case.
+    const drawsFromCodePool = (reward) =>
+        reward.reward_kind === 'digital' && reward.integration_type === 'POOL' && !reward.promo_code?.trim();
+
+    const describeSupply = (reward) => {
+        if (reward.integration_type === 'AFFILIATE') return { kind: 'unlimited', label: 'Unlimited · affiliate link' };
+        if (reward.promo_code?.trim()) return { kind: 'unlimited', label: 'Unlimited · shared code' };
+        if (drawsFromCodePool(reward)) {
+            if (!codeSupply) return { kind: 'unknown', label: 'Checking supply' };
+            const s = codeSupply[reward.id] ?? { claimable: 0, lapsed: 0, reserved: 0, used: 0, soonestExpiry: null };
+            return {
+                kind: 'pool',
+                claimable: s.claimable,
+                lapsed: s.lapsed,
+                soonestExpiry: s.soonestExpiry,
+                // Bar reads as "how much of everything ever loaded is still
+                // claimable", so a 1,000-code batch that lapsed shows empty.
+                loaded: s.claimable + s.lapsed + s.reserved + s.used,
+            };
+        }
+        // JIT brands mint per redemption; the pool is only an emergency buffer.
+        if (reward.integration_type === 'API_VALIDATED') {
+            return { kind: 'mint', label: 'Minted on demand', buffer: codeSupply?.[reward.id]?.claimable ?? 0 };
+        }
+        if (reward.stock != null) return { kind: 'stock', label: `${reward.stock} units` };
+        return { kind: 'unlimited', label: 'Unlimited supply' };
+    };
+
     const getVaultReadiness = (reward) => {
-        if (reward.active) return { label: 'Live', tone: 'text-[#10B981]' };
+        const supply = describeSupply(reward);
+        if (reward.active) {
+            // Live but unclaimable — every code either gone or past its batch
+            // expiry, so members get OUT_OF_STOCK.
+            if (supply.kind === 'pool' && !supply.claimable) return { label: 'Live · no codes left', tone: 'text-red-500' };
+            return { label: 'Live', tone: 'text-[#10B981]' };
+        }
         if (!reward.title?.trim() || !reward.description?.trim() || !reward.terms?.trim() || !Number(reward.powr_cost)) return { label: 'Needs listing details', tone: 'text-[#8a7600]' };
         if (reward.integration_type === 'AFFILIATE' && !reward.url?.trim()) return { label: 'Needs destination URL', tone: 'text-[#8a7600]' };
-        if (reward.reward_kind === 'digital' && reward.integration_type === 'POOL' && !reward.promo_code?.trim()) {
-            if (availableCodeCounts[reward.id] === undefined) return { label: 'Checking code supply', tone: 'text-[#999]' };
-            if (!availableCodeCounts[reward.id]) return { label: 'Needs code supply', tone: 'text-red-500' };
-        }
+        if (supply.kind === 'unknown') return { label: 'Checking code supply', tone: 'text-[#999]' };
+        if (supply.kind === 'pool' && !supply.claimable) return { label: 'Needs code supply', tone: 'text-red-500' };
         return { label: 'Ready to launch', tone: 'text-[#10B981]' };
     };
 
@@ -962,22 +998,59 @@ export default function RewardManager() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
-                                            {reward.stock === null ? (
-                                                <div className="flex items-center gap-3">
-                                                    <Activity size={12} className="text-[#888888]" />
-                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">Unlimited Supply</span>
-                                                </div>
-                                            ) : (
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-3 mb-2">
-                                                        <div className={`h-1.5 w-1.5 rounded-full ${reward.stock > 10 ? 'bg-blue-500/50' : reward.stock > 5 ? 'bg-orange-500/50' : 'bg-red-500/50'} shadow-[0_0_8px_rgba(255,255,255,0.1)]`} />
-                                                        <span className="text-xs font-bold text-[#BBB]">{reward.stock} units</span>
+                                            {(() => {
+                                                const supply = describeSupply(reward);
+                                                if (supply.kind === 'pool') {
+                                                    const { claimable, lapsed, loaded } = supply;
+                                                    // Literal class names — Tailwind can't see interpolated ones.
+                                                    const dot = claimable === 0 ? 'bg-red-500/50' : claimable <= 25 ? 'bg-orange-500/50' : 'bg-blue-500/50';
+                                                    const bar = claimable === 0 ? 'bg-red-500/30' : claimable <= 25 ? 'bg-orange-500/30' : 'bg-blue-500/30';
+                                                    return (
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-3 mb-2">
+                                                                <div className={`h-1.5 w-1.5 rounded-full ${dot} shadow-[0_0_8px_rgba(255,255,255,0.1)]`} />
+                                                                <span className={`text-xs font-bold ${claimable === 0 ? 'text-red-500' : 'text-[#BBB]'}`}>
+                                                                    {claimable.toLocaleString()} {claimable === 1 ? 'code' : 'codes'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="w-24 h-[2px] bg-[#EFEFEC] rounded-full overflow-hidden">
+                                                                <div className={`h-full transition-all ${bar}`} style={{ width: `${loaded ? Math.round((claimable / loaded) * 100) : 0}%` }}></div>
+                                                            </div>
+                                                            {lapsed > 0 && (
+                                                                <span className="mt-2 text-[9px] uppercase tracking-[0.2em] text-[#8a7600] font-black">
+                                                                    {lapsed.toLocaleString()} lapsed
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                }
+                                                if (supply.kind === 'stock') {
+                                                    return (
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-3 mb-2">
+                                                                <div className={`h-1.5 w-1.5 rounded-full ${reward.stock > 10 ? 'bg-blue-500/50' : reward.stock > 5 ? 'bg-orange-500/50' : 'bg-red-500/50'} shadow-[0_0_8px_rgba(255,255,255,0.1)]`} />
+                                                                <span className="text-xs font-bold text-[#BBB]">{supply.label}</span>
+                                                            </div>
+                                                            <div className="w-24 h-[2px] bg-[#EFEFEC] rounded-full overflow-hidden">
+                                                                <div className={`h-full transition-all ${reward.stock > 10 ? 'bg-blue-500/30' : 'bg-red-500/30'}`} style={{ width: `${Math.min(100, reward.stock * 5)}%` }}></div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return (
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <div className="flex items-center gap-3">
+                                                            <Activity size={12} className="text-[#888888]" />
+                                                            <span className="text-[10px] uppercase tracking-[0.3em] text-[#666666] font-black">{supply.label}</span>
+                                                        </div>
+                                                        {supply.kind === 'mint' && supply.buffer > 0 && (
+                                                            <span className="text-[9px] uppercase tracking-[0.2em] text-[#999] font-black pl-[24px]">
+                                                                {supply.buffer.toLocaleString()} in buffer
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    <div className="w-24 h-[2px] bg-[#EFEFEC] rounded-full overflow-hidden">
-                                                        <div className={`h-full transition-all ${reward.stock > 10 ? 'bg-blue-500/30' : 'bg-red-500/30'}`} style={{ width: `${Math.min(100, reward.stock * 5)}%` }}></div>
-                                                    </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
                                         </td>
                                         <td className="px-6 py-5 whitespace-nowrap">
                                             {(() => {
@@ -1390,6 +1463,11 @@ export default function RewardManager() {
                                         Inventory Limit <span className="text-[#333333] normal-case font-black ml-2">— LEAVE EMPTY FOR UNLIMITED</span>
                                     </label>
                                     <input type="number" min="0" placeholder="INF" className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black text-[#1A1A1A] placeholder-[#BBBBBB] uppercase" value={formData.stock ?? ''} onChange={e => setFormData({ ...formData, stock: e.target.value === '' ? null : parseInt(e.target.value) })} />
+                                    {codesEligible && (
+                                        <p className="mt-3 text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black">
+                                            Display only — the code pool is what caps this reward
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
