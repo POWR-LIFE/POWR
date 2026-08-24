@@ -1,0 +1,11 @@
+{
+  // Stops tsconfig resolution here. Without this file, Vite/esbuild compiling
+  // the .ts files in shared/ for the landing-page bundle walks up to the repo
+  // root tsconfig, whose `extends: "expo/tsconfig.base"` cannot resolve on
+  // Vercel (only landing-page deps are installed there) and fails the build.
+  // The app's own tooling ignores this file: metro/jest resolve shared/ via
+  // the root tsconfig as before.
+  "compilerOptions": {
+    "target": "es2020"
+  }
+}
