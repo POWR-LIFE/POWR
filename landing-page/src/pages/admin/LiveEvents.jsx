@@ -2561,7 +2561,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Doors close" hint="After this, people arriving at the venue are no longer counted. Leave blank for 12 hours after doors open.">
                             <DateTimeInput value={form.doors_close_at} onChange={v => set({ doors_close_at: v })} clearable />
                         </Field>
-                        <Field label="Eligibility cutoff" hint="Anyone who created their POWR account after this time can't compete. Leave blank to use the scoring start time.">
+                        <Field label="Eligibility cutoff" hint="Entry closes here: anyone who created their POWR account after this time can't compete, and joining stops at the same moment. Set it after the scoring end to let people sign up, join and bring invites right up to the event day — their points still only count inside the scoring window. Leave blank to use the scoring start time.">
                             <DateTimeInput value={form.eligibility_cutoff_at} onChange={v => set({ eligibility_cutoff_at: v })} clearable />
                         </Field>
                         <Field label="Who takes part" hint="Opt-in: people must join the event in the app to appear on the leaderboard. Global: every POWR member is on the leaderboard automatically.">
@@ -2631,7 +2631,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                                 nullable={false}
                             />
                         </Field>
-                        <Field label="Invite deadline" hint="Friends must complete their first workout by this time for the invite to count. Leave blank to use the scoring end time.">
+                        <Field label="Invite deadline" hint="Invites stay open until this time: the ticket and invite progress stay on the League tab, and friends must complete their first workout by it for the conversion bonus to count. Leave blank to use the scoring end time.">
                             <DateTimeInput value={form.conversion_deadline_at} onChange={v => set({ conversion_deadline_at: v })} clearable />
                         </Field>
                     </Group>
