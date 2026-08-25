@@ -28,6 +28,7 @@ import {
     ArrowDownRight,
     PartyPopper,
     Radio,
+    Sparkles,
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -56,6 +57,8 @@ import DocsApi from './pages/docs/DocsApi';
 import Analytics from './pages/admin/Analytics';
 import UsageAnalytics from './pages/admin/UsageAnalytics';
 import AthleteApplications from './pages/admin/AthleteApplications';
+import CreatorManager from './pages/admin/CreatorManager';
+import CreatorPrograms from './pages/admin/CreatorPrograms';
 import AuditLog from './pages/admin/AuditLog';
 import Broadcast from './pages/admin/Broadcast';
 import Campaigns from './pages/admin/Campaigns';
@@ -82,6 +85,13 @@ import VaultManager from './pages/admin/VaultManager';
 import LiveEvents from './pages/admin/LiveEvents';
 import LiveOps from './pages/admin/LiveOps';
 import AthleteSignup from './pages/AthleteSignup';
+import { CreatorLayout } from './pages/creator/CreatorLayout';
+import CreatorSetup from './pages/creator/CreatorSetup';
+import CreatorHome from './pages/creator/CreatorHome';
+import CreatorLinks from './pages/creator/CreatorLinks';
+import CreatorConversions from './pages/creator/CreatorConversions';
+import CreatorRewards from './pages/creator/CreatorRewards';
+import CreatorSettings from './pages/creator/CreatorSettings';
 import LandingV2 from './landing/LandingV2';
 import PartnersPage from './landing/partners/PartnersPage';
 import CookiePolicy from './pages/CookiePolicy';
@@ -94,9 +104,16 @@ import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
 
 // --- Auth Context ---
-const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, placementsEnabled: false, deliveryMethod: undefined, loading: true });
+const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, placementsEnabled: false, deliveryMethod: undefined, loading: true });
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
+const ACTING_CREATOR_KEY = 'powr_acting_creator';
+
+// Creators, unlike brands, are a real table — identity is a straight select.
+const fetchCreatorById = async (id) => {
+    const { data } = await supabase.from('creators').select('*').eq('id', id).maybeSingle();
+    return data ?? null;
+};
 
 // Brands have no table of their own — identity comes from rewards.brand_name,
 // with the logo borrowed from the brand's most recent reward.
@@ -121,6 +138,9 @@ export const AuthProvider = ({ children }) => {
     const [isAdmin, setIsAdmin] = useState(false);
     const [isPartner, setIsPartner] = useState(false);
     const [partnerData, setPartnerData] = useState(null);
+    const [isCreator, setIsCreator] = useState(false);
+    const [creatorData, setCreatorData] = useState(null);
+    const [actingCreator, setActingCreatorState] = useState(null);
     const [actingPartner, setActingPartnerState] = useState(null);
     const [placementsEnabled, setPlacementsEnabled] = useState(false);
     // undefined = unknown/loading, null = brand hasn't chosen a delivery
@@ -138,6 +158,44 @@ export const AuthProvider = ({ children }) => {
         const profile = await fetchBrandProfile(brandName);
         localStorage.setItem(ACTING_BRAND_KEY, brandName);
         setActingPartnerState(profile);
+    };
+
+    // Admin-only: preview the portal as any creator
+    const setActingCreator = async (creatorId) => {
+        if (!creatorId) {
+            localStorage.removeItem(ACTING_CREATOR_KEY);
+            setActingCreatorState(null);
+            return;
+        }
+        const c = await fetchCreatorById(creatorId);
+        if (c) {
+            localStorage.setItem(ACTING_CREATOR_KEY, creatorId);
+            setActingCreatorState(c);
+        }
+    };
+
+    const checkCreator = async (userId) => {
+        try {
+            const { data } = await supabase
+                .from('creator_users')
+                .select('creator_id')
+                .eq('user_id', userId)
+                .single();
+            if (!data) return null;
+            return await fetchCreatorById(data.creator_id);
+        } catch {
+            return null;
+        }
+    };
+
+    // Settings edits its own row, so the sidebar and link page must be able to
+    // re-read it without a full sign-out.
+    const refreshCreator = async () => {
+        const current = creatorData ?? actingCreator;
+        if (!current?.id) return;
+        const fresh = await fetchCreatorById(current.id);
+        if (!fresh) return;
+        if (creatorData) setCreatorData(fresh); else setActingCreatorState(fresh);
     };
 
     const checkAdmin = async (userId) => {
@@ -194,9 +252,10 @@ export const AuthProvider = ({ children }) => {
                 if (session.user.id === lastUserId) return;
                 lastUserId = session.user.id;
                 setUser(session.user);
-                const [adminStatus, partnerResult, flagOn] = await Promise.all([
+                const [adminStatus, partnerResult, creatorResult, flagOn] = await Promise.all([
                     checkAdmin(session.user.id),
                     checkPartner(session.user.id),
+                    checkCreator(session.user.id),
                     fetchPlacementsFlag(),
                 ]);
                 // Restore admin preview selection (admins with no brand link)
@@ -205,10 +264,18 @@ export const AuthProvider = ({ children }) => {
                     const storedBrand = localStorage.getItem(ACTING_BRAND_KEY);
                     if (storedBrand) restoredActing = await fetchBrandProfile(storedBrand);
                 }
+                let restoredCreator = null;
+                if (adminStatus && !creatorResult) {
+                    const storedCreator = localStorage.getItem(ACTING_CREATOR_KEY);
+                    if (storedCreator) restoredCreator = await fetchCreatorById(storedCreator);
+                }
                 if (mounted) {
                     setIsAdmin(adminStatus);
                     setIsPartner(!!partnerResult);
                     setPartnerData(partnerResult);
+                    setIsCreator(!!creatorResult);
+                    setCreatorData(creatorResult);
+                    setActingCreatorState(restoredCreator);
                     setActingPartnerState(restoredActing);
                     setPlacementsEnabled(flagOn);
                     setLoading(false);
@@ -219,6 +286,9 @@ export const AuthProvider = ({ children }) => {
                 setIsAdmin(false);
                 setIsPartner(false);
                 setPartnerData(null);
+                setIsCreator(false);
+                setCreatorData(null);
+                setActingCreatorState(null);
                 setActingPartnerState(null);
                 setPlacementsEnabled(false);
                 if (mounted) setLoading(false);
@@ -257,6 +327,11 @@ export const AuthProvider = ({ children }) => {
             partnerData: partnerData ?? actingPartner,
             isActingPartner: !partnerData && !!actingPartner,
             setActingPartner,
+            isCreator,
+            creatorData: creatorData ?? actingCreator,
+            isActingCreator: !creatorData && !!actingCreator,
+            setActingCreator,
+            refreshCreator,
             placementsEnabled,
             deliveryMethod,
             updateDeliveryMethod: setDeliveryMethodState,
@@ -290,6 +365,7 @@ const PATH_LABELS = {
     challenges: 'Challenges',
     users: 'Users',
     athletes: 'Athletes',
+    creators: 'Creators',
     profile: 'Profile',
     analytics: 'Analytics',
     usage: 'Usage',
@@ -347,6 +423,67 @@ const PartnerLogin = () => {
                 </div>
                 <h2 className="text-2xl font-light text-center mb-2 tracking-tight">Partner Portal</h2>
                 <p className="text-center text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-8">Manage your rewards</p>
+                <form onSubmit={handleLogin} className="space-y-6">
+                    <div>
+                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Email address</label>
+                        <input type="email" className="w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]" value={email} onChange={e => setEmail(e.target.value)} required />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Password</label>
+                        <input type="password" className="w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]" value={password} onChange={e => setPassword(e.target.value)} required />
+                    </div>
+                    {error && <div className="text-red-400 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-lg">{error}</div>}
+                    {status && <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-lg animate-pulse">{status}</div>}
+                    <button type="submit" disabled={loading} className="w-full h-12 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-lg hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-50">
+                        {loading ? 'Processing...' : 'Sign In'}
+                    </button>
+                    <div className="text-center pt-2">
+                        <Link to="/" className="text-[10px] uppercase tracking-widest text-[#AAAAAA] hover:text-[#8a7600] transition-colors">Back to home</Link>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// --- Creator Login ---
+const CreatorLogin = () => {
+    const navigate = useNavigate();
+    const { isAdmin, isCreator, user } = useAuth();
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [status, setStatus] = useState(null);
+
+    useEffect(() => {
+        // Admins are allowed into the creator portal too (preview mode)
+        if (user && (isCreator || isAdmin)) navigate('/creator');
+    }, [user, isAdmin, isCreator, navigate]);
+
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+        setStatus('Authenticating...');
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+            setError(error.message);
+            setStatus(null);
+            setLoading(false);
+        } else {
+            setStatus('Loading your portal...');
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] fixed inset-0 z-[100]">
+            <div className="w-full max-w-md p-8 bg-white border border-[#E6E6E1] rounded-2xl shadow-2xl">
+                <div className="flex justify-center mb-8">
+                    <img src="/powr-logo-black.png" alt="POWR" className="h-12" />
+                </div>
+                <h2 className="text-2xl font-light text-center mb-2 tracking-tight">Creator Portal</h2>
+                <p className="text-center text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-8">Track your link</p>
                 <form onSubmit={handleLogin} className="space-y-6">
                     <div>
                         <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Email address</label>
@@ -472,6 +609,25 @@ const PartnerProtectedRoute = ({ children }) => {
     );
 
     if (!user || (!isPartner && !isAdmin)) return <Navigate to="/partner/login" state={{ from: location }} replace />;
+    return children;
+};
+
+// --- Creator Protected Route ---
+// Admins are allowed in too: they can preview the portal as any creator.
+const CreatorProtectedRoute = ({ children }) => {
+    const { user, isCreator, isAdmin, loading } = useAuth();
+    const location = useLocation();
+
+    if (loading) return (
+        <div className="min-h-screen bg-[#F4F4F1] flex items-center justify-center fixed inset-0 z-[100]">
+            <div className="flex flex-col items-center gap-4">
+                <div className="w-8 h-8 border-2 border-[#E8D200] border-t-transparent rounded-full animate-spin" />
+                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">Loading portal...</p>
+            </div>
+        </div>
+    );
+
+    if (!user || (!isCreator && !isAdmin)) return <Navigate to="/creator/login" state={{ from: location }} replace />;
     return children;
 };
 
@@ -636,6 +792,7 @@ const AdminHome = () => {
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,         color: '#F97316' },
         { label: 'Users',       path: '/admin/users',              icon: Users,         color: '#8a7600' },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,          color: '#8B5CF6' },
+        { label: 'Creators',    path: '/admin/creators',           icon: Sparkles,      color: '#E8D200' },
         { label: 'Featured',    path: '/admin/featured',           icon: Star,          color: '#AAAAAA' },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target,        color: '#AAAAAA' },
         { label: 'Analytics',   path: '/admin/analytics',          icon: BarChart3,     color: '#E8D200' },
@@ -908,6 +1065,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
         { label: 'Users',       path: '/admin/users',              icon: Users           },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,           badge: pendingAthletes },
+        { label: 'Creators',    path: '/admin/creators',           icon: Sparkles        },
     ];
 
     const opsItems = [
@@ -1077,6 +1235,13 @@ export default function App() {
                     <Route path="/live/:slug" element={<LiveBoard />} />
                     <Route path="/promo/:slug" element={<EventPromo />} />
                     <Route path="/partner-reward/:token" element={<PartnerRewardSubmit />} />
+                    <Route path="/creator/login" element={<CreatorLogin />} />
+                    <Route path="/creator/setup/:token" element={<CreatorSetup />} />
+                    <Route path="/creator" element={<CreatorProtectedRoute><CreatorLayout><CreatorHome /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/creator/links" element={<CreatorProtectedRoute><CreatorLayout><CreatorLinks /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/creator/conversions" element={<CreatorProtectedRoute><CreatorLayout><CreatorConversions /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/creator/rewards" element={<CreatorProtectedRoute><CreatorLayout><CreatorRewards /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/creator/settings" element={<CreatorProtectedRoute><CreatorLayout><CreatorSettings /></CreatorLayout></CreatorProtectedRoute>} />
                     <Route path="/partner/login" element={<PartnerLogin />} />
                     <Route path="/partner/setup/:token" element={<PartnerSetup />} />
                     <Route path="/partner" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalHome /></PartnerLayout></PartnerProtectedRoute>} />
@@ -1127,6 +1292,10 @@ export default function App() {
                     <Route path="/admin/events" element={<ProtectedRoute><AdminLayout><LiveEvents /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/liveops" element={<ProtectedRoute><AdminLayout><LiveOps /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators" element={<ProtectedRoute><AdminLayout><CreatorManager /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators/programmes" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="programmes" /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators/rewards" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="rewards" /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators/fulfilment" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="fulfilment" /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </AuthProvider>
