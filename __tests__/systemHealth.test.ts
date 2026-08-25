@@ -294,3 +294,137 @@ describe('sparkSeries', () => {
     expect(sparkSeries(s, [['a', 0, 0, true], ['b', 100, 2, true], ['c', 400, 5, true]])).toEqual([50, 100]);
   });
 });
+
+// ── Status page derivations ──────────────────────────────────────────────────
+
+import {
+  COMPONENTS,
+  HistoryDoc,
+  componentState,
+  dayCells,
+  hourlyTimeline,
+  incidents,
+  judgeHistoryPoint,
+  uptimePct,
+} from '@/shared/systemHealth';
+
+const H = 3_600_000;
+const iso = (ms: number) => new Date(ms).toISOString();
+
+/** A history where every signal is green at every capture, then overridden per test. */
+function greenHistory(captures: number[]): HistoryDoc {
+  const h: HistoryDoc = {};
+  for (const s of SIGNALS) {
+    if (s.key === 'ledger.balance_drift' || s.key === 'beacon.due_per_tick') {
+      h[s.key] = captures.map(t => [iso(t), null, null, false]);
+    } else if (s.key === 'db.cache_hit_pct') {
+      // cumulative: grows 1000 hits per hour, no misses → 100% on every interval
+      h[s.key] = captures.map((t, i) => [iso(t), 1000 * (i + 1), 1000 * (i + 1), true]);
+    } else if (s.key === 'ledger.insert_mean_ms') {
+      h[s.key] = captures.map((t, i) => [iso(t), 40 * (i + 1), i + 1, true]); // 40 ms per interval
+    } else {
+      h[s.key] = captures.map(t => [iso(t), 0, 1, true]);
+    }
+  }
+  return h;
+}
+
+describe('status page: components + state', () => {
+  it('every workstream is a component, named for a person', () => {
+    expect(COMPONENTS.map(c => c.key).sort()).toEqual(WORKSTREAMS.map(w => w.key).sort());
+    for (const c of COMPONENTS) expect(c.name).not.toMatch(/^W\d$/);
+  });
+  it('maps status to status-page vocabulary', () => {
+    expect(componentState('green')).toBe('operational');
+    expect(componentState('watch')).toBe('degraded');
+    expect(componentState('act')).toBe('disrupted');
+    expect(componentState('unknown')).toBe('unknown');
+  });
+});
+
+describe('judgeHistoryPoint', () => {
+  it('a plain signal is judged from its own point', () => {
+    const s = sig('relay.queue_depth');
+    expect(judgeHistoryPoint(s, [[iso(0), 300, null, true]], 0).status).toBe('act');
+  });
+  it('a cumulative signal is judged from the interval, and its first point is unknown', () => {
+    const s = sig('ledger.insert_mean_ms');
+    const pts: HistoryPoint[] = [[iso(0), 0, 0, true], [iso(H), 2000, 10, true]]; // 200 ms over the hour
+    expect(judgeHistoryPoint(s, pts, 0).status).toBe('unknown');
+    expect(judgeHistoryPoint(s, pts, 1).status).toBe('act');
+  });
+  it('evidence_ok=false is unknown', () => {
+    expect(judgeHistoryPoint(sig('relay.queue_depth'), [[iso(0), 300, null, false]], 0).status).toBe('unknown');
+  });
+});
+
+describe('hourlyTimeline / dayCells / uptimePct', () => {
+  const t0 = Date.parse('2026-08-20T00:00:00Z');
+  const captures = Array.from({ length: 48 }, (_, i) => t0 + i * H); // two days, hourly
+
+  it('is worst-of across the workstream at each capture, and names the driver', () => {
+    const h = greenHistory(captures);
+    h['relay.queue_depth'][5] = [iso(captures[5]), 60, null, true];  // watch at hour 5
+    h['relay.fail_pct_24h'][5] = [iso(captures[5]), 20, 100, true];  // act at hour 5 → wins
+    const tl = hourlyTimeline(h, 'W4');
+    expect(tl).toHaveLength(48);
+    expect(tl[5].status).toBe('act');
+    expect(tl[5].driver?.key).toBe('relay.fail_pct_24h');
+    expect(tl[4].status).toBe('green');
+    expect(tl[4].driver).toBeNull();
+  });
+
+  it('a workstream whose only signals are unknown is unknown, not green', () => {
+    const h = greenHistory(captures);
+    // W3: everything green except due_per_tick (unknown by design) → worst-of is unknown
+    expect(hourlyTimeline(h, 'W3').every(p => p.status === 'unknown')).toBe(true);
+  });
+
+  it('dayCells: worst-of per day, nodata where nothing was captured, oldest first', () => {
+    const h = greenHistory(captures);
+    h['relay.queue_depth'][30] = [iso(captures[30]), 60, null, true]; // day 2, watch
+    const now = t0 + 3 * 86_400_000 + H; // three days later
+    const cells = dayCells(hourlyTimeline(h, 'W4'), 5, now);
+    expect(cells).toHaveLength(5);
+    expect(cells.map(c => c.status)).toEqual(['nodata', 'green', 'watch', 'nodata', 'nodata']);
+    expect(cells[1].points).toBe(24);
+  });
+
+  it('uptime counts only measured captures and is null when none were', () => {
+    const h = greenHistory(captures);
+    h['relay.queue_depth'][0] = [iso(captures[0]), 300, null, true]; // one bad hour of 48
+    expect(uptimePct(hourlyTimeline(h, 'W4'))).toBeCloseTo((47 / 48) * 100, 5);
+    expect(uptimePct(hourlyTimeline(h, 'W3'))).toBeNull(); // all unknown
+    expect(uptimePct([])).toBeNull();
+  });
+});
+
+describe('incidents', () => {
+  const t0 = Date.parse('2026-08-20T00:00:00Z');
+  const captures = Array.from({ length: 12 }, (_, i) => t0 + i * H);
+
+  it('groups contiguous bad captures into one incident with its worst driver, and marks the last run ongoing', () => {
+    const h = greenHistory(captures);
+    h['relay.queue_depth'][2] = [iso(captures[2]), 60, null, true];   // watch
+    h['relay.queue_depth'][3] = [iso(captures[3]), 300, null, true];  // act
+    h['relay.queue_depth'][4] = [iso(captures[4]), 60, null, true];   // watch
+    // hour 5 green → run ends at capture 5
+    h['integrity.open_visits_12h'][11] = [iso(captures[11]), 1, null, true]; // ongoing at the end
+    const inc = incidents(h);
+    expect(inc).toHaveLength(2);
+    const ongoing = inc[0];
+    expect(ongoing.workstream).toBe('integrity');
+    expect(ongoing.endedAt).toBeNull();
+    expect(ongoing.status).toBe('act');
+    const past = inc[1];
+    expect(past.workstream).toBe('W4');
+    expect(past.status).toBe('act');
+    expect(past.driver?.key).toBe('relay.queue_depth');
+    expect(past.startedAt).toBe(captures[2]);
+    expect(past.endedAt).toBe(captures[5]);
+  });
+
+  it('an all-green history has no incidents', () => {
+    expect(incidents(greenHistory(captures))).toEqual([]);
+  });
+});

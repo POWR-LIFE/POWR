@@ -52,15 +52,30 @@ async function thresholds(admin): Promise<{ dwellMin: number; upgradeMin: number
   return { dwellMin: read('min_gym_dwell_minutes', 30), upgradeMin: read('gym_upgrade_minutes', 40) };
 }
 
+/** The per-stage nudge cap. ⚠ This is a PLATFORM-WIDE ceiling: with more than
+ *  this many visits due in one minute, the rest wait for the next tick, and a
+ *  busy enough evening means some never wake before their exit. It cannot be
+ *  raised by compute; sharding the pass is the W3 workstream. `due_count` in
+ *  beacon_ticks is what makes the approach to it visible (System Health P2). */
+const DUE_LIMIT = 200;
+
 /** Visits whose threshold has passed, that the device hasn't resolved, and that we
- *  haven't just nudged. `stage` decides which threshold and which state we're in. */
-async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
+ *  haven't just nudged. `stage` decides which threshold and which state we're in.
+ *  Returns the rows AND how many were due before the cap — the count is the only
+ *  way to see the ceiling before it binds. */
+async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number): Promise<{ rows: any[]; due: number | null }> {
   const thresholdAt = new Date(Date.now() - minutes * 60 * 1000).toISOString();
   const backoffAt = new Date(Date.now() - NUDGE_BACKOFF_MS).toISOString();
 
-  let q = admin
-    .from('gym_visits')
-    .select('id, user_id, partner_id, started_at, ended_at, nudge_count, nudge_count_upgrade, last_nudge_at')
+  // Same predicate twice: once as a head count (no limit), once for the rows.
+  // Cheap — the gym_visits table is small and both hit the same index.
+  const build = (countOnly: boolean) => {
+    let q = admin
+      .from('gym_visits')
+      .select(
+        countOnly ? 'id' : 'id, user_id, partner_id, started_at, ended_at, nudge_count, nudge_count_upgrade, last_nudge_at',
+        countOnly ? { count: 'exact', head: true } : undefined,
+      )
     // BOTH stages require a live visit (ended_at null). The dwell stage always
     // did — a claim needs the user provably still inside. The upgrade stage
     // spent 2026-08-03 → 2026-08-11 retrying past the exit instead, on the
@@ -78,32 +93,47 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
     // waking the device at all — the recovery, if we want it, is a server-side
     // settle (the gate already needs no presence once ended_at is fixed) or a
     // client change that answers for a visit it no longer holds locally.
-    .is('ended_at', null)
-    .lte('started_at', thresholdAt)
-    .or(`last_nudge_at.is.null,last_nudge_at.lt.${backoffAt}`)
-    .limit(200);
+      .is('ended_at', null)
+      .lte('started_at', thresholdAt)
+      .or(`last_nudge_at.is.null,last_nudge_at.lt.${backoffAt}`);
 
-  // Each stage counts against its OWN column, so a dwell stage that burns its
-  // budget no longer eats into the upgrade stage's.
-  q = stage === 'dwell'
-    ? q.eq('status', 'open').is('claimed_session_id', null)
-       .lt('nudge_count', MAX_NUDGES_DWELL)
-    // Keyed on claimed_session_id rather than status='claimed': the exit moves the
-    // row to 'closed'/'abandoned', and post-beacon prod holds ZERO visits sitting
-    // in 'claimed'. The FACT that a session was claimed is what matters; `status`
-    // has not been a reliable label since it started carrying exit state.
-    : q.not('claimed_session_id', 'is', null).is('upgraded_at', null)
-       .lt('nudge_count_upgrade', MAX_NUDGES_UPGRADE)
-       // Newest first, so if the 200 cap is ever reached the visits still worth
-       // a wake are the ones that survive it.
-       .order('started_at', { ascending: false });
+    // Each stage counts against its OWN column, so a dwell stage that burns its
+    // budget no longer eats into the upgrade stage's.
+    q = stage === 'dwell'
+      ? q.eq('status', 'open').is('claimed_session_id', null)
+         .lt('nudge_count', MAX_NUDGES_DWELL)
+      // Keyed on claimed_session_id rather than status='claimed': the exit moves the
+      // row to 'closed'/'abandoned', and post-beacon prod holds ZERO visits sitting
+      // in 'claimed'. The FACT that a session was claimed is what matters; `status`
+      // has not been a reliable label since it started carrying exit state.
+      : q.not('claimed_session_id', 'is', null).is('upgraded_at', null)
+         .lt('nudge_count_upgrade', MAX_NUDGES_UPGRADE);
 
-  const { data, error } = await q;
+    if (countOnly) return q;
+    return stage === 'dwell'
+      ? q.limit(DUE_LIMIT)
+      // Newest first, so if the cap is ever reached the visits still worth a
+      // wake are the ones that survive it.
+      : q.order('started_at', { ascending: false }).limit(DUE_LIMIT);
+  };
+
+  // The count must never fail the tick — a null due_count is an honest gap in
+  // beacon_ticks, not a missed nudge pass.
+  let due: number | null = null;
+  try {
+    const { count, error: countErr } = await build(true);
+    if (countErr) console.error('[gym-visit-beacon] due count failed', stage, countErr);
+    else due = count ?? 0;
+  } catch (e) {
+    console.error('[gym-visit-beacon] due count threw', stage, e);
+  }
+
+  const { data, error } = await build(false);
   if (error) {
     console.error('[gym-visit-beacon] dueVisits failed', stage, error);
-    return [];
+    return { rows: [], due };
   }
-  return data ?? [];
+  return { rows: data ?? [], due };
 }
 
 Deno.serve(async (req: Request) => {
@@ -943,9 +973,13 @@ Deno.serve(async (req: Request) => {
   }
 
   for (const stage of ['dwell', 'upgrade'] as const) {
-    const visits = await dueVisits(admin, stage, stage === 'dwell' ? dwellMin : upgradeMin);
-    if (visits.length === 0) continue;
+    const stageStartedAt = Date.now();
+    const { rows: visits, due } = await dueVisits(admin, stage, stage === 'dwell' ? dwellMin : upgradeMin);
     stats[stage] = visits.length;
+    // Per-stage tallies for beacon_ticks (System Health P2). `stats.sent` stays
+    // the run-wide figure the log line has always printed.
+    let stageSent = 0;
+    let stageFailed = 0;
 
     for (const visit of visits) {
       const { data: tokens } = await admin
@@ -1087,6 +1121,8 @@ Deno.serve(async (req: Request) => {
         });
       }
       stats.sent += result.queued + sentDirect;
+      stageSent += result.queued + sentDirect;
+      stageFailed += result.failed + failedDirect;
 
       // Atomic: `set nudge_count = nudge_count + 1` is evaluated by the database
       // against the current row under a row lock. The old read-modify-write off the
@@ -1110,6 +1146,25 @@ Deno.serve(async (req: Request) => {
           attempt: attempt ?? null,
         },
       });
+    }
+
+    // One row per stage per tick — the ONLY record of how many visits were due
+    // before the cap. Best-effort: a failed insert is logged and the tick goes
+    // on; the nudge pass above has already happened and must never be undone
+    // by telemetry. Always written, even when nothing was due, so "quiet" and
+    // "beacon dead" stay distinguishable on the System Health page.
+    try {
+      const { error: tickErr } = await admin.from('beacon_ticks').insert({
+        stage,
+        due_count: due,
+        processed: visits.length,
+        sent: stageSent,
+        failed: stageFailed,
+        duration_ms: Date.now() - stageStartedAt,
+      });
+      if (tickErr) console.error('[gym-visit-beacon] beacon_ticks insert failed', stage, tickErr);
+    } catch (e) {
+      console.error('[gym-visit-beacon] beacon_ticks insert threw', stage, e);
     }
   }
 

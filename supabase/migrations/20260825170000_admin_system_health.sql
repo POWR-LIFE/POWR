@@ -154,13 +154,27 @@ begin
     v := v || jsonb_build_object('ledger.total_rows', jsonb_build_object('evidence_ok', false, 'error', sqlerrm));
   end;
 
-  -- Lights up when W1 ships a materialised balance. Until then there is nothing
-  -- to reconcile, and that is UNKNOWN — not green.
-  v := v || jsonb_build_object('ledger.balance_drift', jsonb_build_object(
-    'numerator', null, 'denominator', null,
-    'detail', jsonb_build_object('note', 'W1 not shipped — user_balances is still a view over sum(point_transactions); nothing to reconcile yet'),
-    'evidence_ok', false
-  ));
+  -- W1 shadow phase (20260825200100): user_point_balances is kept in step by a
+  -- trigger and read by NOTHING yet. This is the reconcile — the ledger is the
+  -- authority, and every member whose stored row disagrees with it counts.
+  -- Zero for a week is the cutover evidence. If the table or function is
+  -- missing (a branch DB), the block reports UNKNOWN, not green.
+  begin
+    select jsonb_build_object(
+      'numerator', count(*), 'denominator', (select count(*) from public.user_point_balances),
+      'detail', jsonb_build_object(
+        'drifted', coalesce((
+          select jsonb_agg(jsonb_build_object('user_id', d.user_id, 'net', d.stored_net || '/' || d.actual_net, 'earned', d.stored_earned || '/' || d.actual_earned))
+          from (select * from public.user_point_balances_drift() limit 20) d
+        ), '[]'::jsonb),
+        'phase', 'shadow — nothing reads the table yet'
+      ),
+      'evidence_ok', true
+    ) into s from public.user_point_balances_drift();
+    v := v || jsonb_build_object('ledger.balance_drift', s);
+  exception when others then
+    v := v || jsonb_build_object('ledger.balance_drift', jsonb_build_object('evidence_ok', false, 'error', sqlerrm));
+  end;
 
   -- ── CLAIM CHAIN (W2) ─────────────────────────────────────────────────────
 
@@ -359,13 +373,33 @@ begin
     v := v || jsonb_build_object('beacon.push_fail_pct_24h', jsonb_build_object('evidence_ok', false, 'error', sqlerrm));
   end;
 
-  -- The ceiling itself is unobservable until P2 (beacon_ticks) ships: today the
-  -- .limit(200) hides how many visits were due. UNKNOWN, deliberately.
-  v := v || jsonb_build_object('beacon.due_per_tick', jsonb_build_object(
-    'numerator', null, 'denominator', null,
-    'detail', jsonb_build_object('note', 'P2 not shipped — the beacon does not yet record due_count before its .limit(200)', 'cap', 200),
-    'evidence_ok', false
-  ));
+  -- P2 (20260825200000): the beacon writes one beacon_ticks row per stage per
+  -- tick with due_count taken BEFORE its limit. The max over 24 h is the number
+  -- judged; the cap it is judged against is 200 (DUE_LIMIT in the beacon).
+  -- No rows in 24 h = the beacon build that writes them is not deployed, or the
+  -- beacon is dead — UNKNOWN either way, with the note saying which to check.
+  begin
+    select jsonb_build_object(
+      'numerator',   max(due_count),
+      'denominator', null,
+      'detail', jsonb_build_object(
+        'cap', 200,
+        'ticks', count(*),
+        'p95', round(coalesce(percentile_cont(0.95) within group (order by due_count), 0)::numeric),
+        'max_dwell',   max(due_count) filter (where stage = 'dwell'),
+        'max_upgrade', max(due_count) filter (where stage = 'upgrade'),
+        'count_failures', count(*) filter (where due_count is null),
+        'duration_p95_ms', round(coalesce(percentile_cont(0.95) within group (order by duration_ms), 0)::numeric),
+        'note', case when count(*) = 0 then 'no beacon_ticks rows in 24 h — beacon build not deployed, or beacon dead (see beacon.failures_24h)' else null end
+      ),
+      'evidence_ok', count(*) filter (where due_count is not null) > 0
+    ) into s
+    from public.beacon_ticks
+    where ran_at >= v_24h;
+    v := v || jsonb_build_object('beacon.due_per_tick', s);
+  exception when others then
+    v := v || jsonb_build_object('beacon.due_per_tick', jsonb_build_object('evidence_ok', false, 'error', sqlerrm));
+  end;
 
   -- ── RELAY (W4) ───────────────────────────────────────────────────────────
 

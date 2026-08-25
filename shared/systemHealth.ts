@@ -514,3 +514,174 @@ export function sparkSeries(signal: Signal, points: HistoryPoint[] | undefined):
     return value(signal, { numerator: p[1], denominator: p[2], evidence_ok: true });
   });
 }
+
+// ── Status page ──────────────────────────────────────────────────────────────
+//
+// The "Status" tab reads like any large company's status page: a list of
+// components with Operational / Degraded / Disrupted, a bar of daily cells for
+// the last N days, an uptime figure, and incidents. All of it is DERIVED from
+// the same judged signals and the hourly snapshots — no separate source of
+// truth, so the two tabs can never disagree.
+//
+// A day with no snapshots is "no data", never "operational". Uptime excludes
+// hours where nothing was measurable; it is null when nothing ever was.
+
+export interface Component {
+  key: Workstream;
+  name: string;
+  blurb: string;
+}
+
+/** Workstreams, named for the service a person would recognise. Order = page order. */
+export const COMPONENTS: Component[] = [
+  { key: 'W2',        name: 'Gym check-ins & points', blurb: 'A visit turning into points' },
+  { key: 'W3',        name: 'Background wake-ups',    blurb: 'The server waking phones mid-session' },
+  { key: 'W4',        name: 'Server messaging',       blurb: 'Server-to-server calls: claims, pushes, scheduled jobs' },
+  { key: 'W1',        name: 'Points ledger',          blurb: 'Recording and totalling points' },
+  { key: 'W5',        name: 'Database',               blurb: 'Capacity and speed' },
+  { key: 'integrity', name: 'Data integrity',         blurb: 'Things that must never happen' },
+];
+
+export type ComponentState = 'operational' | 'degraded' | 'disrupted' | 'unknown';
+
+export const STATE_LABEL: Record<ComponentState, string> = {
+  operational: 'Operational',
+  degraded: 'Degraded',
+  disrupted: 'Disrupted',
+  unknown: 'No data',
+};
+
+export function componentState(status: Status): ComponentState {
+  switch (status) {
+    case 'green': return 'operational';
+    case 'watch': return 'degraded';
+    case 'act':   return 'disrupted';
+    default:      return 'unknown';
+  }
+}
+
+/** The verdict for one signal at history point i (cumulative → the interval from i-1). */
+export function judgeHistoryPoint(signal: Signal, points: HistoryPoint[], i: number): Verdict {
+  const p = points[i];
+  if (!p || !p[3]) return { status: 'unknown', value: null, reason: 'No evidence at this point.' };
+  if (signal.cumulative) {
+    if (i === 0) return { status: 'unknown', value: null, reason: 'First point of a cumulative source.' };
+    return judgeValue(signal, intervalValue(signal, points.slice(i - 1, i + 1)));
+  }
+  return judgeValue(signal, value(signal, { numerator: p[1], denominator: p[2], evidence_ok: true }));
+}
+
+export interface TimelinePoint {
+  /** ms since epoch of the capture */
+  at: number;
+  status: Status;
+  /** the signal that made it that colour (worst), when not green */
+  driver: Signal | null;
+}
+
+/**
+ * Worst-of across a workstream's signals at every capture time. Snapshots are
+ * written with ONE captured_at for all signals, so grouping on the exact
+ * timestamp is safe.
+ */
+export function hourlyTimeline(history: HistoryDoc | null | undefined, workstream: Workstream): TimelinePoint[] {
+  if (!history) return [];
+  const byAt = new Map<number, { status: Status; driver: Signal | null }>();
+  for (const signal of SIGNALS) {
+    if (signal.workstream !== workstream) continue;
+    const points = history[signal.key];
+    if (!points) continue;
+    for (let i = 0; i < points.length; i++) {
+      const at = Date.parse(points[i][0]);
+      const v = judgeHistoryPoint(signal, points, i);
+      const cur = byAt.get(at);
+      if (!cur || STATUS_RANK[v.status] > STATUS_RANK[cur.status]) {
+        byAt.set(at, { status: v.status, driver: v.status === 'green' ? null : signal });
+      }
+    }
+  }
+  return [...byAt.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([at, x]) => ({ at, status: x.status, driver: x.driver }));
+}
+
+export interface DayCell {
+  /** YYYY-MM-DD, UTC */
+  day: string;
+  status: Status | 'nodata';
+  /** captures that day */
+  points: number;
+}
+
+const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** Last `days` days ending today (UTC), worst-of per day, 'nodata' where nothing was captured. */
+export function dayCells(timeline: TimelinePoint[], days: number, nowMs: number): DayCell[] {
+  const byDay = new Map<string, { status: Status; points: number }>();
+  for (const p of timeline) {
+    const k = dayKey(p.at);
+    const cur = byDay.get(k);
+    if (!cur) byDay.set(k, { status: p.status, points: 1 });
+    else {
+      cur.points++;
+      if (STATUS_RANK[p.status] > STATUS_RANK[cur.status]) cur.status = p.status;
+    }
+  }
+  const out: DayCell[] = [];
+  const DAY = 86_400_000;
+  for (let i = days - 1; i >= 0; i--) {
+    const k = dayKey(nowMs - i * DAY);
+    const cur = byDay.get(k);
+    out.push(cur ? { day: k, status: cur.status, points: cur.points } : { day: k, status: 'nodata', points: 0 });
+  }
+  return out;
+}
+
+/** Share of measured captures that were green. Unknown captures are not measured. Null when none were. */
+export function uptimePct(timeline: TimelinePoint[]): number | null {
+  let measured = 0, green = 0;
+  for (const p of timeline) {
+    if (p.status === 'unknown') continue;
+    measured++;
+    if (p.status === 'green') green++;
+  }
+  return measured === 0 ? null : (green / measured) * 100;
+}
+
+export interface Incident {
+  workstream: Workstream;
+  /** worst status seen during the run */
+  status: 'watch' | 'act';
+  /** the signal responsible for the worst point */
+  driver: Signal | null;
+  startedAt: number;
+  /** null while the last capture is still inside the run */
+  endedAt: number | null;
+}
+
+/**
+ * Contiguous runs of non-green, non-unknown captures per workstream. Consecutive
+ * captures are adjacent whatever the wall-clock gap — a missing snapshot is not
+ * evidence of health. A run touching the final capture is ongoing (endedAt null).
+ */
+export function incidents(history: HistoryDoc | null | undefined): Incident[] {
+  const out: Incident[] = [];
+  for (const w of WORKSTREAMS) {
+    const tl = hourlyTimeline(history, w.key);
+    let run: Incident | null = null;
+    for (let i = 0; i < tl.length; i++) {
+      const p = tl[i];
+      const bad = p.status === 'watch' || p.status === 'act';
+      if (bad) {
+        if (!run) run = { workstream: w.key, status: p.status as 'watch' | 'act', driver: p.driver, startedAt: p.at, endedAt: null };
+        else if (STATUS_RANK[p.status] > STATUS_RANK[run.status]) { run.status = p.status as 'watch' | 'act'; run.driver = p.driver; }
+      } else if (run) {
+        run.endedAt = p.at;
+        out.push(run);
+        run = null;
+      }
+    }
+    if (run) out.push(run);
+  }
+  return out.sort((a, b) => (b.endedAt === null ? 1 : 0) - (a.endedAt === null ? 1 : 0) || b.startedAt - a.startedAt);
+}

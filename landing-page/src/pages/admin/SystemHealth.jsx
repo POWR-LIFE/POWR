@@ -6,48 +6,74 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import {
+    COMPONENTS,
+    STATE_LABEL,
     WORKSTREAMS,
+    componentState,
+    dayCells,
     evidenceNotes,
     formatAgo,
     formatValue,
+    hourlyTimeline,
+    incidents,
     judgeAll,
     needsAttentionCount,
     sortJudged,
     sparkSeries,
+    uptimePct,
     workstreamStatus,
 } from '../../../../shared/systemHealth.ts';
 
 // System Health — the running diagnosis behind docs/system-health-scope.md.
 //
-// READ TOP TO BOTTOM, STOP WHEN YOU HAVE ENOUGH:
-//   1. One verdict line. "All clear" or "N things need action".
-//   2. Only the things that need action, in plain English, with what to do.
-//   3. Everything that is fine, folded. Everything we cannot measure yet, folded.
-//   4. The engineer's table (keys, thresholds, sparklines, whys) behind one toggle.
+// TWO TABS, ONE SOURCE OF TRUTH.
+//   Status       — what any large company's status page shows: each service
+//                  Operational / Degraded / Disrupted, a 30-day bar, uptime,
+//                  active issues and past incidents. For anyone.
+//   Engineering  — the same signals with numbers, thresholds, sparklines and
+//                  the technical why, for whoever has to fix something.
+// Both are derived from the same judged signals and the same hourly snapshots
+// (shared/systemHealth.ts), so they can never disagree.
 //
 // Everything this page ASSERTS lives in shared/systemHealth.ts as pure functions
-// with jest coverage (__tests__/systemHealth.test.ts): the pinned threshold list,
-// green/watch/act/unknown, null-never-0%, interval-vs-lifetime for cumulative
-// sources, and the plain-English line for every signal. Everything it READS
-// comes from SECURITY DEFINER RPCs that prove is_admin() server-side
+// with jest coverage (__tests__/systemHealth.test.ts). Everything it READS comes
+// from SECURITY DEFINER RPCs that prove is_admin() server-side
 // (supabase/migrations/20260825170000_admin_system_health.sql).
 //
-// ⚠ `unknown` is a real status here and renders grey, never green. Two signals
-// are unknown BY DESIGN until their workstreams ship (balance drift → W1,
-// due-per-tick → P2). That is the page being honest, not broken.
+// ⚠ Grey is "no data", never green. A day with no snapshots is a gap, not uptime.
 
-const HISTORY_DAYS = 7;
+const HISTORY_DAYS = 30;
 const DAY_MS = 86_400_000;
 
 const STATUS = {
-    act:     { label: 'NEEDS ACTION', short: 'ACT',     colour: '#F43F5E', icon: AlertTriangle },
-    watch:   { label: 'KEEP AN EYE ON', short: 'WATCH', colour: '#F59E0B', icon: AlertTriangle },
-    unknown: { label: 'CAN\'T MEASURE YET', short: 'N/A', colour: '#888888', icon: HelpCircle },
-    green:   { label: 'ALL CLEAR', short: 'OK',        colour: '#10B981', icon: CheckCircle },
+    act:     { label: 'NEEDS ACTION',      short: 'ACT',   colour: '#F43F5E', icon: AlertTriangle },
+    watch:   { label: 'KEEP AN EYE ON',    short: 'WATCH', colour: '#F59E0B', icon: AlertTriangle },
+    unknown: { label: 'CAN\'T MEASURE YET', short: 'N/A',  colour: '#888888', icon: HelpCircle },
+    green:   { label: 'ALL CLEAR',         short: 'OK',    colour: '#10B981', icon: CheckCircle },
 };
+
+const STATE_COLOUR = {
+    operational: '#10B981',
+    degraded:    '#F59E0B',
+    disrupted:   '#F43F5E',
+    unknown:     '#C8C8C4',
+};
+
+const CELL_COLOUR = { green: '#10B981', watch: '#F59E0B', act: '#F43F5E', unknown: '#C8C8C4', nodata: '#EDEDEA' };
 
 const WORKSTREAM_ICON = {
     W1: Wallet, W2: Zap, W3: Radio, W4: Send, W5: Database, integrity: ShieldCheck,
+};
+
+const dayAndTime = (ms) =>
+    new Date(ms).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+const dayLabel = (yyyymmdd) =>
+    new Date(`${yyyymmdd}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+const durationLabel = (ms) => {
+    const m = Math.round(ms / 60_000);
+    if (m < 60) return `${m} min`;
+    const h = Math.round(m / 60);
+    return h < 48 ? `${h} h` : `${Math.round(h / 24)} d`;
 };
 
 export default function SystemHealth() {
@@ -56,15 +82,13 @@ export default function SystemHealth() {
     const toastRef = useRef(toast);
     toastRef.current = toast;
 
+    const [tab, setTab] = useState('status');
     const [doc, setDoc] = useState(null);
     const [history, setHistory] = useState(null);
     const [ready, setReady] = useState(false);
     const [busy, setBusy] = useState(false);
     const [snapshotting, setSnapshotting] = useState(false);
     const [nowMs, setNowMs] = useState(() => Date.now());
-    const [showClear, setShowClear] = useState(false);
-    const [showUnknown, setShowUnknown] = useState(false);
-    const [showDetails, setShowDetails] = useState(false);
 
     const load = useCallback(async ({ quiet } = {}) => {
         if (!quiet) setBusy(true);
@@ -108,34 +132,28 @@ export default function SystemHealth() {
     const byWorkstream = useMemo(() => workstreamStatus(judged), [judged]);
     const notes = useMemo(() => evidenceNotes(doc, judged, nowMs), [doc, judged, nowMs]);
 
-    const act = judged.filter(j => j.verdict.status === 'act');
-    const watch = judged.filter(j => j.verdict.status === 'watch');
-    const clear = judged.filter(j => j.verdict.status === 'green');
-    const unknown = judged.filter(j => j.verdict.status === 'unknown');
-    const attention = needsAttentionCount(judged);
-
-    if (!ready) return <Loading label="Diagnosing…" />;
-
-    const verdict = attention > 0
-        ? { text: `${attention} thing${attention === 1 ? '' : 's'} need${attention === 1 ? 's' : ''} action.`, colour: STATUS.act.colour }
-        : watch.length > 0
-            ? { text: `All clear — ${watch.length} thing${watch.length === 1 ? '' : 's'} to keep an eye on.`, colour: STATUS.watch.colour }
-            : { text: 'All clear.', colour: STATUS.green.colour };
+    if (!ready) return <Loading label="Checking…" />;
 
     return (
-        <div className="space-y-12">
-            {/* ── 1. Verdict ─────────────────────────────────────────────── */}
-            <div className="flex flex-wrap items-start justify-between gap-6">
+        <div className="space-y-10">
+            {/* Header + tabs */}
+            <div className="flex flex-wrap items-end justify-between gap-6">
                 <div>
                     <div className="flex items-center gap-3 mb-3">
                         <HeartPulse size={18} className="text-[#E8D200]" />
                         <span className="text-[10px] uppercase tracking-[0.5em] text-[#888888] font-black">System Health</span>
                     </div>
-                    <h1 className="text-3xl font-light tracking-tighter" style={{ color: verdict.colour }}>{verdict.text}</h1>
-                    <p className="text-[11px] text-[#888888] font-bold mt-2">
-                        Checked {formatAgo(doc?.captured_at, nowMs)} · history saved every hour
-                        {doc?.last_snapshot_at ? ` (last ${formatAgo(doc.last_snapshot_at, nowMs)})` : ' (none yet)'}
-                    </p>
+                    <div className="flex gap-2">
+                        {[['status', 'Status'], ['engineering', 'Engineering']].map(([k, l]) => (
+                            <button
+                                key={k}
+                                onClick={() => setTab(k)}
+                                className={`px-6 h-11 rounded-2xl text-[10px] uppercase tracking-[0.3em] font-black border transition-all ${
+                                    tab === k ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white' : 'bg-white border-[#E6E6E1] text-[#888888] hover:text-[#333333]'
+                                }`}
+                            >{l}</button>
+                        ))}
+                    </div>
                 </div>
                 <div className="flex gap-3">
                     <button
@@ -145,14 +163,253 @@ export default function SystemHealth() {
                     >
                         <RefreshCw size={12} className={busy ? 'animate-spin' : ''} /> Refresh
                     </button>
-                    <button
-                        onClick={snapshot}
-                        disabled={snapshotting}
-                        className="px-5 h-11 rounded-2xl bg-[#1A1A1A] text-white text-[9px] uppercase tracking-[0.3em] font-black hover:bg-[#333333] transition-all flex items-center gap-2 disabled:opacity-50"
-                    >
-                        <Camera size={12} /> Save snapshot
-                    </button>
+                    {tab === 'engineering' && (
+                        <button
+                            onClick={snapshot}
+                            disabled={snapshotting}
+                            className="px-5 h-11 rounded-2xl bg-[#1A1A1A] text-white text-[9px] uppercase tracking-[0.3em] font-black hover:bg-[#333333] transition-all flex items-center gap-2 disabled:opacity-50"
+                        >
+                            <Camera size={12} /> Save snapshot
+                        </button>
+                    )}
                 </div>
+            </div>
+
+            {tab === 'status'
+                ? <StatusTab doc={doc} history={history} judged={judged} byWorkstream={byWorkstream} nowMs={nowMs} />
+                : <EngineeringTab doc={doc} history={history} judged={judged} byWorkstream={byWorkstream} notes={notes} nowMs={nowMs} />}
+        </div>
+    );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// STATUS — the public-status-page shape
+// ═════════════════════════════════════════════════════════════════════════════
+
+function StatusTab({ doc, history, judged, byWorkstream, nowMs }) {
+    const components = useMemo(() => COMPONENTS.map(c => {
+        const timeline = hourlyTimeline(history, c.key);
+        return {
+            ...c,
+            state: componentState(byWorkstream[c.key]),
+            cells: dayCells(timeline, HISTORY_DAYS, nowMs),
+            uptime: uptimePct(timeline),
+        };
+    }), [history, byWorkstream, nowMs]);
+
+    const worst = components.reduce((w, c) => {
+        const rank = { disrupted: 3, degraded: 2, unknown: 1, operational: 0 };
+        return rank[c.state] > rank[w] ? c.state : w;
+    }, 'operational');
+
+    const banner = worst === 'disrupted'
+        ? { text: 'Service disruption', colour: STATE_COLOUR.disrupted }
+        : worst === 'degraded'
+            ? { text: 'Degraded performance', colour: STATE_COLOUR.degraded }
+            : worst === 'unknown' && components.every(c => c.state === 'unknown')
+                ? { text: 'No data yet', colour: STATE_COLOUR.unknown }
+                : { text: 'All systems operational', colour: STATE_COLOUR.operational };
+
+    // Active issues come from the LIVE read (finer than the hourly history);
+    // past incidents come from the snapshots.
+    const active = judged.filter(j => j.verdict.status === 'act' || j.verdict.status === 'watch');
+    const past = useMemo(() => incidents(history).filter(i => i.endedAt !== null), [history]);
+
+    return (
+        <div className="space-y-10">
+            {/* Banner */}
+            <div className="rounded-3xl px-8 py-7 text-white flex flex-wrap items-center justify-between gap-4" style={{ background: banner.colour }}>
+                <div className="text-2xl font-light tracking-tight">{banner.text}</div>
+                <div className="text-[10px] uppercase tracking-[0.3em] font-black opacity-80">
+                    Checked {formatAgo(doc?.captured_at, nowMs)}
+                </div>
+            </div>
+
+            {/* Components */}
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+                <div className="px-8 py-4 border-b border-[#EFEFEC] flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">Services</span>
+                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black">Last {HISTORY_DAYS} days</span>
+                </div>
+                {components.map((c, i) => (
+                    <ComponentRow key={c.key} component={c} last={i === components.length - 1} />
+                ))}
+                <div className="px-8 py-3 flex flex-wrap gap-5 text-[9px] uppercase tracking-[0.25em] text-[#AAAAAA] font-black border-t border-[#EFEFEC]">
+                    <Legend colour={CELL_COLOUR.green}>Operational</Legend>
+                    <Legend colour={CELL_COLOUR.watch}>Degraded</Legend>
+                    <Legend colour={CELL_COLOUR.act}>Disrupted</Legend>
+                    <Legend colour={CELL_COLOUR.unknown}>Not measurable</Legend>
+                    <Legend colour={CELL_COLOUR.nodata}>No data</Legend>
+                </div>
+            </div>
+
+            {/* Active issues */}
+            <div>
+                <SectionTitle>Active issues</SectionTitle>
+                {active.length === 0 ? (
+                    <div className="bg-white border border-[#E6E6E1] rounded-3xl py-10 flex items-center justify-center gap-3">
+                        <CheckCircle size={16} style={{ color: STATE_COLOUR.operational }} />
+                        <span className="text-[10px] uppercase tracking-[0.35em] text-[#888888] font-black">No active issues</span>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {active.map(j => <IssueCard key={j.signal.key} judged={j} />)}
+                    </div>
+                )}
+            </div>
+
+            {/* Past incidents */}
+            <div>
+                <SectionTitle>Past incidents · last {HISTORY_DAYS} days</SectionTitle>
+                {past.length === 0 ? (
+                    <p className="text-[11px] text-[#999999] font-bold">None recorded.</p>
+                ) : (
+                    <div className="bg-white border border-[#E6E6E1] rounded-3xl px-8 py-2">
+                        {past.map((inc, i) => {
+                            const c = COMPONENTS.find(x => x.key === inc.workstream);
+                            const state = componentState(inc.status);
+                            return (
+                                <div key={`${inc.workstream}-${inc.startedAt}`} className={`py-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-1 ${i === past.length - 1 ? '' : 'border-b border-[#EFEFEC]'}`}>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: STATE_COLOUR[state] }} />
+                                        <span className="text-[12px] font-bold text-[#222222]">{c?.name ?? inc.workstream}</span>
+                                        <span className="text-[10px] font-black tracking-[0.2em] uppercase" style={{ color: STATE_COLOUR[state] }}>{STATE_LABEL[state]}</span>
+                                        {inc.driver && <span className="text-[11px] text-[#888888] font-bold truncate">— {inc.driver.label}</span>}
+                                    </div>
+                                    <div className="text-[10px] text-[#999999] font-bold whitespace-nowrap">
+                                        {dayAndTime(inc.startedAt)} → {dayAndTime(inc.endedAt)} · {durationLabel(inc.endedAt - inc.startedAt)}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function ComponentRow({ component: c, last }) {
+    const Icon = WORKSTREAM_ICON[c.key] ?? HeartPulse;
+    const colour = STATE_COLOUR[c.state];
+    return (
+        <div className={`px-8 py-5 grid grid-cols-1 lg:grid-cols-[minmax(220px,1.2fr)_minmax(240px,2fr)_auto_auto] gap-x-8 gap-y-3 items-center ${last ? '' : 'border-b border-[#EFEFEC]'}`}>
+            <div className="flex items-center gap-4 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
+                    <Icon size={14} style={{ color: colour }} />
+                </div>
+                <div className="min-w-0">
+                    <div className="text-[13px] font-bold text-[#222222] truncate">{c.name}</div>
+                    <div className="text-[10px] text-[#999999] font-bold truncate">{c.blurb}</div>
+                </div>
+            </div>
+            <div className="flex gap-[3px] items-end" title={`${HISTORY_DAYS} days, oldest on the left`}>
+                {c.cells.map(cell => (
+                    <span
+                        key={cell.day}
+                        className="flex-1 h-7 rounded-[3px]"
+                        style={{ background: CELL_COLOUR[cell.status] }}
+                        title={`${dayLabel(cell.day)} — ${cell.status === 'nodata' ? 'no data' : cell.status === 'unknown' ? 'not measurable' : STATE_LABEL[componentState(cell.status)]}${cell.points ? ` (${cell.points} checks)` : ''}`}
+                    />
+                ))}
+            </div>
+            <div className="text-right whitespace-nowrap">
+                <div className="text-sm font-bold text-[#222222]">{c.uptime == null ? '—' : `${c.uptime.toFixed(c.uptime >= 99.95 ? 2 : 1)}%`}</div>
+                <div className="text-[8px] uppercase tracking-[0.25em] text-[#AAAAAA] font-black">uptime</div>
+            </div>
+            <span
+                className="justify-self-start lg:justify-self-end inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-[9px] font-black tracking-[0.2em] uppercase whitespace-nowrap"
+                style={{ color: colour, borderColor: `${colour}44`, background: `${colour}12` }}
+            >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: colour }} />
+                {STATE_LABEL[c.state]}
+            </span>
+        </div>
+    );
+}
+
+/** One live issue, for a person: which service, what it is, what to do. */
+function IssueCard({ judged }) {
+    const { signal, verdict } = judged;
+    const state = componentState(verdict.status);
+    const colour = STATE_COLOUR[state];
+    const c = COMPONENTS.find(x => x.key === signal.workstream);
+    const ws = WORKSTREAMS.find(w => w.key === signal.workstream);
+    const t = signal.threshold;
+    return (
+        <div className="bg-white border rounded-3xl px-7 py-5" style={{ borderColor: `${colour}55` }}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+                <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-[9px] font-black tracking-[0.2em] uppercase px-2 py-0.5 rounded-full" style={{ color: colour, background: `${colour}12` }}>{STATE_LABEL[state]}</span>
+                    <span className="text-[10px] uppercase tracking-[0.25em] text-[#AAAAAA] font-black truncate">{c?.name}</span>
+                </div>
+                <div className="text-xl font-light tracking-tighter" style={{ color: colour }}>
+                    {formatValue(signal, verdict.value)}
+                    {t && (
+                        <span className="text-[9px] text-[#AAAAAA] font-black tracking-[0.15em] ml-3">
+                            {verdict.status === 'act' ? 'LIMIT' : 'WATCH FROM'} {formatValue(signal, verdict.status === 'act' ? t.act : t.watch)}
+                        </span>
+                    )}
+                </div>
+            </div>
+            <div className="text-[13px] font-bold text-[#222222] mt-2">{signal.label}</div>
+            <p className="text-[12px] text-[#555555] font-bold leading-relaxed mt-1">{signal.plain}</p>
+            {ws && (
+                <p className="text-[11px] text-[#888888] font-bold leading-relaxed mt-2">
+                    <span className="text-[#333333]">What to do:</span> {ws.action}
+                </p>
+            )}
+        </div>
+    );
+}
+
+function Legend({ colour, children }) {
+    return (
+        <span className="inline-flex items-center gap-2">
+            <span className="w-3 h-3 rounded-[3px]" style={{ background: colour }} />
+            {children}
+        </span>
+    );
+}
+
+function SectionTitle({ children }) {
+    return (
+        <div className="mb-5">
+            <div className="text-[11px] uppercase tracking-[0.4em] text-[#888888] font-black">{children}</div>
+            <div className="h-[1.5px] w-8 bg-[#E8D200]/70 mt-2"></div>
+        </div>
+    );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ENGINEERING — numbers, thresholds, sparklines, whys
+// ═════════════════════════════════════════════════════════════════════════════
+
+function EngineeringTab({ doc, history, judged, byWorkstream, notes, nowMs }) {
+    const [showClear, setShowClear] = useState(false);
+    const [showUnknown, setShowUnknown] = useState(false);
+    const [showDetails, setShowDetails] = useState(false);
+
+    const act = judged.filter(j => j.verdict.status === 'act');
+    const watch = judged.filter(j => j.verdict.status === 'watch');
+    const clear = judged.filter(j => j.verdict.status === 'green');
+    const unknown = judged.filter(j => j.verdict.status === 'unknown');
+    const attention = needsAttentionCount(judged);
+
+    const verdict = attention > 0
+        ? { text: `${attention} thing${attention === 1 ? '' : 's'} need${attention === 1 ? 's' : ''} action.`, colour: STATUS.act.colour }
+        : watch.length > 0
+            ? { text: `All clear — ${watch.length} thing${watch.length === 1 ? '' : 's'} to keep an eye on.`, colour: STATUS.watch.colour }
+            : { text: 'All clear.', colour: STATUS.green.colour };
+
+    return (
+        <div className="space-y-12">
+            <div>
+                <h1 className="text-3xl font-light tracking-tighter" style={{ color: verdict.colour }}>{verdict.text}</h1>
+                <p className="text-[11px] text-[#888888] font-bold mt-2">
+                    Checked {formatAgo(doc?.captured_at, nowMs)} · history saved every hour
+                    {doc?.last_snapshot_at ? ` (last ${formatAgo(doc.last_snapshot_at, nowMs)})` : ' (none yet)'}
+                </p>
             </div>
 
             {/* Six areas, one dot each. */}
@@ -167,14 +424,13 @@ export default function SystemHealth() {
                             className="inline-flex items-center gap-2 px-4 h-9 rounded-xl bg-white border border-[#E6E6E1] text-[10px] font-black tracking-[0.15em] text-[#333333]"
                         >
                             <Icon size={12} style={{ color: st.colour }} />
-                            {w.title}
+                            {w.key === 'integrity' ? '' : `${w.key} · `}{w.title}
                             <span className="w-2 h-2 rounded-full" style={{ background: st.colour }} />
                         </span>
                     );
                 })}
             </div>
 
-            {/* What this page cannot currently prove. Only when there is something to say. */}
             {notes.length > 0 && (
                 <div className="px-6 py-4 rounded-2xl border border-[#F59E0B]/30 bg-[#F59E0B]/[0.07] space-y-1">
                     {notes.map((n, i) => (
@@ -183,7 +439,6 @@ export default function SystemHealth() {
                 </div>
             )}
 
-            {/* ── 2. Things that need you ─────────────────────────────────── */}
             {act.length > 0 && (
                 <Group status="act" count={act.length}>
                     {act.map(j => <ActionCard key={j.signal.key} judged={j} />)}
@@ -201,13 +456,7 @@ export default function SystemHealth() {
                 </div>
             )}
 
-            {/* ── 3. Folded: fine, and not-yet-measurable ─────────────────── */}
-            <Fold
-                open={showClear}
-                onToggle={() => setShowClear(v => !v)}
-                status="green"
-                title={`${clear.length} thing${clear.length === 1 ? '' : 's'} fine`}
-            >
+            <Fold open={showClear} onToggle={() => setShowClear(v => !v)} status="green" title={`${clear.length} thing${clear.length === 1 ? '' : 's'} fine`}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10">
                     {clear.map(j => (
                         <div key={j.signal.key} className="flex items-center justify-between gap-6 py-3 border-b border-[#EFEFEC]">
@@ -222,12 +471,7 @@ export default function SystemHealth() {
             </Fold>
 
             {unknown.length > 0 && (
-                <Fold
-                    open={showUnknown}
-                    onToggle={() => setShowUnknown(v => !v)}
-                    status="unknown"
-                    title={`${unknown.length} thing${unknown.length === 1 ? '' : 's'} we can't measure yet`}
-                >
+                <Fold open={showUnknown} onToggle={() => setShowUnknown(v => !v)} status="unknown" title={`${unknown.length} thing${unknown.length === 1 ? '' : 's'} we can't measure yet`}>
                     {unknown.map(j => (
                         <div key={j.signal.key} className="py-3 border-b border-[#EFEFEC]">
                             <div className="text-[11px] font-bold text-[#444444]">{j.signal.label}</div>
@@ -237,7 +481,6 @@ export default function SystemHealth() {
                 </Fold>
             )}
 
-            {/* ── 4. The engineer's table ─────────────────────────────────── */}
             <div>
                 <button
                     onClick={() => setShowDetails(v => !v)}
@@ -262,7 +505,6 @@ export default function SystemHealth() {
     );
 }
 
-/** A red or amber section: heading + its cards. */
 function Group({ status, count, children }) {
     const st = STATUS[status];
     return (
@@ -277,10 +519,6 @@ function Group({ status, count, children }) {
     );
 }
 
-/**
- * One thing that needs a person. Three lines, in the order a person needs them:
- * what it is (plain English), the number against its line, what to do.
- */
 function ActionCard({ judged }) {
     const { signal, verdict } = judged;
     const st = STATUS[verdict.status] ?? STATUS.unknown;
@@ -301,6 +539,7 @@ function ActionCard({ judged }) {
                 </div>
             </div>
             <p className="text-[12px] text-[#555555] font-bold leading-relaxed mt-3">{signal.plain}</p>
+            <p className="text-[10px] text-[#999999] font-bold leading-relaxed mt-2">{signal.why}</p>
             {ws && (
                 <p className="text-[11px] text-[#888888] font-bold leading-relaxed mt-3">
                     <span className="text-[#333333]">What to do:</span> {ws.action}
@@ -314,10 +553,7 @@ function Fold({ open, onToggle, status, title, children }) {
     const st = STATUS[status];
     return (
         <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
-            <button
-                onClick={onToggle}
-                className="w-full flex items-center justify-between px-7 py-5 hover:bg-[#FAFAF8] transition-colors"
-            >
+            <button onClick={onToggle} className="w-full flex items-center justify-between px-7 py-5 hover:bg-[#FAFAF8] transition-colors">
                 <span className="flex items-center gap-3">
                     <span className="w-2.5 h-2.5 rounded-full" style={{ background: st.colour }} />
                     <span className="text-[11px] uppercase tracking-[0.35em] font-black text-[#444444]">{title}</span>
@@ -328,8 +564,6 @@ function Fold({ open, onToggle, status, title, children }) {
         </div>
     );
 }
-
-// ── The engineer's table (unchanged in substance, behind the toggle) ──────────
 
 function DetailsTable({ rows, history }) {
     return (
@@ -342,7 +576,7 @@ function DetailsTable({ rows, history }) {
                             <Th>Signal</Th>
                             <Th right>Now</Th>
                             <Th right>Watch / Act</Th>
-                            <Th>7 days</Th>
+                            <Th>{HISTORY_DAYS} days</Th>
                             <Th>Why</Th>
                         </tr>
                     </thead>
@@ -388,16 +622,13 @@ function SignalRow({ judged, series }) {
     );
 }
 
-const dayAndTime = (iso) =>
-    new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-
 /** A compact line of the fact's detail — the forensic numbers behind the value. */
 function Detail({ fact, signal }) {
     const d = fact?.detail;
     if (!d || typeof d !== 'object') return null;
     const parts = [];
     for (const [k, v] of Object.entries(d)) {
-        if (k === 'note' || k === 'cumulative' || k === 'stats_since' || k === 'stats_reset' || k === 'visit_ids' || k === 'tables') continue;
+        if (k === 'note' || k === 'cumulative' || k === 'stats_since' || k === 'stats_reset' || k === 'visit_ids' || k === 'tables' || k === 'drifted') continue;
         if (v == null) continue;
         if (typeof v === 'object') {
             if (Array.isArray(v)) { if (v.length) parts.push(`${k}: ${v.join(', ')}`); continue; }
@@ -405,7 +636,7 @@ function Detail({ fact, signal }) {
             if (inner) parts.push(`${k}: ${inner}`);
             continue;
         }
-        if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) { parts.push(`${k} ${dayAndTime(v)}`); continue; }
+        if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) { parts.push(`${k} ${dayAndTime(Date.parse(v))}`); continue; }
         parts.push(`${k} ${typeof v === 'number' ? v.toLocaleString('en-GB') : v}`);
     }
     if (signal.kind === 'pct' && fact.numerator != null && fact.denominator != null) {
