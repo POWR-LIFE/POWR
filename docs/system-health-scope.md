@@ -1,6 +1,6 @@
 # System Health — Scope
 
-> Status: **P0 + P1 BUILT 2026-08-25** — migration applied to prod, page + dashboard tile wired, 38 jest tests; Vercel deploy pending. P2 (`beacon_ticks`) not started. · Owner: Jamie · Date: 2026-08-25
+> Status: **LIVE 2026-08-25 — P0, P1, P2 shipped; Status/Engineering tabs; W1 shadow phase live** (stored balance kept in step, nothing reads it; cutover after a week of zero drift). 49 jest tests. · Owner: Jamie · Date: 2026-08-25
 >
 > An admin-portal page that keeps a running diagnosis of the platform's load-bearing
 > paths — the check-in → points chain, the ledger, the beacon, the relay, the
