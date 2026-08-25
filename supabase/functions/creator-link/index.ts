@@ -116,6 +116,12 @@ Deno.serve(async (req: Request) => {
   // A dead link still has to land somewhere useful — it's in someone's bio.
   if (!handle) return Response.redirect(`${SITE}/app`, 302);
 
+  // Master switch (admin → System Config → Creator programme). Off = every
+  // creator link is a plain app link: no ref, no click logged, no OG card.
+  const { data: flag } = await admin
+    .from("system_config").select("value").eq("key", "creator_program_enabled").maybeSingle();
+  if (flag?.value !== "true") return Response.redirect(`${SITE}/app`, 302);
+
   const { data: creator } = await admin
     .from("creators")
     .select("id, handle, code, display_name, avatar_url, bio, status")

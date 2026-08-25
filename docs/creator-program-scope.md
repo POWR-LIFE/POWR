@@ -239,6 +239,21 @@ where their share code comes from."*
 - **Tab buttons were black-on-black** — the documented Tailwind v4 unlayered `a { color: inherit }` bug. Colour moved to an inner `<span>`.
 - Portal ladder shows the reward image, name, worth and description.
 
+### 2e. Master switch (2026-08-25)
+
+`system_config.creator_program_enabled` — **default OFF** — in admin › Config › *Creator Programme*
+(migration `creator_program_feature_flag`, mirrors `partner_placements_enabled`).
+
+| Off | On |
+| --- | --- |
+| Creator codes resolve as ordinary **member** invites — a creator who's also a member still gets member-tier attribution, nothing is lost | Creator alias wins |
+| `/join/:handle` → `/app` with **no ref**, no click logged, no OG card | Full link behaviour |
+| `/creator` portal shows "Not open yet" to everyone but admins | Open |
+| Event bonus trigger returns early | Pays |
+| **Admin pages under Creators keep working** — set up rewards, programmes and creators first | — |
+
+Gates: `creator_program_enabled()` (SQL helper) in `resolve_invite_code` + `creator_event_signup_bonus`; the `creator-link` fn reads the row directly; `App.jsx` reads it into `creatorProgramEnabled` for `CreatorProtectedRoute`. Verified OFF live: link 302 → `/app` bare, `POWRTEST` resolves 0 rows, member codes still resolve.
+
 **Superseded:** `creator_milestone_tiers` (P0's flat ladder) — seeded into the Default programme's steps, no longer read by anything. Drop next release.
 
 ---
