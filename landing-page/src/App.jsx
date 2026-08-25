@@ -29,6 +29,7 @@ import {
     PartyPopper,
     Radio,
     Sparkles,
+    HeartPulse,
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -84,6 +85,8 @@ import StreakRescue from './pages/admin/StreakRescue';
 import VaultManager from './pages/admin/VaultManager';
 import LiveEvents from './pages/admin/LiveEvents';
 import LiveOps from './pages/admin/LiveOps';
+import SystemHealth from './pages/admin/SystemHealth';
+import { judgeAll, needsAttentionCount } from '../../shared/systemHealth.ts';
 import AthleteSignup from './pages/AthleteSignup';
 import { CreatorLayout } from './pages/creator/CreatorLayout';
 import CreatorSetup from './pages/creator/CreatorSetup';
@@ -382,6 +385,7 @@ const PATH_LABELS = {
     'streak-rescue': 'Streak Rescue',
     events: 'Live Events',
     liveops: 'Live Ops',
+    'system-health': 'System Health',
     config: 'Config',
 };
 
@@ -647,6 +651,17 @@ const AdminHome = () => {
     // 14-day daily session trend [{ day, count }] and activity-type mix [{ type, count }]
     const [trend, setTrend] = useState([]);
     const [activityMix, setActivityMix] = useState([]);
+    // System Health: signals at the ACT line, judged in shared/systemHealth.ts.
+    // A failed read stays null and renders '—' — never a reassuring 0.
+    const [healthAttention, setHealthAttention] = useState(null);
+    useEffect(() => {
+        let cancelled = false;
+        supabase.rpc('admin_system_health_live').then(({ data, error }) => {
+            if (cancelled) return;
+            setHealthAttention(error || !data ? null : needsAttentionCount(judgeAll(data, null)));
+        });
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -775,6 +790,7 @@ const AdminHome = () => {
         { label: 'Reward Submissions',   count: stats.pendingSubmissions, to: '/admin/reward-submissions', color: '#F97316', icon: Inbox,         desc: 'Pending brand review'     },
         { label: 'Athlete Applications', count: stats.pendingAthletes,    to: '/admin/athletes',           color: '#8B5CF6', icon: Star,          desc: 'Awaiting approval'        },
         { label: 'Support Tickets',      count: stats.openTickets,        to: '/admin/support',            color: '#0EA5E9', icon: MessageSquare, desc: 'Open & in-progress'       },
+        { label: 'System Health',        count: healthAttention ?? '—',   to: '/admin/system-health',      color: '#F43F5E', icon: HeartPulse,    desc: 'Signals at the act line'  },
     ];
 
     // Activity-mix colors (matched to type)
@@ -1073,6 +1089,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Usage',       path: '/admin/usage',       icon: MousePointerClick },
         { label: 'Sessions',    path: '/admin/sessions',    icon: Shield        },
         { label: 'Live Ops',    path: '/admin/liveops',     icon: Radio         },
+        { label: 'System Health', path: '/admin/system-health', icon: HeartPulse },
         { label: 'Performance', path: '/admin/performance', icon: Activity      },
         { label: 'Redemptions', path: '/admin/redemptions', icon: Gift          },
         { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText    },
@@ -1291,6 +1308,7 @@ export default function App() {
                     <Route path="/admin/streak-rescue" element={<ProtectedRoute><AdminLayout><StreakRescue /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/events" element={<ProtectedRoute><AdminLayout><LiveEvents /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/liveops" element={<ProtectedRoute><AdminLayout><LiveOps /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/system-health" element={<ProtectedRoute><AdminLayout><SystemHealth /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/creators" element={<ProtectedRoute><AdminLayout><CreatorManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/creators/programmes" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="programmes" /></AdminLayout></ProtectedRoute>} />
