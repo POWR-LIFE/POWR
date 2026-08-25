@@ -101,8 +101,10 @@ export interface Signal {
   threshold: Threshold | null;
   /** The source is cumulative since a stats reset; judge on the interval when possible. */
   cumulative?: boolean;
-  /** One line: why this threshold, what it protects. */
+  /** One line: why this threshold, what it protects. Engineer's voice. */
   why: string;
+  /** One sentence for someone who is not an engineer: what this number IS. */
+  plain: string;
 }
 
 export const SIGNALS: Signal[] = [
@@ -111,21 +113,25 @@ export const SIGNALS: Signal[] = [
     key: 'ledger.insert_mean_ms', workstream: 'W1', label: 'Earn-insert mean time', kind: 'ratio', unit: 'ms',
     threshold: { watch: 75, act: 150, direction: 'above' }, cumulative: true,
     why: 'Includes both lifetime-sum triggers and the rewards scan. This is the "points landed" latency a member feels. 33–52 ms at 2,880 rows.',
+    plain: 'How long it takes to record a member\'s points. Gets slower the longer a member has been with us.',
   },
   {
     key: 'ledger.rows_per_user', workstream: 'W1', label: 'Ledger rows — heaviest member', kind: 'count', unit: 'rows',
     threshold: { watch: 1000, act: 2500, direction: 'above' },
     why: 'The trigger sum is O(rows for that member). Rises with tenure and zero user growth. Max today: 403.',
+    plain: 'The longest points history any one member has. Every award re-reads that whole history.',
   },
   {
     key: 'ledger.total_rows', workstream: 'W1', label: 'Ledger total rows', kind: 'count', unit: 'rows',
     threshold: { watch: 250_000, act: 1_000_000, direction: 'above' },
     why: 'Planner choices inside the triggers get expensive here.',
+    plain: 'Total points records across every member.',
   },
   {
     key: 'ledger.balance_drift', workstream: 'W1', label: 'Balance drift (post-W1)', kind: 'count', unit: 'members',
     threshold: { watch: 1, act: 5, direction: 'above' },
     why: 'Once a materialised balance exists this is THE invariant. Unknown until W1 ships.',
+    plain: 'Whether the stored balance matches the ledger. Only measurable once W1 (a stored balance) exists.',
   },
 
   // W2 — Claim chain
@@ -133,21 +139,25 @@ export const SIGNALS: Signal[] = [
     key: 'claims.partial_24h', workstream: 'W2', label: 'Partial claims, 24h', kind: 'count', unit: '',
     threshold: { watch: 1, act: 3, direction: 'above' },
     why: 'Earn row landed but the visit stamp or the earn row is missing — the isolate died between steps 10 and 11c.',
+    plain: 'Gym check-ins where the points landed but the visit was left half-finished.',
   },
   {
     key: 'claims.wall_p95_s', workstream: 'W2', label: 'Wake → claim p95', kind: 'ratio_numerator', unit: 's',
     threshold: { watch: 8, act: 20, direction: 'above' },
     why: 'Bounded by the PostgREST statement timeout and the client outbox\'s patience.',
+    plain: 'How long a gym check-in takes to turn into points once the phone wakes up.',
   },
   {
     key: 'claims.rate_limited_24h', workstream: 'W2', label: 'Proven claims answered 429, 24h', kind: 'count', unit: '',
     threshold: { watch: 1, act: 3, direction: 'above' },
     why: 'The 2026-08-13 class: a health-sync batch spent the 3/hour cap before a proven gym claim arrived. Must stay at zero.',
+    plain: 'Proven gym visits refused points by the anti-spam limit. Should always be zero.',
   },
   {
     key: 'claims.cap_overshoot_7d', workstream: 'W2', label: 'Daily-cap overshoots, 7d', kind: 'count', unit: 'member-days',
     threshold: { watch: 1, act: 3, direction: 'above' },
     why: 'Two claims raced the read-then-write cap check for one member. The DB trigger does not backstop the service path.',
+    plain: 'Members paid more than the daily gym cap because two awards raced each other.',
   },
 
   // W3 — Beacon
@@ -155,21 +165,25 @@ export const SIGNALS: Signal[] = [
     key: 'beacon.due_per_tick', workstream: 'W3', label: 'Visits due per tick (max, 24h)', kind: 'count', unit: '',
     threshold: { watch: 100, act: 160, direction: 'above' },
     why: 'The cap is 200. At 160 the next busy evening hits it and everyone past #200 never wakes. Unknown until P2 ships.',
+    plain: 'How many gym visits the server needed to wake in one minute, against its limit of 200. Needs P2 to measure.',
   },
   {
     key: 'beacon.tick_p95_s', workstream: 'W3', label: 'Beacon tick p95', kind: 'ratio_numerator', unit: 's',
     threshold: { watch: 30, act: 45, direction: 'above' },
     why: 'Runs every 60 s. Past ~55 s ticks overlap and the settle/pursuit passes starve behind the nudge pass.',
+    plain: 'How long each minute\'s beacon run takes. Must stay well under 60 seconds.',
   },
   {
     key: 'beacon.failures_24h', workstream: 'W3', label: 'Beacon failed runs, 24h', kind: 'count', unit: '',
     threshold: { watch: 1, act: 5, direction: 'above' },
     why: 'A dead beacon means no background claims platform-wide.',
+    plain: 'Beacon runs that failed. A dead beacon means no background check-ins pay out.',
   },
   {
     key: 'beacon.push_fail_pct_24h', workstream: 'W3', label: 'Wake push failure rate, 24h', kind: 'pct', unit: '%',
     threshold: { watch: 10, act: 30, direction: 'above' },
     why: 'The 08-12 read was 116 sent / 722 failed. Null when no wakes were attempted — not 0%.',
+    plain: 'Share of wake-up pushes to phones that failed to send.',
   },
 
   // W4 — Relay
@@ -177,16 +191,19 @@ export const SIGNALS: Signal[] = [
     key: 'relay.queue_depth', workstream: 'W4', label: 'pg_net queue depth', kind: 'count', unit: '',
     threshold: { watch: 50, act: 200, direction: 'above' },
     why: 'batch_size is 200. Above it the single worker is behind by definition.',
+    plain: 'Server-to-server calls waiting to be sent. Above 200 the single worker is behind.',
   },
   {
     key: 'relay.fail_pct_24h', workstream: 'W4', label: 'Relay failure rate (pg_net window)', kind: 'pct', unit: '%',
     threshold: { watch: 2, act: 10, direction: 'above' },
     why: 'These failures leave no receipt anywhere else — net._http_response is the only witness, and pg_net.ttl purges it after 6 h, so this is a ~6 h window, not 24 h. The hourly snapshot is what makes it a day.',
+    plain: 'Share of server-to-server calls that failed or timed out. These leave no other trace.',
   },
   {
     key: 'relay.volume_24h', workstream: 'W4', label: 'Relay requests (pg_net window)', kind: 'count', unit: '',
     threshold: { watch: 1500, act: 5000, direction: 'above' },
     why: 'Every DB-triggered push and every cron-invoked edge function shares the one worker with the claim relay. ~6 h window (pg_net.ttl), so the thresholds are a quarter of the day-rate ones.',
+    plain: 'How many server-to-server calls were made in the window.',
   },
 
   // W5 — Database
@@ -194,26 +211,31 @@ export const SIGNALS: Signal[] = [
     key: 'db.connections_pct', workstream: 'W5', label: 'Connections in use', kind: 'pct', unit: '%',
     threshold: { watch: 60, act: 80, direction: 'above' },
     why: 'Micro\'s hard wall is 60. This is what turns into PostgREST 504s.',
+    plain: 'How much of the database\'s connection limit is in use. At 100% the app starts getting errors.',
   },
   {
     key: 'db.cache_hit_pct', workstream: 'W5', label: 'Buffer cache hit', kind: 'pct', unit: '%',
     threshold: { watch: 99, act: 95, direction: 'below' }, cumulative: true,
     why: 'shared_buffers is 224 MB. Below 99% the working set no longer fits and every trigger sum goes to disk.',
+    plain: 'How often the database finds data in memory rather than going to disk.',
   },
   {
     key: 'db.longest_query_s', workstream: 'W5', label: 'Longest running query', kind: 'count', unit: 's',
     threshold: { watch: 5, act: 30, direction: 'above' },
     why: 'Lock pile-ups behind a slow trigger show here first.',
+    plain: 'The slowest thing running on the database right now.',
   },
   {
     key: 'db.dead_tuple_pct', workstream: 'W5', label: 'Dead tuples, worst hot table', kind: 'pct', unit: '%',
     threshold: { watch: 20, act: 50, direction: 'above' },
     why: 'Autovacuum falling behind on Micro\'s CPU share.',
+    plain: 'How much dead data is waiting to be cleaned up in the busiest tables.',
   },
   {
     key: 'db.size_bytes', workstream: 'W5', label: 'Database size', kind: 'count', unit: 'B',
     threshold: null,
     why: 'Trend only. Feeds the compute conversation.',
+    plain: 'How big the database is.',
   },
 
   // Integrity
@@ -221,31 +243,37 @@ export const SIGNALS: Signal[] = [
     key: 'integrity.dup_earns', workstream: 'integrity', label: 'Sessions with duplicate earns', kind: 'count', unit: '',
     threshold: { watch: 1, act: 1, direction: 'above' },
     why: 'The unique index guards (session, description) only. The 05-29 race class.',
+    plain: 'Sessions paid twice for the same thing. Lifetime count — the cause was fixed on 25 Aug 2026.',
   },
   {
     key: 'integrity.open_visits_12h', workstream: 'integrity', label: 'Open visits older than 12h', kind: 'count', unit: '',
     threshold: { watch: 1, act: 1, direction: 'above' },
     why: 'The reaper invariant: nothing stays open past 12h.',
+    plain: 'Gym visits still open after 12 hours. Should never happen.',
   },
   {
     key: 'integrity.proven_unpaid_24h', workstream: 'integrity', label: 'Proven but unpaid visits, 24h', kind: 'count', unit: '',
     threshold: { watch: 1, act: 1, direction: 'above' },
     why: 'Presence proven for the full dwell, visit closed, no claim. The 08-13 class — nothing else records it.',
+    plain: 'Members proven to be at the gym long enough who never got their points.',
   },
   {
     key: 'integrity.evidence_gap_7d', workstream: 'integrity', label: 'Journeys with purged evidence, 7d', kind: 'count', unit: '',
     threshold: { watch: 1, act: 1, direction: 'above' },
     why: 'A journey rolled up after its raw rows were purged. The "publish a lie" guard.',
+    plain: 'Visits whose raw evidence was deleted before we recorded it.',
   },
   {
     key: 'integrity.postgrest_cap', workstream: 'integrity', label: 'Largest unbounded read', kind: 'count', unit: 'rows',
     threshold: { watch: 700, act: 1000, direction: 'above' },
     why: 'PostgREST silently truncates every response at 1000 rows. A member\'s own ledger and sessions are read unbounded.',
+    plain: 'The largest single read the app does, against the 1,000-row limit that silently cuts data off.',
   },
   {
     key: 'integrity.cron_silent', workstream: 'integrity', label: 'Silent cron jobs', kind: 'count', unit: '',
     threshold: { watch: 1, act: 1, direction: 'above' },
     why: 'A dead cron fails silently — there is no other alarm.',
+    plain: 'Scheduled jobs that have stopped running.',
   },
 ];
 

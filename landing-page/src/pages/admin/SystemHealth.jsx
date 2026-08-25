@@ -1,14 +1,12 @@
 import {
-    AlertTriangle, Camera, CheckCircle, Database, ExternalLink, HeartPulse, HelpCircle,
+    AlertTriangle, Camera, CheckCircle, ChevronDown, ChevronRight, Database, HeartPulse, HelpCircle,
     RefreshCw, Radio, Send, Wallet, Zap, ShieldCheck,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import {
-    SIGNALS,
     WORKSTREAMS,
-    drivingSignal,
     evidenceNotes,
     formatAgo,
     formatValue,
@@ -21,16 +19,18 @@ import {
 
 // System Health — the running diagnosis behind docs/system-health-scope.md.
 //
-// One question: "are we still safe, and if not, which thing do we fix next?"
-// Every signal is tied to a WORKSTREAM (W1–W5 from the 2026-08-25 scale review,
-// plus Integrity) and a watch/act threshold with a one-line why. The header
-// strip — six cards, worst-of — is the answer; the table is the evidence.
+// READ TOP TO BOTTOM, STOP WHEN YOU HAVE ENOUGH:
+//   1. One verdict line. "All clear" or "N things need action".
+//   2. Only the things that need action, in plain English, with what to do.
+//   3. Everything that is fine, folded. Everything we cannot measure yet, folded.
+//   4. The engineer's table (keys, thresholds, sparklines, whys) behind one toggle.
 //
 // Everything this page ASSERTS lives in shared/systemHealth.ts as pure functions
 // with jest coverage (__tests__/systemHealth.test.ts): the pinned threshold list,
 // green/watch/act/unknown, null-never-0%, interval-vs-lifetime for cumulative
-// sources. Everything it READS comes from three SECURITY DEFINER RPCs that prove
-// is_admin() server-side (supabase/migrations/20260825170000_admin_system_health.sql).
+// sources, and the plain-English line for every signal. Everything it READS
+// comes from SECURITY DEFINER RPCs that prove is_admin() server-side
+// (supabase/migrations/20260825170000_admin_system_health.sql).
 //
 // ⚠ `unknown` is a real status here and renders grey, never green. Two signals
 // are unknown BY DESIGN until their workstreams ship (balance drift → W1,
@@ -40,22 +40,15 @@ const HISTORY_DAYS = 7;
 const DAY_MS = 86_400_000;
 
 const STATUS = {
-    act:     { label: 'ACT',     colour: '#F43F5E', bg: '#F43F5E0f', icon: AlertTriangle },
-    watch:   { label: 'WATCH',   colour: '#F59E0B', bg: '#F59E0B0f', icon: AlertTriangle },
-    unknown: { label: 'UNKNOWN', colour: '#888888', bg: '#8888880f', icon: HelpCircle },
-    green:   { label: 'OK',      colour: '#10B981', bg: '#10B9810f', icon: CheckCircle },
+    act:     { label: 'NEEDS ACTION', short: 'ACT',     colour: '#F43F5E', icon: AlertTriangle },
+    watch:   { label: 'KEEP AN EYE ON', short: 'WATCH', colour: '#F59E0B', icon: AlertTriangle },
+    unknown: { label: 'CAN\'T MEASURE YET', short: 'N/A', colour: '#888888', icon: HelpCircle },
+    green:   { label: 'ALL CLEAR', short: 'OK',        colour: '#10B981', icon: CheckCircle },
 };
 
 const WORKSTREAM_ICON = {
     W1: Wallet, W2: Zap, W3: Radio, W4: Send, W5: Database, integrity: ShieldCheck,
 };
-
-const SECTION_TITLES = {
-    W1: 'Ledger (W1)', W2: 'Claim chain (W2)', W3: 'Beacon (W3)', W4: 'Relay (W4)', W5: 'Database (W5)', integrity: 'Integrity',
-};
-
-const dayAndTime = (iso) =>
-    new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 export default function SystemHealth() {
     const toast = useToast();
@@ -68,8 +61,10 @@ export default function SystemHealth() {
     const [ready, setReady] = useState(false);
     const [busy, setBusy] = useState(false);
     const [snapshotting, setSnapshotting] = useState(false);
-    const [sortMode, setSortMode] = useState('severity'); // 'severity' | 'section'
     const [nowMs, setNowMs] = useState(() => Date.now());
+    const [showClear, setShowClear] = useState(false);
+    const [showUnknown, setShowUnknown] = useState(false);
+    const [showDetails, setShowDetails] = useState(false);
 
     const load = useCallback(async ({ quiet } = {}) => {
         if (!quiet) setBusy(true);
@@ -111,32 +106,35 @@ export default function SystemHealth() {
 
     const judged = useMemo(() => judgeAll(doc, history), [doc, history]);
     const byWorkstream = useMemo(() => workstreamStatus(judged), [judged]);
-    const attention = needsAttentionCount(judged);
     const notes = useMemo(() => evidenceNotes(doc, judged, nowMs), [doc, judged, nowMs]);
 
-    const rows = useMemo(() => {
-        if (sortMode === 'severity') return sortJudged(judged);
-        return judged; // SIGNALS order is already grouped by workstream
-    }, [judged, sortMode]);
+    const act = judged.filter(j => j.verdict.status === 'act');
+    const watch = judged.filter(j => j.verdict.status === 'watch');
+    const clear = judged.filter(j => j.verdict.status === 'green');
+    const unknown = judged.filter(j => j.verdict.status === 'unknown');
+    const attention = needsAttentionCount(judged);
 
     if (!ready) return <Loading label="Diagnosing…" />;
 
+    const verdict = attention > 0
+        ? { text: `${attention} thing${attention === 1 ? '' : 's'} need${attention === 1 ? 's' : ''} action.`, colour: STATUS.act.colour }
+        : watch.length > 0
+            ? { text: `All clear — ${watch.length} thing${watch.length === 1 ? '' : 's'} to keep an eye on.`, colour: STATUS.watch.colour }
+            : { text: 'All clear.', colour: STATUS.green.colour };
+
     return (
-        <div className="space-y-14">
-            {/* Header */}
+        <div className="space-y-12">
+            {/* ── 1. Verdict ─────────────────────────────────────────────── */}
             <div className="flex flex-wrap items-start justify-between gap-6">
                 <div>
                     <div className="flex items-center gap-3 mb-3">
                         <HeartPulse size={18} className="text-[#E8D200]" />
                         <span className="text-[10px] uppercase tracking-[0.5em] text-[#888888] font-black">System Health</span>
                     </div>
-                    <h1 className="text-3xl font-light tracking-tighter text-[#222222]">
-                        {attention === 0
-                            ? 'Nothing at the act line.'
-                            : `${attention} signal${attention === 1 ? '' : 's'} at the act line.`}
-                    </h1>
+                    <h1 className="text-3xl font-light tracking-tighter" style={{ color: verdict.colour }}>{verdict.text}</h1>
                     <p className="text-[11px] text-[#888888] font-bold mt-2">
-                        Read {formatAgo(doc?.captured_at, nowMs)} · last snapshot {doc?.last_snapshot_at ? formatAgo(doc.last_snapshot_at, nowMs) : 'never'} · hourly cron
+                        Checked {formatAgo(doc?.captured_at, nowMs)} · history saved every hour
+                        {doc?.last_snapshot_at ? ` (last ${formatAgo(doc.last_snapshot_at, nowMs)})` : ' (none yet)'}
                     </p>
                 </div>
                 <div className="flex gap-3">
@@ -152,12 +150,31 @@ export default function SystemHealth() {
                         disabled={snapshotting}
                         className="px-5 h-11 rounded-2xl bg-[#1A1A1A] text-white text-[9px] uppercase tracking-[0.3em] font-black hover:bg-[#333333] transition-all flex items-center gap-2 disabled:opacity-50"
                     >
-                        <Camera size={12} /> Snapshot now
+                        <Camera size={12} /> Save snapshot
                     </button>
                 </div>
             </div>
 
-            {/* Evidence notes — what this page cannot currently prove */}
+            {/* Six areas, one dot each. */}
+            <div className="flex flex-wrap gap-2">
+                {WORKSTREAMS.map(w => {
+                    const st = STATUS[byWorkstream[w.key]] ?? STATUS.unknown;
+                    const Icon = WORKSTREAM_ICON[w.key] ?? HeartPulse;
+                    return (
+                        <span
+                            key={w.key}
+                            title={w.what}
+                            className="inline-flex items-center gap-2 px-4 h-9 rounded-xl bg-white border border-[#E6E6E1] text-[10px] font-black tracking-[0.15em] text-[#333333]"
+                        >
+                            <Icon size={12} style={{ color: st.colour }} />
+                            {w.title}
+                            <span className="w-2 h-2 rounded-full" style={{ background: st.colour }} />
+                        </span>
+                    );
+                })}
+            </div>
+
+            {/* What this page cannot currently prove. Only when there is something to say. */}
             {notes.length > 0 && (
                 <div className="px-6 py-4 rounded-2xl border border-[#F59E0B]/30 bg-[#F59E0B]/[0.07] space-y-1">
                     {notes.map((n, i) => (
@@ -166,157 +183,213 @@ export default function SystemHealth() {
                 </div>
             )}
 
-            {/* Workstream strip — the answer */}
-            <div>
-                <Section title="What to work on next" />
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {WORKSTREAMS.map(w => (
-                        <WorkstreamCard
-                            key={w.key}
-                            info={w}
-                            status={byWorkstream[w.key]}
-                            driver={drivingSignal(judged, w.key)}
-                        />
-                    ))}
-                </div>
-            </div>
-
-            {/* Signals */}
-            <div>
-                <div className="flex items-end justify-between gap-6 mb-6">
-                    <Section title="Signals" />
-                    <div className="flex gap-2 -mt-6">
-                        {[['severity', 'By severity'], ['section', 'By workstream']].map(([k, l]) => (
-                            <button
-                                key={k}
-                                onClick={() => setSortMode(k)}
-                                className={`px-4 h-9 rounded-xl text-[9px] uppercase tracking-[0.3em] font-black border transition-all ${
-                                    sortMode === k ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white' : 'bg-white border-[#E6E6E1] text-[#888888] hover:text-[#333333]'
-                                }`}
-                            >{l}</button>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="border-b border-[#EFEFEC]">
-                                    <Th>Status</Th>
-                                    <Th>Signal</Th>
-                                    <Th right>Now</Th>
-                                    <Th right>Watch / Act</Th>
-                                    <Th>7 days</Th>
-                                    <Th>Why</Th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rows.map((j, i) => (
-                                    <SignalRow
-                                        key={j.signal.key}
-                                        judged={j}
-                                        series={sparkSeries(j.signal, history?.[j.signal.key])}
-                                        sectionBreak={sortMode === 'section' && (i === 0 || rows[i - 1].signal.workstream !== j.signal.workstream)}
-                                    />
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <p className="text-[10px] text-[#999999] font-bold mt-4">
-                    Grey is <em>unknown</em> — not measured, not green. Two signals stay unknown until their workstream ships
-                    (balance drift → W1, due-per-tick → P2). Percentages are null when nothing was measurable, never 0%.
-                    Cumulative sources (pg_stat_*) are judged on the last snapshot interval; “lifetime” marks the fallback.
-                </p>
-            </div>
-
-            <div className="flex items-center gap-2 text-[10px] text-[#999999] font-bold">
-                <ExternalLink size={12} />
-                Edge-function exceptions are not re-implemented here — they stay in Sentry.
-                Thresholds are pinned in <code className="text-[#666666]">shared/systemHealth.ts</code>; a change is a reviewed diff.
-            </div>
-        </div>
-    );
-}
-
-function WorkstreamCard({ info, status, driver }) {
-    const st = STATUS[status] ?? STATUS.unknown;
-    const Icon = WORKSTREAM_ICON[info.key] ?? HeartPulse;
-    return (
-        <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 relative overflow-hidden" style={{ borderColor: `${st.colour}55` }}>
-            <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center">
-                        <Icon size={16} style={{ color: st.colour }} />
-                    </div>
-                    <div>
-                        <div className="text-[9px] uppercase tracking-[0.35em] text-[#888888] font-black">{info.key === 'integrity' ? 'Invariants' : info.key}</div>
-                        <div className="text-base font-bold text-[#222222] leading-tight">{info.title}</div>
-                    </div>
-                </div>
-                <StatusPill status={status} />
-            </div>
-            <p className="text-[11px] text-[#666666] font-bold leading-relaxed mb-4">{info.what}</p>
-            {driver && (
-                <div className="rounded-2xl bg-[#F9F9F7] border border-[#EFEFEC] px-4 py-3 mb-4">
-                    <div className="text-[8px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black mb-1">Driven by</div>
-                    <div className="flex items-center justify-between gap-3">
-                        <span className="text-[11px] font-bold text-[#333333] truncate">{driver.signal.label}</span>
-                        <span className="text-sm font-bold shrink-0" style={{ color: st.colour }}>
-                            {formatValue(driver.signal, driver.verdict.value)}
-                            {driver.verdict.lifetime && <span className="text-[8px] text-[#AAAAAA] ml-1 font-black">LIFETIME</span>}
-                        </span>
-                    </div>
-                    <div className="text-[10px] text-[#888888] font-bold mt-1">{driver.verdict.reason}</div>
+            {/* ── 2. Things that need you ─────────────────────────────────── */}
+            {act.length > 0 && (
+                <Group status="act" count={act.length}>
+                    {act.map(j => <ActionCard key={j.signal.key} judged={j} />)}
+                </Group>
+            )}
+            {watch.length > 0 && (
+                <Group status="watch" count={watch.length}>
+                    {watch.map(j => <ActionCard key={j.signal.key} judged={j} />)}
+                </Group>
+            )}
+            {act.length === 0 && watch.length === 0 && (
+                <div className="bg-white border border-[#E6E6E1] rounded-3xl py-16 flex flex-col items-center gap-4">
+                    <CheckCircle size={36} style={{ color: STATUS.green.colour }} />
+                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">Nothing needs action right now</p>
                 </div>
             )}
-            <div className="text-[10px] text-[#999999] font-bold leading-relaxed">
-                <span className="text-[#666666]">When it goes red:</span> {info.action}
+
+            {/* ── 3. Folded: fine, and not-yet-measurable ─────────────────── */}
+            <Fold
+                open={showClear}
+                onToggle={() => setShowClear(v => !v)}
+                status="green"
+                title={`${clear.length} thing${clear.length === 1 ? '' : 's'} fine`}
+            >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10">
+                    {clear.map(j => (
+                        <div key={j.signal.key} className="flex items-center justify-between gap-6 py-3 border-b border-[#EFEFEC]">
+                            <span className="text-[11px] font-bold text-[#444444] min-w-0 truncate" title={j.signal.plain}>{j.signal.label}</span>
+                            <span className="text-[11px] font-bold text-[#222222] shrink-0">
+                                {formatValue(j.signal, j.verdict.value)}
+                                {j.verdict.lifetime && <span className="text-[8px] text-[#AAAAAA] ml-1 font-black">LIFETIME</span>}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </Fold>
+
+            {unknown.length > 0 && (
+                <Fold
+                    open={showUnknown}
+                    onToggle={() => setShowUnknown(v => !v)}
+                    status="unknown"
+                    title={`${unknown.length} thing${unknown.length === 1 ? '' : 's'} we can't measure yet`}
+                >
+                    {unknown.map(j => (
+                        <div key={j.signal.key} className="py-3 border-b border-[#EFEFEC]">
+                            <div className="text-[11px] font-bold text-[#444444]">{j.signal.label}</div>
+                            <div className="text-[10px] text-[#888888] font-bold mt-0.5">{j.verdict.reason}</div>
+                        </div>
+                    ))}
+                </Fold>
+            )}
+
+            {/* ── 4. The engineer's table ─────────────────────────────────── */}
+            <div>
+                <button
+                    onClick={() => setShowDetails(v => !v)}
+                    className="flex items-center gap-2 text-[9px] uppercase tracking-[0.35em] text-[#888888] font-black hover:text-[#333333] transition-colors"
+                >
+                    {showDetails ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    {showDetails ? 'Hide' : 'Show'} the full table
+                </button>
+                {showDetails && (
+                    <div className="mt-6">
+                        <DetailsTable rows={sortJudged(judged)} history={history} />
+                        <p className="text-[10px] text-[#999999] font-bold mt-4">
+                            Grey is <em>unknown</em> — not measured, not green. Percentages are null when nothing was measurable, never 0%.
+                            Cumulative sources (pg_stat_*) are judged on the last snapshot interval; “lifetime” marks the fallback.
+                            Thresholds are pinned in <code className="text-[#666666]">shared/systemHealth.ts</code>; a change is a reviewed diff.
+                            Edge-function exceptions stay in Sentry.
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     );
 }
 
-function SignalRow({ judged, series, sectionBreak }) {
+/** A red or amber section: heading + its cards. */
+function Group({ status, count, children }) {
+    const st = STATUS[status];
+    return (
+        <div>
+            <div className="flex items-center gap-3 mb-5">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: st.colour }} />
+                <span className="text-[11px] uppercase tracking-[0.4em] font-black" style={{ color: st.colour }}>{st.label}</span>
+                <span className="text-[11px] text-[#AAAAAA] font-black">{count}</span>
+            </div>
+            <div className="space-y-4">{children}</div>
+        </div>
+    );
+}
+
+/**
+ * One thing that needs a person. Three lines, in the order a person needs them:
+ * what it is (plain English), the number against its line, what to do.
+ */
+function ActionCard({ judged }) {
+    const { signal, verdict } = judged;
+    const st = STATUS[verdict.status] ?? STATUS.unknown;
+    const ws = WORKSTREAMS.find(w => w.key === signal.workstream);
+    const t = signal.threshold;
+    return (
+        <div className="bg-white border rounded-3xl px-7 py-6" style={{ borderColor: `${st.colour}55` }}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+                <div className="text-base font-bold text-[#222222]">{signal.label}</div>
+                <div className="text-2xl font-light tracking-tighter" style={{ color: st.colour }}>
+                    {formatValue(signal, verdict.value)}
+                    {t && (
+                        <span className="text-[10px] text-[#AAAAAA] font-black tracking-[0.15em] ml-3">
+                            {verdict.status === 'act' ? 'ACTS AT' : 'WATCH FROM'} {formatValue(signal, verdict.status === 'act' ? t.act : t.watch)}
+                        </span>
+                    )}
+                    {verdict.lifetime && <span className="text-[8px] text-[#AAAAAA] ml-2 font-black">LIFETIME</span>}
+                </div>
+            </div>
+            <p className="text-[12px] text-[#555555] font-bold leading-relaxed mt-3">{signal.plain}</p>
+            {ws && (
+                <p className="text-[11px] text-[#888888] font-bold leading-relaxed mt-3">
+                    <span className="text-[#333333]">What to do:</span> {ws.action}
+                </p>
+            )}
+        </div>
+    );
+}
+
+function Fold({ open, onToggle, status, title, children }) {
+    const st = STATUS[status];
+    return (
+        <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+            <button
+                onClick={onToggle}
+                className="w-full flex items-center justify-between px-7 py-5 hover:bg-[#FAFAF8] transition-colors"
+            >
+                <span className="flex items-center gap-3">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: st.colour }} />
+                    <span className="text-[11px] uppercase tracking-[0.35em] font-black text-[#444444]">{title}</span>
+                </span>
+                {open ? <ChevronDown size={14} className="text-[#AAAAAA]" /> : <ChevronRight size={14} className="text-[#AAAAAA]" />}
+            </button>
+            {open && <div className="px-7 pb-5 -mt-1">{children}</div>}
+        </div>
+    );
+}
+
+// ── The engineer's table (unchanged in substance, behind the toggle) ──────────
+
+function DetailsTable({ rows, history }) {
+    return (
+        <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead>
+                        <tr className="border-b border-[#EFEFEC]">
+                            <Th>Status</Th>
+                            <Th>Signal</Th>
+                            <Th right>Now</Th>
+                            <Th right>Watch / Act</Th>
+                            <Th>7 days</Th>
+                            <Th>Why</Th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map(j => (
+                            <SignalRow key={j.signal.key} judged={j} series={sparkSeries(j.signal, history?.[j.signal.key])} />
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+function SignalRow({ judged, series }) {
     const { signal, verdict, fact } = judged;
     const st = STATUS[verdict.status] ?? STATUS.unknown;
     const t = signal.threshold;
     return (
-        <>
-            {sectionBreak && (
-                <tr className="bg-[#F9F9F7]">
-                    <td colSpan={6} className="px-6 py-2 text-[9px] uppercase tracking-[0.35em] text-[#888888] font-black">
-                        {SECTION_TITLES[signal.workstream]}
-                    </td>
-                </tr>
-            )}
-            <tr className="border-b border-[#EFEFEC] last:border-b-0 align-top" style={{ background: verdict.status === 'act' ? st.bg : undefined }}>
-                <td className="px-6 py-4"><StatusPill status={verdict.status} /></td>
-                <td className="px-6 py-4">
-                    <div className="text-[12px] font-bold text-[#222222]">{signal.label}</div>
-                    <div className="text-[9px] text-[#AAAAAA] font-black tracking-[0.15em] mt-0.5">{signal.key}</div>
-                </td>
-                <td className="px-6 py-4 text-right whitespace-nowrap">
-                    <div className="text-sm font-bold" style={{ color: verdict.value == null ? '#AAAAAA' : st.colour }}>
-                        {formatValue(signal, verdict.value)}
-                    </div>
-                    {verdict.lifetime && <div className="text-[8px] text-[#AAAAAA] font-black tracking-[0.2em]">LIFETIME MEAN</div>}
-                    <Detail fact={fact} signal={signal} />
-                </td>
-                <td className="px-6 py-4 text-right whitespace-nowrap text-[11px] font-bold text-[#888888]">
-                    {t ? `${formatValue(signal, t.watch)} / ${formatValue(signal, t.act)}` : 'trend only'}
-                    {t && t.direction === 'below' && <div className="text-[8px] text-[#AAAAAA] font-black tracking-[0.2em]">LOWER IS WORSE</div>}
-                </td>
-                <td className="px-6 py-4"><Sparkline series={series} colour={st.colour} /></td>
-                <td className="px-6 py-4 min-w-[260px]">
-                    <div className="text-[10px] text-[#666666] font-bold leading-relaxed">{signal.why}</div>
-                    <div className="text-[10px] text-[#999999] font-bold mt-1">{verdict.reason}</div>
-                </td>
-            </tr>
-        </>
+        <tr className="border-b border-[#EFEFEC] last:border-b-0 align-top">
+            <td className="px-6 py-4"><StatusPill status={verdict.status} /></td>
+            <td className="px-6 py-4">
+                <div className="text-[12px] font-bold text-[#222222]">{signal.label}</div>
+                <div className="text-[9px] text-[#AAAAAA] font-black tracking-[0.15em] mt-0.5">{signal.key}</div>
+            </td>
+            <td className="px-6 py-4 text-right whitespace-nowrap">
+                <div className="text-sm font-bold" style={{ color: verdict.value == null ? '#AAAAAA' : st.colour }}>
+                    {formatValue(signal, verdict.value)}
+                </div>
+                {verdict.lifetime && <div className="text-[8px] text-[#AAAAAA] font-black tracking-[0.2em]">LIFETIME MEAN</div>}
+                <Detail fact={fact} signal={signal} />
+            </td>
+            <td className="px-6 py-4 text-right whitespace-nowrap text-[11px] font-bold text-[#888888]">
+                {t ? `${formatValue(signal, t.watch)} / ${formatValue(signal, t.act)}` : 'trend only'}
+                {t && t.direction === 'below' && <div className="text-[8px] text-[#AAAAAA] font-black tracking-[0.2em]">LOWER IS WORSE</div>}
+            </td>
+            <td className="px-6 py-4"><Sparkline series={series} colour={st.colour} /></td>
+            <td className="px-6 py-4 min-w-[260px]">
+                <div className="text-[10px] text-[#666666] font-bold leading-relaxed">{signal.why}</div>
+                <div className="text-[10px] text-[#999999] font-bold mt-1">{verdict.reason}</div>
+            </td>
+        </tr>
     );
 }
+
+const dayAndTime = (iso) =>
+    new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 /** A compact line of the fact's detail — the forensic numbers behind the value. */
 function Detail({ fact, signal }) {
@@ -348,9 +421,9 @@ function StatusPill({ status }) {
     return (
         <span
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[8px] font-black tracking-[0.2em]"
-            style={{ color: st.colour, borderColor: `${st.colour}33`, background: st.bg }}
+            style={{ color: st.colour, borderColor: `${st.colour}33`, background: `${st.colour}0f` }}
         >
-            <Icon size={10} /> {st.label}
+            <Icon size={10} /> {st.short}
         </span>
     );
 }
@@ -366,7 +439,6 @@ function Sparkline({ series, colour }) {
     const span = max - min || 1;
     const x = (i) => pad + (i / Math.max(1, series.length - 1)) * (w - pad * 2);
     const y = (v) => h - pad - ((v - min) / span) * (h - pad * 2);
-    // Break the path at nulls so a gap is visibly a gap.
     let d = '';
     let pen = false;
     series.forEach((v, i) => {
@@ -386,15 +458,6 @@ function Th({ children, right }) {
         <th className={`px-6 py-4 text-[9px] uppercase tracking-[0.35em] text-[#888888] font-black ${right ? 'text-right' : 'text-left'}`}>
             {children}
         </th>
-    );
-}
-
-function Section({ title }) {
-    return (
-        <div className="mb-6">
-            <div className="text-[11px] uppercase tracking-[0.4em] text-[#888888] font-black">{title}</div>
-            <div className="h-[1.5px] w-8 bg-[#E8D200]/70 mt-2"></div>
-        </div>
     );
 }
 

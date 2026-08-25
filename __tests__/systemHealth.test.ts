@@ -84,8 +84,12 @@ describe('SIGNALS are pinned', () => {
     });
   });
 
-  it('every signal carries a why', () => {
-    for (const s of SIGNALS) expect(s.why.length).toBeGreaterThan(20);
+  it('every signal carries a why and a plain-English line', () => {
+    for (const s of SIGNALS) {
+      expect(s.why.length).toBeGreaterThan(20);
+      expect(s.plain.length).toBeGreaterThan(20);
+      expect(s.plain).not.toMatch(/numerator|denominator|jsonb|pg_stat/);
+    }
   });
 });
 
