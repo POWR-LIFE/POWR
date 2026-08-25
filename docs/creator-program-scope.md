@@ -254,7 +254,16 @@ where their share code comes from."*
 
 Gates: `creator_program_enabled()` (SQL helper) in `resolve_invite_code` + `creator_event_signup_bonus`; the `creator-link` fn reads the row directly; `App.jsx` reads it into `creatorProgramEnabled` for `CreatorProtectedRoute`. Verified OFF live: link 302 → `/app` bare, `POWRTEST` resolves 0 rows, member codes still resolve.
 
-**Superseded:** `creator_milestone_tiers` (P0's flat ladder) — seeded into the Default programme's steps, no longer read by anything. Drop next release.
+### 2f. Ops pass — "good to go" with the switch off (2026-08-25)
+
+- **Click rollup cron** — `rollup-creator-clicks` runs hourly at :25 via pg_cron calling `rollup_creator_clicks_internal(3)` (an ungated twin; the admin RPC delegates to it). Portal tap counts are now real.
+- **Fraud signals** on the admin creator card — `admin_creator_fraud_signals(creator_id)`: shared devices among signups (and with the creator's own account), repeat click-IP clusters (≥5 in 30d), conversions within 10 minutes of code entry, peak signups per hour. Truncated device/IP hashes only. Amber strip when anything is non-zero.
+- **Paste-code button** in the app — `lib/social/inviteCodePaste.ts` + both code-entry screens (`invite-code.tsx`, `onboarding-achievement.tsx`). Presence is checked up front with `hasStringAsync` (no iOS prompt); the read happens on the tap. Pulls a code out of a bare string, `ABCD 2345`, a smart-link URL (`?ref=`) or the share message; refuses plain sentences. Input `maxLength` raised to fit 10-char vanity codes. **Pure-JS + already-installed `expo-clipboard` → OTA-safe, not yet published.**
+- **Privacy policy** — §2 "Creator programme data" and §5 "Delivery services" (courier gets name + address, nothing else; removable in settings).
+- **`creator_milestone_tiers` dropped.**
+- **Storage check** — `reward-images` INSERT/UPDATE policies are bucket-wide (any authenticated user), not prefix-scoped, so `creator-rewards/` uploads work. That looseness pre-dates this work.
+
+**Out of scope, on purpose:** Android Install Referrer (native module → next EAS build); in-app "apply" (deferred until the hand-invited pipeline is the bottleneck).
 
 ---
 

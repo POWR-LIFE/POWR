@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Plus, Link2, Copy, Check, X, Users, ExternalLink, Pause, Play, Search, UserCheck } from 'lucide-react';
+import { Plus, Link2, Copy, Check, X, Users, ExternalLink, Pause, Play, Search, UserCheck, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { invokeFn } from '../../lib/invokeFn';
 import { CreatorTabs } from './CreatorPrograms';
@@ -290,9 +290,42 @@ function AccessPanel({ creator, programs, onChanged }) {
     };
     const effective = programs.find(p => p.id === creator.program_id) ?? programs.find(p => p.is_default);
 
+    // Fraud signals — cheap read-only checks, shown as a strip. Anything
+    // non-zero is "look closer", not a verdict.
+    const [signals, setSignals] = useState(null);
+    useEffect(() => {
+        supabase.rpc('admin_creator_fraud_signals', { p_creator_id: creator.id })
+            .then(({ data }) => setSignals(data ?? null));
+    }, [creator.id]);
+
     return (
         <div className="px-8 pb-8 pt-2 bg-[#FAFAF8] border-t border-[#E6E6E1]">
             {err && <div className="text-red-500 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl mb-5">{err}</div>}
+
+            {signals && (
+                <div className={`flex items-start gap-4 rounded-2xl p-5 mb-6 border ${signals.flags > 0 ? 'bg-amber-500/5 border-amber-500/30' : 'bg-white border-[#E6E6E1]'}`}>
+                    {signals.flags > 0
+                        ? <ShieldAlert size={16} className="text-amber-700 shrink-0 mt-0.5" />
+                        : <ShieldCheck size={16} className="text-[#CCC] shrink-0 mt-0.5" />}
+                    <div className="flex-1 min-w-0">
+                        <div className="text-[9px] uppercase tracking-[0.35em] font-black mb-2" style={{ color: signals.flags > 0 ? '#B45309' : '#BBBBBB' }}>
+                            {signals.flags > 0 ? `${signals.flags} signal${signals.flags === 1 ? '' : 's'} worth a look` : 'No fraud signals'}
+                        </div>
+                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-[#666]">
+                            <span><b className="text-[#1A1A1A]">{signals.shared_devices.length}</b> shared device{signals.shared_devices.length === 1 ? '' : 's'}{signals.shared_devices.some(d => d.includes_creator) ? ' (incl. the creator\'s own)' : ''}</span>
+                            <span><b className="text-[#1A1A1A]">{signals.ip_clusters.length}</b> repeat-IP cluster{signals.ip_clusters.length === 1 ? '' : 's'}</span>
+                            <span><b className="text-[#1A1A1A]">{signals.fast_conversions}</b> converted within 10 min of entering the code</span>
+                            <span>peak <b className="text-[#1A1A1A]">{signals.signup_burst_max_per_hour}</b> signups in one hour</span>
+                        </div>
+                        {(signals.shared_devices.length > 0 || signals.ip_clusters.length > 0) && (
+                            <div className="mt-2 text-[10px] font-mono text-[#999]">
+                                {signals.shared_devices.map((d, i) => <span key={`d${i}`} className="mr-4">device {d.device} × {d.users}</span>)}
+                                {signals.ip_clusters.map((c, i) => <span key={`i${i}`} className="mr-4">ip {c.ip} × {c.clicks}</span>)}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Rules + rewards — front and centre, before the access chrome */}
             <div className="grid grid-cols-[1fr_auto] gap-6 items-end bg-white border border-[#E6E6E1] rounded-2xl p-5 mb-6">
