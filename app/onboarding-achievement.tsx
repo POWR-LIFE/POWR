@@ -3,6 +3,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Easing, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { clipboardMayHoldCode, readInviteCodeFromClipboard } from '@/lib/social/inviteCodePaste';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import GeometricBackground from '@/components/GeometricBackground';
@@ -71,6 +73,15 @@ export default function OnboardingAchievementScreen() {
     const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
 
     const [inviteCode, setInviteCode] = useState('');
+    // One-tap paste — see lib/social/inviteCodePaste.ts for why. Presence is
+    // checked up front (no prompt); the read happens on the tap.
+    const [canPaste, setCanPaste] = useState(false);
+    useEffect(() => { clipboardMayHoldCode(Clipboard).then(setCanPaste); }, []);
+    const pasteCode = async () => {
+        const c = await readInviteCodeFromClipboard(Clipboard);
+        if (c) setInviteCode(c);
+        else Alert.alert('Nothing to paste', "Your clipboard doesn't have anything that looks like an invite code.");
+    };
     // A code already captured upstream (invite link, the email signup screen,
     // or the profile screen) only gets a one-line receipt here — nobody is
     // asked for the same code twice. `fixing` reopens the editable field when
@@ -338,14 +349,20 @@ export default function OnboardingAchievementScreen() {
                         </Text>
                         <TextInput
                             style={styles.codeInput}
-                            placeholder="8-CHARACTER CODE"
+                            placeholder="INVITE CODE"
                             placeholderTextColor="rgba(255,255,255,0.28)"
                             value={inviteCode}
                             onChangeText={t => setInviteCode(t.toUpperCase())}
                             autoCapitalize="characters"
                             autoCorrect={false}
-                            maxLength={8}
+                            // Vanity creator codes run to 10 chars.
+                            maxLength={10}
                         />
+                        {canPaste && !inviteCode && (
+                            <Pressable onPress={pasteCode} style={({ pressed }) => [styles.pasteLink, pressed && { opacity: 0.7 }]} accessibilityRole="button">
+                                <Text style={styles.pasteLinkText}>PASTE FROM CLIPBOARD</Text>
+                            </Pressable>
+                        )}
                     </View>
                 )}
                 <Pressable
@@ -618,6 +635,8 @@ const styles = StyleSheet.create({
         marginTop: 3,
         marginBottom: 10,
     },
+    pasteLink: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 8 },
+    pasteLinkText: { color: '#E8D200', fontSize: 10, fontFamily: FONT_MEDIUM, letterSpacing: 2 },
     codeInput: {
         height: 44,
         borderRadius: 10,
