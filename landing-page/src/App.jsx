@@ -107,7 +107,7 @@ import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
 
 // --- Auth Context ---
-const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, placementsEnabled: false, deliveryMethod: undefined, loading: true });
+const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, creatorProgramEnabled: false, placementsEnabled: false, deliveryMethod: undefined, loading: true });
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
 const ACTING_CREATOR_KEY = 'powr_acting_creator';
@@ -146,6 +146,8 @@ export const AuthProvider = ({ children }) => {
     const [actingCreator, setActingCreatorState] = useState(null);
     const [actingPartner, setActingPartnerState] = useState(null);
     const [placementsEnabled, setPlacementsEnabled] = useState(false);
+    // Master switch from System Config. Admins see the portal regardless.
+    const [creatorProgramEnabled, setCreatorProgramEnabled] = useState(false);
     // undefined = unknown/loading, null = brand hasn't chosen a delivery
     // method yet (drives the first-run chooser), else 'api'|'shopify'|'manual'
     const [deliveryMethod, setDeliveryMethodState] = useState(undefined);
@@ -245,6 +247,19 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    const fetchCreatorFlag = async () => {
+        try {
+            const { data } = await supabase
+                .from('system_config')
+                .select('value')
+                .eq('key', 'creator_program_enabled')
+                .maybeSingle();
+            return data?.value === 'true';
+        } catch {
+            return false;
+        }
+    };
+
     useEffect(() => {
         let mounted = true;
         let lastUserId = null;
@@ -255,11 +270,12 @@ export const AuthProvider = ({ children }) => {
                 if (session.user.id === lastUserId) return;
                 lastUserId = session.user.id;
                 setUser(session.user);
-                const [adminStatus, partnerResult, creatorResult, flagOn] = await Promise.all([
+                const [adminStatus, partnerResult, creatorResult, flagOn, creatorOn] = await Promise.all([
                     checkAdmin(session.user.id),
                     checkPartner(session.user.id),
                     checkCreator(session.user.id),
                     fetchPlacementsFlag(),
+                    fetchCreatorFlag(),
                 ]);
                 // Restore admin preview selection (admins with no brand link)
                 let restoredActing = null;
@@ -281,6 +297,7 @@ export const AuthProvider = ({ children }) => {
                     setActingCreatorState(restoredCreator);
                     setActingPartnerState(restoredActing);
                     setPlacementsEnabled(flagOn);
+                    setCreatorProgramEnabled(creatorOn);
                     setLoading(false);
                 }
             } else {
@@ -294,6 +311,7 @@ export const AuthProvider = ({ children }) => {
                 setActingCreatorState(null);
                 setActingPartnerState(null);
                 setPlacementsEnabled(false);
+                setCreatorProgramEnabled(false);
                 if (mounted) setLoading(false);
             }
         };
@@ -335,6 +353,7 @@ export const AuthProvider = ({ children }) => {
             isActingCreator: !creatorData && !!actingCreator,
             setActingCreator,
             refreshCreator,
+            creatorProgramEnabled,
             placementsEnabled,
             deliveryMethod,
             updateDeliveryMethod: setDeliveryMethodState,
@@ -616,10 +635,25 @@ const PartnerProtectedRoute = ({ children }) => {
     return children;
 };
 
+// --- Creator programme closed (master switch off) ---
+const CreatorClosed = () => (
+    <div className="min-h-screen flex items-center justify-center bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] fixed inset-0 z-[100]">
+        <div className="w-full max-w-md p-10 bg-white border border-[#E6E6E1] rounded-3xl shadow-2xl text-center">
+            <img src="/powr-logo-black.png" alt="POWR" className="h-10 mx-auto mb-8" />
+            <h2 className="text-2xl font-light tracking-tight mb-3">Not open yet</h2>
+            <p className="text-sm text-[#888] font-light leading-relaxed mb-8">
+                The creator programme isn't live. If you've been invited, we'll let you know the moment it opens.
+            </p>
+            <Link to="/" className="text-[10px] uppercase tracking-widest text-[#AAAAAA] hover:text-[#8a7600] transition-colors">Back to home</Link>
+        </div>
+    </div>
+);
+
 // --- Creator Protected Route ---
-// Admins are allowed in too: they can preview the portal as any creator.
+// Admins are allowed in too: they can preview the portal as any creator, and
+// they see it whether or not the master switch is on.
 const CreatorProtectedRoute = ({ children }) => {
-    const { user, isCreator, isAdmin, loading } = useAuth();
+    const { user, isCreator, isAdmin, loading, creatorProgramEnabled } = useAuth();
     const location = useLocation();
 
     if (loading) return (
@@ -632,6 +666,7 @@ const CreatorProtectedRoute = ({ children }) => {
     );
 
     if (!user || (!isCreator && !isAdmin)) return <Navigate to="/creator/login" state={{ from: location }} replace />;
+    if (!creatorProgramEnabled && !isAdmin) return <CreatorClosed />;
     return children;
 };
 

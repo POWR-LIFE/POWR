@@ -104,6 +104,11 @@ const GROUPS = [
         keys: ['partner_placements_enabled'],
     },
     {
+        id: 'creators', title: 'Creator Programme', icon: Sparkles, accent: '#E8D200',
+        blurb: 'Master switch. Off: creator codes act as ordinary member invites, /join links go straight to the app with no attribution, the /creator portal is closed to everyone but admins, and no event bonuses pay. The admin pages under Creators keep working so you can set up rewards, programmes and creators before flipping it.',
+        keys: ['creator_program_enabled'],
+    },
+    {
         id: 'content', title: 'App Content', icon: Sparkles, accent: '#14B8A6',
         blurb: 'Home-screen content edited in its own dedicated screen.',
         keys: ['weekly_challenges'],
@@ -139,6 +144,7 @@ const LABELS = {
     latest_ios_version: 'Latest App Store version',
     latest_android_version: 'Latest Play Store version',
     partner_placements_enabled: 'Self-serve placements',
+    creator_program_enabled: 'Creator programme live',
     weekly_challenges: 'Weekly challenges',
 };
 
