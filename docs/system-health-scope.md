@@ -88,7 +88,7 @@ collected, stats reset, cron dead) and must render as such — never as green.
 | --- | --- | --- | --- | --- |
 | pg_net queue depth | `count(*) net.http_request_queue` | > 50 | > 200 | `batch_size = 200`. Above it the worker is behind by definition. Today: 0. |
 | Oldest pending request | `min(created) net.http_request_queue` age | > 30 s | > 120 s | A relayed claim older than the client outbox's retry means the receipt-less path is now the slow path. |
-| Relay failure rate, 24 h | `net._http_response`: `status_code >= 400 or timed_out or error_msg is not null` over total | > 2 % | > 10 % | These failures leave **no receipt anywhere else** — this table is the only witness. |
+| Relay failure rate (pg_net window) | `net._http_response`: `status_code >= 400 or timed_out or error_msg is not null` over total | > 2 % | > 10 % | These failures leave **no receipt anywhere else** — this table is the only witness. ⚠ `pg_net.ttl` is **6 h**, so the live read is a ~6 h window; the hourly snapshot is what makes it a day. |
 | DB-triggered pushes, 24 h | count of `net.http_post` calls originating from triggers (`notify_reward_unlocks`, `notify_level_up_*`, `streak_rescue_progress`) via `net._http_response` URL match | > 5k | > 20k | Every one shares the single worker with the claim relay. |
 
 ### 2.5 Database capacity (→ W5)

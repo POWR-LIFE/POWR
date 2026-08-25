@@ -69,7 +69,7 @@ describe('SIGNALS are pinned', () => {
       'beacon.push_fail_pct_24h':  [10, 30, 'above'],
       'relay.queue_depth':         [50, 200, 'above'],
       'relay.fail_pct_24h':        [2, 10, 'above'],
-      'relay.volume_24h':          [5000, 20000, 'above'],
+      'relay.volume_24h':          [1500, 5000, 'above'],
       'db.connections_pct':        [60, 80, 'above'],
       'db.cache_hit_pct':          [99, 95, 'below'],
       'db.longest_query_s':        [5, 30, 'above'],

@@ -179,14 +179,14 @@ export const SIGNALS: Signal[] = [
     why: 'batch_size is 200. Above it the single worker is behind by definition.',
   },
   {
-    key: 'relay.fail_pct_24h', workstream: 'W4', label: 'Relay failure rate, 24h', kind: 'pct', unit: '%',
+    key: 'relay.fail_pct_24h', workstream: 'W4', label: 'Relay failure rate (pg_net window)', kind: 'pct', unit: '%',
     threshold: { watch: 2, act: 10, direction: 'above' },
-    why: 'These failures leave no receipt anywhere else — net._http_response is the only witness.',
+    why: 'These failures leave no receipt anywhere else — net._http_response is the only witness, and pg_net.ttl purges it after 6 h, so this is a ~6 h window, not 24 h. The hourly snapshot is what makes it a day.',
   },
   {
-    key: 'relay.volume_24h', workstream: 'W4', label: 'Relay requests, 24h', kind: 'count', unit: '',
-    threshold: { watch: 5000, act: 20000, direction: 'above' },
-    why: 'Every DB-triggered push shares the one worker with the claim relay.',
+    key: 'relay.volume_24h', workstream: 'W4', label: 'Relay requests (pg_net window)', kind: 'count', unit: '',
+    threshold: { watch: 1500, act: 5000, direction: 'above' },
+    why: 'Every DB-triggered push and every cron-invoked edge function shares the one worker with the claim relay. ~6 h window (pg_net.ttl), so the thresholds are a quarter of the day-rate ones.',
   },
 
   // W5 — Database
