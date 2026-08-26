@@ -47,7 +47,9 @@ export default function AffiliateScreen() {
     const [opening, setOpening] = useState(false);
 
     const { data, isLoading, isError, refetch } = useQuery({
-        queryKey: ['affiliate', 'overview', 30],
+        // 'v2': the shape gained `milestones` — a key bump so a Fast Refresh /
+        // persisted cache filled by the old shape can never feed this render.
+        queryKey: ['affiliate', 'overview', 'v2', 30],
         queryFn: () => fetchAffiliateOverview(30),
         staleTime: 60_000,
     });
@@ -177,7 +179,7 @@ export default function AffiliateScreen() {
                             <Text style={styles.sectionLabel}>THE LADDER</Text>
                             <View style={styles.card}>
                                 {data.steps.map((s, i) => {
-                                    const milestone = data.milestones.find((m) => m.step_id === s.id) ?? null;
+                                    const milestone = (data.milestones ?? []).find((m) => m.step_id === s.id) ?? null;
                                     const hit = !!milestone;
                                     const isNext = next?.id === s.id;
                                     const parcel = milestone ? FULFILMENT_LABEL[milestone.fulfilment_status] : null;
