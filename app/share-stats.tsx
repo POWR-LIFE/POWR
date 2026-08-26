@@ -21,7 +21,7 @@ import { ShareCard } from '@/components/share/ShareCard';
 import { tracked } from '@/lib/analytics';
 import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
 import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, fetchLevelUpSummary, publishShareCard, type ShareSummary } from '@/lib/api/share';
-import { SAVE_CARD_ENABLED, SAVE_SHEET_HINT, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
+import { SAVE_CARD_ENABLED, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
 
 const GOLD  = '#E8D200';
 const BG    = '#0d0d0d';
@@ -237,14 +237,13 @@ export default function ShareStatsScreen() {
 
   /**
    * Keep the image itself — no link, no caption. Android writes it to a
-   * folder the member picks once; iOS goes through the sheet's Save Image
-   * row (so the hint goes up before the sheet does). See lib/saveCard.ts for
-   * why this is not a camera-roll write.
+   * gallery write on both platforms, share-sheet fallback. See lib/saveCard.ts
+   * for the write-only permission story.
    */
   async function handleSave() {
     if (!cardRef.current || busy) return;
     setBusy('save');
-    setNotice(Platform.OS === 'ios' ? SAVE_SHEET_HINT : null);
+    setNotice(null);
     try {
       const uri = await captureFullRes();
       const result = await saveCardImage(uri, cardFilename(mode));

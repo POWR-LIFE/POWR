@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 
@@ -7,35 +7,25 @@ import { Platform } from 'react-native';
  * "Keep the image" for every social card — share-stats, the wallet reward
  * card, the event prize card.
  *
- * Deliberately NOT a camera-roll write. The package that does that
- * (expo-media-library) injects READ_MEDIA_IMAGES/VIDEO into the Android
- * manifest, which is exactly what Google Play rejected POWR for in July 2026 —
- * see project memory `project_play_photo_video_policy_rejection`. Both routes
- * here need zero manifest permissions and ship over the air:
- *
- *   - Android: the Storage Access Framework. The member picks a folder once
- *     (the picker opens on Pictures); we remember it and write every later
- *     card straight there. Gallery apps index the folder, so the card shows
- *     up in Photos/Gallery without us ever holding a media permission.
- *   - iOS: the system share sheet, whose "Save Image" row IS the save. There
- *     is no way to jump past it without a Photos permission, so the screen
- *     tells the member which row to tap.
+ * Both platforms save straight to the gallery via expo-media-library, which
+ * is WRITE-ONLY here by design: the July 2026 Play rejection was for the
+ * READ_MEDIA_* permissions its plugin declares, and android.blockedPermissions
+ * strips them back out of the manifest (see project memory
+ * `project_play_photo_video_policy_rejection`). iOS prompts only for the
+ * add-only Photos permission. If the member declines — or the write fails —
+ * we fall back to the OS share sheet, whose "Save Image" row still gets the
+ * image kept.
  *
  * Returns what actually happened so the screen can word its notice honestly.
  */
 export type SaveCardResult = 'saved' | 'sheet' | 'cancelled' | 'unavailable';
 
 /**
- * OFF (2026-08-19, Jamie's call): on a real Android device the SAF route
- * hung after the folder was chosen — the screen came back with the Save
- * spinner going round forever. Rather than ship a half-working door, Save
- * stays hidden on every card until the next EAS build carries a proper
- * native save for BOTH platforms. Flip to true only once that lands.
+ * ON since 2026-08-24: the native gallery save replaced the Android SAF route
+ * that hung on-device (2026-08-19). Requires a build carrying expo-media-library
+ * — flip OFF again if Save must ship to older binaries over the air.
  */
-export const SAVE_CARD_ENABLED = false;
-
-/** Where the member chose to keep their cards (Android SAF directory URI). */
-export const SAVE_DIR_KEY = '@powr/save_card_dir';
+export const SAVE_CARD_ENABLED = true;
 
 /** A filename that sorts sensibly and never collides: powr-<kind>-<stamp>.png */
 export function cardFilename(kind: string, now: Date = new Date()): string {
@@ -45,8 +35,25 @@ export function cardFilename(kind: string, now: Date = new Date()): string {
 }
 
 export async function saveCardImage(uri: string, filename: string): Promise<SaveCardResult> {
-  if (Platform.OS === 'android') return saveViaStorageAccessFramework(uri, filename);
-  // iOS (and anything else with a share sheet): the sheet's Save Image row.
+  if (Platform.OS === 'android' || Platform.OS === 'ios') {
+    try {
+      // writeOnly: iOS shows the add-only Photos prompt; Android 10+ needs no
+      // runtime permission just to insert into MediaStore, so this resolves
+      // granted without a dialog on modern devices.
+      const perm = await MediaLibrary.requestPermissionsAsync(true);
+      if (perm.granted) {
+        // The gallery names the asset after the file, so give the temp capture
+        // its member-facing name before handing it over.
+        const named = `${FileSystem.cacheDirectory}${filename}`;
+        await FileSystem.copyAsync({ from: uri, to: named });
+        await MediaLibrary.saveToLibraryAsync(named);
+        return 'saved';
+      }
+    } catch {
+      // Fall through to the share sheet — a save the member can still finish
+      // beats surfacing a raw MediaLibrary error.
+    }
+  }
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: 'Save Image' });
     return 'sheet';
@@ -57,47 +64,9 @@ export async function saveCardImage(uri: string, filename: string): Promise<Save
 /** The notice a screen shows for each outcome; null = say nothing. */
 export function saveCardNotice(result: SaveCardResult): string | null {
   switch (result) {
-    case 'saved': return 'Saved to your phone.';
+    case 'saved': return 'Saved to your Photos.';
     case 'sheet': return 'Tap “Save Image” in the sheet to keep it.';
     case 'cancelled': return null;
     case 'unavailable': return 'Saving isn’t available on this device.';
   }
-}
-
-/** What to tell the member BEFORE the iOS sheet opens, so the hint is on screen while they look at it. */
-export const SAVE_SHEET_HINT = 'Tap “Save Image” in the sheet to keep it.';
-
-async function saveViaStorageAccessFramework(uri: string, filename: string): Promise<SaveCardResult> {
-  const { StorageAccessFramework: SAF } = FileSystem;
-  const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-
-  // A folder the member already chose: write there without asking again. If
-  // that fails (folder deleted, grant revoked after a reinstall), forget it
-  // and fall through to the picker rather than surfacing a raw SAF error.
-  const remembered = await AsyncStorage.getItem(SAVE_DIR_KEY);
-  if (remembered) {
-    try {
-      await writeInto(remembered, filename, base64);
-      return 'saved';
-    } catch {
-      await AsyncStorage.removeItem(SAVE_DIR_KEY);
-    }
-  }
-
-  // First time (or the old folder is gone): let them pick one, opening on
-  // Pictures so the obvious choice is one tap away.
-  let initial: string | null = null;
-  try { initial = SAF.getUriForDirectoryInRoot('Pictures'); } catch { /* older Android — picker opens at root */ }
-  const perm = await SAF.requestDirectoryPermissionsAsync(initial);
-  if (!perm.granted) return 'cancelled';
-
-  await writeInto(perm.directoryUri, filename, base64);
-  await AsyncStorage.setItem(SAVE_DIR_KEY, perm.directoryUri);
-  return 'saved';
-}
-
-async function writeInto(dirUri: string, filename: string, base64: string): Promise<void> {
-  const { StorageAccessFramework: SAF } = FileSystem;
-  const fileUri = await SAF.createFileAsync(dirUri, filename, 'image/png');
-  await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
 }
