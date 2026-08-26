@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
   const { data: ev } = await admin
     .from("live_events")
     .select(
-      "id, name, slug, status, window_start_at, window_end_at, lock_at, prizes, board_size, hidden, revealed_at, display_token",
+      "id, name, slug, status, window_start_at, window_end_at, lock_at, prizes, board_size, hidden, revealed_at, display_token, entry_gate_mode",
     )
     .eq("slug", slug)
     .single();
@@ -150,8 +150,13 @@ Deno.serve(async (req: Request) => {
 
   if (isDraft || ev.status === "scheduled") return json(200, { ...base, state: "countdown" });
 
-  // Live board: standings from the single scoring definition.
-  const { data: scores, error } = await admin.rpc("_live_event_scores", { p_event_id: ev.id });
+  // Live board: standings from the single scoring definition. In 'deadline'
+  // gate mode the room sees everyone registered — the invite requirement is
+  // applied at Settle, not here. 'entry' mode keeps the door on the live board.
+  const { data: scores, error } = await admin.rpc("_live_event_scores", {
+    p_event_id: ev.id,
+    p_enforce_gate: ev.entry_gate_mode === "entry",
+  });
   if (error) {
     console.error("event-board scores failed:", error.message);
     return json(500, { error: "scores_unavailable" });

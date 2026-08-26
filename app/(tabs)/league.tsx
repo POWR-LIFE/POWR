@@ -40,6 +40,7 @@ import { useLiveEvent } from '@/hooks/useLiveEvent';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
 import type { BoardPreviewState, EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
+import { shortDate } from '@/lib/liveEventDisplay';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -329,7 +330,10 @@ export default function LeagueScreen() {
  * ticket card is just a promise we can't keep, so it comes off the tab.
  */
 function invitesOpen(event: LiveEvent): boolean {
-  if (event.status !== 'scheduled' && event.status !== 'live') return false;
+  // 'locked' stays in: the invite deadline can sit AFTER the lock (FNL:
+  // doors close Friday, board locks Thursday night), and in deadline gate
+  // mode those hours are exactly when a place is saved or lost.
+  if (event.status !== 'scheduled' && event.status !== 'live' && event.status !== 'locked') return false;
   if (!event.conversion_deadline_at) return true;
   return Date.now() < new Date(event.conversion_deadline_at).getTime();
 }
@@ -395,9 +399,13 @@ function BoardPreviewSwitcher({
 
 // ─── EventBoardSection ────────────────────────────────────────────────────────
 // The event-mode board (ticket 5). Server-driven: standings exist only while
-// the board is live and visible, nothing score-shaped arrives while locked
-// (that absence IS the blur — never fill it client-side), and after Reveal the
-// frozen live_event_results snapshot renders as the winners card.
+// the board is live and visible, nothing score-shaped about ANYONE ELSE arrives
+// while gated or locked (that absence IS the blur — never fill it client-side),
+// and after Reveal the frozen live_event_results snapshot renders as the
+// winners card. The one number that does cross the blur is the viewer's own
+// `viewer.points` — their total under the event's rules, never a rank — so a
+// registrant behind the gate or staring at the seal still sees the week
+// counting for them.
 
 const asEntries = (rows: EventBoardEntry[] | undefined): LeaderboardEntry[] =>
   (rows ?? []).map(r => ({
@@ -410,6 +418,23 @@ const asEntries = (rows: EventBoardEntry[] | undefined): LeaderboardEntry[] =>
     points: r.points,
     rank: r.rank,
   }));
+
+/**
+ * The viewer's own total, on its own — the blurred states' answer to "is any
+ * of this counting for me?". Same block the live board uses for rank+points,
+ * minus the rank: a rank is exactly what the gate and the seal withhold.
+ */
+function ViewerPointsBlock({ points, note }: { points: number; note: string }) {
+  return (
+    <View style={styles.eventYouBlock}>
+      <View>
+        <Text style={styles.eventYouLabel}>PTS THIS WEEK</Text>
+        <Text style={styles.eventYouRank}>{points.toLocaleString()}</Text>
+      </View>
+      <Text style={styles.eventYouNote}>{note}</Text>
+    </View>
+  );
+}
 
 function EventBoardSection({
   event,
@@ -453,21 +478,29 @@ function EventBoardSection({
   // Live, but this viewer hasn't met the referral entry gate — the server sent
   // nothing score-shaped (is_gated). The invite card above carries the share
   // tools; this card says what the blur is and how far they've got.
+  // Present only for a viewer who is in the event once the window has opened
+  // (server decides) — so its absence is the whole "not yours to see" check.
+  const ownPoints = typeof viewer.points === 'number' ? viewer.points : null;
+
   const gate = viewer.gate;
   if (board.is_gated && gate) {
     const have = Math.min(gate.count, gate.required);
     const pct = gate.required > 0 ? Math.max(0, Math.min(1, have / gate.required)) : 0;
+    const unlockNote = `Unlocks the board at ${gate.required} friends`;
     // With the ticket on screen the count, the progress line and the share
     // code are all already there — a second "0 of 5" with its own bar under
     // it read as two competing surfaces (field 2026-08-18). Here the board
     // says only what it is waiting for, in one quiet line.
     if (ticketAbove) {
       return (
-        <View style={styles.eventGatedQuiet}>
-          <Ionicons name="lock-closed-outline" size={13} color={GOLD} style={{ opacity: 0.8 }} />
-          <Text style={styles.eventGatedQuietText}>
-            {`Leaderboard unlocks at ${gate.required} friends`}
-          </Text>
+        <View style={{ gap: 8 }}>
+          {ownPoints != null && <ViewerPointsBlock points={ownPoints} note={unlockNote} />}
+          <View style={styles.eventGatedQuiet}>
+            <Ionicons name="lock-closed-outline" size={13} color={GOLD} style={{ opacity: 0.8 }} />
+            <Text style={styles.eventGatedQuietText}>
+              {`Leaderboard unlocks at ${gate.required} friends`}
+            </Text>
+          </View>
         </View>
       );
     }
@@ -475,6 +508,8 @@ function EventBoardSection({
       // No card: this state is a held breath, and a bordered box makes it look
       // like an error. The content floats on the screen's own background and
       // the hairline is the only structure.
+      <View style={{ gap: 8 }}>
+      {ownPoints != null && <ViewerPointsBlock points={ownPoints} note={unlockNote} />}
       <View style={styles.eventGated}>
         <Ionicons name="lock-closed-outline" size={30} color={GOLD} style={styles.eventGatedIcon} />
 
@@ -494,6 +529,7 @@ function EventBoardSection({
             : `The leaderboard unlocks when ${gate.required} friends sign up with your code — share it above.`}
         </Text>
       </View>
+      </View>
     );
   }
 
@@ -501,7 +537,15 @@ function EventBoardSection({
   // score-shaped — these rows are pure theatre, and that's the point: the
   // board exists, it's full, and nobody gets to see it until the reveal.
   if (!board.standings && !board.results) {
-    return <SealedBoard preview={!!board.is_preview} />;
+    // Your total is yours to keep watching; the rank is what the seal is for.
+    return (
+      <View style={{ gap: 8 }}>
+        {ownPoints != null && (
+          <ViewerPointsBlock points={ownPoints} note="Counted and sealed — your rank is revealed at the final" />
+        )}
+        <SealedBoard preview={!!board.is_preview} />
+      </View>
+    );
   }
 
   const isWinners = board.results != null;
@@ -537,6 +581,7 @@ function EventBoardSection({
 
       {/* Your rank — server-computed; outside the visible board it still shows */}
       {viewer.rank != null && (
+        <View style={{ gap: 6 }}>
         <View style={styles.eventYouBlock}>
           <View>
             <Text style={styles.eventYouLabel}>{isWinners ? 'YOUR FINAL RANK' : 'YOUR RANK'}</Text>
@@ -553,6 +598,26 @@ function EventBoardSection({
             )}
           </View>
         </View>
+        {/* Deadline-mode gate: on the board now, but the place is only kept
+            if the count lands in time. Said once, under the rank it protects. */}
+        {!isWinners && gate && !gate.met && gate.mode === 'deadline' && (
+          <Text style={styles.eventYouWarn}>
+            {`Bring ${Math.max(1, gate.required - gate.count)} more friend${gate.required - gate.count === 1 ? '' : 's'}${
+              gate.deadline_at ? ` by ${shortDate(gate.deadline_at)}` : ''
+            } to keep this place in the final standings.`}
+          </Text>
+        )}
+        </View>
+      )}
+
+      {/* Settled without you: the requirement is why, so say so — a blank
+          where your rank was reads as a bug. */}
+      {isWinners && viewer.rank == null && viewer.joined && gate && !gate.met && (
+        <Text style={styles.eventYouWarn}>
+          {`Not in the final standings — ${gate.required} friends${gate.counting === 'conversions' ? ' with a verified workout' : ''} were needed${
+            gate.deadline_at ? ` by ${shortDate(gate.deadline_at)}` : ''
+          }, and ${gate.count} made it.`}
+        </Text>
       )}
 
       {entries.length === 0 ? (
@@ -1542,6 +1607,28 @@ const styles = StyleSheet.create({
   eventYouLabel: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5, marginBottom: 4 },
   eventYouRank: { fontSize: 40, fontWeight: '100', color: GOLD, letterSpacing: -2, lineHeight: 42 },
   eventYouPrize: { fontSize: 12, fontWeight: '500', color: GOLD, marginTop: 4 },
+  // Right-hand note in ViewerPointsBlock — why there's no rank next to the
+  // number. Quiet on purpose: the number is the content, this is the caption.
+  // Deadline-mode caution under the rank block: the place exists, the
+  // condition to keep it doesn't yet. Gold so it reads as the event
+  // talking, not an error.
+  eventYouWarn: {
+    marginHorizontal: 18,
+    fontSize: 11,
+    fontWeight: '400',
+    color: GOLD,
+    opacity: 0.85,
+    lineHeight: 15,
+  },
+  eventYouNote: {
+    flex: 1,
+    marginLeft: 16,
+    textAlign: 'right',
+    fontSize: 11,
+    fontWeight: '300',
+    color: DIM,
+    lineHeight: 15,
+  },
 
   eventPrizeBlock: {
     marginHorizontal: 18,

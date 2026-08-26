@@ -9,7 +9,7 @@ import {
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
     Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users, TicketCheck,
-    ImagePlus, LoaderCircle, DoorOpen, MapPin, ChevronDown,
+    ImagePlus, LoaderCircle, DoorOpen, MapPin, ChevronDown, Timer,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -127,6 +127,7 @@ const editableFields = (ev) => ({
     entry_gate_n: ev.entry_gate_n,
     entry_gate_counting: ev.entry_gate_counting,
     entry_gate_since: ev.entry_gate_since,
+    entry_gate_mode: ev.entry_gate_mode ?? 'deadline',
     booking_url: ev.booking_url,
     prizes: ev.prizes ?? [],
     // Kept as an ARRAY in form state (the textarea maps join/split at its
@@ -513,6 +514,21 @@ const setCheckin = async (ev, row, present) => {
         fetchEvents();
     };
 
+    // Automatic lifecycle: a once-a-minute cron flips scheduled → live at the
+    // scoring start and live → locked at the lock time. Default ON; turning it
+    // off hands the buttons back to the admin. Instant write, outside the Save
+    // payload like the other lifecycle knobs.
+    const setAutoLifecycle = async (ev, enabled) => {
+        setActing('auto-lifecycle');
+        const { error } = await supabase.from('live_events')
+            .update({ auto_lifecycle: enabled }).eq('id', ev.id);
+        setActing(null);
+        if (error) { toast.error(error.message); return; }
+        await logAction(user.id, 'live_event_auto_lifecycle', 'live_event', ev.id, { enabled });
+        toast.success(enabled ? 'Automatic lifecycle on' : 'Automatic lifecycle off — you press the buttons');
+        fetchEvents();
+    };
+
     // In-app test preview: instant write, deliberately outside the Save
     // payload (like status/hidden) so it can't be reverted by a stale edit.
     const setPreview = async (ev, enabled, emails) => {
@@ -706,6 +722,7 @@ const setCheckin = async (ev, row, present) => {
                         onDuplicate={() => duplicateEvent(selected)}
                         onSetPreview={(enabled, emails) => setPreview(selected, enabled, emails)}
                         onSetBoardState={(state) => setBoardState(selected, state)}
+                        onSetAutoLifecycle={(enabled) => setAutoLifecycle(selected, enabled)}
                     />
 
                     <RegistrationsPanel
@@ -1930,9 +1947,17 @@ function LifecyclePanel({
     onSchedule, onUnschedule, onGoLive, onLock, onToggleHidden,
     onSettle, onReveal, onMarkSettled, onArchive,
     onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate, onSetPreview, onSetBoardState,
+    onSetAutoLifecycle,
 }) {
     const meta = STATUS_META[ev.status];
     const pastLock = ev.lock_at && new Date(ev.lock_at) <= new Date();
+    // What the clock will do next, if anything. Only the two automatic
+    // transitions have a "next"; everything after lock is a human decision.
+    const auto = ev.auto_lifecycle !== false;
+    const nextAuto =
+        ev.status === 'scheduled' ? { label: 'goes live', at: ev.window_start_at }
+        : ev.status === 'live' && ev.lock_at ? { label: 'locks', at: ev.lock_at }
+        : null;
 
     const Btn = ({ icon: Icon, label, onClick, tone = 'neutral', disabled }) => {
         const tones = {
@@ -1992,7 +2017,13 @@ function LifecyclePanel({
                         <>
                             <Btn icon={Trophy} label={counts.results > 0 ? 'Re-settle' : 'Settle'} tone="primary" onClick={onSettle} />
                             <Btn icon={PartyPopper} label="Reveal" tone="gold" onClick={onReveal} disabled={counts.results === 0} />
-                            <span className="text-[11px] text-[#999999]">Settle freezes the ranking; Reveal shows it — vet between the two.</span>
+                            <span className="text-[11px] text-[#999999]">
+                                Settle freezes the ranking; Reveal shows it — vet between the two.
+                                {ev.entry_gate_n > 0 && ev.entry_gate_mode !== 'entry' && (
+                                    <> Settle also drops anyone below {ev.entry_gate_n} friends
+                                    {(() => { const dl = ev.conversion_deadline_at ?? ev.lock_at ?? ev.window_end_at; return dl && new Date(dl) > new Date() ? <> — friends can still count until {fmtDT(dl)}, so settle after that (or Re-settle)</> : null; })()}.</>
+                                )}
+                            </span>
                         </>
                     )}
                     {ev.status === 'revealed' && <Btn icon={Check} label="Mark settled" onClick={onMarkSettled} />}
@@ -2009,6 +2040,30 @@ function LifecyclePanel({
                     )}
                     <Btn icon={Copy} label="Duplicate" onClick={onDuplicate} />
                 </div>
+
+                {/* Automatic lifecycle — the clock keeps the published dates;
+                    the buttons above are the override. Shown while there is a
+                    next automatic step so the admin always knows what will
+                    happen without them. */}
+                {nextAuto && (
+                    <div className={`flex items-center gap-3 flex-wrap rounded-2xl border px-4 py-3 ${auto ? 'bg-[#10B981]/[0.06] border-[#10B981]/25' : 'bg-[#F4F4F1] border-[#E6E6E1]'}`}>
+                        <Timer size={14} className={auto ? 'text-[#10B981]' : 'text-[#999999]'} />
+                        <span className="text-[12px] text-[#333333]">
+                            {auto ? (
+                                <>Automatically <strong>{nextAuto.label}</strong> at {fmtDT(nextAuto.at)}{new Date(nextAuto.at) <= new Date() ? ' — due now, the next minute tick will move it' : ''}.</>
+                            ) : (
+                                <>Automatic lifecycle is <strong>off</strong> — this event only {nextAuto.label} when you press the button.</>
+                            )}
+                        </span>
+                        <button
+                            onClick={() => onSetAutoLifecycle(!auto)}
+                            disabled={!!acting}
+                            className="ml-auto inline-flex items-center h-8 px-3 rounded-lg border text-[10px] font-bold uppercase tracking-[0.15em] transition-all bg-white border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2] disabled:opacity-40"
+                        >
+                            {auto ? 'Switch to manual' : 'Switch to automatic'}
+                        </button>
+                    </div>
+                )}
 
                 {/* In-app test preview — draft only; scheduling makes it moot */}
                 {ev.status === 'draft' && (
@@ -2236,6 +2291,16 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                                                     {manualHeavy && (
                                                         <span className="px-2 py-0.5 rounded-full bg-[#F97316]/10 border border-[#F97316]/25 text-[#B45309] text-[9px] font-black uppercase tracking-[0.12em]">
                                                             manual-heavy
+                                                        </span>
+                                                    )}
+                                                    {/* Deadline-mode invite requirement: on the live board now,
+                                                        dropped at Settle unless the count lands in time. */}
+                                                    {r.gate_met === false && (
+                                                        <span
+                                                            className="px-2 py-0.5 rounded-full bg-[#E8D200]/15 border border-[#E8D200]/40 text-[#8a7600] text-[9px] font-black uppercase tracking-[0.12em]"
+                                                            title="Below the invite requirement — will not be in the final standings unless they reach it before Settle"
+                                                        >
+                                                            {r.gate_count} friends · drops at settle
                                                         </span>
                                                     )}
                                                 </div>
@@ -2637,9 +2702,19 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                     </Group>
 
                     {/* Entry gate */}
-                    <Group title="Invite requirement" blurb="Optional. Make people bring a certain number of friends before they can see or appear on the leaderboard. Anyone can still join the event, and the final results are public to everyone.">
-                        <Field label="Friends required" hint="How many friends someone must invite before they can see the leaderboard. 0 = no requirement.">
+                    <Group title="Invite requirement" blurb="Optional. Ask people to bring a certain number of friends. Anyone can still join the event, and the final results are public to everyone.">
+                        <Field label="Friends required" hint="How many friends someone must invite. 0 = no requirement.">
                             <NumberInput value={form.entry_gate_n} onChange={v => set({ entry_gate_n: v })} min={0} max={50} unit="friends" />
+                        </Field>
+                        <Field label="When it applies" hint="Keep your place: everyone registered is on the live leaderboard from the start; anyone below the number when you press Settle is dropped from the final standings. Friends must be in by the invite deadline (or the lock time if none). Unlock the board: nobody is scored or shown the leaderboard until they reach the number.">
+                            <div className="flex gap-2">
+                                <Chip active={form.entry_gate_mode !== 'entry'} onClick={() => set({ entry_gate_mode: 'deadline' })}>
+                                    Keep your place (by the deadline)
+                                </Chip>
+                                <Chip active={form.entry_gate_mode === 'entry'} onClick={() => set({ entry_gate_mode: 'entry' })}>
+                                    Unlock the board (before you appear)
+                                </Chip>
+                            </div>
                         </Field>
                         <Field label="What counts as a friend" hint="Sign-ups: the friend just needs to create an account with the code (can happen before scoring starts). First workout: the friend also needs to complete their first verified workout.">
                             <div className="flex gap-2">
