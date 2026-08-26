@@ -29,6 +29,7 @@ type NotificationType =
   | 'creator_invite_approved'
   | 'affiliate_milestone'
   | 'affiliate_conversion'
+  | 'event_results_revealed'
   // One-shot setup notice when a user loses 'always' location (dispatch-daily-
   // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
   | 'location_permission_lost'
@@ -83,6 +84,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'challenge_ended':
     case 'challenge_open_unclaimed':
     case 'challenge_open_posted':
+    case 'event_results_revealed':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -466,6 +468,30 @@ function buildMessage(
           data: { type, route: '/affiliate', label, reward_name: reward || undefined, points },
           sound: 'default',
           channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+      case 'event_results_revealed': {
+        // trg_notify_live_event_revealed — the admin pressed Reveal. Personal
+        // where the frozen results allow it (your final rank, your prize); a
+        // registrant outside the snapshot just gets the door to the board.
+        const eventName = String(payload.event_name ?? 'The event').trim() || 'The event';
+        const rank = Math.round(Number(payload.rank));
+        const prize = String(payload.prize_label ?? '').trim();
+        const body = Number.isFinite(rank) && rank > 0
+          ? `You finished #${rank}${prize ? ` — ${prize}` : ''}. See the final board.`
+          : 'The final leaderboard is up — see where everyone finished.';
+        return {
+          title: `${eventName}: the results are in 🏆`,
+          body,
+          data: {
+            type,
+            route: '/(tabs)/league',
+            event_id: payload.event_id,
+            rank: Number.isFinite(rank) && rank > 0 ? rank : undefined,
+          },
+          sound: 'default',
+          channelId: 'powr_default_v2',
           priority: 'high',
         };
       }
@@ -1035,6 +1061,9 @@ Deno.serve(async (req: Request) => {
       : type === 'creator_invite_approved' ? null
       : type === 'affiliate_milestone' ? null
       : type === 'affiliate_conversion' ? null
+      // You registered for the event; the result of it is not a nudge to opt
+      // out of. Admin kill-switch only.
+      : type === 'event_results_revealed' ? null
       : type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
       : type === 'session_upgraded' ? 'session_completed'
       : type === 'vault_unlocked' ? 'points_milestone'

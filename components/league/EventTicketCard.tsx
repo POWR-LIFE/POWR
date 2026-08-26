@@ -11,6 +11,7 @@ import type { InviteFriend, InviteProgress, LiveEvent } from '@/lib/api/liveEven
 import { fetchProfile } from '@/lib/api/user';
 import { openEventBooking } from '@/lib/eventBookingLink';
 import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
+import { shortDate } from '@/lib/liveEventDisplay';
 import type { Friend } from '@/lib/social/types';
 
 const GOLD = '#E8D200';
@@ -109,6 +110,11 @@ export function EventTicketCard({
     }, []);
 
     const gate = event.viewer.gate ?? null;
+    // 'deadline' mode: you're on the live board already — the count keeps
+    // your place in the final standings. 'entry' (or an older payload with
+    // no mode): the count is the door.
+    const keepPlace = gate?.mode === 'deadline';
+    const gateBy = gate?.deadline_at ? shortDate(gate.deadline_at) : null;
     const milestoneN = invites?.event?.milestone_n ?? event.invite_milestone_n;
     const convertedForEvent = invites?.event?.converted_for_event ?? 0;
     const milestonePaid = invites?.event?.milestone_paid ?? false;
@@ -164,7 +170,9 @@ export function EventTicketCard({
                 <View style={styles.metRow}>
                     <Ionicons name="lock-open" size={18} color={GOLD} />
                     <Text style={styles.metText}>
-                        {gate ? 'You’re on the leaderboard' : 'Milestone earned'}
+                        {gate
+                            ? keepPlace ? 'Your place in the final standings is secured' : 'You’re on the leaderboard'
+                            : 'Milestone earned'}
                     </Text>
                 </View>
             ) : (
@@ -193,9 +201,13 @@ export function EventTicketCard({
 
             <Text style={styles.explainer}>
                 {gate && !met
-                    ? `${gate.required} friends signing up with your code${
-                          gate.counting === 'conversions' ? ' and logging their first verified workout' : ''
-                      } puts you on the leaderboard. `
+                    ? keepPlace
+                        ? `You’re on the leaderboard now. ${gate.required} friends signing up with your code${
+                              gate.counting === 'conversions' ? ' and logging their first verified workout' : ''
+                          }${gateBy ? ` by ${gateBy}` : ''} keeps your place in the final standings. `
+                        : `${gate.required} friends signing up with your code${
+                              gate.counting === 'conversions' ? ' and logging their first verified workout' : ''
+                          } puts you on the leaderboard. `
                     : ''}
                 You each get +{event.invite_bonus_points} POWR when a friend joins with your code and logs
                 their first verified workout.

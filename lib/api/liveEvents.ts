@@ -18,6 +18,13 @@ export type LiveEventGate = {
     counting: 'signups' | 'conversions';
     count: number;
     met: boolean;
+    /** 'deadline': you're on the live board regardless; the count must be
+     *  met by `deadline_at` to stay in the FINAL standings (applied at
+     *  Settle). 'entry': the count is the door — nothing score-shaped until
+     *  it's met. Absent on pre-migration payloads — treat as 'entry'. */
+    mode?: 'entry' | 'deadline';
+    /** When friends must be in by: the invite deadline, else the lock time. */
+    deadline_at?: string | null;
 };
 
 /** The viewer's venue-booking state. `confirmed` derives server-side from the
@@ -171,13 +178,18 @@ export type EventLeaderboard = {
      *  render them, never treat them as tappable profiles. */
     is_preview?: boolean;
     /** True while the board is live but this viewer hasn't met the referral
-     *  entry gate — the payload carries nothing score-shaped, same discipline
-     *  as the locked blur. viewer.gate has their progress. */
+     *  entry gate — the payload carries nothing score-shaped about anyone
+     *  else, same discipline as the locked blur. viewer.gate has their
+     *  progress; viewer.points (no rank) their own total so far. */
     is_gated?: boolean;
     /** Present only while the board is live and visible — absence IS the blur. */
     standings?: EventBoardEntry[];
     /** Present only after reveal: the frozen winners snapshot. */
     results?: EventBoardEntry[];
+    /** `points` is the viewer's own total under the event's rules. It is
+     *  present on gated and locked payloads too (for a viewer who is in the
+     *  event, once the window has opened) — `rank` never is until the board
+     *  is theirs to see. */
     viewer: LiveEventViewer & { rank?: number; points?: number; prize_label?: string | null };
 };
 
