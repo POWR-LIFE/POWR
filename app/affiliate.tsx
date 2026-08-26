@@ -172,12 +172,17 @@ export default function AffiliateScreen() {
 
                     {data.earnings.length > 0 && (
                         <>
-                            <Text style={styles.sectionLabel}>RECENT EARNINGS</Text>
+                            <View style={styles.sectionRow}>
+                                <Text style={styles.sectionLabel}>RECENT EARNINGS</Text>
+                                <Text style={styles.sectionMeta}>{(data.funnel?.points_earned ?? 0).toLocaleString()} PTS ALL TIME</Text>
+                            </View>
+                            {/* A preview, not the ledger — this list only grows. Three rows,
+                                then the full ledger lives on the portal's Rewards page. */}
                             <View style={styles.card}>
-                                {data.earnings.map((e, i) => (
-                                    <View key={e.id} style={[styles.earnRow, i < data.earnings.length - 1 && styles.earnBorder]}>
-                                        <View style={[styles.earnIcon, e.kind === 'milestone' && styles.earnIconMilestone]}>
-                                            <Ionicons name={e.kind === 'milestone' ? 'trophy' : e.kind === 'signup' ? 'person-add' : 'flash'} size={12} color={e.kind === 'milestone' ? '#080808' : GOLD} />
+                                {data.earnings.slice(0, 3).map((e, i, arr) => (
+                                    <View key={e.id} style={[styles.earnRow, i < arr.length - 1 && styles.earnBorder]}>
+                                        <View style={styles.earnIcon}>
+                                            <Ionicons name={e.kind === 'milestone' ? 'trophy-outline' : e.kind === 'signup' ? 'person-add-outline' : 'flash-outline'} size={12} color={e.kind === 'milestone' ? GOLD : DIM} />
                                         </View>
                                         <View style={{ flex: 1, minWidth: 0 }}>
                                             <Text style={styles.earnNote} numberOfLines={1}>{e.note ?? e.kind}</Text>
@@ -186,6 +191,10 @@ export default function AffiliateScreen() {
                                         <Text style={styles.earnPts}>+{e.points_amount.toLocaleString()}</Text>
                                     </View>
                                 ))}
+                                <Pressable onPress={() => openPortal('/rewards')} style={({ pressed }) => [styles.earnMore, pressed && { opacity: 0.7 }]} accessibilityRole="button">
+                                    <Text style={styles.earnMoreText}>FULL LEDGER IN THE PORTAL</Text>
+                                    <Ionicons name="arrow-forward" size={12} color={DIM} />
+                                </Pressable>
                             </View>
                         </>
                     )}
@@ -217,7 +226,7 @@ function Identity({ data }: { data: AffiliateOverview }) {
                 <Text style={styles.identityName} numberOfLines={1}>{p.display_name}</Text>
                 <Text style={styles.identityHandle} numberOfLines={1}>{affiliateLink(p.handle).replace('https://', '')}</Text>
             </View>
-            <View style={[styles.statusDot, p.status !== 'active' && { backgroundColor: '#fbbf24', shadowColor: '#fbbf24' }]} />
+            <View style={[styles.statusDot, p.status !== 'active' && { backgroundColor: '#fbbf24' }]} />
         </View>
     );
 }
@@ -235,7 +244,6 @@ function Readiness({ steps, onTerms, onProfile, onShare }: { steps: ReadinessSte
     const done = steps.length - remaining.length;
     return (
         <View style={[styles.card, styles.readyCard]}>
-            <LinearGradient colors={['rgba(232,210,0,0.14)', 'rgba(232,210,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} pointerEvents="none" />
             <View style={styles.readyHead}>
                 <Text style={styles.eyebrowGold}>GET AFFILIATE-READY</Text>
                 <Text style={styles.readyCount}>{done}/{steps.length}</Text>
@@ -264,7 +272,7 @@ function Readiness({ steps, onTerms, onProfile, onShare }: { steps: ReadinessSte
 function CodeHero({ data, ready, copied, onCopy, onShare, onTerms }: { data: AffiliateOverview; ready: boolean; copied: boolean; onCopy: () => void; onShare: () => void; onTerms: () => void }) {
     return (
         <View style={[styles.card, styles.codeCard]}>
-            <LinearGradient colors={['#151513', '#0c0c0c']} style={StyleSheet.absoluteFill} pointerEvents="none" />
+            <LinearGradient colors={['#1a1a1a', '#0e0e0e']} style={StyleSheet.absoluteFill} pointerEvents="none" />
             <View style={styles.codeGlow} pointerEvents="none" />
             <Text style={styles.eyebrowGold}>YOUR CODE</Text>
             <Pressable onPress={onCopy} accessibilityRole="button" accessibilityLabel="Copy your code">
@@ -305,7 +313,6 @@ function NextUp({ pos }: { pos: LadderPosition }) {
 
     return (
         <View style={[styles.card, styles.nextCard]}>
-            <LinearGradient colors={['rgba(232,210,0,0.16)', 'rgba(232,210,0,0.02)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} pointerEvents="none" />
             <View style={styles.nextRow}>
                 <View style={styles.nextImageWrap}>
                     <View style={styles.nextImageGlow} pointerEvents="none" />
@@ -414,7 +421,6 @@ function Rung({ step, hit, isNext, locked, railAbove, railBelow, pct, basis, bas
 
             {/* Card */}
             <View style={[styles.rungCard, hit && styles.rungCardHit, isNext && styles.rungCardNext, locked && styles.rungCardLocked]}>
-                {hit && <LinearGradient colors={['rgba(232,210,0,0.14)', 'rgba(232,210,0,0.02)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} pointerEvents="none" />}
                 <View style={styles.rungTop}>
                     <View style={[styles.rungImageWrap, hit && styles.rungImageWrapHit, isNext && styles.rungImageWrapNext]}>
                         {img ? <Image source={{ uri: img }} style={[styles.rungImage, locked && { opacity: 0.45 }]} /> : (
@@ -467,7 +473,7 @@ function Stat({ icon, label, value, accent, hint }: { icon: React.ComponentProps
     return (
         <View style={[styles.card, styles.stat]}>
             <View style={styles.statHead}>
-                <View style={[styles.statIcon, accent && styles.statIconAccent]}><Ionicons name={icon} size={12} color={accent ? '#080808' : GOLD} /></View>
+                <View style={styles.statIcon}><Ionicons name={icon} size={12} color={accent ? GOLD : DIM} /></View>
                 <Text style={styles.statLabel}>{label}</Text>
             </View>
             <Text style={[styles.statValue, !accent && { color: DIM }]}>{value.toLocaleString()}</Text>
@@ -500,49 +506,49 @@ const styles = StyleSheet.create({
     eyebrowGold: { fontSize: 9, fontWeight: '800', letterSpacing: 2.5, color: GOLD, marginBottom: 8 },
     sectionLabel: { fontSize: 9, fontWeight: '600', letterSpacing: 2.2, color: MUTED, paddingHorizontal: 4, marginTop: 10, marginBottom: 10 },
     sectionRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingRight: 4 },
-    sectionMeta: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, color: GOLD, fontVariant: ['tabular-nums'] },
+    sectionMeta: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, color: MUTED, fontVariant: ['tabular-nums'] },
 
     identity: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4, paddingBottom: 14 },
-    identityAvatar: { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.5)' },
+    identityAvatar: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
     identityAvatarEmpty: { backgroundColor: 'rgba(232,210,0,0.1)', alignItems: 'center', justifyContent: 'center' },
     identityInitial: { fontSize: 16, fontWeight: '800', color: GOLD },
     identityName: { fontSize: 16, fontWeight: '600', color: TEXT },
     identityHandle: { fontSize: 12, color: DIM, marginTop: 2 },
-    statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: GOLD, shadowColor: GOLD, shadowOpacity: 0.9, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
+    statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ade80' },
 
     pausedNote: { backgroundColor: 'rgba(251,191,36,0.06)', borderWidth: 1, borderColor: 'rgba(251,191,36,0.25)', borderRadius: 14, padding: 14, marginBottom: 12 },
     pausedLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 2.5, color: '#fbbf24', marginBottom: 4 },
     pausedBody: { fontSize: 12, fontWeight: '300', lineHeight: 17, color: DIM },
 
-    readyCard: { borderColor: 'rgba(232,210,0,0.35)', paddingBottom: 6 },
+    readyCard: { borderColor: 'rgba(255,255,255,0.14)', paddingBottom: 6 },
     readyHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
     readyCount: { fontSize: 11, fontWeight: '800', color: GOLD, fontVariant: ['tabular-nums'] },
     readyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-    readyTick: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(232,210,0,0.4)', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(232,210,0,0.06)' },
+    readyTick: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.04)' },
     readyTickDone: { backgroundColor: GOLD, borderColor: GOLD },
     readyTitle: { fontSize: 14, fontWeight: '500', color: TEXT },
     readyTitleDone: { color: DIM, textDecorationLine: 'line-through' },
     readySub: { fontSize: 12, fontWeight: '300', color: DIM, marginTop: 2 },
 
-    codeCard: { borderColor: 'rgba(232,210,0,0.4)', padding: 20 },
-    codeGlow: { position: 'absolute', top: -110, right: -110, width: 280, height: 280, borderRadius: 140, backgroundColor: 'rgba(232,210,0,0.12)' },
-    code: { fontSize: 42, fontWeight: '900', letterSpacing: 6, color: TEXT, marginBottom: 6, textShadowColor: 'rgba(232,210,0,0.35)', textShadowRadius: 18, textShadowOffset: { width: 0, height: 0 } },
+    codeCard: { borderColor: 'rgba(255,255,255,0.14)', padding: 20 },
+    codeGlow: { position: 'absolute', top: -120, right: -120, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(232,210,0,0.05)' },
+    code: { fontSize: 42, fontWeight: '900', letterSpacing: 6, color: TEXT, marginBottom: 6 },
     copyRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
     copyText: { fontSize: 9, fontWeight: '800', letterSpacing: 2.5, color: MUTED },
     ctaRow: { flexDirection: 'row', gap: 10 },
-    cta: { height: 48, borderRadius: 24, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, shadowColor: GOLD, shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
+    cta: { height: 48, borderRadius: 24, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
     ctaText: { fontSize: 11, fontWeight: '800', letterSpacing: 2, color: '#080808' },
-    ctaGhost: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(232,210,0,0.45)', alignItems: 'center', justifyContent: 'center' },
-    lockedCta: { height: 48, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(232,210,0,0.45)', backgroundColor: 'rgba(232,210,0,0.06)', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+    ctaGhost: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+    lockedCta: { height: 48, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
     lockedCtaText: { fontSize: 10, fontWeight: '800', letterSpacing: 1.8, color: GOLD },
     foot: { fontSize: 11, fontWeight: '300', lineHeight: 16, color: MUTED, marginTop: 14 },
 
-    nextCard: { borderColor: 'rgba(232,210,0,0.4)', padding: 18 },
+    nextCard: { borderColor: 'rgba(255,255,255,0.16)', padding: 18 },
     nextRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 16 },
     nextImageWrap: { width: 84, height: 84, alignItems: 'center', justifyContent: 'center' },
-    nextImageGlow: { position: 'absolute', width: 84, height: 84, borderRadius: 42, backgroundColor: 'rgba(232,210,0,0.28)', transform: [{ scale: 1.25 }] },
-    nextImage: { width: 80, height: 80, borderRadius: 20, borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.6)' },
-    nextImageFallback: { backgroundColor: 'rgba(232,210,0,0.12)', alignItems: 'center', justifyContent: 'center' },
+    nextImageGlow: { position: 'absolute', width: 84, height: 84, borderRadius: 42, backgroundColor: 'rgba(232,210,0,0.10)', transform: [{ scale: 1.2 }] },
+    nextImage: { width: 80, height: 80, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+    nextImageFallback: { backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' },
     nextTitle: { fontSize: 24, fontWeight: '300', letterSpacing: -0.5, color: TEXT, marginBottom: 6 },
     nextCountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
     nextCount: { fontSize: 30, fontWeight: '700', color: GOLD, fontVariant: ['tabular-nums'], letterSpacing: -1 },
@@ -550,15 +556,14 @@ const styles = StyleSheet.create({
     nextSub: { fontSize: 12, fontWeight: '300', color: DIM, lineHeight: 17 },
     barTrack: { height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' },
     barFillWrap: { height: '100%' },
-    barFill: { flex: 1, borderRadius: 5, shadowColor: GOLD, shadowOpacity: 0.8, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+    barFill: { flex: 1, borderRadius: 5 },
     barLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
     barLabel: { fontSize: 10, fontWeight: '700', color: MUTED, fontVariant: ['tabular-nums'] },
 
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 4 },
     stat: { width: '48%', flexGrow: 1, marginBottom: 0, padding: 14 },
     statHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-    statIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(232,210,0,0.1)', alignItems: 'center', justifyContent: 'center' },
-    statIconAccent: { backgroundColor: GOLD },
+    statIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' },
     statLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 2, color: MUTED },
     statValue: { fontSize: 30, fontWeight: '300', letterSpacing: -0.6, color: TEXT, fontVariant: ['tabular-nums'] },
     statHint: { fontSize: 10, color: MUTED, marginTop: 2 },
@@ -571,17 +576,17 @@ const styles = StyleSheet.create({
     nodeWrap: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
     nodeHalo: { position: 'absolute', width: 34, height: 34, borderRadius: 17, backgroundColor: GOLD },
     node: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: FAINT, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center' },
-    nodeHit: { backgroundColor: GOLD, borderColor: GOLD, shadowColor: GOLD, shadowOpacity: 0.7, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
+    nodeHit: { backgroundColor: GOLD, borderColor: GOLD },
     nodeNext: { borderColor: GOLD },
     nodeLocked: {},
     nodeCore: { width: 9, height: 9, borderRadius: 5, backgroundColor: GOLD },
     rungCard: { flex: 1, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 14, marginBottom: 10, marginLeft: 6, overflow: 'hidden' },
-    rungCardHit: { borderColor: 'rgba(232,210,0,0.45)' },
+    rungCardHit: { borderColor: 'rgba(232,210,0,0.22)' },
     rungCardNext: { borderColor: 'rgba(255,255,255,0.22)', backgroundColor: 'rgba(48,48,48,0.9)' },
     rungCardLocked: { backgroundColor: 'rgba(30,30,30,0.7)' },
     rungTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     rungImageWrap: { width: 60, height: 60, borderRadius: 16, borderWidth: 1, borderColor: BORDER, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.04)' },
-    rungImageWrapHit: { borderColor: 'rgba(232,210,0,0.6)' },
+    rungImageWrapHit: { borderColor: 'rgba(232,210,0,0.35)' },
     rungImageWrapNext: { borderColor: 'rgba(255,255,255,0.25)' },
     rungImage: { width: '100%', height: '100%' },
     rungImageFallback: { alignItems: 'center', justifyContent: 'center' },
@@ -593,10 +598,10 @@ const styles = StyleSheet.create({
     chipGoldText: { fontSize: 8, fontWeight: '800', letterSpacing: 1.5, color: '#080808' },
     chipOutline: { paddingHorizontal: 7, height: 18, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
     chipOutlineText: { fontSize: 8, fontWeight: '800', letterSpacing: 1.5, color: DIM },
-    ptsPill: { alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: 'rgba(232,210,0,0.1)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.3)' },
+    ptsPill: { alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
     ptsPillLocked: { backgroundColor: 'transparent', borderColor: FAINT },
     ptsPillText: { fontSize: 14, fontWeight: '800', color: GOLD, fontVariant: ['tabular-nums'] },
-    ptsPillUnit: { fontSize: 8, fontWeight: '800', letterSpacing: 1.5, color: GOLD, marginTop: -1 },
+    ptsPillUnit: { fontSize: 8, fontWeight: '800', letterSpacing: 1.5, color: MUTED, marginTop: -1 },
     rungProgress: { marginTop: 12 },
     miniTrack: { height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.07)', overflow: 'hidden' },
     miniFill: { height: '100%', borderRadius: 3 },
@@ -609,14 +614,15 @@ const styles = StyleSheet.create({
 
     earnRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
     earnBorder: { borderBottomWidth: 1, borderBottomColor: BORDER },
-    earnIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(232,210,0,0.1)', alignItems: 'center', justifyContent: 'center' },
-    earnIconMilestone: { backgroundColor: GOLD },
+    earnIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' },
+    earnMore: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 12, marginTop: 2, borderTopWidth: 1, borderTopColor: BORDER },
+    earnMoreText: { fontSize: 9, fontWeight: '800', letterSpacing: 2, color: DIM },
     earnNote: { fontSize: 13, fontWeight: '400', color: TEXT },
     earnDate: { fontSize: 10, color: MUTED, marginTop: 2 },
     earnPts: { fontSize: 15, fontWeight: '800', color: GOLD, fontVariant: ['tabular-nums'] },
 
-    portalCard: { flexDirection: 'row', alignItems: 'center', gap: 14, borderColor: 'rgba(232,210,0,0.25)', marginTop: 4 },
-    portalIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(232,210,0,0.1)', alignItems: 'center', justifyContent: 'center' },
+    portalCard: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 },
+    portalIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' },
     portalTitle: { fontSize: 15, fontWeight: '500', color: TEXT, marginBottom: 4 },
     portalSub: { fontSize: 12, fontWeight: '300', lineHeight: 17, color: DIM },
 });
