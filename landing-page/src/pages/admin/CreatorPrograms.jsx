@@ -537,7 +537,7 @@ function FulfilmentQueue({ rewards }) {
                                         </>
                                     )}
                                     {NEXT[r.fulfilment_status] && (
-                                        <button onClick={() => advance(r, NEXT[r.fulfilment_status])} disabled={busy === key} className="w-full h-10 bg-[#1A1A1A] text-white rounded-full text-[9px] uppercase tracking-[0.2em] font-black hover:bg-[#333] disabled:opacity-50 flex items-center justify-center gap-2">
+                                        <button onClick={() => advance(r, NEXT[r.fulfilment_status])} disabled={busy === key || (!addr?.line1 && ['owed', 'approved'].includes(r.fulfilment_status))} title={!addr?.line1 && ['owed', 'approved'].includes(r.fulfilment_status) ? 'Needs a delivery address first' : undefined} className="w-full h-10 bg-[#1A1A1A] text-white rounded-full text-[9px] uppercase tracking-[0.2em] font-black hover:bg-[#333] disabled:opacity-50 flex items-center justify-center gap-2">
                                             <Check size={12} /> {NEXT_LABEL[r.fulfilment_status]}
                                         </button>
                                     )}

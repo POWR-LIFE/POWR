@@ -99,6 +99,7 @@ import CreatorRequests from './pages/admin/CreatorRequests';
 import { CreatorShell } from './pages/creator/CreatorShell';
 import { INPUT as CREATOR_INPUT, LABEL as CREATOR_LABEL, BTN_GOLD as CREATOR_BTN } from './pages/creator/ui';
 import { readHandoffTicket, completeHandoff } from './pages/creator/portalAuth';
+import AffiliateTermsPage, { AffiliateTermsGate } from './pages/creator/AffiliateTerms';
 import LandingV2 from './landing/LandingV2';
 import PartnersPage from './landing/partners/PartnersPage';
 import CookiePolicy from './pages/CookiePolicy';
@@ -737,7 +738,7 @@ const CreatorClosed = () => (
 // THAT user before deciding — otherwise the moment between "session exists"
 // and "isCreator known" would bounce a legitimate affiliate to the login page.
 const CreatorProtectedRoute = ({ children }) => {
-    const { user, isCreator, isAdmin, loading, creatorProgramEnabled, rolesFor } = useAuth();
+    const { user, isCreator, isAdmin, loading, creatorProgramEnabled, rolesFor, creatorData, isActingCreator } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
     const [ticket] = useState(() => readHandoffTicket());
@@ -768,6 +769,9 @@ const CreatorProtectedRoute = ({ children }) => {
 
     if (!user || (!isCreator && !isAdmin)) return <Navigate to="/affiliate/login" state={{ from: location }} replace />;
     if (!creatorProgramEnabled && !isAdmin) return <CreatorClosed />;
+    // The one hard gate: a real affiliate (not an admin previewing) must have
+    // accepted the programme terms before the portal — and their link — opens.
+    if (creatorData && !isActingCreator && !creatorData.terms_accepted_at) return <AffiliateTermsGate />;
     return children;
 };
 
@@ -1408,6 +1412,7 @@ export default function App() {
                         content-making). Code, tables and admin routes stay creator_*; only what
                         people see changed. /creator/* keeps working: the app's Settings row, the
                         approval push and any setup link already sent all point there. */}
+                    <Route path="/affiliate/terms" element={<AffiliateTermsPage />} />
                     <Route path="/affiliate/login" element={<CreatorLogin />} />
                     <Route path="/affiliate/setup/:token" element={<CreatorSetup />} />
                     <Route path="/affiliate" element={<CreatorProtectedRoute><CreatorLayout><CreatorHome /></CreatorLayout></CreatorProtectedRoute>} />

@@ -1,4 +1,4 @@
-import { affiliateShareText, ladderPosition, stepName, type AffiliateStep } from '@/lib/api/affiliate';
+import { affiliateShareText, isAffiliateReady, ladderPosition, readinessSteps, stepName, type AffiliateStep } from '@/lib/api/affiliate';
 
 const step = (id: string, n: number, name: string): AffiliateStep => ({
     id, n, label: name, points: 100, creator_rewards: { name, description: null, image_url: null, value_label: null },
@@ -41,5 +41,24 @@ describe('affiliateShareText', () => {
         const t = affiliateShareText('JAMIE10', 'jamie');
         expect(t).toContain('JAMIE10');
         expect(t).toContain('https://powr.life/join/jamie');
+    });
+});
+
+describe('readiness', () => {
+    const base = { terms_accepted_at: null, avatar_url: null, bio: null, first_shared_at: null };
+    it('terms are the only hard gate', () => {
+        expect(isAffiliateReady(base)).toBe(false);
+        expect(isAffiliateReady({ terms_accepted_at: '2026-08-26T10:00:00Z' })).toBe(true);
+        const steps = readinessSteps(base);
+        expect(steps.find(s => s.key === 'terms')?.required).toBe(true);
+        expect(steps.filter(s => s.required).map(s => s.key)).toEqual(['terms']);
+    });
+    it('profile counts as done only with BOTH a photo and a bio', () => {
+        expect(readinessSteps({ ...base, avatar_url: 'x' }).find(s => s.key === 'profile')?.done).toBe(false);
+        expect(readinessSteps({ ...base, avatar_url: 'x', bio: '  ' }).find(s => s.key === 'profile')?.done).toBe(false);
+        expect(readinessSteps({ ...base, avatar_url: 'x', bio: 'Coach' }).find(s => s.key === 'profile')?.done).toBe(true);
+    });
+    it('never asks for an address up front', () => {
+        expect(readinessSteps(base).map(s => s.key)).not.toContain('address');
     });
 });
