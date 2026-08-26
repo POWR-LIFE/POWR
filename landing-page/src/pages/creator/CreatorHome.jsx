@@ -174,8 +174,8 @@ export default function CreatorHome() {
                 <Card className="p-12 text-center">
                     <p className="text-sm text-[#888] font-light">
                         {funnel.error === 'not_a_creator'
-                            ? "This account isn't linked to a creator profile yet."
-                            : 'Pick a creator to preview.'}
+                            ? "This account isn't linked to an affiliate profile yet."
+                            : 'Pick an affiliate to preview.'}
                     </p>
                 </Card>
             ) : (
@@ -196,7 +196,7 @@ export default function CreatorHome() {
                         Share your link and this page fills up. Every tap, signup and first workout lands here.
                     </p>
                     {link && (
-                        <Link to="/creator/links" className={BTN_GOLD} style={{ color: '#080808' }}>
+                        <Link to="/affiliate/links" className={BTN_GOLD} style={{ color: '#080808' }}>
                             <span className="flex items-center gap-3">Get your link <ArrowRight size={15} /></span>
                         </Link>
                     )}

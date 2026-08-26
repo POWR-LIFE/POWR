@@ -90,7 +90,7 @@ function Step({ step, hit, isNext, basis, basisWord, from, rewardTitles, needsAd
                         </div>
                     )}
                     {hit && hasThing && hit.fulfilment_status === 'owed' && needsAddress && (
-                        <Link to="/creator/settings" className="inline-flex items-center gap-2 mt-3 text-[11px] font-black">
+                        <Link to="/affiliate/settings" className="inline-flex items-center gap-2 mt-3 text-[11px] font-black">
                             <MapPin size={12} className="text-amber-700" />
                             <span className="text-amber-700 underline underline-offset-4">Add your address so we can send this</span>
                         </Link>
@@ -234,7 +234,7 @@ export default function CreatorRewards() {
             {!creatorData?.member_user_id && totalPoints > 0 && (
                 <Card className="p-5 sm:p-8">
                     <p className="text-[12px] text-[#888] font-light leading-relaxed max-w-2xl">
-                        Your points are being held against your creator profile. Tell us the email on your POWR
+                        Your points are being held against your affiliate profile. Tell us the email on your POWR
                         app account and we'll move them across so you can actually spend them.
                     </p>
                 </Card>

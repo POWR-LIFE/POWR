@@ -59,7 +59,7 @@ serve(async (req) => {
 
   const body = {
     blocks: [
-      { type: "section", text: { type: "mrkdwn", text: `:sparkles: *Creator programme request* — *${name}* wants in` } },
+      { type: "section", text: { type: "mrkdwn", text: `:sparkles: *Affiliate programme request* — *${name}* wants in` } },
       { type: "context", elements: [{ type: "mrkdwn", text: detail.join(" · ") }] },
     ],
   };

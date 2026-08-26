@@ -17,12 +17,12 @@ const DIM = 'rgba(255,255,255,0.55)';
 const MUTED = 'rgba(255,255,255,0.3)';
 
 const APPROVED_SEEN_KEY = 'creator-invite-approved-dismissed';
-const PORTAL_URL = 'https://powr.life/creator';
+const PORTAL_URL = 'https://powr.life/affiliate';
 
 /**
  * The earned invite. Renders nothing for almost everyone; for a member who
  * has crossed the converted-referral bar it asks — once — whether they want
- * to be a POWR Creator, then tracks the request until an admin answers.
+ * to be a POWR Affiliate (user-facing name; code stays creator_*), then tracks the request until an admin answers.
  * Eligibility and the request both live server-side (creator_invite_*
  * RPCs); this card only shows what the server says.
  */
@@ -71,7 +71,7 @@ export function CreatorInviteCard() {
                     <Ionicons name="sparkles" size={16} color={GOLD} />
                 </View>
                 <Text style={styles.eyebrow}>
-                    {state === 'approved' ? 'YOU’RE IN' : state === 'pending' ? 'REQUEST SENT' : 'POWR CREATORS'}
+                    {state === 'approved' ? 'YOU’RE IN' : state === 'pending' ? 'REQUEST SENT' : 'POWR AFFILIATES'}
                 </Text>
                 {state === 'approved' && (
                     <Pressable onPress={dismissApproved} hitSlop={12} accessibilityLabel="Dismiss">
@@ -85,7 +85,7 @@ export function CreatorInviteCard() {
                     <Text style={styles.title}>You’re bringing people in.</Text>
                     <Text style={styles.body}>
                         {converted} {converted === 1 ? 'person' : 'people'} you invited have logged their first verified workout.
-                        Creators get their own link, a portal to track it, and real rewards for every signup. Want in?
+                        Affiliates get their own link, a portal to track it, and real rewards for every signup. Want in?
                     </Text>
                     <Pressable
                         onPress={() => ask.mutate()}
@@ -113,7 +113,7 @@ export function CreatorInviteCard() {
 
             {state === 'approved' && (
                 <>
-                    <Text style={styles.title}>Welcome to POWR Creators.</Text>
+                    <Text style={styles.title}>Welcome to POWR Affiliates.</Text>
                     <Text style={styles.body}>
                         Your portal is ready — your link, signups and rewards in one place. It lives under Settings whenever you need it.
                     </Text>

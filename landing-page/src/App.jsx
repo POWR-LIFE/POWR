@@ -390,7 +390,7 @@ const PATH_LABELS = {
     challenges: 'Challenges',
     users: 'Users',
     athletes: 'Athletes',
-    creators: 'Creators',
+    creators: 'Affiliates',
     profile: 'Profile',
     analytics: 'Analytics',
     usage: 'Usage',
@@ -484,7 +484,7 @@ const CreatorLogin = () => {
 
     useEffect(() => {
         // Admins are allowed into the creator portal too (preview mode)
-        if (user && (isCreator || isAdmin)) navigate('/creator');
+        if (user && (isCreator || isAdmin)) navigate('/affiliate');
     }, [user, isAdmin, isCreator, navigate]);
 
     const handleLogin = async (e) => {
@@ -503,7 +503,7 @@ const CreatorLogin = () => {
     };
 
     return (
-        <CreatorShell eyebrow="Creator Portal" title="Welcome back" sub="Sign in with your POWR account — the same email and password you use in the app.">
+        <CreatorShell eyebrow="Affiliate Portal" title="Welcome back" sub="Sign in with your POWR account — the same email and password you use in the app.">
             <form onSubmit={handleLogin} className="space-y-5">
                 <div>
                     <label className={CREATOR_LABEL}>Email address</label>
@@ -628,9 +628,16 @@ const PartnerProtectedRoute = ({ children }) => {
     return children;
 };
 
+// /creator/* → /affiliate/* (same tail + query). Kept indefinitely: the URL
+// shipped in an OTA'd Settings row and in push copy before the rename.
+const LegacyCreatorRedirect = () => {
+    const location = useLocation();
+    return <Navigate to={{ pathname: location.pathname.replace(/^\/creator/, '/affiliate'), search: location.search }} replace />;
+};
+
 // --- Creator programme closed (master switch off) ---
 const CreatorClosed = () => (
-    <CreatorShell eyebrow="Creator Portal" title="Not open yet" sub="The creator programme isn't live. If you've been invited, we'll let you know the moment it opens.">
+    <CreatorShell eyebrow="Affiliate Portal" title="Not open yet" sub="The affiliate programme isn't live. If you've been invited, we'll let you know the moment it opens.">
         <div className="text-center">
             <Link to="/" className={CREATOR_BTN} style={{ color: '#080808' }}>Back to home</Link>
         </div>
@@ -653,7 +660,7 @@ const CreatorProtectedRoute = ({ children }) => {
         </div>
     );
 
-    if (!user || (!isCreator && !isAdmin)) return <Navigate to="/creator/login" state={{ from: location }} replace />;
+    if (!user || (!isCreator && !isAdmin)) return <Navigate to="/affiliate/login" state={{ from: location }} replace />;
     if (!creatorProgramEnabled && !isAdmin) return <CreatorClosed />;
     return children;
 };
@@ -821,7 +828,7 @@ const AdminHome = () => {
         { label: 'Gym Requests',         count: stats.pendingGymRequests, to: '/admin/gym-requests',       color: '#E8D200', icon: Building2,     desc: 'Members couldn\'t find gym' },
         { label: 'Reward Submissions',   count: stats.pendingSubmissions, to: '/admin/reward-submissions', color: '#F97316', icon: Inbox,         desc: 'Pending brand review'     },
         { label: 'Athlete Applications', count: stats.pendingAthletes,    to: '/admin/athletes',           color: '#8B5CF6', icon: Star,          desc: 'Awaiting approval'        },
-        { label: 'Creator Requests',     count: pendingCreatorRequests,   to: '/admin/creators/requests',  color: '#E8D200', icon: Sparkles,      desc: 'Members asking to join'   },
+        { label: 'Affiliate Requests',   count: pendingCreatorRequests,   to: '/admin/creators/requests',  color: '#E8D200', icon: Sparkles,      desc: 'Members asking to join'   },
         { label: 'Support Tickets',      count: stats.openTickets,        to: '/admin/support',            color: '#0EA5E9', icon: MessageSquare, desc: 'Open & in-progress'       },
         { label: 'System Health',        count: healthAttention ?? '—',   to: '/admin/system-health',      color: '#F43F5E', icon: HeartPulse,    desc: 'Signals at the act line'  },
     ];
@@ -841,7 +848,7 @@ const AdminHome = () => {
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,         color: '#F97316' },
         { label: 'Users',       path: '/admin/users',              icon: Users,         color: '#8a7600' },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,          color: '#8B5CF6' },
-        { label: 'Creators',    path: '/admin/creators',           icon: Sparkles,      color: '#E8D200' },
+        { label: 'Affiliates',  path: '/admin/creators',           icon: Sparkles,      color: '#E8D200' },
         { label: 'Featured',    path: '/admin/featured',           icon: Star,          color: '#AAAAAA' },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target,        color: '#AAAAAA' },
         { label: 'Analytics',   path: '/admin/analytics',          icon: BarChart3,     color: '#E8D200' },
@@ -1120,7 +1127,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
         { label: 'Users',       path: '/admin/users',              icon: Users           },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,           badge: pendingAthletes },
-        { label: 'Creators',    path: '/admin/creators',           icon: Sparkles,       badge: pendingCreatorRequests },
+        { label: 'Affiliates',  path: '/admin/creators',           icon: Sparkles,       badge: pendingCreatorRequests },
     ];
 
     const opsItems = [
@@ -1291,13 +1298,19 @@ export default function App() {
                     <Route path="/live/:slug" element={<LiveBoard />} />
                     <Route path="/promo/:slug" element={<EventPromo />} />
                     <Route path="/partner-reward/:token" element={<PartnerRewardSubmit />} />
-                    <Route path="/creator/login" element={<CreatorLogin />} />
-                    <Route path="/creator/setup/:token" element={<CreatorSetup />} />
-                    <Route path="/creator" element={<CreatorProtectedRoute><CreatorLayout><CreatorHome /></CreatorLayout></CreatorProtectedRoute>} />
-                    <Route path="/creator/links" element={<CreatorProtectedRoute><CreatorLayout><CreatorLinks /></CreatorLayout></CreatorProtectedRoute>} />
-                    <Route path="/creator/conversions" element={<CreatorProtectedRoute><CreatorLayout><CreatorConversions /></CreatorLayout></CreatorProtectedRoute>} />
-                    <Route path="/creator/rewards" element={<CreatorProtectedRoute><CreatorLayout><CreatorRewards /></CreatorLayout></CreatorProtectedRoute>} />
-                    <Route path="/creator/settings" element={<CreatorProtectedRoute><CreatorLayout><CreatorSettings /></CreatorLayout></CreatorProtectedRoute>} />
+                    {/* "Affiliate" is the user-facing name (Jamie, 2026-08-26 — "creator" read as
+                        content-making). Code, tables and admin routes stay creator_*; only what
+                        people see changed. /creator/* keeps working: the app's Settings row, the
+                        approval push and any setup link already sent all point there. */}
+                    <Route path="/affiliate/login" element={<CreatorLogin />} />
+                    <Route path="/affiliate/setup/:token" element={<CreatorSetup />} />
+                    <Route path="/affiliate" element={<CreatorProtectedRoute><CreatorLayout><CreatorHome /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/affiliate/links" element={<CreatorProtectedRoute><CreatorLayout><CreatorLinks /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/affiliate/conversions" element={<CreatorProtectedRoute><CreatorLayout><CreatorConversions /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/affiliate/rewards" element={<CreatorProtectedRoute><CreatorLayout><CreatorRewards /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/affiliate/settings" element={<CreatorProtectedRoute><CreatorLayout><CreatorSettings /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/creator" element={<LegacyCreatorRedirect />} />
+                    <Route path="/creator/*" element={<LegacyCreatorRedirect />} />
                     <Route path="/partner/login" element={<PartnerLogin />} />
                     <Route path="/partner/setup/:token" element={<PartnerSetup />} />
                     <Route path="/partner" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalHome /></PartnerLayout></PartnerProtectedRoute>} />

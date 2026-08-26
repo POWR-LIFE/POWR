@@ -104,8 +104,8 @@ const GROUPS = [
         keys: ['partner_placements_enabled'],
     },
     {
-        id: 'creators', title: 'Creator Programme', icon: Sparkles, accent: '#E8D200',
-        blurb: 'Master switch plus the earned-invite bar: a member with this many converted referrals (verified first workouts) inside the window is asked on Home whether they want to be a creator; their request lands in Creators › Requests. Off: creator codes act as ordinary member invites, /join links go straight to the app with no attribution, the /creator portal is closed to everyone but admins, and no event bonuses pay. The admin pages under Creators keep working so you can set up rewards, programmes and creators before flipping it.',
+        id: 'creators', title: 'Affiliate Programme', icon: Sparkles, accent: '#E8D200',
+        blurb: 'Master switch plus the earned-invite bar: a member with this many converted referrals (verified first workouts) inside the window is asked on Home whether they want to be an affiliate; their request lands in Affiliates › Requests. Off: affiliate codes act as ordinary member invites, /join links go straight to the app with no attribution, the /affiliate portal is closed to everyone but admins, and no event bonuses pay. The admin pages under Affiliates keep working so you can set up rewards, programmes and affiliates before flipping it.',
         keys: ['creator_program_enabled', 'creator_invite_threshold', 'creator_invite_window_days'],
     },
     {
@@ -144,7 +144,7 @@ const LABELS = {
     latest_ios_version: 'Latest App Store version',
     latest_android_version: 'Latest Play Store version',
     partner_placements_enabled: 'Self-serve placements',
-    creator_program_enabled: 'Creator programme live',
+    creator_program_enabled: 'Affiliate programme live',
     creator_invite_threshold: 'Earned invite: converted referrals needed',
     creator_invite_window_days: 'Earned invite: counting window (0 = all time)',
     weekly_challenges: 'Weekly challenges',

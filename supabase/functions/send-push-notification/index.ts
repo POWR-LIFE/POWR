@@ -424,7 +424,7 @@ function buildMessage(
         const converted = Math.max(0, Math.round(Number(payload.converted ?? 0)));
         return {
           title: "You're bringing people in 🙌",
-          body: `${converted} people you invited have logged their first verified workout. Want to become a POWR Creator? Open the app to find out more.`,
+          body: `${converted} people you invited have logged their first verified workout. Want to become a POWR Affiliate? Open the app to find out more.`,
           data: { type, route: '/(tabs)/index', converted },
           sound: 'default',
           channelId: 'powr_rewards_v2',
@@ -435,8 +435,8 @@ function buildMessage(
         // An admin approved their request — the creators row and portal link
         // exist by the time this fires (approval order in CreatorRequests.jsx).
         return {
-          title: "You're a POWR Creator ✨",
-          body: 'Your creator portal is ready — your link, signups and rewards in one place. Find it under Settings.',
+          title: "You're a POWR Affiliate ✨",
+          body: 'Your affiliate portal is ready — your link, signups and rewards in one place. Find it under Settings.',
           data: { type, route: '/settings-screen' },
           sound: 'default',
           channelId: 'powr_rewards_v2',
