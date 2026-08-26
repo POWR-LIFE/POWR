@@ -331,12 +331,9 @@ begin
       'denominator', count(*),
       'detail', jsonb_build_object(
         'last_failure', max(r.start_time) filter (where r.status <> 'succeeded'),
-        'last_message', (
-          select r2.return_message from cron.job_run_details r2
-          join cron.job j2 on j2.jobid = r2.jobid
-          where j2.jobname = 'gym-visit-beacon' and r2.status <> 'succeeded' and r2.start_time >= v_24h
-          order by r2.start_time desc limit 1
-        )
+        -- newest failure's message from the same pass — a correlated subquery
+        -- here was a second full scan of cron.job_run_details (2.2 s on 08-26).
+        'last_message', (array_agg(r.return_message order by r.start_time desc) filter (where r.status <> 'succeeded'))[1]
       ),
       'evidence_ok', count(*) > 0
     ) into s
@@ -693,9 +690,19 @@ begin
           when j.schedule ~ '^\d+\s+\d+\s+\*\s+\*\s+\*$' then interval '26 hours'
           else interval '8 days'
         end as allowance,
-        (select max(r.start_time) from cron.job_run_details r where r.jobid = j.jobid) as last_run,
-        (select count(*) from cron.job_run_details r where r.jobid = j.jobid and r.start_time >= v_24h and r.status <> 'succeeded') as failed_24h
+        r.last_run,
+        coalesce(r.failed_24h, 0) as failed_24h
       from cron.job j
+      -- ⚠ ONE grouped pass over cron.job_run_details, never a correlated
+      -- subquery per job: the table has no index but its pkey and 148k rows
+      -- on 2026-08-26 — two subqueries × 19 jobs = 38 full scans = 4.6 s,
+      -- and the live RPC blew the 8 s authenticated statement_timeout.
+      left join (
+        select jobid, max(start_time) as last_run,
+               count(*) filter (where start_time >= v_24h and status <> 'succeeded') as failed_24h
+        from cron.job_run_details
+        group by jobid
+      ) r on r.jobid = j.jobid
       where j.active
     )
     -- A job with NO run history is listed under never_run and not counted:
