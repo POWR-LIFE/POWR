@@ -25,7 +25,7 @@ import { deliverExpoMessages } from '../_shared/expoPush.ts';
 import { deliverVisiblePush } from '../_shared/visiblePush.ts';
 import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
-import { staleVisitVerdict } from '../_shared/gymReaper.ts';
+import { staleVisitVerdict, sessionBelongsToVisit, SESSION_OWNERSHIP_MARGIN_MS } from '../_shared/gymReaper.ts';
 import { MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
 
 // Budgets are PER STAGE and live in their own columns (nudge_count /
@@ -148,7 +148,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -600,7 +600,19 @@ Deno.serve(async (req: Request) => {
         // 3598s in twenty minutes, on its way to the 12h cap). The margin lets an
         // honest reconciliation stand and still catches the pathology.
         const DRIFT_MARGIN_MS = 30 * 60 * 1000;
-        if (sess?.ended_at && Date.parse(sess.ended_at) > provenMs + DRIFT_MARGIN_MS) {
+        // ⚠ ONLY THE VISIT'S OWN SESSION (2026-08-26). A second check-in at the
+        // same venue on the same UTC day is declined `already_claimed` and stamped
+        // with the day's EXISTING session — one that started with an earlier
+        // visit. Both rules below size the session from `sess.started_at`, which
+        // for that row is another visit's morning: field 2026-08-22, visit
+        // b899021c (POWR, 20:54) closed here at 00:50 and grew the 07:25 session
+        // to 62,670 s — a 17-hour gym session in history, recap and challenges.
+        // Points were unaffected (the ladder tops out at 40 min); the record was
+        // not. A session this visit does not own is left exactly as it is — its
+        // own visit's evidence already sized it.
+        if (sess && !sessionBelongsToVisit(sess, v)) {
+          stats.shared_session_skipped++;
+        } else if (sess?.ended_at && Date.parse(sess.ended_at) > provenMs + DRIFT_MARGIN_MS) {
           const durationSec = Math.max(0, Math.round((provenMs - Date.parse(sess.started_at)) / 1000));
           const { error: sessErr } = await admin
             .from('activity_sessions')
@@ -1304,7 +1316,11 @@ Deno.serve(async (req: Request) => {
       await admin.from('activity_sessions')
         .update({ ended_at: new Date().toISOString(), duration_sec: durationSec })
         .eq('id', v.claimed_session_id)
-        .lt('duration_sec', durationSec);
+        .lt('duration_sec', durationSec)
+        // Same ownership rule as the stale-close pass (sessionBelongsToVisit): a
+        // same-day session stamped onto this visit by `already_claimed` started
+        // with an EARLIER visit, and `now − v.started_at` is not its length.
+        .gte('started_at', new Date(Date.parse(v.started_at) - SESSION_OWNERSHIP_MARGIN_MS).toISOString());
 
       let status = 0; let respErr: string | null = null;
       try {

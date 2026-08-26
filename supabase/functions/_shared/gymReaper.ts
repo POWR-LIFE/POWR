@@ -99,3 +99,34 @@ export function staleVisitVerdict(visit: ReaperVisitRow, nowMs: number): ReaperV
   }
   return { close: false, provenMs, closeReason: null };
 }
+
+/**
+ * Does this activity_session belong to THIS visit, or is it a same-day session
+ * the visit was merely pointed at?
+ *
+ * Field 2026-08-22 (visit b899021c): a second check-in at the same venue on the
+ * same UTC day had its claim declined `already_claimed` — the gym-day uniqueness
+ * rule — and was stamped with the FIRST visit's session (started 07:25, closed
+ * 11:25). When the reaper closed the second visit at 00:50 it "grew" that session
+ * to `provenMs − session.started_at` = 17.4 hours. The grow rule is sound for a
+ * session born of the visit; it is nonsense for one that predates the visit by
+ * half a day.
+ *
+ * A session is the visit's own when it started no earlier than the visit did,
+ * within a margin: iOS health reconciliation legitimately moves started_at
+ * EARLIER by minutes (gymReconcile.ts, a warm-up the fence never saw), and the
+ * stale-entry replay backdates a check-in by up to 40 minutes. A session that
+ * predates the visit by more than that is another visit's, and the reaper must
+ * neither grow nor clamp it — only its own visit's evidence may size it.
+ */
+export const SESSION_OWNERSHIP_MARGIN_MS = 60 * 60 * 1000;
+
+export function sessionBelongsToVisit(
+  session: { started_at: string | null | undefined },
+  visit: { started_at: string },
+): boolean {
+  const sessMs = ms(session.started_at);
+  const visitMs = ms(visit.started_at);
+  if (sessMs === 0 || visitMs === 0) return true; // unknowable — keep the old behaviour
+  return sessMs >= visitMs - SESSION_OWNERSHIP_MARGIN_MS;
+}
