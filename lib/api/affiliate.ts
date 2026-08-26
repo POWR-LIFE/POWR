@@ -22,6 +22,18 @@ export interface AffiliateProfile {
     program_id: string | null;
     conversion_points: number | null;
     shipping_address: unknown | null;
+    bio: string | null;
+    terms_accepted_at: string | null;
+    terms_version: string | null;
+    first_shared_at: string | null;
+}
+
+export interface AffiliateEarning {
+    id: string;
+    kind: string;
+    points_amount: number;
+    note: string | null;
+    created_at: string;
 }
 
 export interface AffiliateFunnel {
@@ -63,6 +75,7 @@ export interface AffiliateOverview {
     steps: AffiliateStep[];
     reachedStepIds: string[];
     milestones: AffiliateMilestone[];
+    earnings: AffiliateEarning[];
     conversions: number;
     signups: number;
 }
@@ -91,12 +104,13 @@ export async function fetchAffiliateOverview(days = 30): Promise<AffiliateOvervi
     const profile = (link as { creators?: AffiliateProfile } | null)?.creators ?? null;
     if (!profile) return null;
 
-    const [funnelRes, progRes, milestonesRes, convRes, signRes] = await Promise.all([
+    const [funnelRes, progRes, milestonesRes, convRes, signRes, earnRes] = await Promise.all([
         supabase.rpc('creator_funnel', { p_days: days, p_creator_id: null }),
         supabase.from('creator_programs').select('id, step_counting, creator_conversion_points, invitee_bonus_points, event_signup_points').limit(1),
         supabase.from('creator_milestones').select('step_id, fulfilment_status, carrier, tracking_number').eq('creator_id', profile.id),
         supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('creator_id', profile.id).not('converted_at', 'is', null),
         supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('creator_id', profile.id),
+        supabase.from('creator_earnings').select('id, kind, points_amount, note, created_at').eq('creator_id', profile.id).order('created_at', { ascending: false }).limit(6),
     ]);
 
     const program = (progRes.data?.[0] as AffiliateProgram | undefined) ?? null;
@@ -118,6 +132,7 @@ export async function fetchAffiliateOverview(days = 30): Promise<AffiliateOvervi
         steps,
         reachedStepIds: (milestonesRes.data ?? []).map((m: { step_id: string }) => m.step_id),
         milestones: (milestonesRes.data ?? []) as AffiliateMilestone[],
+        earnings: (earnRes.data ?? []) as AffiliateEarning[],
         conversions: convRes.count ?? 0,
         signups: signRes.count ?? 0,
     };
@@ -174,4 +189,57 @@ export async function openAffiliatePortal(path = ''): Promise<void> {
     } catch {
         Linking.openURL(url).catch(() => {});
     }
+}
+
+// ── Readiness ────────────────────────────────────────────────────────────────
+// The ONLY hard gate is the terms (fair play + UK ad disclosure). Photo/bio
+// make the link page look like a person; the first share is the point of it
+// all. Address is deliberately NOT here — it's asked at the moment a physical
+// reward is owed.
+
+export type ReadinessKey = 'terms' | 'profile' | 'share';
+
+export interface ReadinessStep {
+    key: ReadinessKey;
+    done: boolean;
+    required: boolean;
+}
+
+export function readinessSteps(profile: Pick<AffiliateProfile, 'terms_accepted_at' | 'avatar_url' | 'bio' | 'first_shared_at'>): ReadinessStep[] {
+    return [
+        { key: 'terms', done: !!profile.terms_accepted_at, required: true },
+        { key: 'profile', done: !!profile.avatar_url && !!(profile.bio ?? '').trim(), required: false },
+        { key: 'share', done: !!profile.first_shared_at, required: false },
+    ];
+}
+
+export function isAffiliateReady(profile: Pick<AffiliateProfile, 'terms_accepted_at'>): boolean {
+    return !!profile.terms_accepted_at;
+}
+
+export async function acceptAffiliateTerms(version: string): Promise<void> {
+    const { error } = await supabase.rpc('accept_affiliate_terms', { p_version: version });
+    if (error) throw error;
+}
+
+export async function markAffiliateShared(): Promise<void> {
+    const { error } = await supabase.rpc('mark_affiliate_shared');
+    if (error) throw error;
+}
+
+/** display_name / avatar_url / bio are the columns the creator may write (column grant). */
+export async function updateAffiliateProfile(
+    creatorId: string,
+    patch: { display_name?: string; avatar_url?: string | null; bio?: string | null },
+): Promise<void> {
+    const { error } = await supabase.from('creators').update(patch).eq('id', creatorId);
+    if (error) throw error;
+}
+
+/** The member's own app photo, so "use my POWR photo" is one tap. */
+export async function fetchMemberAvatar(): Promise<string | null> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).maybeSingle();
+    return (data?.avatar_url as string | null) ?? null;
 }
