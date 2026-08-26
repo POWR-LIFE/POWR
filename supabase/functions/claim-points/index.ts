@@ -872,15 +872,41 @@ Deno.serve(async (req) => {
         lastProvenAt: auditVisit?.last_proven_at ?? null,
       };
       if (shouldFlagUnproven(auditInputs)) {
-        // An earlier reason (duplicate / multi_device) wins — the guard is the
-        // WHERE, not the stale step-3 read, so a concurrent flag can't be lost.
+        // First writer sets the reason outright; the guard is the WHERE, not the
+        // stale step-3 read, so a concurrent flag can't be lost.
         const { data: flaggedRows } = await supabase
           .from('activity_sessions')
           .update({ flagged: true, flag_reason: 'unproven_duration' })
           .eq('id', session.id)
           .eq('flagged', false)
           .select('id');
-        if ((flaggedRows ?? []).length > 0) {
+        let recorded = (flaggedRows ?? []).length > 0;
+        if (!recorded) {
+          // ⚠ AN EARLIER REASON USED TO WIN OUTRIGHT (2026-08-26). Field 08-20,
+          // session fb6f30ae: 103 min claimed against a visit clamped to 0.0 min
+          // with zero proofs — the exact case this audit exists for — and the
+          // step-7 `duplicate` flag (a wearable row the same day) had already
+          // taken the column, so the verdict was never written anywhere. The
+          // column is single-valued; APPEND rather than overwrite, guarded on the
+          // value we read so a concurrent writer can't be clobbered.
+          const { data: cur } = await supabase
+            .from('activity_sessions')
+            .select('flag_reason')
+            .eq('id', session.id)
+            .maybeSingle();
+          const existing = (cur?.flag_reason ?? '') as string;
+          const reasons = existing.split(',').map((r) => r.trim()).filter(Boolean);
+          if (!reasons.includes('unproven_duration')) {
+            const { data: appended } = await supabase
+              .from('activity_sessions')
+              .update({ flagged: true, flag_reason: [...reasons, 'unproven_duration'].join(',') })
+              .eq('id', session.id)
+              .eq('flag_reason', existing)
+              .select('id');
+            recorded = (appended ?? []).length > 0;
+          }
+        }
+        if (recorded) {
           console.log(
             `[claim-points] flagged unproven_duration: session ${session.id} ` +
             `claimed ${session.duration_sec}s, proven ${provenSec(auditInputs)}s` +

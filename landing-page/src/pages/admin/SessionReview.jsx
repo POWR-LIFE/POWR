@@ -13,6 +13,12 @@ const FLAG_REASONS = {
     unproven_duration: { label: 'Unproven Duration', color: '#8B5CF6' },
 };
 const flagReason = (r) => FLAG_REASONS[r] || { label: 'Flagged', color: '#999' };
+// claim-points APPENDS a second verdict (e.g. 'duplicate,unproven_duration')
+// rather than losing it — render one chip per reason.
+const flagReasons = (raw) => {
+    const keys = String(raw || '').split(',').map((k) => k.trim()).filter(Boolean);
+    return (keys.length ? keys : ['']).map((k) => ({ key: k || 'flagged', ...flagReason(k) }));
+};
 
 const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -203,14 +209,13 @@ export default function SessionReview() {
                                             </span>
                                         </td>
                                         <td className="px-6 py-5">
-                                            {(() => {
-                                                const r = flagReason(session.flag_reason);
-                                                return (
-                                                    <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border" style={{ color: r.color, borderColor: `${r.color}33` }}>
+                                            <div className="flex flex-wrap gap-1">
+                                                {flagReasons(session.flag_reason).map((r) => (
+                                                    <span key={r.key} className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border" style={{ color: r.color, borderColor: `${r.color}33` }}>
                                                         {r.label}
                                                     </span>
-                                                );
-                                            })()}
+                                                ))}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-5 text-right">
                                             <div className="flex items-center justify-end gap-3">
