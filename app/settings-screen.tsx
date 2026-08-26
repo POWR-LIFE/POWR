@@ -35,7 +35,6 @@ import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifica
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
 import { formatMemberId } from '@/shared/memberId';
-import * as WebBrowser from 'expo-web-browser';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -143,15 +142,9 @@ export default function SettingsScreen() {
     })();
   }, []);
 
-  // The portal is web-only (powr.life/affiliate; /creator redirects). Open it in the in-app browser
-  // sheet so dismissing lands back here; the creator signs in with the same
-  // email and password as the app.
-  const openCreatorPortal = useCallback(() => {
-    const url = 'https://powr.life/affiliate';
-    WebBrowser.openBrowserAsync(url).catch(() => {
-      Linking.openURL(url).catch(() => {});
-    });
-  }, []);
+  // The in-app affiliate home (code, share, numbers, next reward); it hands
+  // off to the web portal already signed in for the desk work.
+  const openAffiliate = useCallback(() => { router.push('/affiliate'); }, [router]);
 
   // Copies the STORED form (no gap) — that's what the signup invite field,
   // the friend-code scanner and every admin lookup accept.
@@ -379,10 +372,9 @@ export default function SettingsScreen() {
             <View style={styles.card}>
               <RowLink
                 icon="sparkles-outline"
-                label="Affiliate Portal"
-                sublabel="Your link, signups and rewards · sign in with this account"
-                trailingIcon="open-outline"
-                onPress={openCreatorPortal}
+                label="Affiliate"
+                sublabel="Your code, link, signups and rewards"
+                onPress={openAffiliate}
                 isLast
               />
             </View>
