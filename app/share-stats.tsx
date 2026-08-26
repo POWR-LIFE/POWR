@@ -5,7 +5,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import * as Sharing from 'expo-sharing';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   Share,
@@ -18,8 +20,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
 import { ShareCard } from '@/components/share/ShareCard';
-import { tracked } from '@/lib/analytics';
+import { trackEvent, tracked } from '@/lib/analytics';
 import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
+import { awaitCirclePhoto, type CirclePhoto } from '@/lib/circlePhoto';
 import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, fetchLevelUpSummary, publishShareCard, type ShareSummary } from '@/lib/api/share';
 import { SAVE_CARD_ENABLED, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
 
@@ -93,6 +96,11 @@ export default function ShareStatsScreen() {
   // A level-up share is about the new mark — lead with it.
   const [bgMode, setBgMode]       = useState<BgMode>(mode === 'level-up' ? 'level' : 'cover');
   const [galleryUri, setGalleryUri] = useState<string | null>(null);
+  // A photo the user took or picked for the circle. Null = fall back to the
+  // profile avatar. Separate from galleryUri, which is the full-bleed background.
+  const [photoUri, setPhotoUri]     = useState<string | null>(null);
+  // Set alongside photoUri when the shot came from the circle viewfinder.
+  const [photoCrop, setPhotoCrop]   = useState<CirclePhoto['crop'] & { width: number; height: number } | null>(null);
 
   useEffect(() => {
     if (mode === 'check-in') {
@@ -151,9 +159,92 @@ export default function ShareStatsScreen() {
     }
   }
 
+  /**
+   * Take or pick a photo for the circle.
+   *
+   * Camera → the in-app circle viewfinder (app/circle-camera), which hands
+   * back the shot plus the crop the ring covered, so the card shows exactly
+   * what the user framed.
+   *
+   * Library → mirrors edit-profile's picker: square crop on iOS; no crop step
+   * on Android, where the crop Activity can tear down the RN Activity and lose
+   * the pick. The card centre-crops with `cover`, so it still lands correctly.
+   */
+  async function pickPhoto(source: 'camera' | 'library') {
+    try {
+      if (source === 'camera') {
+        const pending = awaitCirclePhoto();
+        router.push('/circle-camera');
+        const shot = await pending;
+        if (!shot) return;
+        trackEvent('share_stats_photo', { source });
+        setPhotoUri(shot.uri);
+        setPhotoCrop({ ...shot.crop, width: shot.width, height: shot.height });
+        setBgMode('cover');
+        return;
+      }
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        setNotice('Photo library access is required to use your own photo.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: Platform.OS !== 'android',
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (!result.canceled && result.assets[0]) {
+        trackEvent('share_stats_photo', { source });
+        setPhotoUri(result.assets[0].uri);
+        setPhotoCrop(null);
+        setBgMode('cover');
+      }
+    } catch (e) {
+      console.warn('[ShareStats] photo picker error:', e);
+      setNotice('Could not get that photo. Please try again.');
+    }
+  }
+
+  /**
+   * The My Photo chip: first tap selects it (keeping whatever photo is in the
+   * circle); tapping it while active opens the source sheet. iOS gets the
+   * native action sheet; Android an Alert, which caps at three buttons — so
+   * "Use profile photo" replaces the explicit cancel there (tap-outside dismisses).
+   */
+  function showPhotoSheet() {
+    const hasAvatar = !!summary?.profile.avatarUrl;
+    const actions: { label: string; onPress?: () => void; cancel?: boolean }[] = [
+      { label: 'Take photo',           onPress: () => pickPhoto('camera') },
+      { label: 'Choose from library',  onPress: () => pickPhoto('library') },
+    ];
+    if (photoUri && hasAvatar) actions.push({ label: 'Use profile photo', onPress: () => { setPhotoUri(null); setPhotoCrop(null); } });
+    if (Platform.OS === 'ios') {
+      actions.push({ label: 'Cancel', cancel: true });
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: actions.map(a => a.label),
+          cancelButtonIndex: actions.length - 1,
+          userInterfaceStyle: 'dark',
+        },
+        i => actions[i]?.onPress?.(),
+      );
+    } else {
+      if (actions.length < 3) actions.push({ label: 'Cancel', cancel: true });
+      Alert.alert(
+        'My photo',
+        undefined,
+        actions.map(a => ({ text: a.label, onPress: a.onPress, style: a.cancel ? 'cancel' : 'default' })),
+        { cancelable: true },
+      );
+    }
+  }
+
   function handleBgOption(key: BgMode) {
     if (key === 'gallery') {
       pickFromGallery();
+    } else if (key === 'cover' && bgMode === 'cover') {
+      showPhotoSheet();
     } else {
       setBgMode(key);
     }
@@ -166,7 +257,7 @@ export default function ShareStatsScreen() {
   }
 
   function effectiveAvatarUri(): string | null {
-    if (bgMode === 'cover') return summary?.profile.avatarUrl ?? null;
+    if (bgMode === 'cover') return photoUri ?? summary?.profile.avatarUrl ?? null;
     return null;
   }
 
@@ -284,6 +375,7 @@ export default function ShareStatsScreen() {
             width={previewWidth}
             backgroundSource={effectiveBgSource()}
             avatarUri={effectiveAvatarUri()}
+            avatarCrop={bgMode === 'cover' && photoUri ? photoCrop : null}
             showLevel={bgMode === 'level'}
           />
         )}
@@ -293,8 +385,12 @@ export default function ShareStatsScreen() {
       {summary && (
         <View style={styles.pickerRow}>
           {BG_OPTIONS.map(opt => {
-              const isGalleryWithImage = opt.key === 'gallery' && galleryUri !== null;
+            const isGalleryWithImage = opt.key === 'gallery' && galleryUri !== null;
             const isActive = opt.key === bgMode;
+            // Active My Photo chip shows a camera: a second tap changes the photo.
+            const icon = isGalleryWithImage ? 'checkmark-circle'
+              : opt.key === 'cover' && isActive ? 'camera-outline'
+              : opt.icon;
             return (
               <Pressable
                 key={opt.key}
@@ -306,7 +402,7 @@ export default function ShareStatsScreen() {
                 ]}
               >
                 <Ionicons
-                  name={isGalleryWithImage ? 'checkmark-circle' : opt.icon}
+                  name={icon}
                   size={16}
                   color={isActive ? GOLD : DIM}
                 />

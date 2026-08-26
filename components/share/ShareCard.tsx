@@ -35,11 +35,17 @@ interface ShareCardProps extends ViewProps {
   backgroundSource?: string | number | null;
   /** When provided, renders a circular avatar in the upper half of the card. */
   avatarUri?: string | null;
+  /**
+   * Which part of `avatarUri` fills the circle — the square the circle-camera
+   * ring covered, normalised to the oriented photo (see lib/circlePhoto).
+   * Omitted → centre-crop with `cover`.
+   */
+  avatarCrop?: { width: number; height: number; x: number; y: number; size: number } | null;
   /** Renders the member's current level mark centred in the upper half of the card. */
   showLevel?: boolean;
 }
 
-export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, backgroundSource, avatarUri, showLevel, style, ...rest }, ref) => {
+export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, backgroundSource, avatarUri, avatarCrop, showLevel, style, ...rest }, ref) => {
   const height = (width * 16) / 9;
   // Scale tokens proportionally to width — base sizes designed for ~1080dp.
   const s = width / 1080;
@@ -107,18 +113,46 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
       {/* Circular avatar — My Photo mode */}
       {avatarUri ? (
         <View style={[StyleSheet.absoluteFillObject, styles.centreSlot]} pointerEvents="none">
-          <Image
-            source={{ uri: avatarUri }}
-            style={{
-              width: 520 * s,
-              height: 520 * s,
-              borderRadius: 260 * s,
-              borderWidth: 3 * s,
-              borderColor: 'rgba(255,255,255,0.25)',
-            }}
-            contentFit="cover"
-            transition={0}
-          />
+          {avatarCrop ? (
+            // Crop by layout, not by pixels: the photo is laid out so the crop
+            // square exactly fills the circle, and the clip does the rest.
+            <View
+              style={{
+                width: 520 * s,
+                height: 520 * s,
+                borderRadius: 260 * s,
+                borderWidth: 3 * s,
+                borderColor: 'rgba(255,255,255,0.25)',
+                overflow: 'hidden',
+              }}
+            >
+              <Image
+                source={{ uri: avatarUri }}
+                style={{
+                  position: 'absolute',
+                  width: (520 * s) / avatarCrop.size,
+                  height: ((520 * s) / avatarCrop.size) * (avatarCrop.height / avatarCrop.width),
+                  left: -3 * s - (avatarCrop.x / avatarCrop.size) * 520 * s,
+                  top: -3 * s - ((avatarCrop.y * (avatarCrop.height / avatarCrop.width)) / avatarCrop.size) * 520 * s,
+                }}
+                contentFit="fill"
+                transition={0}
+              />
+            </View>
+          ) : (
+            <Image
+              source={{ uri: avatarUri }}
+              style={{
+                width: 520 * s,
+                height: 520 * s,
+                borderRadius: 260 * s,
+                borderWidth: 3 * s,
+                borderColor: 'rgba(255,255,255,0.25)',
+              }}
+              contentFit="cover"
+              transition={0}
+            />
+          )}
         </View>
       ) : null}
 
