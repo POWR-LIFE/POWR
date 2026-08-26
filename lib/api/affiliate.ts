@@ -49,15 +49,33 @@ export interface AffiliateStep {
     creator_rewards: { name: string; description: string | null; image_url: string | null; value_label: string | null } | null;
 }
 
+export interface AffiliateMilestone {
+    step_id: string;
+    fulfilment_status: 'owed' | 'approved' | 'shipped' | 'delivered' | 'cancelled' | 'not_applicable';
+    carrier: string | null;
+    tracking_number: string | null;
+}
+
 export interface AffiliateOverview {
     profile: AffiliateProfile;
     funnel: AffiliateFunnel | null;
     program: AffiliateProgram | null;
     steps: AffiliateStep[];
     reachedStepIds: string[];
+    milestones: AffiliateMilestone[];
     conversions: number;
     signups: number;
 }
+
+/** What a reached rung's parcel is doing, in the affiliate's words. */
+export const FULFILMENT_LABEL: Record<AffiliateMilestone['fulfilment_status'], string | null> = {
+    owed: 'Being sorted',
+    approved: 'Approved — packing',
+    shipped: 'Shipped',
+    delivered: 'Delivered',
+    cancelled: 'Cancelled',
+    not_applicable: null,
+};
 
 /** null = this member is not an affiliate. */
 export async function fetchAffiliateOverview(days = 30): Promise<AffiliateOverview | null> {
@@ -76,7 +94,7 @@ export async function fetchAffiliateOverview(days = 30): Promise<AffiliateOvervi
     const [funnelRes, progRes, milestonesRes, convRes, signRes] = await Promise.all([
         supabase.rpc('creator_funnel', { p_days: days, p_creator_id: null }),
         supabase.from('creator_programs').select('id, step_counting, creator_conversion_points, invitee_bonus_points, event_signup_points').limit(1),
-        supabase.from('creator_milestones').select('step_id').eq('creator_id', profile.id),
+        supabase.from('creator_milestones').select('step_id, fulfilment_status, carrier, tracking_number').eq('creator_id', profile.id),
         supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('creator_id', profile.id).not('converted_at', 'is', null),
         supabase.from('referrals').select('id', { count: 'exact', head: true }).eq('creator_id', profile.id),
     ]);
@@ -99,6 +117,7 @@ export async function fetchAffiliateOverview(days = 30): Promise<AffiliateOvervi
         program,
         steps,
         reachedStepIds: (milestonesRes.data ?? []).map((m: { step_id: string }) => m.step_id),
+        milestones: (milestonesRes.data ?? []) as AffiliateMilestone[],
         conversions: convRes.count ?? 0,
         signups: signRes.count ?? 0,
     };

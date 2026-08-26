@@ -20,6 +20,7 @@ import {
     affiliateLink,
     affiliateShareText,
     fetchAffiliateOverview,
+    FULFILMENT_LABEL,
     ladderPosition,
     openAffiliatePortal,
     stepName,
@@ -176,21 +177,42 @@ export default function AffiliateScreen() {
                             <Text style={styles.sectionLabel}>THE LADDER</Text>
                             <View style={styles.card}>
                                 {data.steps.map((s, i) => {
-                                    const hit = data.reachedStepIds.includes(s.id);
+                                    const milestone = data.milestones.find((m) => m.step_id === s.id) ?? null;
+                                    const hit = !!milestone;
                                     const isNext = next?.id === s.id;
+                                    const parcel = milestone ? FULFILMENT_LABEL[milestone.fulfilment_status] : null;
+                                    const needsAddress = milestone?.fulfilment_status === 'owed' && !data.profile.shipping_address;
                                     return (
                                         <View key={s.id} style={[styles.rung, i < data.steps.length - 1 && styles.rungBorder]}>
                                             <View style={[styles.rungDot, hit && styles.rungDotHit, isNext && styles.rungDotNext]}>
                                                 {hit ? <Ionicons name="checkmark" size={12} color="#080808" /> : isNext ? <View style={styles.rungDotInner} /> : <Ionicons name="lock-closed" size={10} color={MUTED} />}
                                             </View>
                                             <View style={{ flex: 1, minWidth: 0 }}>
-                                                <Text style={[styles.rungName, !hit && !isNext && { color: DIM }]} numberOfLines={1}>{stepName(s)}</Text>
+                                                <View style={styles.rungTop}>
+                                                    <Text style={[styles.rungName, !hit && !isNext && { color: DIM }]} numberOfLines={1}>{stepName(s)}</Text>
+                                                    {hit && <Text style={styles.reached}>REACHED</Text>}
+                                                    {isNext && <Text style={styles.here}>YOU’RE HERE</Text>}
+                                                </View>
                                                 <Text style={styles.rungMeta}>
                                                     {s.n} {pos.basisWord}{s.creator_rewards?.value_label ? ` · ${s.creator_rewards.value_label}` : ''}{s.points > 0 ? ` · +${s.points.toLocaleString()} pts` : ''}
                                                 </Text>
+                                                {parcel && (
+                                                    <View style={styles.parcelRow}>
+                                                        <Ionicons name="cube-outline" size={12} color={GOLD} />
+                                                        <Text style={styles.parcelText}>{parcel.toUpperCase()}</Text>
+                                                        {milestone?.tracking_number ? (
+                                                            <Text style={styles.parcelTracking}>{milestone.carrier ? `${milestone.carrier} ` : ''}{milestone.tracking_number}</Text>
+                                                        ) : null}
+                                                    </View>
+                                                )}
+                                                {needsAddress && (
+                                                    <Pressable onPress={() => openPortal('/settings')} hitSlop={6} style={styles.addressRow} accessibilityRole="button">
+                                                        <Ionicons name="location-outline" size={12} color="#fbbf24" />
+                                                        <Text style={styles.addressText}>Add your address so we can send this</Text>
+                                                        <Ionicons name="open-outline" size={11} color="#fbbf24" />
+                                                    </Pressable>
+                                                )}
                                             </View>
-                                            {hit && <Text style={styles.reached}>REACHED</Text>}
-                                            {isNext && <Text style={styles.here}>YOU’RE HERE</Text>}
                                         </View>
                                     );
                                 })}
@@ -276,13 +298,19 @@ const styles = StyleSheet.create({
     statValue: { fontSize: 28, fontWeight: '300', letterSpacing: -0.5, color: TEXT, fontVariant: ['tabular-nums'] },
     statHint: { fontSize: 10, color: MUTED, marginTop: 2 },
 
-    rung: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+    rung: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 12 },
     rungBorder: { borderBottomWidth: 1, borderBottomColor: BORDER },
     rungDot: { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.04)' },
     rungDotHit: { backgroundColor: GOLD, borderColor: GOLD },
     rungDotNext: { borderColor: GOLD },
     rungDotInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: GOLD },
-    rungName: { fontSize: 14, fontWeight: '500', color: TEXT },
+    rungTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    rungName: { fontSize: 14, fontWeight: '500', color: TEXT, flexShrink: 1 },
+    parcelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+    parcelText: { fontSize: 9, fontWeight: '800', letterSpacing: 2, color: GOLD },
+    parcelTracking: { fontSize: 11, color: DIM, fontVariant: ['tabular-nums'] },
+    addressRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+    addressText: { fontSize: 11, fontWeight: '600', color: '#fbbf24', textDecorationLine: 'underline' },
     rungMeta: { fontSize: 10, fontWeight: '700', letterSpacing: 1, color: MUTED, marginTop: 2 },
     reached: { fontSize: 8, fontWeight: '800', letterSpacing: 2, color: GOLD },
     here: { fontSize: 8, fontWeight: '800', letterSpacing: 2, color: DIM },
