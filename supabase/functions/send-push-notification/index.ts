@@ -25,6 +25,8 @@ type NotificationType =
   | 'vault_ready'
   | 'vault_granted'
   | 'vault_banked'
+  | 'creator_invite_eligible'
+  | 'creator_invite_approved'
   // One-shot setup notice when a user loses 'always' location (dispatch-daily-
   // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
   | 'location_permission_lost'
@@ -87,6 +89,8 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'vault_granted':
     case 'vault_banked':
       return 'rewards';
+    case 'creator_invite_eligible':
+    case 'creator_invite_approved':
     case 'level_up':
       return 'rewards';
     case 'session_completed':
@@ -413,6 +417,32 @@ function buildMessage(
         };
       }
 
+      case 'creator_invite_eligible': {
+        // Fired by trg_notify_creator_invite_eligible the moment a member's
+        // converted referrals cross the creator-invite threshold. One-shot by
+        // construction (exactly-equals in the trigger) plus daily_cap 1.
+        const converted = Math.max(0, Math.round(Number(payload.converted ?? 0)));
+        return {
+          title: "You're bringing people in 🙌",
+          body: `${converted} people you invited have logged their first verified workout. Want to become a POWR Creator? Open the app to find out more.`,
+          data: { type, route: '/(tabs)/index', converted },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+      case 'creator_invite_approved': {
+        // An admin approved their request — the creators row and portal link
+        // exist by the time this fires (approval order in CreatorRequests.jsx).
+        return {
+          title: "You're a POWR Creator ✨",
+          body: 'Your creator portal is ready — your link, signups and rewards in one place. Find it under Settings.',
+          data: { type, route: '/settings-screen' },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
       case 'level_up': {
         // Fired by the vault_level_up_push ledger trigger — the same detection
         // that banks the level-up vault bonus, so it fires however the points
@@ -957,6 +987,9 @@ Deno.serve(async (req: Request) => {
     // of; the admin kill-switch in notification_config still covers it.
     const prefColumn: string | null =
       type === 'location_permission_lost' ? null
+      // Account-level one-shots, not recurring nudges: no toggle, admin kill-switch only.
+      : type === 'creator_invite_eligible' ? null
+      : type === 'creator_invite_approved' ? null
       : type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
       : type === 'session_upgraded' ? 'session_completed'
       : type === 'vault_unlocked' ? 'points_milestone'

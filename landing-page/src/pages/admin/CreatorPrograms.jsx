@@ -717,6 +717,7 @@ export function CreatorTabs() {
         { label: 'Programmes', to: '/admin/creators/programmes' },
         { label: 'Rewards',    to: '/admin/creators/rewards' },
         { label: 'Fulfilment', to: '/admin/creators/fulfilment' },
+        { label: 'Requests',   to: '/admin/creators/requests' },
     ];
     // Colour lives on the inner span: style.css has an unlayered
     // `a { color: inherit }` that silently beats any text-* utility on an <a>.
