@@ -95,6 +95,8 @@ import CreatorLinks from './pages/creator/CreatorLinks';
 import CreatorConversions from './pages/creator/CreatorConversions';
 import CreatorRewards from './pages/creator/CreatorRewards';
 import CreatorSettings from './pages/creator/CreatorSettings';
+import { CreatorShell } from './pages/creator/CreatorShell';
+import { INPUT as CREATOR_INPUT, LABEL as CREATOR_LABEL, BTN_GOLD as CREATOR_BTN } from './pages/creator/ui';
 import LandingV2 from './landing/LandingV2';
 import PartnersPage from './landing/partners/PartnersPage';
 import CookiePolicy from './pages/CookiePolicy';
@@ -107,7 +109,7 @@ import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
 
 // --- Auth Context ---
-const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, creatorProgramEnabled: false, placementsEnabled: false, deliveryMethod: undefined, loading: true });
+export const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, creatorProgramEnabled: false, placementsEnabled: false, deliveryMethod: undefined, loading: true });
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
 const ACTING_CREATOR_KEY = 'powr_acting_creator';
@@ -500,33 +502,23 @@ const CreatorLogin = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] fixed inset-0 z-[100]">
-            <div className="w-full max-w-md p-8 bg-white border border-[#E6E6E1] rounded-2xl shadow-2xl">
-                <div className="flex justify-center mb-8">
-                    <img src="/powr-logo-black.png" alt="POWR" className="h-12" />
+        <CreatorShell eyebrow="Creator Portal" title="Welcome back" sub="Sign in with your POWR account — the same email and password you use in the app.">
+            <form onSubmit={handleLogin} className="space-y-5">
+                <div>
+                    <label className={CREATOR_LABEL}>Email address</label>
+                    <input type="email" className={CREATOR_INPUT} value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" />
                 </div>
-                <h2 className="text-2xl font-light text-center mb-2 tracking-tight">Creator Portal</h2>
-                <p className="text-center text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-8">Track your link</p>
-                <form onSubmit={handleLogin} className="space-y-6">
-                    <div>
-                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Email address</label>
-                        <input type="email" className="w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]" value={email} onChange={e => setEmail(e.target.value)} required />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Password</label>
-                        <input type="password" className="w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]" value={password} onChange={e => setPassword(e.target.value)} required />
-                    </div>
-                    {error && <div className="text-red-400 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-lg">{error}</div>}
-                    {status && <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-lg animate-pulse">{status}</div>}
-                    <button type="submit" disabled={loading} className="w-full h-12 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-lg hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-50">
-                        {loading ? 'Processing...' : 'Sign In'}
-                    </button>
-                    <div className="text-center pt-2">
-                        <Link to="/" className="text-[10px] uppercase tracking-widest text-[#AAAAAA] hover:text-[#8a7600] transition-colors">Back to home</Link>
-                    </div>
-                </form>
-            </div>
-        </div>
+                <div>
+                    <label className={CREATOR_LABEL}>Password</label>
+                    <input type="password" className={CREATOR_INPUT} value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
+                </div>
+                {error && <div className="text-red-500 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}
+                {status && <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-xl animate-pulse">{status}</div>}
+                <button type="submit" disabled={loading} className={`${CREATOR_BTN} w-full`}>
+                    {loading ? 'Processing...' : 'Sign In'}
+                </button>
+            </form>
+        </CreatorShell>
     );
 };
 
@@ -637,16 +629,11 @@ const PartnerProtectedRoute = ({ children }) => {
 
 // --- Creator programme closed (master switch off) ---
 const CreatorClosed = () => (
-    <div className="min-h-screen flex items-center justify-center bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] fixed inset-0 z-[100]">
-        <div className="w-full max-w-md p-10 bg-white border border-[#E6E6E1] rounded-3xl shadow-2xl text-center">
-            <img src="/powr-logo-black.png" alt="POWR" className="h-10 mx-auto mb-8" />
-            <h2 className="text-2xl font-light tracking-tight mb-3">Not open yet</h2>
-            <p className="text-sm text-[#888] font-light leading-relaxed mb-8">
-                The creator programme isn't live. If you've been invited, we'll let you know the moment it opens.
-            </p>
-            <Link to="/" className="text-[10px] uppercase tracking-widest text-[#AAAAAA] hover:text-[#8a7600] transition-colors">Back to home</Link>
+    <CreatorShell eyebrow="Creator Portal" title="Not open yet" sub="The creator programme isn't live. If you've been invited, we'll let you know the moment it opens.">
+        <div className="text-center">
+            <Link to="/" className={CREATOR_BTN} style={{ color: '#080808' }}>Back to home</Link>
         </div>
-    </div>
+    </CreatorShell>
 );
 
 // --- Creator Protected Route ---
@@ -660,7 +647,7 @@ const CreatorProtectedRoute = ({ children }) => {
         <div className="min-h-screen bg-[#F4F4F1] flex items-center justify-center fixed inset-0 z-[100]">
             <div className="flex flex-col items-center gap-4">
                 <div className="w-8 h-8 border-2 border-[#E8D200] border-t-transparent rounded-full animate-spin" />
-                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">Loading portal...</p>
+                <p className="text-[10px] uppercase tracking-widest text-[#BBBBBB]">Loading portal...</p>
             </div>
         </div>
     );

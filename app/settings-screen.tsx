@@ -35,6 +35,7 @@ import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifica
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
 import { formatMemberId } from '@/shared/memberId';
+import * as WebBrowser from 'expo-web-browser';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -64,6 +65,9 @@ export default function SettingsScreen() {
   const { signOut, user, updateUserMetadata } = useAuth();
 
   const [isAdmin, setIsAdmin] = React.useState(false);
+  // Granted a creator profile (admin links their app account in creator_users).
+  // RLS lets a member read only their own link row, so a hit means "you".
+  const [isCreator, setIsCreator] = React.useState(false);
   // The member's POWR ID (= profiles.referral_code, see shared/memberId). It is
   // the one string they can read to staff at an event or to support and be
   // found by — the admin user search, event roster and Live Ops all match it.
@@ -130,7 +134,23 @@ export default function SettingsScreen() {
         .single();
       if (data?.is_admin) setIsAdmin(true);
       if (data?.referral_code) setMemberId(data.referral_code);
+      const { data: creatorLink } = await supabase
+        .from('creator_users')
+        .select('creator_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (creatorLink?.creator_id) setIsCreator(true);
     })();
+  }, []);
+
+  // The portal is web-only (powr.life/creator). Open it in the in-app browser
+  // sheet so dismissing lands back here; the creator signs in with the same
+  // email and password as the app.
+  const openCreatorPortal = useCallback(() => {
+    const url = 'https://powr.life/creator';
+    WebBrowser.openBrowserAsync(url).catch(() => {
+      Linking.openURL(url).catch(() => {});
+    });
   }, []);
 
   // Copies the STORED form (no gap) — that's what the signup invite field,
@@ -351,6 +371,23 @@ export default function SettingsScreen() {
             />
           ) : null}
         </View>
+
+        {/* ── Creator ──────────────────────────────────────── */}
+        {isCreator && (
+          <>
+            <SectionLabel label="Creator" />
+            <View style={styles.card}>
+              <RowLink
+                icon="sparkles-outline"
+                label="Creator Portal"
+                sublabel="Your link, signups and rewards · sign in with this account"
+                trailingIcon="open-outline"
+                onPress={openCreatorPortal}
+                isLast
+              />
+            </View>
+          </>
+        )}
 
         {/* ── Points ───────────────────────────────────────── */}
         <SectionLabel label="Points" />

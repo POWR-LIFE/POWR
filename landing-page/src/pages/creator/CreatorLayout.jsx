@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Link2, Users, Gift, Settings, LogOut, ChevronRight, Search, Eye } from 'lucide-react';
+import { LayoutDashboard, Link2, Users, Gift, Settings, LogOut, ChevronRight, Search, Eye, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
+import { C, INPUT } from './ui';
 
 // --- Admin-only: pick which creator to preview the portal as ---
 // Mirrors AdminPartnerPicker. Unlike brands (which have no table of their own),
@@ -31,8 +32,8 @@ function AdminCreatorPicker({ onSelect }) {
         : creators;
 
     return (
-        <div className="min-h-screen bg-[#F4F4F1] font-['Outfit'] flex items-center justify-center p-8">
-            <div className="w-full max-w-xl bg-white border border-[#E6E6E1] rounded-3xl p-10 shadow-2xl">
+        <div className="min-h-screen bg-[#F4F4F1] font-['Outfit'] flex items-center justify-center p-4 sm:p-8">
+            <div className="w-full max-w-xl bg-white border border-[#E6E6E1] rounded-3xl p-6 sm:p-10">
                 <div className="flex items-center gap-3 mb-2">
                     <Eye size={16} className="text-[#8a7600]" />
                     <span className="text-[10px] uppercase tracking-[0.4em] text-[#8a7600] font-black">Admin Preview</span>
@@ -48,7 +49,7 @@ function AdminCreatorPicker({ onSelect }) {
                         placeholder="Search creators..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="w-full h-13 pl-12 pr-5 py-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
+                        className={`${INPUT} pl-12`}
                     />
                 </div>
 
@@ -60,9 +61,9 @@ function AdminCreatorPicker({ onSelect }) {
                     <div className="max-h-[40vh] overflow-y-auto space-y-2 pr-1">
                         {filtered.length === 0 ? (
                             <div className="text-center py-8">
-                                <p className="text-[10px] uppercase tracking-[0.3em] text-[#CCCCCC] font-black mb-4">No creators yet</p>
-                                <Link to="/admin/creators" className="text-[10px] uppercase tracking-[0.3em] text-[#8a7600] font-black hover:underline">
-                                    Add the first one
+                                <p className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-4">No creators yet</p>
+                                <Link to="/admin/creators" className="text-[10px] uppercase tracking-[0.3em] font-black hover:underline">
+                                    <span className="text-[#8a7600]">Add the first one</span>
                                 </Link>
                             </div>
                         ) : filtered.map(c => (
@@ -74,24 +75,26 @@ function AdminCreatorPicker({ onSelect }) {
                                 {c.avatar_url ? (
                                     <img src={c.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
                                 ) : (
-                                    <div className="w-9 h-9 rounded-full bg-white border border-[#E6E6E1] flex items-center justify-center text-[10px] font-black text-[#8a7600] uppercase shrink-0">
+                                    <div className="w-9 h-9 rounded-full bg-[#E8D200]/10 border border-[#E8D200]/20 flex items-center justify-center text-[10px] font-black text-[#8a7600] uppercase shrink-0">
                                         {c.display_name?.[0]}
                                     </div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                    <div className="text-[13px] font-bold text-[#222] truncate">{c.display_name}</div>
+                                    <div className="text-[13px] font-bold text-[#1A1A1A] truncate">{c.display_name}</div>
                                     <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mt-0.5">
                                         @{c.handle}{c.status !== 'active' ? ` · ${c.status}` : ''}
                                     </div>
                                 </div>
-                                <ChevronRight size={15} className="text-[#CCCCCC] group-hover:text-[#8a7600] transition-colors shrink-0" />
+                                <ChevronRight size={15} className="text-[#BBBBBB] group-hover:text-[#8a7600] transition-colors shrink-0" />
                             </button>
                         ))}
                     </div>
                 )}
 
                 <div className="mt-8 pt-6 border-t border-[#E6E6E1] text-center">
-                    <Link to="/admin" className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] hover:text-[#8a7600] font-black transition-colors">Back to Admin</Link>
+                    <Link to="/admin" className="text-[10px] uppercase tracking-[0.3em] font-black transition-colors">
+                        <span className="text-[#BBBBBB] hover:text-[#8a7600]">Back to Admin</span>
+                    </Link>
                 </div>
             </div>
         </div>
@@ -99,11 +102,11 @@ function AdminCreatorPicker({ onSelect }) {
 }
 
 const NAV = [
-    { label: 'Overview',    path: '/creator',             icon: LayoutDashboard },
-    { label: 'My Link',     path: '/creator/links',       icon: Link2           },
-    { label: 'Signups',     path: '/creator/conversions', icon: Users           },
-    { label: 'Rewards',     path: '/creator/rewards',     icon: Gift            },
-    { label: 'Settings',    path: '/creator/settings',    icon: Settings        },
+    { label: 'Overview', short: 'Home',    path: '/creator',             icon: LayoutDashboard },
+    { label: 'My Link',  short: 'Link',    path: '/creator/links',       icon: Link2           },
+    { label: 'Signups',  short: 'Signups', path: '/creator/conversions', icon: Users           },
+    { label: 'Rewards',  short: 'Rewards', path: '/creator/rewards',     icon: Gift            },
+    { label: 'Settings', short: 'You',     path: '/creator/settings',    icon: Settings        },
 ];
 
 const PATH_LABELS = {
@@ -114,13 +117,31 @@ const PATH_LABELS = {
     settings:      'Settings',
 };
 
+function Avatar({ creator, size = 'w-10 h-10' }) {
+    return creator.avatar_url ? (
+        <img
+            src={creator.avatar_url}
+            alt={creator.display_name}
+            className={`${size} rounded-full object-cover border border-[#E6E6E1] shrink-0`}
+        />
+    ) : (
+        <div className={`${size} rounded-full bg-[#E8D200]/10 border border-[#E8D200]/25 flex items-center justify-center text-[11px] font-black text-[#8a7600] uppercase shrink-0`}>
+            {creator.display_name?.[0]}
+        </div>
+    );
+}
+
 export function CreatorLayout({ children }) {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, creatorData, isAdmin, isActingCreator, setActingCreator } = useAuth();
+    const [menuOpen, setMenuOpen] = useState(false);
 
     const segment = location.pathname.split('/')[2] || 'creator';
     const currentLabel = PATH_LABELS[segment] || segment;
+
+    // Route change closes the mobile account sheet, and the page starts at the top.
+    useEffect(() => { setMenuOpen(false); window.scrollTo(0, 0); }, [location.pathname]);
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
@@ -132,31 +153,34 @@ export function CreatorLayout({ children }) {
         return <AdminCreatorPicker onSelect={setActingCreator} />;
     }
 
+    const paused = creatorData && creatorData.status !== 'active';
+
     return (
-        <div className="flex min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808]">
-            {/* Sidebar */}
-            <aside className="w-72 flex-shrink-0 border-r border-[#E6E6E1] bg-white flex flex-col h-screen sticky top-0 z-[100]">
-                <div className="px-8 pt-8 pb-5 flex items-center justify-start pointer-events-none">
-                    <img src="/powr-logo-black.png" alt="POWR" style={{ height: '28px', width: 'auto', display: 'block' }} />
+        <div className="min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808] lg:flex">
+            {/* Ambient light: one warm glow top-left, fixed so it never scrolls
+                away. It's what stops the page reading as "a black admin panel". */}
+            <div
+                aria-hidden
+                className="fixed inset-0 pointer-events-none z-0"
+                style={{
+                    background:
+                        'radial-gradient(900px 600px at 10% -10%, rgba(232,210,0,0.09) 0%, transparent 60%),' +
+                        'radial-gradient(700px 500px at 100% 100%, rgba(232,210,0,0.04) 0%, transparent 60%)',
+                }}
+            />
+
+            {/* ── Desktop sidebar ─────────────────────────────────────────── */}
+            <aside className="hidden lg:flex w-72 flex-shrink-0 border-r border-[#E6E6E1] bg-white backdrop-blur-xl flex-col h-screen sticky top-0 z-40">
+                <div className="px-8 pt-8 pb-6 flex items-center pointer-events-none">
+                    <img src="/powr-logo-black.png" alt="POWR" style={{ height: 26, width: 'auto', display: 'block' }} />
                 </div>
 
-                {/* Creator identity card */}
                 {creatorData && (
                     <div className="mx-6 mb-5 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
                         <div className="flex items-center gap-3">
-                            {creatorData.avatar_url ? (
-                                <img
-                                    src={creatorData.avatar_url}
-                                    alt={creatorData.display_name}
-                                    className="w-10 h-10 rounded-full object-cover border border-[#E6E6E1]"
-                                />
-                            ) : (
-                                <div className="w-10 h-10 rounded-full bg-[#E8D200]/10 border border-[#E8D200]/20 flex items-center justify-center text-[10px] font-black text-[#8a7600] uppercase">
-                                    {creatorData.display_name?.[0]}
-                                </div>
-                            )}
+                            <Avatar creator={creatorData} />
                             <div className="flex-1 min-w-0">
-                                <div className="text-[11px] font-black text-[#1A1A1A] truncate">{creatorData.display_name}</div>
+                                <div className="text-[12px] font-black text-[#1A1A1A] truncate">{creatorData.display_name}</div>
                                 {/* NOT uppercased: the handle is lowercase in powr.life/join/<handle>,
                                     and showing it shouted implies a URL that would 404. */}
                                 <div className="text-[10px] tracking-[0.15em] text-[#BBBBBB] font-black mt-0.5">@{creatorData.handle}</div>
@@ -165,24 +189,12 @@ export function CreatorLayout({ children }) {
                     </div>
                 )}
 
-                {/* A paused creator's link still works — it just stops earning.
-                    Saying so here is kinder than letting them wonder why the
-                    numbers stopped moving. */}
-                {creatorData && creatorData.status !== 'active' && (
-                    <div className="mx-6 mb-5 p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl">
-                        <div className="text-[9px] uppercase tracking-[0.3em] text-amber-700 font-black mb-1">
-                            {creatorData.status}
-                        </div>
-                        <p className="text-[10px] text-[#888] leading-relaxed font-light">
-                            Your link still works, but new signups aren't earning right now. Get in touch and we'll sort it.
-                        </p>
-                    </div>
-                )}
+                {paused && <PausedNote status={creatorData.status} className="mx-6 mb-5" />}
 
                 <nav className="flex-1 px-6 space-y-1.5 overflow-y-auto">
                     <div className="px-4 mb-4">
                         <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Creator Portal</div>
-                        <div className="h-[2px] w-10 bg-[#E8D200]/60"></div>
+                        <div className="h-[2px] w-10 bg-[#E8D200]/70" />
                     </div>
                     {NAV.map(item => {
                         const active = location.pathname === item.path;
@@ -192,9 +204,10 @@ export function CreatorLayout({ children }) {
                                 to={item.path}
                                 className={`flex items-center gap-4 px-5 py-3 rounded-2xl transition-all group ${
                                     active
-                                        ? 'bg-[#E8D200] text-[#080808] shadow-[0_20px_50px_rgba(232,210,0,0.2)]'
-                                        : 'text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]'
+                                        ? 'bg-[#E8D200] shadow-[0_16px_40px_rgba(232,210,0,0.22)]'
+                                        : 'hover:bg-[#EFEFEC]'
                                 }`}
+                                style={{ color: active ? '#080808' : '#BBBBBB' }}
                             >
                                 <item.icon size={18} strokeWidth={active ? 3 : 2} className={active ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
                                 <span className="text-[11px] uppercase tracking-[0.2em] font-black">{item.label}</span>
@@ -212,21 +225,90 @@ export function CreatorLayout({ children }) {
                     )}
                     <button
                         onClick={handleSignOut}
-                        className="w-full flex items-center justify-center gap-3 h-12 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/40 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all border border-transparent hover:border-red-500/10"
+                        className="w-full flex items-center justify-center gap-3 h-12 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/50 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all border border-transparent hover:border-red-500/10"
                     >
                         <LogOut size={16} /> Sign Out
                     </button>
                 </div>
             </aside>
 
-            {/* Main */}
-            <main className="flex-1 flex flex-col h-screen overflow-hidden bg-[#F4F4F1] border-l border-[#E6E6E1]">
-                <header className="h-24 border-b border-[#E6E6E1] flex-shrink-0 flex items-center justify-between px-16 bg-[#F4F4F1]/60 backdrop-blur-3xl sticky top-0 z-50">
+            {/* ── Mobile top bar ──────────────────────────────────────────── */}
+            <header className="lg:hidden sticky top-0 z-40 bg-[#F4F4F1]/85 backdrop-blur-xl border-b border-[#E6E6E1]">
+                <div className="h-16 px-5 flex items-center justify-between gap-3">
+                    <img src="/powr-logo-black.png" alt="POWR" style={{ height: 20, width: 'auto' }} />
+                    <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-[#E8D200] shadow-[0_0_10px_rgba(232,210,0,0.7)] animate-pulse" />
+                        <span className="text-[10px] uppercase tracking-[0.3em] font-black text-[#8a7600]">{currentLabel}</span>
+                    </div>
+                    {creatorData ? (
+                        <button onClick={() => setMenuOpen(o => !o)} aria-label="Account" className="shrink-0">
+                            <Avatar creator={creatorData} size="w-9 h-9" />
+                        </button>
+                    ) : <div className="w-9" />}
+                </div>
+                {isActingCreator && (
+                    <div className="px-5 pb-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-full">
+                            <Eye size={12} className="text-[#8B5CF6] shrink-0" />
+                            <span className="text-[9px] uppercase tracking-[0.15em] font-black text-[#8B5CF6] truncate">
+                                Preview · {creatorData?.display_name}
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => setActingCreator(null)}
+                            className="h-8 px-4 text-[9px] font-black uppercase tracking-[0.15em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] shrink-0"
+                        >
+                            Switch
+                        </button>
+                    </div>
+                )}
+            </header>
+
+            {/* ── Mobile account sheet ────────────────────────────────────── */}
+            {menuOpen && creatorData && (
+                <div className="lg:hidden fixed inset-0 z-50" onClick={() => setMenuOpen(false)}>
+                    <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+                    <div
+                        className="absolute left-0 right-0 bottom-0 bg-white border-t border-[#E6E6E1] rounded-t-3xl p-6 pb-[max(24px,env(safe-area-inset-bottom))]"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <Avatar creator={creatorData} size="w-12 h-12" />
+                                <div className="min-w-0">
+                                    <div className="text-[14px] font-black text-[#1A1A1A] truncate">{creatorData.display_name}</div>
+                                    <div className="text-[10px] tracking-[0.15em] text-[#BBBBBB] font-black mt-0.5">@{creatorData.handle}</div>
+                                </div>
+                            </div>
+                            <button onClick={() => setMenuOpen(false)} className="w-9 h-9 rounded-full bg-[#F4F4F1] flex items-center justify-center text-[#888]" aria-label="Close">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        {paused && <PausedNote status={creatorData.status} className="mb-5" />}
+                        {user?.email && (
+                            <div className="mb-4 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
+                                <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
+                                <div className="text-[12px] text-[#666] truncate font-mono">{user.email}</div>
+                            </div>
+                        )}
+                        <button
+                            onClick={handleSignOut}
+                            className="w-full flex items-center justify-center gap-3 h-12 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/70 bg-red-500/5 border border-red-500/10 rounded-2xl"
+                        >
+                            <LogOut size={16} /> Sign Out
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Main ─────────────────────────────────────────────────────── */}
+            <main className="relative z-10 flex-1 flex flex-col min-w-0 lg:h-screen lg:overflow-hidden">
+                <header className="hidden lg:flex h-24 border-b border-[#E6E6E1] flex-shrink-0 items-center justify-between px-16 bg-[#F4F4F1]/70 backdrop-blur-3xl sticky top-0 z-30">
                     <div className="flex items-center gap-5">
-                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#CCCCCC]">Creator Portal</div>
-                        <ChevronRight size={13} className="text-[#CCCCCC]" />
+                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">Creator Portal</div>
+                        <ChevronRight size={13} className="text-[#BBBBBB]" />
                         <div className="flex items-center gap-3">
-                            <div className="h-1.5 w-1.5 rounded-full bg-[#E8D200] shadow-[0_0_10px_rgba(232,210,0,0.6)] animate-pulse"></div>
+                            <div className="h-1.5 w-1.5 rounded-full bg-[#E8D200] shadow-[0_0_10px_rgba(232,210,0,0.7)] animate-pulse" />
                             <div className="text-[13px] uppercase tracking-[0.3em] font-black text-[#8a7600]">{currentLabel}</div>
                         </div>
                     </div>
@@ -240,7 +322,7 @@ export function CreatorLayout({ children }) {
                             </div>
                             <button
                                 onClick={() => setActingCreator(null)}
-                                className="h-10 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#8B5CF6]/40 hover:text-[#8B5CF6] transition-all"
+                                className="h-10 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#8B5CF6]/40 hover:text-[#8B5CF6] transition-all"
                             >
                                 Switch Creator
                             </button>
@@ -248,13 +330,46 @@ export function CreatorLayout({ children }) {
                     )}
                 </header>
 
-                <div className="flex-1 overflow-y-auto">
-                    <div className="max-w-[1400px] px-16 py-10">
+                <div className="flex-1 lg:overflow-y-auto">
+                    <div className="max-w-[1400px] px-5 sm:px-8 lg:px-16 pt-6 sm:pt-8 lg:pt-10 pb-28 lg:pb-24">
                         {children}
                     </div>
-                    <div className="h-24 w-full" />
                 </div>
             </main>
+
+            {/* ── Mobile bottom tabs ──────────────────────────────────────── */}
+            <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-[#E6E6E1] pb-[env(safe-area-inset-bottom)]">
+                <div className="grid grid-cols-5 h-16">
+                    {NAV.map(item => {
+                        const active = location.pathname === item.path;
+                        return (
+                            <Link
+                                key={item.path}
+                                to={item.path}
+                                className="flex flex-col items-center justify-center gap-1.5 relative"
+                                style={{ color: active ? '#E8D200' : '#AAAAAA' }}
+                            >
+                                {active && <span className="absolute top-0 h-[2px] w-8 rounded-full bg-[#E8D200] shadow-[0_0_12px_rgba(232,210,0,0.8)]" />}
+                                <item.icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+                                <span className="text-[9px] uppercase tracking-[0.15em] font-black">{item.short}</span>
+                            </Link>
+                        );
+                    })}
+                </div>
+            </nav>
+        </div>
+    );
+}
+
+// A paused creator's link still works — it just stops earning. Saying so is
+// kinder than letting them wonder why the numbers stopped moving.
+function PausedNote({ status, className = '' }) {
+    return (
+        <div className={`p-4 bg-amber-500/[0.06] border border-amber-500/25 rounded-2xl ${className}`}>
+            <div className="text-[9px] uppercase tracking-[0.3em] text-amber-700 font-black mb-1">{status}</div>
+            <p className="text-[10px] text-[#888] leading-relaxed font-light">
+                Your link still works, but new signups aren't earning right now. Get in touch and we'll sort it.
+            </p>
         </div>
     );
 }

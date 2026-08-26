@@ -2,12 +2,20 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Clock, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
+import { Page, Card, Micro, PageTitle, Spinner, Empty, fmtDate, BTN_GHOST } from './ui';
 
 const PAGE = 50;
 
-function fmt(ts) {
-    if (!ts) return '—';
-    return new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+function StatusPill({ converted }) {
+    return converted ? (
+        <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full text-[10px] uppercase tracking-[0.15em] font-black text-[#8a7600] whitespace-nowrap">
+            <CheckCircle2 size={12} /> Converted
+        </span>
+    ) : (
+        <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[10px] uppercase tracking-[0.15em] font-black text-[#AAAAAA] whitespace-nowrap">
+            <Clock size={12} /> Awaiting workout
+        </span>
+    );
 }
 
 export default function CreatorConversions() {
@@ -46,17 +54,28 @@ export default function CreatorConversions() {
     const converted = rows.filter(r => r.converted_at).length;
     const pages = Math.ceil(total / PAGE);
 
-    return (
-        <div className="space-y-8">
-            <div>
-                <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-2">Signups</h1>
-                <p className="text-[11px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">
-                    {total} total{total > 0 ? ` · ${converted} converted on this page` : ''}
-                </p>
+    const pager = pages > 1 && (
+        <div className="flex items-center justify-between px-5 sm:px-8 py-5 border-t border-[#E6E6E1]">
+            <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">
+                Page {page + 1} of {pages}
+            </span>
+            <div className="flex gap-2">
+                <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className={`${BTN_GHOST} h-10 px-4`}>Previous</button>
+                <button onClick={() => setPage(p => Math.min(pages - 1, p + 1))} disabled={page >= pages - 1} className={`${BTN_GHOST} h-10 px-4`}>Next</button>
             </div>
+        </div>
+    );
+
+    return (
+        <Page>
+            <PageTitle
+                eyebrow="People you brought in"
+                title="Signups"
+                sub={`${total} total${total > 0 ? ` · ${converted} converted on this page` : ''}`}
+            />
 
             {/* What "converted" means, stated once, where the word is used. */}
-            <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7">
+            <Card className="p-5 sm:p-7">
                 <div className="flex items-start gap-4">
                     <ShieldCheck size={16} className="text-[#8a7600] shrink-0 mt-0.5" />
                     <p className="text-[12px] text-[#888] font-light leading-relaxed max-w-3xl">
@@ -66,78 +85,57 @@ export default function CreatorConversions() {
                         keeps the programme worth being part of.
                     </p>
                 </div>
-            </div>
+            </Card>
 
-            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+            <Card>
                 {loading ? (
-                    <div className="flex justify-center py-24">
-                        <div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
-                    </div>
+                    <Spinner />
                 ) : rows.length === 0 ? (
-                    <div className="text-center py-24 px-8">
-                        <p className="text-[10px] uppercase tracking-[0.3em] text-[#CCCCCC] font-black mb-3">No signups yet</p>
-                        <p className="text-sm text-[#888] font-light">
-                            When someone uses your code, they'll show up here.
-                        </p>
-                    </div>
+                    <Empty title="No signups yet">When someone uses your code, they'll show up here.</Empty>
                 ) : (
                     <>
-                        <table className="w-full">
-                            <thead>
-                                <tr className="border-b border-[#E6E6E1]">
-                                    {['Signed up', 'Status', 'Converted', 'Campaign'].map(h => (
-                                        <th key={h} className="text-left px-8 py-5 text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">{h}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rows.map(r => (
-                                    <tr key={r.id} className="border-b border-[#F0F0ED] last:border-0 hover:bg-[#FAFAF8] transition-colors">
-                                        <td className="px-8 py-5 text-[13px] text-[#666] tabular-nums">{fmt(r.created_at)}</td>
-                                        <td className="px-8 py-5">
-                                            {r.converted_at ? (
-                                                <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full text-[10px] uppercase tracking-[0.15em] font-black text-[#8a7600]">
-                                                    <CheckCircle2 size={12} /> Converted
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[10px] uppercase tracking-[0.15em] font-black text-[#BBBBBB]">
-                                                    <Clock size={12} /> Awaiting first workout
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-8 py-5 text-[13px] text-[#666] tabular-nums">{fmt(r.converted_at)}</td>
-                                        <td className="px-8 py-5 text-[12px] text-[#AAAAAA] font-mono">{r.campaign || '—'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                        {/* Phone: a card per signup. */}
+                        <ul className="md:hidden divide-y divide-[#F0F0ED]">
+                            {rows.map(r => (
+                                <li key={r.id} className="px-5 py-4 flex items-center justify-between gap-4">
+                                    <div className="min-w-0">
+                                        <div className="text-[13px] text-[#1A1A1A] tabular-nums">{fmtDate(r.created_at)}</div>
+                                        <div className="text-[10px] text-[#BBBBBB] font-black mt-1 truncate">
+                                            {r.converted_at ? `Converted ${fmtDate(r.converted_at)}` : 'Signed up'}
+                                            {r.campaign ? <span className="font-mono normal-case"> · {r.campaign}</span> : null}
+                                        </div>
+                                    </div>
+                                    <StatusPill converted={!!r.converted_at} />
+                                </li>
+                            ))}
+                        </ul>
 
-                        {pages > 1 && (
-                            <div className="flex items-center justify-between px-8 py-5 border-t border-[#E6E6E1]">
-                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">
-                                    Page {page + 1} of {pages}
-                                </span>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setPage(p => Math.max(0, p - 1))}
-                                        disabled={page === 0}
-                                        className="h-10 px-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[10px] uppercase tracking-[0.2em] font-black text-[#666] disabled:opacity-30 hover:border-[#E8D200]/40 transition-all"
-                                    >
-                                        Previous
-                                    </button>
-                                    <button
-                                        onClick={() => setPage(p => Math.min(pages - 1, p + 1))}
-                                        disabled={page >= pages - 1}
-                                        className="h-10 px-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[10px] uppercase tracking-[0.2em] font-black text-[#666] disabled:opacity-30 hover:border-[#E8D200]/40 transition-all"
-                                    >
-                                        Next
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                        {/* Wider: the table. */}
+                        <div className="hidden md:block overflow-x-auto">
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="border-b border-[#E6E6E1]">
+                                        {['Signed up', 'Status', 'Converted', 'Campaign'].map(h => (
+                                            <th key={h} className="text-left px-8 py-5"><Micro>{h}</Micro></th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rows.map(r => (
+                                        <tr key={r.id} className="border-b border-[#E6E6E1] last:border-0 hover:bg-[#FAFAF8] transition-colors">
+                                            <td className="px-8 py-5 text-[13px] text-[#666] tabular-nums">{fmtDate(r.created_at)}</td>
+                                            <td className="px-8 py-5"><StatusPill converted={!!r.converted_at} /></td>
+                                            <td className="px-8 py-5 text-[13px] text-[#666] tabular-nums">{fmtDate(r.converted_at)}</td>
+                                            <td className="px-8 py-5 text-[12px] text-[#AAAAAA] font-mono">{r.campaign || '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        {pager}
                     </>
                 )}
-            </div>
-        </div>
+            </Card>
+        </Page>
     );
 }
