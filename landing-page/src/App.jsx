@@ -98,6 +98,7 @@ import CreatorSettings from './pages/creator/CreatorSettings';
 import CreatorRequests from './pages/admin/CreatorRequests';
 import { CreatorShell } from './pages/creator/CreatorShell';
 import { INPUT as CREATOR_INPUT, LABEL as CREATOR_LABEL, BTN_GOLD as CREATOR_BTN } from './pages/creator/ui';
+import { readHandoffTicket, completeHandoff } from './pages/creator/portalAuth';
 import LandingV2 from './landing/LandingV2';
 import PartnersPage from './landing/partners/PartnersPage';
 import CookiePolicy from './pages/CookiePolicy';
@@ -151,6 +152,7 @@ export const AuthProvider = ({ children }) => {
     const [placementsEnabled, setPlacementsEnabled] = useState(false);
     // Master switch from System Config. Admins see the portal regardless.
     const [creatorProgramEnabled, setCreatorProgramEnabled] = useState(false);
+    const [rolesFor, setRolesFor] = useState(null);
     // undefined = unknown/loading, null = brand hasn't chosen a delivery
     // method yet (drives the first-run chooser), else 'api'|'shopify'|'manual'
     const [deliveryMethod, setDeliveryMethodState] = useState(undefined);
@@ -301,11 +303,15 @@ export const AuthProvider = ({ children }) => {
                     setActingPartnerState(restoredActing);
                     setPlacementsEnabled(flagOn);
                     setCreatorProgramEnabled(creatorOn);
+                    // Which user the role lookups above belong to — a route can tell
+                    // "not a creator" from "not resolved yet" (the web handoff needs this).
+                    setRolesFor(session.user.id);
                     setLoading(false);
                 }
             } else {
                 lastUserId = null;
                 setUser(null);
+                setRolesFor(null);
                 setIsAdmin(false);
                 setIsPartner(false);
                 setPartnerData(null);
@@ -357,6 +363,7 @@ export const AuthProvider = ({ children }) => {
             setActingCreator,
             refreshCreator,
             creatorProgramEnabled,
+            rolesFor,
             placementsEnabled,
             deliveryMethod,
             updateDeliveryMethod: setDeliveryMethodState,
@@ -472,52 +479,129 @@ const PartnerLogin = () => {
     );
 };
 
-// --- Creator Login ---
+// --- Creator Login (what people see: "Affiliate Portal") ---
+// The same identities as the app: Google, Apple, email+password — plus a
+// one-time email link for anyone who signed up with a provider and never set a
+// password. shouldCreateUser:false means the link can only ever sign into an
+// account that already exists; it never mints one.
+//
+// Apple on the web needs an Apple *Services ID* configured on the Supabase
+// Apple provider (the app's native ID-token flow doesn't cover browsers).
+// Flip this once that exists; until then Apple users take the email link.
+const APPLE_WEB_SIGNIN = false;
+
 const CreatorLogin = () => {
     const navigate = useNavigate();
-    const { isAdmin, isCreator, user } = useAuth();
+    const location = useLocation();
+    const { isAdmin, isCreator, user, rolesFor, loading: authLoading } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [busy, setBusy] = useState(null); // 'password' | 'link' | 'google' | 'apple'
     const [error, setError] = useState(null);
-    const [status, setStatus] = useState(null);
+    const [linkSent, setLinkSent] = useState(false);
+    const handoffExpired = new URLSearchParams(location.search).get('handoff') === 'expired';
 
     useEffect(() => {
-        // Admins are allowed into the creator portal too (preview mode)
+        // Admins are allowed into the portal too (preview mode)
         if (user && (isCreator || isAdmin)) navigate('/affiliate');
     }, [user, isAdmin, isCreator, navigate]);
 
-    const handleLogin = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError(null);
-        setStatus('Authenticating...');
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) {
-            setError(error.message);
-            setStatus(null);
-            setLoading(false);
-        } else {
-            setStatus('Loading your portal...');
-        }
+    const portalUrl = `${window.location.origin}/affiliate`;
+
+    const oauth = async (provider) => {
+        setBusy(provider); setError(null);
+        const { error: e } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: portalUrl } });
+        if (e) { setError(e.message); setBusy(null); }
     };
 
+    const emailLink = async () => {
+        const addr = email.trim().toLowerCase();
+        if (!addr) return setError('Enter the email you use in the app first.');
+        setBusy('link'); setError(null);
+        const { error: e } = await supabase.auth.signInWithOtp({
+            email: addr,
+            options: { shouldCreateUser: false, emailRedirectTo: portalUrl },
+        });
+        setBusy(null);
+        if (e) {
+            return setError(/signups? not allowed|not found|user_not_found/i.test(e.message)
+                ? "We couldn't find a POWR account with that email. Use the one you signed up with in the app."
+                : e.message);
+        }
+        setLinkSent(true);
+    };
+
+    const passwordLogin = async (e) => {
+        e.preventDefault();
+        if (!password) return emailLink();
+        setBusy('password'); setError(null);
+        const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (err) { setError(err.message); setBusy(null); }
+        // success: the auth listener resolves roles and the effect above navigates
+    };
+
+    const signOut = async () => { await supabase.auth.signOut(); setBusy(null); };
+
+    // Signed in, roles resolved, and not on the programme: say so instead of
+    // showing a login form to someone who is already logged in.
+    if (!authLoading && user && rolesFor === user.id && !isCreator && !isAdmin) {
+        return (
+            <CreatorShell eyebrow="Affiliate Portal" title="Not on the programme yet" sub={`You're signed in as ${user.email}, but this account isn't an affiliate. The programme is invite-only — if you've been told you're in, check you're using the same account as the app.`}>
+                <button onClick={signOut} className={`${CREATOR_BTN} w-full`}>Sign out</button>
+            </CreatorShell>
+        );
+    }
+
+    if (linkSent) {
+        return (
+            <CreatorShell eyebrow="Affiliate Portal" title="Check your email" sub={`We've sent a sign-in link to ${email.trim()}. Open it on this device and you're in — no password needed.`}>
+                <button onClick={() => setLinkSent(false)} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">Use a different email</button>
+            </CreatorShell>
+        );
+    }
+
+    const busyAny = !!busy;
+    const social = "w-full h-12 flex items-center justify-center gap-3 bg-white border border-[#E6E6E1] rounded-full text-[11px] uppercase tracking-[0.2em] font-black text-[#1A1A1A] hover:border-[#CCC] transition-all disabled:opacity-50";
+
     return (
-        <CreatorShell eyebrow="Affiliate Portal" title="Welcome back" sub="Sign in with your POWR account — the same email and password you use in the app.">
-            <form onSubmit={handleLogin} className="space-y-5">
+        <CreatorShell eyebrow="Affiliate Portal" title="Welcome back" sub="Sign in with your POWR account — Google, Apple or email, whichever you use in the app.">
+            {handoffExpired && (
+                <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-xl mb-5">That sign-in link from the app has expired — sign in below and you're straight in.</div>
+            )}
+            <div className="space-y-3 mb-6">
+                <button type="button" onClick={() => oauth('google')} disabled={busyAny} className={social}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1C3.3 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.3 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3V6.6H1.3C.5 8.2 0 10 0 12s.5 3.8 1.3 5.4l4-3.1z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C18 1.2 15.2 0 12 0 7.3 0 3.3 2.7 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z"/></svg>
+                    {busy === 'google' ? 'Opening Google…' : 'Continue with Google'}
+                </button>
+                {APPLE_WEB_SIGNIN && (
+                    <button type="button" onClick={() => oauth('apple')} disabled={busyAny} className={`${social} bg-[#1A1A1A] text-white border-[#1A1A1A]`}>
+                        <span className="text-white">{busy === 'apple' ? 'Opening Apple…' : ' Continue with Apple'}</span>
+                    </button>
+                )}
+            </div>
+            <div className="flex items-center gap-4 mb-6">
+                <div className="flex-1 h-px bg-[#E6E6E1]" />
+                <span className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">or with email</span>
+                <div className="flex-1 h-px bg-[#E6E6E1]" />
+            </div>
+            <form onSubmit={passwordLogin} className="space-y-5">
                 <div>
                     <label className={CREATOR_LABEL}>Email address</label>
                     <input type="email" className={CREATOR_INPUT} value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" />
                 </div>
                 <div>
-                    <label className={CREATOR_LABEL}>Password</label>
-                    <input type="password" className={CREATOR_INPUT} value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
+                    <label className={CREATOR_LABEL}>Password <span className="normal-case tracking-normal text-[#CCCCCC]">— leave blank if you signed up with Apple or Google</span></label>
+                    <input type="password" className={CREATOR_INPUT} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
                 </div>
                 {error && <div className="text-red-500 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}
-                {status && <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-xl animate-pulse">{status}</div>}
-                <button type="submit" disabled={loading} className={`${CREATOR_BTN} w-full`}>
-                    {loading ? 'Processing...' : 'Sign In'}
+                <button type="submit" disabled={busyAny} className={`${CREATOR_BTN} w-full`}>
+                    {busy === 'password' ? 'Signing in…' : busy === 'link' ? 'Sending…' : password ? 'Sign In' : 'Email me a sign-in link'}
                 </button>
+                {password && (
+                    <button type="button" onClick={emailLink} disabled={busyAny} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">
+                        Forgot it? Email me a sign-in link
+                    </button>
+                )}
             </form>
         </CreatorShell>
     );
@@ -647,15 +731,37 @@ const CreatorClosed = () => (
 // --- Creator Protected Route ---
 // Admins are allowed in too: they can preview the portal as any creator, and
 // they see it whether or not the master switch is on.
+//
+// Handoff: arriving from the app with #h=<ticket> (see portalAuth.js) signs the
+// browser in first, then waits until the auth provider has resolved roles for
+// THAT user before deciding — otherwise the moment between "session exists"
+// and "isCreator known" would bounce a legitimate affiliate to the login page.
 const CreatorProtectedRoute = ({ children }) => {
-    const { user, isCreator, isAdmin, loading, creatorProgramEnabled } = useAuth();
+    const { user, isCreator, isAdmin, loading, creatorProgramEnabled, rolesFor } = useAuth();
     const location = useLocation();
+    const navigate = useNavigate();
+    const [ticket] = useState(() => readHandoffTicket());
+    const [handoff, setHandoff] = useState(() => (readHandoffTicket() ? 'pending' : 'none'));
 
-    if (loading) return (
+    useEffect(() => {
+        if (handoff !== 'pending') return;
+        if (user) { setHandoff('done'); return; } // already signed in — ticket not needed
+        let alive = true;
+        completeHandoff(ticket).then(ok => {
+            if (!alive) return;
+            if (ok) setHandoff('done');
+            else { setHandoff('failed'); navigate({ pathname: '/affiliate/login', search: '?handoff=expired' }, { replace: true }); }
+        });
+        return () => { alive = false; };
+    }, [handoff, ticket, user, navigate]);
+
+    const settling = handoff === 'pending' || handoff === 'failed' || (!!user && rolesFor !== user.id);
+
+    if (loading || settling) return (
         <div className="min-h-screen bg-[#F4F4F1] flex items-center justify-center fixed inset-0 z-[100]">
             <div className="flex flex-col items-center gap-4">
                 <div className="w-8 h-8 border-2 border-[#E8D200] border-t-transparent rounded-full animate-spin" />
-                <p className="text-[10px] uppercase tracking-widest text-[#BBBBBB]">Loading portal...</p>
+                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">{handoff === 'pending' ? 'Signing you in...' : 'Loading portal...'}</p>
             </div>
         </div>
     );

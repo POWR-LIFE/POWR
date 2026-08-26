@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import {
     creatorInviteCardState,
@@ -17,7 +17,6 @@ const DIM = 'rgba(255,255,255,0.55)';
 const MUTED = 'rgba(255,255,255,0.3)';
 
 const APPROVED_SEEN_KEY = 'creator-invite-approved-dismissed';
-const PORTAL_URL = 'https://powr.life/affiliate';
 
 /**
  * The earned invite. Renders nothing for almost everyone; for a member who
@@ -28,6 +27,7 @@ const PORTAL_URL = 'https://powr.life/affiliate';
  */
 export function CreatorInviteCard() {
     const qc = useQueryClient();
+    const router = useRouter();
     const [approvedDismissed, setApprovedDismissed] = useState<boolean | null>(null);
 
     const { data } = useQuery({
@@ -51,11 +51,7 @@ export function CreatorInviteCard() {
     if (state === 'hidden') return null;
     if (state === 'approved' && approvedDismissed !== false) return null;
 
-    const openPortal = () => {
-        WebBrowser.openBrowserAsync(PORTAL_URL).catch(() => {
-            Linking.openURL(PORTAL_URL).catch(() => {});
-        });
-    };
+    const openPortal = () => router.push('/affiliate');
     const dismissApproved = () => {
         setApprovedDismissed(true);
         AsyncStorage.setItem(APPROVED_SEEN_KEY, '1').catch(() => {});
@@ -115,11 +111,11 @@ export function CreatorInviteCard() {
                 <>
                     <Text style={styles.title}>Welcome to POWR Affiliates.</Text>
                     <Text style={styles.body}>
-                        Your portal is ready — your link, signups and rewards in one place. It lives under Settings whenever you need it.
+                        Your code, link, signups and rewards are ready. Find Affiliate under Settings whenever you need it.
                     </Text>
                     <Pressable onPress={openPortal} style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-                        <Text style={styles.ctaText}>OPEN YOUR PORTAL</Text>
-                        <Ionicons name="open-outline" size={14} color="#080808" />
+                        <Text style={styles.ctaText}>OPEN AFFILIATE</Text>
+                        <Ionicons name="arrow-forward" size={14} color="#080808" />
                     </Pressable>
                 </>
             )}

@@ -436,8 +436,8 @@ function buildMessage(
         // exist by the time this fires (approval order in CreatorRequests.jsx).
         return {
           title: "You're a POWR Affiliate ✨",
-          body: 'Your affiliate portal is ready — your link, signups and rewards in one place. Find it under Settings.',
-          data: { type, route: '/settings-screen' },
+          body: 'Your code, link, signups and rewards are ready — find Affiliate under Settings.',
+          data: { type, route: '/affiliate' },
           sound: 'default',
           channelId: 'powr_rewards_v2',
           priority: 'high',
