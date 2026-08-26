@@ -26,10 +26,22 @@ export async function completeHandoff(ticket) {
         const { data, error } = await supabase.functions.invoke('portal-handoff', { body: { ticket } });
         if (error || !data?.ok || !data.token_hash) return false;
         const { error: verifyErr } = await supabase.auth.verifyOtp({ token_hash: data.token_hash, type: data.type || 'magiclink' });
+        if (!verifyErr) markArrivedViaApp();
         return !verifyErr;
     } catch {
         return false;
     } finally {
         clearHandoffTicket();
     }
+}
+
+// While web login is closed (App.jsx AFFILIATE_WEB_LOGIN=false), the portal
+// only opens for a session that was established by the app's handoff in THIS
+// tab. sessionStorage is per-tab and dies with it — exactly the scope wanted.
+const VIA_APP_KEY = 'powr_affiliate_via_app';
+export function markArrivedViaApp() {
+    try { window.sessionStorage.setItem(VIA_APP_KEY, '1'); } catch { /* private mode */ }
+}
+export function arrivedViaApp() {
+    try { return window.sessionStorage.getItem(VIA_APP_KEY) === '1'; } catch { return false; }
 }

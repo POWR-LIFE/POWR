@@ -98,7 +98,7 @@ import CreatorSettings from './pages/creator/CreatorSettings';
 import CreatorRequests from './pages/admin/CreatorRequests';
 import { CreatorShell } from './pages/creator/CreatorShell';
 import { INPUT as CREATOR_INPUT, LABEL as CREATOR_LABEL, BTN_GOLD as CREATOR_BTN } from './pages/creator/ui';
-import { readHandoffTicket, completeHandoff } from './pages/creator/portalAuth';
+import { readHandoffTicket, completeHandoff, arrivedViaApp, markArrivedViaApp } from './pages/creator/portalAuth';
 import AffiliateTermsPage, { AffiliateTermsGate } from './pages/creator/AffiliateTerms';
 import LandingV2 from './landing/LandingV2';
 import PartnersPage from './landing/partners/PartnersPage';
@@ -491,6 +491,13 @@ const PartnerLogin = () => {
 // Flip this once that exists; until then Apple users take the email link.
 const APPLE_WEB_SIGNIN = false;
 
+// Jamie (2026-08-26): for now the portal is reached ONLY from the app — the
+// in-app Affiliate screen hands a signed-in session across. Direct web login
+// stays built (Google / email link / password below) but hidden until we're
+// happy to let affiliates sign in on the web. Admins keep the password form
+// for preview. Flip this to open web login.
+const AFFILIATE_WEB_LOGIN = false;
+
 const CreatorLogin = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -501,6 +508,7 @@ const CreatorLogin = () => {
     const [error, setError] = useState(null);
     const [linkSent, setLinkSent] = useState(false);
     const handoffExpired = new URLSearchParams(location.search).get('handoff') === 'expired';
+    const [adminForm, setAdminForm] = useState(() => new URLSearchParams(location.search).get('admin') === '1');
 
     useEffect(() => {
         // Admins are allowed into the portal too (preview mode)
@@ -534,7 +542,7 @@ const CreatorLogin = () => {
 
     const passwordLogin = async (e) => {
         e.preventDefault();
-        if (!password) return emailLink();
+        if (!password) return AFFILIATE_WEB_LOGIN ? emailLink() : setError('Enter your password.');
         setBusy('password'); setError(null);
         const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (err) { setError(err.message); setBusy(null); }
@@ -561,6 +569,21 @@ const CreatorLogin = () => {
         );
     }
 
+    if (!AFFILIATE_WEB_LOGIN && !adminForm) {
+        return (
+            <CreatorShell eyebrow="Affiliate Portal" title="Open it from the app" sub="Your affiliate home lives in POWR — code, link, numbers and rewards. Tap “Open the full portal” there and this page opens already signed in.">
+                {handoffExpired && (
+                    <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-xl mb-5">That link from the app has expired — open the portal from the app again.</div>
+                )}
+                <a href="/app?to=affiliate" className={`${CREATOR_BTN} w-full`} style={{ color: '#080808' }}>Open in POWR</a>
+                <p className="text-[11px] text-[#AAAAAA] text-center mt-4 leading-relaxed">Settings › Affiliate › Open the full portal.</p>
+                <div className="mt-8 pt-6 border-t border-[#E6E6E1] text-center">
+                    <button onClick={() => setAdminForm(true)} className="text-[10px] uppercase tracking-[0.3em] font-black text-[#CCCCCC] hover:text-[#8a7600] transition-colors">POWR team sign-in</button>
+                </div>
+            </CreatorShell>
+        );
+    }
+
     const busyAny = !!busy;
     const social = "w-full h-12 flex items-center justify-center gap-3 bg-white border border-[#E6E6E1] rounded-full text-[11px] uppercase tracking-[0.2em] font-black text-[#1A1A1A] hover:border-[#CCC] transition-all disabled:opacity-50";
 
@@ -569,6 +592,7 @@ const CreatorLogin = () => {
             {handoffExpired && (
                 <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-xl mb-5">That sign-in link from the app has expired — sign in below and you're straight in.</div>
             )}
+            {AFFILIATE_WEB_LOGIN && (<>
             <div className="space-y-3 mb-6">
                 <button type="button" onClick={() => oauth('google')} disabled={busyAny} className={social}>
                     <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1C3.3 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.3 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3V6.6H1.3C.5 8.2 0 10 0 12s.5 3.8 1.3 5.4l4-3.1z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C18 1.2 15.2 0 12 0 7.3 0 3.3 2.7 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z"/></svg>
@@ -585,20 +609,21 @@ const CreatorLogin = () => {
                 <span className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">or with email</span>
                 <div className="flex-1 h-px bg-[#E6E6E1]" />
             </div>
+            </>)}
             <form onSubmit={passwordLogin} className="space-y-5">
                 <div>
                     <label className={CREATOR_LABEL}>Email address</label>
                     <input type="email" className={CREATOR_INPUT} value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" />
                 </div>
                 <div>
-                    <label className={CREATOR_LABEL}>Password <span className="normal-case tracking-normal text-[#CCCCCC]">— leave blank if you signed up with Apple or Google</span></label>
+                    <label className={CREATOR_LABEL}>Password{AFFILIATE_WEB_LOGIN && <span className="normal-case tracking-normal text-[#CCCCCC]"> — leave blank if you signed up with Apple or Google</span>}</label>
                     <input type="password" className={CREATOR_INPUT} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
                 </div>
                 {error && <div className="text-red-500 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}
                 <button type="submit" disabled={busyAny} className={`${CREATOR_BTN} w-full`}>
-                    {busy === 'password' ? 'Signing in…' : busy === 'link' ? 'Sending…' : password ? 'Sign In' : 'Email me a sign-in link'}
+                    {busy === 'password' ? 'Signing in…' : busy === 'link' ? 'Sending…' : (password || !AFFILIATE_WEB_LOGIN) ? 'Sign In' : 'Email me a sign-in link'}
                 </button>
-                {password && (
+                {AFFILIATE_WEB_LOGIN && password && (
                     <button type="button" onClick={emailLink} disabled={busyAny} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">
                         Forgot it? Email me a sign-in link
                     </button>
@@ -746,7 +771,9 @@ const CreatorProtectedRoute = ({ children }) => {
 
     useEffect(() => {
         if (handoff !== 'pending') return;
-        if (user) { setHandoff('done'); return; } // already signed in — ticket not needed
+        // Already signed in: the ticket still proves this tab was opened from
+        // the app, which is what the closed-web-login gate wants to know.
+        if (user) { markArrivedViaApp(); setHandoff('done'); return; }
         let alive = true;
         completeHandoff(ticket).then(ok => {
             if (!alive) return;
@@ -768,6 +795,10 @@ const CreatorProtectedRoute = ({ children }) => {
     );
 
     if (!user || (!isCreator && !isAdmin)) return <Navigate to="/affiliate/login" state={{ from: location }} replace />;
+    // Web login closed: a non-admin session counts only if the app handed it
+    // across in this tab. Any other session (an old cookie, a partner login on
+    // the same account) is sent to the "open it from the app" page.
+    if (!AFFILIATE_WEB_LOGIN && !isAdmin && !arrivedViaApp()) return <Navigate to="/affiliate/login" replace />;
     if (!creatorProgramEnabled && !isAdmin) return <CreatorClosed />;
     // The one hard gate: a real affiliate (not an admin previewing) must have
     // accepted the programme terms before the portal — and their link — opens.

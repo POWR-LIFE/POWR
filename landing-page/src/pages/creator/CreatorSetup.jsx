@@ -55,13 +55,9 @@ export default function CreatorSetup() {
                 throw new Error(data?.error ?? 'Something went wrong');
             }
 
-            setStatus('Signing you in...');
-            const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-            if (signInErr) {
-                navigate('/affiliate/login');
-                return;
-            }
-            navigate('/affiliate');
+            // Web access is app-first: the portal opens from the app's Affiliate
+            // screen. The login page explains that; no web session is started.
+            navigate('/affiliate/login');
         } catch (err) {
             setError(err.message || 'Something went wrong. Please try again.');
             setStatus(null);
