@@ -1004,7 +1004,7 @@ Deno.serve(async (req: Request) => {
       : type === 'challenge_open_unclaimed' ? 'challenge_started'
       // challenge_open_posted has a real column of its own (20260821…): the
       // grouped switch is "Friend activity", and a stranger's board post is
-      // not that. Falling through to `: type` here would have 400'd on every
+      // not that. Falling through to `type` here would have 400'd on every
       // send and left the opt-out decorative — see the warning above.
       : type;
     if (prefColumn) {
