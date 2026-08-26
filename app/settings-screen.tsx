@@ -143,11 +143,11 @@ export default function SettingsScreen() {
     })();
   }, []);
 
-  // The portal is web-only (powr.life/creator). Open it in the in-app browser
+  // The portal is web-only (powr.life/affiliate; /creator redirects). Open it in the in-app browser
   // sheet so dismissing lands back here; the creator signs in with the same
   // email and password as the app.
   const openCreatorPortal = useCallback(() => {
-    const url = 'https://powr.life/creator';
+    const url = 'https://powr.life/affiliate';
     WebBrowser.openBrowserAsync(url).catch(() => {
       Linking.openURL(url).catch(() => {});
     });
@@ -375,11 +375,11 @@ export default function SettingsScreen() {
         {/* ── Creator ──────────────────────────────────────── */}
         {isCreator && (
           <>
-            <SectionLabel label="Creator" />
+            <SectionLabel label="Affiliate" />
             <View style={styles.card}>
               <RowLink
                 icon="sparkles-outline"
-                label="Creator Portal"
+                label="Affiliate Portal"
                 sublabel="Your link, signups and rewards · sign in with this account"
                 trailingIcon="open-outline"
                 onPress={openCreatorPortal}

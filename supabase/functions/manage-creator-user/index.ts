@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
     });
     if (createErr) {
       const msg = /already.*(registered|exists)/i.test(createErr.message)
-        ? "An account with this email already exists. Contact POWR to link it to your creator profile."
+        ? "An account with this email already exists. Contact POWR to link it to your affiliate profile."
         : createErr.message;
       return json({ error: msg }, 400);
     }
@@ -300,7 +300,7 @@ Deno.serve(async (req) => {
     return json({ ok: true, creator });
   }
 
-  // ── create_invite — the link (/creator/setup/{token}) IS the credential ──
+  // ── create_invite — the link (/affiliate/setup/{token}) IS the credential ──
   if (body.action === "create_invite") {
     const { creator_id, email } = body;
     if (!creator_id) return json({ error: "creator_id is required" }, 400);
@@ -314,7 +314,7 @@ Deno.serve(async (req) => {
     });
     if (error) return json({ error: error.message }, 400);
 
-    return json({ ok: true, token, url: `${siteUrl}/creator/setup/${token}` });
+    return json({ ok: true, token, url: `${siteUrl}/affiliate/setup/${token}` });
   }
 
   // ── revoke_invite ─────────────────────────────────────────────────────────

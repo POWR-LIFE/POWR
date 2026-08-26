@@ -290,10 +290,10 @@ function ProgramEditor({ program, rewards, creatorRewards, onSaved, onDeleted, o
                 <Field label="Invitee gets, on conversion" hint="Paid to the person who used the code when they convert. This is what makes the code worth typing.">
                     <NumberInput value={form.invitee_bonus_points} onChange={v => set({ invitee_bonus_points: v })} max={5000} unit="pts" />
                 </Field>
-                <Field label="Creator gets, on conversion" hint="A creator's own override (on their card) beats this.">
+                <Field label="Affiliate gets, on conversion" hint="An affiliate's own override (on their card) beats this.">
                     <NumberInput value={form.creator_conversion_points} onChange={v => set({ creator_conversion_points: v })} max={5000} unit="pts" />
                 </Field>
-                <Field label="Creator gets, on code entry" hint="Paid the moment a code is entered, BEFORE any workout. Farmable — leave at 0 unless you have a reason.">
+                <Field label="Affiliate gets, on code entry" hint="Paid the moment a code is entered, BEFORE any workout. Farmable — leave at 0 unless you have a reason.">
                     <NumberInput value={form.creator_signup_points} onChange={v => set({ creator_signup_points: v })} max={5000} unit="pts" />
                 </Field>
             </div>
@@ -301,7 +301,7 @@ function ProgramEditor({ program, rewards, creatorRewards, onSaved, onDeleted, o
             {/* Event bonus */}
             <div className="bg-white border border-[#E6E6E1] rounded-3xl p-8 space-y-6">
                 <h2 className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">Live event bonus</h2>
-                <Field label="Creator gets, per event signup" hint="Paid when one of their signups joins a scheduled or live event. Once per person per event. 0 = off.">
+                <Field label="Affiliate gets, per event signup" hint="Paid when one of their signups joins a scheduled or live event. Once per person per event. 0 = off.">
                     <NumberInput value={form.event_signup_points} onChange={v => set({ event_signup_points: v })} max={5000} unit="pts" />
                 </Field>
                 <Field label="Only after conversion" hint="Off means a code entry + an event tap with no workout pays out. On is the safe setting.">
@@ -347,7 +347,7 @@ function ProgramEditor({ program, rewards, creatorRewards, onSaved, onDeleted, o
                                         <TextInput value={s.label} onChange={v => setStep(i, { label: v, _dirty: true })} placeholder="First five" />
                                     </div>
                                     <div>
-                                        <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-2">Description (creator sees this)</div>
+                                        <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-2">Description (affiliate sees this)</div>
                                         <TextInput value={s.description} onChange={v => setStep(i, { description: v, _dirty: true })} placeholder="A POWR hoodie in your size" />
                                     </div>
                                 </div>
@@ -494,7 +494,7 @@ function FulfilmentQueue({ rewards }) {
                 ) : visible.length === 0 ? (
                     <div className="text-center py-24 px-8">
                         <p className="text-[10px] uppercase tracking-[0.3em] text-[#CCCCCC] font-black mb-3">Nothing to send</p>
-                        <p className="text-sm text-[#888] font-light">When a creator reaches a step with a product or reward attached, it lands here.</p>
+                        <p className="text-sm text-[#888] font-light">When an affiliate reaches a step with a product or reward attached, it lands here.</p>
                     </div>
                 ) : visible.map(r => {
                     const key = `${r.creator_id}:${r.step_id}`;
@@ -525,7 +525,7 @@ function FulfilmentQueue({ rewards }) {
                                             {[addr.line1, addr.line2, addr.city, addr.postcode, addr.country].filter(Boolean).map((l, i) => <div key={i}>{l}</div>)}
                                         </div>
                                     ) : (
-                                        <div className="text-[11px] text-amber-700 font-black">No shipping address on file — the creator adds one in Settings.</div>
+                                        <div className="text-[11px] text-amber-700 font-black">No shipping address on file — the affiliate adds one in Settings.</div>
                                     )}
                                     {r.tracking_number && <div className="text-[11px] text-[#888] mt-2 flex items-center gap-2"><Truck size={11} /> {r.carrier ? `${r.carrier} · ` : ''}{r.tracking_number}</div>}
                                 </div>
@@ -713,7 +713,7 @@ function RewardsCatalogue({ items, onChanged }) {
 export function CreatorTabs() {
     const { pathname } = useLocation();
     const tabs = [
-        { label: 'Creators',   to: '/admin/creators' },
+        { label: 'Affiliates', to: '/admin/creators' },
         { label: 'Programmes', to: '/admin/creators/programmes' },
         { label: 'Rewards',    to: '/admin/creators/rewards' },
         { label: 'Fulfilment', to: '/admin/creators/fulfilment' },
@@ -769,7 +769,7 @@ export default function CreatorPrograms({ view = 'programmes' }) {
                 <div>
                     <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-2">{{ fulfilment: 'Fulfilment', rewards: 'Rewards' }[view] ?? 'Programmes'}</h1>
                     <p className="text-[11px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">
-                        {{ fulfilment: 'Products and rewards creators have earned', rewards: 'What a step actually gives — with a picture' }[view] ?? 'Rules, points and rewards — per creator group'}
+                        {{ fulfilment: 'Products and rewards affiliates have earned', rewards: 'What a step actually gives — with a picture' }[view] ?? 'Rules, points and rewards — per creator group'}
                     </p>
                 </div>
                 {view === 'programmes' && !editing && (

@@ -58,10 +58,10 @@ export default function CreatorSetup() {
             setStatus('Signing you in...');
             const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
             if (signInErr) {
-                navigate('/creator/login');
+                navigate('/affiliate/login');
                 return;
             }
-            navigate('/creator');
+            navigate('/affiliate');
         } catch (err) {
             setError(err.message || 'Something went wrong. Please try again.');
             setStatus(null);
@@ -99,7 +99,7 @@ export default function CreatorSetup() {
                     <div className="w-14 h-14 rounded-full border border-[#E8D200]/50 flex items-center justify-center text-[#8a7600] text-xl mx-auto mb-6">✓</div>
                     <h1 className="text-2xl font-light tracking-tight mb-3">Already set up</h1>
                     <p className="text-sm text-[#888] font-light leading-relaxed mb-6">This link has already been used to create an account.</p>
-                    <Link to="/creator/login" className={BTN_GOLD} style={{ color: '#080808' }}>Sign In</Link>
+                    <Link to="/affiliate/login" className={BTN_GOLD} style={{ color: '#080808' }}>Sign In</Link>
                 </div>
             </CreatorShell>
         );
@@ -148,7 +148,7 @@ export default function CreatorSetup() {
                     {submitting ? 'Setting up...' : 'Create Account'}
                 </button>
                 <p className="text-center text-[10px] text-[#BBBBBB] leading-relaxed">
-                    Already have an account? <Link to="/creator/login"><span className="text-[#8a7600] hover:underline">Sign in</span></Link>
+                    Already have an account? <Link to="/affiliate/login"><span className="text-[#8a7600] hover:underline">Sign in</span></Link>
                 </p>
             </form>
         </CreatorShell>

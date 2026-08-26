@@ -113,7 +113,7 @@ function PendingCard({ r, onDone }) {
             {mode === 'approve' && (
                 <form onSubmit={approve} className="mt-6 pt-6 border-t border-[#F0F0ED] space-y-5">
                     <p className="text-[12px] text-[#888] font-light leading-relaxed max-w-2xl">
-                        This creates their creator profile on the Default programme with their POWR ID as the code, links the portal to their app login, and sends them a "you're in" push. You can change programme or points on their card afterwards.
+                        This creates their affiliate profile on the Default programme with their POWR ID as the code, links the portal to their app login, and sends them a "you're in" push. You can change programme or points on their card afterwards.
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-2xl">
                         <div>
@@ -131,7 +131,7 @@ function PendingCard({ r, onDone }) {
                     </div>
                     {err && <div className="text-red-500 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl max-w-2xl">{err}</div>}
                     <div className="flex gap-2">
-                        <button type="submit" disabled={busy} className="h-10 px-6 bg-[#E8D200] text-[#080808] rounded-full text-[10px] uppercase tracking-[0.2em] font-black disabled:opacity-50 flex items-center gap-2"><UserCheck size={13} /> {busy ? 'Creating…' : 'Create creator & approve'}</button>
+                        <button type="submit" disabled={busy} className="h-10 px-6 bg-[#E8D200] text-[#080808] rounded-full text-[10px] uppercase tracking-[0.2em] font-black disabled:opacity-50 flex items-center gap-2"><UserCheck size={13} /> {busy ? 'Creating…' : 'Create affiliate & approve'}</button>
                         <button type="button" onClick={() => setMode(null)} className="h-10 px-5 text-[10px] uppercase tracking-[0.2em] font-black text-[#999]">Cancel</button>
                     </div>
                 </form>
@@ -182,7 +182,7 @@ export default function CreatorRequests() {
         <div>
             <div className="flex items-end justify-between mb-6 gap-4 flex-wrap">
                 <div>
-                    <h1 className="text-4xl font-light tracking-tighter text-[#1A1A1A] mb-2">Creator requests</h1>
+                    <h1 className="text-4xl font-light tracking-tighter text-[#1A1A1A] mb-2">Affiliate requests</h1>
                     <p className="text-[11px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">
                         Members who earned the invite and asked to join
                     </p>

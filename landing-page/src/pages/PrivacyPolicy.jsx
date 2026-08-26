@@ -43,7 +43,7 @@ export default function PrivacyPolicy() {
                             <li><strong className="text-[#F2F2F2]">Location data:</strong> approximate location used to verify gym visits and show nearby partner rewards. We only access location when you grant permission.</li>
                             <li><strong className="text-[#F2F2F2]">Usage data:</strong> how you interact with the app, features you use, and crash reports to help us improve the service.</li>
                             <li><strong className="text-[#F2F2F2]">Waitlist data:</strong> email address and optional website URL submitted via our waitlist forms.</li>
-                            <li><strong className="text-[#F2F2F2]">Creator programme data:</strong> if you join our invite-only creator programme, a public profile (name, photo, short bio), the number of people who tap your link and sign up with your code (never who they are), and — only if you choose to provide it — a postal address so we can send you physical rewards you have earned.</li>
+                            <li><strong className="text-[#F2F2F2]">Affiliate programme data:</strong> if you join our invite-only affiliate programme, a public profile (name, photo, short bio), the number of people who tap your link and sign up with your code (never who they are), and — only if you choose to provide it — a postal address so we can send you physical rewards you have earned.</li>
                         </ul>
                     </section>
 
@@ -74,7 +74,7 @@ export default function PrivacyPolicy() {
                         <p className="mb-3">We do not sell your personal data. We may share data with:</p>
                         <ul className="list-disc pl-6 space-y-2">
                             <li><strong className="text-[#F2F2F2]">Partner businesses:</strong> only the minimum information needed to fulfil a reward you choose to redeem (e.g. a redemption code). We never share your health data with partners.</li>
-                            <li><strong className="text-[#F2F2F2]">Delivery services:</strong> if you are a creator who has earned a physical reward, your name and postal address are shared with the courier delivering it, and with nobody else. You can remove your address from your creator settings at any time.</li>
+                            <li><strong className="text-[#F2F2F2]">Delivery services:</strong> if you are an affiliate who has earned a physical reward, your name and postal address are shared with the courier delivering it, and with nobody else. You can remove your address from your creator settings at any time.</li>
                             <li><strong className="text-[#F2F2F2]">Service providers:</strong> trusted third parties who help us operate our platform (e.g. hosting, analytics), bound by data processing agreements.</li>
                             <li><strong className="text-[#F2F2F2]">Legal obligations:</strong> where required by law or to protect our rights.</li>
                         </ul>

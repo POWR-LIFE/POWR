@@ -104,7 +104,7 @@ function NewCreatorForm({ onDone, onCancel }) {
 
     return (
         <form onSubmit={submit} className="bg-white border border-[#E6E6E1] rounded-3xl p-8 mb-6">
-            <h2 className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-8">New creator</h2>
+            <h2 className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-8">New affiliate</h2>
 
             {/* Step 1: who */}
             <div className="mb-8">
@@ -204,7 +204,7 @@ function NewCreatorForm({ onDone, onCancel }) {
 
             <div className="flex gap-3">
                 <button type="submit" disabled={busy} className="h-12 px-8 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-[11px] rounded-full hover:translate-y-[-2px] transition-all disabled:opacity-50">
-                    {busy ? 'Creating...' : 'Create creator'}
+                    {busy ? 'Creating...' : 'Create affiliate'}
                 </button>
                 <button type="button" onClick={onCancel} className="h-12 px-8 bg-[#F4F4F1] border border-[#E6E6E1] text-[#666] font-black uppercase tracking-widest text-[11px] rounded-full hover:border-[#CCC] transition-all">
                     Cancel
@@ -462,7 +462,7 @@ export default function CreatorManager() {
                 </div>
                 {!showNew && (
                     <button onClick={() => setShowNew(true)} className="flex items-center gap-3 h-12 px-8 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-[11px] rounded-full hover:translate-y-[-2px] transition-all">
-                        <Plus size={16} /> New creator
+                        <Plus size={16} /> New affiliate
                     </button>
                 )}
             </div>

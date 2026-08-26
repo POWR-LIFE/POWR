@@ -39,14 +39,14 @@ function AdminCreatorPicker({ onSelect }) {
                     <span className="text-[10px] uppercase tracking-[0.4em] text-[#8a7600] font-black">Admin Preview</span>
                 </div>
                 <h1 className="text-3xl font-light tracking-tighter text-[#1A1A1A] mb-2">View portal as...</h1>
-                <p className="text-[11px] text-[#AAAAAA] font-black mb-8">You're signed in as an admin. Pick a creator to see their portal exactly as they would.</p>
+                <p className="text-[11px] text-[#AAAAAA] font-black mb-8">You're signed in as an admin. Pick an affiliate to see their portal exactly as they would.</p>
 
                 <div className="relative mb-6">
                     <Search size={16} className="absolute left-5 top-1/2 -translate-y-1/2 text-[#BBBBBB]" />
                     <input
                         type="text"
                         autoFocus
-                        placeholder="Search creators..."
+                        placeholder="Search affiliates..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         className={`${INPUT} pl-12`}
@@ -61,7 +61,7 @@ function AdminCreatorPicker({ onSelect }) {
                     <div className="max-h-[40vh] overflow-y-auto space-y-2 pr-1">
                         {filtered.length === 0 ? (
                             <div className="text-center py-8">
-                                <p className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-4">No creators yet</p>
+                                <p className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-4">No affiliates yet</p>
                                 <Link to="/admin/creators" className="text-[10px] uppercase tracking-[0.3em] font-black hover:underline">
                                     <span className="text-[#8a7600]">Add the first one</span>
                                 </Link>
@@ -102,15 +102,15 @@ function AdminCreatorPicker({ onSelect }) {
 }
 
 const NAV = [
-    { label: 'Overview', short: 'Home',    path: '/creator',             icon: LayoutDashboard },
-    { label: 'My Link',  short: 'Link',    path: '/creator/links',       icon: Link2           },
-    { label: 'Signups',  short: 'Signups', path: '/creator/conversions', icon: Users           },
-    { label: 'Rewards',  short: 'Rewards', path: '/creator/rewards',     icon: Gift            },
-    { label: 'Settings', short: 'You',     path: '/creator/settings',    icon: Settings        },
+    { label: 'Overview', short: 'Home',    path: '/affiliate',           icon: LayoutDashboard },
+    { label: 'My Link',  short: 'Link',    path: '/affiliate/links',     icon: Link2           },
+    { label: 'Signups',  short: 'Signups', path: '/affiliate/conversions',icon: Users           },
+    { label: 'Rewards',  short: 'Rewards', path: '/affiliate/rewards',   icon: Gift            },
+    { label: 'Settings', short: 'You',     path: '/affiliate/settings',  icon: Settings        },
 ];
 
 const PATH_LABELS = {
-    creator:       'Overview',
+    affiliate:     'Overview',
     links:         'My Link',
     conversions:   'Signups',
     rewards:       'Rewards',
@@ -137,7 +137,7 @@ export function CreatorLayout({ children }) {
     const { user, creatorData, isAdmin, isActingCreator, setActingCreator } = useAuth();
     const [menuOpen, setMenuOpen] = useState(false);
 
-    const segment = location.pathname.split('/')[2] || 'creator';
+    const segment = location.pathname.split('/')[2] || 'affiliate';
     const currentLabel = PATH_LABELS[segment] || segment;
 
     // Route change closes the mobile account sheet, and the page starts at the top.
@@ -145,7 +145,7 @@ export function CreatorLayout({ children }) {
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
-        navigate('/creator/login');
+        navigate('/affiliate/login');
     };
 
     // Admin with no creator link and no preview selection yet → pick one first
@@ -193,7 +193,7 @@ export function CreatorLayout({ children }) {
 
                 <nav className="flex-1 px-6 space-y-1.5 overflow-y-auto">
                     <div className="px-4 mb-4">
-                        <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Creator Portal</div>
+                        <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Affiliate Portal</div>
                         <div className="h-[2px] w-10 bg-[#E8D200]/70" />
                     </div>
                     {NAV.map(item => {
@@ -305,7 +305,7 @@ export function CreatorLayout({ children }) {
             <main className="relative z-10 flex-1 flex flex-col min-w-0 lg:h-screen lg:overflow-hidden">
                 <header className="hidden lg:flex h-24 border-b border-[#E6E6E1] flex-shrink-0 items-center justify-between px-16 bg-[#F4F4F1]/70 backdrop-blur-3xl sticky top-0 z-30">
                     <div className="flex items-center gap-5">
-                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">Creator Portal</div>
+                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">Affiliate Portal</div>
                         <ChevronRight size={13} className="text-[#BBBBBB]" />
                         <div className="flex items-center gap-3">
                             <div className="h-1.5 w-1.5 rounded-full bg-[#E8D200] shadow-[0_0_10px_rgba(232,210,0,0.7)] animate-pulse" />
@@ -324,7 +324,7 @@ export function CreatorLayout({ children }) {
                                 onClick={() => setActingCreator(null)}
                                 className="h-10 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#8B5CF6]/40 hover:text-[#8B5CF6] transition-all"
                             >
-                                Switch Creator
+                                Switch Affiliate
                             </button>
                         </div>
                     )}
