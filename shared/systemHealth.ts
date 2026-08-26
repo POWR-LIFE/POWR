@@ -240,10 +240,10 @@ export const SIGNALS: Signal[] = [
 
   // Integrity
   {
-    key: 'integrity.dup_earns', workstream: 'integrity', label: 'Sessions with duplicate earns', kind: 'count', unit: '',
+    key: 'integrity.dup_earns', workstream: 'integrity', label: 'Sessions with duplicate earns, 7d', kind: 'count', unit: '',
     threshold: { watch: 1, act: 1, direction: 'above' },
-    why: 'The unique index guards (session, description) only. The 05-29 race class.',
-    plain: 'Sessions paid twice for the same thing. Lifetime count — the cause was fixed on 25 Aug 2026.',
+    why: 'The unique index guards (session, description) only. The 05-29 race class. Windowed to 7 days: the guard shipped 25 Aug 2026 and the historic cases stay by rule, so a lifetime count could never go green.',
+    plain: 'Sessions paid twice for the same thing in the last 7 days. The cause was fixed on 25 Aug 2026; the historic cases are kept by rule and not counted.',
   },
   {
     key: 'integrity.open_visits_12h', workstream: 'integrity', label: 'Open visits older than 12h', kind: 'count', unit: '',

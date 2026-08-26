@@ -108,7 +108,7 @@ several are open items from the field audits that today have no standing detecto
 
 | Signal | Fact source | Why |
 | --- | --- | --- |
-| Race-duplicate earns | earn rows on the same `session_id` with the **same amount, written < 5 s apart** — the 05-29 race signature. ⚠ *Not* "more than one earn per session": claim + upgrade is two rows by design, and health_sync tops a walking session up as steps grow (the cap trigger allows it). Day one of the page counted 260 of those and would have reported a non-incident. | The 05-29 race class. |
+| Race-duplicate earns | earn rows on the same `session_id` with the **same amount, written < 5 s apart** — the 05-29 race signature. ⚠ *Not* "more than one earn per session": claim + upgrade is two rows by design, and health_sync tops a walking session up as steps grow (the cap trigger allows it). Day one of the page counted 260 of those and would have reported a non-incident. **Windowed to 7 days** (2026-08-26): the race guard shipped 2026-08-25 and the 21 historic cases stay by rule, so a lifetime count was red forever; lifetime totals live in `detail.lifetime`. | The 05-29 race class. |
 | Open visits > 12 h | `gym_visits.ended_at is null and started_at < now() - 12 h` | The reaper invariant. |
 | Proven-but-unpaid visits, 24 h | `gym_visits` with `last_proven_at` set, dwell ≥ threshold, `claimed_session_id is null`, ended | The 08-13 class: presence proven, claim never landed, no receipt. |
 | Beacon evidence gap | `gym_visit_journeys.evidence_complete = false` in the last 7 d | Raw evidence purged before rollup — the "publish a lie" guard. |

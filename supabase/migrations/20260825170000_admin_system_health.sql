@@ -557,9 +557,13 @@ begin
   -- 260 such sessions and would have reported an incident that was not one.
   -- The RACE signature (2026-05-29 investigation) is: same session, same amount,
   -- written within 5 seconds of each other. That is what this counts.
+  -- ⚠ Windowed to the last 7 days (2026-08-26). The race guard shipped
+  -- 2026-08-25 and the 21 historic cases (106 points) stay by rule, so a
+  -- lifetime count could never recover — the row was red forever and said
+  -- nothing. Lifetime totals are kept in detail for reference.
   begin
     with pairs as (
-      select a.session_id, b.amount
+      select a.session_id, b.amount, b.created_at
       from public.point_transactions a
       join public.point_transactions b
         on b.session_id = a.session_id
@@ -571,8 +575,16 @@ begin
       where a.type = 'earn' and a.session_id is not null
     )
     select jsonb_build_object(
-      'numerator', count(distinct session_id), 'denominator', null,
-      'detail', jsonb_build_object('excess_rows', count(*), 'excess_points', coalesce(sum(amount), 0)),
+      'numerator', count(distinct session_id) filter (where created_at >= v_7d), 'denominator', null,
+      'detail', jsonb_build_object(
+        'window',        '7 days',
+        'excess_rows',   count(*) filter (where created_at >= v_7d),
+        'excess_points', coalesce(sum(amount) filter (where created_at >= v_7d), 0),
+        'lifetime',      jsonb_build_object(
+          'sessions',      count(distinct session_id),
+          'excess_rows',   count(*),
+          'excess_points', coalesce(sum(amount), 0),
+          'last_at',       max(created_at))),
       'evidence_ok', true
     ) into s from pairs;
     v := v || jsonb_build_object('integrity.dup_earns', s);
