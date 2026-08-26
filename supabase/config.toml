@@ -597,3 +597,9 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./declarative"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+[functions.notify-creator-request]
+# Invoked by trg_notify_creator_invite_request on creator_invite_requests via
+# pg_net with x-webhook-secret (Vault db_webhook_secret) — same model as
+# notify-new-user. The in-function header check is the access control.
+verify_jwt = false

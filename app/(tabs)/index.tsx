@@ -21,6 +21,7 @@ import { ChallengeCard } from '@/components/home/ChallengeCard';
 import { TogetherSection } from '@/components/home/TogetherSection';
 import { UpdateBanner } from '@/components/home/UpdateBanner';
 import { LiveEventCard } from '@/components/home/LiveEventCard';
+import { CreatorInviteCard } from '@/components/home/CreatorInviteCard';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
 import { LevelUpCelebration } from '@/components/LevelUpCelebration';
@@ -705,6 +706,11 @@ export default function HomeScreen() {
                     unless there's an opt-in event the viewer can still join;
                     once registered the event lives on the League tab instead. */}
                 <LiveEventCard />
+
+                {/* Earned creator invite — nothing for almost everyone; the ask
+                    for a member who has brought enough people in, then the
+                    request's status until an admin answers. */}
+                <CreatorInviteCard />
 
                 {/* "Your Week" recap — takes the top of the This Week slot for the
                     first days of a new week, then retires (dismiss, or Wednesday).

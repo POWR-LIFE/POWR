@@ -95,6 +95,7 @@ import CreatorLinks from './pages/creator/CreatorLinks';
 import CreatorConversions from './pages/creator/CreatorConversions';
 import CreatorRewards from './pages/creator/CreatorRewards';
 import CreatorSettings from './pages/creator/CreatorSettings';
+import CreatorRequests from './pages/admin/CreatorRequests';
 import { CreatorShell } from './pages/creator/CreatorShell';
 import { INPUT as CREATOR_INPUT, LABEL as CREATOR_LABEL, BTN_GOLD as CREATOR_BTN } from './pages/creator/ui';
 import LandingV2 from './landing/LandingV2';
@@ -676,6 +677,15 @@ const AdminHome = () => {
     // System Health: signals at the ACT line, judged in shared/systemHealth.ts.
     // A failed read stays null and renders '—' — never a reassuring 0.
     const [healthAttention, setHealthAttention] = useState(null);
+    // Earned creator invites waiting on a human (Creators › Requests).
+    const [pendingCreatorRequests, setPendingCreatorRequests] = useState(0);
+    useEffect(() => {
+        supabase
+            .from('creator_invite_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .then(({ count }) => setPendingCreatorRequests(count ?? 0));
+    }, []);
     useEffect(() => {
         let cancelled = false;
         supabase.rpc('admin_system_health_live').then(({ data, error }) => {
@@ -811,6 +821,7 @@ const AdminHome = () => {
         { label: 'Gym Requests',         count: stats.pendingGymRequests, to: '/admin/gym-requests',       color: '#E8D200', icon: Building2,     desc: 'Members couldn\'t find gym' },
         { label: 'Reward Submissions',   count: stats.pendingSubmissions, to: '/admin/reward-submissions', color: '#F97316', icon: Inbox,         desc: 'Pending brand review'     },
         { label: 'Athlete Applications', count: stats.pendingAthletes,    to: '/admin/athletes',           color: '#8B5CF6', icon: Star,          desc: 'Awaiting approval'        },
+        { label: 'Creator Requests',     count: pendingCreatorRequests,   to: '/admin/creators/requests',  color: '#E8D200', icon: Sparkles,      desc: 'Members asking to join'   },
         { label: 'Support Tickets',      count: stats.openTickets,        to: '/admin/support',            color: '#0EA5E9', icon: MessageSquare, desc: 'Open & in-progress'       },
         { label: 'System Health',        count: healthAttention ?? '—',   to: '/admin/system-health',      color: '#F43F5E', icon: HeartPulse,    desc: 'Signals at the act line'  },
     ];
@@ -1053,6 +1064,7 @@ const AdminLayout = ({ children }) => {
     const [pendingSubmissions, setPendingSubmissions] = useState(0);
     const [pendingGymRequests, setPendingGymRequests] = useState(0);
     const [pendingSlotRequests, setPendingSlotRequests] = useState(0);
+    const [pendingCreatorRequests, setPendingCreatorRequests] = useState(0);
     const [openTickets, setOpenTickets] = useState(0);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('admin_sidebar') === '1');
 
@@ -1083,6 +1095,11 @@ const AdminLayout = ({ children }) => {
             .select('id', { count: 'exact', head: true })
             .eq('status', 'pending')
             .then(({ count }) => setPendingSlotRequests(count ?? 0));
+        supabase
+            .from('creator_invite_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .then(({ count }) => setPendingCreatorRequests(count ?? 0));
         // Anything not yet resolved/closed still needs a human — matches the
         // open + in_progress pair the Overview dashboard counts.
         supabase
@@ -1103,7 +1120,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
         { label: 'Users',       path: '/admin/users',              icon: Users           },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,           badge: pendingAthletes },
-        { label: 'Creators',    path: '/admin/creators',           icon: Sparkles        },
+        { label: 'Creators',    path: '/admin/creators',           icon: Sparkles,       badge: pendingCreatorRequests },
     ];
 
     const opsItems = [
@@ -1336,6 +1353,7 @@ export default function App() {
                     <Route path="/admin/creators/programmes" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="programmes" /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/creators/rewards" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="rewards" /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/creators/fulfilment" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="fulfilment" /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators/requests" element={<ProtectedRoute><AdminLayout><CreatorRequests /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </AuthProvider>
