@@ -27,6 +27,8 @@ type NotificationType =
   | 'vault_banked'
   | 'creator_invite_eligible'
   | 'creator_invite_approved'
+  | 'affiliate_milestone'
+  | 'affiliate_conversion'
   // One-shot setup notice when a user loses 'always' location (dispatch-daily-
   // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
   | 'location_permission_lost'
@@ -91,6 +93,8 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
       return 'rewards';
     case 'creator_invite_eligible':
     case 'creator_invite_approved':
+    case 'affiliate_milestone':
+    case 'affiliate_conversion':
     case 'level_up':
       return 'rewards';
     case 'session_completed':
@@ -441,6 +445,45 @@ function buildMessage(
           sound: 'default',
           channelId: 'powr_rewards_v2',
           priority: 'high',
+        };
+      }
+      case 'affiliate_milestone': {
+        // trg_notify_affiliate_milestone — once per rung reached. Names the
+        // reward; asks for an address only when a parcel is owed and none is on file.
+        const label = String(payload.label ?? 'a step').trim();
+        const reward = String(payload.reward_name ?? '').trim();
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        const ships = payload.ships === true;
+        const needsAddress = payload.needs_address === true;
+        const body = ships && reward
+          ? `${reward} is yours.${needsAddress ? ' Add your delivery address and we\'ll send it.' : ' We\'ll be in touch about delivery.'}${points > 0 ? ` +${points.toLocaleString()} POWR banked too.` : ''}`
+          : points > 0
+            ? `+${points.toLocaleString()} POWR banked. Next step's already counting.`
+            : 'Step reached — nice work.';
+        return {
+          title: `You've reached ${label} 🎁`,
+          body,
+          data: { type, route: '/affiliate', label, reward_name: reward || undefined, points },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+      case 'affiliate_conversion': {
+        // trg_notify_affiliate_conversion — daily_cap 1, so the one that
+        // lands carries where they stand now.
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        const remaining = payload.remaining == null ? null : Math.max(0, Math.round(Number(payload.remaining)));
+        const nextName = String(payload.next_name ?? '').trim();
+        const tail = remaining != null && nextName
+          ? ` ${remaining} to go until ${nextName}.`
+          : '';
+        return {
+          title: 'A signup just converted 💪',
+          body: `Someone from your link logged their first verified workout${points > 0 ? ` — +${points.toLocaleString()} POWR` : ''}.${tail}`,
+          data: { type, route: '/affiliate', points, remaining, next_name: nextName || undefined },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
         };
       }
       case 'level_up': {
@@ -990,6 +1033,8 @@ Deno.serve(async (req: Request) => {
       // Account-level one-shots, not recurring nudges: no toggle, admin kill-switch only.
       : type === 'creator_invite_eligible' ? null
       : type === 'creator_invite_approved' ? null
+      : type === 'affiliate_milestone' ? null
+      : type === 'affiliate_conversion' ? null
       : type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
       : type === 'session_upgraded' ? 'session_completed'
       : type === 'vault_unlocked' ? 'points_milestone'
