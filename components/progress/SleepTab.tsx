@@ -93,11 +93,13 @@ function avgBedtimeFromTimestamps(bedtimes: (string | null)[]): string {
 // ─── Day View ────────────────────────────────────────────────────────────────
 
 function SleepDayView({
-  data, offset, authExpired,
+  data, offset, authExpired, sleepTracked = true,
 }: {
   data: SleepDayDetail | null;
   offset: number;
   authExpired?: boolean;
+  /** False when the wearable has sent no sleep in 30 days — it isn't worn to bed. */
+  sleepTracked?: boolean;
 }) {
   const [history, setHistory] = useState<DailySleepHistory[]>([]);
   const isToday = offset === 0;
@@ -119,6 +121,14 @@ function SleepDayView({
               <Text style={styles.emptySubtext}>
                 Reconnect your wearable in Settings to resume sleep tracking.
               </Text>
+            </>
+          ) : !sleepTracked ? (
+            // Connected and syncing, but never a night: the device isn't worn
+            // to bed. "Will appear once synced" was a promise it could never
+            // keep — say what would actually make sleep land here.
+            <>
+              <Text style={styles.emptyText}>No sleep recorded in the last 30 days.</Text>
+              <Text style={styles.emptySubtext}>Wear your device to bed and your nights will land here.</Text>
             </>
           ) : (
             <>
@@ -551,9 +561,12 @@ function formatShortDate(dateStr: string): string {
 export function SleepTab({
   sleepHrs,
   sleepBedtimes,
+  sleepTracked = true,
 }: {
   sleepHrs: number[];
   sleepBedtimes: (string | null)[];
+  /** See SleepDayView — false swaps the "once synced" promise for the honest copy. */
+  sleepTracked?: boolean;
 }) {
   const [period, setPeriod] = useState<Period>('W');
   const [offset, setOffset] = useState(0);
@@ -735,7 +748,7 @@ export function SleepTab({
 
       {period === 'D' && (
         <StalePanel stale={dayStale}>
-          <SleepDayView data={dayData} offset={offset} authExpired={authExpired} />
+          <SleepDayView data={dayData} offset={offset} authExpired={authExpired} sleepTracked={sleepTracked} />
         </StalePanel>
       )}
       {period === 'W' && (

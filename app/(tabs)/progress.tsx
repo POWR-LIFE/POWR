@@ -29,7 +29,7 @@ import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { usePoints } from '@/hooks/usePoints';
 import { bumpActivityRevision } from '@/lib/activityRevision';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
-import { fetchWeeklySleepHours } from '@/lib/api/activity';
+import { fetchWeeklySleepHours, localDateStr } from '@/lib/api/activity';
 import { deriveBodySignals, fetchBodyTrends, isEmptyTrends, readinessOf, type BodyTrends } from '@/lib/api/bodyTrends';
 import { fetchProfile } from '@/lib/api/user';
 import { orderedProgressActivities } from '@/lib/weeklyActivities';
@@ -47,6 +47,12 @@ const MUTED   = 'rgba(255,255,255,0.25)';
 
 const DAY_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+/** Local 'YYYY-MM-DD' of day i (Mon = 0) of the current week. */
+function weekDate(i: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - (TODAY_INDEX - i));
+  return localDateStr(d);
+}
 /** Max breakdown tab labels visible at once — more tabs and the bar scrolls. */
 const VISIBLE_TABS = 4;
 type Period = 'D' | 'W' | 'M';
@@ -117,8 +123,9 @@ export default function ProgressScreen() {
   // draw shouldn't meet an empty trends page as their first impression.
   // Storing the full trends here lets BodyTab reuse them without a second fetch.
   const [bodyTrends, setBodyTrends] = useState<BodyTrends | null>(null);
-  const bodyState = bodyTrends
-    ? { readiness: readinessOf(deriveBodySignals(bodyTrends)), hasData: !isEmptyTrends(bodyTrends) }
+  const bodySignals = bodyTrends ? deriveBodySignals(bodyTrends) : null;
+  const bodyState = bodySignals && bodyTrends
+    ? { readiness: readinessOf(bodySignals), hasData: !isEmptyTrends(bodyTrends) }
     : null;
   const loadBody = useCallback(async () => {
     if (!user) return;
@@ -276,6 +283,11 @@ export default function ProgressScreen() {
   // lands.
   const showBody = (bodyState?.hasData ?? false)
     || rows.some((row) => !!row.connection && !row.meta.native);
+  const bodyDays = new Set<string>([
+    ...(bodyTrends?.restingHr ?? []).map(p => p.date),
+    ...(bodyTrends?.hrv ?? []).map(p => p.date),
+    ...(bodyTrends?.load ?? []).filter(d => d.activeMin > 0).map(d => d.date),
+  ]);
 
   // BODY leads both the carousel AND the tab strip (last place in a scrolling
   // tab bar is where features hide), so tab indices ARE radial indices — no
@@ -293,11 +305,12 @@ export default function ProgressScreen() {
     iconName: 'pulse',
     iconLib: 'ionicons',
     pointsValue: 0,
-    // Ticks mark nights a sleep record landed — the days the readiness read
-    // actually has body data behind it.
+    // Ticks mark days with ANY body data behind the read — a night, a resting
+    // HR reading, or a session. Sleep alone left someone who doesn't wear
+    // their device to bed looking at seven dark ticks under a live ring.
     ticks: DAY_LABELS.map((label, i) => ({
       label: label.slice(0, 2),
-      active: sleepHrs[i] > 0,
+      active: sleepHrs[i] > 0 || bodyDays.has(weekDate(i)),
       isToday: i === TODAY_INDEX,
     })),
   });
@@ -570,7 +583,15 @@ function BreakdownSection({
                   onOffsetChange={onLookbackChange}
                 />
               )}
-              {key === 'sleep' && <SleepTab sleepHrs={sleepHrs} sleepBedtimes={sleepBedtimes} />}
+              {key === 'sleep' && (
+                <SleepTab
+                  sleepHrs={sleepHrs}
+                  sleepBedtimes={sleepBedtimes}
+                  // Unknown while trends load → assume tracked, so the "not
+                  // tracked" copy never flashes at a sleeper.
+                  sleepTracked={sleepHrs.some(h => h > 0) || (bodyTrends ? deriveBodySignals(bodyTrends).tracksSleep : true)}
+                />
+              )}
             </View>
           ))}
         </ScrollView>
