@@ -6,7 +6,7 @@
  *
  * Plain English on purpose: an affiliate reads this on a phone, once.
  */
-export const AFFILIATE_TERMS_VERSION = '2026-08-v1';
+export const AFFILIATE_TERMS_VERSION = '2026-08-v2';
 
 export interface TermsSection {
     title: string;
@@ -24,7 +24,7 @@ export const AFFILIATE_TERMS: TermsSection[] = [
     {
         title: 'How you earn',
         body: [
-            'You earn when someone signs up with your code or link and then logs their first workout that POWR can verify — checked in at a gym, or synced from a wearable. Workouts typed in by hand never count, for anyone.',
+            'You earn when someone signs up with your code or link and then logs their first session that POWR can verify — any session: a check-in at a gym, or a walk, run, ride or workout recorded by their phone or wearable. Sessions typed in by hand never count, for anyone.',
             'Rewards are POWR points and, at certain steps, products or experiences. There is no cash, and rewards can’t be sold, swapped or transferred.',
             'The points per conversion, the steps and the rewards on your ladder are set by the programme you’re on. We can change them for future conversions; anything you’ve already earned stays earned.',
         ],
