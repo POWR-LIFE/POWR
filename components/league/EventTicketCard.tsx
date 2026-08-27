@@ -26,7 +26,7 @@ const GREEN = '#4ade80';
 
 /** Rows shown before "Show all" — enough to see who's there without the card
  *  turning into a scroll of its own. */
-const MAX_ROWS = 4;
+const MAX_ROWS = 3;
 
 /** The Avatar component speaks Friend; invite rows carry no friendship at all. */
 function asFriend(f: InviteFriend, i: number): Friend {
@@ -165,10 +165,12 @@ export function EventTicketCard({
         <View style={[styles.card, gate && !met && styles.cardGated]}>
             <Text style={styles.eyebrow}>{gate ? 'YOUR TICKET' : 'INVITE FRIENDS'}</Text>
 
-            {/* ── The count, as big as it deserves to be ── */}
+            {/* ── The count, the label and the bar in the space of one row —
+                the EVENT segment has to fit a screen with the hero and the
+                prizes above it, so this card earns its height line by line. */}
             {met ? (
                 <View style={styles.metRow}>
-                    <Ionicons name="lock-open" size={18} color={GOLD} />
+                    <Ionicons name="lock-open" size={16} color={GOLD} />
                     <Text style={styles.metText}>
                         {gate
                             ? keepPlace ? 'Your place in the final standings is secured' : 'You’re on the leaderboard'
@@ -180,12 +182,12 @@ export function EventTicketCard({
                     <View style={styles.countRow}>
                         <Text style={styles.count}>{Math.min(count, target)}</Text>
                         <Text style={styles.countOf}>/ {target}</Text>
+                        <Text style={styles.countLabel} numberOfLines={2}>
+                            {countingConversions
+                                ? 'friends with a verified workout'
+                                : 'friends signed up with your code'}
+                        </Text>
                     </View>
-                    <Text style={styles.countLabel}>
-                        {countingConversions
-                            ? 'friends with a verified workout'
-                            : 'friends signed up with your code'}
-                    </Text>
                     {target > 0 && (
                         <View style={styles.progressTrack}>
                             <View
@@ -199,36 +201,31 @@ export function EventTicketCard({
                 </>
             )}
 
-            <Text style={styles.explainer}>
+            <Text style={styles.explainer} numberOfLines={2}>
                 {gate && !met
                     ? keepPlace
-                        ? `You’re on the leaderboard now. ${gate.required} friends signing up with your code${
-                              gate.counting === 'conversions' ? ' and logging their first verified workout' : ''
-                          }${gateBy ? ` by ${gateBy}` : ''} keeps your place in the final standings. `
-                        : `${gate.required} friends signing up with your code${
-                              gate.counting === 'conversions' ? ' and logging their first verified workout' : ''
-                          } puts you on the leaderboard. `
-                    : ''}
-                You each get +{event.invite_bonus_points} POWR when a friend joins with your code and logs
-                their first verified workout.
-                {!gate && milestoneN > 0 && event.invite_milestone_bonus > 0
-                    ? ` +${event.invite_milestone_bonus} more when ${milestoneN} friends make it.`
-                    : ''}
+                        ? `${gate.required} friends${gateBy ? ` by ${gateBy}` : ''} keeps your place in the final standings · +${event.invite_bonus_points} POWR each`
+                        : `${gate.required} friends puts you on the leaderboard · +${event.invite_bonus_points} POWR each`
+                    : `You each get +${event.invite_bonus_points} POWR when a friend joins with your code and logs a first verified workout.${
+                          !gate && milestoneN > 0 && event.invite_milestone_bonus > 0
+                              ? ` +${event.invite_milestone_bonus} more at ${milestoneN} friends.`
+                              : ''
+                      }`}
             </Text>
 
-            {/* ── Share is the action this card exists for ── */}
-            <Pressable
-                style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.85 }]}
-                onPress={handleShare}
-                disabled={!link}
-                accessibilityRole="button"
-                accessibilityLabel="Share your invite link"
-            >
-                <Ionicons name="share-outline" size={15} color="#0a0a0a" />
-                <Text style={styles.shareBtnText}>SHARE YOUR CODE</Text>
-            </Pressable>
-
+            {/* ── Share is the action this card exists for; code + QR ride
+                the same row rather than a second one. ── */}
             <View style={styles.codeRow}>
+                <Pressable
+                    style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.85 }]}
+                    onPress={handleShare}
+                    disabled={!link}
+                    accessibilityRole="button"
+                    accessibilityLabel="Share your invite link"
+                >
+                    <Ionicons name="share-outline" size={14} color="#0a0a0a" />
+                    <Text style={styles.shareBtnText}>SHARE</Text>
+                </Pressable>
                 <Pressable
                     style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
                     onPress={handleCopy}
@@ -376,13 +373,13 @@ export function EventTicketCard({
 const styles = StyleSheet.create({
     card: {
         marginHorizontal: 14,
-        marginTop: 10,
+        marginTop: 2,
         borderRadius: 18,
         backgroundColor: CARD_BG,
         borderWidth: 1,
         borderColor: BORDER,
-        paddingHorizontal: 18,
-        paddingVertical: 18,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
     },
     // An unmet gate is the one thing standing between you and the board —
     // the card says so before you've read a word of it.
@@ -390,33 +387,33 @@ const styles = StyleSheet.create({
 
     eyebrow: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5 },
 
-    countRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 10 },
-    count: { fontSize: 46, fontWeight: '100', color: GOLD, letterSpacing: -2, lineHeight: 50 },
-    countOf: { fontSize: 20, fontWeight: '200', color: DIM, letterSpacing: -0.5 },
-    countLabel: { fontSize: 12, fontWeight: '300', color: DIM, marginTop: 2 },
+    countRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 6 },
+    count: { fontSize: 32, fontWeight: '100', color: GOLD, letterSpacing: -1.5, lineHeight: 36 },
+    countOf: { fontSize: 16, fontWeight: '200', color: DIM, letterSpacing: -0.5 },
+    countLabel: { flex: 1, fontSize: 11, fontWeight: '300', color: DIM, marginLeft: 6 },
     progressTrack: {
         height: 3,
         borderRadius: 2,
         backgroundColor: 'rgba(255,255,255,0.08)',
         overflow: 'hidden',
-        marginTop: 12,
+        marginTop: 8,
     },
     progressFill: { height: '100%', borderRadius: 2, backgroundColor: GOLD },
 
-    metRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-    metText: { fontSize: 18, fontWeight: '300', color: TEXT, letterSpacing: -0.3 },
+    metRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+    metText: { flex: 1, fontSize: 15, fontWeight: '300', color: TEXT, letterSpacing: -0.3 },
 
-    explainer: { fontSize: 11, fontWeight: '300', color: DIM, lineHeight: 16, marginTop: 14 },
+    explainer: { fontSize: 11, fontWeight: '300', color: DIM, lineHeight: 15, marginTop: 8 },
 
     shareBtn: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 8,
-        marginTop: 14,
+        gap: 6,
         backgroundColor: GOLD,
         borderRadius: 100,
-        paddingVertical: 12,
+        paddingVertical: 10,
     },
     shareBtnText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
 
@@ -432,8 +429,9 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.25)',
         paddingHorizontal: 12,
         paddingVertical: 9,
+        minWidth: 118,
     },
-    codeText: { fontSize: 14, fontWeight: '600', color: TEXT, letterSpacing: 2 },
+    codeText: { fontSize: 13, fontWeight: '600', color: TEXT, letterSpacing: 2 },
     qrBtn: {
         width: 36,
         height: 36,
@@ -450,10 +448,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        marginTop: 12,
+        marginTop: 10,
         backgroundColor: GOLD,
         borderRadius: 100,
-        paddingVertical: 12,
+        paddingVertical: 10,
     },
     bookBtnText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
     bookHint: { fontSize: 10, fontWeight: '400', color: MUTED, marginTop: 8, lineHeight: 14 },
@@ -462,11 +460,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        marginTop: 14,
+        marginTop: 10,
     },
     bookedText: { fontSize: 12, fontWeight: '400', color: GREEN },
 
-    rulesBlock: { marginTop: 16, gap: 6 },
+    rulesBlock: { marginTop: 12, gap: 6 },
     rulesToggle: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -477,7 +475,7 @@ const styles = StyleSheet.create({
     ruleBullet: { fontSize: 11, lineHeight: 16, color: GOLD },
     ruleText: { flex: 1, fontSize: 11, fontWeight: '300', color: DIM, lineHeight: 16 },
 
-    friendBlock: { marginTop: 16, gap: 10 },
+    friendBlock: { marginTop: 12, gap: 8 },
     friendHeading: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5, textTransform: 'uppercase' },
     friendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     friendText: { flex: 1, gap: 1 },
