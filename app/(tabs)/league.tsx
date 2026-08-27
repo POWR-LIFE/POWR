@@ -941,7 +941,7 @@ function RealPodium({
                 textAlign: 'center',
                 marginBottom: 10,
               }}>
-                {entry.display_name ?? entry.username ?? 'Unknown'}
+                {entry.display_name ?? entry.username ?? 'POWR member'}
               </Text>
 
               {/* Platform with gradient */}
@@ -1129,7 +1129,7 @@ function LadderRow({
       </View>
       <View style={{ flex: 1, gap: 1 }}>
         <Text style={[styles.ladderName, isMe && styles.ladderNameMe]} numberOfLines={1}>
-          {entry.display_name ?? entry.username ?? 'Unknown'}{isMe ? ' (You)' : ''}
+          {entry.display_name ?? entry.username ?? 'POWR member'}{isMe ? ' (You)' : ''}
         </Text>
         {showPro && entry.is_pro && <ProBadge size="sm" />}
       </View>
@@ -1192,7 +1192,7 @@ function RealLeaderRow({
           style={[styles.leaderName, isMe && styles.leaderNameMe, isTop && { color: TEXT, fontWeight: '400' }]}
           numberOfLines={1}
         >
-          {entry.display_name ?? entry.username ?? 'Unknown'}
+          {entry.display_name ?? entry.username ?? 'POWR member'}
           {isMe ? ' (You)' : ''}
         </Text>
         {showPro && entry.is_pro && <ProBadge size="sm" />}

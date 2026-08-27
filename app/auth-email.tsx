@@ -1,5 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
+import { resumeOnboardingRoute } from '@/lib/onboarding/resume';
 import { PASSWORD_RESET_REDIRECT, supabase } from '@/lib/supabase';
 import GeometricBackground from '@/components/GeometricBackground';
 import { Image } from 'expo-image';
@@ -94,8 +95,10 @@ export default function AuthEmailScreen() {
                 } else if (needsConfirmation) {
                     setConfirmationSent(true);
                 } else {
-                    // Email confirmation disabled — session created immediately
-                    router.replace('/onboarding-permission');
+                    // Email confirmation disabled — session created immediately.
+                    // Through the resume helper so the profile (name) step is
+                    // never skipped — a fresh account has no display_name yet.
+                    router.replace(await resumeOnboardingRoute());
                 }
             }
         } finally {
