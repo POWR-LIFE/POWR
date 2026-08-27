@@ -54,6 +54,7 @@ export default function LandingV2() {
               a plain text link on purpose: the nav carries ONE gold CTA, and a
               consumer who doesn't know what a reward partner is shouldn't have
               to choose between two buttons. */}
+          <a className="powr-nav-secondary" href="/affiliates">Affiliates</a>
           <a className="powr-nav-secondary" href="/partners">For Brands</a>
           <a
             href="#download"
