@@ -31,7 +31,7 @@ const STEPS = [
     n: '03',
     tag: 'Verify',
     title: 'They actually train',
-    body: 'Their first session POWR can prove — a check-in at the gym, a run or ride recorded on their phone, a session off a watch — turns the signup into a conversion. That is the moment that counts. Not the download.',
+    body: 'Their first session POWR can prove — a check-in at the gym, a walk or run recorded on their phone, a session off a watch — turns the signup into a conversion. That is the moment that counts. Not the download.',
   },
   {
     n: '04',

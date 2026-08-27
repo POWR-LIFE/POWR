@@ -12,7 +12,7 @@ import { useCompact } from '../../stages/shared';
 const WHO = [
   { who: 'PTs & coaches', line: 'Every client you already have is a conversion waiting to be logged.' },
   { who: 'Gym owners & studios', line: 'A QR by the door. Your members earn for turning up — and so do you.' },
-  { who: 'Run clubs & crews', line: 'One link in the group chat. A run recorded on a phone counts as much as one off a watch.' },
+  { who: 'Run clubs & crews', line: 'One link in the group chat. A walk or run recorded on a phone counts as much as a session off a watch.' },
   { who: 'Athletes', line: 'People copy what you do. Now what you do pays them to start.' },
   { who: 'Anyone with a following that moves', line: 'If your audience trains, your link works. If they don’t, it doesn’t — and we would rather you knew.' },
 ];
