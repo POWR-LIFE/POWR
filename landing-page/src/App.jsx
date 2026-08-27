@@ -102,6 +102,7 @@ import { readHandoffTicket, completeHandoff, arrivedViaApp, markArrivedViaApp } 
 import AffiliateTermsPage, { AffiliateTermsGate } from './pages/creator/AffiliateTerms';
 import LandingV2 from './landing/LandingV2';
 import PartnersPage from './landing/partners/PartnersPage';
+import AffiliatesPage from './landing/affiliates/AffiliatesPage';
 import CookiePolicy from './pages/CookiePolicy';
 import DeleteAccount from './pages/DeleteAccount';
 import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
@@ -556,7 +557,8 @@ const CreatorLogin = () => {
     if (!authLoading && user && rolesFor === user.id && !isCreator && !isAdmin) {
         return (
             <CreatorShell eyebrow="Affiliate Portal" title="Not on the programme yet" sub={`You're signed in as ${user.email}, but this account isn't an affiliate. The programme is invite-only — if you've been told you're in, check you're using the same account as the app.`}>
-                <button onClick={signOut} className={`${CREATOR_BTN} w-full`}>Sign out</button>
+                <a href="/affiliates" className={`${CREATOR_BTN} w-full`} style={{ color: '#080808' }}>How the programme works</a>
+                <button onClick={signOut} className="w-full mt-4 text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">Sign out</button>
             </CreatorShell>
         );
     }
@@ -577,6 +579,7 @@ const CreatorLogin = () => {
                 )}
                 <a href="/app?to=affiliate" className={`${CREATOR_BTN} w-full`} style={{ color: '#080808' }}>Open in POWR</a>
                 <p className="text-[11px] text-[#AAAAAA] text-center mt-4 leading-relaxed">Settings › Affiliate › Open the full portal.</p>
+                <p className="text-[11px] text-[#AAAAAA] text-center mt-2 leading-relaxed">Not an affiliate yet? <a href="/affiliates"><span className="text-[#8a7600]">How the programme works</span></a></p>
                 <div className="mt-8 pt-6 border-t border-[#E6E6E1] text-center">
                     <button onClick={() => setAdminForm(true)} className="text-[10px] uppercase tracking-[0.3em] font-black text-[#CCCCCC] hover:text-[#8a7600] transition-colors">POWR team sign-in</button>
                 </div>
@@ -1430,6 +1433,9 @@ export default function App() {
                         homepage canvas; the .html path is still on business cards */}
                     <Route path="/partners" element={<PartnersPage />} />
                     <Route path="/partners.html" element={<Navigate to="/partners" replace />} />
+                    {/* The affiliate programme PITCH. /affiliate (singular) is the portal. */}
+                    <Route path="/affiliates" element={<AffiliatesPage />} />
+                    <Route path="/affiliates.html" element={<Navigate to="/affiliates" replace />} />
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />
