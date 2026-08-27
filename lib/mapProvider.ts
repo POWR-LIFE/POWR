@@ -9,3 +9,11 @@ export const MAP_PROVIDER =
   Platform.OS === 'ios' && Constants.appOwnership === 'expo'
     ? undefined
     : PROVIDER_GOOGLE;
+
+// Key for the Directions web service (walking routes on Discover). Kept
+// separate from the per-platform Maps SDK keys: Google rejects app-restricted
+// keys on web-service APIs, so this one is application-unrestricted but
+// API-restricted to Directions only, with a daily quota cap in GCP.
+export const GOOGLE_DIRECTIONS_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_DIRECTIONS_KEY ??
+  'AIzaSyCB8XePErViq9V4UodDDu49bZUPFaSp678';

@@ -13,8 +13,10 @@
  */
 import {
   staleVisitVerdict,
+  sessionBelongsToVisit,
   STALE_SILENCE_MS,
   MAX_OPEN_AFTER_UPGRADE_MS,
+  SESSION_OWNERSHIP_MARGIN_MS,
 } from '@/supabase/functions/_shared/gymReaper';
 
 const MIN = 60 * 1000;
@@ -142,5 +144,40 @@ describe('staleVisitVerdict', () => {
       }, NOW);
       expect(verdict.provenMs).toBe(startedAt + 40 * MIN);
     });
+  });
+});
+
+describe('sessionBelongsToVisit', () => {
+  // Visit b899021c, exactly as it happened (2026-08-22): the second same-day
+  // check-in at POWR was stamped with the morning visit's session, and the reaper
+  // grew that session to 1045 minutes when it closed the evening visit.
+  const eveningVisit = { started_at: '2026-08-22T20:54:38.628Z' };
+  const morningSession = { started_at: '2026-08-22T07:25:36.256Z' };
+
+  it('disowns a same-day session that predates the visit by hours', () => {
+    expect(sessionBelongsToVisit(morningSession, eveningVisit)).toBe(false);
+  });
+
+  it('owns a session inserted at check-in', () => {
+    expect(sessionBelongsToVisit({ started_at: '2026-08-22T20:54:38.628Z' }, eveningVisit)).toBe(true);
+  });
+
+  it('owns a session the client inserted a little after check-in (claim at 30 min)', () => {
+    expect(sessionBelongsToVisit({ started_at: '2026-08-22T21:25:00.000Z' }, eveningVisit)).toBe(true);
+  });
+
+  it('tolerates a health reconciliation or stale-entry replay that backdates the start', () => {
+    const backdated = new Date(Date.parse(eveningVisit.started_at) - SESSION_OWNERSHIP_MARGIN_MS + 1000).toISOString();
+    expect(sessionBelongsToVisit({ started_at: backdated }, eveningVisit)).toBe(true);
+  });
+
+  it('disowns a session that predates the visit by more than the margin', () => {
+    const tooEarly = new Date(Date.parse(eveningVisit.started_at) - SESSION_OWNERSHIP_MARGIN_MS - 1000).toISOString();
+    expect(sessionBelongsToVisit({ started_at: tooEarly }, eveningVisit)).toBe(false);
+  });
+
+  it('keeps the old behaviour when a timestamp is missing or unparseable', () => {
+    expect(sessionBelongsToVisit({ started_at: null }, eveningVisit)).toBe(true);
+    expect(sessionBelongsToVisit(morningSession, { started_at: 'not-a-date' })).toBe(true);
   });
 });

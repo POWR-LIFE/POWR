@@ -88,6 +88,9 @@ export default function OnboardingProfileScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { session } = useAuth();
+    // Already onboarded but missing name/username (resumeOnboardingRoute sent
+    // them here): finish the profile and go straight back to the app.
+    const mustFinish = !!session?.user?.user_metadata?.onboarding_complete;
 
     const [displayName, setDisplayName] = useState('');
     const [username, setUsername] = useState('');
@@ -232,7 +235,7 @@ export default function OnboardingProfileScreen() {
 
     useEffect(() => {
         AsyncStorage.getItem('pending_referral_code')
-            .then(code => setAskInvite(!code))
+            .then(code => setAskInvite(!code && !mustFinish))
             .catch(() => setAskInvite(true));
     }, []);
 
@@ -278,7 +281,8 @@ export default function OnboardingProfileScreen() {
             const code = normalizeMemberId(inviteCode);
             if (code) await AsyncStorage.setItem('pending_referral_code', code).catch(() => {});
 
-            router.push(NEXT_SCREEN);
+            if (mustFinish) router.replace('/(tabs)');
+            else router.push(NEXT_SCREEN);
         } catch (e: any) {
             setError(e?.message ?? 'Something went wrong');
         } finally {
@@ -293,7 +297,8 @@ export default function OnboardingProfileScreen() {
         >
             <GeometricBackground />
 
-            {/* Back button */}
+            {/* Back button — hidden when the step is being enforced: there is nowhere to go back to */}
+            {!mustFinish && (
             <Pressable
                 style={[styles.backButton, { top: insets.top + 14 }]}
                 onPress={() => {
@@ -304,6 +309,7 @@ export default function OnboardingProfileScreen() {
             >
                 <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
             </Pressable>
+            )}
 
             <Animated.ScrollView
                 style={[styles.scroll, { opacity: fade }]}

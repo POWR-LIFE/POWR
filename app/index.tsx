@@ -1,4 +1,5 @@
 import { useAuth } from '@/context/AuthContext';
+import { resumeOnboardingRoute } from '@/lib/onboarding/resume';
 import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
@@ -33,8 +34,8 @@ export default function Index() {
         if (hashError || loading || didRedirect.current) return;
         didRedirect.current = true;
         if (session) {
-            const onboardingComplete = session.user.user_metadata?.onboarding_complete;
-            router.replace(onboardingComplete ? '/(tabs)' : '/onboarding-permission');
+            const onboardingComplete = !!session.user.user_metadata?.onboarding_complete;
+            resumeOnboardingRoute(onboardingComplete).then(route => router.replace(route));
         } else {
             router.replace('/onboarding');
         }

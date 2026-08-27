@@ -21,7 +21,7 @@ import { tracked } from '@/lib/analytics';
 import { fetchActiveLiveEvent, fetchLiveEventBySlug, type LiveEvent } from '@/lib/api/liveEvents';
 import { publishShareImage } from '@/lib/api/share';
 import { fetchProfile } from '@/lib/api/user';
-import { SAVE_CARD_ENABLED, SAVE_SHEET_HINT, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
+import { SAVE_CARD_ENABLED, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
 import {
   buildPrizeShareMessage,
   buildPrizeSharePath,
@@ -193,11 +193,11 @@ queryFn: async () => {
     }
   }
 
-  /** Keep the image itself — see lib/saveCard.ts for the two routes and why. */
+  /** Keep the image itself — gallery write, share-sheet fallback (lib/saveCard.ts). */
   async function handleSave() {
     if (!cardRef.current || busy) return;
     setBusy('save');
-    setNotice(Platform.OS === 'ios' ? SAVE_SHEET_HINT : null);
+    setNotice(null);
     try {
       const uri = await captureFullRes();
       const result = await saveCardImage(uri, cardFilename(`prize-${rank}`));

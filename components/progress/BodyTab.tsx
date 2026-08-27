@@ -159,11 +159,11 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                         )}
                     </View>
                     <View style={styles.chartBlock}>
-                        <Sparkline points={trends.restingHr} days={TREND_DAYS} height={RHR_CHART_H} color={ROSE} area goodDirection="down" />
+                        <Sparkline points={trends.restingHr} days={TREND_DAYS} height={RHR_CHART_H} goodDirection="down" />
+                        {/* No legend: the baseline is the average the headline
+                            already names, and the high/low now sit on their own
+                            dots inside the chart. */}
                         <AxisRow left={`${TREND_DAYS} days ago`} right="today" />
-                        <ChartLegend items={[
-                            { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: 'your average' },
-                        ]} />
                     </View>
                 </>
             )}
@@ -171,13 +171,13 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
             {showHrv && (
                 <>
                     <View style={styles.tabSep} />
-                    <Text style={styles.tabSubLabel}>RECOVERY (HRV) · PER WORKOUT</Text>
+                    <Text style={styles.tabSubLabel}>RECOVERY (HRV) · {TREND_DAYS} DAYS</Text>
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
                             {Math.round(hrv!.value)}
                             <Text style={styles.metricUnit}> ms · {whenLabel(hrv!.date)}</Text>
                         </Text>
-                        <Text style={styles.metricDelta}>one dot per tracked workout — higher is fresher</Text>
+                        <Text style={styles.metricDelta}>one dot per reading — higher is fresher</Text>
                     </View>
                     <View style={styles.chartBlock}>
                         <RangeDotChart points={trends.hrv} days={TREND_DAYS} height={HRV_CHART_H} color={TEAL} goodDirection="up" />
@@ -341,7 +341,7 @@ function SignalsRow({ d }: { d: BodySignals }) {
     // on the neighbouring lamps and in the insight sentence below, and
     // repeating "short night" here made the row say one thing twice.
     const readinessDetail =
-        r.level === 'unknown' ? 'needs more data'
+        r.level === 'unknown' ? r.reason
         : r.level === 'good' ? 'good day to push'
         : r.word === 'Rest' ? 'go light today'
         : 'take it easy today';
@@ -393,6 +393,13 @@ function SignalsRow({ d }: { d: BodySignals }) {
  * insight sentence keep their single judgement, this only grades it.
  */
 function sleepSignal(d: BodySignals): Signal {
+    if (!d.tracksSleep) {
+        // Thirty days of other readings and not one night: the device isn't
+        // worn to bed. Say so. "Waiting on your device" was a promise that
+        // could never be kept, and a promise that never lands reads as a
+        // broken page.
+        return { label: 'LAST NIGHT', level: 'none', verdict: 'Not tracked', detail: 'wear your device to bed' };
+    }
     if (!d.nightFresh) {
         return { label: 'LAST NIGHT', level: 'none', verdict: 'Not synced', detail: 'waiting on your device' };
     }
@@ -644,6 +651,26 @@ function buildInsight(d: BodySignals): string {
     }
     if (d.nightFresh) {
         return `Slept ${formatMin(d.nightFresh.value * 60)} last night. Trends below build as your device syncs.`;
+    }
+    // No night to speak of — for a wearer who never takes the device to bed,
+    // resting heart rate carries the whole read. Speak to what IS there rather
+    // than promising trends that "build as your device syncs" to someone whose
+    // device has been syncing all along.
+    if (d.rhrFresh && d.rhrBaselineReady && d.rhrAvg != null) {
+        const diff = Math.round(d.rhrFresh.value - d.rhrAvg);
+        const vs = diff < 0 ? `${Math.abs(diff)} bpm below your average`
+            : diff > 0 ? `${diff} bpm above your average`
+            : 'right on your average';
+        return `Resting heart rate is ${vs} — good day to push.`;
+    }
+    if (d.rhrFresh) {
+        return `Resting heart rate ${Math.round(d.rhrFresh.value)} bpm ${whenLabel(d.rhrFresh.date)}. A few more days and you'll see how that compares to your usual.`;
+    }
+    if (d.weekActiveDays > 0) {
+        const trained = `Trained ${d.weekActiveDays} of the last ${LOAD_DAYS} days (${formatMin(d.weekActiveMin)}).`;
+        return !d.tracksSleep && !d.tracksRhr
+            ? `${trained} Readiness needs sleep or resting heart rate from your device.`
+            : `${trained} No recent sleep or heart-rate reading to judge recovery.`;
     }
     return 'Your trends build here as your device syncs — the more days, the sharper the picture.';
 }

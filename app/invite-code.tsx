@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import GeometricBackground from '@/components/GeometricBackground';
 import { supabase } from '@/lib/supabase';
 import { normalizeMemberId } from '@/shared/memberId';
+import * as Clipboard from 'expo-clipboard';
+import { clipboardMayHoldCode, readInviteCodeFromClipboard } from '@/lib/social/inviteCodePaste';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -77,6 +79,21 @@ export default function InviteCodeScreen() {
         })();
         return () => { alive = false; };
     }, []);
+
+    // One-tap paste. iOS can't carry a code through an App Store install, so
+    // the smart link puts it on the clipboard; this is the other half. We only
+    // check for PRESENCE up front — the read happens on the tap, which is the
+    // gesture iOS treats as consent.
+    const [canPaste, setCanPaste] = useState(false);
+    useEffect(() => {
+        clipboardMayHoldCode(Clipboard).then(setCanPaste);
+    }, []);
+    const pasteCode = async () => {
+        const c = await readInviteCodeFromClipboard(Clipboard);
+        if (!c) { setError("Nothing that looks like a code on your clipboard."); return; }
+        setCode(c);
+        setError(null);
+    };
 
     const submit = async () => {
         if (busy) return;
@@ -222,8 +239,20 @@ export default function InviteCodeScreen() {
                                 onBlur={() => setFocused(false)}
                                 autoCapitalize="characters"
                                 autoCorrect={false}
-                                maxLength={9}
+                                // Vanity creator codes run to 10 chars; +1 for a display gap.
+                                maxLength={11}
                             />
+                            {canPaste && !code && (
+                                <Pressable
+                                    onPress={pasteCode}
+                                    style={({ pressed }) => [styles.pasteButton, pressed && { opacity: 0.7 }]}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Paste code from clipboard"
+                                >
+                                    <Ionicons name="clipboard-outline" size={13} color={GOLD} />
+                                    <Text style={styles.pasteText}>PASTE</Text>
+                                </Pressable>
+                            )}
                         </View>
                         <Text style={styles.helper}>
                             {daysLeft > 0
@@ -297,6 +326,26 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     inputFocused: { borderColor: BORDER_FOCUS },
+    pasteButton: {
+        position: 'absolute',
+        right: 10,
+        top: 11,
+        height: 32,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(232,210,0,0.35)',
+        backgroundColor: 'rgba(232,210,0,0.08)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    pasteText: {
+        color: GOLD,
+        fontSize: 10,
+        fontFamily: 'Outfit_700Bold',
+        letterSpacing: 2,
+    },
     input: {
         color: '#F2F2F2',
         fontSize: 20,

@@ -28,6 +28,8 @@ import {
     ArrowDownRight,
     PartyPopper,
     Radio,
+    Sparkles,
+    HeartPulse,
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -56,6 +58,8 @@ import DocsApi from './pages/docs/DocsApi';
 import Analytics from './pages/admin/Analytics';
 import UsageAnalytics from './pages/admin/UsageAnalytics';
 import AthleteApplications from './pages/admin/AthleteApplications';
+import CreatorManager from './pages/admin/CreatorManager';
+import CreatorPrograms from './pages/admin/CreatorPrograms';
 import AuditLog from './pages/admin/AuditLog';
 import Broadcast from './pages/admin/Broadcast';
 import Campaigns from './pages/admin/Campaigns';
@@ -81,9 +85,24 @@ import StreakRescue from './pages/admin/StreakRescue';
 import VaultManager from './pages/admin/VaultManager';
 import LiveEvents from './pages/admin/LiveEvents';
 import LiveOps from './pages/admin/LiveOps';
+import SystemHealth from './pages/admin/SystemHealth';
+import { judgeAll, needsAttentionCount } from '../../shared/systemHealth.ts';
 import AthleteSignup from './pages/AthleteSignup';
+import { CreatorLayout } from './pages/creator/CreatorLayout';
+import CreatorSetup from './pages/creator/CreatorSetup';
+import CreatorHome from './pages/creator/CreatorHome';
+import CreatorLinks from './pages/creator/CreatorLinks';
+import CreatorConversions from './pages/creator/CreatorConversions';
+import CreatorRewards from './pages/creator/CreatorRewards';
+import CreatorSettings from './pages/creator/CreatorSettings';
+import CreatorRequests from './pages/admin/CreatorRequests';
+import { CreatorShell } from './pages/creator/CreatorShell';
+import { INPUT as CREATOR_INPUT, LABEL as CREATOR_LABEL, BTN_GOLD as CREATOR_BTN } from './pages/creator/ui';
+import { readHandoffTicket, completeHandoff, arrivedViaApp, markArrivedViaApp } from './pages/creator/portalAuth';
+import AffiliateTermsPage, { AffiliateTermsGate } from './pages/creator/AffiliateTerms';
 import LandingV2 from './landing/LandingV2';
 import PartnersPage from './landing/partners/PartnersPage';
+import AffiliatesPage from './landing/affiliates/AffiliatesPage';
 import CookiePolicy from './pages/CookiePolicy';
 import DeleteAccount from './pages/DeleteAccount';
 import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
@@ -94,9 +113,16 @@ import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
 
 // --- Auth Context ---
-const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, placementsEnabled: false, deliveryMethod: undefined, loading: true });
+export const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, creatorProgramEnabled: false, placementsEnabled: false, deliveryMethod: undefined, loading: true });
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
+const ACTING_CREATOR_KEY = 'powr_acting_creator';
+
+// Creators, unlike brands, are a real table — identity is a straight select.
+const fetchCreatorById = async (id) => {
+    const { data } = await supabase.from('creators').select('*').eq('id', id).maybeSingle();
+    return data ?? null;
+};
 
 // Brands have no table of their own — identity comes from rewards.brand_name,
 // with the logo borrowed from the brand's most recent reward.
@@ -121,8 +147,14 @@ export const AuthProvider = ({ children }) => {
     const [isAdmin, setIsAdmin] = useState(false);
     const [isPartner, setIsPartner] = useState(false);
     const [partnerData, setPartnerData] = useState(null);
+    const [isCreator, setIsCreator] = useState(false);
+    const [creatorData, setCreatorData] = useState(null);
+    const [actingCreator, setActingCreatorState] = useState(null);
     const [actingPartner, setActingPartnerState] = useState(null);
     const [placementsEnabled, setPlacementsEnabled] = useState(false);
+    // Master switch from System Config. Admins see the portal regardless.
+    const [creatorProgramEnabled, setCreatorProgramEnabled] = useState(false);
+    const [rolesFor, setRolesFor] = useState(null);
     // undefined = unknown/loading, null = brand hasn't chosen a delivery
     // method yet (drives the first-run chooser), else 'api'|'shopify'|'manual'
     const [deliveryMethod, setDeliveryMethodState] = useState(undefined);
@@ -138,6 +170,44 @@ export const AuthProvider = ({ children }) => {
         const profile = await fetchBrandProfile(brandName);
         localStorage.setItem(ACTING_BRAND_KEY, brandName);
         setActingPartnerState(profile);
+    };
+
+    // Admin-only: preview the portal as any creator
+    const setActingCreator = async (creatorId) => {
+        if (!creatorId) {
+            localStorage.removeItem(ACTING_CREATOR_KEY);
+            setActingCreatorState(null);
+            return;
+        }
+        const c = await fetchCreatorById(creatorId);
+        if (c) {
+            localStorage.setItem(ACTING_CREATOR_KEY, creatorId);
+            setActingCreatorState(c);
+        }
+    };
+
+    const checkCreator = async (userId) => {
+        try {
+            const { data } = await supabase
+                .from('creator_users')
+                .select('creator_id')
+                .eq('user_id', userId)
+                .single();
+            if (!data) return null;
+            return await fetchCreatorById(data.creator_id);
+        } catch {
+            return null;
+        }
+    };
+
+    // Settings edits its own row, so the sidebar and link page must be able to
+    // re-read it without a full sign-out.
+    const refreshCreator = async () => {
+        const current = creatorData ?? actingCreator;
+        if (!current?.id) return;
+        const fresh = await fetchCreatorById(current.id);
+        if (!fresh) return;
+        if (creatorData) setCreatorData(fresh); else setActingCreatorState(fresh);
     };
 
     const checkAdmin = async (userId) => {
@@ -184,6 +254,19 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    const fetchCreatorFlag = async () => {
+        try {
+            const { data } = await supabase
+                .from('system_config')
+                .select('value')
+                .eq('key', 'creator_program_enabled')
+                .maybeSingle();
+            return data?.value === 'true';
+        } catch {
+            return false;
+        }
+    };
+
     useEffect(() => {
         let mounted = true;
         let lastUserId = null;
@@ -194,10 +277,12 @@ export const AuthProvider = ({ children }) => {
                 if (session.user.id === lastUserId) return;
                 lastUserId = session.user.id;
                 setUser(session.user);
-                const [adminStatus, partnerResult, flagOn] = await Promise.all([
+                const [adminStatus, partnerResult, creatorResult, flagOn, creatorOn] = await Promise.all([
                     checkAdmin(session.user.id),
                     checkPartner(session.user.id),
+                    checkCreator(session.user.id),
                     fetchPlacementsFlag(),
+                    fetchCreatorFlag(),
                 ]);
                 // Restore admin preview selection (admins with no brand link)
                 let restoredActing = null;
@@ -205,22 +290,39 @@ export const AuthProvider = ({ children }) => {
                     const storedBrand = localStorage.getItem(ACTING_BRAND_KEY);
                     if (storedBrand) restoredActing = await fetchBrandProfile(storedBrand);
                 }
+                let restoredCreator = null;
+                if (adminStatus && !creatorResult) {
+                    const storedCreator = localStorage.getItem(ACTING_CREATOR_KEY);
+                    if (storedCreator) restoredCreator = await fetchCreatorById(storedCreator);
+                }
                 if (mounted) {
                     setIsAdmin(adminStatus);
                     setIsPartner(!!partnerResult);
                     setPartnerData(partnerResult);
+                    setIsCreator(!!creatorResult);
+                    setCreatorData(creatorResult);
+                    setActingCreatorState(restoredCreator);
                     setActingPartnerState(restoredActing);
                     setPlacementsEnabled(flagOn);
+                    setCreatorProgramEnabled(creatorOn);
+                    // Which user the role lookups above belong to — a route can tell
+                    // "not a creator" from "not resolved yet" (the web handoff needs this).
+                    setRolesFor(session.user.id);
                     setLoading(false);
                 }
             } else {
                 lastUserId = null;
                 setUser(null);
+                setRolesFor(null);
                 setIsAdmin(false);
                 setIsPartner(false);
                 setPartnerData(null);
+                setIsCreator(false);
+                setCreatorData(null);
+                setActingCreatorState(null);
                 setActingPartnerState(null);
                 setPlacementsEnabled(false);
+                setCreatorProgramEnabled(false);
                 if (mounted) setLoading(false);
             }
         };
@@ -257,6 +359,13 @@ export const AuthProvider = ({ children }) => {
             partnerData: partnerData ?? actingPartner,
             isActingPartner: !partnerData && !!actingPartner,
             setActingPartner,
+            isCreator,
+            creatorData: creatorData ?? actingCreator,
+            isActingCreator: !creatorData && !!actingCreator,
+            setActingCreator,
+            refreshCreator,
+            creatorProgramEnabled,
+            rolesFor,
             placementsEnabled,
             deliveryMethod,
             updateDeliveryMethod: setDeliveryMethodState,
@@ -290,6 +399,7 @@ const PATH_LABELS = {
     challenges: 'Challenges',
     users: 'Users',
     athletes: 'Athletes',
+    creators: 'Affiliates',
     profile: 'Profile',
     analytics: 'Analytics',
     usage: 'Usage',
@@ -306,6 +416,7 @@ const PATH_LABELS = {
     'streak-rescue': 'Streak Rescue',
     events: 'Live Events',
     liveops: 'Live Ops',
+    'system-health': 'System Health',
     config: 'Config',
 };
 
@@ -367,6 +478,161 @@ const PartnerLogin = () => {
                 </form>
             </div>
         </div>
+    );
+};
+
+// --- Creator Login (what people see: "Affiliate Portal") ---
+// The same identities as the app: Google, Apple, email+password — plus a
+// one-time email link for anyone who signed up with a provider and never set a
+// password. shouldCreateUser:false means the link can only ever sign into an
+// account that already exists; it never mints one.
+//
+// Apple on the web needs an Apple *Services ID* configured on the Supabase
+// Apple provider (the app's native ID-token flow doesn't cover browsers).
+// Flip this once that exists; until then Apple users take the email link.
+const APPLE_WEB_SIGNIN = false;
+
+// Jamie (2026-08-26): for now the portal is reached ONLY from the app — the
+// in-app Affiliate screen hands a signed-in session across. Direct web login
+// stays built (Google / email link / password below) but hidden until we're
+// happy to let affiliates sign in on the web. Admins keep the password form
+// for preview. Flip this to open web login.
+const AFFILIATE_WEB_LOGIN = false;
+
+const CreatorLogin = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { isAdmin, isCreator, user, rolesFor, loading: authLoading } = useAuth();
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [busy, setBusy] = useState(null); // 'password' | 'link' | 'google' | 'apple'
+    const [error, setError] = useState(null);
+    const [linkSent, setLinkSent] = useState(false);
+    const handoffExpired = new URLSearchParams(location.search).get('handoff') === 'expired';
+    const [adminForm, setAdminForm] = useState(() => new URLSearchParams(location.search).get('admin') === '1');
+
+    useEffect(() => {
+        // Admins are allowed into the portal too (preview mode)
+        if (user && (isCreator || isAdmin)) navigate('/affiliate');
+    }, [user, isAdmin, isCreator, navigate]);
+
+    const portalUrl = `${window.location.origin}/affiliate`;
+
+    const oauth = async (provider) => {
+        setBusy(provider); setError(null);
+        const { error: e } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: portalUrl } });
+        if (e) { setError(e.message); setBusy(null); }
+    };
+
+    const emailLink = async () => {
+        const addr = email.trim().toLowerCase();
+        if (!addr) return setError('Enter the email you use in the app first.');
+        setBusy('link'); setError(null);
+        const { error: e } = await supabase.auth.signInWithOtp({
+            email: addr,
+            options: { shouldCreateUser: false, emailRedirectTo: portalUrl },
+        });
+        setBusy(null);
+        if (e) {
+            return setError(/signups? not allowed|not found|user_not_found/i.test(e.message)
+                ? "We couldn't find a POWR account with that email. Use the one you signed up with in the app."
+                : e.message);
+        }
+        setLinkSent(true);
+    };
+
+    const passwordLogin = async (e) => {
+        e.preventDefault();
+        if (!password) return AFFILIATE_WEB_LOGIN ? emailLink() : setError('Enter your password.');
+        setBusy('password'); setError(null);
+        const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (err) { setError(err.message); setBusy(null); }
+        // success: the auth listener resolves roles and the effect above navigates
+    };
+
+    const signOut = async () => { await supabase.auth.signOut(); setBusy(null); };
+
+    // Signed in, roles resolved, and not on the programme: say so instead of
+    // showing a login form to someone who is already logged in.
+    if (!authLoading && user && rolesFor === user.id && !isCreator && !isAdmin) {
+        return (
+            <CreatorShell eyebrow="Affiliate Portal" title="Not on the programme yet" sub={`You're signed in as ${user.email}, but this account isn't an affiliate. The programme is invite-only — if you've been told you're in, check you're using the same account as the app.`}>
+                <a href="/affiliates" className={`${CREATOR_BTN} w-full`} style={{ color: '#080808' }}>How the programme works</a>
+                <button onClick={signOut} className="w-full mt-4 text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">Sign out</button>
+            </CreatorShell>
+        );
+    }
+
+    if (linkSent) {
+        return (
+            <CreatorShell eyebrow="Affiliate Portal" title="Check your email" sub={`We've sent a sign-in link to ${email.trim()}. Open it on this device and you're in — no password needed.`}>
+                <button onClick={() => setLinkSent(false)} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">Use a different email</button>
+            </CreatorShell>
+        );
+    }
+
+    if (!AFFILIATE_WEB_LOGIN && !adminForm) {
+        return (
+            <CreatorShell eyebrow="Affiliate Portal" title="Open it from the app" sub="Your affiliate home lives in POWR — code, link, numbers and rewards. Tap “Open the full portal” there and this page opens already signed in.">
+                {handoffExpired && (
+                    <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-xl mb-5">That link from the app has expired — open the portal from the app again.</div>
+                )}
+                <a href="/app?to=affiliate" className={`${CREATOR_BTN} w-full`} style={{ color: '#080808' }}>Open in POWR</a>
+                <p className="text-[11px] text-[#AAAAAA] text-center mt-4 leading-relaxed">Settings › Affiliate › Open the full portal.</p>
+                <p className="text-[11px] text-[#AAAAAA] text-center mt-2 leading-relaxed">Not an affiliate yet? <a href="/affiliates"><span className="text-[#8a7600]">How the programme works</span></a></p>
+                <div className="mt-8 pt-6 border-t border-[#E6E6E1] text-center">
+                    <button onClick={() => setAdminForm(true)} className="text-[10px] uppercase tracking-[0.3em] font-black text-[#CCCCCC] hover:text-[#8a7600] transition-colors">POWR team sign-in</button>
+                </div>
+            </CreatorShell>
+        );
+    }
+
+    const busyAny = !!busy;
+    const social = "w-full h-12 flex items-center justify-center gap-3 bg-white border border-[#E6E6E1] rounded-full text-[11px] uppercase tracking-[0.2em] font-black text-[#1A1A1A] hover:border-[#CCC] transition-all disabled:opacity-50";
+
+    return (
+        <CreatorShell eyebrow="Affiliate Portal" title="Welcome back" sub="Sign in with your POWR account — Google, Apple or email, whichever you use in the app.">
+            {handoffExpired && (
+                <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-xl mb-5">That sign-in link from the app has expired — sign in below and you're straight in.</div>
+            )}
+            {AFFILIATE_WEB_LOGIN && (<>
+            <div className="space-y-3 mb-6">
+                <button type="button" onClick={() => oauth('google')} disabled={busyAny} className={social}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.8z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1C3.3 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.3 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3V6.6H1.3C.5 8.2 0 10 0 12s.5 3.8 1.3 5.4l4-3.1z"/><path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4C18 1.2 15.2 0 12 0 7.3 0 3.3 2.7 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z"/></svg>
+                    {busy === 'google' ? 'Opening Google…' : 'Continue with Google'}
+                </button>
+                {APPLE_WEB_SIGNIN && (
+                    <button type="button" onClick={() => oauth('apple')} disabled={busyAny} className={`${social} bg-[#1A1A1A] text-white border-[#1A1A1A]`}>
+                        <span className="text-white">{busy === 'apple' ? 'Opening Apple…' : ' Continue with Apple'}</span>
+                    </button>
+                )}
+            </div>
+            <div className="flex items-center gap-4 mb-6">
+                <div className="flex-1 h-px bg-[#E6E6E1]" />
+                <span className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">or with email</span>
+                <div className="flex-1 h-px bg-[#E6E6E1]" />
+            </div>
+            </>)}
+            <form onSubmit={passwordLogin} className="space-y-5">
+                <div>
+                    <label className={CREATOR_LABEL}>Email address</label>
+                    <input type="email" className={CREATOR_INPUT} value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" />
+                </div>
+                <div>
+                    <label className={CREATOR_LABEL}>Password{AFFILIATE_WEB_LOGIN && <span className="normal-case tracking-normal text-[#CCCCCC]"> — leave blank if you signed up with Apple or Google</span>}</label>
+                    <input type="password" className={CREATOR_INPUT} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+                </div>
+                {error && <div className="text-red-500 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}
+                <button type="submit" disabled={busyAny} className={`${CREATOR_BTN} w-full`}>
+                    {busy === 'password' ? 'Signing in…' : busy === 'link' ? 'Sending…' : (password || !AFFILIATE_WEB_LOGIN) ? 'Sign In' : 'Email me a sign-in link'}
+                </button>
+                {AFFILIATE_WEB_LOGIN && password && (
+                    <button type="button" onClick={emailLink} disabled={busyAny} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">
+                        Forgot it? Email me a sign-in link
+                    </button>
+                )}
+            </form>
+        </CreatorShell>
     );
 };
 
@@ -475,6 +741,74 @@ const PartnerProtectedRoute = ({ children }) => {
     return children;
 };
 
+// /creator/* → /affiliate/* (same tail + query). Kept indefinitely: the URL
+// shipped in an OTA'd Settings row and in push copy before the rename.
+const LegacyCreatorRedirect = () => {
+    const location = useLocation();
+    return <Navigate to={{ pathname: location.pathname.replace(/^\/creator/, '/affiliate'), search: location.search }} replace />;
+};
+
+// --- Creator programme closed (master switch off) ---
+const CreatorClosed = () => (
+    <CreatorShell eyebrow="Affiliate Portal" title="Not open yet" sub="The affiliate programme isn't live. If you've been invited, we'll let you know the moment it opens.">
+        <div className="text-center">
+            <Link to="/" className={CREATOR_BTN} style={{ color: '#080808' }}>Back to home</Link>
+        </div>
+    </CreatorShell>
+);
+
+// --- Creator Protected Route ---
+// Admins are allowed in too: they can preview the portal as any creator, and
+// they see it whether or not the master switch is on.
+//
+// Handoff: arriving from the app with #h=<ticket> (see portalAuth.js) signs the
+// browser in first, then waits until the auth provider has resolved roles for
+// THAT user before deciding — otherwise the moment between "session exists"
+// and "isCreator known" would bounce a legitimate affiliate to the login page.
+const CreatorProtectedRoute = ({ children }) => {
+    const { user, isCreator, isAdmin, loading, creatorProgramEnabled, rolesFor, creatorData, isActingCreator } = useAuth();
+    const location = useLocation();
+    const navigate = useNavigate();
+    const [ticket] = useState(() => readHandoffTicket());
+    const [handoff, setHandoff] = useState(() => (readHandoffTicket() ? 'pending' : 'none'));
+
+    useEffect(() => {
+        if (handoff !== 'pending') return;
+        // Already signed in: the ticket still proves this tab was opened from
+        // the app, which is what the closed-web-login gate wants to know.
+        if (user) { markArrivedViaApp(); setHandoff('done'); return; }
+        let alive = true;
+        completeHandoff(ticket).then(ok => {
+            if (!alive) return;
+            if (ok) setHandoff('done');
+            else { setHandoff('failed'); navigate({ pathname: '/affiliate/login', search: '?handoff=expired' }, { replace: true }); }
+        });
+        return () => { alive = false; };
+    }, [handoff, ticket, user, navigate]);
+
+    const settling = handoff === 'pending' || handoff === 'failed' || (!!user && rolesFor !== user.id);
+
+    if (loading || settling) return (
+        <div className="min-h-screen bg-[#F4F4F1] flex items-center justify-center fixed inset-0 z-[100]">
+            <div className="flex flex-col items-center gap-4">
+                <div className="w-8 h-8 border-2 border-[#E8D200] border-t-transparent rounded-full animate-spin" />
+                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">{handoff === 'pending' ? 'Signing you in...' : 'Loading portal...'}</p>
+            </div>
+        </div>
+    );
+
+    if (!user || (!isCreator && !isAdmin)) return <Navigate to="/affiliate/login" state={{ from: location }} replace />;
+    // Web login closed: a non-admin session counts only if the app handed it
+    // across in this tab. Any other session (an old cookie, a partner login on
+    // the same account) is sent to the "open it from the app" page.
+    if (!AFFILIATE_WEB_LOGIN && !isAdmin && !arrivedViaApp()) return <Navigate to="/affiliate/login" replace />;
+    if (!creatorProgramEnabled && !isAdmin) return <CreatorClosed />;
+    // The one hard gate: a real affiliate (not an admin previewing) must have
+    // accepted the programme terms before the portal — and their link — opens.
+    if (creatorData && !isActingCreator && !creatorData.terms_accepted_at) return <AffiliateTermsGate />;
+    return children;
+};
+
 // --- Admin Home ---
 const AdminHome = () => {
     const [loading, setLoading] = useState(true);
@@ -491,6 +825,26 @@ const AdminHome = () => {
     // 14-day daily session trend [{ day, count }] and activity-type mix [{ type, count }]
     const [trend, setTrend] = useState([]);
     const [activityMix, setActivityMix] = useState([]);
+    // System Health: signals at the ACT line, judged in shared/systemHealth.ts.
+    // A failed read stays null and renders '—' — never a reassuring 0.
+    const [healthAttention, setHealthAttention] = useState(null);
+    // Earned creator invites waiting on a human (Creators › Requests).
+    const [pendingCreatorRequests, setPendingCreatorRequests] = useState(0);
+    useEffect(() => {
+        supabase
+            .from('creator_invite_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .then(({ count }) => setPendingCreatorRequests(count ?? 0));
+    }, []);
+    useEffect(() => {
+        let cancelled = false;
+        supabase.rpc('admin_system_health_live').then(({ data, error }) => {
+            if (cancelled) return;
+            setHealthAttention(error || !data ? null : needsAttentionCount(judgeAll(data, null)));
+        });
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -618,7 +972,9 @@ const AdminHome = () => {
         { label: 'Gym Requests',         count: stats.pendingGymRequests, to: '/admin/gym-requests',       color: '#E8D200', icon: Building2,     desc: 'Members couldn\'t find gym' },
         { label: 'Reward Submissions',   count: stats.pendingSubmissions, to: '/admin/reward-submissions', color: '#F97316', icon: Inbox,         desc: 'Pending brand review'     },
         { label: 'Athlete Applications', count: stats.pendingAthletes,    to: '/admin/athletes',           color: '#8B5CF6', icon: Star,          desc: 'Awaiting approval'        },
+        { label: 'Affiliate Requests',   count: pendingCreatorRequests,   to: '/admin/creators/requests',  color: '#E8D200', icon: Sparkles,      desc: 'Members asking to join'   },
         { label: 'Support Tickets',      count: stats.openTickets,        to: '/admin/support',            color: '#0EA5E9', icon: MessageSquare, desc: 'Open & in-progress'       },
+        { label: 'System Health',        count: healthAttention ?? '—',   to: '/admin/system-health',      color: '#F43F5E', icon: HeartPulse,    desc: 'Signals at the act line'  },
     ];
 
     // Activity-mix colors (matched to type)
@@ -636,6 +992,7 @@ const AdminHome = () => {
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,         color: '#F97316' },
         { label: 'Users',       path: '/admin/users',              icon: Users,         color: '#8a7600' },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,          color: '#8B5CF6' },
+        { label: 'Affiliates',  path: '/admin/creators',           icon: Sparkles,      color: '#E8D200' },
         { label: 'Featured',    path: '/admin/featured',           icon: Star,          color: '#AAAAAA' },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target,        color: '#AAAAAA' },
         { label: 'Analytics',   path: '/admin/analytics',          icon: BarChart3,     color: '#E8D200' },
@@ -858,6 +1215,7 @@ const AdminLayout = ({ children }) => {
     const [pendingSubmissions, setPendingSubmissions] = useState(0);
     const [pendingGymRequests, setPendingGymRequests] = useState(0);
     const [pendingSlotRequests, setPendingSlotRequests] = useState(0);
+    const [pendingCreatorRequests, setPendingCreatorRequests] = useState(0);
     const [openTickets, setOpenTickets] = useState(0);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('admin_sidebar') === '1');
 
@@ -888,6 +1246,11 @@ const AdminLayout = ({ children }) => {
             .select('id', { count: 'exact', head: true })
             .eq('status', 'pending')
             .then(({ count }) => setPendingSlotRequests(count ?? 0));
+        supabase
+            .from('creator_invite_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .then(({ count }) => setPendingCreatorRequests(count ?? 0));
         // Anything not yet resolved/closed still needs a human — matches the
         // open + in_progress pair the Overview dashboard counts.
         supabase
@@ -908,6 +1271,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
         { label: 'Users',       path: '/admin/users',              icon: Users           },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,           badge: pendingAthletes },
+        { label: 'Affiliates',  path: '/admin/creators',           icon: Sparkles,       badge: pendingCreatorRequests },
     ];
 
     const opsItems = [
@@ -915,6 +1279,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Usage',       path: '/admin/usage',       icon: MousePointerClick },
         { label: 'Sessions',    path: '/admin/sessions',    icon: Shield        },
         { label: 'Live Ops',    path: '/admin/liveops',     icon: Radio         },
+        { label: 'System Health', path: '/admin/system-health', icon: HeartPulse },
         { label: 'Performance', path: '/admin/performance', icon: Activity      },
         { label: 'Redemptions', path: '/admin/redemptions', icon: Gift          },
         { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText    },
@@ -1068,6 +1433,9 @@ export default function App() {
                         homepage canvas; the .html path is still on business cards */}
                     <Route path="/partners" element={<PartnersPage />} />
                     <Route path="/partners.html" element={<Navigate to="/partners" replace />} />
+                    {/* The affiliate programme PITCH. /affiliate (singular) is the portal. */}
+                    <Route path="/affiliates" element={<AffiliatesPage />} />
+                    <Route path="/affiliates.html" element={<Navigate to="/affiliates" replace />} />
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />
@@ -1077,6 +1445,20 @@ export default function App() {
                     <Route path="/live/:slug" element={<LiveBoard />} />
                     <Route path="/promo/:slug" element={<EventPromo />} />
                     <Route path="/partner-reward/:token" element={<PartnerRewardSubmit />} />
+                    {/* "Affiliate" is the user-facing name (Jamie, 2026-08-26 — "creator" read as
+                        content-making). Code, tables and admin routes stay creator_*; only what
+                        people see changed. /creator/* keeps working: the app's Settings row, the
+                        approval push and any setup link already sent all point there. */}
+                    <Route path="/affiliate/terms" element={<AffiliateTermsPage />} />
+                    <Route path="/affiliate/login" element={<CreatorLogin />} />
+                    <Route path="/affiliate/setup/:token" element={<CreatorSetup />} />
+                    <Route path="/affiliate" element={<CreatorProtectedRoute><CreatorLayout><CreatorHome /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/affiliate/links" element={<CreatorProtectedRoute><CreatorLayout><CreatorLinks /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/affiliate/conversions" element={<CreatorProtectedRoute><CreatorLayout><CreatorConversions /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/affiliate/rewards" element={<CreatorProtectedRoute><CreatorLayout><CreatorRewards /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/affiliate/settings" element={<CreatorProtectedRoute><CreatorLayout><CreatorSettings /></CreatorLayout></CreatorProtectedRoute>} />
+                    <Route path="/creator" element={<LegacyCreatorRedirect />} />
+                    <Route path="/creator/*" element={<LegacyCreatorRedirect />} />
                     <Route path="/partner/login" element={<PartnerLogin />} />
                     <Route path="/partner/setup/:token" element={<PartnerSetup />} />
                     <Route path="/partner" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalHome /></PartnerLayout></PartnerProtectedRoute>} />
@@ -1126,7 +1508,13 @@ export default function App() {
                     <Route path="/admin/streak-rescue" element={<ProtectedRoute><AdminLayout><StreakRescue /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/events" element={<ProtectedRoute><AdminLayout><LiveEvents /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/liveops" element={<ProtectedRoute><AdminLayout><LiveOps /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/system-health" element={<ProtectedRoute><AdminLayout><SystemHealth /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators" element={<ProtectedRoute><AdminLayout><CreatorManager /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators/programmes" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="programmes" /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators/rewards" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="rewards" /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators/fulfilment" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="fulfilment" /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/creators/requests" element={<ProtectedRoute><AdminLayout><CreatorRequests /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </AuthProvider>

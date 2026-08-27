@@ -27,6 +27,8 @@ export default defineConfig({
         // there. Any new entry added here must keep <div id="root"> and the
         // /main.jsx script, or that route renders a blank page.
         partners: resolve(__dirname, 'partners.html'),
+        // Same shell trick for /affiliates (the programme pitch; /affiliate is the portal).
+        affiliates: resolve(__dirname, 'affiliates.html'),
       },
     },
   },

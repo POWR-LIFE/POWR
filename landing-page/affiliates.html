@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>POWR Affiliates — Get rewarded when your people train</title>
+  <meta name="description"
+    content="Bring people into POWR and earn every time they show up. Points on every verified conversion, rewards at every step, and a portal that shows you all of it. Invite-only — earned in the app." />
+
+  <!-- Fonts — the page renders serif without this; main.jsx only carries CSS, not the font link -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet" />
+
+  <!-- Favicon — see index.html; every shell must carry the same set -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+  <!-- Social Media Meta Tags — the whole reason this file exists. Same trick as
+       partners.html: the site is a single-page app sharing one index.html head,
+       and Vercel serves a matching static file BEFORE applying the SPA rewrite,
+       so /affiliates is served from here and boots the same bundle. Crawlers get
+       affiliate copy; browsers get the React page. -->
+  <meta property="og:title" content="POWR Affiliates — Get rewarded when your people train" />
+  <meta property="og:description"
+    content="Bring people into POWR and earn every time they show up. Points on every verified conversion, rewards at every step. Invite-only — earned in the app." />
+  <meta property="og:image" content="https://powr.life/powr-logo-black.png" />
+  <meta property="og:url" content="https://powr.life/affiliates" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="POWR Affiliates — Get rewarded when your people train" />
+  <meta name="twitter:description"
+    content="Bring people into POWR and earn every time they show up. Points on every verified conversion, rewards at every step. Invite-only — earned in the app." />
+  <meta name="twitter:image" content="https://powr.life/powr-logo-black.png" />
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <!-- Same entry as index.html: React Router reads the URL and renders AffiliatesPage -->
+  <script type="module" src="/main.jsx"></script>
+</body>
+
+</html>

@@ -5,6 +5,7 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { colours, components, typography } from '@/constants/tokens';
 import { useHealthSync } from '@/hooks/useHealthSync';
+import { useLiveEventSignals } from '@/hooks/useLiveEventSignals';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -29,6 +30,9 @@ function TabIcon({ name, nameActive, label, focused }: TabIconProps) {
 
 export default function TabLayout() {
   useHealthSync();
+  // Live-event lifecycle pushed from the DB — the reveal turns every phone
+  // over by itself. Above the tabs so it holds whichever tab is showing.
+  useLiveEventSignals();
 
   return (
     <Tabs

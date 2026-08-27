@@ -48,6 +48,8 @@ export type BodyTrends = {
 
 export const TREND_DAYS = 30;
 export const LOAD_DAYS = 7;
+/** A night within this many days = "this device is worn to bed". */
+export const SLEEP_TRACKED_DAYS = 7;
 
 const EMPTY_WEEK: WeekVitals = { zoneMixSec: [], peakHr: null, kcal: 0 };
 const EMPTY: BodyTrends = { restingHr: [], hrv: [], sleepHours: [], load: [], week: EMPTY_WEEK };
@@ -72,6 +74,22 @@ export type BodySignals = {
     sleepAvg7: number | null;
     yesterdayMin: number;
     bigDay: boolean;
+    /**
+     * The device has produced a night in the last SLEEP_TRACKED_DAYS. False
+     * means "isn't worn to bed", not "hasn't synced yet" — the two need
+     * different words, and the ring must not count a night that was never
+     * going to arrive. A short window (not the full 30 days) so an occasional
+     * sleeper who has stopped again is back on the honest copy within a week,
+     * rather than reading "waiting on your device" for a month.
+     */
+    tracksSleep: boolean;
+    /** Resting HR has landed at all in the window. */
+    tracksRhr: boolean;
+    /** Enough RHR readings that "vs your average" means something. */
+    rhrBaselineReady: boolean;
+    /** Days trained in the load window, and the minutes behind them. */
+    weekActiveDays: number;
+    weekActiveMin: number;
 };
 
 const seriesLatest = (s: TrendPoint[]): TrendPoint | null => s.length > 0 ? s[s.length - 1] : null;
@@ -88,7 +106,8 @@ export function deriveBodySignals(t: BodyTrends): BodySignals {
     const rhr = seriesLatest(t.restingHr);
     const rhrAvg = seriesMean(t.restingHr);
     const rhrFresh = rhr && localDaysAgo(rhr.date) <= 3 ? rhr : null;
-    const rhrElevated = !!(rhrFresh && rhrAvg != null && t.restingHr.length >= 5
+    const rhrBaselineReady = t.restingHr.length >= 5;
+    const rhrElevated = !!(rhrFresh && rhrAvg != null && rhrBaselineReady
         && rhrFresh.value - rhrAvg >= 3);
 
     // Strictly today: sleep is bucketed by wake morning, so "last night" is
@@ -115,6 +134,11 @@ export function deriveBodySignals(t: BodyTrends): BodySignals {
         sleepAvg7: seriesMean(t.sleepHours.slice(-7)),
         yesterdayMin,
         bigDay,
+        tracksSleep: !!(night && localDaysAgo(night.date) <= SLEEP_TRACKED_DAYS),
+        tracksRhr: t.restingHr.length > 0,
+        rhrBaselineReady,
+        weekActiveDays: t.load.filter(day => day.activeMin > 0).length,
+        weekActiveMin: t.load.reduce((s, day) => s + day.activeMin, 0),
     };
 }
 
@@ -133,12 +157,16 @@ export type Readiness = {
 };
 
 export function readinessOf(d: BodySignals): Readiness {
-    const goods = [
-        !!(d.nightFresh && !d.shortNight),
-        !!(d.rhrFresh && !d.rhrElevated),
+    // Only the signals this user's device actually produces count toward the
+    // ring. Someone who never wears their wearable to bed is judged on resting
+    // HR and load alone — not held a third empty forever for a night that was
+    // never going to arrive.
+    const checks = [
+        d.tracksSleep ? !!(d.nightFresh && !d.shortNight) : null,
+        d.tracksRhr ? !!(d.rhrFresh && !d.rhrElevated) : null,
         !d.bigDay,
-    ].filter(Boolean).length;
-    const ring = goods / 3;
+    ].filter((c): c is boolean => c !== null);
+    const ring = checks.filter(Boolean).length / checks.length;
 
     if (d.rhrElevated || d.shortNight) {
         return { word: 'Easy', reason: d.rhrElevated ? 'heart says rest' : 'short night', level: 'attention', ring };
@@ -149,7 +177,11 @@ export function readinessOf(d: BodySignals): Readiness {
     if (d.nightFresh || d.rhrFresh) {
         return { word: 'Primed', reason: 'good to push', level: 'good', ring };
     }
-    return { word: '—', reason: 'needs more data', level: 'unknown', ring: 0 };
+    // Nothing fresh to judge by. Say WHICH kind of nothing: a device that has
+    // never sent sleep or resting HR needs wearing differently; one that has
+    // just hasn't sent anything lately.
+    const reason = !d.tracksSleep && !d.tracksRhr ? 'needs sleep or resting HR' : 'no recent readings';
+    return { word: '—', reason, level: 'unknown', ring: 0 };
 }
 
 type SnapshotRow = {
@@ -177,8 +209,13 @@ export async function fetchBodyTrends(): Promise<BodyTrends> {
     const user = await getSessionUser();
     if (!user) return EMPTY;
 
+    // TREND_DAYS - 1, matching loadSince below: the window is INCLUSIVE of
+    // today, so a bare `- TREND_DAYS` returned 31 distinct local days into a
+    // scale that only has 30 columns. The chart's x-scale clamps the overflow
+    // onto its left edge, which stacked two readings on one x — invisible when
+    // the line was a polyline, fatal once it became a smoothed path.
     const since = new Date();
-    since.setDate(since.getDate() - TREND_DAYS);
+    since.setDate(since.getDate() - (TREND_DAYS - 1));
     since.setHours(0, 0, 0, 0);
 
     const loadSince = new Date();

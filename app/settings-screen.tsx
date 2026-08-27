@@ -64,6 +64,9 @@ export default function SettingsScreen() {
   const { signOut, user, updateUserMetadata } = useAuth();
 
   const [isAdmin, setIsAdmin] = React.useState(false);
+  // Granted a creator profile (admin links their app account in creator_users).
+  // RLS lets a member read only their own link row, so a hit means "you".
+  const [isCreator, setIsCreator] = React.useState(false);
   // The member's POWR ID (= profiles.referral_code, see shared/memberId). It is
   // the one string they can read to staff at an event or to support and be
   // found by — the admin user search, event roster and Live Ops all match it.
@@ -130,8 +133,18 @@ export default function SettingsScreen() {
         .single();
       if (data?.is_admin) setIsAdmin(true);
       if (data?.referral_code) setMemberId(data.referral_code);
+      const { data: creatorLink } = await supabase
+        .from('creator_users')
+        .select('creator_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (creatorLink?.creator_id) setIsCreator(true);
     })();
   }, []);
+
+  // The in-app affiliate home (code, share, numbers, next reward); it hands
+  // off to the web portal already signed in for the desk work.
+  const openAffiliate = useCallback(() => { router.push('/affiliate'); }, [router]);
 
   // Copies the STORED form (no gap) — that's what the signup invite field,
   // the friend-code scanner and every admin lookup accept.
@@ -351,6 +364,22 @@ export default function SettingsScreen() {
             />
           ) : null}
         </View>
+
+        {/* ── Creator ──────────────────────────────────────── */}
+        {isCreator && (
+          <>
+            <SectionLabel label="Affiliate" />
+            <View style={styles.card}>
+              <RowLink
+                icon="sparkles-outline"
+                label="Affiliate"
+                sublabel="Your code, link, signups and rewards"
+                onPress={openAffiliate}
+                isLast
+              />
+            </View>
+          </>
+        )}
 
         {/* ── Points ───────────────────────────────────────── */}
         <SectionLabel label="Points" />

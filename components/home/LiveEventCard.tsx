@@ -35,8 +35,26 @@ function registeredPill(
     // Preview deliberately gets the REAL pill: the point of an in-app preview
     // is to see exactly what the room will see. The only thing preview changes
     // is where a tap goes (the sheet, so the test registration can be reset).
+    // A rank beats everything: in 'deadline' gate mode you're on the live
+    // board from day one, so the friend count is a caution for the League
+    // ticket to carry, not the headline.
+    if (event.status === 'live' && !event.is_locked && typeof board?.viewer.rank === 'number') {
+        return { label: `RANK ${board.viewer.rank}`, a11y: `You're ranked ${board.viewer.rank}.` };
+    }
+
     const gate = event.viewer.gate;
     if (gate && !gate.met) {
+        // Behind an entry gate the server still sends the viewer's OWN total
+        // (never a rank). Once there is one, it's the better fact to carry
+        // than the friend count — the League ticket owns the count and the
+        // share tools.
+        const own = board?.viewer.points;
+        if (typeof own === 'number' && own > 0) {
+            return {
+                label: `${own} POWR`,
+                a11y: `You've earned ${own} POWR this week — the leaderboard unlocks at ${gate.required} friends.`,
+            };
+        }
         return {
             label: `${gate.count} OF ${gate.required} FRIENDS`,
             a11y: `${gate.count} of ${gate.required} friends in — the leaderboard unlocks at ${gate.required}.`,

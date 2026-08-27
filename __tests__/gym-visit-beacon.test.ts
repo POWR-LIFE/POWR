@@ -302,4 +302,33 @@ describe('runVisitCheck — the server wakes us, the device decides', () => {
     expect(claimed()).toBe(false);
     expect(getFix).not.toHaveBeenCalled();
   });
+
+  // Field 2026-08-25, visit 42c92efb: four nudges, four wake_received rows, and
+  // every wake returned at "no active session — ignoring" without answering. The
+  // server read silence, kept the visit open twelve hours, and Live Ops showed
+  // it stuck all day. A wake that carries the server's visit id and ticket now
+  // answers "not here" on that ticket — still no claim, still no fix taken.
+  it('answers a ticketed wake for a visit the device no longer holds, instead of going silent', async () => {
+    getFix.mockResolvedValue({ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 10 } });
+
+    await runVisitCheck('dwell', 'visit-server-1', 'nonce-1');
+
+    expect(claimed()).toBe(false);
+    expect(getFix).not.toHaveBeenCalled();
+    const confirms = rpcCalls('confirm_gym_visit_v3');
+    expect(confirms).toHaveLength(1);
+    expect(confirms[0][1]).toMatchObject({
+      p_visit_id: 'visit-server-1',
+      p_nonce: 'nonce-1',
+      p_inside: false,
+      p_request_credit: false,
+      p_detail: { reason: 'no_active_session', stage: 'dwell' },
+    });
+  });
+
+  it('stays silent on the visit-less sweep ping (placeholder nonce, no visit id)', async () => {
+    await runVisitCheck('dwell', undefined, 'fence-refresh');
+
+    expect(rpcCalls('confirm_gym_visit_v3')).toHaveLength(0);
+  });
 });

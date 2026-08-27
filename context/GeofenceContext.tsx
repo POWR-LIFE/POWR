@@ -3297,7 +3297,10 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
       // restored, because a mark that lies is exactly what made it duplicate.
       // Nothing double-announces today, so the strict test costs nothing now and
       // makes announced_at true.
-      if (notifyResult === 'shown') {
+      // 'scheduled' too (2026-08-26): the banner now waits on an OS timer the
+      // finalize can cancel, so the user WILL be told unless the visit ends first
+      // — and a visit that ends first has no server announce to double anyway.
+      if (notifyResult === 'shown' || notifyResult === 'scheduled') {
         // Local banner displayed — tell the beacon not to double-announce.
         //
         // This is a RACE against the server's 90-second grace window, and a
@@ -3602,7 +3605,10 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
     // for the next half hour. See clearCheckInCooldown for the field case.
     if (active.regionId) {
       try {
-        const { clearCheckInCooldown } = await import('@/lib/notifications');
+        const { clearCheckInCooldown, cancelPendingCheckInBanner } = await import('@/lib/notifications');
+        // A drive-by ends here inside the banner's delay — withdraw it before it
+        // draws. No-op once delivered. See CHECK_IN_BANNER_DELAY_S.
+        await cancelPendingCheckInBanner(active.regionId);
         await clearCheckInCooldown(active.regionId);
       } catch { /* cosmetic — never let it cost the finalize */ }
     }
@@ -4295,6 +4301,23 @@ export async function runVisitCheck(
   const active: StoredGeofence | null = raw ? JSON.parse(raw) : null;
   if (!active) {
     console.log('[Geofence] Visit check: no active session — ignoring.');
+    // ⚠ NOT SILENTLY (2026-08-26). Field 2026-08-25, visit 42c92efb: a 0.1-min
+    // drive-by whose local exit never reached the server. Four dwell nudges each
+    // woke the device (four `wake_received` rows) and each returned HERE — so
+    // the server saw a phone that answers and never confirms, kept the visit
+    // open twelve hours, and Live Ops showed it stuck all day. The device knows
+    // the answer: it has no session for that venue. Say so, on the ticket the
+    // wake carried, so the visit gets a `present:false` row and the server-side
+    // nets (settle, abandon) have evidence rather than silence. The sweep ping
+    // has no visit and a placeholder nonce; it is excluded by the guard.
+    if (serverVisitId && wakeNonce) {
+      try {
+        const { confirmGymVisitViaNonce } = await import('@/lib/gymVisits');
+        await confirmGymVisitViaNonce(serverVisitId, wakeNonce, false, {
+          stage, reason: 'no_active_session', trace,
+        });
+      } catch { /* the round-trip is best-effort; the abandon net still closes it */ }
+    }
     return;
   }
 

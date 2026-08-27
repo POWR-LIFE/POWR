@@ -11,6 +11,7 @@ import type { InviteFriend, InviteProgress, LiveEvent } from '@/lib/api/liveEven
 import { fetchProfile } from '@/lib/api/user';
 import { openEventBooking } from '@/lib/eventBookingLink';
 import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
+import { shortDate } from '@/lib/liveEventDisplay';
 import type { Friend } from '@/lib/social/types';
 
 const GOLD = '#E8D200';
@@ -23,7 +24,9 @@ const MUTED = 'rgba(255,255,255,0.25)';
 const DIM = 'rgba(255,255,255,0.5)';
 const GREEN = '#4ade80';
 
-const MAX_FACES = 6;
+/** Rows shown before "Show all" — enough to see who's there without the card
+ *  turning into a scroll of its own. */
+const MAX_ROWS = 3;
 
 /** The Avatar component speaks Friend; invite rows carry no friendship at all. */
 function asFriend(f: InviteFriend, i: number): Friend {
@@ -37,22 +40,34 @@ function asFriend(f: InviteFriend, i: number): Friend {
     };
 }
 
-/**
- * How we name an invited friend in a sentence. First name only when we have a
- * name at all — splitting the "A friend" fallback on whitespace would read as
- * "A still needs their first verified workout", which is how a null
- * display_name turns into gibberish rather than a graceful degrade.
- */
-function friendLabel(f: InviteFriend): string {
-    const name = f.display_name ?? f.username;
-    return name ? name.split(' ')[0] : 'A friend';
+function friendName(f: InviteFriend): string {
+    return f.display_name ?? f.username ?? 'A friend';
 }
 
-function joinNames(names: string[], max = 2): string {
-    if (names.length <= max) {
-        return names.length === 2 ? `${names[0]} and ${names[1]}` : names.join(', ');
+/**
+ * Whether this friend is one of the ones the big number counts. The server
+ * decides — it knows the event's basis (entry gate vs invite milestone) and
+ * its cut-off date, and the flags it sends sum to the count above. The
+ * `?? converted` fallback is for a payload written before the flag existed.
+ */
+function isCounting(f: InviteFriend): boolean {
+    return f.counts_for_event ?? f.converted;
+}
+
+/**
+ * The one line under each name. It has to answer "why isn't this one in my
+ * total?" without ever implying we lost them — every reason here is a real
+ * rule of the event, in the order they can apply.
+ */
+function inviteState(f: InviteFriend, countingConversions: boolean): string {
+    if (isCounting(f)) {
+        return countingConversions ? 'Counts — first workout done' : 'Counts — signed up with your code';
     }
-    return `${names.slice(0, max).join(', ')} and ${names.length - max} more`;
+    // Signups-counted events can only exclude a friend on the date: they
+    // joined before this event's invites started counting.
+    if (!countingConversions) return 'Joined before this event';
+    if (!f.converted) return 'Needs their first verified workout';
+    return 'Joined before this event';
 }
 
 /**
@@ -79,6 +94,7 @@ export function EventTicketCard({
     const [displayName, setDisplayName] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [rulesOpen, setRulesOpen] = useState(false);
+    const [allFriends, setAllFriends] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -94,14 +110,20 @@ export function EventTicketCard({
     }, []);
 
     const gate = event.viewer.gate ?? null;
+    // 'deadline' mode: you're on the live board already — the count keeps
+    // your place in the final standings. 'entry' (or an older payload with
+    // no mode): the count is the door.
+    const keepPlace = gate?.mode === 'deadline';
+    const gateBy = gate?.deadline_at ? shortDate(gate.deadline_at) : null;
     const milestoneN = invites?.event?.milestone_n ?? event.invite_milestone_n;
     const convertedForEvent = invites?.event?.converted_for_event ?? 0;
     const milestonePaid = invites?.event?.milestone_paid ?? false;
 
+    // Already ordered by the server: the ones that count first, then the
+    // newest signups.
     const friends = invites?.friends ?? [];
-    const pendingNames = friends.filter(f => !f.converted).map(friendLabel);
-    // Converted first: the faces that already count lead the row.
-    const faces = [...friends].sort((a, b) => Number(b.converted) - Number(a.converted));
+    const shownFriends = allFriends ? friends : friends.slice(0, MAX_ROWS);
+    const countingFriends = friends.filter(isCounting).length;
 
     const count = gate ? gate.count : convertedForEvent;
     const target = gate ? gate.required : milestoneN;
@@ -143,12 +165,16 @@ export function EventTicketCard({
         <View style={[styles.card, gate && !met && styles.cardGated]}>
             <Text style={styles.eyebrow}>{gate ? 'YOUR TICKET' : 'INVITE FRIENDS'}</Text>
 
-            {/* ── The count, as big as it deserves to be ── */}
+            {/* ── The count, the label and the bar in the space of one row —
+                the EVENT segment has to fit a screen with the hero and the
+                prizes above it, so this card earns its height line by line. */}
             {met ? (
                 <View style={styles.metRow}>
-                    <Ionicons name="lock-open" size={18} color={GOLD} />
+                    <Ionicons name="lock-open" size={16} color={GOLD} />
                     <Text style={styles.metText}>
-                        {gate ? 'You’re on the leaderboard' : 'Milestone earned'}
+                        {gate
+                            ? keepPlace ? 'Your place in the final standings is secured' : 'You’re on the leaderboard'
+                            : 'Milestone earned'}
                     </Text>
                 </View>
             ) : (
@@ -156,12 +182,12 @@ export function EventTicketCard({
                     <View style={styles.countRow}>
                         <Text style={styles.count}>{Math.min(count, target)}</Text>
                         <Text style={styles.countOf}>/ {target}</Text>
+                        <Text style={styles.countLabel} numberOfLines={2}>
+                            {countingConversions
+                                ? 'friends with a verified workout'
+                                : 'friends signed up with your code'}
+                        </Text>
                     </View>
-                    <Text style={styles.countLabel}>
-                        {countingConversions
-                            ? 'friends with a verified workout'
-                            : 'friends signed up with your code'}
-                    </Text>
                     {target > 0 && (
                         <View style={styles.progressTrack}>
                             <View
@@ -175,32 +201,31 @@ export function EventTicketCard({
                 </>
             )}
 
-            <Text style={styles.explainer}>
+            <Text style={styles.explainer} numberOfLines={2}>
                 {gate && !met
-                    ? `${gate.required} friends signing up with your code${
-                          gate.counting === 'conversions' ? ' and logging their first verified workout' : ''
-                      } puts you on the leaderboard. `
-                    : ''}
-                You each get +{event.invite_bonus_points} POWR when a friend joins with your code and logs
-                their first verified workout.
-                {!gate && milestoneN > 0 && event.invite_milestone_bonus > 0
-                    ? ` +${event.invite_milestone_bonus} more when ${milestoneN} friends make it.`
-                    : ''}
+                    ? keepPlace
+                        ? `${gate.required} friends${gateBy ? ` by ${gateBy}` : ''} keeps your place in the final standings · +${event.invite_bonus_points} POWR each`
+                        : `${gate.required} friends puts you on the leaderboard · +${event.invite_bonus_points} POWR each`
+                    : `You each get +${event.invite_bonus_points} POWR when a friend joins with your code and logs a first verified workout.${
+                          !gate && milestoneN > 0 && event.invite_milestone_bonus > 0
+                              ? ` +${event.invite_milestone_bonus} more at ${milestoneN} friends.`
+                              : ''
+                      }`}
             </Text>
 
-            {/* ── Share is the action this card exists for ── */}
-            <Pressable
-                style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.85 }]}
-                onPress={handleShare}
-                disabled={!link}
-                accessibilityRole="button"
-                accessibilityLabel="Share your invite link"
-            >
-                <Ionicons name="share-outline" size={15} color="#0a0a0a" />
-                <Text style={styles.shareBtnText}>SHARE YOUR CODE</Text>
-            </Pressable>
-
+            {/* ── Share is the action this card exists for; code + QR ride
+                the same row rather than a second one. ── */}
             <View style={styles.codeRow}>
+                <Pressable
+                    style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.85 }]}
+                    onPress={handleShare}
+                    disabled={!link}
+                    accessibilityRole="button"
+                    accessibilityLabel="Share your invite link"
+                >
+                    <Ionicons name="share-outline" size={14} color="#0a0a0a" />
+                    <Text style={styles.shareBtnText}>SHARE</Text>
+                </Pressable>
                 <Pressable
                     style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
                     onPress={handleCopy}
@@ -258,33 +283,59 @@ export function EventTicketCard({
                 </>
             ) : null}
 
-            {/* ── Who you've already brought ── */}
+            {/* ── Who you've already brought ──
+                Named rows, not a stacked avatar pile: the number above is
+                only half the answer, and the half people ask about is which
+                friends are in it. Every friend you've ever brought is listed,
+                including the ones this event doesn't count — a list that
+                silently drops them is how "I invited four people and it says
+                1" turns into a support message. */}
             {friends.length > 0 && (
                 <View style={styles.friendBlock}>
-                    <View style={styles.faces}>
-                        {/* Not a stacked avatar pile: each face carries a state
-                            (converted ✓ vs still pending) and overlapping them
-                            hides the one you most need to see. */}
-                        {faces.slice(0, MAX_FACES).map((f, i) => (
-                            <Avatar
-                                key={`${f.username ?? f.display_name}-${i}`}
-                                friend={asFriend(f, i)}
-                                size={30}
-                                completed={f.converted}
-                                pending={!f.converted}
-                            />
-                        ))}
-                        {friends.length > MAX_FACES && (
-                            <View style={styles.moreBubble}>
-                                <Text style={styles.moreText}>+{friends.length - MAX_FACES}</Text>
+                    <Text style={styles.friendHeading}>
+                        {countingFriends} of {friends.length} {friends.length === 1 ? 'friend' : 'friends'}{' '}
+                        {countingFriends === 1 ? 'counts' : 'count'} here
+                    </Text>
+                    {shownFriends.map((f, i) => {
+                        const counting = isCounting(f);
+                        return (
+                            <View key={`${f.username ?? f.display_name}-${i}`} style={styles.friendRow}>
+                                <Avatar
+                                    friend={asFriend(f, i)}
+                                    size={30}
+                                    completed={counting}
+                                    pending={!counting}
+                                />
+                                <View style={styles.friendText}>
+                                    <Text style={styles.friendNameText} numberOfLines={1}>
+                                        {friendName(f)}
+                                    </Text>
+                                    <Text
+                                        style={[styles.friendState, counting && styles.friendStateOn]}
+                                        numberOfLines={1}
+                                    >
+                                        {inviteState(f, countingConversions)}
+                                    </Text>
+                                </View>
+                                {counting && <Ionicons name="checkmark-circle" size={16} color={GOLD} />}
                             </View>
-                        )}
-                    </View>
-                    {pendingNames.length > 0 && (
-                        <Text style={styles.pendingLine}>
-                            {joinNames(pendingNames)} still {pendingNames.length === 1 ? 'needs' : 'need'} their
-                            first verified workout
-                        </Text>
+                        );
+                    })}
+                    {friends.length > MAX_ROWS && (
+                        <Pressable
+                            style={({ pressed }) => [styles.moreToggle, pressed && { opacity: 0.7 }]}
+                            onPress={() => setAllFriends(open => !open)}
+                            accessibilityRole="button"
+                        >
+                            <Text style={styles.moreToggleText}>
+                                {allFriends ? 'SHOW FEWER' : `SHOW ALL ${friends.length}`}
+                            </Text>
+                            <Ionicons
+                                name={allFriends ? 'chevron-up' : 'chevron-down'}
+                                size={12}
+                                color={MUTED}
+                            />
+                        </Pressable>
                     )}
                 </View>
             )}
@@ -322,13 +373,13 @@ export function EventTicketCard({
 const styles = StyleSheet.create({
     card: {
         marginHorizontal: 14,
-        marginTop: 10,
+        marginTop: 2,
         borderRadius: 18,
         backgroundColor: CARD_BG,
         borderWidth: 1,
         borderColor: BORDER,
-        paddingHorizontal: 18,
-        paddingVertical: 18,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
     },
     // An unmet gate is the one thing standing between you and the board —
     // the card says so before you've read a word of it.
@@ -336,33 +387,33 @@ const styles = StyleSheet.create({
 
     eyebrow: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5 },
 
-    countRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 10 },
-    count: { fontSize: 46, fontWeight: '100', color: GOLD, letterSpacing: -2, lineHeight: 50 },
-    countOf: { fontSize: 20, fontWeight: '200', color: DIM, letterSpacing: -0.5 },
-    countLabel: { fontSize: 12, fontWeight: '300', color: DIM, marginTop: 2 },
+    countRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 6 },
+    count: { fontSize: 32, fontWeight: '100', color: GOLD, letterSpacing: -1.5, lineHeight: 36 },
+    countOf: { fontSize: 16, fontWeight: '200', color: DIM, letterSpacing: -0.5 },
+    countLabel: { flex: 1, fontSize: 11, fontWeight: '300', color: DIM, marginLeft: 6 },
     progressTrack: {
         height: 3,
         borderRadius: 2,
         backgroundColor: 'rgba(255,255,255,0.08)',
         overflow: 'hidden',
-        marginTop: 12,
+        marginTop: 8,
     },
     progressFill: { height: '100%', borderRadius: 2, backgroundColor: GOLD },
 
-    metRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-    metText: { fontSize: 18, fontWeight: '300', color: TEXT, letterSpacing: -0.3 },
+    metRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+    metText: { flex: 1, fontSize: 15, fontWeight: '300', color: TEXT, letterSpacing: -0.3 },
 
-    explainer: { fontSize: 11, fontWeight: '300', color: DIM, lineHeight: 16, marginTop: 14 },
+    explainer: { fontSize: 11, fontWeight: '300', color: DIM, lineHeight: 15, marginTop: 8 },
 
     shareBtn: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 8,
-        marginTop: 14,
+        gap: 6,
         backgroundColor: GOLD,
         borderRadius: 100,
-        paddingVertical: 12,
+        paddingVertical: 10,
     },
     shareBtnText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
 
@@ -378,8 +429,9 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.25)',
         paddingHorizontal: 12,
         paddingVertical: 9,
+        minWidth: 118,
     },
-    codeText: { fontSize: 14, fontWeight: '600', color: TEXT, letterSpacing: 2 },
+    codeText: { fontSize: 13, fontWeight: '600', color: TEXT, letterSpacing: 2 },
     qrBtn: {
         width: 36,
         height: 36,
@@ -396,10 +448,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        marginTop: 12,
+        marginTop: 10,
         backgroundColor: GOLD,
         borderRadius: 100,
-        paddingVertical: 12,
+        paddingVertical: 10,
     },
     bookBtnText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
     bookHint: { fontSize: 10, fontWeight: '400', color: MUTED, marginTop: 8, lineHeight: 14 },
@@ -408,11 +460,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        marginTop: 14,
+        marginTop: 10,
     },
     bookedText: { fontSize: 12, fontWeight: '400', color: GREEN },
 
-    rulesBlock: { marginTop: 16, gap: 6 },
+    rulesBlock: { marginTop: 12, gap: 6 },
     rulesToggle: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -423,18 +475,13 @@ const styles = StyleSheet.create({
     ruleBullet: { fontSize: 11, lineHeight: 16, color: GOLD },
     ruleText: { flex: 1, fontSize: 11, fontWeight: '300', color: DIM, lineHeight: 16 },
 
-    friendBlock: { marginTop: 16, gap: 8 },
-    faces: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    moreBubble: {
-        width: 30,
-        height: 30,
-        borderRadius: 15,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#2A2A2A',
-        borderWidth: 1,
-        borderColor: BORDER,
-    },
-    moreText: { fontSize: 10, fontWeight: '700', color: DIM },
-    pendingLine: { fontSize: 11, fontWeight: '300', color: MUTED, lineHeight: 15 },
+    friendBlock: { marginTop: 12, gap: 8 },
+    friendHeading: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5, textTransform: 'uppercase' },
+    friendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    friendText: { flex: 1, gap: 1 },
+    friendNameText: { fontSize: 13, fontWeight: '400', color: TEXT, letterSpacing: -0.2 },
+    friendState: { fontSize: 10.5, fontWeight: '300', color: MUTED },
+    friendStateOn: { color: DIM },
+    moreToggle: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingTop: 2 },
+    moreToggleText: { fontSize: 8, fontWeight: '800', color: MUTED, letterSpacing: 2 },
 });

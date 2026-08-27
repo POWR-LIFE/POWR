@@ -1,12 +1,17 @@
 const { expo } = require('./app.json');
 
-// Public client-side Maps key (the same value already ships in eas.json and in
-// every built app). NEVER default to '' here: an empty key makes `expo prebuild`
-// silently skip the iOS GMSServices init + google-maps pod, which produced the
-// Discover-map crash in TestFlight 1.4.10 (13).
-const GOOGLE_MAPS_API_KEY =
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ??
-  'AIzaSyBlWjadfjwrtx62Rmb_b5aAPMM-l2pSgww';
+// Public client-side Maps SDK keys, one per platform, each app-restricted in
+// GCP (iOS: bundle id, Android: package + SHA-1s) and API-restricted to its
+// platform's Maps SDK. Directions requests use a separate key (lib/mapProvider).
+// NEVER default to '' here: an empty key makes `expo prebuild` silently skip
+// the iOS GMSServices init + google-maps pod, which produced the Discover-map
+// crash in TestFlight 1.4.10 (13).
+const GOOGLE_MAPS_IOS_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY ??
+  'AIzaSyCGCWV4OE9yb-gQjH8LNAkYgqm4t2AKq_w';
+const GOOGLE_MAPS_ANDROID_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY ??
+  'AIzaSyCF5McF1ClGMiFu6KVTIVQlt6ExiZX2ark';
 
 module.exports = {
   expo: {
@@ -18,11 +23,11 @@ module.exports = {
       googleServicesFile:
         process.env.GOOGLE_SERVICE_INFO_PLIST ?? './GoogleService-Info.plist',
       // iOS now renders Google Maps too (matches Android for visual
-      // consistency). Reuses the same key as Android — requires the
-      // "Maps SDK for iOS" API to be enabled on it in GCP.
+      // consistency). Requires the "Maps SDK for iOS" API to be enabled
+      // on the key's GCP project.
       config: {
         ...expo.ios?.config,
-        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+        googleMapsApiKey: GOOGLE_MAPS_IOS_KEY,
       },
       infoPlist: {
         ...expo.ios?.infoPlist,
@@ -47,7 +52,7 @@ module.exports = {
       googleServicesFile: './google-services.json',
       config: {
         googleMaps: {
-          apiKey: GOOGLE_MAPS_API_KEY,
+          apiKey: GOOGLE_MAPS_ANDROID_KEY,
         },
       },
     },
@@ -83,14 +88,25 @@ module.exports = {
       // Picks a profile/share-card image and nothing else. On Android 13+ this
       // goes through the system photo picker and requests NO permission, which
       // is what Google Play's Photo and Video Permissions policy requires.
-      // NEVER add expo-media-library back: its plugin injects READ_MEDIA_IMAGES
-      // /_VIDEO /_AUDIO, which got the app rejected (we only ever *share* the
-      // card via the OS share sheet — we never read or write the gallery).
       [
         'expo-image-picker',
         {
           photosPermission: 'POWR needs access to your photo library so you can set a profile picture.',
           cameraPermission: 'POWR needs access to your camera so you can take a profile photo.',
+        },
+      ],
+      // WRITE-ONLY gallery save (lib/saveCard.ts) — re-added 2026-08-24 with
+      // Jamie's explicit sign-off after the July Play rejection. The rejection
+      // was for READ_MEDIA_IMAGES/_VIDEO, which this plugin injects and
+      // android.blockedPermissions (app.json) strips again — verify with the
+      // manifest merger before every store submission (see
+      // project_play_photo_video_policy_rejection). iOS asks only the add-only
+      // Photos permission. We save images; we NEVER read the library.
+      [
+        'expo-media-library',
+        {
+          savePhotosPermission: 'POWR saves the images you choose to keep to your Photos.',
+          isAccessMediaLocationEnabled: false,
         },
       ],
       // Native crash capture (the .ips-blind-spot complement to lib/crashHandler.ts).

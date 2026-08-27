@@ -1,5 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
+import { resumeOnboardingRoute } from '@/lib/onboarding/resume';
 import { PASSWORD_RESET_REDIRECT, supabase } from '@/lib/supabase';
 import GeometricBackground from '@/components/GeometricBackground';
 import { Image } from 'expo-image';
@@ -78,7 +79,9 @@ export default function AuthEmailScreen() {
             if (mode === 'signin') {
                 const { error } = await signInWithEmail(email.trim(), password);
                 if (error) { setError(error); return; }
-                router.replace('/(tabs)');
+                // Name + username are mandatory; a returning user who never
+                // set them is sent to the profile step before the tabs.
+                router.replace(await resumeOnboardingRoute(true));
             } else {
                 // Stash before the network call — a signup that succeeds but
                 // routes onward must not race the write, and a failed one keeps
@@ -94,8 +97,10 @@ export default function AuthEmailScreen() {
                 } else if (needsConfirmation) {
                     setConfirmationSent(true);
                 } else {
-                    // Email confirmation disabled — session created immediately
-                    router.replace('/onboarding-permission');
+                    // Email confirmation disabled — session created immediately.
+                    // Through the resume helper so the profile (name) step is
+                    // never skipped — a fresh account has no display_name yet.
+                    router.replace(await resumeOnboardingRoute(false));
                 }
             }
         } finally {

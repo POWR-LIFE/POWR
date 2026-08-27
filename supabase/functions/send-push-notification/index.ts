@@ -25,6 +25,11 @@ type NotificationType =
   | 'vault_ready'
   | 'vault_granted'
   | 'vault_banked'
+  | 'creator_invite_eligible'
+  | 'creator_invite_approved'
+  | 'affiliate_milestone'
+  | 'affiliate_conversion'
+  | 'event_results_revealed'
   // One-shot setup notice when a user loses 'always' location (dispatch-daily-
   // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
   | 'location_permission_lost'
@@ -79,6 +84,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'challenge_ended':
     case 'challenge_open_unclaimed':
     case 'challenge_open_posted':
+    case 'event_results_revealed':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -87,6 +93,10 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'vault_granted':
     case 'vault_banked':
       return 'rewards';
+    case 'creator_invite_eligible':
+    case 'creator_invite_approved':
+    case 'affiliate_milestone':
+    case 'affiliate_conversion':
     case 'level_up':
       return 'rewards';
     case 'session_completed':
@@ -413,6 +423,95 @@ function buildMessage(
         };
       }
 
+      case 'creator_invite_eligible': {
+        // Fired by trg_notify_creator_invite_eligible the moment a member's
+        // converted referrals cross the creator-invite threshold. One-shot by
+        // construction (exactly-equals in the trigger) plus daily_cap 1.
+        const converted = Math.max(0, Math.round(Number(payload.converted ?? 0)));
+        return {
+          title: "You're bringing people in 🙌",
+          body: `${converted} people you invited have logged their first verified workout. Want to become a POWR Affiliate? Open the app to find out more.`,
+          data: { type, route: '/(tabs)/index', converted },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+      case 'creator_invite_approved': {
+        // An admin approved their request — the creators row and portal link
+        // exist by the time this fires (approval order in CreatorRequests.jsx).
+        return {
+          title: "You're a POWR Affiliate ✨",
+          body: 'Your code, link, signups and rewards are ready — find Affiliate under Settings.',
+          data: { type, route: '/affiliate' },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+      case 'affiliate_milestone': {
+        // trg_notify_affiliate_milestone — once per rung reached. Names the
+        // reward; asks for an address only when a parcel is owed and none is on file.
+        const label = String(payload.label ?? 'a step').trim();
+        const reward = String(payload.reward_name ?? '').trim();
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        const ships = payload.ships === true;
+        const needsAddress = payload.needs_address === true;
+        const body = ships && reward
+          ? `${reward} is yours.${needsAddress ? ' Add your delivery address and we\'ll send it.' : ' We\'ll be in touch about delivery.'}${points > 0 ? ` +${points.toLocaleString()} POWR banked too.` : ''}`
+          : points > 0
+            ? `+${points.toLocaleString()} POWR banked. Next step's already counting.`
+            : 'Step reached — nice work.';
+        return {
+          title: `You've reached ${label} 🎁`,
+          body,
+          data: { type, route: '/affiliate', label, reward_name: reward || undefined, points },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+      case 'event_results_revealed': {
+        // trg_notify_live_event_revealed — the admin pressed Reveal. Personal
+        // where the frozen results allow it (your final rank, your prize); a
+        // registrant outside the snapshot just gets the door to the board.
+        const eventName = String(payload.event_name ?? 'The event').trim() || 'The event';
+        const rank = Math.round(Number(payload.rank));
+        const prize = String(payload.prize_label ?? '').trim();
+        const body = Number.isFinite(rank) && rank > 0
+          ? `You finished #${rank}${prize ? ` — ${prize}` : ''}. See the final board.`
+          : 'The final leaderboard is up — see where everyone finished.';
+        return {
+          title: `${eventName}: the results are in 🏆`,
+          body,
+          data: {
+            type,
+            route: '/(tabs)/league',
+            event_id: payload.event_id,
+            rank: Number.isFinite(rank) && rank > 0 ? rank : undefined,
+          },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'affiliate_conversion': {
+        // trg_notify_affiliate_conversion — daily_cap 1, so the one that
+        // lands carries where they stand now.
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        const remaining = payload.remaining == null ? null : Math.max(0, Math.round(Number(payload.remaining)));
+        const nextName = String(payload.next_name ?? '').trim();
+        const tail = remaining != null && nextName
+          ? ` ${remaining} to go until ${nextName}.`
+          : '';
+        return {
+          title: 'A signup just converted 💪',
+          body: `Someone from your link logged their first verified workout${points > 0 ? ` — +${points.toLocaleString()} POWR` : ''}.${tail}`,
+          data: { type, route: '/affiliate', points, remaining, next_name: nextName || undefined },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+        };
+      }
       case 'level_up': {
         // Fired by the vault_level_up_push ledger trigger — the same detection
         // that banks the level-up vault bonus, so it fires however the points
@@ -957,6 +1056,14 @@ Deno.serve(async (req: Request) => {
     // of; the admin kill-switch in notification_config still covers it.
     const prefColumn: string | null =
       type === 'location_permission_lost' ? null
+      // Account-level one-shots, not recurring nudges: no toggle, admin kill-switch only.
+      : type === 'creator_invite_eligible' ? null
+      : type === 'creator_invite_approved' ? null
+      : type === 'affiliate_milestone' ? null
+      : type === 'affiliate_conversion' ? null
+      // You registered for the event; the result of it is not a nudge to opt
+      // out of. Admin kill-switch only.
+      : type === 'event_results_revealed' ? null
       : type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
       : type === 'session_upgraded' ? 'session_completed'
       : type === 'vault_unlocked' ? 'points_milestone'
@@ -971,7 +1078,7 @@ Deno.serve(async (req: Request) => {
       : type === 'challenge_open_unclaimed' ? 'challenge_started'
       // challenge_open_posted has a real column of its own (20260821…): the
       // grouped switch is "Friend activity", and a stranger's board post is
-      // not that. Falling through to `: type` here would have 400'd on every
+      // not that. Falling through to `type` here would have 400'd on every
       // send and left the opt-out decorative — see the warning above.
       : type;
     if (prefColumn) {

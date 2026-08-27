@@ -25,6 +25,13 @@ export default function SiteFooter() {
     { label: 'Partner Login', href: '/partner/login' },
     { label: 'Integration Docs', href: '/docs' },
   ];
+  /* Third tier: the affiliate programme. Same rule — a consumer scrolls past
+     it, a coach or gym owner scrolls looking for it. */
+  const affiliateLinks = [
+    { label: 'Affiliate Programme', href: '/affiliates' },
+    { label: 'Affiliate Login', href: '/affiliate/login' },
+    { label: 'Affiliate Terms', href: '/affiliate/terms' },
+  ];
   return (
     <footer style={{ borderTop: `1px solid ${pg.border}`, padding: '40px clamp(18px, 3vw, 28px)' }}>
       <FooterStyles />
@@ -40,11 +47,19 @@ export default function SiteFooter() {
         </div>
       </div>
       <div className="powr-footer-sub">
-        <div className="powr-footer-links">
-          <span className="powr-footer-label">For Brands</span>
-          {brandLinks.map((l) => (
-            <a key={l.label} className="powr-footer-link" href={l.href}>{l.label}</a>
-          ))}
+        <div className="powr-footer-groups">
+          <div className="powr-footer-links">
+            <span className="powr-footer-label">For Brands</span>
+            {brandLinks.map((l) => (
+              <a key={l.label} className="powr-footer-link" href={l.href}>{l.label}</a>
+            ))}
+          </div>
+          <div className="powr-footer-links">
+            <span className="powr-footer-label">For Affiliates</span>
+            {affiliateLinks.map((l) => (
+              <a key={l.label} className="powr-footer-link" href={l.href}>{l.label}</a>
+            ))}
+          </div>
         </div>
         <span style={{ fontSize: 12, color: pg.textSec, fontWeight: w.light }}>© 2026 POWR. All rights reserved.</span>
       </div>
@@ -61,6 +76,7 @@ function FooterStyles() {
       .powr-footer-link { font-size: 13px; color: ${pg.textSec}; font-weight: 300; text-decoration: none; transition: color 0.2s; }
       .powr-footer-link:hover { color: ${pg.accent}; }
       .powr-footer-sub { max-width: 1200px; margin: 24px auto 0; padding-top: 20px; border-top: 1px solid ${pg.border}; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; }
+      .powr-footer-groups { display: flex; flex-wrap: wrap; gap: 12px 40px; }
       .powr-footer-sub .powr-footer-link { font-size: 12px; opacity: 0.72; }
       .powr-footer-sub .powr-footer-link:hover { opacity: 1; }
       .powr-footer-label { font-size: 10px; color: ${pg.textSec}; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.6; }
@@ -69,6 +85,7 @@ function FooterStyles() {
         .powr-footer-brand { flex-direction: column; gap: 8px; }
         .powr-footer-links { justify-content: center; gap: 14px 18px; }
         .powr-footer-sub { flex-direction: column; text-align: center; gap: 14px; }
+        .powr-footer-groups { flex-direction: column; align-items: center; gap: 12px; }
       }
     `}</style>
   );

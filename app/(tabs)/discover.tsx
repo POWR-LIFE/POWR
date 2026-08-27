@@ -11,7 +11,7 @@ import {
   recordForegroundPromptShown,
   shouldShowForegroundPrompt,
 } from '@/lib/locationPrompt';
-import { MAP_PROVIDER } from '@/lib/mapProvider';
+import { GOOGLE_DIRECTIONS_KEY, MAP_PROVIDER } from '@/lib/mapProvider';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -881,7 +881,7 @@ export default function DiscoverScreen() {
   }, [routeCoordinates, routePartner, userLoc]);
 
   useEffect(() => {
-    if (!routePartner || !userLoc || !process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) {
+    if (!routePartner || !userLoc || !GOOGLE_DIRECTIONS_KEY) {
       setRouteSteps([]);
       setRouteStepsLoading(false);
       return;
@@ -894,7 +894,7 @@ export default function DiscoverScreen() {
       try {
         const origin = `${userLoc.coords.latitude},${userLoc.coords.longitude}`;
         const destination = `${routePartner.lat},${routePartner.lng}`;
-        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=walking&key=${process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}`;
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=walking&key=${GOOGLE_DIRECTIONS_KEY}`;
         const response = await fetch(url);
         const data = await response.json();
 
@@ -1079,11 +1079,11 @@ export default function DiscoverScreen() {
             />
           ))}
 
-          {routePartner && userLoc && process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY && (
+          {routePartner && userLoc && GOOGLE_DIRECTIONS_KEY && (
             <MapViewDirections
               origin={{ latitude: userLoc.coords.latitude, longitude: userLoc.coords.longitude }}
               destination={{ latitude: routePartner.lat, longitude: routePartner.lng }}
-              apikey={process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}
+              apikey={GOOGLE_DIRECTIONS_KEY}
               precision="high"
               strokeWidth={5}
               strokeColor={GOLD}

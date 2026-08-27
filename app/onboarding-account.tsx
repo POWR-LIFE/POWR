@@ -7,6 +7,7 @@ import { ActivityIndicator, Animated, Platform, Pressable, StyleSheet, Text, Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
+import { resumeOnboardingRoute } from '@/lib/onboarding/resume';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -87,8 +88,8 @@ export default function OnboardingAccountScreen() {
     useEffect(() => {
         if (!session || didNavigate.current) return;
         didNavigate.current = true;
-        const onboardingComplete = session.user.user_metadata?.onboarding_complete;
-        router.replace(onboardingComplete ? '/(tabs)' : '/onboarding-profile');
+        const onboardingComplete = !!session.user.user_metadata?.onboarding_complete;
+        resumeOnboardingRoute(onboardingComplete).then(route => router.replace(route));
     }, [session]);
     const [loadingMethod, setLoadingMethod] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);

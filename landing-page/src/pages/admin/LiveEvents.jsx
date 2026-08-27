@@ -9,7 +9,7 @@ import {
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
     Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users, TicketCheck,
-    ImagePlus, LoaderCircle, DoorOpen, MapPin,
+    ImagePlus, LoaderCircle, DoorOpen, MapPin, ChevronDown, Timer, ArrowLeft, ArrowRight,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -127,6 +127,7 @@ const editableFields = (ev) => ({
     entry_gate_n: ev.entry_gate_n,
     entry_gate_counting: ev.entry_gate_counting,
     entry_gate_since: ev.entry_gate_since,
+    entry_gate_mode: ev.entry_gate_mode ?? 'deadline',
     booking_url: ev.booking_url,
     prizes: ev.prizes ?? [],
     // Kept as an ARRAY in form state (the textarea maps join/split at its
@@ -513,6 +514,21 @@ const setCheckin = async (ev, row, present) => {
         fetchEvents();
     };
 
+    // Automatic lifecycle: a once-a-minute cron flips scheduled → live at the
+    // scoring start and live → locked at the lock time. Default ON; turning it
+    // off hands the buttons back to the admin. Instant write, outside the Save
+    // payload like the other lifecycle knobs.
+    const setAutoLifecycle = async (ev, enabled) => {
+        setActing('auto-lifecycle');
+        const { error } = await supabase.from('live_events')
+            .update({ auto_lifecycle: enabled }).eq('id', ev.id);
+        setActing(null);
+        if (error) { toast.error(error.message); return; }
+        await logAction(user.id, 'live_event_auto_lifecycle', 'live_event', ev.id, { enabled });
+        toast.success(enabled ? 'Automatic lifecycle on' : 'Automatic lifecycle off — you press the buttons');
+        fetchEvents();
+    };
+
     // In-app test preview: instant write, deliberately outside the Save
     // payload (like status/hidden) so it can't be reverted by a stale edit.
     const setPreview = async (ev, enabled, emails) => {
@@ -706,6 +722,7 @@ const setCheckin = async (ev, row, present) => {
                         onDuplicate={() => duplicateEvent(selected)}
                         onSetPreview={(enabled, emails) => setPreview(selected, enabled, emails)}
                         onSetBoardState={(state) => setBoardState(selected, state)}
+                        onSetAutoLifecycle={(enabled) => setAutoLifecycle(selected, enabled)}
                     />
 
                     <RegistrationsPanel
@@ -748,6 +765,7 @@ const setCheckin = async (ev, row, present) => {
                     )}
 
                     <EditorPanel
+                        key={selected.id}
                         form={form}
                         setForm={setForm}
                         dirty={dirty}
@@ -794,8 +812,10 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
     const [query, setQuery] = useState('');
     const [now, setNow] = useState(() => Date.now());
 
+    const [openGate, setOpenGate] = useState(null);   // user_id whose gate friends are expanded
+
     // Filters must not follow you onto the next event.
-    useEffect(() => { setFilter('all'); setQuery(''); }, [ev.id]);
+    useEffect(() => { setFilter('all'); setQuery(''); setOpenGate(null); }, [ev.id]);
 
     const event = data?.event ?? null;
     const rows = useMemo(() => data?.rows ?? [], [data]);
@@ -962,7 +982,8 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                                     const met = gateMet(r, gateN);
                                     const isBusy = busy === r.user_id;
                                     return (
-                                        <tr key={r.user_id} className={p.key === 'not_seen' ? '' : 'bg-[#FAFAF8]/60'}>
+                                        <React.Fragment key={r.user_id}>
+                                        <tr className={p.key === 'not_seen' ? '' : 'bg-[#FAFAF8]/60'}>
                                             <td className="py-2.5 pr-3 align-top">
                                                 <div className="font-semibold text-[#1A1A1A] flex items-center gap-2">
                                                     <Link to={`/admin/users/${r.user_id}`} className="hover:underline">{r.name}</Link>
@@ -992,8 +1013,27 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                                                     : <span className="inline-flex px-2 py-0.5 rounded-full border border-[#F59E0B]/40 bg-[#F59E0B]/10 text-[9.5px] font-black uppercase tracking-[0.18em] text-[#B45309]">Walk-in</span>}
                                             </td>
                                             {gateN > 0 && (
+                                                // On the night, "3 / 5" is the question "which
+                                                // three?" — someone at the door is about to be
+                                                // told they're short, and the names are the
+                                                // difference between a decision and an argument.
                                                 <td className={`py-2.5 pr-3 align-top text-center font-mono ${met ? 'text-[#16A34A]' : 'text-[#999999]'}`}>
-                                                    {gateLabel(r, gateN)}
+                                                    {(r.gate_friends ?? []).length === 0 ? (
+                                                        gateLabel(r, gateN)
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => setOpenGate(openGate === r.user_id ? null : r.user_id)}
+                                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border transition-all ${
+                                                                openGate === r.user_id
+                                                                    ? 'bg-[#8B5CF6]/10 border-[#8B5CF6]/30 text-[#8B5CF6]'
+                                                                    : 'border-transparent hover:border-[#E6E6E1] hover:bg-[#F4F4F1]'
+                                                            }`}
+                                                            title="Show which friends this counts"
+                                                        >
+                                                            {gateLabel(r, gateN)}
+                                                            <ChevronDown size={11} className={openGate === r.user_id ? 'rotate-180' : ''} />
+                                                        </button>
+                                                    )}
                                                 </td>
                                             )}
                                             <td className="py-2.5 pr-3 align-top text-center">
@@ -1032,6 +1072,19 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                                                 )}
                                             </td>
                                         </tr>
+                                        {openGate === r.user_id && (
+                                            <tr>
+                                                <td colSpan={7} className="bg-[#FAFAF8] px-4 py-3">
+                                                    <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#888888] mb-1.5">
+                                                        {r.name}&rsquo;s invites — {gateLabel(r, gateN)} toward the gate
+                                                    </div>
+                                                    {/* Dense: no POWR ID column. This board is read
+                                                        on a phone at a door, not at a desk. */}
+                                                    <InviteeList people={r.gate_friends} dense />
+                                                </td>
+                                            </tr>
+                                        )}
+                                        </React.Fragment>
                                     );
                                 })}
                             </tbody>
@@ -1222,6 +1275,76 @@ function BookingsPanel({ data, busy, onSave, onRefresh }) {
     );
 }
 
+// ─── Who is behind an invite count ───────────────────────────────
+// Every invite number on this page (the roster's Invites cell, the
+// door board's Gate cell, the ops funnel's Signups) opens into this.
+// One component so the three can never describe the same people
+// differently, and it always lists EVERY friend the member brought —
+// the ones that don't count for this event are exactly the rows you
+// need when someone asks why their total is lower than they expected.
+//
+// `people` is the server's _live_event_invitees payload; counts_for_event
+// is its verdict, computed from the event's own basis. Never re-derive it.
+function InviteeList({ people, dense = false }) {
+    const fmt = (iso) => iso
+        ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : '—';
+    const rows = people ?? [];
+    if (rows.length === 0) {
+        return <p className="text-[12px] text-[#999999] py-1">Nobody has signed up with their code yet.</p>;
+    }
+    return (
+        <table className="w-full text-[12.5px]">
+            <thead>
+                <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-[#AAAAAA] border-b border-[#F0F0EC]">
+                    <th className="text-left py-1.5 pr-3">Friend</th>
+                    {!dense && <th className="text-left py-1.5 pr-3">POWR ID</th>}
+                    <th className="text-left py-1.5 pr-3">Signed up</th>
+                    <th className="text-left py-1.5 pr-3">First workout</th>
+                    <th className="text-left py-1.5 pl-3">Counts</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F6F6F3]">
+                {rows.map((f, i) => (
+                    <tr key={f.referred_id ?? i} className={f.counts_for_event ? '' : 'opacity-70'}>
+                        <td className="py-1.5 pr-3">
+                            <Link to={`/admin/users/${f.referred_id}`} className="font-medium text-[#1A1A1A] hover:underline">
+                                {f.name}
+                            </Link>
+                            {f.email && <span className="font-mono text-[11px] text-[#AAAAAA]"> {f.email}</span>}
+                        </td>
+                        {!dense && (
+                            <td className="py-1.5 pr-3 font-mono text-[11px] tracking-[0.12em] text-[#888888] whitespace-nowrap">
+                                {formatMemberId(f.member_id) || '—'}
+                            </td>
+                        )}
+                        <td className="py-1.5 pr-3 text-[#888888] whitespace-nowrap">{fmt(f.created_at)}</td>
+                        <td className="py-1.5 pr-3 whitespace-nowrap">
+                            {f.converted_at
+                                ? <span className="text-[#10B981]">{fmt(f.converted_at)}</span>
+                                : <span className="text-[#999999]">not yet</span>}
+                        </td>
+                        <td className="py-1.5 pl-3">
+                            {f.counts_for_event ? (
+                                <span className="inline-flex items-center h-5 px-2 rounded-md bg-[#10B981]/10 border border-[#10B981]/25 text-[#0f7a5a] text-[9px] font-black uppercase tracking-[0.15em]">
+                                    Counts
+                                </span>
+                            ) : (
+                                // Two ways to not count, and the difference decides
+                                // whether it's worth chasing: a pending friend still
+                                // can, one from before the window never will.
+                                <span className="text-[11px] text-[#AAAAAA]">
+                                    {f.converted_at ? 'before this event' : 'pending'}
+                                </span>
+                            )}
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    );
+}
+
 // ─── Registrations & invites ─────────────────────────────────────
 // Who registered + the invite pipeline + the actual bonus ledger rows,
 // at any status (drafts included) — this is where a preview test run is
@@ -1238,12 +1361,13 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
     const [results, setResults] = useState([]);
     const [searching, setSearching] = useState(false);
     const [filter, setFilter] = useState('');   // filters the roster below
+    const [openInvites, setOpenInvites] = useState(null);   // user_id whose invitees are expanded
 
     // The panel isn't remounted per event, so an in-progress add and the
     // leftover misses must not follow you onto the next one.
     useEffect(() => {
         setAdding(false); setRaw(''); setMissed([]);
-        setQuery(''); setResults([]); setFilter('');
+        setQuery(''); setResults([]); setFilter(''); setOpenInvites(null);
     }, [ev.id]);
 
     // Profile search. Email lives in auth.users where the portal client
@@ -1296,6 +1420,12 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
     const referrals = data?.referrals ?? [];
     const milestones = data?.milestones ?? [];
     const ledger = data?.bonus_ledger ?? [];
+
+    // What a member's invite count is counting TOWARDS, in the event's own
+    // terms: the entry gate when one is set (it's the ticket), otherwise the
+    // invite milestone. Both are what the app shows them, so the roster and
+    // their phone read the same "3 / 5".
+    const inviteTarget = ev.entry_gate_n > 0 ? ev.entry_gate_n : (ev.invite_milestone_n ?? 0);
 
     const SOURCE_LABEL = {
         referral_sent:     'Referrer bonus',
@@ -1516,16 +1646,43 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-[13px]">
-                                <Head cols={[['Member'], ['Email'], ['POWR ID'], ['Joined'], ['Opened booking'], ['Booked'], ['Status'], ['', 'text-right']]} />
+                                <Head cols={[['Member'], ['Email'], ['POWR ID'], ['Invites'], ['Joined'], ['Opened booking'], ['Booked'], ['Status'], ['', 'text-right']]} />
                                 <tbody className="divide-y divide-[#F6F6F3]">
                                     {shown.map((p) => (
-                                        <tr key={p.user_id} className={p.disqualified_at ? 'opacity-45' : ''}>
+                                        <React.Fragment key={p.user_id}>
+                                        <tr className={p.disqualified_at ? 'opacity-45' : ''}>
                                             <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">
                                                 {p.name}
                                                 {p.username && <span className="text-[#999999] font-normal"> @{p.username}</span>}
                                             </td>
                                             <td className="py-2.5 pr-3 font-mono text-[12px] text-[#888888]">{p.email ?? '—'}</td>
                                             <td className="py-2.5 pr-3 font-mono text-[12px] tracking-[0.12em] text-[#555555] whitespace-nowrap">{formatMemberId(p.member_id) || '—'}</td>
+                                            {/* The count IS the control: the question after
+                                                "3 / 5" is always which three, so the cell
+                                                opens into them. The denominator is the entry
+                                                gate when there is one, otherwise the invite
+                                                milestone — the same target the member sees. */}
+                                            <td className="py-2.5 pr-3 whitespace-nowrap">
+                                                {(p.invites_total ?? 0) === 0 ? (
+                                                    <span className="text-[#CCCCCC]">—</span>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setOpenInvites(openInvites === p.user_id ? null : p.user_id)}
+                                                        className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg border text-[11px] font-mono transition-all ${
+                                                            openInvites === p.user_id
+                                                                ? 'bg-[#8B5CF6]/10 border-[#8B5CF6]/30 text-[#8B5CF6]'
+                                                                : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:border-[#8B5CF6]/30'
+                                                        }`}
+                                                        title="Show who they invited"
+                                                    >
+                                                        {p.invites_counting ?? 0}
+                                                        {inviteTarget > 0 ? ` / ${inviteTarget}` : ''}
+                                                        {(p.invites_total ?? 0) > (p.invites_counting ?? 0) && (
+                                                            <span className="text-[#AAAAAA]">of {p.invites_total}</span>
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </td>
                                             <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(p.joined_at)}</td>
                                             {/* joined → opened → booked, the whole funnel in one row.
                                                 "Booked" derives from the Venue bookings export by email —
@@ -1569,6 +1726,19 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                                                 </button>
                                             </td>
                                         </tr>
+                                        {openInvites === p.user_id && (
+                                            <tr>
+                                                <td colSpan={9} className="bg-[#FAFAF8] px-4 py-3 rounded-b-xl">
+                                                    <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#888888] mb-1.5">
+                                                        {p.name} invited {p.invites_total}
+                                                        {' · '}{p.invites_counting} count{p.invites_counting === 1 ? 's' : ''} here
+                                                        {' · '}{p.invites_converted} completed a first workout
+                                                    </div>
+                                                    <InviteeList people={p.invites} />
+                                                </td>
+                                            </tr>
+                                        )}
+                                        </React.Fragment>
                                     ))}
                                 </tbody>
                             </table>
@@ -1592,9 +1762,15 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                                 <tbody className="divide-y divide-[#F6F6F3]">
                                     {referrals.map((r, i) => (
                                         <tr key={i}>
-                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">{r.referrer_name}</td>
+                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">
+                                                {r.referrer_id
+                                                    ? <Link to={`/admin/users/${r.referrer_id}`} className="hover:underline">{r.referrer_name}</Link>
+                                                    : r.referrer_name}
+                                            </td>
                                             <td className="py-2.5 pr-3 text-[#555555]">
-                                                {r.referred_name}
+                                                {r.referred_id
+                                                    ? <Link to={`/admin/users/${r.referred_id}`} className="hover:underline">{r.referred_name}</Link>
+                                                    : r.referred_name}
                                                 {r.referred_email && <span className="font-mono text-[11px] text-[#AAAAAA]"> {r.referred_email}</span>}
                                             </td>
                                             <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(r.created_at)}</td>
@@ -1772,9 +1948,17 @@ function LifecyclePanel({
     onSchedule, onUnschedule, onGoLive, onLock, onToggleHidden,
     onSettle, onReveal, onMarkSettled, onArchive,
     onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate, onSetPreview, onSetBoardState,
+    onSetAutoLifecycle,
 }) {
     const meta = STATUS_META[ev.status];
     const pastLock = ev.lock_at && new Date(ev.lock_at) <= new Date();
+    // What the clock will do next, if anything. Only the two automatic
+    // transitions have a "next"; everything after lock is a human decision.
+    const auto = ev.auto_lifecycle !== false;
+    const nextAuto =
+        ev.status === 'scheduled' ? { label: 'goes live', at: ev.window_start_at }
+        : ev.status === 'live' && ev.lock_at ? { label: 'locks', at: ev.lock_at }
+        : null;
 
     const Btn = ({ icon: Icon, label, onClick, tone = 'neutral', disabled }) => {
         const tones = {
@@ -1834,7 +2018,13 @@ function LifecyclePanel({
                         <>
                             <Btn icon={Trophy} label={counts.results > 0 ? 'Re-settle' : 'Settle'} tone="primary" onClick={onSettle} />
                             <Btn icon={PartyPopper} label="Reveal" tone="gold" onClick={onReveal} disabled={counts.results === 0} />
-                            <span className="text-[11px] text-[#999999]">Settle freezes the ranking; Reveal shows it — vet between the two.</span>
+                            <span className="text-[11px] text-[#999999]">
+                                Settle freezes the ranking; Reveal shows it — vet between the two.
+                                {ev.entry_gate_n > 0 && ev.entry_gate_mode !== 'entry' && (
+                                    <> Settle also drops anyone below {ev.entry_gate_n} friends
+                                    {(() => { const dl = ev.conversion_deadline_at ?? ev.lock_at ?? ev.window_end_at; return dl && new Date(dl) > new Date() ? <> — friends can still count until {fmtDT(dl)}, so settle after that (or Re-settle)</> : null; })()}.</>
+                                )}
+                            </span>
                         </>
                     )}
                     {ev.status === 'revealed' && <Btn icon={Check} label="Mark settled" onClick={onMarkSettled} />}
@@ -1851,6 +2041,30 @@ function LifecyclePanel({
                     )}
                     <Btn icon={Copy} label="Duplicate" onClick={onDuplicate} />
                 </div>
+
+                {/* Automatic lifecycle — the clock keeps the published dates;
+                    the buttons above are the override. Shown while there is a
+                    next automatic step so the admin always knows what will
+                    happen without them. */}
+                {nextAuto && (
+                    <div className={`flex items-center gap-3 flex-wrap rounded-2xl border px-4 py-3 ${auto ? 'bg-[#10B981]/[0.06] border-[#10B981]/25' : 'bg-[#F4F4F1] border-[#E6E6E1]'}`}>
+                        <Timer size={14} className={auto ? 'text-[#10B981]' : 'text-[#999999]'} />
+                        <span className="text-[12px] text-[#333333]">
+                            {auto ? (
+                                <>Automatically <strong>{nextAuto.label}</strong> at {fmtDT(nextAuto.at)}{new Date(nextAuto.at) <= new Date() ? ' — due now, the next minute tick will move it' : ''}.</>
+                            ) : (
+                                <>Automatic lifecycle is <strong>off</strong> — this event only {nextAuto.label} when you press the button.</>
+                            )}
+                        </span>
+                        <button
+                            onClick={() => onSetAutoLifecycle(!auto)}
+                            disabled={!!acting}
+                            className="ml-auto inline-flex items-center h-8 px-3 rounded-lg border text-[10px] font-bold uppercase tracking-[0.15em] transition-all bg-white border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2] disabled:opacity-40"
+                        >
+                            {auto ? 'Switch to manual' : 'Switch to automatic'}
+                        </button>
+                    </div>
+                )}
 
                 {/* In-app test preview — draft only; scheduling makes it moot */}
                 {ev.status === 'draft' && (
@@ -1983,6 +2197,9 @@ function RegistrationQr({ slug }) {
 
 function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount, onDisqualify, onExportCsv }) {
     const rows = standings ?? [];
+    const [openFunnel, setOpenFunnel] = useState(null);   // referrer_id whose invitees are expanded
+    // The panel isn't remounted per event — an expansion must not carry over.
+    useEffect(() => { setOpenFunnel(null); }, [ev.id]);
     const fmtTime = (iso) => iso
         ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
         : '—';
@@ -2077,6 +2294,16 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                                                             manual-heavy
                                                         </span>
                                                     )}
+                                                    {/* Deadline-mode invite requirement: on the live board now,
+                                                        dropped at Settle unless the count lands in time. */}
+                                                    {r.gate_met === false && (
+                                                        <span
+                                                            className="px-2 py-0.5 rounded-full bg-[#E8D200]/15 border border-[#E8D200]/40 text-[#8a7600] text-[9px] font-black uppercase tracking-[0.12em]"
+                                                            title="Below the invite requirement — will not be in the final standings unless they reach it before Settle"
+                                                        >
+                                                            {r.gate_count} friends · drops at settle
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="py-2.5 text-right">
@@ -2154,8 +2381,22 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                             </thead>
                             <tbody className="divide-y divide-[#F6F6F3]">
                                 {ops.funnel.map((f) => (
-                                    <tr key={f.referrer_id}>
-                                        <td className="py-2 pr-3 font-semibold text-[#1A1A1A]">{f.referrer_name}</td>
+                                    <React.Fragment key={f.referrer_id}>
+                                    <tr>
+                                        {/* The referrer's own name opens their people —
+                                            the funnel's columns say how many, this says who. */}
+                                        <td className="py-2 pr-3 font-semibold text-[#1A1A1A]">
+                                            <button
+                                                onClick={() => setOpenFunnel(openFunnel === f.referrer_id ? null : f.referrer_id)}
+                                                className="inline-flex items-center gap-1.5 hover:text-[#8B5CF6] transition-colors"
+                                            >
+                                                {f.referrer_name}
+                                                <ChevronDown
+                                                    size={12}
+                                                    className={`text-[#AAAAAA] transition-transform ${openFunnel === f.referrer_id ? 'rotate-180' : ''}`}
+                                                />
+                                            </button>
+                                        </td>
                                         <td className="py-2 pr-3 text-right font-mono">{f.signups}</td>
                                         <td className="py-2 pr-3 text-right font-mono text-[#999999]">{f.pending}</td>
                                         <td className="py-2 pr-3 text-right font-mono font-semibold text-[#10B981]">{f.converted}</td>
@@ -2167,6 +2408,14 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                                             )}
                                         </td>
                                     </tr>
+                                    {openFunnel === f.referrer_id && (
+                                        <tr>
+                                            <td colSpan={5} className="bg-[#FAFAF8] px-4 py-3">
+                                                <InviteeList people={f.invitees} />
+                                            </td>
+                                        </tr>
+                                    )}
+                                    </React.Fragment>
                                 ))}
                             </tbody>
                         </table>
@@ -2278,43 +2527,104 @@ function AntiCheatReport({ report }) {
 
 // ─── Editor panel ────────────────────────────────────────────────
 
+// ─── Setup steps ─────────────────────────────────────────────────
+// The configuration is one form (one Save), but it's presented as
+// numbered steps so an admin can see what's decided, what's still to
+// do, and where each setting surfaces in the app — the fields used to
+// be a single 40-row list with no map from "this field" to "that
+// screen". Each step: a status + one-line summary for the rail, an
+// "In the app" box naming the surfaces it drives, then its fields.
+
+const SURFACES = {
+    home:     { label: 'Home card',      color: '#10B981' },
+    league:   { label: 'League tab',     color: '#3B82F6' },
+    ticket:   { label: 'Ticket',         color: '#8B5CF6' },
+    register: { label: 'Join sheet',     color: '#EC4899' },
+    promo:    { label: 'Promo page',     color: '#F59E0B' },
+    screen:   { label: 'Venue screen',   color: '#0EA5E9' },
+    door:     { label: 'Door tab',       color: '#F97316' },
+    admin:    { label: 'This panel',     color: '#888888' },
+};
+
+const STEP_TONE = {
+    done: { ring: 'border-[#10B981] bg-[#10B981] text-white',      label: 'Done',     text: 'text-[#10B981]' },
+    warn: { ring: 'border-[#F59E0B] bg-[#F59E0B]/10 text-[#B45309]', label: 'Check',    text: 'text-[#B45309]' },
+    todo: { ring: 'border-[#D8D8D2] bg-white text-[#888888]',      label: 'To do',    text: 'text-[#999999]' },
+    off:  { ring: 'border-[#E6E6E1] bg-[#F4F4F1] text-[#AAAAAA]',   label: 'Optional', text: 'text-[#AAAAAA]' },
+};
+
+const activitiesSummary = (list) => (list == null ? 'All types' : `${list.length} type${list.length === 1 ? '' : 's'}`);
+
+// Status + rail summary for each step, from the form alone. "warn" is
+// reserved for things that quietly cost the app a row or a screen
+// (no event night, no prizes) — not for anything merely optional.
+const stepState = (form) => ({
+    basics: form.name?.trim() && form.slug?.trim()
+        ? { status: 'done', summary: `${form.name} · ${form.slug}` }
+        : { status: 'todo', summary: 'Name and slug needed' },
+    dates: !form.window_start_at || !form.window_end_at
+        ? { status: 'todo', summary: 'Set the scoring window' }
+        : !form.doors_open_at
+            ? { status: 'warn', summary: `${fmtDay(form.window_start_at)} → ${fmtLastDay(form.window_end_at)} · no event night` }
+            : { status: 'done', summary: `${fmtDay(form.window_start_at)} → ${fmtLastDay(form.window_end_at)} · night ${fmtDay(form.doors_open_at)}` },
+    who: {
+        status: 'done',
+        summary: `${form.scope === 'opt_in' ? 'Opt-in' : 'Everyone'} · top ${form.board_size} · entry closes ${fmtDay(form.eligibility_cutoff_at ?? form.window_start_at)}`,
+    },
+    scoring: {
+        status: 'done',
+        summary: `${activitiesSummary(form.included_activities)} · manual ${form.count_manual ? 'on' : 'off'} · streaks ${form.count_streak ? 'on' : 'off'}`,
+    },
+    invites: form.invite_bonus_points > 0
+        ? {
+            status: 'done',
+            summary: `${form.invite_bonus_points} pts per friend${form.invite_milestone_n > 0 && form.invite_milestone_bonus > 0 ? ` · +${form.invite_milestone_bonus} at ${form.invite_milestone_n}` : ''}`,
+        }
+        : { status: 'off', summary: 'No invite bonus' },
+    gate: form.entry_gate_n > 0
+        ? { status: 'done', summary: `${form.entry_gate_n} friend${form.entry_gate_n === 1 ? '' : 's'} · ${form.entry_gate_mode === 'entry' ? 'unlocks the board' : 'keep your place'}` }
+        : { status: 'off', summary: 'Off — anyone can compete' },
+    prizes: (form.prizes?.length ?? 0) > 0
+        ? { status: 'done', summary: `${form.prizes.length} prize${form.prizes.length === 1 ? '' : 's'} · ${form.rules?.length ?? 0} rule${form.rules?.length === 1 ? '' : 's'}` }
+        : { status: 'warn', summary: 'No prizes yet' },
+    promo: (() => {
+        const parts = [
+            form.promo_headline && 'headline',
+            form.promo_media_url && 'background',
+            form.booking_url && 'booking link',
+        ].filter(Boolean);
+        return parts.length
+            ? { status: 'done', summary: parts.join(' · ').replace(/^./, c => c.toUpperCase()) }
+            : { status: 'off', summary: 'Plain look, no booking' };
+    })(),
+});
+
 function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueName, setVenueName, locked }) {
     const set = (patch) => setForm(prev => ({ ...prev, ...patch }));
+    const [stepKey, setStepKey] = useState('basics');
+    const topRef = useRef(null);
+    const state = stepState(form);
 
-    return (
-        <section>
-            <div className="flex items-center gap-4 mb-4 px-1">
-                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-[#10B981]/10 border-[#10B981]/25">
-                    <PartyPopper size={18} className="text-[#10B981]" />
-                </div>
-                <div className="min-w-0 flex-1">
-                    <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Configuration</h2>
-                    <p className="text-[12px] text-[#888888] leading-snug">
-                        {locked
-                            ? 'Results have been revealed, so these settings can no longer be changed.'
-                            : 'Changes take effect as soon as you save — scores are recalculated straight away.'}
-                    </p>
-                </div>
-                {dirty && !locked && (
-                    <SaveBar saving={saving} onSave={onSave} onDiscard={onDiscard} className="shrink-0" />
-                )}
-            </div>
-
-            <fieldset disabled={locked} className={locked ? 'opacity-60' : ''}>
-                <div className="bg-white border border-[#E6E6E1] rounded-3xl divide-y divide-[#F0F0EC]">
-                    {/* Identity */}
-                    <Group title="Identity">
+    const steps = [
+        {
+            key: 'basics',
+            title: 'Basics',
+            blurb: 'What the event is called and who is hosting it.',
+            inApp: [
+                ['home', 'Your logo sits next to the venue’s logo in the lockup at the top of the card, with the name underneath unless Logo only is on.'],
+                ['league', 'The same lockup heads the League tab once someone has joined.'],
+                ['promo', 'The venue logo on the promo page and the venue screen comes from the venue partner you pick here.'],
+                ['door', 'The venue partner’s geofence is what counts people as inside on the Door tab.'],
+                ['admin', 'The slug is baked into the promo, big-screen and registration QR links — change it and the QR needs downloading again.'],
+            ],
+            sections: [
+                { fields: (
+                    <>
                         <Field label="Name">
                             <TextInput value={form.name} onChange={v => set({ name: v })} />
                         </Field>
                         <Field label="Slug" hint="Short name used in the event's web links. Lowercase, words joined with dashes, e.g. fnl-x-powr.">
                             <TextInput value={form.slug} onChange={v => set({ slug: v })} mono />
-                        </Field>
-                        <Field label="Logo" hint="The POWR-side logo on the event card, shown next to the venue's logo. Upload a white logo on a transparent background. Leave blank to use the standard white POWR logo.">
-                            <EventLogoField value={form.logo_url} onChange={v => set({ logo_url: v })} />
-                        </Field>
-                        <Field label="Logo only" hint="On: the app card shows just the logos (larger), with no event name underneath. The name still appears everywhere else.">
-                            <Toggle on={form.logo_only} onFlip={() => set({ logo_only: !form.logo_only })} />
                         </Field>
                         <Field label="Venue partner" hint="Optional. The gym or venue hosting the event.">
                             <VenuePicker
@@ -2323,10 +2633,34 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                                 onPick={(id, name) => { set({ venue_partner_id: id }); setVenueName(name); }}
                             />
                         </Field>
-                    </Group>
-
-                    {/* Window */}
-                    <Group title="Dates & times" blurb="All times are UK time. Points earned from the moment scoring starts, up to (but not including) the moment it ends, count towards the event.">
+                    </>
+                ) },
+                { title: 'Logo', fields: (
+                    <>
+                        <Field label="Logo" hint="The POWR-side logo on the event card, shown next to the venue's logo. Upload a white logo on a transparent background. Leave blank to use the standard white POWR logo.">
+                            <EventLogoField value={form.logo_url} onChange={v => set({ logo_url: v })} />
+                        </Field>
+                        <Field label="Logo only" hint="On: the app card shows just the logos (larger), with no event name underneath. The name still appears everywhere else.">
+                            <Toggle on={form.logo_only} onFlip={() => set({ logo_only: !form.logo_only })} />
+                        </Field>
+                    </>
+                ) },
+            ],
+        },
+        {
+            key: 'dates',
+            title: 'Dates',
+            blurb: 'Two different things: the week people score points, and the night they turn up at the venue. All times are UK time.',
+            inApp: [
+                ['home', 'Reads “Scoring starts <day>” with a SCORING IN N DAYS chip while scheduled, then “Scoring ends <last day>” once live — never a bare date.'],
+                ['league', '“Event night <day, time>” comes from Doors open. It is the only place people are told when to actually turn up.'],
+                ['league', 'From the Leaderboard hides time the board is blurred, in the app and on the venue screen, until you press Reveal.'],
+                ['admin', 'With automatic lifecycle on (Lifecycle panel above), the event goes live at scoring start and locks at the hide time by itself.'],
+                ['door', 'Arrivals are counted between Doors open and Doors close.'],
+            ],
+            sections: [
+                { title: 'Competition window', blurb: 'Points earned from the moment scoring starts, up to (but not including) the moment it ends, count towards the event.', fields: (
+                    <>
                         <Field label="Scoring starts" hint="Start of the competition. Points earned from this moment count.">
                             <DateTimeInput value={form.window_start_at} onChange={v => set({ window_start_at: v })} />
                             <p className="text-[11px] text-[#999999] leading-relaxed mt-2 max-w-md">
@@ -2352,6 +2686,10 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Leaderboard hides" hint="From this moment the leaderboard is hidden in the app and everyone waits for the reveal. Usually the same as, or just after, scoring ends. Leave blank to keep it visible until you press Lock board.">
                             <DateTimeInput value={form.lock_at} onChange={v => set({ lock_at: v })} clearable />
                         </Field>
+                    </>
+                ) },
+                { title: 'Event night at the venue', blurb: 'Usually about a week after scoring opens. Nothing here affects points — it tells people when to show up and tells the Door tab when to count.', fields: (
+                    <>
                         <Field label="Doors open" hint="When the night at the venue starts. Doubles as the moment people arriving start being counted on the Door tab.">
                             <DateTimeInput value={form.doors_open_at} onChange={v => set({ doors_open_at: v })} clearable />
                             {/* This is the one field that answers "when is the event?", as
@@ -2378,9 +2716,23 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Doors close" hint="After this, people arriving at the venue are no longer counted. Leave blank for 12 hours after doors open.">
                             <DateTimeInput value={form.doors_close_at} onChange={v => set({ doors_close_at: v })} clearable />
                         </Field>
-                        <Field label="Eligibility cutoff" hint="Anyone who created their POWR account after this time can't compete. Leave blank to use the scoring start time.">
-                            <DateTimeInput value={form.eligibility_cutoff_at} onChange={v => set({ eligibility_cutoff_at: v })} clearable />
-                        </Field>
+                    </>
+                ) },
+            ],
+        },
+        {
+            key: 'who',
+            title: 'Who competes',
+            blurb: 'Whether people have to join, until when, and how many make the leaderboard.',
+            inApp: [
+                ['home', 'Opt-in: the card sells the event with a Join button until entry closes. Global: everyone is in automatically and there is no join step.'],
+                ['register', 'Joining opens the join sheet (dates, prizes, rules) and lands people on the League tab.'],
+                ['league', 'The leaderboard lists the top places up to Leaderboard size; the same number of final places are saved when you press Settle.'],
+                ['ticket', 'After the eligibility cutoff, joining stops — the ticket and invite progress of people already in stay where they are.'],
+            ],
+            sections: [
+                { fields: (
+                    <>
                         <Field label="Who takes part" hint="Opt-in: people must join the event in the app to appear on the leaderboard. Global: every POWR member is on the leaderboard automatically.">
                             <div className="flex gap-2">
                                 {['opt_in', 'global'].map(s => (
@@ -2390,13 +2742,33 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                                 ))}
                             </div>
                         </Field>
+                        <Field label="Eligibility cutoff" hint="Entry closes here: anyone who created their POWR account after this time can't compete, and joining stops at the same moment. Set it after the scoring end to let people sign up, join and bring invites right up to the event day — their points still only count inside the scoring window. Leave blank to use the scoring start time.">
+                            <DateTimeInput value={form.eligibility_cutoff_at} onChange={v => set({ eligibility_cutoff_at: v })} clearable />
+                            <p className="text-[11px] text-[#999999] leading-relaxed mt-2 max-w-md">
+                                Entry closes{' '}
+                                <span className="font-medium text-[#555555]">{fmtDT(form.eligibility_cutoff_at ?? form.window_start_at)}</span>
+                                {form.eligibility_cutoff_at ? '' : ' (the scoring start, because this is blank)'}.
+                            </p>
+                        </Field>
                         <Field label="Leaderboard size" hint="How many people are shown on the leaderboard in the app, and how many final places are saved when the event is settled.">
                             <NumberInput value={form.board_size} onChange={v => set({ board_size: v })} min={3} max={500} />
                         </Field>
-                    </Group>
-
-                    {/* Scoring */}
-                    <Group title="Scoring" blurb="Choose which activity earns event points. Two rules are fixed and can't be changed here: penalties always reduce a score, and invite/sign-up bonus points never add to one.">
+                    </>
+                ) },
+            ],
+        },
+        {
+            key: 'scoring',
+            title: 'Scoring',
+            blurb: 'Which of a person’s points count towards their event score. Two rules are fixed: penalties always reduce a score, and invite bonus points never add to one.',
+            inApp: [
+                ['league', 'Only points from the activities ticked here feed the rank on the leaderboard and the RANK pill on the home card.'],
+                ['screen', 'The venue screen shows the same standings.'],
+                ['admin', 'Changing anything here re-scores everyone the moment you save — scores are computed live and only frozen by Settle.'],
+            ],
+            sections: [
+                { fields: (
+                    <>
                         <Field label="Activities that count" hint="Points from these workout types count towards the event. Pick All types to count everything.">
                             <ActivityGrid
                                 value={form.included_activities}
@@ -2412,10 +2784,22 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Streak bonuses count" hint="On: the daily streak bonus points people earn also count towards their event score.">
                             <Toggle on={form.count_streak} onFlip={() => set({ count_streak: !form.count_streak })} />
                         </Field>
-                    </Group>
-
-                    {/* Invites */}
-                    <Group title="Invites" blurb="Rewards for bringing friends in. A friend who signs up with someone's code only counts as a full invite once they've completed their first verified workout — a manually logged workout never counts for this.">
+                    </>
+                ) },
+            ],
+        },
+        {
+            key: 'invites',
+            title: 'Invite rewards',
+            blurb: 'Points for bringing friends in. A friend only counts once they have completed their first verified workout — a manually logged workout never counts for this.',
+            inApp: [
+                ['register', 'The join sheet pitch quotes the points per friend.'],
+                ['ticket', 'Invite progress and the milestone bonus sit on the ticket in the League tab until the invite deadline.'],
+                ['admin', 'The bonus is paid to both people (as normal POWR points) when the friend’s first verified workout lands. It never counts towards anyone’s event score.'],
+            ],
+            sections: [
+                { title: 'Bonus', fields: (
+                    <>
                         <Field label="Points per friend" hint="Paid to both the inviter and the friend once the friend completes their first verified workout.">
                             <NumberInput value={form.invite_bonus_points} onChange={v => set({ invite_bonus_points: v })} min={0} max={1000} unit="pts" />
                         </Field>
@@ -2425,6 +2809,10 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Milestone bonus" hint="Extra points paid to the inviter when they reach the milestone. Set to 0 for no milestone bonus.">
                             <NumberInput value={form.invite_milestone_bonus} onChange={v => set({ invite_milestone_bonus: v })} min={0} max={5000} unit="pts" />
                         </Field>
+                    </>
+                ) },
+                { title: 'What counts as the friend’s first workout', fields: (
+                    <>
                         <Field label="Which workouts count as verified" hint="The friend's first workout must be verified in one of these ways.">
                             <div className="flex gap-2">
                                 {VERIFICATIONS.map(v => {
@@ -2448,15 +2836,38 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                                 nullable={false}
                             />
                         </Field>
-                        <Field label="Invite deadline" hint="Friends must complete their first workout by this time for the invite to count. Leave blank to use the scoring end time.">
+                        <Field label="Invite deadline" hint="Invites stay open until this time: the ticket and invite progress stay on the League tab, and friends must complete their first workout by it for the conversion bonus to count. Leave blank to use the scoring end time.">
                             <DateTimeInput value={form.conversion_deadline_at} onChange={v => set({ conversion_deadline_at: v })} clearable />
                         </Field>
-                    </Group>
-
-                    {/* Entry gate */}
-                    <Group title="Invite requirement" blurb="Optional. Make people bring a certain number of friends before they can see or appear on the leaderboard. Anyone can still join the event, and the final results are public to everyone.">
-                        <Field label="Friends required" hint="How many friends someone must invite before they can see the leaderboard. 0 = no requirement.">
+                    </>
+                ) },
+            ],
+        },
+        {
+            key: 'gate',
+            title: 'Friend requirement',
+            optional: true,
+            blurb: 'Optional. Ask people to bring a certain number of friends. Anyone can still join, and the final results are public to everyone.',
+            inApp: [
+                ['home', 'The pill on the card counts progress — “2 OF 5 FRIENDS” — until it flips to the person’s RANK.'],
+                ['league', 'Keep your place: everyone is on the live board, and Settle drops anyone still short. Unlock the board: the leaderboard stays hidden for someone until they reach the number.'],
+                ['admin', 'The Lifecycle panel reminds you to Settle after the invite deadline, so late friends are counted.'],
+            ],
+            sections: [
+                { fields: (
+                    <>
+                        <Field label="Friends required" hint="How many friends someone must invite. 0 = no requirement.">
                             <NumberInput value={form.entry_gate_n} onChange={v => set({ entry_gate_n: v })} min={0} max={50} unit="friends" />
+                        </Field>
+                        <Field label="When it applies" hint="Keep your place: everyone registered is on the live leaderboard from the start; anyone below the number when you press Settle is dropped from the final standings. Friends must be in by the invite deadline (or the lock time if none). Unlock the board: nobody is scored or shown the leaderboard until they reach the number.">
+                            <div className="flex gap-2">
+                                <Chip active={form.entry_gate_mode !== 'entry'} onClick={() => set({ entry_gate_mode: 'deadline' })}>
+                                    Keep your place (by the deadline)
+                                </Chip>
+                                <Chip active={form.entry_gate_mode === 'entry'} onClick={() => set({ entry_gate_mode: 'entry' })}>
+                                    Unlock the board (before you appear)
+                                </Chip>
+                            </div>
                         </Field>
                         <Field label="What counts as a friend" hint="Sign-ups: the friend just needs to create an account with the code (can happen before scoring starts). First workout: the friend also needs to complete their first verified workout.">
                             <div className="flex gap-2">
@@ -2471,29 +2882,45 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Only count friends invited after" hint="Friends invited before this time don't count towards the requirement. Leave blank to count every friend they've ever invited.">
                             <DateTimeInput value={form.entry_gate_since} onChange={v => set({ entry_gate_since: v })} clearable />
                         </Field>
-                    </Group>
-
-                    {/* Booking */}
-                    <Group title="Booking" blurb="Link to the venue's own booking page. Leave blank and the app shows no booking buttons; add it when the venue's form opens and the buttons appear. Use the Venue bookings tab to check who actually booked.">
-                        <Field label="Booking link" hint="You can include {email} and {name} in the link — the app swaps in the person's details so the venue's form can be pre-filled.">
-                            <TextInput mono value={form.booking_url} onChange={v => set({ booking_url: v || null })} />
-                        </Field>
-                    </Group>
-
-                    {/* Rules */}
-                    <Group title="Rules" blurb="Shown to people when they register and on their event ticket in the app. One rule per line — keep each short.">
-                        <Field label="Event rules" hint="For example: Only points earned during the event week count.">
-                            <RulesField value={form.rules} onChange={v => set({ rules: v })} />
-                        </Field>
-                    </Group>
-
-                    {/* Prizes */}
-                    <Group title="Prizes" blurb="What each finishing place wins. Add an image and it appears on the event ticket, registration screen, promo page and venue screen — a square photo on a plain background, 600px or larger, works best.">
-                        <PrizeEditor prizes={form.prizes} onChange={v => set({ prizes: v })} />
-                    </Group>
-
-                    {/* Promo page */}
-                    <Group title="Promo page" blurb="The public web page you share to promote the event (link in the Lifecycle section above). The venue logo comes from the venue partner; the QR code sends people into the app to register.">
+                    </>
+                ) },
+            ],
+        },
+        {
+            key: 'prizes',
+            title: 'Rules & prizes',
+            blurb: 'What people are playing for, and the rules they agree to when they join.',
+            inApp: [
+                ['register', 'Rules and prizes are shown on the join sheet before someone commits.'],
+                ['ticket', 'Rules expand on the ticket in the League tab; prizes sit on the League header.'],
+                ['promo', 'Prize images appear on the promo page and the venue screen.'],
+                ['league', 'After Reveal, the winners card shows the prizes against the final places — and winners can share theirs.'],
+            ],
+            sections: [
+                { title: 'Rules', blurb: 'One rule per line — keep each short.', fields: (
+                    <Field label="Event rules" hint="For example: Only points earned during the event week count.">
+                        <RulesField value={form.rules} onChange={v => set({ rules: v })} />
+                    </Field>
+                ) },
+                { title: 'Prizes', blurb: 'What each finishing place wins. A square photo on a plain background, 600px or larger, works best.', fields: (
+                    <PrizeEditor prizes={form.prizes} onChange={v => set({ prizes: v })} />
+                ) },
+            ],
+        },
+        {
+            key: 'promo',
+            title: 'Promo & booking',
+            optional: true,
+            blurb: 'The look of the event when you promote it, and the venue’s booking form if there is one.',
+            inApp: [
+                ['promo', 'The background plays behind the whole promo page, with the venue logo and the registration QR code (links in the Lifecycle panel above).'],
+                ['home', 'The same background sits behind the home card and the League header. The headline shows above the scoring line.'],
+                ['ticket', 'With a booking link set, a BOOK YOUR SPOT button appears on the ticket and the home card. Leave it blank and there are no booking buttons.'],
+                ['admin', 'Use the Venue bookings tab to check who actually booked.'],
+            ],
+            sections: [
+                { title: 'Promo look', fields: (
+                    <>
                         <Field label="Background" hint="A video (.mp4/.webm) or image shown behind the whole page. Leave blank for the plain dark POWR look.">
                             <PromoMediaField
                                 value={form.promo_media_url}
@@ -2503,7 +2930,145 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Headline" hint="Optional line under the event name — for example what's up for grabs. Shown on the promo page and on the app's home card, above the scoring line. Leave blank for the name and dates alone.">
                             <TextInput value={form.promo_headline} onChange={v => set({ promo_headline: v || null })} />
                         </Field>
-                    </Group>
+                    </>
+                ) },
+                { title: 'Booking', blurb: 'Link to the venue’s own booking page. Add it when the venue’s form opens and the buttons appear in the app.', fields: (
+                    <Field label="Booking link" hint="You can include {email} and {name} in the link — the app swaps in the person's details so the venue's form can be pre-filled.">
+                        <TextInput mono value={form.booking_url} onChange={v => set({ booking_url: v || null })} />
+                    </Field>
+                ) },
+            ],
+        },
+    ];
+
+    const index = Math.max(0, steps.findIndex(s => s.key === stepKey));
+    const step = steps[index];
+    const goTo = (key) => {
+        setStepKey(key);
+        // Keep the step header in view — the rail is sticky but the
+        // content card can be much taller than the viewport.
+        topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    const outstanding = steps.filter(s => ['todo', 'warn'].includes(state[s.key].status));
+
+    return (
+        <section ref={topRef} className="scroll-mt-6">
+            <div className="flex items-center gap-4 mb-4 px-1">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-[#10B981]/10 border-[#10B981]/25">
+                    <PartyPopper size={18} className="text-[#10B981]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Setup</h2>
+                    <p className="text-[12px] text-[#888888] leading-snug">
+                        {locked
+                            ? 'Results have been revealed, so these settings can no longer be changed.'
+                            : outstanding.length === 0
+                                ? 'Everything is set. Changes take effect as soon as you save — scores are recalculated straight away.'
+                                : `${outstanding.length} step${outstanding.length === 1 ? '' : 's'} to look at: ${outstanding.map(s => s.title).join(', ')}. One Save covers every step.`}
+                    </p>
+                </div>
+                {dirty && !locked && (
+                    <SaveBar saving={saving} onSave={onSave} onDiscard={onDiscard} className="shrink-0" />
+                )}
+            </div>
+
+            <fieldset disabled={locked} className={locked ? 'opacity-60' : ''}>
+                <div className="flex gap-6 items-start flex-col lg:flex-row">
+                    {/* Step rail */}
+                    <nav className="w-full lg:w-72 shrink-0 lg:sticky lg:top-6 flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
+                        {steps.map((s, i) => {
+                            const st = state[s.key];
+                            const tone = STEP_TONE[st.status];
+                            const active = s.key === stepKey;
+                            return (
+                                <button
+                                    key={s.key}
+                                    type="button"
+                                    onClick={() => goTo(s.key)}
+                                    className={`text-left flex items-start gap-3 rounded-2xl border px-3.5 py-3 min-w-[220px] lg:min-w-0 transition-all ${
+                                        active
+                                            ? 'bg-white border-[#1A1A1A] shadow-sm'
+                                            : 'bg-white/60 border-[#E6E6E1] hover:border-[#D8D8D2] hover:bg-white'
+                                    }`}
+                                >
+                                    <span className={`w-6 h-6 rounded-full border-2 shrink-0 mt-0.5 inline-flex items-center justify-center text-[10px] font-black ${tone.ring}`}>
+                                        {st.status === 'done' ? <Check size={12} strokeWidth={3} /> : i + 1}
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex items-center gap-2">
+                                            <span className={`text-[13px] font-semibold leading-tight ${active ? 'text-[#1A1A1A]' : 'text-[#333333]'}`}>{s.title}</span>
+                                            {st.status !== 'done' && (
+                                                <span className={`text-[9px] font-black uppercase tracking-[0.15em] ${tone.text}`}>{tone.label}</span>
+                                            )}
+                                        </span>
+                                        <span className="text-[11px] text-[#999999] leading-snug block mt-0.5 truncate">{st.summary}</span>
+                                    </span>
+                                </button>
+                            );
+                        })}
+                        <div className="hidden lg:block mt-3 px-1 text-[11px] text-[#AAAAAA] leading-relaxed">
+                            Go live from the Lifecycle panel at the top: preview with testers, then press Schedule.
+                        </div>
+                    </nav>
+
+                    {/* Active step */}
+                    <div className="flex-1 min-w-0 bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+                        <div className="px-7 pt-6 pb-5 border-b border-[#F0F0EC]">
+                            <div className="flex items-center gap-2 mb-1.5">
+                                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#10B981]">Step {index + 1} of {steps.length}</span>
+                                {step.optional && <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#AAAAAA]">· Optional</span>}
+                            </div>
+                            <h3 className="text-2xl font-light tracking-tight text-[#1A1A1A]">{step.title}</h3>
+                            <p className="text-[13px] text-[#777777] leading-relaxed mt-1.5 max-w-2xl">{step.blurb}</p>
+
+                            <div className="mt-5 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] px-5 py-4">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Smartphone size={13} className="text-[#555555]" />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#555555]">In the app</span>
+                                </div>
+                                <ul className="space-y-2">
+                                    {step.inApp.map(([surface, text], i) => (
+                                        <li key={i} className="flex items-start gap-3">
+                                            <SurfaceTag id={surface} />
+                                            <span className="text-[12px] text-[#555555] leading-relaxed">{text}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div className="divide-y divide-[#F0F0EC]">
+                            {step.sections.map((sec, i) => (
+                                sec.title
+                                    ? <Group key={i} title={sec.title} blurb={sec.blurb}>{sec.fields}</Group>
+                                    : <div key={i} className="px-7 py-6 space-y-5">{sec.fields}</div>
+                            ))}
+                        </div>
+
+                        <div className="px-7 py-5 border-t border-[#F0F0EC] flex items-center justify-between gap-3 flex-wrap">
+                            <button
+                                type="button"
+                                onClick={() => goTo(steps[index - 1].key)}
+                                disabled={index === 0}
+                                className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border bg-[#F4F4F1] border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#666666] hover:text-[#1A1A1A] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <ArrowLeft size={13} /> {index > 0 ? steps[index - 1].title : 'Back'}
+                            </button>
+                            {index < steps.length - 1 ? (
+                                <button
+                                    type="button"
+                                    onClick={() => goTo(steps[index + 1].key)}
+                                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#1A1A1A] text-white text-[10.5px] font-bold uppercase tracking-[0.18em] hover:bg-[#333333] transition-all"
+                                >
+                                    Next: {steps[index + 1].title} <ArrowRight size={13} />
+                                </button>
+                            ) : (
+                                <span className="text-[11px] text-[#999999]">
+                                    Last step — save, then use the Lifecycle panel at the top to preview and Schedule.
+                                </span>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </fieldset>
 
@@ -2511,6 +3076,18 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                 <SaveBar saving={saving} onSave={onSave} onDiscard={onDiscard} className="justify-end mt-4 px-1" />
             )}
         </section>
+    );
+}
+
+function SurfaceTag({ id }) {
+    const s = SURFACES[id] ?? SURFACES.admin;
+    return (
+        <span
+            className="shrink-0 inline-flex items-center h-5 px-2 rounded-md border text-[9px] font-black uppercase tracking-[0.15em] whitespace-nowrap mt-0.5"
+            style={{ color: s.color, borderColor: `${s.color}44`, backgroundColor: `${s.color}0F` }}
+        >
+            {s.label}
+        </span>
     );
 }
 

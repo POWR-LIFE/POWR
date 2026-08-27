@@ -33,6 +33,7 @@ import {
   type StrengthThresholds,
 } from '../_shared/points.ts';
 import { mergeWorkouts, relateWorkouts, type WorkoutWindow } from '../_shared/sessionMerge.ts';
+import { resolveSleepSeconds } from '../_shared/sleepDuration.ts';
 import { verifyTerraSignature } from '../_shared/terraSignature.ts';
 import { DATA_TYPES, extractDeviceFreshness, freshnessPatch } from '../_shared/deviceFreshness.ts';
 import { activityExtras } from '../_shared/terraExtras.ts';
@@ -819,13 +820,20 @@ async function readSleepSnapshot(supabase, sessionId: string) {
 }
 
 /**
+ * How much a night has to grow before we re-announce it. Below this a merge is
+ * Terra restating the same night with a few minutes of drift, and the user does
+ * not need telling twice.
+ */
+const RECEIPT_CORRECTION_MIN_H = 0.5;
+
+/**
  * The sleep receipt. Gated to a night that ended in the last 24h: a reconnect
  * backfills a week of history, and without the gate the user is congratulated
  * NOW for a night they slept days ago (seen live 2026-08-21). Points still land
  * for old nights — never drop a workout — only the push is fresh-only.
  *
- * The sleep_target_met type's daily_cap (1) absorbs the case where a night
- * arrives as a fragment and is then extended by a merge.
+ * `points` is always what the NIGHT is worth, never what one delivery added —
+ * see the correction block in mergeSleepInto.
  */
 async function sendSleepReceipt(userId: string, endIso: string, hours: number, points: number): Promise<void> {
   if (points <= 0) return;
@@ -959,7 +967,28 @@ async function mergeSleepInto(supabase, { userId, target, incoming, reading, sou
     `[terra-webhook] ${relation === 'contiguous' ? 'stitched split' : 'healed'} sleep: `
     + `${existing.durationSec}s → ${merged.durationSec}s (+${deltaPoints} pts)`,
   );
-  await sendSleepReceipt(userId, new Date(merged.endMs).toISOString(), mergedHours, deltaPoints);
+
+  // Correct a receipt that went out on half a night.
+  //
+  // The insert path announces the first telling it sees, and on a split night
+  // that is a fragment: 2026-08-23 pushed "4.8h earned you 1 POWR point" at
+  // 01:56 for a night that finished at 08:13 worth 8.8h and 5 points. Terra
+  // cannot tell us at 01:56 that more is coming — Whoop had scored that segment
+  // as a complete sleep — so the only honest repair is to say so afterwards.
+  //
+  // Two things make that safe to send. It reports the night's TOTAL, not this
+  // merge's delta, so the correction reads as the whole story rather than a
+  // second helping. And it only fires when the number actually moved, so the
+  // restatements Terra sends all day (same night, minutes of drift) stay
+  // silent. daily_cap 2 on sleep_target_met (migration 20260823110000) is what
+  // lets it through at all: at 1 the fragment permanently outranked the truth,
+  // and every correction we tried to send logged as type_daily_cap.
+  const grewBy = mergedHours - existing.durationSec / 3600;
+  if (grewBy >= RECEIPT_CORRECTION_MIN_H) {
+    await sendSleepReceipt(
+      userId, new Date(merged.endMs).toISOString(), mergedHours, oldPoints + deltaPoints,
+    );
+  }
 }
 
 async function handleSleep(supabase, payload): Promise<void> {
@@ -975,10 +1004,9 @@ async function handleSleep(supabase, payload): Promise<void> {
 
     const dur = s.sleep_durations_data ?? {};
     const asleep = dur.asleep ?? {};
-    const inBedSec = dur.other?.duration_in_bed_seconds;
-    const asleepSec = asleep.duration_asleep_state_seconds;
-    const fallbackSec = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000);
-    const totalSec = inBedSec ?? asleepSec ?? fallbackSec;
+    // Time ASLEEP, not time in bed — see resolveSleepSeconds for why the order
+    // is what it is, and what reading in-bed first used to cost.
+    const totalSec = resolveSleepSeconds(dur, start, end);
     const hours = totalSec / 3600;
     if (hours < 1) continue; // ignore very short naps (matches client)
 
@@ -1060,14 +1088,120 @@ async function handleSleep(supabase, payload): Promise<void> {
   }
 }
 
+function finitePositive(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+}
+
+/**
+ * A provider's DAILY summary carries the vitals a day-worn device measures
+ * without ever going to bed — resting heart rate above all (Garmin, Whoop and
+ * Zepp all send `heart_rate_data.summary.resting_hr_bpm`), plus the day's HRV
+ * average where the device has one. This handler used to read only the steps
+ * and drop the rest, which left the BODY tab's readiness read with nothing for
+ * anyone who doesn't sleep in their wearable (Sorine's report, 2026-08-27):
+ * every chip said "waiting on your device" for a night that was never coming.
+ *
+ * One health_snapshots row per user per provider-day, keyed by the provider's
+ * LOCAL day (start_time is the user's local midnight, as it is for steps).
+ * Terra re-delivers a day's summary many times as the day fills in, so an
+ * existing row is updated in place, never duplicated. No session_id — this is
+ * a reading, not a workout, nothing is awarded — and ONLY resting HR + HRV are
+ * stored: the day's max HR / kcal would be read by the BODY tab's weekly
+ * aggregates as a workout peak/burn (bodyTrends' day-wide gate only knows the
+ * native providers), so they stay out. recorded_at is local NOON so the
+ * client's local-day bucketing lands the reading on the right calendar day
+ * from any timezone within ±10h of the device's.
+ */
+async function upsertDailyVitals(supabase, userId: string, source: string | null, d, start: string): Promise<void> {
+  const summary = d.heart_rate_data?.summary ?? {};
+  const rhr = finitePositive(summary.resting_hr_bpm);
+  const hrv = finitePositive(summary.avg_hrv_rmssd);
+  if (rhr == null && hrv == null) return;
+
+  const dayStart = new Date(start);
+  if (Number.isNaN(dayStart.getTime())) return;
+  const bucketStart = dayStart.toISOString();
+  const bucketEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const recordedAt = new Date(dayStart.getTime() + 12 * 60 * 60 * 1000).toISOString();
+
+  const { data: existing } = await supabase
+    .from('health_snapshots')
+    .select('id, hr_resting, extras')
+    .eq('user_id', userId)
+    .eq('activity_type', 'daily')
+    .is('session_id', null)
+    .gte('recorded_at', bucketStart)
+    .lt('recorded_at', bucketEnd)
+    .order('recorded_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const extras: Record<string, unknown> = { ...(existing?.extras ?? {}), scope: 'day' };
+  if (hrv != null) extras.hrv_rmssd = Math.round(hrv * 10) / 10;
+  const hrResting = rhr != null ? Math.round(rhr) : (existing?.hr_resting ?? null);
+
+  if (existing) {
+    const unchanged = existing.hr_resting === hrResting
+      && existing.extras?.hrv_rmssd === extras.hrv_rmssd;
+    if (unchanged) return;
+    const { error } = await supabase.from('health_snapshots')
+      .update({ hr_resting: hrResting, extras })
+      .eq('id', existing.id);
+    if (error) console.error('[terra-webhook] daily vitals update:', error.message);
+    return;
+  }
+
+  const { error } = await supabase.from('health_snapshots').insert({
+    user_id: userId,
+    session_id: null,
+    recorded_at: recordedAt,
+    hr_resting: hrResting,
+    activity_type: 'daily',
+    source,
+    extras,
+  });
+  if (!error) return;
+  // Lost the race to a concurrent delivery of the same day (the 30-min poll
+  // and a backfill can land the same summary seconds apart — proven on the
+  // first backfill, 5 duplicate days in 2 minutes). The partial unique index
+  // on (user_id, source, day) refuses the second row; fold into the winner.
+  if (error.code === '23505') {
+    const { data: winner } = await supabase
+      .from('health_snapshots')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('activity_type', 'daily')
+      .is('session_id', null)
+      .gte('recorded_at', bucketStart)
+      .lt('recorded_at', bucketEnd)
+      .limit(1)
+      .maybeSingle();
+    if (winner) {
+      const { error: upErr } = await supabase.from('health_snapshots')
+        .update({ hr_resting: hrResting, extras })
+        .eq('id', winner.id);
+      if (upErr) console.error('[terra-webhook] daily vitals merge:', upErr.message);
+    }
+    return;
+  }
+  console.error('[terra-webhook] daily vitals insert:', error.message);
+}
+
 async function handleDaily(supabase, payload): Promise<void> {
   const userId = await resolveUserId(supabase, payload);
   if (!userId) return;
+  const source = terraResourceToSource(payload?.user?.provider ?? '');
 
   for (const d of payload.data ?? []) {
     const start = d.metadata?.start_time;
+    if (!start) continue;
+
+    // The day's vitals ride on the same payload as its steps, and a day with
+    // a resting HR but no steps yet (early morning) still counts.
+    await upsertDailyVitals(supabase, userId, source, d, start);
+
     const steps = d.distance_data?.steps;
-    if (!start || steps == null || steps <= 0) continue;
+    if (steps == null || steps <= 0) continue;
 
     // Terra sends localized timestamps: start_time is the user's LOCAL midnight
     // (e.g. "2026-07-16T00:00:00+01:00"). Preserve that exact instant as

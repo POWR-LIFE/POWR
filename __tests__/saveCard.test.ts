@@ -1,33 +1,23 @@
 /**
- * lib/saveCard — "keep the image" without a camera-roll write (the package
- * for that is what Google Play rejected POWR for). Android goes through the
- * Storage Access Framework and remembers the folder; iOS goes through the
- * share sheet's Save Image row. Pins the routing and the remember/forget
- * behaviour, since a wrong turn here either re-prompts every time or throws
- * a raw SAF error at the member.
+ * lib/saveCard — native "keep the image": a WRITE-ONLY gallery save on both
+ * platforms (expo-media-library; the READ_MEDIA_* permissions its plugin
+ * declares are stripped by android.blockedPermissions — the July 2026 Play
+ * rejection), falling back to the share sheet's Save Image row when the
+ * permission is declined or the write throws. Pins the routing, the
+ * member-facing filename handed to the gallery, and the fallback order.
  */
 
-const mockGetItem = jest.fn();
-const mockSetItem = jest.fn();
-const mockRemoveItem = jest.fn();
-jest.mock('@react-native-async-storage/async-storage', () => ({
-    __esModule: true,
-    default: { getItem: (...a: unknown[]) => mockGetItem(...a), setItem: (...a: unknown[]) => mockSetItem(...a), removeItem: (...a: unknown[]) => mockRemoveItem(...a) },
+const mockRequestPerms = jest.fn();
+const mockSaveToLibrary = jest.fn();
+jest.mock('expo-media-library', () => ({
+    requestPermissionsAsync: (...a: unknown[]) => mockRequestPerms(...a),
+    saveToLibraryAsync: (...a: unknown[]) => mockSaveToLibrary(...a),
 }));
 
-const mockRequestDir = jest.fn();
-const mockCreateFile = jest.fn();
-const mockWrite = jest.fn();
-const mockRead = jest.fn();
+const mockCopy = jest.fn();
 jest.mock('expo-file-system/legacy', () => ({
-    EncodingType: { Base64: 'base64' },
-    readAsStringAsync: (...a: unknown[]) => mockRead(...a),
-    writeAsStringAsync: (...a: unknown[]) => mockWrite(...a),
-    StorageAccessFramework: {
-        getUriForDirectoryInRoot: (name: string) => `content://root/${name}`,
-        requestDirectoryPermissionsAsync: (...a: unknown[]) => mockRequestDir(...a),
-        createFileAsync: (...a: unknown[]) => mockCreateFile(...a),
-    },
+    cacheDirectory: 'file:///cache/',
+    copyAsync: (...a: unknown[]) => mockCopy(...a),
 }));
 
 const mockIsAvailable = jest.fn();
@@ -40,15 +30,15 @@ jest.mock('expo-sharing', () => ({
 const mockPlatform = { OS: 'android' as string };
 jest.mock('react-native', () => ({ get Platform() { return mockPlatform; } }));
 
-import { SAVE_DIR_KEY, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
+import { cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
 
 beforeEach(() => {
     jest.clearAllMocks();
     mockPlatform.OS = 'android';
-    mockRead.mockResolvedValue('QUJD');
-    mockCreateFile.mockResolvedValue('content://dir/powr.png');
-    mockWrite.mockResolvedValue(undefined);
-    mockGetItem.mockResolvedValue(null);
+    mockRequestPerms.mockResolvedValue({ granted: true });
+    mockCopy.mockResolvedValue(undefined);
+    mockSaveToLibrary.mockResolvedValue(undefined);
+    mockIsAvailable.mockResolvedValue(true);
 });
 
 test('filename sorts by time and never carries odd characters', () => {
@@ -57,57 +47,43 @@ test('filename sorts by time and never carries odd characters', () => {
     expect(cardFilename('', new Date('2026-08-19T14:05:09Z'))).toBe('powr-card-20260819-140509.png');
 });
 
-test('android, first time: picker opens on Pictures, the folder is remembered, the file is written', async () => {
-    mockRequestDir.mockResolvedValue({ granted: true, directoryUri: 'content://dir' });
+test.each(['android', 'ios'])('%s: write-only permission, member-facing filename, gallery write', async (os) => {
+    mockPlatform.OS = os;
     await expect(saveCardImage('file:///tmp/c.png', 'powr-x.png')).resolves.toBe('saved');
-    expect(mockRequestDir).toHaveBeenCalledWith('content://root/Pictures');
-    expect(mockCreateFile).toHaveBeenCalledWith('content://dir', 'powr-x.png', 'image/png');
-    expect(mockWrite).toHaveBeenCalledWith('content://dir/powr.png', 'QUJD', { encoding: 'base64' });
-    expect(mockSetItem).toHaveBeenCalledWith(SAVE_DIR_KEY, 'content://dir');
+    expect(mockRequestPerms).toHaveBeenCalledWith(true); // writeOnly — never a library read
+    expect(mockCopy).toHaveBeenCalledWith({ from: 'file:///tmp/c.png', to: 'file:///cache/powr-x.png' });
+    expect(mockSaveToLibrary).toHaveBeenCalledWith('file:///cache/powr-x.png');
+    expect(mockShareAsync).not.toHaveBeenCalled();
 });
 
-test('android, picker dismissed: cancelled, nothing written, nothing remembered', async () => {
-    mockRequestDir.mockResolvedValue({ granted: false });
-    await expect(saveCardImage('file:///tmp/c.png', 'powr-x.png')).resolves.toBe('cancelled');
-    expect(mockCreateFile).not.toHaveBeenCalled();
-    expect(mockSetItem).not.toHaveBeenCalled();
-});
-
-test('android, remembered folder: no picker at all', async () => {
-    mockGetItem.mockResolvedValue('content://kept');
-    await expect(saveCardImage('file:///tmp/c.png', 'powr-x.png')).resolves.toBe('saved');
-    expect(mockRequestDir).not.toHaveBeenCalled();
-    expect(mockCreateFile).toHaveBeenCalledWith('content://kept', 'powr-x.png', 'image/png');
-});
-
-test('android, remembered folder gone: forget it and fall back to the picker instead of throwing', async () => {
-    mockGetItem.mockResolvedValue('content://gone');
-    mockCreateFile
-        .mockRejectedValueOnce(new Error('SecurityException'))
-        .mockResolvedValueOnce('content://new/powr.png');
-    mockRequestDir.mockResolvedValue({ granted: true, directoryUri: 'content://new' });
-    await expect(saveCardImage('file:///tmp/c.png', 'powr-x.png')).resolves.toBe('saved');
-    expect(mockRemoveItem).toHaveBeenCalledWith(SAVE_DIR_KEY);
-    expect(mockRequestDir).toHaveBeenCalledTimes(1);
-    expect(mockSetItem).toHaveBeenCalledWith(SAVE_DIR_KEY, 'content://new');
-});
-
-test('ios: the share sheet (Save Image lives there), never SAF', async () => {
-    mockPlatform.OS = 'ios';
-    mockIsAvailable.mockResolvedValue(true);
+test('permission declined: falls back to the share sheet, nothing written', async () => {
+    mockRequestPerms.mockResolvedValue({ granted: false });
     await expect(saveCardImage('file:///tmp/c.png', 'powr-x.png')).resolves.toBe('sheet');
+    expect(mockSaveToLibrary).not.toHaveBeenCalled();
     expect(mockShareAsync).toHaveBeenCalledWith('file:///tmp/c.png', expect.objectContaining({ mimeType: 'image/png', dialogTitle: 'Save Image' }));
-    expect(mockRequestDir).not.toHaveBeenCalled();
 });
 
-test('no sheet available (web): unavailable', async () => {
-    mockPlatform.OS = 'web';
+test('gallery write throws: falls back to the share sheet instead of surfacing the error', async () => {
+    mockSaveToLibrary.mockRejectedValue(new Error('boom'));
+    await expect(saveCardImage('file:///tmp/c.png', 'powr-x.png')).resolves.toBe('sheet');
+    expect(mockShareAsync).toHaveBeenCalled();
+});
+
+test('permission declined and no sheet either: unavailable', async () => {
+    mockRequestPerms.mockResolvedValue({ granted: false });
     mockIsAvailable.mockResolvedValue(false);
     await expect(saveCardImage('file:///tmp/c.png', 'powr-x.png')).resolves.toBe('unavailable');
+    expect(mockShareAsync).not.toHaveBeenCalled();
+});
+
+test('web: never touches the media library, goes straight to the sheet', async () => {
+    mockPlatform.OS = 'web';
+    await expect(saveCardImage('file:///tmp/c.png', 'powr-x.png')).resolves.toBe('sheet');
+    expect(mockRequestPerms).not.toHaveBeenCalled();
 });
 
 test('notices', () => {
-    expect(saveCardNotice('saved')).toBe('Saved to your phone.');
+    expect(saveCardNotice('saved')).toBe('Saved to your Photos.');
     expect(saveCardNotice('sheet')).toMatch(/Save Image/);
     expect(saveCardNotice('cancelled')).toBeNull();
     expect(saveCardNotice('unavailable')).toMatch(/isn’t available/);

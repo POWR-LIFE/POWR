@@ -337,7 +337,35 @@ const CHECK_IN_LAST_FIRED_PREFIX = '@powr/check_in_last_fired/';
  *  failure still THROWS, because the Android caller depends on the throw to fall
  *  back to the server announce. It exists so a caller that catches can record
  *  the reason in this same vocabulary. */
-export type CheckInNotifyResult = 'shown' | 'cooldown' | 'pref_off' | 'no_permission' | 'failed';
+export type CheckInNotifyResult = 'shown' | 'scheduled' | 'cooldown' | 'pref_off' | 'no_permission' | 'failed';
+
+/** How long after check-in the "You're in" banner is allowed to draw.
+ *
+ *  ⚠ THE BANNER USED TO FIRE ON THE FIRST IN-RADIUS FIX, and most of them were
+ *  drive-bys. Live Ops 2026-08-19→26: 23 of 34 real-user visits closed in under
+ *  two minutes — a car or a walk along the High Street clipping a 25 m circle —
+ *  and 21 of those drew the banner. One member got "You're in at Studio Glide
+ *  Pilates" six mornings running, 14 seconds before the OS exit closed the visit;
+ *  another got nine across nine Worcester venues without ever training at one.
+ *
+ *  The visit itself is unchanged — check-in, proof floor and credit all keep
+ *  running from the first fix. Only the ANNOUNCEMENT waits: the OS holds it on a
+ *  time-interval trigger (no JS lifetime involved — the headless task is long
+ *  dead by then), and a finalize inside the window cancels it. A real arrival
+ *  hears "You're in" a minute and a quarter after the door; a drive-by hears
+ *  nothing. Sized from the field: every drive-by close in that window landed
+ *  well inside 60 s, and 75 s leaves iOS's exit latency room without making a
+ *  genuine arrival wait long enough to wonder. */
+export const CHECK_IN_BANNER_DELAY_S = 75;
+
+const checkInBannerIdentifier = (locationId: string) => `powr-check_in_reminder-${locationId}`;
+
+/** Withdraws a check-in banner that has not drawn yet. A no-op once it has
+ *  delivered — this cancels the trigger, it never dismisses a banner the user
+ *  has already seen. Called on every finalize so a drive-by never announces. */
+export async function cancelPendingCheckInBanner(locationId: string): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(checkInBannerIdentifier(locationId)).catch(() => {});
+}
 
 /** Clears the check-in cooldown for a venue.
  *
@@ -386,7 +414,7 @@ export async function notifyCheckInAvailable(
   await ensureAndroidChannels().catch(() => {});
 
   await Notifications.scheduleNotificationAsync({
-    identifier: `powr-check_in_reminder-${locationId}`,
+    identifier: checkInBannerIdentifier(locationId),
     content: {
       title: 'POWR',
       // partnerName arrives here and used to be dropped into `data` without ever
@@ -406,14 +434,21 @@ export async function notifyCheckInAvailable(
       } satisfies NotificationPayload,
       sound: 'default',
     },
-    trigger: Platform.OS === 'android'
-      ? ({ channelId: CHANNEL_DEFAULT } as Notifications.NotificationTriggerInput)
-      : null,
+    // Deferred, not immediate — see CHECK_IN_BANNER_DELAY_S. The OS owns the
+    // timer; cancelPendingCheckInBanner withdraws it if the visit ends first.
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: CHECK_IN_BANNER_DELAY_S,
+      repeats: false,
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
+    },
   });
   // Stamp only after scheduling succeeds; otherwise a transient local-notification
   // failure would suppress the next legitimate entry alert for 30 minutes.
   await AsyncStorage.setItem(cooldownKey, String(Date.now())).catch(() => {});
-  return 'shown';
+  // 'scheduled', not 'shown': the user WILL be told unless the visit ends inside
+  // the delay. Callers that mean "already announced locally" treat it as shown.
+  return 'scheduled';
 }
 
 // ---------------------------------------------------------------------------
