@@ -32,6 +32,8 @@ import { HeaderActions } from '@/components/HeaderActions';
 import { ComingSoon } from '@/components/ComingSoon';
 import { EventPrizeGallery } from '@/components/events/EventPrizeGallery';
 import { EventRegisterFlow } from '@/components/events/EventRegisterFlow';
+import { EventBoardHeader } from '@/components/league/EventBoardHeader';
+import { EventGateStrip } from '@/components/league/EventGateStrip';
 import { EventHeaderCard } from '@/components/league/EventHeaderCard';
 import { EventTicketCard } from '@/components/league/EventTicketCard';
 import { ProBadge } from '@/components/ui/ProBadge';
@@ -105,6 +107,26 @@ export default function LeagueScreen() {
     useLiveEvent(typeof eventSlug === 'string' ? eventSlug : undefined, boardPreview);
   const [registerOpen, setRegisterOpen] = useState(false);
 
+  // Event mode is two segments: the LEADERBOARD and the EVENT (hero, prizes,
+  // ticket). Which one opens first follows the event, not a fixed order —
+  // before scoring the job is "understand it, join it, bring friends"; once
+  // the window is open the job is "where am I". A segment the user picked
+  // themselves is never overridden by a later payload.
+  const [segment, setSegment] = useState<EventSegment>('event');
+  const segmentTouched = useRef(false);
+  const evStatus = activeEvent?.status;
+  const evJoined = activeEvent?.viewer.joined;
+  const evScope  = activeEvent?.scope;
+  useEffect(() => {
+    if (!evStatus || segmentTouched.current) return;
+    const inEvent = !!evJoined || evScope === 'global';
+    setSegment(evStatus !== 'scheduled' && inEvent ? 'board' : 'event');
+  }, [evStatus, evJoined, evScope]);
+  const pickSegment = (next: EventSegment) => {
+    segmentTouched.current = true;
+    setSegment(next);
+  };
+
   // Load leaderboard data when metric changes (only when live)
   useEffect(() => {
     if (!LEAGUE_LIVE) return;
@@ -147,6 +169,14 @@ export default function LeagueScreen() {
   const currentEntries = activeTab === 0 ? standardEntries : proEntries;
   const myEntry = currentEntries.find(e => e.user_id === user?.id);
 
+  // The gate, as one line on the board segment: only for someone in the
+  // event while invites can still count, and only once the server has told
+  // us where they stand (viewer.gate).
+  const gateStrip =
+    activeEvent && activeEvent.viewer.joined && invitesOpen(activeEvent) && eventBoard?.viewer?.gate
+      ? eventBoard.viewer.gate
+      : null;
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <GeometricBackground />
@@ -163,35 +193,58 @@ export default function LeagueScreen() {
            original teaser. */
         activeEvent ? (
           <>
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingBottom: insets.bottom + 24, gap: 8 }}
-              showsVerticalScrollIndicator={false}
-            >
-              <EventHeaderCard
-                event={activeEvent}
-                onRegister={() => setRegisterOpen(true)}
-              />
-              {/* What's on the line — its own block, not a footnote inside
-                  the hero: artwork gets a gallery, tap opens the spotlight. */}
-              <EventPrizeGallery event={activeEvent} />
-              {/* The ticket only means anything once you're in the event, and
-                  only while there's still time to convert an invite. */}
-              {activeEvent.viewer.joined && invitesOpen(activeEvent) && (
-                <EventTicketCard event={activeEvent} invites={invites} />
-              )}
-              {/* Testers only — walks the board through every state it can be
-                  in without an admin flipping a column between each step. */}
-              {activeEvent.is_preview && (
-                <BoardPreviewSwitcher value={boardPreview} onChange={setBoardPreview} />
-              )}
-              <EventBoardSection
-                event={activeEvent}
-                board={eventBoard}
-                onPressUser={openUserSheet}
-                ticketAbove={activeEvent.viewer.joined && invitesOpen(activeEvent)}
-              />
-            </ScrollView>
+            <EventSegmentBar value={segment} onChange={pickSegment} />
+            {segment === 'board' ? (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: insets.bottom + 24, gap: 8 }}
+                showsVerticalScrollIndicator={false}
+              >
+                <EventBoardHeader event={activeEvent} />
+                {/* The requirement stays in view on the board; the tools to
+                    meet it are one tap away on the ticket. */}
+                {gateStrip && (
+                  <EventGateStrip gate={gateStrip} onPress={() => pickSegment('event')} />
+                )}
+                {/* Testers only — walks the board through every state it can be
+                    in without an admin flipping a column between each step. */}
+                {activeEvent.is_preview && (
+                  <BoardPreviewSwitcher value={boardPreview} onChange={setBoardPreview} />
+                )}
+                {activeEvent.status === 'scheduled' && !eventBoard?.is_preview && (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyText}>
+                      {`The board opens when scoring starts ${shortDate(activeEvent.window_start_at)}.`}
+                    </Text>
+                  </View>
+                )}
+                <EventBoardSection
+                  event={activeEvent}
+                  board={eventBoard}
+                  onPressUser={openUserSheet}
+                  ticketAbove={!!gateStrip}
+                />
+              </ScrollView>
+            ) : (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: insets.bottom + 24, gap: 8 }}
+                showsVerticalScrollIndicator={false}
+              >
+                <EventHeaderCard
+                  event={activeEvent}
+                  onRegister={() => setRegisterOpen(true)}
+                />
+                {/* What's on the line — its own block, not a footnote inside
+                    the hero: artwork gets a gallery, tap opens the spotlight. */}
+                <EventPrizeGallery event={activeEvent} />
+                {/* The ticket only means anything once you're in the event, and
+                    only while there's still time to convert an invite. */}
+                {activeEvent.viewer.joined && invitesOpen(activeEvent) && (
+                  <EventTicketCard event={activeEvent} invites={invites} />
+                )}
+              </ScrollView>
+            )}
             <EventRegisterFlow
               event={activeEvent}
               visible={registerOpen}
@@ -330,6 +383,32 @@ export default function LeagueScreen() {
  * the conversion deadline (if the event sets one) hasn't passed. Past it the
  * ticket card is just a promise we can't keep, so it comes off the tab.
  */
+type EventSegment = 'board' | 'event';
+
+/**
+ * LEADERBOARD | EVENT. Same bar as the Standard/Pro one below it in league
+ * mode — one indicator, two labels — so the tab doesn't grow a second
+ * vocabulary of switches.
+ */
+function EventSegmentBar({ value, onChange }: { value: EventSegment; onChange: (s: EventSegment) => void }) {
+  const x = useSharedValue(value === 'board' ? 0 : TAB_W);
+  useEffect(() => {
+    x.value = withTiming(value === 'board' ? 0 : TAB_W, { duration: 220 });
+  }, [value, x]);
+  const indicator = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
+  return (
+    <View style={styles.topTabBar}>
+      <Pressable style={styles.topTab} onPress={() => { Haptics.selectionAsync(); onChange('board'); }} accessibilityRole="tab" accessibilityState={{ selected: value === 'board' }}>
+        <Text style={[styles.topTabText, value === 'board' && styles.topTabTextActive]}>LEADERBOARD</Text>
+      </Pressable>
+      <Pressable style={styles.topTab} onPress={() => { Haptics.selectionAsync(); onChange('event'); }} accessibilityRole="tab" accessibilityState={{ selected: value === 'event' }}>
+        <Text style={[styles.topTabText, value === 'event' && styles.topTabTextActive]}>EVENT</Text>
+      </Pressable>
+      <Animated.View style={[styles.tabIndicator, indicator]} />
+    </View>
+  );
+}
+
 function invitesOpen(event: LiveEvent): boolean {
   // 'locked' stays in: the invite deadline can sit AFTER the lock (FNL:
   // doors close Friday, board locks Thursday night), and in deadline gate

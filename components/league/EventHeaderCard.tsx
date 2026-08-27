@@ -15,7 +15,8 @@ const CARD_BG = 'rgba(40,40,40,0.85)';
 const TEXT = '#F2F2F2';
 const DIM = 'rgba(255,255,255,0.5)';
 
-function statusLine(event: LiveEvent): string {
+/** One line on where the event is up to — shared with the compact board header. */
+export function eventStatusLine(event: LiveEvent): string {
     if (event.status === 'scheduled') {
         const days = Math.max(
             0,
@@ -195,7 +196,7 @@ export function EventHeaderCard({
                 )}
             </View>
 
-            <Text style={styles.statusLine}>{statusLine(event)}</Text>
+            <Text style={styles.statusLine}>{eventStatusLine(event)}</Text>
 
 
             {canJoin && (
