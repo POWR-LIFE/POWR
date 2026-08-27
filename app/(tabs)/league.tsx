@@ -1,3 +1,4 @@
+import { memberInitials, memberLabel } from '@/lib/memberName';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -644,7 +645,7 @@ function EventBoardSection({
                     {r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : '🥉'}
                   </Text>
                   <Text style={styles.eventPrizeName} numberOfLines={1}>
-                    {r.display_name ?? r.username ?? 'POWR member'}
+                    {memberLabel(r.display_name, r.username)}
                   </Text>
                   <Text style={styles.eventPrizeLabel} numberOfLines={1}>{r.prize_label}</Text>
                 </View>
@@ -888,8 +889,7 @@ function RealPodium({
           const rank = rankOrder[i] as 1 | 2 | 3;
           const meta = META[rank];
           const isFirst = rank === 1;
-          const initials = (entry.display_name ?? entry.username ?? '?')
-            .split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+          const initials = memberInitials(entry.display_name, entry.username);
           return (
             <Pressable
               key={entry.user_id}
@@ -941,7 +941,7 @@ function RealPodium({
                 textAlign: 'center',
                 marginBottom: 10,
               }}>
-                {entry.display_name ?? entry.username ?? 'POWR member'}
+                {memberLabel(entry.display_name, entry.username)}
               </Text>
 
               {/* Platform with gradient */}
@@ -1112,8 +1112,7 @@ function LadderRow({
   isMe: boolean;
   showPro: boolean;
 }) {
-  const initials = (entry.display_name ?? entry.username ?? '?')
-    .split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+  const initials = memberInitials(entry.display_name, entry.username);
 
   return (
     <View style={[styles.ladderRow, isMe && styles.ladderRowMe]}>
@@ -1129,7 +1128,7 @@ function LadderRow({
       </View>
       <View style={{ flex: 1, gap: 1 }}>
         <Text style={[styles.ladderName, isMe && styles.ladderNameMe]} numberOfLines={1}>
-          {entry.display_name ?? entry.username ?? 'POWR member'}{isMe ? ' (You)' : ''}
+          {memberLabel(entry.display_name, entry.username)}{isMe ? ' (You)' : ''}
         </Text>
         {showPro && entry.is_pro && <ProBadge size="sm" />}
       </View>
@@ -1151,8 +1150,7 @@ function RealLeaderRow({
   isMe: boolean;
   showPro: boolean;
 }) {
-  const initials = (entry.display_name ?? entry.username ?? '?')
-    .split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+  const initials = memberInitials(entry.display_name, entry.username);
   const MEDAL: Record<number, string> = { 1: GOLD, 2: SILVER, 3: BRONZE };
   const isTop = entry.rank <= 3;
   const accentColor = isTop ? MEDAL[entry.rank] : (isMe ? GOLD : MUTED);
@@ -1192,7 +1190,7 @@ function RealLeaderRow({
           style={[styles.leaderName, isMe && styles.leaderNameMe, isTop && { color: TEXT, fontWeight: '400' }]}
           numberOfLines={1}
         >
-          {entry.display_name ?? entry.username ?? 'POWR member'}
+          {memberLabel(entry.display_name, entry.username)}
           {isMe ? ' (You)' : ''}
         </Text>
         {showPro && entry.is_pro && <ProBadge size="sm" />}

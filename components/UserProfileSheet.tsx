@@ -1,3 +1,4 @@
+import { memberInitials } from '@/lib/memberName';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -129,8 +130,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
 
     const visible = !!userId;
 
-    const initials = ((profile?.display_name ?? profile?.username) || '?')
-        .split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+    const initials = memberInitials(profile?.display_name, profile?.username);
 
     const diff = (userPoints ?? 0) - (myPoints ?? 0);
     const diffSign = diff > 0 ? '+' : '';
@@ -484,7 +484,7 @@ function SportChips({ prefs }: { prefs: string[] | null }) {
 // ─── MutualFriendsRow — social proof: friends in common + their friend count ──
 
 function miniInitials(name: string | null): string {
-    return (name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+    return memberInitials(name);
 }
 
 function MiniAvatar({ url, name, index }: { url: string | null; name: string | null; index: number }) {

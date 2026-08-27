@@ -34,9 +34,8 @@ export default function Index() {
         if (hashError || loading || didRedirect.current) return;
         didRedirect.current = true;
         if (session) {
-            const onboardingComplete = session.user.user_metadata?.onboarding_complete;
-            if (onboardingComplete) router.replace('/(tabs)');
-            else resumeOnboardingRoute().then(route => router.replace(route));
+            const onboardingComplete = !!session.user.user_metadata?.onboarding_complete;
+            resumeOnboardingRoute(onboardingComplete).then(route => router.replace(route));
         } else {
             router.replace('/onboarding');
         }
