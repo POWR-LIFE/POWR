@@ -188,7 +188,7 @@ function Hero() {
             style={{ marginTop: 24, fontSize: 'clamp(15px, 1.6vw, 19px)', color: pg.textSec, fontWeight: w.light, maxWidth: 520, lineHeight: 1.55 }}
           >
             Coaches, gym owners, athletes — the people whose people already train. Share your
-            code, and every person who joins and logs a session POWR can verify — at the gym, on the road, on their phone or their watch — pays you both.
+            code, and every person who joins and logs a session POWR can verify — at the gym, on a walk, on a run, off their phone or their watch — pays you both.
             Points on every one. Rewards at every step. No cap.
           </motion.p>
 

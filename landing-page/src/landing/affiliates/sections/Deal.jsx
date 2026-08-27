@@ -17,7 +17,7 @@ const TILES = [
     value: `${CONVERSION_PTS}`,
     unit: 'pts',
     title: 'To you, every conversion',
-    body: 'Someone joins with your code and logs their first session POWR can verify — gym, run, ride, class. Fifty points land on your balance. Every time, no cap.',
+    body: 'Someone joins with your code and logs their first session POWR can verify — gym, walk, run, ride, class. Fifty points land on your balance. Every time, no cap.',
     lit: true,
   },
   {
@@ -44,7 +44,7 @@ export default function Deal() {
         n="01"
         label="The deal"
         title={<>Not a discount code.<br />A person who trained.</>}
-        body="Most referral schemes pay on a download and call it growth. POWR pays when the person you brought in actually moves — a check-in at the gym door, a run or ride their phone recorded, a session off their watch. Typed-in workouts never count. For anyone."
+        body="Most referral schemes pay on a download and call it growth. POWR pays when the person you brought in actually moves — a check-in at the gym door, a walk or run recorded on their phone, a session off their watch. Typed-in workouts never count. For anyone."
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : 'repeat(3, 1fr)', gap: 14 }}>
@@ -78,7 +78,7 @@ export default function Deal() {
           fontSize: 12.5, color: pg.textMuted, fontWeight: w.light,
         }}
       >
-        <span><b style={{ color: pg.textSec, fontWeight: w.medium }}>Verified means</b> a geofenced gym check-in, or a session recorded by their phone or wearable — no watch required.</span>
+        <span><b style={{ color: pg.textSec, fontWeight: w.medium }}>Verified means</b> a geofenced gym check-in, or any session recorded by their phone or wearable — a walk counts. No watch required.</span>
         <span><b style={{ color: pg.textSec, fontWeight: w.medium }}>No cash.</b> Points spend in the app like everyone else’s; step rewards are sent to you.</span>
       </motion.div>
     </Section>
