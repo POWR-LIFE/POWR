@@ -6,6 +6,7 @@ import { levelFromEarned } from '../../lib/levels';
 import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin, Star, UserPlus, Trash2, X, Eye, EyeOff, Watch, Smartphone } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatMemberId, normalizeMemberId } from '../../../../shared/memberId.ts';
+import { countryName, countryFlag, countryCounts, COUNTRY_SOURCE_META } from '../../lib/country';
 
 // Full connectable provider list — mirrors lib/health/providers/index.ts in the app
 // (native HealthKit/Health Connect + every Terra provider we expose).
@@ -81,6 +82,43 @@ const VERDICT_META = {
     unknown: { label: 'BG unclear', colour: '#999999', title: 'Last sweep was inconclusive (session already open, no cached fix, or an error). Says nothing either way.' },
 };
 
+// Country is DERIVED, never asked for — so the provenance is shown alongside it.
+// A timezone-derived country is the phone's clock setting, which is right for
+// almost everyone and wrong for anyone who travelled without changing it; a
+// GPS one is where the device physically was. Staff segmenting a market need
+// to be able to tell those apart, so the source is never hidden.
+function CountryCell({ user }) {
+    if (!user.country_code) {
+        return (
+            <span
+                className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black"
+                title="No timezone and no location fix has ever been reported by this member's device — nothing to derive a country from."
+            >
+                Unknown
+            </span>
+        );
+    }
+
+    const source = COUNTRY_SOURCE_META[user.country_source];
+
+    return (
+        <div className="flex flex-col gap-1">
+            <span className="text-[12px] text-[#222222] font-medium whitespace-nowrap">
+                <span className="mr-1.5">{countryFlag(user.country_code)}</span>
+                {countryName(user.country_code)}
+            </span>
+            {source && (
+                <span
+                    className="text-[9px] uppercase tracking-[0.2em] text-[#888888] font-black"
+                    title={`${source.title}${user.country_updated_at ? ` (${timeAgo(user.country_updated_at)})` : ''}`}
+                >
+                    {source.label}
+                </span>
+            )}
+        </div>
+    );
+}
+
 function LocationCell({ user }) {
     const perm = PERMISSION_META[user.location_permission];
     const verdict = VERDICT_META[user.background_verdict];
@@ -142,6 +180,7 @@ export default function UserManager() {
     const [activityOnly, setActivityOnly] = useState(false);       // exclusively that activity
     const [filterTier, setFilterTier] = useState('all');           // all | pro | standard
     const [filterLocation, setFilterLocation] = useState('all');   // all | granted (= always) | denied (= not always) | broken
+    const [filterCountry, setFilterCountry] = useState('all');     // all | none | <ISO alpha-2>
     const [filterActive, setFilterActive] = useState('all');       // all | 1 | 7 | 30 | inactive30 | never
     const [filterMinLevel, setFilterMinLevel] = useState('');
     const [showFilters, setShowFilters] = useState(false);
@@ -220,19 +259,23 @@ export default function UserManager() {
         return d.length > 0 && !d.some(isWearableDevice);
     }).length;
 
+    const countryOptions = countryCounts(users);
+    const noCountryCount = users.filter(u => !u.country_code).length;
+
     const activeFilterCount = [
         filterDevice !== 'all',
         filterActivity !== 'all',
         filterTier !== 'all',
         filterLocation !== 'all',
+        filterCountry !== 'all',
         filterActive !== 'all',
         filterMinLevel !== '',
     ].filter(Boolean).length;
 
     const clearFilters = () => {
         setFilterDevice('all'); setFilterActivity('all'); setActivityOnly(false);
-        setFilterTier('all'); setFilterLocation('all'); setFilterActive('all');
-        setFilterMinLevel('');
+        setFilterTier('all'); setFilterLocation('all'); setFilterCountry('all');
+        setFilterActive('all'); setFilterMinLevel('');
     };
 
     // A member reading their POWR ID off Settings says "ABCD 2345" — the same
@@ -274,6 +317,12 @@ export default function UserManager() {
         if (filterLocation === 'granted' && u.location_permission !== 'always') return false;
         if (filterLocation === 'denied' && u.location_permission === 'always') return false;
         if (filterLocation === 'broken' && u.background_verdict !== 'broken') return false;
+
+        // 'none' is its own answer, not a leftover: a member with no country
+        // has never reported a timezone OR a fix, which is itself a cohort
+        // (notifications declined and location declined).
+        if (filterCountry === 'none' && u.country_code) return false;
+        if (filterCountry !== 'all' && filterCountry !== 'none' && u.country_code !== filterCountry) return false;
 
         if (filterActive !== 'all') {
             const last = u.last_active_at ? new Date(u.last_active_at).getTime() : null;
@@ -513,6 +562,20 @@ export default function UserManager() {
                             </select>
                         </div>
                         <div>
+                            <label className="block text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black mb-3">Country</label>
+                            <select
+                                value={filterCountry}
+                                onChange={e => setFilterCountry(e.target.value)}
+                                className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] outline-none focus:border-[#E8D200]/40 transition-all"
+                            >
+                                <option value="all">All</option>
+                                {countryOptions.map(([code, count]) => (
+                                    <option key={code} value={code}>{countryFlag(code)} {countryName(code)} ({count})</option>
+                                ))}
+                                {noCountryCount > 0 && <option value="none">Unknown ({noCountryCount})</option>}
+                            </select>
+                        </div>
+                        <div>
                             <label className="block text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black mb-3">Last Active</label>
                             <select
                                 value={filterActive}
@@ -567,7 +630,7 @@ export default function UserManager() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
-                                    {['User Identity', 'Protocol Level', 'Devices', 'Activity', 'Location', 'Registration', 'Status', ''].map(h => (
+                                    {['User Identity', 'Protocol Level', 'Devices', 'Activity', 'Country', 'Location', 'Registration', 'Status', ''].map(h => (
                                         <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#888888] whitespace-nowrap ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
@@ -575,7 +638,7 @@ export default function UserManager() {
                             <tbody className="divide-y divide-[#E6E6E1]">
                                 {filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} className="px-6 py-24 text-center">
+                                        <td colSpan={9} className="px-6 py-24 text-center">
                                             <div className="flex flex-col items-center gap-6">
                                                 <div className="w-20 h-20 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center">
                                                     <Users size={32} className="text-[#333333]" />
@@ -675,6 +738,9 @@ export default function UserManager() {
                                             ) : (
                                                 <span className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">No sessions</span>
                                             )}
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <CountryCell user={user} />
                                         </td>
                                         <td className="px-6 py-5">
                                             <LocationCell user={user} />

@@ -7,6 +7,7 @@ import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { levelFromEarned } from '../../lib/levels';
 import { formatMemberId, normalizeMemberId } from '../../../../shared/memberId.ts';
+import { countryName, countryFlag, COUNTRY_SOURCE_META } from '../../lib/country';
 import {
     Lock,
     User, Activity, Award, Calendar, Clock, MapPin,
@@ -1003,6 +1004,18 @@ export default function UserProfile() {
                         </div>
                         <div className="flex items-center flex-wrap gap-3">
                             <span className="px-3 py-1 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {levelFromEarned(totalEarned)}</span>
+                            {profile.country_code && (
+                                <span
+                                    title={`Country is DERIVED, never asked for. ${COUNTRY_SOURCE_META[profile.country_source]?.title || ''}${profile.country_updated_at ? ` Last confirmed ${new Date(profile.country_updated_at).toLocaleString()}.` : ''}`}
+                                    className="px-3 py-1 rounded-full bg-[#EFEFEC] text-[#555555] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5"
+                                >
+                                    <span>{countryFlag(profile.country_code)}</span>
+                                    {countryName(profile.country_code)}
+                                    {COUNTRY_SOURCE_META[profile.country_source] && (
+                                        <span className="text-[#999999]">· {COUNTRY_SOURCE_META[profile.country_source].label}</span>
+                                    )}
+                                </span>
+                            )}
                             {locationState ? (
                                 <span
                                     title={`Live permission snapshot${locationCheckedAt ? ` · reported ${locationCheckedAt}` : ''}${accuracyLabel ? ` · fix accuracy ${accuracyLabel}` : ''}${reducedAccuracy ? ' · reduced accuracy: iOS Precise Location off / Android coarse-only — geofence check-ins cannot fire' : ''}`}

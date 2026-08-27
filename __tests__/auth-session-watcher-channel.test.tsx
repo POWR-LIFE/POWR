@@ -135,7 +135,11 @@ jest.mock('@/lib/deviceLock', () => ({
   confirmDeviceTransfer: jest.fn(async () => ({ status: 'ok' })),
   getDeviceId: jest.fn(async () => 'device-1'),
 }));
-jest.mock('@/lib/locationPermission', () => ({ reportLocationPermission: jest.fn() }));
+// Resolves like the real one: AuthContext chains the returned fix into the
+// country derivation, so a mock that returns undefined would throw inside
+// the auth listener — a failure mode the real module cannot have.
+jest.mock('@/lib/locationPermission', () => ({ reportLocationPermission: jest.fn().mockResolvedValue(null) }));
+jest.mock('@/lib/country', () => ({ reportUserCountry: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('@/context/GeofenceContext', () => ({ reconcileActiveOnLogin: jest.fn(async () => {}) }));
 jest.mock('@/components/TransferDeviceSheet', () => () => null);
 jest.mock('expo-apple-authentication', () => ({ isAvailableAsync: jest.fn(async () => false) }));

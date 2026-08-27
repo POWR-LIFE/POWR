@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { isBackgroundHealthDismissedToday, readBackgroundHealth } from '@/lib/backgroundHealth';
 import { reportLocationPermission } from '@/lib/locationPermission';
+import { reportUserCountry } from '@/lib/country';
 import {
     getLocationPromptState,
     hasReachedLocationValueMoment,
@@ -64,7 +65,14 @@ export default function LocationPrimeSheet() {
     const finishGranted = useCallback(() => {
         if (finished.current) return;
         finished.current = true;
-        if (user?.id) reportLocationPermission(user.id).catch(() => {});
+        // A grant that just landed is the best moment to read the country:
+        // it is the first fix we have ever been allowed to take.
+        if (user?.id) {
+            const userId = user.id;
+            reportLocationPermission(userId)
+                .then(fix => reportUserCountry(userId, fix))
+                .catch(() => {});
+        }
         // Arm NOW. Granting permission used to arm nothing until the next
         // partner refresh (app launch / foreground return / 5-min tick), so a
         // user who granted here and pocketed the phone reached the gym with no

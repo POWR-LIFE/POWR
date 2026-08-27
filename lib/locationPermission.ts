@@ -72,19 +72,49 @@ export const REDUCED_ACCURACY_THRESHOLD_M = 500;
 const ACCURACY_FIX_TIMEOUT_MS = 10_000;
 const LAST_KNOWN_MAX_AGE_MS = 15 * 60_000;
 
+/** One location sample: what it says about precision, and where it was. */
+export type LocationSample = {
+  /** Accuracy radius in metres, or null when the fix carried no usable value. */
+  accuracyM: number | null;
+  /** Coordinates, or null when no fix was obtained at all. */
+  coords: { latitude: number; longitude: number } | null;
+};
+
+const EMPTY_SAMPLE: LocationSample = { accuracyM: null, coords: null };
+
+/** The accuracy/coords a position object actually carries, normalised. */
+function readSample(pos: Location.LocationObject | null): LocationSample {
+  const acc = pos?.coords?.accuracy;
+  const lat = pos?.coords?.latitude;
+  const lng = pos?.coords?.longitude;
+  return {
+    accuracyM: typeof acc === 'number' && acc > 0 ? Math.round(acc) : null,
+    coords:
+      typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)
+        ? { latitude: lat, longitude: lng }
+        : null,
+  };
+}
+
 /**
- * Accuracy radius (m) of a current location fix, or null when unavailable.
- * The permission response can't see iOS's Precise Location toggle (expo's
- * iOS details expose only `scope`), so a coarsened fix is the ONLY signal
- * that geofencing is silently dead despite an 'always' grant. Prefers the
- * cached last-known fix (instant, already coarsened when precision is off),
- * falling back to one bounded fresh fix.
+ * One location fix, read for two unrelated purposes.
+ *
+ * ACCURACY is the load-bearing one: the permission response can't see iOS's
+ * Precise Location toggle (expo's iOS details expose only `scope`), so a
+ * coarsened fix is the ONLY signal that geofencing is silently dead despite an
+ * 'always' grant. Prefers the cached last-known fix (instant, already coarsened
+ * when precision is off), falling back to one bounded fresh fix.
+ *
+ * COORDS ride along for free, and are handed to the country derivation
+ * (lib/country.ts). Deliberately a passenger, never a reason to take a fix:
+ * the sampling rules below exist for the accuracy signal and must not be
+ * loosened for the country one.
  */
-async function sampleLocationAccuracyM(): Promise<number | null> {
+async function sampleLocation(): Promise<LocationSample> {
   try {
     const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS });
-    const cached = lastKnown?.coords?.accuracy;
-    if (typeof cached === 'number' && cached > 0) return Math.round(cached);
+    const cached = readSample(lastKnown);
+    if (cached.accuracyM !== null) return cached;
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -92,13 +122,15 @@ async function sampleLocationAccuracyM(): Promise<number | null> {
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
         new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), ACCURACY_FIX_TIMEOUT_MS); }),
       ]);
-      const acc = fresh?.coords?.accuracy;
-      return typeof acc === 'number' && acc > 0 ? Math.round(acc) : null;
+      // A fresh fix with no usable accuracy can still carry usable coords, and
+      // the last-known one may have carried coords too — keep whichever we saw.
+      const sample = readSample(fresh);
+      return { accuracyM: sample.accuracyM, coords: sample.coords ?? cached.coords };
     } finally {
       clearTimeout(timer);
     }
   } catch {
-    return null;
+    return EMPTY_SAMPLE;
   }
 }
 
@@ -118,16 +150,26 @@ let lastReported: string | null = null;
  * radius — the only way to surface reduced-accuracy grants (see above).
  * Fire-and-forget telemetry: swallows every error, and dedupes within the
  * process so app-foreground re-checks don't rewrite the same value.
+ *
+ * Returns the coordinates of the fix it took, purely so the caller can derive
+ * the user's country from a sample we were taking anyway (lib/country.ts).
+ * Null whenever no fix was obtained — including on the dedupe early-return
+ * path, which is not a failure, just nothing new to say.
  */
-export async function reportLocationPermission(userId: string): Promise<void> {
+export async function reportLocationPermission(
+  userId: string,
+): Promise<{ latitude: number; longitude: number } | null> {
   try {
     const level = await getLocationPermissionLevel();
-    if (!level) return;
+    if (!level) return null;
     // Only granted permissions can produce a fix; skip the sample otherwise.
     const granted = level === 'always' || level === 'while_using';
-    const accuracyM = granted ? await sampleLocationAccuracyM() : null;
+    const { accuracyM, coords } = granted ? await sampleLocation() : EMPTY_SAMPLE;
     const key = `${userId}:${level}:${accuracyBucket(accuracyM)}`;
-    if (key === lastReported) return;
+    // The permission snapshot is unchanged, but the fix is still a fresh one —
+    // hand it back so the country derivation isn't gated on a permission
+    // transition that may never come again.
+    if (key === lastReported) return coords;
     // Via the RPC, not a bare UPDATE on profiles: the same write now also appends
     // to location_permission_events when the level actually CHANGED, which is the
     // only way the server can ever see a user drop from 'always' — the column
@@ -141,7 +183,9 @@ export async function reportLocationPermission(userId: string): Promise<void> {
       p_accuracy_m: accuracyM,
     });
     if (!error) lastReported = key;
+    return coords;
   } catch {
     // Telemetry only — must never interfere with the auth flow it rides on.
+    return null;
   }
 }
