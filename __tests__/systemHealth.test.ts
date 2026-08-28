@@ -182,7 +182,7 @@ describe('intervalValue (cumulative pg_stat_* signals)', () => {
   });
   it('is Δnumerator / Δdenominator over the LAST two points', () => {
     // lifetime mean 50 ms, but the last hour ran at 100 ms
-    expect(intervalValue(s, [pt('a', 0, 0), pt('b', 1000, 20), pt('c', 2000, 30)])).toBe(100);
+    expect(intervalValue(s, [pt('a', 0, 0), pt('b', 1000, 20), pt('c', 4000, 50)])).toBe(100);
   });
   it('a reset between the points is null, not a negative rate', () => {
     expect(intervalValue(s, [pt('a', 5000, 100), pt('b', 50, 1)])).toBeNull();
@@ -194,12 +194,37 @@ describe('intervalValue (cumulative pg_stat_* signals)', () => {
     const c = sig('db.cache_hit_pct');
     expect(intervalValue(c, [pt('a', 900, 1000), pt('b', 1000, 1200)])).toBe(50);
   });
+  it('an interval under minSample is not measurable, whatever its mean', () => {
+    // 2026-08-27 06:00: four inserts averaging 473 ms — a data point, not an outage.
+    expect(s.minSample).toBe(20);
+    expect(intervalValue(s, [pt('a', 100000, 3000), pt('b', 101892, 3004)])).toBeNull();
+    // exactly minSample is judged
+    expect(intervalValue(s, [pt('a', 100000, 3000), pt('b', 102000, 3020)])).toBe(100);
+  });
+  it('minSample only applies where a signal sets it', () => {
+    const c = sig('db.cache_hit_pct');
+    expect(c.minSample).toBeUndefined();
+    expect(intervalValue(c, [pt('a', 900, 1000), pt('b', 902, 1002)])).toBe(100);
+  });
+});
+
+describe('minSample on the timeline', () => {
+  it('a thin hour is grey, not red, and falls out of uptime', () => {
+    const s = sig('ledger.insert_mean_ms');
+    const points: HistoryPoint[] = [
+      ['2026-08-27T05:00:00Z', 100000, 3000, true],
+      ['2026-08-27T06:00:00Z', 101892, 3004, true], // 4 inserts @ 473 ms
+      ['2026-08-27T07:00:00Z', 103000, 3030, true], // 26 inserts @ 43 ms
+    ];
+    expect(judgeHistoryPoint(s, points, 1).status).toBe('unknown');
+    expect(judgeHistoryPoint(s, points, 2).status).toBe('green');
+  });
 });
 
 describe('judge on a cumulative signal', () => {
   const s = sig('ledger.insert_mean_ms');
   it('prefers the interval and is not flagged lifetime', () => {
-    const v = judge(s, fact({ numerator: 2000, denominator: 30 }), [['a', 1000, 20, true], ['b', 2000, 30, true]]);
+    const v = judge(s, fact({ numerator: 4000, denominator: 50 }), [['a', 1000, 20, true], ['b', 4000, 50, true]]);
     expect(v.value).toBe(100);
     expect(v.status).toBe('watch');
     expect(v.lifetime).toBeFalsy();
@@ -291,7 +316,7 @@ describe('sparkSeries', () => {
   });
   it('cumulative signals chart the interval between consecutive points', () => {
     const s = sig('ledger.insert_mean_ms');
-    expect(sparkSeries(s, [['a', 0, 0, true], ['b', 100, 2, true], ['c', 400, 5, true]])).toEqual([50, 100]);
+    expect(sparkSeries(s, [['a', 0, 0, true], ['b', 1000, 20, true], ['c', 4000, 50, true]])).toEqual([50, 100]);
   });
 });
 
@@ -349,7 +374,7 @@ describe('judgeHistoryPoint', () => {
   });
   it('a cumulative signal is judged from the interval, and its first point is unknown', () => {
     const s = sig('ledger.insert_mean_ms');
-    const pts: HistoryPoint[] = [[iso(0), 0, 0, true], [iso(H), 2000, 10, true]]; // 200 ms over the hour
+    const pts: HistoryPoint[] = [[iso(0), 0, 0, true], [iso(H), 4000, 20, true]]; // 200 ms over the hour
     expect(judgeHistoryPoint(s, pts, 0).status).toBe('unknown');
     expect(judgeHistoryPoint(s, pts, 1).status).toBe('act');
   });

@@ -101,6 +101,13 @@ export interface Signal {
   threshold: Threshold | null;
   /** The source is cumulative since a stats reset; judge on the interval when possible. */
   cumulative?: boolean;
+  /**
+   * Cumulative only: the smallest Δdenominator an interval needs before it is
+   * judged. Below it the interval is "not measurable" (grey), never a verdict.
+   * Guards a mean from being owned by one sample: 2026-08-27 06:00 was four
+   * inserts averaging 473 ms and painted the whole Points-ledger day red.
+   */
+  minSample?: number;
   /** One line: why this threshold, what it protects. Engineer's voice. */
   why: string;
   /** One sentence for someone who is not an engineer: what this number IS. */
@@ -111,8 +118,8 @@ export const SIGNALS: Signal[] = [
   // W1 — Ledger
   {
     key: 'ledger.insert_mean_ms', workstream: 'W1', label: 'Earn-insert mean time', kind: 'ratio', unit: 'ms',
-    threshold: { watch: 75, act: 150, direction: 'above' }, cumulative: true,
-    why: 'Includes both lifetime-sum triggers and the rewards scan. This is the "points landed" latency a member feels. 33–52 ms at 2,880 rows.',
+    threshold: { watch: 75, act: 150, direction: 'above' }, cumulative: true, minSample: 20,
+    why: 'Includes both lifetime-sum triggers and the rewards scan. This is the "points landed" latency a member feels. 33–52 ms at 2,880 rows. An hour with fewer than 20 inserts is not judged — one 1 s insert among four is a data point, not an outage.',
     plain: 'How long it takes to record a member\'s points. Gets slower the longer a member has been with us.',
   },
   {
@@ -345,6 +352,7 @@ export function intervalValue(signal: Signal, points: HistoryPoint[] | undefined
   const dd = Number(b[2]) - Number(a[2]);
   if (dn < 0 || dd < 0) return null;  // reset between the two
   if (dd === 0) return null;          // no traffic — nothing measurable
+  if (signal.minSample != null && dd < signal.minSample) return null;  // too few samples to call it
   return signal.kind === 'pct' ? (dn / dd) * 100 : dn / dd;
 }
 
