@@ -8,6 +8,7 @@ const mockOrder = jest.fn();
 
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'me' } }),
+  useAuthOptional: () => ({ user: { id: 'me' } }),
 }));
 jest.mock('@/hooks/useFriends', () => ({
   useFriends: () => ({ friends: [], search: jest.fn(), sendRequest: jest.fn() }),
