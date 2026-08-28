@@ -36,7 +36,7 @@ const FONT_REGULAR = 'Outfit_400Regular';
 const FONT_MEDIUM = 'Outfit_500Medium';
 const FONT_SEMIBOLD = 'Outfit_600SemiBold';
 
-const NEXT_SCREEN = '/onboarding-wearables';
+const NEXT_SCREEN = '/onboarding-health';
 
 const DEFAULT_REGION = {
     latitude: 51.5074,
@@ -231,7 +231,7 @@ export default function OnboardingGymScreen() {
             {/* Back */}
             <Pressable
                 style={[styles.backButton, { top: insets.top + 14 }]}
-                onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/onboarding-permission'); }}
+                onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/onboarding-activities'); }}
                 hitSlop={24}
             >
                 <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />

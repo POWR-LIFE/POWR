@@ -147,7 +147,7 @@ describe('OnboardingPermissionScreen (foreground location)', () => {
 
         fireEvent.press(screen.getByText('ALLOW WHILE USING'));
         fireEvent.press(await screen.findByText('Continue without location'));
-        expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym');
+        expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-wearables');
         // Skipping here bypasses the background page, so this is the only chance
         // to stamp the decline. Without it Discover's cool-off reads a null and
         // re-asks the same user minutes later.
@@ -180,7 +180,7 @@ describe('OnboardingPermissionScreen (foreground location)', () => {
         mockRouter.replace.mockClear();
         asMock(Location.getBackgroundPermissionsAsync).mockResolvedValue({ status: 'granted' });
         render(<OnboardingPermissionScreen />);
-        await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith('/onboarding-gym'));
+        await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith('/onboarding-wearables'));
     });
 });
 
@@ -198,14 +198,14 @@ describe('OnboardingPermissionBackgroundScreen ("all the time")', () => {
         await waitFor(() => expect(Location.getBackgroundPermissionsAsync).toHaveBeenCalled());
 
         fireEvent.press(screen.getByText('SET TO ALWAYS'));
-        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym'));
+        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-wearables'));
         expect(Location.requestBackgroundPermissionsAsync).toHaveBeenCalled();
     });
 
     it('auto-forwards to gym when background is already granted', async () => {
         asMock(Location.getBackgroundPermissionsAsync).mockResolvedValue({ status: 'granted' });
         render(<OnboardingPermissionBackgroundScreen />);
-        await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith('/onboarding-gym'));
+        await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith('/onboarding-wearables'));
     });
 
     it('shows no skip affordance before an ask — the OS flow is the only way on', async () => {

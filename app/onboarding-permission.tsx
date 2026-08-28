@@ -57,7 +57,7 @@ const dotStyles = StyleSheet.create({
 // On grant we continue to the background-location priming page; skipping
 // location entirely makes that page pointless, so skip jumps straight to gym.
 const NEXT_SCREEN = '/onboarding-permission-background';
-const SKIP_SCREEN = '/onboarding-gym';
+const SKIP_SCREEN = '/onboarding-wearables';
 
 export default function OnboardingPermissionScreen() {
     const router = useRouter();

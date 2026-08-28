@@ -58,7 +58,7 @@ const dotStyles = StyleSheet.create({
     },
 });
 
-const NEXT_SCREEN = '/onboarding-gym';
+const NEXT_SCREEN = '/onboarding-wearables';
 
 export default function OnboardingPermissionBackgroundScreen() {
     const router = useRouter();
