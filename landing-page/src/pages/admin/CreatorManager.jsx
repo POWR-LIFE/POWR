@@ -18,6 +18,7 @@ const STATUS_TONE = {
 // saves a round trip — the server is still the authority.
 const CODE_RE = /^[A-Z0-9]{6,10}$/;
 const HANDLE_RE = /^[a-z0-9][a-z0-9-]{1,29}$/;
+const fmtWhen = (d) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 function CopyBtn({ value }) {
     const [done, setDone] = useState(false);
@@ -298,6 +299,14 @@ function AccessPanel({ creator, programs, onChanged }) {
             .then(({ data }) => setSignals(data ?? null));
     }, [creator.id]);
 
+    // Who actually came through the code — answers "who was that?" without
+    // reaching for SQL. Same RLS reason as the stats: admin RPC, not a read.
+    const [referred, setReferred] = useState(null);
+    useEffect(() => {
+        supabase.rpc('admin_creator_referrals', { p_creator_id: creator.id })
+            .then(({ data }) => setReferred(Array.isArray(data) ? data : []));
+    }, [creator.id]);
+
     return (
         <div className="px-8 pb-8 pt-2 bg-[#FAFAF8] border-t border-[#E6E6E1]">
             {err && <div className="text-red-500 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl mb-5">{err}</div>}
@@ -326,6 +335,36 @@ function AccessPanel({ creator, programs, onChanged }) {
                     </div>
                 </div>
             )}
+
+            <div className="bg-white border border-[#E6E6E1] rounded-2xl p-5 mb-6">
+                <div className="text-[9px] uppercase tracking-[0.35em] text-[#BBBBBB] font-black mb-3">
+                    Signups{referred ? ` · ${referred.length} · ${referred.filter(r => r.converted_at).length} converted` : ''}
+                </div>
+                {!referred ? <div className="text-[11px] text-[#CCC] font-black">Loading...</div>
+                    : referred.length === 0 ? <div className="text-[11px] text-[#CCC] font-black">Nobody has used this code yet</div>
+                    : referred.map(r => (
+                        <div key={r.referral_id} className="flex items-center gap-4 py-3 border-b border-[#EFEFEC] last:border-0">
+                            <UserCheck size={13} className={r.converted_at ? 'text-[#8a7600] shrink-0' : 'text-[#CCC] shrink-0'} />
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[12px] text-[#1A1A1A] truncate">
+                                    {r.display_name || r.username || r.user_id}
+                                    {r.username && <span className="text-[#BBB]"> @{r.username}</span>}
+                                </div>
+                                <div className="text-[10px] font-mono text-[#999] truncate">{r.email ?? r.user_id}</div>
+                            </div>
+                            <div className="text-[10px] text-[#999] text-right shrink-0">
+                                <div>signed up {fmtWhen(r.signed_up_at)}{r.source ? ` · ${r.source}` : ''}</div>
+                                <div className={r.converted_at ? 'text-[#8a7600] font-black' : ''}>
+                                    {r.converted_at
+                                        ? <>converted {fmtWhen(r.converted_at)}
+                                            {r.converting_session ? ` · ${r.converting_session.type} (${r.converting_session.verification})` : ''}
+                                            {r.points_paid != null ? ` · +${r.points_paid}` : ''}</>
+                                        : 'not yet converted'}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+            </div>
 
             {/* Rules + rewards — front and centre, before the access chrome */}
             <div className="grid grid-cols-[1fr_auto] gap-6 items-end bg-white border border-[#E6E6E1] rounded-2xl p-5 mb-6">
@@ -431,19 +470,14 @@ export default function CreatorManager() {
         const { data: progs } = await supabase.from('creator_programs').select('*').order('is_default', { ascending: false }).order('name');
         setPrograms(progs ?? []);
 
-        // Conversions per creator. Admins can read all referrals, and the row
-        // count here is small enough that the 1000-row cap is not in play —
-        // if that ever changes this becomes an aggregate RPC.
-        const { data: refs } = await supabase
-            .from('referrals')
-            .select('creator_id, converted_at')
-            .not('creator_id', 'is', null)
-            .limit(1000);
+        // Conversions per creator. RLS on referrals only shows the caller their
+        // own rows (referrer / referred / own affiliate), so this must be an
+        // admin RPC — a direct read here once showed each admin only the
+        // referrals they were personally part of (2026-08-28).
+        const { data: refs } = await supabase.rpc('admin_creator_referral_stats');
         const agg = {};
         (refs ?? []).forEach(r => {
-            const s = agg[r.creator_id] ?? (agg[r.creator_id] = { signups: 0, converted: 0 });
-            s.signups += 1;
-            if (r.converted_at) s.converted += 1;
+            agg[r.creator_id] = { signups: Number(r.signups), converted: Number(r.converted) };
         });
         setStats(agg);
         setLoading(false);
