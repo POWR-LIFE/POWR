@@ -13,6 +13,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
+import { useActivityRelevance } from '@/hooks/useGymRelevance';
+import { filterTemplatesByRelevance } from '@/lib/social/templateRelevance';
 import { supabase } from '@/lib/supabase';
 import { useFriends } from '@/hooks/useFriends';
 import { isTerminal } from '@/lib/social/status';
@@ -260,7 +262,10 @@ export function useSharedChallenges(): UseSharedChallenges {
   const { user } = useAuth();
   const { friends, search, sendRequest } = useFriends();
   const [all, setAll] = useState<SharedChallenge[]>([]);
-  const [templates, setTemplates] = useState<ChallengeTemplate[]>([]);
+  const [allTemplates, setTemplates] = useState<ChallengeTemplate[]>([]);
+  const { relevant } = useActivityRelevance();
+  // Personalised like the weekly board — see lib/social/templateRelevance.ts.
+  const templates = useMemo(() => filterTemplatesByRelevance(allTemplates, relevant), [allTemplates, relevant]);
   const [cap, setCap] = useState(3);
   const [bonusConfig, setBonusConfig] = useState({ perHead: 5, maxBonus: 30 });
   const [loading, setLoading] = useState(true);

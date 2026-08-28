@@ -24,6 +24,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import PermissionFixScreen, { type PermissionFixKind } from '@/components/PermissionFixScreen';
 import { useAuth } from '@/context/AuthContext';
+import { useGymRelevance } from '@/hooks/useGymRelevance';
 import { useOpenChallengeBoard } from '@/hooks/useOpenChallengeBoard';
 import { androidOpenHealthConnectSettings, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
@@ -62,6 +63,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut, user, updateUserMetadata } = useAuth();
+  const gymRelevant = useGymRelevance();
 
   const [isAdmin, setIsAdmin] = React.useState(false);
   // Granted a creator profile (admin links their app account in creator_users).
@@ -532,7 +534,7 @@ export default function SettingsScreen() {
           <RowLink
             icon="location-outline"
             label="Location"
-            sublabel="Verify sessions at partner gyms"
+            sublabel={gymRelevant ? 'Verify sessions at partner gyms' : 'Verify sessions at partner venues'}
             value={
               locationStatus !== 'granted'
                 ? (locationStatus === 'denied' ? 'Denied' : 'Not set up')
@@ -593,7 +595,7 @@ export default function SettingsScreen() {
         )}
         {locationStatus !== 'granted' ? (
           <Text style={styles.sectionHint}>
-            Location is required to earn points at geofenced venues and partner gyms.
+            Location is required to earn points at {gymRelevant ? 'geofenced venues and partner gyms' : 'partner venues'}.
           </Text>
         ) : bgLocationGranted === false ? (
           <Text style={styles.sectionHint}>
