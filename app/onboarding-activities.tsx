@@ -1,5 +1,14 @@
-import { CATALOG_BY_SLUG, toSelection, type ActivitySelection } from '@/constants/activityCatalog';
+import { type ActivitySelection } from '@/constants/activityCatalog';
 import { updateActivitySelections } from '@/lib/api/user';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
+import {
+  DEFAULT_SELECTIONS,
+  countObservedTypes,
+  observedLabelList,
+  preselectFromObserved,
+} from '@/lib/onboarding/activities';
+import { routeAfterActivities } from '@/lib/onboarding/flow';
 import { MAX_RING_SLOTS } from '@/lib/weeklyActivities';
 import ActivityCatalogPicker from '@/components/ActivityCatalogPicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,13 +34,46 @@ const FONT_BOLD = 'Outfit_700Bold';
 // one ring; up to MAX_RING_SLOTS picks, at least one.
 const MAX_PICKS = MAX_RING_SLOTS;
 const MIN_PICKS = 1;
-const DEFAULT_SELECTIONS: ActivitySelection[] = [toSelection(CATALOG_BY_SLUG.gym)];
+/** How far back the wearable backfill is consulted for pre-ticking. */
+const OBSERVED_LOOKBACK_DAYS = 30;
 
 export default function OnboardingActivitiesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const providers = useHealthProviders();
+  const { user } = useAuth();
   const [selections, setSelections] = useState<ActivitySelection[]>(DEFAULT_SELECTIONS);
+  const [observed, setObserved] = useState<Record<string, number>>({});
+  const touchedRef = useRef(false);
+
+  // This step now runs AFTER wearables, so a freshly connected watch has its
+  // Terra backfill landing as sessions already. Pre-tick from what it saw —
+  // unless the user has started picking, in which case leave them alone.
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    let cancelled = false;
+    try {
+      supabase
+        .from('activity_sessions')
+        .select('type')
+        .eq('user_id', uid)
+        .neq('type', 'sleep')
+        .gte('started_at', new Date(Date.now() - OBSERVED_LOOKBACK_DAYS * 86_400_000).toISOString())
+        .limit(500)
+        .then(({ data }) => {
+          if (cancelled || touchedRef.current) return;
+          const counts = countObservedTypes(data ?? []);
+          if (Object.keys(counts).length === 0) return;
+          setObserved(counts);
+          setSelections(preselectFromObserved(counts, { max: MAX_PICKS }));
+        }, () => { /* defaults stand */ });
+    } catch { /* defaults stand */ }
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  const onChange = (next: ActivitySelection[]) => { touchedRef.current = true; setSelections(next); };
+  const observedLabels = observedLabelList(selections, observed);
 
   const connectedIds = useMemo<HealthProviderId[]>(
     () => providers.rows.filter(r => !!r.connection).map(r => r.meta.id),
@@ -63,7 +105,7 @@ export default function OnboardingActivitiesScreen() {
     // Persist in the background — the next screen doesn't read preferences, so
     // don't block the transition on the network round-trips.
     updateActivitySelections(selections).catch(() => {});
-    router.push('/onboarding-health');
+    router.push(routeAfterActivities(selections));
   };
 
   const canContinue = selections.length >= MIN_PICKS && selections.length <= MAX_PICKS;
@@ -91,7 +133,9 @@ export default function OnboardingActivitiesScreen() {
         <Text style={styles.eyebrow}>NEARLY THERE</Text>
         <Text style={styles.headline}>Pick your movements</Text>
         <Text style={styles.subhead}>
-          Pick up to {MAX_PICKS} ways you actually move. Gym is ticked to start — tap it off if that’s not you.
+          {observedLabels
+            ? `Your device already shows ${observedLabels} — we’ve ticked ${observedLabels.includes(' and ') ? 'them' : 'it'}. Adjust if you like, up to ${MAX_PICKS}.`
+            : `Pick up to ${MAX_PICKS} ways you actually move. Gym is ticked to start — tap it off if that’s not you.`}
         </Text>
       </Animated.View>
 
@@ -103,7 +147,7 @@ export default function OnboardingActivitiesScreen() {
         >
           <ActivityCatalogPicker
             selections={selections}
-            onChange={setSelections}
+            onChange={onChange}
             maxPicks={MAX_PICKS}
             autoBuckets={supported}
             onConnectWearable={() => router.push('/onboarding-wearables')}

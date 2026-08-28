@@ -216,7 +216,7 @@ export default function OnboardingWearablesScreen() {
                     if (router.canGoBack()) {
                         router.back();
                     } else {
-                        router.replace('/onboarding-gym');
+                        router.replace('/onboarding-permission-background');
                     }
                 }}
                 hitSlop={24}

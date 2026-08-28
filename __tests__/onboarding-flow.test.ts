@@ -19,9 +19,9 @@ describe('onboarding flow order', () => {
             '/onboarding-profile',
             '/onboarding-permission',
             '/onboarding-permission-background',
-            '/onboarding-gym',
             '/onboarding-wearables',
             '/onboarding-activities',
+            '/onboarding-gym',
             '/onboarding-health',
             '/onboarding-notifications',
             '/onboarding-achievement',
@@ -29,15 +29,16 @@ describe('onboarding flow order', () => {
     });
 
     it('pitches wearables early and phone health late, on separate steps', () => {
-        expect(dotIndexFor('/onboarding-wearables')).toBe(dotIndexFor('/onboarding-gym') + 1);
+        expect(dotIndexFor('/onboarding-wearables')).toBe(dotIndexFor('/onboarding-permission-background') + 1);
         expect(nextRoute('/onboarding-health')).toBe('/onboarding-notifications');
     });
 
-    it('places the new profile + gym steps right after sign-in / permission', () => {
+    it('places the profile step right after sign-in, and the home-gym step after the activity picks', () => {
         expect(dotIndexFor('/onboarding-profile')).toBe(dotIndexFor('/onboarding-account') + 1);
-        expect(dotIndexFor('/onboarding-gym')).toBe(
-            dotIndexFor('/onboarding-permission-background') + 1,
-        );
+        // Wearables → activities → gym: the picks are known before the gym map
+        // is shown, so the map can be skipped for users who dropped gym.
+        expect(dotIndexFor('/onboarding-activities')).toBe(dotIndexFor('/onboarding-wearables') + 1);
+        expect(dotIndexFor('/onboarding-gym')).toBe(dotIndexFor('/onboarding-activities') + 1);
     });
 
     it('primes each permission on its own page: while-using → all-the-time', () => {
@@ -47,7 +48,7 @@ describe('onboarding flow order', () => {
     });
 
     it('asks for notifications on a primed page right before the finale', () => {
-        expect(nextRoute('/onboarding-activities')).toBe('/onboarding-health');
+        expect(nextRoute('/onboarding-gym')).toBe('/onboarding-health');
         expect(nextRoute('/onboarding-notifications')).toBe('/onboarding-achievement');
     });
 
@@ -81,8 +82,8 @@ describe('nextRoute', () => {
     it('advances each step to the following one', () => {
         expect(nextRoute('/onboarding-account')).toBe('/onboarding-profile');
         expect(nextRoute('/onboarding-permission')).toBe('/onboarding-permission-background');
-        expect(nextRoute('/onboarding-permission-background')).toBe('/onboarding-gym');
-        expect(nextRoute('/onboarding-gym')).toBe('/onboarding-wearables');
+        expect(nextRoute('/onboarding-permission-background')).toBe('/onboarding-wearables');
+        expect(nextRoute('/onboarding-activities')).toBe('/onboarding-gym');
     });
 
     it('chains all the way through the flow then stops', () => {

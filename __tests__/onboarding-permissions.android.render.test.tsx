@@ -197,7 +197,7 @@ describe('background location screen on Android', () => {
         await waitFor(() => expect(Location.getBackgroundPermissionsAsync).toHaveBeenCalled());
 
         fireEvent.press(screen.getByText('ALLOW ALL THE TIME'));
-        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym'));
+        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-wearables'));
         expect(Location.requestBackgroundPermissionsAsync).toHaveBeenCalled();
     });
 
@@ -219,7 +219,7 @@ describe('background location screen on Android', () => {
 
         fireEvent.press(screen.getByText('ALLOW UNRESTRICTED'));
         await waitFor(() => expect(requestBatteryOptimizationExemption).toHaveBeenCalled());
-        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym'));
+        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-wearables'));
     });
 
     it('continues to gym when the battery page is skipped with "Not now"', async () => {
@@ -231,7 +231,7 @@ describe('background location screen on Android', () => {
         fireEvent.press(screen.getByText('ALLOW ALL THE TIME'));
         fireEvent.press(await screen.findByText('Not now'));
 
-        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym'));
+        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-wearables'));
         expect(requestBatteryOptimizationExemption).not.toHaveBeenCalled();
     });
 });
