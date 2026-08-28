@@ -108,6 +108,21 @@ export default function EventQrScreen() {
                 <Text style={[styles.copyBtnText, copied && { color: GOLD }]}>{copied ? 'Copied' : 'Copy'}</Text>
               </Pressable>
             </View>
+
+            {/* Same invite, as an image — for Stories and anyone who'd rather
+                post a picture than a link. */}
+            <Pressable
+              style={({ pressed }) => [styles.cardLink, pressed && { opacity: 0.7 }]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push({ pathname: '/share-event', params: { slug: eventSlug } });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Share the event as a card"
+            >
+              <Ionicons name="image-outline" size={15} color={GOLD} />
+              <Text style={styles.cardLinkText}>Share as a card</Text>
+            </Pressable>
           </>
         )}
       </View>
@@ -142,4 +157,7 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 100, paddingHorizontal: 22, paddingVertical: 12,
   },
   copyBtnText: { fontFamily: fontFamily.medium, fontSize: 13, color: SECONDARY },
+
+  cardLink: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 12 },
+  cardLinkText: { fontFamily: fontFamily.medium, fontSize: 13, color: GOLD },
 });

@@ -161,6 +161,28 @@ export function EventHeaderCard({
                         <Text style={styles.eventPillValue}>{night.replace(', ', ' · ').toUpperCase()}</Text>
                     </View>
                 )}
+                {/* The event as a social card (lockup + facts + your code) —
+                    the one share door everyone gets, registered or not; the
+                    ticket card's SHARE is the link and only exists once you're
+                    in. Previews are drafts nobody else can open, so no door. */}
+                {!event.is_preview && (
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.shareBtn,
+                            !night && styles.shareBtnAlone,
+                            pressed && { opacity: 0.7 },
+                        ]}
+                        onPress={() => {
+                            Haptics.selectionAsync();
+                            router.push({ pathname: '/share-event', params: { slug: event.slug } });
+                        }}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Share ${event.name} as a card`}
+                    >
+                        <Ionicons name="share-social-outline" size={15} color={TEXT} />
+                    </Pressable>
+                )}
             </View>
 
             {/* logo_only: the lockup IS the identity (the name still carries the
@@ -251,6 +273,19 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         paddingVertical: 6,
     },
+    // Sits beside the pill (or alone, hard right) — a ghost circle, so it
+    // reads as a door rather than a second fact.
+    shareBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.35)',
+    },
+    shareBtnAlone: { marginLeft: 'auto' },
     eventPillLabel: { fontSize: 8, fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: 1.4 },
     eventPillValue: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.3 },
 

@@ -249,6 +249,16 @@ export function EventTicketCard({
                 >
                     <Ionicons name="qr-code-outline" size={16} color={DIM} />
                 </Pressable>
+                {/* The same invite as SHARE, as a picture: the event card with
+                    your code on it, for Stories and chats that want an image. */}
+                <Pressable
+                    style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.7 }]}
+                    onPress={() => router.push({ pathname: '/share-event', params: { slug: event.slug } })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Share the event as a card"
+                >
+                    <Ionicons name="image-outline" size={16} color={DIM} />
+                </Pressable>
             </View>
 
             {/* ── Your physical spot: the venue's own booking system ──
