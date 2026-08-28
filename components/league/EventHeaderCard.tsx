@@ -151,27 +151,18 @@ export function EventHeaderCard({
                 </>
             )}
 
-            {/* The lockup takes its natural width (alignSelf: flex-start), so the
-                pill can sit hard right without a fixed-width guess. */}
+            {/* The lockup takes its natural width (alignSelf: flex-start); the
+                share door sits alone in the corner so it never pushes anything
+                over the artwork. */}
             <View style={styles.topRow}>
                 <EventLockup event={event} />
-                {night && (
-                    <View style={styles.eventPill}>
-                        <Text style={styles.eventPillLabel}>EVENT</Text>
-                        <Text style={styles.eventPillValue}>{night.replace(', ', ' · ').toUpperCase()}</Text>
-                    </View>
-                )}
                 {/* The event as a social card (lockup + facts + your code) —
                     the one share door everyone gets, registered or not; the
                     ticket card's SHARE is the link and only exists once you're
                     in. Previews are drafts nobody else can open, so no door. */}
                 {!event.is_preview && (
                     <Pressable
-                        style={({ pressed }) => [
-                            styles.shareBtn,
-                            !night && styles.shareBtnAlone,
-                            pressed && { opacity: 0.7 },
-                        ]}
+                        style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.7 }]}
                         onPress={() => {
                             Haptics.selectionAsync();
                             router.push({ pathname: '/share-event', params: { slug: event.slug } });
@@ -189,10 +180,11 @@ export function EventHeaderCard({
                 register sheet, the boards and the a11y label). */}
             {!event.logo_only && <Text style={styles.name}>{event.name}</Text>}
 
-            {/* The two supporting facts; the night itself is the pill above,
-                where it can't be mistaken for another grey date row. The card
-                used to carry the scoring window ALONE, which is the least
-                actionable of the three for someone deciding whether to come. */}
+            {/* Three facts: the scoring window, where, and the night itself
+                last — under the venue, where "when do I turn up" reads next
+                to "where". The night is the one fact people scan for and the
+                scoring window used to be mistaken for it, so it is the only
+                white row with a gold mark, never another grey date line. */}
             <View style={styles.meta}>
                 <MetaRow
                     icon="calendar-outline"
@@ -215,6 +207,15 @@ export function EventHeaderCard({
                         }
                         a11y={`${venue.name}${venue.address ? `, ${venue.address}` : ''}. Opens the map.`}
                     />
+                )}
+                {night && (
+                    <View style={styles.metaRow} accessibilityLabel={`Event night: ${night}`}>
+                        <Ionicons name="flag" size={13} color={GOLD} style={styles.metaIcon} />
+                        <Text style={styles.nightText} numberOfLines={1}>
+                            <Text style={styles.nightLabel}>EVENT </Text>
+                            {night}
+                        </Text>
+                    </View>
                 )}
             </View>
 
@@ -257,37 +258,19 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     name: { fontSize: 24, fontWeight: '200', color: TEXT, letterSpacing: -0.5, marginTop: 10 },
-    topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-    // The one fact the card could not state before: when to actually turn up.
-    // Gold and cornered rather than another grey meta row, because it is the
-    // thing someone scanning the card is looking for and the scoring window
-    // was being mistaken for it.
-    eventPill: {
-        marginLeft: 'auto',
-        alignItems: 'center',
-        gap: 2,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.5)',
-        borderRadius: 12,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-    },
-    // Sits beside the pill (or alone, hard right) — a ghost circle, so it
-    // reads as a door rather than a second fact.
+    topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+    // Alone in the corner — a ghost circle, so it reads as a door rather
+    // than a fourth fact, and nothing moves over to make room for it.
     shareBtn: {
         width: 34,
         height: 34,
         borderRadius: 17,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(0,0,0,0.35)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.35)',
     },
-    shareBtnAlone: { marginLeft: 'auto' },
-    eventPillLabel: { fontSize: 8, fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: 1.4 },
-    eventPillValue: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.3 },
 
     meta: { marginTop: 6, gap: 5 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
@@ -296,6 +279,9 @@ const styles = StyleSheet.create({
     metaIcon: { marginTop: 1 },
     metaText: { flex: 1, fontSize: 12, fontWeight: '300', color: DIM },
     metaTextLink: { color: TEXT, fontWeight: '400' },
+    // The night: white and a touch heavier than the grey facts above it.
+    nightText: { flex: 1, fontSize: 12, fontWeight: '500', color: TEXT },
+    nightLabel: { fontSize: 9, fontWeight: '800', color: GOLD, letterSpacing: 1.4 },
     statusLine: { fontSize: 11, fontWeight: '400', color: GOLD, marginTop: 8 },
 
     joinBtn: {
