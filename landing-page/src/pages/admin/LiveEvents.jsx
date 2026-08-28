@@ -118,6 +118,10 @@ const editableFields = (ev) => ({
     count_manual: ev.count_manual,
     count_streak: ev.count_streak,
     count_walking: ev.count_walking,
+    count_challenges: ev.count_challenges ?? false,
+    count_bonuses: ev.count_bonuses ?? false,
+    count_adjustments: ev.count_adjustments ?? true,
+    attendance_bonus_points: ev.attendance_bonus_points ?? 0,
     invite_bonus_points: ev.invite_bonus_points,
     invite_milestone_n: ev.invite_milestone_n,
     invite_milestone_bonus: ev.invite_milestone_bonus,
@@ -266,6 +270,28 @@ const setCheckin = async (ev, row, present) => {
         setDoorBusy(null);
     }
 };
+
+    // Pay the event-night reward to everyone who attended and hasn't been
+    // paid — door marks pay on the spot, this catches the walk-ins the fence
+    // saw that nobody marked. Idempotent server-side; safe to press twice.
+    const payAttendance = async (ev) => {
+        if (!(ev.attendance_bonus_points > 0)) {
+            toast.error('Set "Points for attending" under Scoring first'); return;
+        }
+        if (!window.confirm(`Pay ${ev.attendance_bonus_points} points to everyone who attended ${ev.name} and hasn't been paid yet?`)) return;
+        setDoorBusy('pay_all');
+        try {
+            const { data, error } = await supabase.rpc('admin_pay_event_attendance', { p_event_id: ev.id });
+            if (error) { toast.error(error.message); return; }
+            if (data?.door && lastOpsEventId.current === ev.id) setDoor(data.door);
+            await logAction(user.id, 'live_event_attendance_paid', 'live_event', ev.id, { paid: data?.paid, already: data?.already, points: data?.points });
+            toast.success(data?.paid > 0
+                ? `Paid ${data.points} pts to ${data.paid} ${data.paid === 1 ? 'person' : 'people'}${data.already > 0 ? ` · ${data.already} already paid` : ''}`
+                : 'Everyone who attended has already been paid');
+        } finally {
+            setDoorBusy(null);
+        }
+    };
 
     // Booking reconciliation against the venue's own ticketing. Nothing here
     // is derived from POWR state — the venue's export is the input, and the
@@ -741,6 +767,7 @@ const setCheckin = async (ev, row, present) => {
                         busy={doorBusy}
                         onRefresh={() => fetchDoor(selected.id)}
                         onMark={(row, present) => setCheckin(selected, row, present)}
+                        onPayAll={() => payAttendance(selected)}
                     />
 
                     <BookingsPanel
@@ -807,7 +834,7 @@ const DOOR_FILTERS = [
     ['walk_ins', 'Walk-ins'],
 ];
 
-function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
+function DoorPanel({ ev, data, busy, onRefresh, onMark, onPayAll }) {
     const [filter, setFilter] = useState('all');
     const [query, setQuery] = useState('');
     const [now, setNow] = useState(() => Date.now());
@@ -895,6 +922,19 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                 >
                     <RefreshCw size={13} /> Refresh
                 </button>
+                {(event?.attendance_bonus_points ?? ev.attendance_bonus_points) > 0 && (
+                    // Door marks pay on the spot; this is for the walk-ins the
+                    // fence saw that nobody marked. Server-side idempotent.
+                    <button
+                        onClick={onPayAll}
+                        disabled={busy === 'pay_all' || ev.status === 'archived'}
+                        title={`Pay ${event?.attendance_bonus_points ?? ev.attendance_bonus_points} pts to everyone who attended and hasn't been paid`}
+                        className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1A1A1A] border border-[#1A1A1A] text-[10.5px] font-bold uppercase tracking-[0.18em] text-white hover:bg-[#333333] transition-all shrink-0 disabled:opacity-40"
+                    >
+                        {busy === 'pay_all' ? <LoaderCircle size={13} className="animate-spin" /> : <UserCheck size={13} />}
+                        Pay attendance{event?.attendance_paid > 0 ? ` · ${event.attendance_paid} paid` : ''}
+                    </button>
+                )}
             </div>
 
             <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 space-y-6">
@@ -1048,6 +1088,9 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                                                 ) : <span className="text-[#CCCCCC]">—</span>}
                                                 {r.manual_checked_in_at && (
                                                     <div className="text-[#2563EB]">Marked {fmtTime(r.manual_checked_in_at)}{r.manual_by ? ` by ${r.manual_by}` : ''}</div>
+                                                )}
+                                                {r.attendance_paid_at && (
+                                                    <div className="text-[#16A34A] font-semibold">Paid +{r.attendance_points} · {fmtTime(r.attendance_paid_at)}</div>
                                                 )}
                                             </td>
                                             <td className="py-2.5 align-top text-right">
@@ -2573,7 +2616,9 @@ const stepState = (form) => ({
     },
     scoring: {
         status: 'done',
-        summary: `${activitiesSummary(form.included_activities)} · manual ${form.count_manual ? 'on' : 'off'} · streaks ${form.count_streak ? 'on' : 'off'}`,
+        summary: `${activitiesSummary(form.included_activities)} · manual ${form.count_manual ? 'on' : 'off'} · streaks ${form.count_streak ? 'on' : 'off'}`
+            + `${form.count_challenges ? ' · challenges on' : ''}${form.count_bonuses ? ' · bonuses on' : ''}${form.count_adjustments === false ? ' · adjustments off' : ''}`
+            + `${form.attendance_bonus_points > 0 ? ` · +${form.attendance_bonus_points} for attending` : ''}`,
     },
     invites: form.invite_bonus_points > 0
         ? {
@@ -2760,11 +2805,12 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
         {
             key: 'scoring',
             title: 'Scoring',
-            blurb: 'Which of a person’s points count towards their event score. Two rules are fixed: penalties always reduce a score, and invite bonus points never add to one.',
+            blurb: 'Which of a person’s points count towards their event score. Normal POWR rules still decide what they earn; the event only chooses which of it counts. Two rules are fixed: penalties always reduce a score, and invite bonus points (and the event-night reward) never add to one.',
             inApp: [
                 ['league', 'Only points from the activities ticked here feed the rank on the leaderboard and the RANK pill on the home card.'],
                 ['screen', 'The venue screen shows the same standings.'],
                 ['admin', 'Changing anything here re-scores everyone the moment you save — scores are computed live and only frozen by Settle.'],
+                ['door', 'The event-night reward is paid from the Door board: marking someone arrived pays them, and Pay attendance pays everyone the venue fence saw.'],
             ],
             sections: [
                 { fields: (
@@ -2783,6 +2829,22 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         </Field>
                         <Field label="Streak bonuses count" hint="On: the daily streak bonus points people earn also count towards their event score.">
                             <Toggle on={form.count_streak} onFlip={() => set({ count_streak: !form.count_streak })} />
+                        </Field>
+                        <Field label="Challenge payouts count" hint="On: weekly and Together challenge payouts credited during the window count. Off (recommended): a payout doesn't say which workouts earned it, so a wearable backfill can bring in a week of old history.">
+                            <Toggle on={form.count_challenges} onFlip={() => set({ count_challenges: !form.count_challenges })} />
+                        </Field>
+                        <Field label="Other bonuses count" hint="On: level-up, creator and other bonus points credited during the window count. Invite rewards and the event-night reward never do.">
+                            <Toggle on={form.count_bonuses} onFlip={() => set({ count_bonuses: !form.count_bonuses })} />
+                        </Field>
+                        <Field label="Admin adjustments count" hint="On: points an admin adds by hand during the window count. Penalties always count, whatever this says.">
+                            <Toggle on={form.count_adjustments} onFlip={() => set({ count_adjustments: !form.count_adjustments })} />
+                        </Field>
+                    </>
+                ) },
+                { title: 'Event night reward', fields: (
+                    <>
+                        <Field label="Points for attending" hint="Paid once to each person who turns up on the night — marked arrived at the door, or seen inside the venue fence while doors are open. Normal POWR points, paid to their wallet; they never move the event score. 0 = no reward.">
+                            <NumberInput value={form.attendance_bonus_points} onChange={v => set({ attendance_bonus_points: v })} min={0} max={5000} unit="pts" />
                         </Field>
                     </>
                 ) },
