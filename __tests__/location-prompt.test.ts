@@ -343,3 +343,27 @@ describe('isWhileUsingOnly', () => {
         expect(await isWhileUsingOnly()).toBeNull();
     });
 });
+
+describe('shouldShowAtVenuePrompt (standing in a partner venue on While Using)', () => {
+    const { AT_VENUE_ONBOARDING_COOLOFF_MS, AT_VENUE_REPROMPT_INTERVAL_MS, DEFAULT_LOCATION_PROMPT_STATE, MAX_LOCATION_PROMPT_DISMISSALS, shouldShowAtVenuePrompt } = require('@/lib/locationPrompt');
+    const NOW = 1_800_000_000_000;
+    const HOUR = 60 * 60 * 1000;
+
+    it('skips the weekly calendar: shows even when the generic sheet showed an hour ago', () => {
+        expect(shouldShowAtVenuePrompt({ ...DEFAULT_LOCATION_PROMPT_STATE, lastPromptAt: NOW - HOUR }, NOW)).toBe(true);
+    });
+
+    it('is once a day', () => {
+        expect(shouldShowAtVenuePrompt({ ...DEFAULT_LOCATION_PROMPT_STATE, atVenueLastPromptAt: NOW - HOUR }, NOW)).toBe(false);
+        expect(shouldShowAtVenuePrompt({ ...DEFAULT_LOCATION_PROMPT_STATE, atVenueLastPromptAt: NOW - AT_VENUE_REPROMPT_INTERVAL_MS }, NOW)).toBe(true);
+    });
+
+    it('respects the shared dismissal cap', () => {
+        expect(shouldShowAtVenuePrompt({ ...DEFAULT_LOCATION_PROMPT_STATE, dismissCount: MAX_LOCATION_PROMPT_DISMISSALS }, NOW)).toBe(false);
+    });
+
+    it('gives a fresh onboarding decline an hour, not twelve', () => {
+        expect(shouldShowAtVenuePrompt({ ...DEFAULT_LOCATION_PROMPT_STATE, onboardingDeclinedAt: NOW - 30 * 60 * 1000 }, NOW)).toBe(false);
+        expect(shouldShowAtVenuePrompt({ ...DEFAULT_LOCATION_PROMPT_STATE, onboardingDeclinedAt: NOW - AT_VENUE_ONBOARDING_COOLOFF_MS }, NOW)).toBe(true);
+    });
+});

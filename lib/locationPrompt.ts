@@ -41,6 +41,8 @@ export interface LocationPromptState {
     firstSeenDay: string | null;
     /** Local YYYY-MM-DD of the most recent app open. */
     lastSeenDay: string | null;
+    /** Last time the AT-VENUE variant of the re-ask was shown (ms epoch). */
+    atVenueLastPromptAt: number | null;
 }
 
 export const DEFAULT_LOCATION_PROMPT_STATE: LocationPromptState = {
@@ -51,6 +53,7 @@ export const DEFAULT_LOCATION_PROMPT_STATE: LocationPromptState = {
     fgDismissCount: 0,
     firstSeenDay: null,
     lastSeenDay: null,
+    atVenueLastPromptAt: null,
 };
 
 /** Stop auto-showing the sheet after this many dismissals. */
@@ -83,6 +86,37 @@ export function shouldShowLocationPrompt(
     if (
         state.onboardingDeclinedAt !== null &&
         now - state.onboardingDeclinedAt < LOCATION_ONBOARDING_DECLINE_COOLOFF_MS
+    ) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * The AT-VENUE re-ask: the user opened the app standing inside a partner venue
+ * on "While Using", so THIS visit is earning nothing. That is consequence-
+ * anchored evidence (see lib/venuePresence.ts), so it skips the weekly
+ * calendar and the value-moment gate — but it is still a sheet in the user's
+ * face, so: once a day, the shared dismissal cap still applies, and a fresh
+ * onboarding decline gets an hour's grace rather than twelve.
+ */
+export const AT_VENUE_REPROMPT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+export const AT_VENUE_ONBOARDING_COOLOFF_MS = 60 * 60 * 1000;
+
+export function shouldShowAtVenuePrompt(
+    state: LocationPromptState,
+    now: number,
+): boolean {
+    if (state.dismissCount >= MAX_LOCATION_PROMPT_DISMISSALS) return false;
+    if (
+        state.atVenueLastPromptAt !== null &&
+        now - state.atVenueLastPromptAt < AT_VENUE_REPROMPT_INTERVAL_MS
+    ) {
+        return false;
+    }
+    if (
+        state.onboardingDeclinedAt !== null &&
+        now - state.onboardingDeclinedAt < AT_VENUE_ONBOARDING_COOLOFF_MS
     ) {
         return false;
     }
@@ -161,6 +195,13 @@ export async function recordLocationOnboardingDeclined(): Promise<void> {
 /** The re-ask sheet became visible — starts the re-prompt interval. */
 export async function recordLocationPromptShown(): Promise<void> {
     await saveState({ lastPromptAt: Date.now() });
+}
+
+/** The at-venue variant became visible. Also stamps the generic interval so
+ *  the calendar-paced sheet doesn't follow it up days later with the same ask. */
+export async function recordAtVenuePromptShown(): Promise<void> {
+    const now = Date.now();
+    await saveState({ atVenueLastPromptAt: now, lastPromptAt: now });
 }
 
 /** The user dismissed the re-ask sheet without upgrading to Always. */

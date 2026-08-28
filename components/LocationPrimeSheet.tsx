@@ -15,10 +15,14 @@ import {
     getLocationPromptState,
     hasReachedLocationValueMoment,
     isWhileUsingOnly,
+    recordAtVenuePromptShown,
     recordLocationPromptDismissed,
     recordLocationPromptShown,
+    shouldShowAtVenuePrompt,
     shouldShowLocationPrompt,
 } from '@/lib/locationPrompt';
+import { logGeofenceRegionEvent } from '@/lib/gymVisits';
+import { probeVenuePresence, type VenuePresence } from '@/lib/venuePresence';
 import {
     getNotificationPromptState,
     shouldShowNotificationPrompt,
@@ -51,6 +55,10 @@ export default function LocationPrimeSheet() {
     const { activeGeofence } = useActiveGeofence();
 
     const [mode, setMode] = useState<'hidden' | 'ask' | 'settings'>('hidden');
+    // Set when the sheet fired because the user is standing in a partner venue
+    // right now (lib/venuePresence.ts) — the copy names the venue and the
+    // visit that is not counting, instead of the generic pocket pitch.
+    const [venue, setVenue] = useState<VenuePresence | null>(null);
     const [busy, setBusy] = useState(false);
     const evaluating = useRef(false);
     const modeRef = useRef(mode);
@@ -101,6 +109,38 @@ export default function LocationPrimeSheet() {
             const whileUsing = await isWhileUsingOnly();
             if (whileUsing !== true) return;
 
+            // On iOS the "Always" alert is one-shot: once declined it won't fire
+            // again (canAskAgain false), so we must deep-link to Settings instead.
+            // Android 11+ always routes the request through the settings page, so
+            // 'ask' (which fires the request) is right there regardless.
+            const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
+            const iosBurned = Platform.OS === 'ios' && bg?.canAskAgain === false;
+
+            // THE STRONG TRIGGER (2026-08-28): they opened the app INSIDE a
+            // partner venue. On While Using the engine armed no fences, so this
+            // very visit is earning nothing — evidence anchored to a consequence
+            // they can see, not a calendar. It outranks every yield below (the
+            // banner and the notification sheet ask on weaker grounds) and the
+            // value-moment gate (being at the gym IS the value moment); only the
+            // shared dismissal cap and a once-a-day latch hold it back. A user
+            // who never sets foot in a venue never sees this branch — which is
+            // the whole point for the walk/run-only base.
+            const state = await getLocationPromptState();
+            const now = Date.now();
+            if (shouldShowAtVenuePrompt(state, now)) {
+                const here = await probeVenuePresence();
+                if (here) {
+                    recordAtVenuePromptShown().catch(() => {});
+                    logGeofenceRegionEvent(here.partnerId, 'venue_nudge', {
+                        partner: here.partnerName, distance_m: here.distanceM, mode: iosBurned ? 'settings' : 'ask',
+                    }).catch(() => {});
+                    finished.current = false;
+                    setVenue(here);
+                    setMode(iosBurned ? 'settings' : 'ask');
+                    return;
+                }
+            }
+
             // Yield to SetupHealthBanner. It asks for the SAME permission on
             // strictly better evidence — a headless sweep that was actually
             // refused, rather than this sheet's foreground read of a permission
@@ -111,8 +151,7 @@ export default function LocationPrimeSheet() {
             if (!(await isBackgroundHealthDismissedToday())
                 && (await readBackgroundHealth())?.outcome === 'no_permission') return;
 
-            const state = await getLocationPromptState();
-            if (!shouldShowLocationPrompt(state, Date.now())) return;
+            if (!shouldShowLocationPrompt(state, now)) return;
 
             // The value moment: they banked a session, or they simply came back
             // on a later day. Not "banked a session" alone any more — a While
@@ -132,15 +171,9 @@ export default function LocationPrimeSheet() {
                 if (shouldShowNotificationPrompt(notifState, Date.now())) return;
             }
 
-            // On iOS the "Always" alert is one-shot: once declined it won't fire
-            // again (canAskAgain false), so we must deep-link to Settings instead.
-            // Android 11+ always routes the request through the settings page, so
-            // 'ask' (which fires the request) is right there regardless.
-            const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
-            const iosBurned = Platform.OS === 'ios' && bg?.canAskAgain === false;
-
             recordLocationPromptShown().catch(() => {});
             finished.current = false;
+            setVenue(null);
             setMode(iosBurned ? 'settings' : 'ask');
         } finally {
             evaluating.current = false;
@@ -153,15 +186,19 @@ export default function LocationPrimeSheet() {
 
     // The request (Android) or the deep-link (iOS settings mode) both send the
     // user out; when they return on "Always", close and re-report the snapshot.
+    // While hidden, a foreground return is also the moment someone walks into
+    // a venue and opens the app — re-evaluate so the at-venue trigger can fire
+    // on that open, not the next cold start.
     useEffect(() => {
         const sub = AppState.addEventListener('change', async (next) => {
-            if (next !== 'active' || modeRef.current === 'hidden') return;
+            if (next !== 'active') return;
+            if (modeRef.current === 'hidden') { evaluate(); return; }
             const upgraded = await isWhileUsingOnly();
             // isWhileUsingOnly returns false only when background is now granted.
             if (upgraded === false) finishGranted();
         });
         return () => sub.remove();
-    }, [finishGranted]);
+    }, [finishGranted, evaluate]);
 
     const dismiss = () => {
         recordLocationPromptDismissed().catch(() => {});
@@ -216,15 +253,28 @@ export default function LocationPrimeSheet() {
                 <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
                     <View style={styles.handle} />
 
-                    <Text style={styles.eyebrow}>BACKGROUND LOCATION</Text>
-                    <Text style={styles.headline}>
-                        Earning while{'\n'}
-                        <Text style={styles.headlineGold}>you sit still.</Text>
+                    <Text style={styles.eyebrow}>
+                        {venue ? `YOU’RE AT ${venue.partnerName.toUpperCase()}` : 'BACKGROUND LOCATION'}
                     </Text>
+                    {venue ? (
+                        <Text style={styles.headline}>
+                            This visit won’t{'\n'}
+                            <Text style={styles.headlineGold}>count by itself.</Text>
+                        </Text>
+                    ) : (
+                        <Text style={styles.headline}>
+                            Earning while{'\n'}
+                            <Text style={styles.headlineGold}>you sit still.</Text>
+                        </Text>
+                    )}
                     <Text style={styles.body}>
-                        {mode === 'ask'
-                            ? `POWR can only check you in from your pocket on ${alwaysLabel}. Right now it’s set to “While Using”, so every ${gymRelevant ? 'trip to the gym' : 'visit to a partner venue'} with the app closed is earning you nothing.`
-                            : `Set POWR’s location to ${alwaysLabel} in Settings and it’ll check you in automatically — even with the app closed.`}
+                        {venue
+                            ? mode === 'ask'
+                                ? `POWR can see you’re at ${venue.partnerName} only because the app is open. On “While Using” it can’t check you in from your pocket — set it to ${alwaysLabel} and every visit counts, starting with this one.`
+                                : `Set POWR’s location to ${alwaysLabel} in Settings and it’ll check you in at ${venue.partnerName} automatically — even with the app closed.`
+                            : mode === 'ask'
+                                ? `POWR can only check you in from your pocket on ${alwaysLabel}. Right now it’s set to “While Using”, so every ${gymRelevant ? 'trip to the gym' : 'visit to a partner venue'} with the app closed is earning you nothing.`
+                                : `Set POWR’s location to ${alwaysLabel} in Settings and it’ll check you in automatically — even with the app closed.`}
                     </Text>
 
                     {mode === 'ask' ? (
