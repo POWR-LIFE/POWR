@@ -2,6 +2,7 @@ import GeometricBackground from '@/components/GeometricBackground';
 import type { PermissionMockKind } from '@/components/onboarding/PermissionPrimeMock';
 import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
 import { useNotifications } from '@/context/NotificationsContext';
+import { useGymRelevance } from '@/hooks/useGymRelevance';
 import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
 import { openAppLocationSettings } from '@/lib/openAppSettings';
 import { Ionicons } from '@expo/vector-icons';
@@ -70,7 +71,10 @@ interface Spec {
 /** Where the OS drops the user when we deep-link out, named so they can follow it. */
 const APP_SETTINGS_PATH = isIOS ? 'Settings › POWR' : 'App info › Permissions';
 
-function specFor(kind: PermissionFixKind, route: Route): Spec {
+/** Copy branches on whether the gym is relevant to THIS user — a runner who
+ *  never checks in shouldn't be told about "gym trips" (see useGymRelevance). */
+function specFor(kind: PermissionFixKind, route: Route, gymRelevant = true): Spec {
+    const venue = gymRelevant ? 'gym' : 'partner venue';
     switch (kind) {
         case 'location':
             return {
@@ -78,8 +82,8 @@ function specFor(kind: PermissionFixKind, route: Route): Spec {
                 headline: ['Unlock the\n', 'map.'],
                 body:
                     route === 'ask'
-                        ? 'Partner gyms and automatic check-ins — it all starts with where you are.'
-                        : `Location is off for POWR, so sessions at partner gyms can’t be verified — and your phone won’t ask again. Turn it back on under *${APP_SETTINGS_PATH} › Location*.`,
+                        ? `Partner ${gymRelevant ? 'gyms' : 'venues'} and automatic check-ins — it all starts with where you are.`
+                        : `Location is off for POWR, so sessions at partner ${gymRelevant ? 'gyms' : 'venues'} can’t be verified — and your phone won’t ask again. Turn it back on under *${APP_SETTINGS_PATH} › Location*.`,
                 cta: route === 'ask' ? (isIOS ? 'ALLOW WHILE USING' : 'ALLOW LOCATION') : 'OPEN SETTINGS',
                 scene: 'location-foreground',
             };
@@ -90,7 +94,7 @@ function specFor(kind: PermissionFixKind, route: Route): Spec {
             return {
                 eyebrow: 'PRECISE LOCATION',
                 headline: ['Close enough\nto ', 'count.'],
-                body: `POWR checks you’re really at the gym, down to a few metres. Approximate location can’t do that, so sessions won’t count. Turn on *Precise* under *${APP_SETTINGS_PATH} › Location*.`,
+                body: `POWR checks you’re really at the ${venue}, down to a few metres. Approximate location can’t do that, so sessions won’t count. Turn on *Precise* under *${APP_SETTINGS_PATH} › Location*.`,
                 cta: 'OPEN SETTINGS',
                 scene: 'location-foreground',
             };
@@ -102,7 +106,7 @@ function specFor(kind: PermissionFixKind, route: Route): Spec {
                 body:
                     route === 'ask'
                         ? `No pressing start. POWR checks you in from your pocket — even when the app is closed. That only works on *${ALWAYS}*.`
-                        : `Location is on, but only while you’re in the app — so every gym trip with POWR closed earns nothing. Set it to *${ALWAYS}* under *${APP_SETTINGS_PATH} › Location*.`,
+                        : `Location is on, but only while you’re in the app — so every ${venue} trip with POWR closed earns nothing. Set it to *${ALWAYS}* under *${APP_SETTINGS_PATH} › Location*.`,
                 cta:
                     route === 'ask'
                         ? isIOS ? 'SET TO ALWAYS' : 'ALLOW ALL THE TIME'
@@ -115,7 +119,7 @@ function specFor(kind: PermissionFixKind, route: Route): Spec {
             return {
                 eyebrow: 'LOCATION',
                 headline: ['You’re all\n', 'set.'],
-                body: 'POWR can see where you are and check you in automatically. Turn it off and you stop earning at geofenced venues and partner gyms.',
+                body: `POWR can see where you are and check you in automatically. Turn it off and you stop earning at ${gymRelevant ? 'geofenced venues and partner gyms' : 'partner venues'}.`,
                 cta: 'OPEN SETTINGS',
                 scene: 'location-foreground',
                 dialog: false,
@@ -125,7 +129,7 @@ function specFor(kind: PermissionFixKind, route: Route): Spec {
             return {
                 eyebrow: 'BACKGROUND ACTIVITY',
                 headline: ['Don’t let Android\n', 'sleep on it.'],
-                body: 'POWR keeps a light watch running so it can spot gym arrivals with the app closed. Battery optimisation kills that watch without telling you.',
+                body: `POWR keeps a light watch running so it can spot ${venue} arrivals with the app closed. Battery optimisation kills that watch without telling you.`,
                 cta: 'ALLOW UNRESTRICTED',
                 scene: 'battery',
             };
@@ -192,6 +196,8 @@ export default function PermissionFixScreen({
     kind: PermissionFixKind | null;
     onClose: () => void;
 }) {
+    // Hooks first — this component early-returns below.
+    const gymRelevant = useGymRelevance();
     const insets = useSafeAreaInsets();
     const { requestPermissions } = useNotifications();
 
@@ -328,7 +334,7 @@ export default function PermissionFixScreen({
 
     if (!kind || !route) return null;
 
-    const spec = specFor(kind, route);
+    const spec = specFor(kind, route, gymRelevant);
 
     return (
         <Modal visible transparent={false} animationType="slide" onRequestClose={onClose}>

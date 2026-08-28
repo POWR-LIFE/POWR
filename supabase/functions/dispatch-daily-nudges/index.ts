@@ -39,6 +39,7 @@ import {
   parseChallengeCatalog,
 } from '../_shared/challenges.ts';
 import { shouldSendRegressionNotice, REGRESSION_GRACE_MS } from '../_shared/locationRegression.ts';
+import { isGymRelevant, observedActivityTypes, relevantActivities, RELEVANCE_WINDOW_MS } from '../_shared/activityRelevance.ts';
 
 const CONCURRENCY = 10;
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
@@ -153,18 +154,16 @@ Deno.serve(async (req: Request) => {
         ]);
         const completedIds = new Set((completions ?? []).map((r) => r.challenge_id));
 
-        // Same relevance rule as the client board (useWeeklyChallenge):
-        // onboarding buckets ∪ categories logged this week — nudging a goal
-        // the user's board doesn't show would read as broken.
-        const relevant = new Set<string>(
-          Array.isArray(prof?.activity_preferences) ? prof.activity_preferences : [],
+        // Same relevance rule as the client board (useWeeklyChallenge), via
+        // _shared/activityRelevance: declared buckets ∪ categories logged this
+        // week — nudging a goal the user's board doesn't show would read as
+        // broken. Gym is no longer force-present in every profile, so a
+        // cardio-only user's board (and nudges) carry no gym goal.
+        const relevant = relevantActivities(
+          prof?.activity_preferences,
+          observedActivityTypes(sessions ?? []).flatMap((t) => { const c = categoryOf(t); return c ? [c] : []; }),
         );
-        for (const s of sessions ?? []) {
-          if (s.verification === 'manual') continue;
-          const cat = categoryOf(s.type);
-          if (cat) relevant.add(cat);
-        }
-        let active = getPersonalizedChallengesForWeek(challengeWeek, [...relevant], catalog);
+        let active = getPersonalizedChallengesForWeek(challengeWeek, relevant, catalog);
         const ov = weekOverrides?.[challengeWeek];
         if (ov) {
           active = active.map((ch) => {
@@ -262,13 +261,13 @@ Deno.serve(async (req: Request) => {
     // only their newest regression row matters.
     const { data: regressedProfs, error: profErr } = await admin
       .from('profiles')
-      .select('id, location_permission, timezone')
+      .select('id, location_permission, timezone, activity_preferences')
       .in('location_permission', ['denied', 'while_using']);
     if (profErr) throw profErr;
 
     if ((regressedProfs ?? []).length > 0) {
       const userIds = (regressedProfs ?? []).map((p) => p.id);
-      const [{ data: regressions, error: regErr }, { data: priorLogs, error: logErr }] = await Promise.all([
+      const [{ data: regressions, error: regErr }, { data: priorLogs, error: logErr }, { data: recentGym }] = await Promise.all([
         admin.from('location_permission_regressions')
           .select('user_id, level, created_at')
           .in('user_id', userIds)
@@ -281,7 +280,22 @@ Deno.serve(async (req: Request) => {
           .select('user_id, created_at')
           .eq('type', 'location_permission_lost')
           .in('user_id', userIds),
+        // Is the gym this user's thing? Copy branches on it (send-push).
+        // Declared prefs already cover most gym users; this only catches the
+        // undeclared-but-active case. PostgREST caps the response at 1000 rows
+        // — past that a few users get the venue-neutral wording, nothing worse.
+        admin.from('activity_sessions')
+          .select('user_id, type, started_at, verification')
+          .in('user_id', userIds)
+          .eq('type', 'gym')
+          .gte('started_at', new Date(nowMs - RELEVANCE_WINDOW_MS).toISOString()),
       ]);
+      const gymRowsByUser = new Map<string, { type: string; started_at: string; verification: string | null }[]>();
+      for (const r of recentGym ?? []) {
+        const list = gymRowsByUser.get(r.user_id) ?? [];
+        list.push(r);
+        gymRowsByUser.set(r.user_id, list);
+      }
       if (regErr) throw regErr;
       // The dedup depends on this read: a silently-failed priorLogs query
       // would re-send every historical notice. Fail the pass instead.
@@ -332,7 +346,10 @@ Deno.serve(async (req: Request) => {
             body: JSON.stringify({
               target_user_id: userId,
               type: 'location_permission_lost',
-              payload: { level: reg.level },
+              payload: {
+                level: reg.level,
+                gym_relevant: isGymRelevant(prof?.activity_preferences, gymRowsByUser.get(userId) ?? [], nowMs),
+              },
             }),
           });
           const body = await res.json().catch(() => null);

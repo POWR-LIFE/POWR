@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import PermissionFixScreen from '@/components/PermissionFixScreen';
+import { useGymRelevance } from '@/hooks/useGymRelevance';
 import { useSetupHealth } from '@/hooks/useSetupHealth';
 
 const GOLD = '#E8D200';
@@ -26,6 +27,7 @@ const TEXT_MUTED = 'rgba(255,255,255,0.4)';
  */
 export function SetupHealthBanner() {
     const { verdict, hasGap, resolved, dismiss } = useSetupHealth();
+    const gymRelevant = useGymRelevance();
     const [fixing, setFixing] = useState(false);
 
     if (!hasGap || !verdict) return null;
@@ -41,7 +43,7 @@ export function SetupHealthBanner() {
                         <Text style={styles.title}>Check-ins aren’t running</Text>
                         <Text style={styles.body}>
                             POWR tried to check you in from your pocket and couldn’t — background
-                            location is switched off, so gym trips with the app closed earn nothing.
+                            location is switched off, so {gymRelevant ? 'gym trips' : 'visits to partner venues'} with the app closed earn nothing.
                         </Text>
                     </View>
                     <Pressable hitSlop={10} onPress={dismiss} style={styles.dismiss}>

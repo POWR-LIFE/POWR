@@ -277,12 +277,19 @@ function buildMessage(
         // regressions are deliberate opt-outs, and the push must read fine for
         // those too. Routes Home, where SetupHealthBanner / LocationPrimeSheet
         // own the actual fix flow. No TTL: still true whenever it lands.
+        // `gym_relevant` comes from dispatch-daily-nudges via
+        // _shared/activityRelevance.ts (declared picks ∪ last-21-day sessions).
+        // A walk/run-only user gets the venue-neutral wording; absent = legacy
+        // caller = assume gym, as before.
         const level = String(payload.level ?? 'denied');
+        const gymRelevant = payload.gym_relevant !== false;
         return {
-          title: 'Your gym check-ins are paused',
+          title: gymRelevant ? 'Your gym check-ins are paused' : 'Automatic check-ins are paused',
           body: level === 'while_using'
             ? "Location is set to While Using, so POWR can't check you in automatically. Set it to Always and every visit counts again."
-            : "POWR can't see your gym visits right now — location access is off for the app. Takes 30 seconds to turn back on.",
+            : gymRelevant
+              ? "POWR can't see your gym visits right now — location access is off for the app. Takes 30 seconds to turn back on."
+              : "POWR can't see when you're at a partner venue right now — location access is off for the app. Takes 30 seconds to turn back on.",
           data: { type, route: '/(tabs)/index' },
           sound: 'default',
           channelId: 'powr_default_v2',

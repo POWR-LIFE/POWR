@@ -1,7 +1,6 @@
-import { ACTIVITIES, type ActivityType } from '@/constants/activities';
-import { type ActivitySelection } from '@/constants/activityCatalog';
+import { CATALOG_BY_SLUG, toSelection, type ActivitySelection } from '@/constants/activityCatalog';
 import { updateActivitySelections } from '@/lib/api/user';
-import { ActivityIcon } from '@/components/ActivityIcon';
+import { MAX_RING_SLOTS } from '@/lib/weeklyActivities';
 import ActivityCatalogPicker from '@/components/ActivityCatalogPicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -18,18 +17,21 @@ const FONT_LIGHT = 'Outfit_300Light';
 const FONT_SEMIBOLD = 'Outfit_600SemiBold';
 const FONT_BOLD = 'Outfit_700Bold';
 
-// Gym is the core of POWR (geofence-verified check-ins) — it's always selected
-// and cannot be deselected. It renders as a full-width locked banner above the
-// picker; the user picks 2 specific activities (Padel, Boxing, Zumba…) from
-// the catalog, each mapping to a scoring bucket under the hood.
-const LOCKED: ActivityType = 'gym';
-const MAX_PICKS = 2;
+// Gym used to be a locked slot (always selected, never removable). Since
+// 2026-08-28 it is an ordinary pick that starts PRE-SELECTED — geofence
+// check-ins are still POWR's core, but a walk/run/cycle-only user (a third of
+// the active base never produces a gym session) can drop it, and every
+// gym-framed surface downstream then stops assuming they go. Each pick powers
+// one ring; up to MAX_RING_SLOTS picks, at least one.
+const MAX_PICKS = MAX_RING_SLOTS;
+const MIN_PICKS = 1;
+const DEFAULT_SELECTIONS: ActivitySelection[] = [toSelection(CATALOG_BY_SLUG.gym)];
 
 export default function OnboardingActivitiesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const providers = useHealthProviders();
-  const [selections, setSelections] = useState<ActivitySelection[]>([]);
+  const [selections, setSelections] = useState<ActivitySelection[]>(DEFAULT_SELECTIONS);
 
   const connectedIds = useMemo<HealthProviderId[]>(
     () => providers.rows.filter(r => !!r.connection).map(r => r.meta.id),
@@ -64,7 +66,7 @@ export default function OnboardingActivitiesScreen() {
     router.push('/onboarding-health');
   };
 
-  const canContinue = selections.length === MAX_PICKS;
+  const canContinue = selections.length >= MIN_PICKS && selections.length <= MAX_PICKS;
   const remaining = MAX_PICKS - selections.length;
 
   return (
@@ -89,7 +91,7 @@ export default function OnboardingActivitiesScreen() {
         <Text style={styles.eyebrow}>NEARLY THERE</Text>
         <Text style={styles.headline}>Pick your movements</Text>
         <Text style={styles.subhead}>
-          Gym is your core — pick the 2 other ways you actually move.
+          Pick up to {MAX_PICKS} ways you actually move. Gym is ticked to start — tap it off if that’s not you.
         </Text>
       </Animated.View>
 
@@ -99,20 +101,6 @@ export default function OnboardingActivitiesScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Gym: locked in, full width — not one of the choices */}
-          <View style={styles.gymBanner}>
-            <View style={styles.gymBannerIcon}>
-              <ActivityIcon activity={ACTIVITIES[LOCKED]} size={20} color="#FFFFFF" active />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.gymBannerTitle}>Gym</Text>
-              <Text style={styles.gymBannerSub}>Geofence-verified check-ins — locked in</Text>
-            </View>
-            <View style={styles.lockCircle}>
-              <Ionicons name="lock-closed" size={12} color={GOLD} />
-            </View>
-          </View>
-
           <ActivityCatalogPicker
             selections={selections}
             onChange={setSelections}
@@ -124,11 +112,13 @@ export default function OnboardingActivitiesScreen() {
       </Animated.View>
 
       <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 24, opacity: buttonFade }]}>
-        {remaining > 0 && (
+        {selections.length < MIN_PICKS ? (
+          <Text style={styles.hint}>Pick at least one activity</Text>
+        ) : remaining > 0 ? (
           <Text style={styles.hint}>
-            Pick {remaining} more {remaining === 1 ? 'activity' : 'activities'}
+            Room for {remaining} more {remaining === 1 ? 'activity' : 'activities'} — or continue
           </Text>
-        )}
+        ) : null}
         <Pressable
           style={[styles.primaryButton, !canContinue && styles.primaryButtonDisabled]}
           onPress={handleContinue}
@@ -159,49 +149,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 16,
     gap: 14,
-  },
-
-  gymBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.35)',
-    backgroundColor: 'rgba(232,210,0,0.05)',
-  },
-  gymBannerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gymBannerTitle: {
-    color: '#F2F2F2',
-    fontSize: 14,
-    fontFamily: FONT_SEMIBOLD,
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  gymBannerSub: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 11,
-    fontFamily: FONT_LIGHT,
-    fontWeight: '300',
-    marginTop: 1,
-  },
-  lockCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: 'rgba(232,210,0,0.5)',
-    backgroundColor: 'rgba(232,210,0,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   bottom: {

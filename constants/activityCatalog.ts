@@ -33,6 +33,7 @@ export interface CatalogActivity {
 
 /** Display groups for the picker, in render order. */
 export const CATALOG_GROUPS: { key: string; label: string; buckets: ActivityType[] }[] = [
+    { key: 'gym',     label: 'GYM',                 buckets: ['gym'] },
     { key: 'cardio',  label: 'CARDIO',              buckets: ['walking', 'running', 'cycling', 'swimming'] },
     { key: 'sports',  label: 'SPORTS',              buckets: ['sports'] },
     { key: 'classes', label: 'CLASSES & TRAINING',  buckets: ['hiit'] },
@@ -41,6 +42,14 @@ export const CATALOG_GROUPS: { key: string; label: string; buckets: ActivityType
 ];
 
 export const ACTIVITY_CATALOG: CatalogActivity[] = [
+    // ── Gym ───────────────────────────────────────────────────────────────────
+    // Gym used to be the "locked slot" (always in every profile, never a pick).
+    // Since 2026-08-28 it is an ordinary pick, pre-selected in onboarding — a
+    // walk/run/cycle-only user can drop it and stop seeing gym-framed surfaces
+    // (see supabase/functions/_shared/activityRelevance.ts).
+    { slug: 'gym',            label: 'Gym',              bucket: 'gym',      icon: 'barbell',        iconLib: 'ionicons', popular: true, keywords: ['weights', 'strength', 'lifting', 'check-in', 'geofence'] },
+    { slug: 'strength',       label: 'Strength training',bucket: 'gym',      icon: 'dumbbell',       iconLib: 'material-community', keywords: ['weights', 'lifting', 'powerlifting', 'bodybuilding'] },
+
     // ── Cardio ────────────────────────────────────────────────────────────────
     { slug: 'walking',        label: 'Walking',          bucket: 'walking',  icon: 'walk',           iconLib: 'ionicons', popular: true },
     { slug: 'hiking',         label: 'Hiking',           bucket: 'walking',  icon: 'hiking',         iconLib: 'material-community', keywords: ['walk', 'trail', 'rambling'] },

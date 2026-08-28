@@ -821,6 +821,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 }
 
+/** Like useAuth but tolerates rendering outside AuthProvider (returns
+ *  undefined) — for leaf components that merely PERSONALISE on the user and
+ *  are also rendered in isolation (tests, onboarding surfaces). */
+export function useAuthOptional(): AuthContextType | undefined {
+    return useContext(AuthContext);
+}
+
 export function useAuth() {
     const ctx = useContext(AuthContext);
     if (!ctx) throw new Error('useAuth must be used within AuthProvider');

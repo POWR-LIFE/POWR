@@ -125,8 +125,8 @@ export default function OnboardingPermissionBackgroundScreen() {
                 // killed — the "You're in" notification will never fire.
                 if (Platform.OS === 'ios') {
                     Alert.alert(
-                        'Enable "Always" for gym check-ins',
-                        'To detect gym arrivals when POWR is closed, set location to "Always" in Settings › Privacy & Security › Location Services › POWR.',
+                        'Enable "Always" for automatic check-ins',
+                        'To detect arrivals at partner venues when POWR is closed, set location to "Always" in Settings › Privacy & Security › Location Services › POWR.',
                         [
                             {
                                 text: 'Later',
