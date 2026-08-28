@@ -242,7 +242,10 @@ export async function updateActivityPreferences(
 /**
  * Persists the user's concrete activity picks (Padel, Boxing…) AND the derived
  * scoring buckets, keeping every legacy consumer of activity_preferences
- * working. Gym is always prepended to the buckets (it's the locked slot).
+ * working. Gym is NOT special here any more: it's a pick like any other
+ * (pre-selected in onboarding), so a user who never goes to the gym can drop
+ * it and every gym-framed surface stops assuming they do — see
+ * supabase/functions/_shared/activityRelevance.ts.
  */
 export async function updateActivitySelections(
     selections: { slug: string; label: string; bucket: string }[]
@@ -260,7 +263,7 @@ export async function updateActivitySelections(
             typeof s.bucket === 'string' && s.bucket.length > 0)
         .map(s => ({ slug: s.slug, label: s.label, bucket: s.bucket }));
 
-    const buckets = ['gym', ...clean.map(s => s.bucket)]
+    const buckets = clean.map(s => s.bucket)
         .filter((b, i, arr) => arr.indexOf(b) === i);
 
     const { error: dbError } = await supabase

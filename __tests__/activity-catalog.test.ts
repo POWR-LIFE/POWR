@@ -25,11 +25,17 @@ describe('activity catalog', () => {
         for (const a of ACTIVITY_CATALOG) {
             const bucket = ACTIVITIES[a.bucket];
             expect(bucket).toBeDefined();
-            // gym is the locked slot and sleep is wearable-only — neither is a
-            // valid catalog target; a pick must power a selectable ring.
-            expect(a.bucket).not.toBe('gym');
+            // sleep is wearable-only — not a valid catalog target; a pick must
+            // power a selectable ring.
             expect(bucket.hideFromPicker).not.toBe(true);
         }
+    });
+
+    it('offers gym as an ordinary pick (no locked slot)', () => {
+        // The gym entry's slug equals its bucket so legacy bucket-only users
+        // ('gym' in activity_preferences) migrate to it via genericEntryForBucket.
+        expect(CATALOG_BY_SLUG.gym).toMatchObject({ bucket: 'gym', label: 'Gym' });
+        expect(genericEntryForBucket('gym')?.slug).toBe('gym');
     });
 
     it('covers every entry with a display group', () => {
@@ -41,7 +47,7 @@ describe('activity catalog', () => {
 
     it('resolves a generic entry for every pickable bucket (legacy migration)', () => {
         const pickableBuckets = Object.values(ACTIVITIES)
-            .filter(a => !a.hideFromPicker && a.type !== 'gym')
+            .filter(a => !a.hideFromPicker)
             .map(a => a.type);
         for (const bucket of pickableBuckets) {
             const entry = genericEntryForBucket(bucket);

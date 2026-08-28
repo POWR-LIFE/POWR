@@ -1,14 +1,14 @@
-import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { type ActivityType } from '@/constants/activities';
 import {
   genericEntryForBucket,
   toSelection,
   type ActivitySelection,
 } from '@/constants/activityCatalog';
 import { updateActivitySelections } from '@/lib/api/user';
+import { MAX_RING_SLOTS } from '@/lib/weeklyActivities';
 import { useAuth } from '@/context/AuthContext';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { supportedActivitiesFor, WEARABLE_PROVIDERS, type HealthProviderId } from '@/lib/health/providers';
-import { ActivityIcon } from '@/components/ActivityIcon';
 import ActivityCatalogPicker from '@/components/ActivityCatalogPicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -24,10 +24,11 @@ const BORDER = 'rgba(255,255,255,0.08)';
 const DIM = 'rgba(255,255,255,0.5)';
 const TEXT_COLOR = '#F2F2F2';
 
-// Gym is the core of POWR (geofence-verified) — always selected, never removable.
-// The user picks 2 specific catalog activities to go with it.
-const LOCKED: ActivityType = 'gym';
-const MAX_PICKS = 2;
+// Gym is an ordinary pick since 2026-08-28 (it was a locked, non-removable
+// slot before) — see onboarding-activities.tsx. Up to MAX_RING_SLOTS picks,
+// at least one.
+const MAX_PICKS = MAX_RING_SLOTS;
+const MIN_PICKS = 1;
 
 /**
  * Initial picks: prefer stored concrete selections; legacy bucket-only users
@@ -47,9 +48,10 @@ function initialSelections(meta: Record<string, any> | undefined): ActivitySelec
     );
     if (valid.length > 0) return valid.slice(0, MAX_PICKS);
   }
+  // Legacy profiles always carry 'gym' (it was force-prepended) — it maps to
+  // the catalog's gym entry like any other bucket and the user can untick it.
   const buckets: ActivityType[] = meta?.activity_preferences ?? ['gym', 'running', 'walking'];
   return buckets
-    .filter(b => b !== LOCKED)
     .slice(0, MAX_PICKS)
     .map(b => {
       const entry = genericEntryForBucket(b);
@@ -82,14 +84,14 @@ export default function ActivityPreferencesScreen() {
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    if (selections.length !== MAX_PICKS) return;
+    if (selections.length < MIN_PICKS || selections.length > MAX_PICKS) return;
     setSaving(true);
     await updateActivitySelections(selections);
     setSaving(false);
     router.back();
   };
 
-  const canSave = selections.length === MAX_PICKS;
+  const canSave = selections.length >= MIN_PICKS && selections.length <= MAX_PICKS;
   const remaining = MAX_PICKS - selections.length;
 
   return (
@@ -113,8 +115,8 @@ export default function ActivityPreferencesScreen() {
         </Text>
         <Text style={styles.body}>
           {connectedIds.length > 0
-            ? 'Gym stays locked in — pick your 2. We\'ll auto-track what your devices support.'
-            : 'Gym stays locked in — pick your 2. Most others need manual logging without a wearable.'}
+            ? `Pick up to ${MAX_PICKS}. We\'ll auto-track what your devices support.`
+            : `Pick up to ${MAX_PICKS}. Most need manual logging without a wearable.`}
         </Text>
       </View>
 
@@ -125,20 +127,6 @@ export default function ActivityPreferencesScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Gym: locked in, full width — not one of the choices */}
-          <View style={styles.gymBanner}>
-            <View style={styles.gymBannerIcon}>
-              <ActivityIcon activity={ACTIVITIES[LOCKED]} size={20} color="#FFFFFF" active />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.gymBannerTitle}>Gym</Text>
-              <Text style={styles.gymBannerSub}>Geofence-verified check-ins — locked in</Text>
-            </View>
-            <View style={styles.lockCircle}>
-              <Ionicons name="lock-closed" size={12} color={GOLD} />
-            </View>
-          </View>
-
           <ActivityCatalogPicker
             selections={selections}
             onChange={setSelections}
@@ -151,11 +139,13 @@ export default function ActivityPreferencesScreen() {
 
       {/* Bottom */}
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 24 }]}>
-        {remaining > 0 && (
+        {selections.length < MIN_PICKS ? (
+          <Text style={styles.hint}>Pick at least one activity</Text>
+        ) : remaining > 0 ? (
           <Text style={styles.hint}>
-            Pick {remaining} more {remaining === 1 ? 'activity' : 'activities'}
+            Room for {remaining} more {remaining === 1 ? 'activity' : 'activities'}
           </Text>
-        )}
+        ) : null}
         <Pressable
           style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
           onPress={handleSave}
@@ -202,42 +192,6 @@ const styles = StyleSheet.create({
     gap: 14,
   },
 
-  gymBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.35)',
-    backgroundColor: 'rgba(232,210,0,0.05)',
-  },
-  gymBannerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gymBannerTitle: {
-    color: TEXT_COLOR,
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  gymBannerSub: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 11,
-    fontWeight: '300',
-    marginTop: 1,
-  },
-  lockCircle: {
-    width: 24, height: 24, borderRadius: 12,
-    borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.5)',
-    backgroundColor: 'rgba(232,210,0,0.08)',
-    alignItems: 'center', justifyContent: 'center',
-  },
 
   bottom: { paddingHorizontal: 24, paddingTop: 12 },
   hint: {

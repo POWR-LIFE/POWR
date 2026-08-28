@@ -447,18 +447,17 @@ export default function HomeScreen() {
         });
     }
 
-    const weeklyRings = sortForHero(activePrefs.map(buildWeeklyRing));
-
-    // If health data detected an activity outside the user's 3 preferences, smart-
-    // swap it into the ring with the least progress so we always show exactly 3.
-    // The weakest preferred ring is displaced — points for it are still earned.
-    // Shared with the progress screen so both surfaces show the same 3 activities.
-    const { bonusType, displacedType } = applyDetectedActivitySwap(activePrefs, weeklyMetrics);
-    const displayRings: WeeklyRingData[] = bonusType
-        ? weeklyRings.map(r => r.type === displacedType
-            ? { ...buildWeeklyRing(bonusType), isBonus: true }
-            : r)
-        : weeklyRings;
+    // If health data detected an activity outside the user's preferences, smart-
+    // swap it into the ring with the least progress (or, with a free slot — gym
+    // is no longer forced into every profile — add it) so we show up to 3.
+    // The displaced preferred ring still earns points; it just loses its slot.
+    // Shared with the progress screen so both surfaces show the same activities.
+    const { types: ringTypes, bonusType } = applyDetectedActivitySwap(activePrefs, weeklyMetrics);
+    const displayRings: WeeklyRingData[] = sortForHero(
+        ringTypes.map(t => t === bonusType
+            ? { ...buildWeeklyRing(t), isBonus: true }
+            : buildWeeklyRing(t)),
+    );
 
     // ── Scroll-based sticky indicators ──
     const scrollY = useSharedValue(0);

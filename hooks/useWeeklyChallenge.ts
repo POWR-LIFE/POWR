@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 // challengeRules.js is CommonJS — import the namespace for interop.
 import { buildContext, categoryOf, evaluateChallenge } from '@/shared/challengeRules';
+import { observedActivityTypes, relevantActivities } from '@/supabase/functions/_shared/activityRelevance';
 import {
   CATALOG,
   CATEGORY_META,
@@ -218,14 +219,14 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
         /* behavior-only relevance */
       }
     }
-    const sessionCats = new Set<string>();
-    for (const s of sessions ?? []) {
-      if (s.verification === 'manual') continue;
-      const cat = categoryOf(s.type);
-      if (cat) sessionCats.add(cat);
-    }
+    // Shared with dispatch-daily-nudges via _shared/activityRelevance so the
+    // board and its nudges can never disagree on which categories matter.
+    const relevant = relevantActivities(
+      buckets,
+      observedActivityTypes(sessions ?? []).flatMap((t) => { const c = categoryOf(t); return c ? [c] : []; }),
+    );
     let active = applyOverrides(
-      getPersonalizedChallengesForWeek(challengeWeek, [...new Set([...buckets, ...sessionCats])], catalog),
+      getPersonalizedChallengesForWeek(challengeWeek, relevant, catalog),
       allOv?.[challengeWeek],
       catalog as any[],
     );

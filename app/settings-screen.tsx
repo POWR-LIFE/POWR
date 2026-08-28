@@ -198,7 +198,7 @@ export default function SettingsScreen() {
         .filter((l: any): l is string => typeof l === 'string' && l.length > 0)
     : [];
   const activityFocusValue = selectionLabels.length > 0
-    ? ['Gym', ...selectionLabels].join(', ')
+    ? selectionLabels.join(', ')
     : savedPrefs.map(t => ACTIVITIES[t]?.labelShort ?? t).join(', ');
 
   // Notification & privacy prefs — initialise from saved user_metadata
@@ -623,7 +623,7 @@ export default function SettingsScreen() {
         <View style={[styles.card, notifGranted === false && styles.cardDisabled]} pointerEvents={notifGranted === false ? 'none' : 'auto'}>
           <RowToggle
             icon="barbell-outline"
-            label="Workout reminders"
+            label="Gym check-in alerts"
             value={notifWorkouts}
             onValueChange={(v) => {
               setNotifWorkouts(v);

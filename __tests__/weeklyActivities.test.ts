@@ -75,6 +75,21 @@ describe('applyDetectedActivitySwap', () => {
     expect(res.types).toEqual([]);
     expect(res.bonusType).toBeNull();
   });
+
+  it('ADDS a detected activity when there is a free ring slot (no gym in prefs)', () => {
+    // Gym is no longer forced into every profile, so a two-pick user has room:
+    // nothing should be displaced.
+    const res = applyDetectedActivitySwap(['running', 'walking'], metrics({ cycling: 2 }));
+    expect(res.types).toEqual(['running', 'walking', 'cycling']);
+    expect(res.bonusType).toBe('cycling');
+    expect(res.displacedType).toBeNull();
+  });
+
+  it('never exceeds MAX_RING_SLOTS — still swaps once the slots are full', () => {
+    const res = applyDetectedActivitySwap(['running', 'walking', 'swimming'], metrics({ running: 2, cycling: 2 }, 20000));
+    expect(res.types).toHaveLength(3);
+    expect(res.displacedType).toBe('swimming');
+  });
 });
 
 describe('orderedProgressActivities', () => {

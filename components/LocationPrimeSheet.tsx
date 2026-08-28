@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
 import { useAuth } from '@/context/AuthContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
+import { useGymRelevance } from '@/hooks/useGymRelevance';
 import { isBackgroundHealthDismissedToday, readBackgroundHealth } from '@/lib/backgroundHealth';
 import { reportLocationPermission } from '@/lib/locationPermission';
 import { reportUserCountry } from '@/lib/country';
@@ -46,6 +47,7 @@ const BORDER = '#222222';
 export default function LocationPrimeSheet() {
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
+    const gymRelevant = useGymRelevance();
     const { activeGeofence } = useActiveGeofence();
 
     const [mode, setMode] = useState<'hidden' | 'ask' | 'settings'>('hidden');
@@ -221,7 +223,7 @@ export default function LocationPrimeSheet() {
                     </Text>
                     <Text style={styles.body}>
                         {mode === 'ask'
-                            ? `POWR can only check you in from your pocket on ${alwaysLabel}. Right now it’s set to “While Using”, so every trip to the gym with the app closed is earning you nothing.`
+                            ? `POWR can only check you in from your pocket on ${alwaysLabel}. Right now it’s set to “While Using”, so every ${gymRelevant ? 'trip to the gym' : 'visit to a partner venue'} with the app closed is earning you nothing.`
                             : `Set POWR’s location to ${alwaysLabel} in Settings and it’ll check you in automatically — even with the app closed.`}
                     </Text>
 

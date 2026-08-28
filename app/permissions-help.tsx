@@ -6,6 +6,7 @@ import React, { useCallback, useState } from 'react';
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
+import { useGymRelevance } from '@/hooks/useGymRelevance';
 import { androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
 import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
 import { openAppLocationSettings } from '@/lib/openAppSettings';
@@ -40,6 +41,8 @@ const STATUS_META: Record<Status, { label: string; color: string }> = {
 
 export default function PermissionsHelpScreen() {
   const insets = useSafeAreaInsets();
+  const gymRelevant = useGymRelevance();
+  const venue = gymRelevant ? 'gym' : 'venue';
   const router = useRouter();
 
   const [locationStatus, setLocationStatus] = useState<Status>('unknown');
@@ -92,7 +95,7 @@ export default function PermissionsHelpScreen() {
           icon="location-outline"
           title="Location"
           status={locationStatus}
-          why="Detects when you arrive at a partner gym and earns points at geofenced venues — even while POWR is closed."
+          why={`Detects when you arrive at a partner ${venue} and earns points at geofenced venues — even while POWR is closed.`}
           steps={
             isIOS
               ? [
@@ -109,8 +112,8 @@ export default function PermissionsHelpScreen() {
           note={
             locationStatus === 'limited'
               ? isIOS
-                ? 'Location is on, but not set to "Always" — POWR can\'t detect gym arrivals when it\'s closed. If you don\'t see "Always" yet, choose "While Using the App" first, then come back.'
-                : 'Location is on, but not "Allow all the time" — POWR can\'t detect gym arrivals when it\'s closed.'
+                ? `Location is on, but not set to "Always" — POWR can't detect ${venue} arrivals when it's closed. If you don't see "Always" yet, choose "While Using the App" first, then come back.`
+                : `Location is on, but not "Allow all the time" — POWR can't detect ${venue} arrivals when it's closed.`
               : undefined
           }
           buttonLabel="Open Settings"
@@ -123,7 +126,7 @@ export default function PermissionsHelpScreen() {
             icon="battery-charging-outline"
             title="Background activity"
             status="unknown"
-            why="Lets POWR keep detecting gym arrivals when the app is fully closed. Without it, Android can sleep the app and miss check-ins."
+            why={`Lets POWR keep detecting ${venue} arrivals when the app is fully closed. Without it, Android can sleep the app and miss check-ins.`}
             steps={[
               'Tap Open Settings below',
               'Allow POWR to ignore battery optimisation',
@@ -139,7 +142,7 @@ export default function PermissionsHelpScreen() {
           icon="notifications-outline"
           title="Notifications"
           status={notifStatus}
-          why="Confirms gym check-ins, tells you when points land, and alerts you to rewards you can claim."
+          why={`Confirms ${gymRelevant ? 'gym check-ins' : 'sessions'}, tells you when points land, and alerts you to rewards you can claim.`}
           steps={
             isIOS
               ? [

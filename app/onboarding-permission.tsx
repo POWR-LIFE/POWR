@@ -150,7 +150,7 @@ export default function OnboardingPermissionScreen() {
             if (res.android?.accuracy === 'coarse') {
                 Alert.alert(
                     'Turn on Precise location',
-                    'POWR verifies you’re really at the gym — approximate location can’t do that. Choose “Precise” so your sessions count.',
+                    'POWR verifies you’re really at a partner venue — approximate location can’t do that. Choose “Precise” so your sessions count.',
                     [
                         {
                             text: 'Fix it',
@@ -210,7 +210,7 @@ export default function OnboardingPermissionScreen() {
                         <Text style={styles.headlineGold}>map.</Text>
                     </Text>
                     <Text style={styles.body}>
-                        Partner gyms and automatic check-ins — it all starts with where you are.
+                        Partner venues and automatic check-ins — it all starts with where you are.
                     </Text>
 
                     <View style={styles.mock}>

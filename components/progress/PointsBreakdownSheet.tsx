@@ -866,7 +866,9 @@ function rulesFor(type: ActivityType): string[] {
             `Stay ${getGymDwellMinutes()} minutes to earn a check-in, ` +
             `${getGymUpgradeMinutes()} to reach the higher tier.`,
         );
-        lines.push('Consecutive gym days multiply what a check-in pays.');
+        // Streaks count ANY verified session day (hooks/useStreak.ts,
+        // _shared/streak.ts) — not gym days specifically.
+        lines.push('Consecutive active days multiply what a check-in pays.');
     } else if (type === 'hiit') {
         // Strength lane: HIIT pays exactly what a gym session pays, off its own
         // 20-min entry. Say so plainly — this is the surface where the old

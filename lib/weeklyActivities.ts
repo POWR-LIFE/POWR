@@ -1,14 +1,18 @@
 /**
  * Shared "smart-swap" for the weekly activity surfaces (home rings + progress
  * radials): if health data detected sessions for an activity outside the
- * user's 3 preferences, swap it in for the preference with the least weekly
- * progress so we always show exactly 3 — and both screens agree on which 3.
- * The displaced preference still earns points; it just loses its slot.
+ * user's preferences, swap it in for the preference with the least weekly
+ * progress so we show up to MAX_RING_SLOTS — and both screens agree on which.
+ * The displaced preference still earns points; it just loses its slot. A user
+ * with fewer than MAX_RING_SLOTS preferences (gym is no longer forced into
+ * every profile) gets the detected activity ADDED rather than swapped.
  */
 
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 
 export const WEEKLY_SESSION_TARGET = 3;
+/** Home shows at most this many rings; the picker allows this many picks. */
+export const MAX_RING_SLOTS = 3;
 export const WEEKLY_STEPS_TARGET = 50000;
 
 type WeeklyMetricsLike = {
@@ -73,6 +77,9 @@ export function applyDetectedActivitySwap(
 
   if (!bonusType || prefs.length === 0) {
     return { types: prefs, bonusType: null, displacedType: null };
+  }
+  if (prefs.length < MAX_RING_SLOTS) {
+    return { types: [...prefs, bonusType], bonusType, displacedType: null };
   }
 
   const displacedType = [...prefs].sort(
