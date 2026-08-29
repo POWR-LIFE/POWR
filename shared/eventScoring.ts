@@ -219,7 +219,18 @@ export interface ScoringTotals {
 }
 
 export function scoringTotals(rows: ScoringRow[]): ScoringTotals {
-  const byBucket = Object.fromEntries(BUCKETS.map(b => [b.key, 0])) as Record<Bucket, number>;
+  const byBucket: Record<Bucket, number> = {
+    activity: 0,
+    streak: 0,
+    challenge: 0,
+    bonus: 0,
+    adjustment: 0,
+    event_adjustment: 0,
+    penalty: 0,
+    other: 0,
+    invite: 0,
+    attendance: 0,
+  };
   let points = 0, excludedPoints = 0, excludedRows = 0, adjustmentsN = 0;
   for (const r of rows) {
     points += r.points ?? 0;
