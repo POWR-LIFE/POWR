@@ -16,6 +16,7 @@ export const audienceLabel = (a) => {
     const suffix = device.length ? ` · ${device.join(' · ')}` : '';
     if (!a || a.mode === 'all' || !a.mode) return `Everyone${suffix}`;
     if (a.mode === 'users') return `${a.user_ids?.length ?? 0} specific${suffix}`;
+    if (a.mode === 'event') return `Registered: ${a.event_name || 'live event'}${suffix}`;
     const parts = [];
     if (a.user_type === 'pro') parts.push('Athletes');
     else if (a.user_type === 'normal') parts.push('Normal users');
@@ -41,20 +42,31 @@ export async function callBroadcast(body) {
     return res.json();
 }
 
-// Self-contained audience picker (Everyone / Segment / Specific people) with a
-// live recipient count. Reports { audience, count, checking } up via onChange.
-// Shared by the immediate Broadcast page and the scheduled Campaigns page.
-export default function AudienceSelector({ onChange }) {
-    const [mode, setMode]         = useState('all');   // all | segment | users
-    const [userType, setUserType] = useState('all');   // all | pro | normal
-    const [activities, setActivities] = useState([]);  // stated preferences (ANY of)
-    const [picked, setPicked]     = useState([]);      // [{id, username, display_name, email, ...}]
+// Self-contained audience picker (Everyone / Segment / Specific people /
+// Live event) with a live recipient count. Reports { audience, count, checking }
+// up via onChange. Shared by the immediate Broadcast page and the scheduled
+// Campaigns page.
+//
+// `initial` seeds the picker from a stored audience spec (editing a scheduled
+// row). Without it the picker mounts as Everyone and its first onChange would
+// silently overwrite the row's saved audience with { mode: 'all' }.
+export default function AudienceSelector({ onChange, initial }) {
+    const init = initial && typeof initial === 'object' ? initial : {};
+    const [mode, setMode]         = useState(init.mode ?? 'all');   // all | segment | users | event
+    const [userType, setUserType] = useState(init.user_type ?? 'all');   // all | pro | normal
+    const [activities, setActivities] = useState(init.activities ?? []);  // stated preferences (ANY of)
+    // [{id, username, display_name, email, ...}] — seeded as bare ids, hydrated once the directory loads.
+    const [picked, setPicked]     = useState(() => (init.user_ids ?? []).map((id) => ({ id })));
     const [search, setSearch]     = useState('');
     const [allUsers, setAllUsers] = useState(null);    // cached admin_get_users directory
 
+    // Live-event targeting: everyone registered (and not disqualified) for one event.
+    const [eventId, setEventId]   = useState(init.event_id ?? '');
+    const [events, setEvents]     = useState(null);    // [{id, name, slug, status}] once loaded
+
     // Device filters — orthogonal to mode; a user is only pushed on matching devices.
-    const [platform, setPlatform] = useState('all');   // all | ios | android
-    const [belowVersion, setBelowVersion] = useState(''); // 'x.y.z' or ''
+    const [platform, setPlatform] = useState(init.platforms?.length === 1 ? init.platforms[0] : 'all');   // all | ios | android
+    const [belowVersion, setBelowVersion] = useState(init.below_version ?? ''); // 'x.y.z' or ''
 
     const [count, setCount]       = useState(null);
     const [checking, setChecking] = useState(false);
@@ -62,17 +74,20 @@ export default function AudienceSelector({ onChange }) {
     const belowValid = /^\d+\.\d+\.\d+$/.test(belowVersion.trim());
 
     const audience = useMemo(() => {
+        const ev = events?.find((e) => e.id === eventId);
         const base = mode === 'segment' ? { mode: 'segment', user_type: userType, activities }
                    : mode === 'users'   ? { mode: 'users', user_ids: picked.map((u) => u.id) }
+                   : mode === 'event'   ? { mode: 'event', event_id: eventId, event_name: ev?.name ?? init.event_name ?? '' }
                    : { mode: 'all' };
         if (platform !== 'all') base.platforms = [platform];
         if (belowValid) base.below_version = belowVersion.trim();
         return base;
-    }, [mode, userType, activities, picked, platform, belowVersion, belowValid]);
+    }, [mode, userType, activities, picked, eventId, events, platform, belowVersion, belowValid]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Refresh the recipient count whenever the audience spec changes (debounced).
     useEffect(() => {
         if (mode === 'users' && picked.length === 0) { setCount(0); return; }
+        if (mode === 'event' && !eventId) { setCount(0); return; }
         let cancelled = false;
         setChecking(true);
         const t = setTimeout(async () => {
@@ -86,7 +101,7 @@ export default function AudienceSelector({ onChange }) {
             }
         }, 350);
         return () => { cancelled = true; clearTimeout(t); };
-    }, [audience, mode, picked.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [audience, mode, picked.length, eventId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Bubble state up. Kept in a ref-stable callback so parents don't loop.
     const onChangeRef = useRef(onChange);
@@ -100,6 +115,25 @@ export default function AudienceSelector({ onChange }) {
         if (mode !== 'users' || allUsers !== null) return;
         supabase.rpc('admin_get_users').then(({ data }) => setAllUsers(data ?? []));
     }, [mode, allUsers]);
+
+    // Seeded picks are bare ids — swap in the directory rows once they arrive.
+    useEffect(() => {
+        if (!allUsers) return;
+        setPicked((prev) => prev.map((p) => (p.display_name || p.username) ? p : (allUsers.find((u) => u.id === p.id) ?? p)));
+    }, [allUsers]);
+
+    // Live events the admin can target: anything app-visible or recently run.
+    // Draft/archived stay out — nobody is registered for a draft, and an
+    // archived event's roster is stale. Admin RLS on live_events allows this read.
+    useEffect(() => {
+        if (mode !== 'event' || events !== null) return;
+        supabase
+            .from('live_events')
+            .select('id, name, slug, status, window_start_at')
+            .in('status', ['scheduled', 'live', 'locked', 'revealed', 'settled'])
+            .order('window_start_at', { ascending: false })
+            .then(({ data }) => setEvents(data ?? []));
+    }, [mode, events]);
 
     const results = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -138,7 +172,42 @@ export default function AudienceSelector({ onChange }) {
                 <ModeTab value="all">Everyone</ModeTab>
                 <ModeTab value="segment">Segment</ModeTab>
                 <ModeTab value="users">Specific people</ModeTab>
+                <ModeTab value="event">Live event</ModeTab>
             </div>
+
+            {mode === 'event' && (
+                <div>
+                    <div className="text-xs font-medium text-[#999] mb-1.5">
+                        Everyone registered for <span className="text-[#BBB]">(disqualified users excluded)</span>
+                    </div>
+                    {events === null ? (
+                        <div className="text-sm text-[#999]">Loading events…</div>
+                    ) : events.length === 0 ? (
+                        <div className="text-sm text-[#999]">No scheduled or live events.</div>
+                    ) : (
+                        <div className="flex flex-wrap gap-2">
+                            {events.map((e) => {
+                                const on = eventId === e.id;
+                                return (
+                                    <button
+                                        key={e.id}
+                                        type="button"
+                                        onClick={() => setEventId(e.id)}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                            on ? 'bg-[#E8D200] border-[#E8D200] text-[#080808]'
+                                               : 'bg-white border-[#E6E6E1] text-[#666] hover:border-[#CFCFCF]'
+                                        }`}
+                                    >
+                                        {on && <Check size={12} />}
+                                        {e.name}
+                                        <span className={on ? 'text-[#5A5200]' : 'text-[#AAA]'}>· {e.status}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {mode === 'segment' && (
                 <div className="space-y-4">
@@ -279,6 +348,9 @@ export default function AudienceSelector({ onChange }) {
                         <span className="font-semibold text-[#111]">{count}</span> device{count === 1 ? '' : 's'} will receive this
                         {mode === 'users' && picked.length > 0 && (
                             <span className="text-[#999]"> · {picked.length} {picked.length === 1 ? 'person' : 'people'}</span>
+                        )}
+                        {mode === 'event' && eventId && (
+                            <span className="text-[#999]"> · registered for {events?.find((e) => e.id === eventId)?.name ?? 'event'}</span>
                         )}
                       </span>}
             </div>

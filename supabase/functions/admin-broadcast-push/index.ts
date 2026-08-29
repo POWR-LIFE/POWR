@@ -57,8 +57,14 @@ Deno.serve(async (req: Request) => {
   const dryRun = body.dry_run === true;
   const audience = body.audience ?? { mode: 'all' };
 
+  if (!['all', 'segment', 'users', 'event', undefined].includes(audience.mode)) {
+    return json({ error: `Unknown audience mode: ${audience.mode}` }, 400);
+  }
   if (audience.mode === 'users' && (audience.user_ids ?? []).filter(Boolean).length === 0) {
     return json({ error: 'No users selected' }, 400);
+  }
+  if (audience.mode === 'event' && !/^[0-9a-f-]{36}$/i.test(String(audience.event_id ?? ''))) {
+    return json({ error: 'No live event selected' }, 400);
   }
   if (audience.below_version != null && !/^\d+\.\d+\.\d+$/.test(String(audience.below_version).trim())) {
     return json({ error: 'below_version must look like 1.4.11' }, 400);
