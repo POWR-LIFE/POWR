@@ -2613,7 +2613,7 @@ function ScoringPanel({ ev, data, ledgers, busy, resultsCount, onRefresh, onOpen
     const toggleUser = (userId) => {
         const next = openUser === userId ? null : userId;
         setOpenUser(next);
-        if (next && ledgers[next] === undefined) onOpenUser(next);
+        if (next && (ledgers[next] === undefined || ledgers[next] === null)) onOpenUser(next);
     };
 
     const openAdjust = (userId) => {
