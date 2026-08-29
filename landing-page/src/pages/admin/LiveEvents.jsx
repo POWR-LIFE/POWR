@@ -10,6 +10,7 @@ import {
     Gauge, Download, UserX, UserCheck, ShieldAlert,
     Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users, TicketCheck,
     ImagePlus, LoaderCircle, DoorOpen, MapPin, ChevronDown, Timer, ArrowLeft, ArrowRight,
+    Sigma, Scale,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -21,6 +22,10 @@ import {
     DOOR_POLL_MS, bandInfo, doorCsv, doorTotals, filterDoorRows, gateLabel, gateMet,
     presence, searchDoorRows, sortDoorRows,
 } from '../../../../shared/eventDoor.ts';
+import {
+    BUCKETS as SCORE_BUCKETS, activeBuckets, bucketLabel, excludedSummary, ledgerRowTitle, reasonIsSwitch, reasonLabel,
+    rowName, ruleChips, scoringCsv, scoringTotals, searchScoringRows,
+} from '../../../../shared/eventScoring.ts';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -158,6 +163,9 @@ export default function LiveEvents() {
     const [dqRows, setDqRows] = useState([]);      // disqualified users (off-board)
     const [dqBusy, setDqBusy] = useState(null);    // user_id of DQ action in flight
     const [anticheat, setAnticheat] = useState(null); // admin_get_event_anticheat payload
+    const [scoring, setScoring] = useState(null);     // admin_get_event_scoring payload
+    const [ledgers, setLedgers] = useState({});       // user_id → admin_get_event_user_ledger payload (undefined = not loaded, null = failed)
+    const [adjBusy, setAdjBusy] = useState(null);     // user_id of the score adjustment in flight
     const [registrations, setRegistrations] = useState(null); // admin_get_event_registrations payload
     const [bookings, setBookings] = useState(null);   // admin_get_event_bookings payload
     const [door, setDoor] = useState(null);           // admin_get_event_door payload
@@ -200,16 +208,17 @@ export default function LiveEvents() {
     useEffect(() => { fetchEvents(); }, []);
 
     useEffect(() => {
-        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); setBookings(null); setDoor(null); lastOpsEventId.current = null; return; }
+        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null); lastOpsEventId.current = null; return; }
         setForm(editableFields(selected));
         // Switching events must never show the previous event's ops data while
         // the new fetch is in flight; same-event refreshes keep what's there.
         if (selected.id !== lastOpsEventId.current) {
             lastOpsEventId.current = selected.id;
-            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); setBookings(null); setDoor(null);
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null);
         }
         fetchCounts(selected.id);
         fetchOps(selected.id);
+        fetchScoring(selected.id);
         fetchRegistrations(selected.id);
         fetchBookings(selected.id);
         fetchDoor(selected.id);
@@ -348,6 +357,81 @@ const setCheckin = async (ev, row, present) => {
         }
     };
 
+    // ── Scoring breakdown ─────────────────────────────────────
+    // What scored for whom. Same predicate as the board (the RPC reads the
+    // labelled ledger the scorer filters), so these numbers are the app's
+    // numbers with the working shown.
+    const fetchScoring = async (eventId) => {
+        const { data, error } = await supabase.rpc('admin_get_event_scoring', { p_event_id: eventId });
+        if (error) console.error(error);
+        if (lastOpsEventId.current !== eventId) return;
+        // A failed load must read as a failure, never as "still loading".
+        setScoring(error ? { error: error.message } : data);
+    };
+
+    // One person's rows, loaded when their breakdown is opened.
+    const fetchUserLedger = async (eventId, userId) => {
+        const { data, error } = await supabase.rpc('admin_get_event_user_ledger', { p_event_id: eventId, p_user_id: userId });
+        if (error) console.error(error);
+        if (lastOpsEventId.current !== eventId) return;
+        setLedgers(prev => ({ ...prev, [userId]: error ? null : data }));
+    };
+
+    // Event-scoped: moves this board, never the wallet. Wallet corrections
+    // stay on the member's admin profile. Returns true when applied so the
+    // form can clear itself.
+    const adjustScore = async (ev, row, amount, reason) => {
+        const who = rowName(row);
+        if (!Number.isFinite(amount) || amount === 0) { toast.error('Enter a non-zero amount'); return false; }
+        if (!reason.trim()) { toast.error('Give a reason — it shows on the breakdown and in the audit log'); return false; }
+        if (!window.confirm(
+            `${amount > 0 ? 'Add' : 'Take'} ${Math.abs(amount)} points ${amount > 0 ? 'to' : 'from'} ${who}'s score on ${ev.name}? `
+            + `This event only — their wallet is untouched.${counts.results > 0 ? ' Final results are already saved: press Re-settle afterwards so they pick it up.' : ''}`,
+        )) return false;
+        setAdjBusy(row.user_id);
+        try {
+            const { data, error } = await supabase.rpc('admin_adjust_event_score', {
+                p_event_id: ev.id, p_user_id: row.user_id, p_amount: amount, p_reason: reason.trim(),
+            });
+            if (error) { toast.error(error.message); return false; }
+            if (lastOpsEventId.current === ev.id) setLedgers(prev => ({ ...prev, [row.user_id]: data }));
+            await logAction(user.id, 'live_event_score_adjust', 'live_event', ev.id,
+                { target_user: row.user_id, amount, reason: reason.trim(), adjustment_id: data?.adjustment_id });
+            toast.success(`${amount > 0 ? '+' : ''}${amount} on ${who}'s event score`);
+            fetchScoring(ev.id);
+            fetchOps(ev.id);
+            return true;
+        } finally {
+            setAdjBusy(null);
+        }
+    };
+
+    const removeScoreAdjustment = async (ev, row, adj) => {
+        if (!window.confirm(`Remove the ${adj.amount > 0 ? '+' : ''}${adj.amount} adjustment ("${adj.reason}") from ${rowName(row)}? Their score goes back to what the ledger says.`)) return;
+        setAdjBusy(row.user_id);
+        try {
+            const { data, error } = await supabase.rpc('admin_remove_event_score_adjustment', { p_id: adj.id });
+            if (error) { toast.error(error.message); return; }
+            if (lastOpsEventId.current === ev.id) setLedgers(prev => ({ ...prev, [row.user_id]: data }));
+            await logAction(user.id, 'live_event_score_adjust_removed', 'live_event', ev.id,
+                { target_user: row.user_id, amount: adj.amount, reason: adj.reason, adjustment_id: adj.id });
+            toast.success('Adjustment removed');
+            fetchScoring(ev.id);
+            fetchOps(ev.id);
+        } finally {
+            setAdjBusy(null);
+        }
+    };
+
+    const exportScoringCsv = (ev) => {
+        const blob = new Blob([scoringCsv(scoring?.rows ?? [])], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${ev.slug}-scoring.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
+
     // Called from both the standings rows (display_name) and the roster
     // rows (name) — same action, two shapes of the same person.
     const disqualify = async (ev, row, disqualified) => {
@@ -363,6 +447,7 @@ const setCheckin = async (ev, row, present) => {
         await logAction(user.id, disqualified ? 'live_event_disqualify' : 'live_event_requalify', 'live_event', ev.id, { target_user: row.user_id });
         toast.success(`${who} ${disqualified ? 'disqualified' : 'requalified'}`);
         fetchOps(ev.id);
+        fetchScoring(ev.id);
         fetchCounts(ev.id);
         fetchRegistrations(ev.id);
     };
@@ -788,6 +873,21 @@ const setCheckin = async (ev, row, present) => {
                             resultsCount={counts.results}
                             onDisqualify={(row, dq) => disqualify(selected, row, dq)}
                             onExportCsv={() => exportCsv(selected)}
+                        />
+                    )}
+
+                    {selected.status !== 'draft' && (
+                        <ScoringPanel
+                            ev={selected}
+                            data={scoring}
+                            ledgers={ledgers}
+                            busy={adjBusy}
+                            resultsCount={counts.results}
+                            onRefresh={() => fetchScoring(selected.id)}
+                            onOpenUser={(userId) => fetchUserLedger(selected.id, userId)}
+                            onAdjust={(row, amount, reason) => adjustScore(selected, row, amount, reason)}
+                            onRemoveAdjustment={(row, adj) => removeScoreAdjustment(selected, row, adj)}
+                            onExportCsv={() => exportScoringCsv(selected)}
                         />
                     )}
 
@@ -2466,6 +2566,442 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                 </div>
             </div>
         </section>
+    );
+}
+
+// ─── Scoring breakdown ───────────────────────────────────────────
+// What scored for whom. The server labels every ledger row (bucket,
+// counted, reason) from the SAME predicate the board filters, so these
+// are the app's numbers with the working shown — never a re-derivation.
+// Event adjustments are event-scoped: the board moves, the wallet does
+// not. Labels and maths live in shared/eventScoring.ts (jest-covered);
+// this component only renders.
+
+const BUCKET_TONE = {
+    activity:         '#1A1A1A',
+    streak:           '#F59E0B',
+    challenge:        '#0EA5E9',
+    bonus:            '#0EA5E9',
+    other:            '#888888',
+    adjustment:       '#8B5CF6',
+    penalty:          '#F43F5E',
+    event_adjustment: '#8B5CF6',
+};
+
+const signed = (n) => (n > 0 ? `+${n}` : String(n));
+
+function ScoringPanel({ ev, data, ledgers, busy, resultsCount, onRefresh, onOpenUser, onAdjust, onRemoveAdjustment, onExportCsv }) {
+    const [query, setQuery] = useState('');
+    const [openUser, setOpenUser] = useState(null);     // user_id whose ledger is expanded
+    const [adjustFor, setAdjustFor] = useState(null);   // user_id with the adjust form open
+    const [amount, setAmount] = useState('');
+    const [reason, setReason] = useState('');
+    // The panel isn't remounted per event — nothing may carry over.
+    useEffect(() => { setQuery(''); setOpenUser(null); setAdjustFor(null); setAmount(''); setReason(''); }, [ev.id]);
+
+    const rows = data?.rows ?? [];
+    const shown = useMemo(() => searchScoringRows(rows, query), [rows, query]);
+    const buckets = useMemo(() => activeBuckets(rows), [rows]);
+    const totals = useMemo(() => scoringTotals(rows), [rows]);
+    const chips = useMemo(() => ruleChips(data?.event ?? ev), [data, ev]);
+    const frozen = data?.event?.frozen ?? ['revealed', 'settled', 'archived'].includes(ev.status);
+
+    const fmtTime = (iso) => iso
+        ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : '—';
+
+    const toggleUser = (userId) => {
+        const next = openUser === userId ? null : userId;
+        setOpenUser(next);
+        if (next && ledgers[next] === undefined) onOpenUser(next);
+    };
+
+    const openAdjust = (userId) => {
+        if (adjustFor === userId) { setAdjustFor(null); return; }
+        setAdjustFor(userId); setAmount(''); setReason('');
+        if (openUser !== userId) toggleUser(userId);
+    };
+
+    const submitAdjust = async (row) => {
+        const n = parseInt(amount, 10);
+        const ok = await onAdjust(row, n, reason);
+        if (ok) { setAdjustFor(null); setAmount(''); setReason(''); }
+    };
+
+    const Stat = ({ label, value, accent }) => (
+        <div className="rounded-2xl border border-[#E6E6E1] bg-[#FAFAF8] px-5 py-4">
+            <div className="text-2xl font-light tracking-tight" style={{ color: accent ?? '#1A1A1A' }}>{value ?? '—'}</div>
+            <div className="text-[9px] font-black uppercase tracking-[0.25em] text-[#999999] mt-1">{label}</div>
+        </div>
+    );
+
+    return (
+        <section>
+            <div className="flex items-center gap-4 mb-4 px-1">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-[#8B5CF6]/10 border-[#8B5CF6]/25">
+                    <Sigma size={18} className="text-[#8B5CF6]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Scoring — what counts for whom</h2>
+                    <p className="text-[12px] text-[#888888] leading-snug">
+                        Every point on the board, split by where it came from, plus what each person earned that is NOT
+                        counting and why. Open a row for their ledger. Adjustments made here move this board only — the
+                        member&apos;s wallet is untouched.
+                    </p>
+                </div>
+                <button
+                    onClick={onRefresh}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all shrink-0"
+                >
+                    <RefreshCw size={13} /> Refresh
+                </button>
+                <button
+                    onClick={onExportCsv}
+                    disabled={rows.length === 0}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all disabled:opacity-40 shrink-0"
+                >
+                    <Download size={13} /> Export CSV
+                </button>
+            </div>
+
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 space-y-6">
+                {/* The rules in force — the numbers below are never read without them. */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[9px] font-black uppercase tracking-[0.25em] text-[#999999] mr-1">Counting</span>
+                    {chips.map((c) => (
+                        <span
+                            key={c.key}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold uppercase tracking-[0.12em] ${
+                                c.on
+                                    ? 'bg-[#10B981]/10 border-[#10B981]/25 text-[#0F766E]'
+                                    : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#AAAAAA] line-through decoration-[#CCCCCC]'
+                            }`}
+                        >
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c.on ? '#10B981' : '#CCCCCC' }} />
+                            {c.label}
+                        </span>
+                    ))}
+                    <span className="text-[11px] text-[#AAAAAA] ml-1">— change these under Scoring in the editor below</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <Stat label="On the board" value={data && !data.error ? totals.people : undefined} />
+                    <Stat label="Points counting" value={data && !data.error ? totals.points : undefined} />
+                    <Stat label="Earned, not counting" value={data && !data.error ? totals.excludedPoints : undefined} accent={totals.excludedPoints > 0 ? '#B45309' : undefined} />
+                    <Stat label="Penalties" value={data && !data.error ? totals.byBucket.penalty : undefined} accent={totals.byBucket.penalty < 0 ? '#F43F5E' : undefined} />
+                    <Stat label="Event adjustments" value={data && !data.error ? signed(totals.byBucket.event_adjustment) : undefined} accent={totals.adjustmentsN > 0 ? '#8B5CF6' : undefined} />
+                </div>
+
+                {!data ? (
+                    <p className="text-[13px] text-[#999999]">Loading the breakdown…</p>
+                ) : data.error ? (
+                    <p className="text-[13px] text-[#F43F5E]">Could not load the breakdown: {data.error}</p>
+                ) : rows.length === 0 ? (
+                    <p className="text-[13px] text-[#999999]">Nobody has anything on the ledger for this window yet.</p>
+                ) : (
+                    <>
+                        <div className="flex items-center gap-3">
+                            <div className="relative flex-1 max-w-sm">
+                                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#AAAAAA]" />
+                                <input
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    placeholder="Name, username or POWR ID"
+                                    className="w-full h-9 pl-8 pr-3 rounded-xl border border-[#E6E6E1] bg-[#FAFAF8] text-[13px] text-[#1A1A1A] placeholder:text-[#BBBBBB] focus:outline-none focus:border-[#8B5CF6]"
+                                />
+                            </div>
+                            <span className="text-[11px] text-[#999999]">
+                                {shown.length === rows.length ? `${rows.length} people` : `${shown.length} of ${rows.length}`}
+                                {data.generated_at && ` · as of ${fmtTime(data.generated_at)}`}
+                            </span>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <thead>
+                                    <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-[#999999] border-b border-[#F0F0EC]">
+                                        <th className="text-left py-2 pr-3">#</th>
+                                        <th className="text-left py-2 pr-3">Member</th>
+                                        <th className="text-right py-2 pr-3">Points</th>
+                                        {buckets.map((b) => (
+                                            <th key={b} className="text-right py-2 pr-3 whitespace-nowrap">{SCORE_BUCKETS.find(x => x.key === b)?.short ?? b}</th>
+                                        ))}
+                                        <th className="text-left py-2 pr-3">Not counting</th>
+                                        <th className="text-right py-2 pr-3">Sessions</th>
+                                        <th className="text-left py-2 pr-3">Last counted</th>
+                                        <th className="text-right py-2">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[#F6F6F3]">
+                                    {shown.map((r) => {
+                                        const isOpen = openUser === r.user_id;
+                                        const ledger = ledgers[r.user_id];
+                                        const excl = excludedSummary(r);
+                                        return (
+                                            <React.Fragment key={r.user_id}>
+                                                <tr className={isOpen ? 'bg-[#FAFAF8]' : ''}>
+                                                    <td className="py-2.5 pr-3 font-mono text-[#888888]">{r.rank}</td>
+                                                    <td className="py-2.5 pr-3">
+                                                        <button
+                                                            onClick={() => toggleUser(r.user_id)}
+                                                            className="inline-flex items-center gap-1.5 font-semibold text-[#1A1A1A] hover:text-[#8B5CF6] transition-colors text-left"
+                                                        >
+                                                            {rowName(r)}
+                                                            <ChevronDown size={12} className={`text-[#AAAAAA] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                                                        </button>
+                                                        {r.username && <span className="text-[#AAAAAA] ml-2">@{r.username}</span>}
+                                                        {r.gate_met === false && (
+                                                            <span
+                                                                className="ml-2 px-2 py-0.5 rounded-full bg-[#E8D200]/15 border border-[#E8D200]/40 text-[#8a7600] text-[9px] font-black uppercase tracking-[0.12em]"
+                                                                title="Below the invite requirement — drops at Settle unless they reach it"
+                                                            >
+                                                                {r.gate_count} friends
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-2.5 pr-3 text-right font-mono font-semibold">{r.points}</td>
+                                                    {buckets.map((b) => {
+                                                        const v = r.by_bucket?.[b] ?? 0;
+                                                        return (
+                                                            <td key={b} className="py-2.5 pr-3 text-right font-mono" style={{ color: v === 0 ? '#CCCCCC' : BUCKET_TONE[b] }}>
+                                                                {v === 0 ? '·' : (b === 'penalty' || b === 'event_adjustment' || b === 'adjustment') ? signed(v) : v}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                    <td className="py-2.5 pr-3 text-[12px] text-[#B45309] max-w-[16rem] truncate" title={excl}>
+                                                        {excl || <span className="text-[#CCCCCC]">·</span>}
+                                                    </td>
+                                                    <td className="py-2.5 pr-3 text-right font-mono">{r.counted_sessions}</td>
+                                                    <td className="py-2.5 pr-3 text-[#888888] whitespace-nowrap">{fmtTime(r.last_counted_at)}</td>
+                                                    <td className="py-2.5 text-right whitespace-nowrap">
+                                                        <Link
+                                                            to={`/admin/users/${r.user_id}`}
+                                                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[9.5px] font-bold uppercase tracking-[0.12em] bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] transition-all mr-2"
+                                                            title="Open their admin profile (wallet, sessions, review)"
+                                                        >
+                                                            <ExternalLink size={11} /> Profile
+                                                        </Link>
+                                                        <button
+                                                            onClick={() => openAdjust(r.user_id)}
+                                                            disabled={frozen || busy === r.user_id}
+                                                            title={frozen ? 'Results are frozen once revealed' : 'Add to or take from their score on this board'}
+                                                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[9.5px] font-bold uppercase tracking-[0.12em] transition-all disabled:opacity-40 bg-[#8B5CF6]/10 border-[#8B5CF6]/25 text-[#6D28D9] hover:bg-[#8B5CF6]/15"
+                                                        >
+                                                            <Scale size={11} /> Adjust
+                                                        </button>
+                                                    </td>
+                                                </tr>
+
+                                                {isOpen && (
+                                                    <tr>
+                                                        <td colSpan={7 + buckets.length} className="bg-[#FAFAF8] px-5 py-4">
+                                                            <UserLedger
+                                                                row={r}
+                                                                ledger={ledger}
+                                                                frozen={frozen}
+                                                                busy={busy === r.user_id}
+                                                                adjusting={adjustFor === r.user_id}
+                                                                amount={amount}
+                                                                reason={reason}
+                                                                setAmount={setAmount}
+                                                                setReason={setReason}
+                                                                onSubmit={() => submitAdjust(r)}
+                                                                onCancel={() => setAdjustFor(null)}
+                                                                onRemoveAdjustment={(adj) => onRemoveAdjustment(r, adj)}
+                                                                fmtTime={fmtTime}
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {resultsCount > 0 && !frozen && (
+                            <p className="text-[11px] text-[#B45309] flex items-center gap-1.5">
+                                <AlertTriangle size={12} />
+                                Final results have already been saved — after adjusting anyone, press Re-settle so the saved results pick it up.
+                            </p>
+                        )}
+                        {frozen && (
+                            <p className="text-[11px] text-[#999999] flex items-center gap-1.5">
+                                <Lock size={12} /> Results are revealed — the board is frozen and cannot be adjusted.
+                            </p>
+                        )}
+                    </>
+                )}
+            </div>
+        </section>
+    );
+}
+
+// One person's ledger inside the breakdown: activity split, event
+// adjustments (with the form), then every candidate row — counted or
+// not, and if not, why.
+function UserLedger({ row, ledger, frozen, busy, adjusting, amount, reason, setAmount, setReason, onSubmit, onCancel, onRemoveAdjustment, fmtTime }) {
+    const acts = Object.entries(row.by_activity ?? {}).sort((a, b) => b[1] - a[1]);
+    const adjustments = ledger?.adjustments ?? [];
+    const rows = ledger?.rows ?? [];
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-start gap-8 flex-wrap">
+                {/* By activity */}
+                <div>
+                    <div className="text-[9px] font-black uppercase tracking-[0.25em] text-[#999999] mb-2">By activity</div>
+                    {acts.length === 0 ? (
+                        <span className="text-[12px] text-[#AAAAAA]">No activity points counting</span>
+                    ) : (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            {acts.map(([k, v]) => (
+                                <span key={k} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-[#E6E6E1] text-[11px] text-[#1A1A1A]">
+                                    <span className="capitalize">{k}</span>
+                                    <span className="font-mono font-semibold">{v}</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Event adjustments */}
+                <div className="min-w-[18rem] flex-1">
+                    <div className="text-[9px] font-black uppercase tracking-[0.25em] text-[#999999] mb-2">
+                        Event adjustments{adjustments.length > 0 ? ` — ${adjustments.length}` : ''}
+                    </div>
+                    {adjustments.length === 0 && !adjusting && (
+                        <span className="text-[12px] text-[#AAAAAA]">None</span>
+                    )}
+                    <div className="space-y-1.5">
+                        {adjustments.map((a) => (
+                            <div key={a.id} className="flex items-center gap-3 text-[12px]">
+                                <span className="font-mono font-semibold w-12 text-right" style={{ color: a.amount < 0 ? '#F43F5E' : '#6D28D9' }}>{signed(a.amount)}</span>
+                                <span className="text-[#1A1A1A] flex-1 min-w-0 truncate" title={a.reason}>{a.reason}</span>
+                                <span className="text-[#999999] whitespace-nowrap">{a.admin_name} · {fmtTime(a.created_at)}</span>
+                                {!frozen && (
+                                    <button
+                                        onClick={() => onRemoveAdjustment(a)}
+                                        disabled={busy}
+                                        title="Remove this adjustment"
+                                        className="text-[#BBBBBB] hover:text-[#F43F5E] transition-colors disabled:opacity-40"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    {adjusting && (
+                        <div className="mt-3 flex items-end gap-2 flex-wrap">
+                            <label className="block">
+                                <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-[#999999] mb-1">Points (±)</span>
+                                <input
+                                    type="number"
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    placeholder="-10"
+                                    className="w-24 h-9 px-3 rounded-xl border border-[#E6E6E1] bg-white text-[13px] font-mono text-[#1A1A1A] focus:outline-none focus:border-[#8B5CF6]"
+                                />
+                            </label>
+                            <label className="block flex-1 min-w-[14rem]">
+                                <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-[#999999] mb-1">Reason (shown here and in the audit log)</span>
+                                <input
+                                    value={reason}
+                                    onChange={(e) => setReason(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') onSubmit(); }}
+                                    placeholder="Duplicate wearable session on 29 Aug"
+                                    className="w-full h-9 px-3 rounded-xl border border-[#E6E6E1] bg-white text-[13px] text-[#1A1A1A] placeholder:text-[#BBBBBB] focus:outline-none focus:border-[#8B5CF6]"
+                                />
+                            </label>
+                            <button
+                                onClick={onSubmit}
+                                disabled={busy}
+                                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-[#8B5CF6] text-white text-[10px] font-bold uppercase tracking-[0.15em] hover:bg-[#7C3AED] transition-all disabled:opacity-40"
+                            >
+                                {busy ? <LoaderCircle size={12} className="animate-spin" /> : <Check size={12} />} Apply
+                            </button>
+                            <button
+                                onClick={onCancel}
+                                disabled={busy}
+                                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10px] font-bold uppercase tracking-[0.15em] text-[#555555] hover:text-[#1A1A1A] transition-all disabled:opacity-40"
+                            >
+                                <X size={12} /> Cancel
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* The ledger */}
+            <div>
+                <div className="text-[9px] font-black uppercase tracking-[0.25em] text-[#999999] mb-2">
+                    Ledger — this window
+                    {ledger?.points !== undefined && ledger?.points !== null && (
+                        <span className="ml-2 normal-case tracking-normal font-normal text-[11px] text-[#888888]">the app is showing them {ledger.points} pts</span>
+                    )}
+                </div>
+                {ledger === undefined ? (
+                    <p className="text-[12px] text-[#AAAAAA]">Loading…</p>
+                ) : ledger === null ? (
+                    <p className="text-[12px] text-[#F43F5E]">Could not load their ledger.</p>
+                ) : rows.length === 0 ? (
+                    <p className="text-[12px] text-[#AAAAAA]">No ledger rows touch this window.</p>
+                ) : (
+                    <table className="w-full text-[12px]">
+                        <thead>
+                            <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-[#999999] border-b border-[#EDEDE8]">
+                                <th className="text-left py-1.5 pr-3">When</th>
+                                <th className="text-left py-1.5 pr-3">What</th>
+                                <th className="text-left py-1.5 pr-3">Bucket</th>
+                                <th className="text-right py-1.5 pr-3">Points</th>
+                                <th className="text-left py-1.5">Counting?</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#EFEFEA]">
+                            {rows.map((l) => (
+                                <tr key={l.tx_id} className={l.counted ? '' : 'opacity-70'}>
+                                    <td className="py-1.5 pr-3 text-[#888888] whitespace-nowrap">
+                                        {fmtTime(l.session_id ? l.ended_at : l.created_at)}
+                                        {l.session_id && l.created_at && Math.abs(new Date(l.created_at) - new Date(l.ended_at)) > 6 * 3600 * 1000 && (
+                                            <span className="block text-[10px] text-[#BBBBBB]">credited {fmtTime(l.created_at)}</span>
+                                        )}
+                                    </td>
+                                    <td className="py-1.5 pr-3 text-[#1A1A1A]">
+                                        {ledgerRowTitle(l)}
+                                        {l.flagged && (
+                                            <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[#F43F5E]/10 border border-[#F43F5E]/25 text-[#F43F5E] text-[9px] font-black uppercase tracking-[0.12em]">
+                                                <ShieldAlert size={9} /> flagged
+                                            </span>
+                                        )}
+                                        {l.description && !l.session_id && (
+                                            <span className="block text-[11px] text-[#999999] truncate max-w-[28rem]" title={l.description}>{l.description}</span>
+                                        )}
+                                    </td>
+                                    <td className="py-1.5 pr-3 text-[#888888]">{bucketLabel(l.bucket)}</td>
+                                    <td className="py-1.5 pr-3 text-right font-mono font-semibold" style={{ color: l.amount < 0 ? '#F43F5E' : l.counted ? '#1A1A1A' : '#AAAAAA' }}>
+                                        {signed(l.amount)}
+                                    </td>
+                                    <td className="py-1.5">
+                                        {l.counted ? (
+                                            <span className="inline-flex items-center gap-1 text-[#0F766E] font-semibold"><Check size={11} /> Counted</span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1.5 text-[#B45309]">
+                                                <X size={11} /> {reasonLabel(l.reason)}
+                                                {reasonIsSwitch(l.reason) && (
+                                                    <span className="text-[9px] font-black uppercase tracking-[0.12em] text-[#AAAAAA]">· editor switch</span>
+                                                )}
+                                            </span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+        </div>
     );
 }
 
