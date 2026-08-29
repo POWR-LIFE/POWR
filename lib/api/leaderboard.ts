@@ -9,6 +9,10 @@ export type LeaderboardEntry = {
     is_pro: boolean;
     points: number;
     rank: number;
+    /** Level basis (positive ledger + pending vault). null → no pill. */
+    total_earned: number | null;
+    /** Ledger points since UTC midnight. 0 → no chip. */
+    today_points: number;
 };
 
 export type LeaderboardMetric = 'weekly' | 'alltime';
@@ -39,5 +43,7 @@ export async function fetchLeaderboard(
         is_pro: row.is_pro,
         points: row[pointsCol] ?? 0,
         rank: i + 1,
+        total_earned: row.total_earned ?? null,
+        today_points: row.today_points ?? 0,
     }));
 }
