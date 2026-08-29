@@ -167,6 +167,10 @@ export type EventBoardEntry = {
     is_pro: boolean;
     points: number;
     prize_label?: string | null;
+    /** Level basis; absent on preview theatre rows. */
+    total_earned?: number | null;
+    /** Ledger points since UTC midnight; absent on preview theatre rows. */
+    today_points?: number | null;
 };
 
 export type EventLeaderboard = {

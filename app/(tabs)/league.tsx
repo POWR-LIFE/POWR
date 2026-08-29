@@ -44,6 +44,7 @@ import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
 import type { BoardPreviewState, EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
 import { shortDate } from '@/lib/liveEventDisplay';
+import { getLevelInfo } from '@/constants/levels';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ const BRONZE      = '#cd7f32';
 const BRONZE_SOFT = '#E8A464';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER  = 'rgba(255,255,255,0.08)';
+const AVATAR_RING = 'rgba(255,255,255,0.14)';
 const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.25)';
 const DIM     = 'rgba(255,255,255,0.5)';
@@ -497,6 +499,8 @@ const asEntries = (rows: EventBoardEntry[] | undefined): LeaderboardEntry[] =>
     is_pro: r.is_pro,
     points: r.points,
     rank: r.rank,
+    total_earned: r.total_earned ?? null,
+    today_points: r.today_points ?? 0,
   }));
 
 /**
@@ -1205,15 +1209,52 @@ function LadderRow({
           </View>
         )}
       </View>
-      <View style={{ flex: 1, gap: 1 }}>
+      <View style={{ flex: 1, gap: 3 }}>
         <Text style={[styles.ladderName, isMe && styles.ladderNameMe]} numberOfLines={1}>
           {memberLabel(entry.display_name, entry.username)}{isMe ? ' (You)' : ''}
         </Text>
-        {showPro && entry.is_pro && <ProBadge size="sm" />}
+        <RowMeta entry={entry} showPro={showPro} />
       </View>
       <Text style={[styles.ladderPts, isMe && styles.ladderPtsMe]}>
         {entry.points.toLocaleString()}
       </Text>
+    </View>
+  );
+}
+
+// ─── Row meta: level pill · pro · today chip ──────────────────────────────────
+// Level derives from total_earned (profiles.level is dead — always 1). The
+// today chip only renders when > 0, so it reads as "active today" rather than
+// a column of zeros. Nothing to show → renders nothing (no phantom gap).
+
+function LevelPill({ totalEarned }: { totalEarned: number }) {
+  const { current } = getLevelInfo(totalEarned);
+  return (
+    <View style={[styles.levelPill, { backgroundColor: current.pill.bg, borderColor: current.pill.border }]}>
+      <Text style={[styles.levelPillText, { color: current.pill.text }]}>LVL {current.level}</Text>
+    </View>
+  );
+}
+
+function TodayChip({ points }: { points: number }) {
+  return (
+    <View style={styles.todayChip}>
+      <Ionicons name="flash" size={8} color={GREEN} />
+      <Text style={styles.todayChipText}>+{points.toLocaleString()} TODAY</Text>
+    </View>
+  );
+}
+
+function RowMeta({ entry, showPro }: { entry: LeaderboardEntry; showPro: boolean }) {
+  const hasLevel = entry.total_earned != null;
+  const hasPro = showPro && entry.is_pro;
+  const hasToday = entry.today_points > 0;
+  if (!hasLevel && !hasPro && !hasToday) return null;
+  return (
+    <View style={styles.rowMeta}>
+      {hasLevel && <LevelPill totalEarned={entry.total_earned!} />}
+      {hasPro && <ProBadge size="sm" />}
+      {hasToday && <TodayChip points={entry.today_points} />}
     </View>
   );
 }
@@ -1248,23 +1289,25 @@ function RealLeaderRow({
         <Text style={[styles.leaderRank, { color: accentColor }]}>{entry.rank}</Text>
       </View>
 
-      {/* Avatar */}
+      {/* Avatar — hairline ring on every row; medal / gold ring for top 3 / you */}
       <View style={[
-        styles.leaderAvatar,
-        isTop && { borderWidth: 1.5, borderColor: `${accentColor}50` },
-        isMe && !isTop && { borderWidth: 1, borderColor: `${GOLD}30` },
+        styles.leaderAvatarRing,
+        isTop && { borderColor: `${accentColor}70` },
+        isMe && !isTop && { borderColor: `${GOLD}55` },
       ]}>
-        {entry.avatar_url ? (
-          <Image source={{ uri: entry.avatar_url }} style={{ flex: 1 }} contentFit="cover" />
-        ) : (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: CARD_BG }}>
-            <Text style={{ fontSize: 15, fontWeight: '500', color: isTop ? accentColor : DIM }}>{initials}</Text>
-          </View>
-        )}
+        <View style={styles.leaderAvatar}>
+          {entry.avatar_url ? (
+            <Image source={{ uri: entry.avatar_url }} style={{ flex: 1 }} contentFit="cover" />
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: CARD_BG }}>
+              <Text style={{ fontSize: 15, fontWeight: '500', color: isTop ? accentColor : DIM }}>{initials}</Text>
+            </View>
+          )}
+        </View>
       </View>
 
-      {/* Name + pro badge */}
-      <View style={{ flex: 1, gap: 3 }}>
+      {/* Name + meta row (level · pro · today) */}
+      <View style={{ flex: 1, gap: 4 }}>
         <Text
           style={[styles.leaderName, isMe && styles.leaderNameMe, isTop && { color: TEXT, fontWeight: '400' }]}
           numberOfLines={1}
@@ -1272,7 +1315,7 @@ function RealLeaderRow({
           {memberLabel(entry.display_name, entry.username)}
           {isMe ? ' (You)' : ''}
         </Text>
-        {showPro && entry.is_pro && <ProBadge size="sm" />}
+        <RowMeta entry={entry} showPro={showPro} />
       </View>
 
       {/* Points */}
@@ -1416,7 +1459,17 @@ const styles = StyleSheet.create({
 
   // ── Leaderboard rows (real data)
   leaderRowMe: { backgroundColor: 'rgba(232,210,0,0.05)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.18)' },
-  leaderAvatar: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden', backgroundColor: CARD_BG },
+  leaderAvatarRing: { width: 48, height: 48, borderRadius: 24, padding: 2, borderWidth: 1, borderColor: AVATAR_RING },
+  leaderAvatar: { flex: 1, borderRadius: 21, overflow: 'hidden', backgroundColor: CARD_BG },
+  rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  levelPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 100, borderWidth: 1 },
+  levelPillText: { fontSize: 8, fontWeight: '700', letterSpacing: 1 },
+  todayChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 100,
+    backgroundColor: 'rgba(74,222,128,0.10)', borderWidth: 1, borderColor: 'rgba(74,222,128,0.28)',
+  },
+  todayChipText: { fontSize: 8, fontWeight: '700', letterSpacing: 0.8, color: GREEN },
   leaderPts: { fontSize: 14, fontWeight: '400', color: MUTED },
 
   // ── Section header with rule
@@ -1504,7 +1557,7 @@ const styles = StyleSheet.create({
   },
   ladderRank: { width: 30, fontSize: 11, fontWeight: '500', color: MUTED, letterSpacing: 0.3 },
   ladderRankMe: { color: GOLD, fontWeight: '700' },
-  ladderAvatar: { width: 30, height: 30, borderRadius: 15, overflow: 'hidden', backgroundColor: CARD_BG },
+  ladderAvatar: { width: 30, height: 30, borderRadius: 15, overflow: 'hidden', backgroundColor: CARD_BG, borderWidth: 1, borderColor: AVATAR_RING },
   ladderName: { fontSize: 12, fontWeight: '300', color: DIM },
   ladderNameMe: { color: TEXT, fontWeight: '500' },
   ladderPts: { fontSize: 12, fontWeight: '400', color: MUTED },
