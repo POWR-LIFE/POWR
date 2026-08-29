@@ -22,6 +22,9 @@
 --
 -- The league views keep the wallet definition (LEAGUE_LIVE=false, dormant).
 -- total_earned (level basis) is unchanged. No client change: same keys.
+--
+-- Prod: applied via MCP in two steps on 08-29 (event_board_today_chip_event_scoped,
+-- then _boundary for the (start, end] fix); this file is the merged result.
 -- =============================================================
 
 -- ── 1. Event-scoped row extras ───────────────────────────────────────────────
@@ -49,8 +52,10 @@ as $$
     coalesce((
       select sum(c.amount)
       from public._live_event_counted(p_event_id, p_user_id) c, day
-      where c.created_at >= day.start_at
-        and c.created_at <  day.start_at + interval '1 day'
+      -- (start, end]: counted_at is the activity END, and a walking day ends
+      -- exactly on the day boundary — that row belongs to the day that ended.
+      where c.created_at >  day.start_at
+        and c.created_at <= day.start_at + interval '1 day'
     ), 0)::int as today_points;
 $$;
 
