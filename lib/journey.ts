@@ -353,14 +353,6 @@ export function isSectionActive(section: JourneySection): boolean {
 
 // ─── League utilities ─────────────────────────────────────────────────────────
 
-export const LEAGUE_TIERS = [
-  { tier: 'Starter', colour: '#9ca3af', threshold: 0   },
-  { tier: 'Bronze',  colour: '#cd7f32', threshold: 200 },
-  { tier: 'Silver',  colour: '#c0c0c0', threshold: 400 },
-  { tier: 'Gold',    colour: '#facc15', threshold: 700 },
-  { tier: 'Elite',   colour: '#fb923c', threshold: 1000 },
-];
-
 export function msUntilLeagueReset(): number {
   const now = new Date();
   const nextSunday = new Date(now);
