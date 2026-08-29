@@ -16,12 +16,12 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, Stop } from 'react-native-svg';
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Path, Polyline, Stop } from 'react-native-svg';
 
 import { ProBadge } from '@/components/ui/ProBadge';
 import { ACHIEVEMENTS } from '@/constants/achievements';
 import { ACTIVITIES, ACTIVITY_ORDER, type ActivityType } from '@/constants/activities';
-import { getLevelInfo } from '@/constants/levels';
+import { TIER_META, getLevelInfo, type LevelDef } from '@/constants/levels';
 import { supabase } from '@/lib/supabase';
 import { fetchAchievements, type Achievement } from '@/lib/api/pro-achievements';
 import { fetchEarnedAchievementCount } from '@/lib/api/achievement-stats';
@@ -37,7 +37,6 @@ import {
     type PublicProfile,
 } from '@/lib/api/user';
 import { fetchProfileStats, type ProfileStats } from '@/lib/api/user-stats';
-import { LEAGUE_TIERS } from '@/lib/journey';
 
 const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get('window');
 
@@ -48,6 +47,7 @@ const TEXT   = '#F2F2F2';
 const MUTED  = 'rgba(255,255,255,0.25)';
 const DIM    = 'rgba(255,255,255,0.5)';
 const BORDER = 'rgba(255,255,255,0.08)';
+const AVATAR_RING = 'rgba(255,255,255,0.14)'; // matches League row avatars
 const THUMB  = Math.floor((SCREEN_W - 32 - 8) / 3);
 
 interface UserProfileSheetProps {
@@ -210,7 +210,6 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                                 <AvatarWithRing
                                     avatarUrl={profile.avatar_url}
                                     initials={initials}
-                                    totalPoints={profileLevelBasis}
                                     overCover={!!profile.cover_url}
                                 />
                                 <View style={s.identity}>
@@ -222,9 +221,9 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                                     ) : null}
                                     <View style={s.identityPills}>
                                         {profile.is_pro && <ProBadge size="sm" />}
-                                        <TierPill totalPoints={profileLevelBasis} />
+                                        <TierPill level={computedLevel} />
                                         <View style={s.levelPill}>
-                                            <Text style={s.levelText}>LVL {computedLevel.level}</Text>
+                                            <Text style={s.levelText} numberOfLines={1}>LVL {computedLevel.level} · {computedLevel.name}</Text>
                                         </View>
                                     </View>
                                 </View>
@@ -562,55 +561,33 @@ function RelationshipDepth({ social }: { social: ProfileSocial }) {
     );
 }
 
-// ─── AvatarWithRing — tier progress ring around avatar ───────────────────────
+// ─── AvatarWithRing — hairline ring around avatar ────────────────────────────
+// Static ring, same treatment as the League row avatars. It used to be a
+// progress arc (first Bronze/Silver/Gold bands, then level progress) — dropped
+// 2026-08-29 as it read as a mystery metric; LVL carries progression.
 
 function AvatarWithRing({
     avatarUrl,
     initials,
-    totalPoints,
     overCover,
 }: {
     avatarUrl: string | null;
     initials: string;
-    totalPoints: number;
     overCover: boolean;
 }) {
     const SIZE = 80;
     const RING_PAD = 5;
     const OUTER = SIZE + RING_PAD * 2;
-    const R = (OUTER - 3) / 2;
-    const C = 2 * Math.PI * R;
-
-    // Tier progression
-    const { tier, progress, nextTier } = getTierProgress(totalPoints);
-    const tierColour = tier.colour;
 
     return (
         <View style={[
-            { width: OUTER, height: OUTER, alignItems: 'center', justifyContent: 'center' },
+            {
+                width: OUTER, height: OUTER, borderRadius: OUTER / 2,
+                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1, borderColor: AVATAR_RING,
+            },
             overCover && { marginTop: -OUTER / 2 - 4 },
         ]}>
-            {/* Ring */}
-            <Svg width={OUTER} height={OUTER} style={{ position: 'absolute' }}>
-                <Defs>
-                    <SvgLinearGradient id="tierGrad" x1="0" y1="0" x2="1" y2="1">
-                        <Stop offset="0" stopColor={tierColour} stopOpacity="1" />
-                        <Stop offset="1" stopColor={tierColour} stopOpacity="0.4" />
-                    </SvgLinearGradient>
-                </Defs>
-                <Circle cx={OUTER / 2} cy={OUTER / 2} r={R} stroke="rgba(255,255,255,0.06)" strokeWidth={2.5} fill="none" />
-                <Circle
-                    cx={OUTER / 2} cy={OUTER / 2} r={R}
-                    stroke="url(#tierGrad)"
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                    fill="none"
-                    strokeDasharray={`${C * progress} ${C}`}
-                    transform={`rotate(-90 ${OUTER / 2} ${OUTER / 2})`}
-                />
-            </Svg>
-
-            {/* Avatar */}
             <View style={{
                 width: SIZE, height: SIZE, borderRadius: SIZE / 2,
                 overflow: 'hidden',
@@ -628,34 +605,17 @@ function AvatarWithRing({
     );
 }
 
-function getTierProgress(points: number): {
-    tier: typeof LEAGUE_TIERS[number];
-    nextTier: typeof LEAGUE_TIERS[number] | null;
-    progress: number;
-} {
-    let tier = LEAGUE_TIERS[0];
-    let nextTier: typeof LEAGUE_TIERS[number] | null = LEAGUE_TIERS[1] ?? null;
-    for (let i = 0; i < LEAGUE_TIERS.length; i++) {
-        if (points >= LEAGUE_TIERS[i].threshold) {
-            tier = LEAGUE_TIERS[i];
-            nextTier = LEAGUE_TIERS[i + 1] ?? null;
-        }
-    }
-    if (!nextTier) return { tier, nextTier: null, progress: 1 };
-    const span = nextTier.threshold - tier.threshold;
-    const into = points - tier.threshold;
-    const progress = Math.min(1, Math.max(0, into / span));
-    return { tier, nextTier, progress };
-}
+// ─── TierPill — level tier (Recruit / Athlete / Elite / Legend) ──────────────
+// Sits beside the LVL pill, which carries the level number + name. Colours come
+// from the level's own pill palette so it matches Home, League and the
+// level-up celebration.
 
-// ─── TierPill ────────────────────────────────────────────────────────────────
-
-function TierPill({ totalPoints }: { totalPoints: number }) {
-    const { tier } = getTierProgress(totalPoints);
+function TierPill({ level }: { level: LevelDef }) {
+    const { pill } = level;
     return (
-        <View style={[s.tierPill, { borderColor: `${tier.colour}55`, backgroundColor: `${tier.colour}14` }]}>
-            <View style={[s.tierDot, { backgroundColor: tier.colour }]} />
-            <Text style={[s.tierText, { color: tier.colour }]}>{tier.tier.toUpperCase()}</Text>
+        <View style={[s.tierPill, { borderColor: pill.border, backgroundColor: pill.bg }]}>
+            <View style={[s.tierDot, { backgroundColor: pill.text }]} />
+            <Text style={[s.tierText, { color: pill.text }]}>{TIER_META[level.tier].label}</Text>
         </View>
     );
 }
@@ -855,7 +815,7 @@ const s = StyleSheet.create({
         fontSize: 12, fontWeight: '300', color: MUTED,
     },
     identityPills: {
-        flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6,
+        flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6,
     },
     levelPill: {
         paddingHorizontal: 10, paddingVertical: 3,
