@@ -130,8 +130,7 @@ function formatDaySummary(day: DaySyncResult): string {
         parts.push(`${day.steps.toLocaleString()} steps`);
     }
     if (parts.length === 0) return 'No activity';
-    // The week is paid, not just shown — say so per day.
-    if (day.points > 0) parts.push(`+${day.points} POWR`);
+    if (day.points > 0) parts.push(`est. +${day.points} POWR`);
     return parts.join(' · ');
 }
 
@@ -483,7 +482,7 @@ export default function OnboardingHealthScreen() {
                             <Ionicons name="checkmark-circle" size={18} color={GOLD} />
                             <Text style={syncStyles.doneText}>
                                 {syncResult.totalSessions} sessions synced
-                                {syncResult.totalPoints > 0 ? ` · +${syncResult.totalPoints} POWR` : ''}
+                                {syncResult.totalPoints > 0 ? ` · est. +${syncResult.totalPoints} POWR` : ''}
                                 {syncResult.streakDays > 0 ? ` · ${syncResult.streakDays}-day streak` : ''}
                             </Text>
                         </View>
