@@ -63,7 +63,8 @@ Deno.serve(async (req: Request) => {
   if (audience.mode === 'users' && (audience.user_ids ?? []).filter(Boolean).length === 0) {
     return json({ error: 'No users selected' }, 400);
   }
-  if (audience.mode === 'event' && !/^[0-9a-f-]{36}$/i.test(String(audience.event_id ?? ''))) {
+  const eventId = String(audience.event_id ?? '').trim();
+  if (audience.mode === 'event' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) {
     return json({ error: 'No live event selected' }, 400);
   }
   if (audience.below_version != null && !/^\d+\.\d+\.\d+$/.test(String(audience.below_version).trim())) {
