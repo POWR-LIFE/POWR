@@ -1,4 +1,4 @@
-import { eventNightLine, eventStatusChip, scoringLine } from '@/lib/liveEventDisplay';
+import { eventNightLine, eventStatusChip, rankMove, scoringLine } from '@/lib/liveEventDisplay';
 
 const realToLocaleDateString = Date.prototype.toLocaleDateString;
 const realToLocaleTimeString = Date.prototype.toLocaleTimeString;
@@ -130,5 +130,19 @@ describe('eventNightLine', () => {
     it('returns null when doors are not set, so callers hide the pill', () => {
         expect(on4th(null)).toBeNull();
         expect(eventNightLine({})).toBeNull();
+    });
+});
+
+describe('rankMove', () => {
+    it('climbs are positive deltas, drops negative', () => {
+        expect(rankMove(2)).toEqual({ dir: 'up', places: 2 });
+        expect(rankMove(-3)).toEqual({ dir: 'down', places: 3 });
+    });
+
+    it('draws nothing for holds, missing references, or junk', () => {
+        expect(rankMove(0)).toBeNull();
+        expect(rankMove(null)).toBeNull();
+        expect(rankMove(undefined)).toBeNull();
+        expect(rankMove(NaN)).toBeNull();
     });
 });

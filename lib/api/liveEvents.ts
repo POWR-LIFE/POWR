@@ -171,6 +171,10 @@ export type EventBoardEntry = {
     total_earned?: number | null;
     /** Ledger points since UTC midnight; absent on preview theatre rows. */
     today_points?: number | null;
+    /** Places moved since the scoring day began (reference snapshot rank −
+     *  rank now): > 0 climbed, < 0 dropped, 0 held, null/absent = no
+     *  reference (0→N entrant, frozen results). Server-computed only. */
+    rank_delta?: number | null;
 };
 
 export type EventLeaderboard = {
@@ -194,7 +198,7 @@ export type EventLeaderboard = {
      *  present on gated and locked payloads too (for a viewer who is in the
      *  event, once the window has opened) — `rank` never is until the board
      *  is theirs to see. */
-    viewer: LiveEventViewer & { rank?: number; points?: number; prize_label?: string | null };
+    viewer: LiveEventViewer & { rank?: number; rank_delta?: number | null; points?: number; prize_label?: string | null };
 };
 
 /**

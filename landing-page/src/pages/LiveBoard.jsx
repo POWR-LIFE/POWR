@@ -70,6 +70,24 @@ const lastDay = (endIso) => fmtDay(new Date(new Date(endIso).getTime() - 60_000)
 
 const nameOf = (row) => row.display_name || row.username || 'POWR member';
 
+// ▲ n / ▼ n beside the rank — places moved since the scoring day began
+// (server-computed rank_delta; held or no reference → nothing drawn).
+function Move({ delta, big }) {
+    if (delta == null || delta === 0) return null;
+    const up = delta > 0;
+    const colour = up ? '#4ade80' : '#f87171';
+    return (
+        <span
+            className={`inline-flex items-center gap-0.5 rounded-md tabular-nums font-bold ${big ? 'px-2 py-0.5 text-xl' : 'px-1.5 py-0.5 text-xs'}`}
+            style={{ color: colour, background: `${colour}1f` }}
+            aria-label={`${up ? 'up' : 'down'} ${Math.abs(delta)}`}
+        >
+            <span style={{ fontSize: '0.75em' }}>{up ? '▲' : '▼'}</span>
+            {Math.abs(delta)}
+        </span>
+    );
+}
+
 export default function LiveBoard() {
     const { slug } = useParams();
     const [params] = useSearchParams();
@@ -378,6 +396,7 @@ function LiveStandings({ board }) {
                         >
                             {row.rank}
                         </span>
+                        <span className="w-14 flex justify-center"><Move delta={row.rank_delta} big={row.rank === 1} /></span>
                         <Avatar row={row} size={row.rank === 1 ? 64 : 44} />
                         <span className={`flex-1 truncate font-light ${row.rank === 1 ? 'text-5xl' : 'text-2xl text-white/85'}`}>
                             {nameOf(row)}
@@ -412,6 +431,7 @@ function LiveStandings({ board }) {
                                     className="flex items-center gap-4 py-1.5"
                                 >
                                     <span className="w-10 text-right text-lg tabular-nums text-white/30 font-light">{row.rank}</span>
+                                    <span className="w-10 flex justify-center"><Move delta={row.rank_delta} /></span>
                                     <span className="flex-1 truncate text-lg text-white/60 font-light">{nameOf(row)}</span>
                                     <span className="text-lg tabular-nums text-white/40 font-light">{row.points.toLocaleString()}</span>
                                 </motion.div>
