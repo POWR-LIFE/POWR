@@ -13,6 +13,9 @@ export type LeaderboardEntry = {
     total_earned: number | null;
     /** Ledger points since UTC midnight. 0 → no chip. */
     today_points: number;
+    /** Live-event boards only: places moved since the scoring day began.
+     *  Absent/null/0 → no arrow. League views never carry it. */
+    rank_delta?: number | null;
 };
 
 export type LeaderboardMetric = 'weekly' | 'alltime';

@@ -43,7 +43,7 @@ import { useLiveEvent } from '@/hooks/useLiveEvent';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
 import type { BoardPreviewState, EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
-import { shortDate } from '@/lib/liveEventDisplay';
+import { rankMove, shortDate } from '@/lib/liveEventDisplay';
 import { getLevelInfo } from '@/constants/levels';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -501,6 +501,7 @@ const asEntries = (rows: EventBoardEntry[] | undefined): LeaderboardEntry[] =>
     rank: r.rank,
     total_earned: r.total_earned ?? null,
     today_points: r.today_points ?? 0,
+    rank_delta: r.rank_delta ?? null,
   }));
 
 /**
@@ -672,6 +673,7 @@ function EventBoardSection({
             <View style={styles.heroRankRow}>
               <Text style={styles.heroRankHash}>#</Text>
               <Text style={styles.eventYouRank}>{viewer.rank}</Text>
+              {!isWinners && <RankMove delta={viewer.rank_delta} size="lg" />}
             </View>
           </View>
           <View style={{ alignItems: 'flex-end', gap: 2 }}>
@@ -979,14 +981,17 @@ function RealPodium({
               style={({ pressed }) => [{ width: COL_W, alignItems: 'center' }, pressed && { opacity: 0.7 }]}
               onPress={() => onPress(entry)}
             >
-              {/* Trophy / rank label above avatar */}
-              {isFirst ? (
-                <Ionicons name="trophy" size={20} color={GOLD} style={{ marginBottom: 6 }} />
-              ) : (
-                <Text style={{ fontSize: 8, fontWeight: '700', letterSpacing: 2, color: meta.colour, opacity: 0.7, marginBottom: 8 }}>
-                  {meta.label}
-                </Text>
-              )}
+              {/* Trophy / rank label above avatar — movement arrow alongside */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: isFirst ? 6 : 8 }}>
+                {isFirst ? (
+                  <Ionicons name="trophy" size={20} color={GOLD} />
+                ) : (
+                  <Text style={{ fontSize: 8, fontWeight: '700', letterSpacing: 2, color: meta.colour, opacity: 0.7 }}>
+                    {meta.label}
+                  </Text>
+                )}
+                <RankMove delta={entry.rank_delta} />
+              </View>
 
               {/* Avatar with spinning placement rings */}
               <View style={{ marginBottom: 6 }}>
@@ -1199,7 +1204,10 @@ function LadderRow({
 
   return (
     <View style={[styles.ladderRow, isMe && styles.ladderRowMe]}>
-      <Text style={[styles.ladderRank, isMe && styles.ladderRankMe]}>#{entry.rank}</Text>
+      <View style={styles.ladderRankCol}>
+        <Text style={[styles.ladderRank, isMe && styles.ladderRankMe]}>#{entry.rank}</Text>
+        <RankMove delta={entry.rank_delta} />
+      </View>
       <View style={[styles.ladderAvatar, isMe && { borderColor: GOLD, borderWidth: 1.5 }]}>
         {entry.avatar_url ? (
           <Image source={{ uri: entry.avatar_url }} style={{ flex: 1 }} contentFit="cover" />
@@ -1259,6 +1267,26 @@ function RowMeta({ entry, showPro }: { entry: LeaderboardEntry; showPro: boolean
   );
 }
 
+// ─── Rank movement: ▲ n / ▼ n ─────────────────────────────────────────────────
+// Places moved since the scoring day began — server-computed against the
+// reference snapshot (same "today" as the TODAY chip). Held / no reference →
+// renders nothing, so only movers draw the eye. Live event boards only: the
+// league views never send rank_delta.
+
+function RankMove({ delta, size = 'sm' }: { delta: number | null | undefined; size?: 'sm' | 'lg' }) {
+  const move = rankMove(delta);
+  if (!move) return null;
+  const up = move.dir === 'up';
+  const colour = up ? GREEN : RED;
+  const lg = size === 'lg';
+  return (
+    <View style={[styles.rankMove, lg && styles.rankMoveLg, { backgroundColor: `${colour}1A` }]}>
+      <Ionicons name={up ? 'caret-up' : 'caret-down'} size={lg ? 12 : 8} color={colour} />
+      <Text style={[styles.rankMoveText, lg && styles.rankMoveTextLg, { color: colour }]}>{move.places}</Text>
+    </View>
+  );
+}
+
 // ─── RealLeaderRow ────────────────────────────────────────────────────────────
 
 function RealLeaderRow({
@@ -1281,12 +1309,15 @@ function RealLeaderRow({
       isMe && styles.leaderRowMe,
       isTop && { borderLeftWidth: 2, borderLeftColor: `${accentColor}55`, paddingLeft: 14 },
     ]}>
-      {/* Rank badge */}
-      <View style={[
-        styles.leaderRankBadge,
-        (isTop || isMe) && { backgroundColor: `${accentColor}14`, borderWidth: 1, borderColor: `${accentColor}35` },
-      ]}>
-        <Text style={[styles.leaderRank, { color: accentColor }]}>{entry.rank}</Text>
+      {/* Rank badge — movement arrow beneath it (live event boards only) */}
+      <View style={styles.leaderRankCol}>
+        <View style={[
+          styles.leaderRankBadge,
+          (isTop || isMe) && { backgroundColor: `${accentColor}14`, borderWidth: 1, borderColor: `${accentColor}35` },
+        ]}>
+          <Text style={[styles.leaderRank, { color: accentColor }]}>{entry.rank}</Text>
+        </View>
+        <RankMove delta={entry.rank_delta} />
       </View>
 
       {/* Avatar — hairline ring on every row; medal / gold ring for top 3 / you */}
@@ -1448,7 +1479,12 @@ const styles = StyleSheet.create({
   },
   leaderRowYou:    { backgroundColor: 'rgba(232,210,0,0.05)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.18)' },
   leaderRowDemote: { borderLeftWidth: 2, borderLeftColor: `${RED}60` },
+  leaderRankCol:   { alignItems: 'center', gap: 3 },
   leaderRankBadge: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  rankMove:        { flexDirection: 'row', alignItems: 'center', gap: 1, paddingHorizontal: 4, paddingVertical: 1, borderRadius: 6 },
+  rankMoveLg:      { gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, marginLeft: 8, alignSelf: 'center' },
+  rankMoveText:    { fontSize: 8, fontWeight: '700', letterSpacing: 0.3, lineHeight: 10 },
+  rankMoveTextLg:  { fontSize: 12, lineHeight: 14 },
   leaderRank:      { fontSize: 11, fontWeight: '600', letterSpacing: 0.3, color: MUTED, textAlign: 'center' },
   leaderName:      { flex: 1, fontSize: 14, fontWeight: '300', color: DIM },
   leaderNameMe:    { color: TEXT, fontWeight: '400' },
@@ -1555,7 +1591,8 @@ const styles = StyleSheet.create({
   ladderRowMe: {
     backgroundColor: 'rgba(232,210,0,0.08)',
   },
-  ladderRank: { width: 30, fontSize: 11, fontWeight: '500', color: MUTED, letterSpacing: 0.3 },
+  ladderRankCol: { width: 30, alignItems: 'flex-start', gap: 2 },
+  ladderRank: { fontSize: 11, fontWeight: '500', color: MUTED, letterSpacing: 0.3 },
   ladderRankMe: { color: GOLD, fontWeight: '700' },
   ladderAvatar: { width: 30, height: 30, borderRadius: 15, overflow: 'hidden', backgroundColor: CARD_BG, borderWidth: 1, borderColor: AVATAR_RING },
   ladderName: { fontSize: 12, fontWeight: '300', color: DIM },

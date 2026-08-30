@@ -167,12 +167,22 @@ Deno.serve(async (req: Request) => {
     .slice(0, ev.board_size);
   const profiles = await profilesById(top.map((r: { user_id: string }) => r.user_id));
 
+  // Movement since the scoring day began: previous rank per user from the
+  // reference snapshot (live_event_rank_snapshots, 15-min cron). Missing
+  // reference → no arrow; a failed lookup degrades to no arrows, never to a
+  // dead board.
+  const prevRank = new Map<string, number>();
+  const { data: deltas, error: deltaErr } = await admin.rpc("_live_event_rank_deltas", { p_event_id: ev.id });
+  if (deltaErr) console.error("event-board rank deltas failed:", deltaErr.message);
+  for (const d of (deltas ?? []) as { user_id: string; prev_rank: number }[]) prevRank.set(d.user_id, d.prev_rank);
+
   return json(200, {
     ...base,
     state: "live",
     standings: await Promise.all(top.map(async (r: { rank: number; score: number; user_id: string }) => ({
       key: await displayKey(ev.id, r.user_id),
       rank: r.rank,
+      rank_delta: prevRank.has(r.user_id) ? prevRank.get(r.user_id)! - r.rank : null,
       points: r.score,
       ...(profiles.get(r.user_id) ?? { display_name: null, username: null, avatar_url: null }),
     }))),

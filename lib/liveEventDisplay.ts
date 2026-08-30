@@ -133,3 +133,14 @@ export function consentLine(event: Pick<LiveEvent, 'venue'>): string | null {
     if (!event.venue?.name) return null;
     return `By registering, your name and email are shared with ${event.venue.name} to arrange your booking.`;
 }
+
+/**
+ * Rank movement for a board row: the arrow direction and how many places.
+ * null when there is nothing to draw — no reference rank (new to the board,
+ * frozen results, league views) or no movement. Every surface (app board,
+ * venue screen) keys off this so "▲ 2" means the same thing everywhere.
+ */
+export function rankMove(delta: number | null | undefined): { dir: 'up' | 'down'; places: number } | null {
+    if (delta == null || !Number.isFinite(delta) || delta === 0) return null;
+    return { dir: delta > 0 ? 'up' : 'down', places: Math.abs(Math.trunc(delta)) };
+}
