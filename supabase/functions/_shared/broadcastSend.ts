@@ -99,7 +99,8 @@ async function audienceUserIds(admin, audience: Audience): Promise<Set<string> |
   if (mode === 'event') {
     const ids = new Set<string>();
     const eventId = String(audience.event_id ?? '').trim();
-    if (!eventId) return ids; // no event picked → nobody, never everyone
+    // Invalid/empty UUID → nobody, never everyone (and avoids PostgREST uuid-cast errors).
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) return ids;
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await admin
         .from('live_event_participants')
