@@ -163,11 +163,20 @@ export function EventTicketCard({
 
     return (
         <View style={[styles.card, gate && !met && styles.cardGated]}>
-            <Text style={styles.eyebrow}>{gate ? 'YOUR TICKET' : 'INVITE FRIENDS'}</Text>
+            {/* ── Eyebrow with the count on its right: "YOUR TICKET · 0 / 3"
+                reads as one line, and the label + bar sit under it. The
+                EVENT segment has to fit a screen with the hero and the prizes
+                above it, so this card earns its height line by line. */}
+            <View style={styles.eyebrowRow}>
+                <Text style={styles.eyebrow}>{gate ? 'YOUR TICKET' : 'INVITE FRIENDS'}</Text>
+                {!met && (
+                    <>
+                        <Text style={styles.count}>{Math.min(count, target)}</Text>
+                        <Text style={styles.countOf}>/ {target}</Text>
+                    </>
+                )}
+            </View>
 
-            {/* ── The count, the label and the bar in the space of one row —
-                the EVENT segment has to fit a screen with the hero and the
-                prizes above it, so this card earns its height line by line. */}
             {met ? (
                 <View style={styles.metRow}>
                     <Ionicons name="lock-open" size={16} color={GOLD} />
@@ -179,15 +188,11 @@ export function EventTicketCard({
                 </View>
             ) : (
                 <>
-                    <View style={styles.countRow}>
-                        <Text style={styles.count}>{Math.min(count, target)}</Text>
-                        <Text style={styles.countOf}>/ {target}</Text>
-                        <Text style={styles.countLabel} numberOfLines={2}>
-                            {countingConversions
-                                ? 'friends with a verified workout'
-                                : 'friends signed up with your code'}
-                        </Text>
-                    </View>
+                    <Text style={styles.countLabel} numberOfLines={2}>
+                        {countingConversions
+                            ? 'friends with a verified workout'
+                            : 'friends signed up with your code'}
+                    </Text>
                     {target > 0 && (
                         <View style={styles.progressTrack}>
                             <View
@@ -395,12 +400,12 @@ const styles = StyleSheet.create({
     // the card says so before you've read a word of it.
     cardGated: { borderColor: 'rgba(232,210,0,0.35)' },
 
-    eyebrow: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5 },
+    eyebrowRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+    eyebrow: { flex: 1, fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5 },
 
-    countRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 6 },
-    count: { fontSize: 32, fontWeight: '100', color: GOLD, letterSpacing: -1.5, lineHeight: 36 },
-    countOf: { fontSize: 16, fontWeight: '200', color: DIM, letterSpacing: -0.5 },
-    countLabel: { flex: 1, fontSize: 11, fontWeight: '300', color: DIM, marginLeft: 6 },
+    count: { fontSize: 22, fontWeight: '100', color: GOLD, letterSpacing: -1, lineHeight: 26 },
+    countOf: { fontSize: 13, fontWeight: '200', color: DIM, letterSpacing: -0.5 },
+    countLabel: { fontSize: 11, fontWeight: '300', color: DIM, marginTop: 4 },
     progressTrack: {
         height: 3,
         borderRadius: 2,
