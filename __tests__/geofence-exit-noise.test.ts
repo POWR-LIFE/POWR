@@ -33,6 +33,15 @@ const APPROACH_STATE_KEY = '@powr/approach_state';
 const PENDING_CLAIMS_KEY = '@powr/pending_claims';
 const EXIT_NOISE_KEY = '@powr/exit_noise_tally';
 
+// The finish-hold guard (lib/taskFinishGuard) sleeps on REAL timers after each
+// task body; under this file's fake timers that sleep never resolves. Its own
+// behaviour is covered in task-finish-guard.test.ts — here we want the raw
+// task body, exactly as before the guard existed.
+jest.mock('@/lib/taskFinishGuard', () => ({
+  defineTask: (name: string, fn: (body: any) => Promise<unknown>) =>
+    (jest.requireMock('expo-task-manager') as any).defineTask(name, fn),
+}));
+
 jest.mock('expo-task-manager', () => {
   const registry: Record<string, (body: any) => Promise<unknown>> = {};
   return {
