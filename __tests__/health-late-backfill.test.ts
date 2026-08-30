@@ -6,17 +6,37 @@
  * invariants that keep it from misfiring.
  */
 
-jest.mock('@/lib/supabase', () => ({
-    supabase: { auth: { updateUser: jest.fn() }, from: jest.fn() },
-    getSessionUser: jest.fn(),
-}));
+jest.mock('@/lib/supabase', () => {
+    // A chainable, awaitable query stub: every builder method returns the chain,
+    // awaiting it yields an empty result (no existing sessions).
+    const chain = (): any => {
+        const c: any = {};
+        for (const m of ['select', 'eq', 'in', 'gte', 'lt', 'order', 'limit', 'maybeSingle', 'single']) {
+            c[m] = jest.fn(() => c);
+        }
+        c.then = (resolve: (v: unknown) => void) => resolve({ data: [], error: null });
+        return c;
+    };
+    return {
+        supabase: { auth: { updateUser: jest.fn() }, from: jest.fn(() => chain()) },
+        getSessionUser: jest.fn(),
+    };
+});
 
 jest.mock('@/hooks/useHealthData', () => ({ getWeekHistoryNow: jest.fn() }));
 
 jest.mock('@/lib/api/activity', () => ({
     saveHealthSnapshot: jest.fn(),
     buildStreakFromDates: jest.fn(async () => 0),
+    logManualSession: jest.fn(async () => 'sess'),
+    logHealthWalkingSession: jest.fn(async () => 'walk'),
+    updateHealthWalkingSession: jest.fn(),
+    getWalkingDaySummary: jest.fn(async () => ({ session: null, dayPoints: 0 })),
+    stepTierPoints: jest.fn(() => 0),
+    WALKING_DAILY_CAP: 5,
 }));
+jest.mock('@/lib/health/windowVitals', () => ({ readWindowVitals: jest.fn(async () => null), SESSION_SCOPED_EXTRAS: { scope: 'session' } }));
+jest.mock('@/lib/pointsEvents', () => ({ emitPointsChanged: jest.fn() }));
 
 import { getWeekHistoryNow } from '@/hooks/useHealthData';
 import {
