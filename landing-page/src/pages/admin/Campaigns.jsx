@@ -365,7 +365,7 @@ export default function Campaigns() {
                                     </div>
 
                                     <div className="rounded-xl border border-[#F0F0EC] p-3">
-                                        <AudienceSelector key={draft.id ?? 'new'} onChange={({ audience, count }) => setD({ audience, audienceCount: count })} />
+                                        <AudienceSelector key={draft.id ?? 'new'} initial={draft.audience} onChange={({ audience, count }) => setD({ audience, audienceCount: count })} />
                                     </div>
 
                                     <div>

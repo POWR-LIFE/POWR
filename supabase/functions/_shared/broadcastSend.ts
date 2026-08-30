@@ -16,8 +16,13 @@ const PAGE = 1000; // PostgREST caps a select at 1000 rows.
 export const DEFAULT_TZ = 'Europe/London';
 
 export interface Audience {
-  mode?: 'all' | 'segment' | 'users';
+  mode?: 'all' | 'segment' | 'users' | 'event';
   user_ids?: string[];
+  // mode 'event': everyone registered (live_event_participants, not
+  // disqualified) for one live event. event_name is a display label the
+  // admin UI stores alongside the id; the server never reads it.
+  event_id?: string;
+  event_name?: string;
   user_type?: 'all' | 'pro' | 'normal'; // is_pro
   activities?: string[];                // matches profiles.activity_preferences (ANY of)
   // Device-level filters — applied per token row, not per user, so someone with
@@ -91,7 +96,31 @@ async function audienceUserIds(admin, audience: Audience): Promise<Set<string> |
     return ids;
   }
 
-  return null; // 'all'
+  if (mode === 'event') {
+    const ids = new Set<string>();
+    const eventId = String(audience.event_id ?? '').trim();
+    // Invalid/empty UUID → nobody, never everyone (and avoids PostgREST uuid-cast errors).
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) return ids;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await admin
+        .from('live_event_participants')
+        .select('user_id')
+        .eq('event_id', eventId)
+        .is('disqualified_at', null)
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) break;
+      data.forEach((r) => ids.add(r.user_id));
+      if (data.length < PAGE) break;
+    }
+    return ids;
+  }
+
+  if (mode === 'all') return null;
+
+  // Unknown mode string: fail CLOSED (0 recipients). A typo or a spec from a
+  // newer admin build must never widen a targeted send to the whole user base.
+  return new Set<string>();
 }
 
 // Final recipient device list: tokens whose owner is in-target, in the
