@@ -125,6 +125,7 @@ const editableFields = (ev) => ({
     count_walking: ev.count_walking,
     count_challenges: ev.count_challenges ?? false,
     count_bonuses: ev.count_bonuses ?? false,
+    count_referrals: ev.count_referrals ?? false,
     count_adjustments: ev.count_adjustments ?? true,
     attendance_bonus_points: ev.attendance_bonus_points ?? 0,
     invite_bonus_points: ev.invite_bonus_points,
@@ -3153,7 +3154,7 @@ const stepState = (form) => ({
     scoring: {
         status: 'done',
         summary: `${activitiesSummary(form.included_activities)} · manual ${form.count_manual ? 'on' : 'off'} · streaks ${form.count_streak ? 'on' : 'off'}`
-            + `${form.count_challenges ? ' · challenges on' : ''}${form.count_bonuses ? ' · bonuses on' : ''}${form.count_adjustments === false ? ' · adjustments off' : ''}`
+            + `${form.count_challenges ? ' · challenges on' : ''}${form.count_bonuses ? ' · bonuses on' : ''}${form.count_referrals ? ' · invite rewards on' : ''}${form.count_adjustments === false ? ' · adjustments off' : ''}`
             + `${form.attendance_bonus_points > 0 ? ` · +${form.attendance_bonus_points} for attending` : ''}`,
     },
     invites: form.invite_bonus_points > 0
@@ -3341,7 +3342,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
         {
             key: 'scoring',
             title: 'Scoring',
-            blurb: 'Which of a person’s points count towards their event score. Normal POWR rules still decide what they earn; the event only chooses which of it counts. Two rules are fixed: penalties always reduce a score, and invite bonus points (and the event-night reward) never add to one.',
+            blurb: 'Which of a person’s points count towards their event score. Normal POWR rules still decide what they earn; the event only chooses which of it counts. Two rules are fixed: penalties always reduce a score, and the event-night reward never adds to one. Invite rewards count only when their switch below is on.',
             inApp: [
                 ['league', 'Only points from the activities ticked here feed the rank on the leaderboard and the RANK pill on the home card.'],
                 ['screen', 'The venue screen shows the same standings.'],
@@ -3369,8 +3370,11 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Challenge payouts count" hint="On: weekly and Together challenge payouts credited during the window count. Off (recommended): a payout doesn't say which workouts earned it, so a wearable backfill can bring in a week of old history.">
                             <Toggle on={form.count_challenges} onFlip={() => set({ count_challenges: !form.count_challenges })} />
                         </Field>
-                        <Field label="Other bonuses count" hint="On: level-up, creator and other bonus points credited during the window count. Invite rewards and the event-night reward never do.">
+                        <Field label="Other bonuses count" hint="On: level-up, creator and other bonus points credited during the window count. Invite rewards have their own switch below; the event-night reward never counts.">
                             <Toggle on={form.count_bonuses} onFlip={() => set({ count_bonuses: !form.count_bonuses })} />
+                        </Field>
+                        <Field label="Invite rewards count" hint="On: the points paid when an invited friend completes their first verified workout (to both people) and the milestone bonus count towards the event score, as long as they were paid during the scoring window. Off: they stay normal POWR points and never move the board. Flipping this re-scores everyone straight away.">
+                            <Toggle on={form.count_referrals} onFlip={() => set({ count_referrals: !form.count_referrals })} />
                         </Field>
                         <Field label="Admin adjustments count" hint="On: points an admin adds by hand during the window count. Penalties always count, whatever this says.">
                             <Toggle on={form.count_adjustments} onFlip={() => set({ count_adjustments: !form.count_adjustments })} />
@@ -3393,7 +3397,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
             inApp: [
                 ['register', 'The join sheet pitch quotes the points per friend.'],
                 ['ticket', 'Invite progress and the milestone bonus sit on the ticket in the League tab until the invite deadline.'],
-                ['admin', 'The bonus is paid to both people (as normal POWR points) when the friend’s first verified workout lands. It never counts towards anyone’s event score.'],
+                ['admin', 'The bonus is paid to both people (as normal POWR points) when the friend’s first verified workout lands. It counts towards the event score only when “Invite rewards count” is on under Scoring.'],
             ],
             sections: [
                 { title: 'Bonus', fields: (

@@ -43,6 +43,7 @@ const FNL = {
   count_streak: false,
   count_challenges: false,
   count_bonuses: false,
+  count_referrals: false,
   count_adjustments: true,
 };
 
@@ -54,12 +55,16 @@ describe('labels', () => {
     expect(reasonLabel(null)).toBe('Counted');
     expect(reasonLabel('manual_off')).toBe('Manual sessions are off');
     expect(reasonLabel('outside_window')).toBe('Activity outside the window');
+    expect(reasonLabel('referrals_off')).toBe('Invite rewards are off');
+    expect(reasonLabel('never_counts')).toBe('Never counts (event-night reward)');
+    expect(bucketLabel('invite')).toBe('Invite reward');
     expect(reasonLabel('weird')).toBe('weird');
   });
 
   it('knows which reasons are one toggle away', () => {
     expect(reasonIsSwitch('manual_off')).toBe(true);
     expect(reasonIsSwitch('activity_not_included')).toBe(true);
+    expect(reasonIsSwitch('referrals_off')).toBe(true);
     expect(reasonIsSwitch('outside_window')).toBe(false);
     expect(reasonIsSwitch('never_counts')).toBe(false);
     expect(reasonIsSwitch(null)).toBe(false);
@@ -81,7 +86,9 @@ describe('ruleChips', () => {
     expect(byKey.manual.on).toBe(false);
     expect(byKey.walking.on).toBe(true);
     expect(byKey.streak.on).toBe(false);
+    expect(byKey.referrals.on).toBe(false);
     expect(byKey.adjustments.on).toBe(true);
+    expect(ruleChips({ ...FNL, count_referrals: true }).find(c => c.key === 'referrals')?.on).toBe(true);
   });
 
   it('lists an allowlist, and treats an empty one as nothing counting', () => {
@@ -102,6 +109,12 @@ describe('activeBuckets + totals', () => {
   it('only offers columns that carry a number, in bucket order', () => {
     expect(activeBuckets(rows)).toEqual(['activity', 'penalty', 'event_adjustment']);
     expect(activeBuckets([])).toEqual([]);
+  });
+
+  it('gives invite rewards a column once an event lets them score', () => {
+    const withInvites = [...rows, row({ user_id: 'u4', rank: 4, points: 60, by_bucket: { activity: 20, invite: 40 } })];
+    expect(activeBuckets(withInvites)).toEqual(['activity', 'invite', 'penalty', 'event_adjustment']);
+    expect(scoringTotals(withInvites).byBucket.invite).toBe(40);
   });
 
   it('sums points, buckets, exclusions and adjustments', () => {
