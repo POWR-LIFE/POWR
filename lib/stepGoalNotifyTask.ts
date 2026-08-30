@@ -18,6 +18,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
+import { defineTask } from '@/lib/taskFinishGuard';
 import { Platform } from 'react-native';
 
 import { getNotificationPreferences } from '@/lib/api/notifications';
@@ -89,7 +90,7 @@ export async function runStepGoalCheck(): Promise<boolean> {
   }
 }
 
-TaskManager.defineTask(STEP_GOAL_NOTIFY_TASK, async () => {
+defineTask(STEP_GOAL_NOTIFY_TASK, async () => {
   try {
     const fired = await runStepGoalCheck();
     return fired

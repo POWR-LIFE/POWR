@@ -19,6 +19,7 @@
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { defineTask } from '@/lib/taskFinishGuard';
 import { Platform } from 'react-native';
 import { readBackgroundAuth } from '@/lib/backgroundRest';
 import { supabase } from '@/lib/supabase';
@@ -82,7 +83,7 @@ async function runPlacementCheck(): Promise<boolean> {
   return fired;
 }
 
-TaskManager.defineTask(PLACEMENT_NOTIFY_TASK, async () => {
+defineTask(PLACEMENT_NOTIFY_TASK, async () => {
   try {
     const fired = await runPlacementCheck();
     return fired

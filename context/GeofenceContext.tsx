@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { defineTask } from '@/lib/taskFinishGuard';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { ensureFreshSession } from '@/lib/authFresh';
@@ -5161,7 +5162,7 @@ export async function registerGeofenceBootRearm(): Promise<void> {
 // Defined at module level so they are registered before any monitoring starts.
 
 // Foreground-service location stream (primary closed-app detector on Android).
-TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
+defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
   // Names the executor on any crash report filed from this wake — a headless
   // stack has no route to place it. Pure assignment, no throw surface.
   noteTask('POWR_LOCATION_TRACKING');
@@ -5237,7 +5238,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
 });
 
 // Boot re-arm: re-issues monitoring from cached circles after a device restart.
-TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
+defineTask(GEOFENCE_REARM_TASK, async () => {
   noteTask('POWR_GEOFENCE_BOOT_REARM');
   try {
     await drainOutboxesBounded('boot_rearm');
@@ -5645,7 +5646,7 @@ export async function nativeExitRefuted(regionId: string): Promise<boolean> {
 // null event (iOS delivers these on Circle-remount flake and cold relaunches)
 // must drop THIS event, never abort the executor with an unhandled rejection
 // (2026-08-05 crash-hunt findings #3/#5).
-TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
+defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
   noteTask('GEOFENCE_CHECK_IN');
   try {
     if (error) {
