@@ -250,8 +250,10 @@ export async function syncHistoricalHealthData(
             if (!syncedKeys.has(key)) {
                 syncedKeys.add(key);
                 try {
-                    const durationSec = Math.round(sleep.durationHours * 3600);
-                    const points = calculateSleepPoints(sleep.durationHours, sleep.deepHours, sleep.remHours);
+const startMs = new Date(sleep.startedAt).getTime();
+const endMs = new Date(sleep.endedAt).getTime();
+const durationSec = Math.max(0, Math.round((endMs - startMs) / 1000));
+const points = calculateSleepPoints(durationSec / 3600, sleep.deepHours, sleep.remHours);
                     const sessionId = await logManualSession({
                         type: 'sleep',
                         duration_sec: durationSec,
