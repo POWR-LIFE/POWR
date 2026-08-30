@@ -129,7 +129,9 @@ function formatDaySummary(day: DaySyncResult): string {
     if (parts.length === 0 && day.steps > 0) {
         parts.push(`${day.steps.toLocaleString()} steps`);
     }
-    return parts.length > 0 ? parts.join(' · ') : 'No activity';
+    if (parts.length === 0) return 'No activity';
+    if (day.points > 0) parts.push(`est. +${day.points} POWR`);
+    return parts.join(' · ');
 }
 
 // ── Sync progress row ────────────────────────────────────────────────────────
@@ -255,6 +257,7 @@ export default function OnboardingHealthScreen() {
     const [syncedDays, setSyncedDays] = useState<DaySyncResult[]>([]);
     const [syncResult, setSyncResult] = useState<{
         totalSessions: number;
+        totalPoints: number;
         streakDays: number;
         activeDates: string[];
     } | null>(null);
@@ -479,6 +482,7 @@ export default function OnboardingHealthScreen() {
                             <Ionicons name="checkmark-circle" size={18} color={GOLD} />
                             <Text style={syncStyles.doneText}>
                                 {syncResult.totalSessions} sessions synced
+                                {syncResult.totalPoints > 0 ? ` · est. +${syncResult.totalPoints} POWR` : ''}
                                 {syncResult.streakDays > 0 ? ` · ${syncResult.streakDays}-day streak` : ''}
                             </Text>
                         </View>

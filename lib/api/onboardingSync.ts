@@ -1,18 +1,44 @@
 /**
- * Onboarding Health Data Sync
+ * Health history backfill (onboarding + late connect)
  *
- * Persists 7 days of historical health data to populate the user's app
- * without awarding any POWR points. Sessions exist purely for UI population
- * (activity feed, weekly rings, step counts, sleep data).
+ * Persists the last 7 days of native health data (HealthKit / Health Connect)
+ * and PAYS for it exactly as the live sync would have, had the app been there
+ * all week.
  *
- * Points only begin when the user starts actively using the app.
+ * Until 2026-08-30 this path wrote 0-point sessions on purpose ("points only
+ * begin when the user starts actively using the app") while the Terra wearable
+ * path scored the same 7 days like live. Two members joining on the same day
+ * could start 100+ POWR apart on the strength of which device they own, and a
+ * new member's first sight of the app was a week of their own workouts with a
+ * dash where the points should be. Jamie, 2026-08-30: same history, same pay,
+ * for everyone.
+ *
+ * There is no scoring table in this file. Every write goes through the live
+ * sync's own functions — logManualSession for workouts and sleep,
+ * logHealthWalkingSession for step days — priced by the same lib/health/points
+ * ladder hooks/useHealthSync uses, and bounded server-side by
+ * enforce_point_award_cap like any other client award. Walking days are keyed
+ * on LOCAL midnight (as the walking sync stores them), not UTC.
  */
 
 import { Platform } from 'react-native';
 import { getSessionUser, supabase } from '@/lib/supabase';
-import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { ACTIVITIES } from '@/constants/activities';
 import { getWeekHistoryNow, type DayHealthSummary } from '@/hooks/useHealthData';
-import { buildStreakFromDates, saveHealthSnapshot } from '@/lib/api/activity';
+import {
+    buildStreakFromDates,
+    getWalkingDaySummary,
+    logHealthWalkingSession,
+    logManualSession,
+    saveHealthSnapshot,
+    stepTierPoints,
+    updateHealthWalkingSession,
+    WALKING_DAILY_CAP,
+} from '@/lib/api/activity';
+import { calculateBasePoints, calculateSleepPoints, mapHealthType } from '@/lib/health/points';
+import { sourceLabel, verificationFromProvenance } from '@/lib/health/dataSource';
+import { readWindowVitals, SESSION_SCOPED_EXTRAS } from '@/lib/health/windowVitals';
+import { emitPointsChanged } from '@/lib/pointsEvents';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,52 +48,51 @@ export type DaySyncResult = {
     activities: string[];  // activity type labels that were synced
     sleepHours: number;
     sessionCount: number;
+    /** POWR awarded for this day's sessions (as priced; the server may clamp). */
+    points: number;
 };
 
 export type OnboardingSyncResult = {
     totalSessions: number;
+    totalPoints: number;
     streakDays: number;
     activeDates: string[];
     dailyBreakdown: DaySyncResult[];
 };
 
-// ── Activity type mapping (from useHealthSync) ───────────────────────────────
+const EMPTY_RESULT: OnboardingSyncResult = {
+    totalSessions: 0, totalPoints: 0, streakDays: 0, activeDates: [], dailyBreakdown: [],
+};
 
-function mapHealthType(name: string): ActivityType | null {
-    const n = name.toLowerCase();
-    if (n.includes('run') || n.includes('jog')) return 'running';
-    if (n.includes('cycl') || n.includes('biking') || n.includes('spin')) return 'cycling';
-    if (n.includes('swim')) return 'swimming';
-    // Dance before gym to avoid 'dance' matching nothing (checked independently)
-    if (n.includes('danc') || n.includes('barre')) return 'dance';
-    if (n.includes('gym') || n.includes('weight') || n.includes('crossfit') || n.includes('calisthenics')
-        || n.includes('strength') || n.includes('elliptical') || n.includes('rowing')
-        || n.includes('stair') || n.includes('core')) return 'gym';
-    if (n.includes('hiit') || n.includes('boot_camp') || n.includes('bootcamp') || n.includes('circuit')) return 'hiit';
-    if (n.includes('yoga') || n.includes('pilates') || n.includes('tai')) return 'yoga';
-    if (n.includes('sport') || n.includes('tennis') || n.includes('soccer') || n.includes('basketball')
-        || n.includes('handball') || n.includes('volleyball') || n.includes('squash') || n.includes('racquetball')
-        || n.includes('fencing') || n.includes('martial') || n.includes('boxing') || n.includes('kickbox')
-        || n.includes('rugby') || n.includes('football') || n.includes('baseball') || n.includes('softball')
-        || n.includes('hockey') || n.includes('cricket') || n.includes('lacrosse') || n.includes('golf')
-        || n.includes('pickleball') || n.includes('badminton') || n.includes('climbing') || n.includes('ski')
-        || n.includes('snowboard') || n.includes('skat') || n.includes('paddl') || n.includes('surf')
-        || n.includes('gymnastics')) return 'sports';
-    if (n.includes('walk') || n.includes('hik')) return 'walking';
-    return null;
+// ── Day helpers ──────────────────────────────────────────────────────────────
+
+/** Local midnight of a YYYY-MM-DD day, and the next local midnight. */
+function localDayBounds(date: string): { start: Date; end: Date } {
+    const [y, m, d] = date.split('-').map(Number);
+    return { start: new Date(y, m - 1, d), end: new Date(y, m - 1, d + 1) };
+}
+
+function localDateKey(d: Date): string {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 // ── Core sync ────────────────────────────────────────────────────────────────
 
 /**
- * Syncs historical health data during onboarding.
+ * Records — and pays for — a week of native health history.
  *
- * - Creates activity_sessions for qualifying workouts (0 points)
- * - Creates walking sessions per day if steps exist (0 points)
- * - Creates sleep sessions if sleep ≥ 1h (0 points)
- * - Saves health_snapshots for each datum
- * - Builds a streak from consecutive active days
- * - Sets initial_health_sync_complete flag in user metadata
+ * - Workouts and sleep go through `logManualSession` with the live scorer's
+ *   points (check-in suppression, split stitching and the server bounds all
+ *   apply exactly as they do on the live path).
+ * - Past step days go through `logHealthWalkingSession` at the day's tier,
+ *   under the walking daily cap, on local midnight. TODAY's steps are left to
+ *   `syncWalkingNow`, which the Home screen runs the moment onboarding lands
+ *   there — paying them here too would race its read-modify-write.
+ * - Builds a streak from consecutive active days.
+ * - Sets `initial_health_sync_complete` in user metadata (one-shot).
+ *
+ * One bad day never aborts the week: each section is best-effort.
  *
  * @param onDayComplete Optional callback fired after each day is processed (for UI progress)
  */
@@ -80,13 +105,38 @@ export async function syncHistoricalHealthData(
     if (!user) throw new Error('Not authenticated');
     if (user.user_metadata?.initial_health_sync_complete) {
         console.log('[OnboardingSync] Already completed, skipping');
-        return { totalSessions: 0, streakDays: 0, activeDates: [], dailyBreakdown: [] };
+        return { ...EMPTY_RESULT };
     }
 
-    const source = Platform.OS === 'ios' ? 'healthkit' : 'health_connect' as const;
+    const source = Platform.OS === 'ios' ? 'healthkit' : 'health_connect';
+    const today = localDateKey(new Date());
     const dailyBreakdown: DaySyncResult[] = [];
     const activeDates: string[] = [];
     let totalSessions = 0;
+    let totalPoints = 0;
+
+    // The live sync's dedupe key (type + start instant) over the same window,
+    // so a week the live sync reached first is never recorded — or paid —
+    // twice. Scoped on user_id: activity_sessions has an "admins can read all"
+    // policy, so an unfiltered probe can match a STRANGER's session and
+    // silently drop this user's own workout.
+    const syncedKeys = new Set<string>();
+if (weekData.length > 0) {
+    const earliest = weekData.reduce((min, d) => (d.date < min ? d.date : min), weekData[0].date);
+    const latest = weekData.reduce((max, d) => (d.date > max ? d.date : max), weekData[0].date);
+    const { start } = localDayBounds(earliest);
+    const { end } = localDayBounds(latest);
+    const { data: existing } = await supabase
+        .from('activity_sessions')
+        .select('type, started_at')
+        .eq('user_id', user.id)
+        .in('verification', ['wearable', 'health'])
+        .gte('started_at', start.toISOString())
+        .lt('started_at', end.toISOString());
+    for (const s of existing ?? []) {
+        syncedKeys.add(`${s.type}_${new Date(s.started_at).toISOString()}`);
+    }
+}
 
     for (let idx = 0; idx < weekData.length; idx++) {
         const day = weekData[idx];
@@ -96,6 +146,7 @@ export async function syncHistoricalHealthData(
             activities: [],
             sleepHours: 0,
             sessionCount: 0,
+            points: 0,
         };
 
         // ── Workouts ──────────────────────────────────────────────────
@@ -103,140 +154,140 @@ export async function syncHistoricalHealthData(
             const mappedType = mapHealthType(activity.type);
             if (!mappedType) continue;
 
-            const config = ACTIVITIES[mappedType];
-            if (activity.durationMin < config.minDuration) continue;
+            const key = `${mappedType}_${new Date(activity.startedAt).toISOString()}`;
+            if (syncedKeys.has(key)) continue;
+            syncedKeys.add(key);
 
-            // Check for existing session at this timestamp to prevent duplicates.
-            // Scoped on user_id: activity_sessions has an "admins can read all"
-            // policy, so an unfiltered probe can match a STRANGER's session and
-            // silently skip inserting this user's own workout.
-            const { data: existing } = await supabase
-                .from('activity_sessions')
-                .select('id')
-                .eq('user_id', user.id)
-                .eq('started_at', activity.startedAt)
-                .eq('type', mappedType)
-                .limit(1)
-                .maybeSingle();
-            if (existing) continue;
+            try {
+                const startMs = new Date(activity.startedAt).getTime();
+                const endMs = startMs + activity.durationMin * 60000;
+                // The workout's OWN heart rate and calories over its window — never
+                // the day's figure stamped on every session (the Progress sheet has
+                // to gate those out as untrustworthy). Null when the store has
+                // nothing for that span.
+                const vitals = await readWindowVitals(startMs, endMs).catch(() => null);
+                const points = calculateBasePoints(mappedType, activity.durationMin, activity.distanceM ?? null);
 
-            const endedAt = new Date(new Date(activity.startedAt).getTime() + activity.durationMin * 60000).toISOString();
-
-            const { error: sessErr } = await supabase
-                .from('activity_sessions')
-                .insert({
+                const sessionId = await logManualSession({
                     type: mappedType,
-                    started_at: activity.startedAt,
-                    ended_at: endedAt,
                     duration_sec: activity.durationMin * 60,
-                    distance_m: activity.distanceM ?? null,
-                    steps: activity.steps ?? null,
-                    hr_avg: day.heartRate?.avg ?? null,
-                    verification: 'health',
-                    trust_score: 0.85,
-                    raw_activity_name: (activity.rawName ?? activity.type)?.trim().slice(0, 80) || null,
+                    distance_m: activity.distanceM,
+                    hr_avg: vitals?.hrAvg ?? undefined,
+                    hr_max: vitals?.hrMax ?? undefined,
+                    calories_active: vitals?.caloriesActive ?? undefined,
+                    source,
+                    started_at: activity.startedAt,
+                    points,
+                    healthVerified: true,
+                    healthSource: verificationFromProvenance(activity.source, 'health'),
+                    rawActivityName: activity.rawName ?? activity.type,
+                    pointsFor: (mins, distM) => calculateBasePoints(mappedType, mins, distM),
                 });
-            if (sessErr) {
-                console.warn(`[OnboardingSync] Failed to insert ${mappedType}:`, sessErr.message);
-                continue;
+                // null = suppressed by a check-in, absorbed into a session we
+                // already hold, or already recorded — nothing new to count.
+                if (!sessionId) continue;
+
+                await saveHealthSnapshot({
+                    sessionId,
+                    steps: activity.steps,
+                    distanceM: activity.distanceM,
+                    hrAvg: vitals?.hrAvg ?? undefined,
+                    hrMax: vitals?.hrMax ?? undefined,
+                    caloriesActive: vitals?.caloriesActive ?? undefined,
+                    activityType: activity.type,
+                    durationSec: activity.durationMin * 60,
+                    source,
+                    sourceDetail: activity.source ? sourceLabel(activity.source) : undefined,
+                    extras: vitals ? { ...SESSION_SCOPED_EXTRAS } : undefined,
+                });
+
+                dayResult.activities.push(ACTIVITIES[mappedType].label);
+                dayResult.sessionCount++;
+                dayResult.points += points;
+                totalSessions++;
+            } catch (e) {
+                console.warn(`[OnboardingSync] Failed to record ${mappedType}:`, (e as Error)?.message ?? e);
             }
-
-            // Health snapshot
-            await saveHealthSnapshot({
-                steps: activity.steps,
-                distanceM: activity.distanceM,
-                hrAvg: day.heartRate?.avg,
-                hrMax: day.heartRate?.max,
-                caloriesActive: day.calories?.active,
-                caloriesTotal: day.calories?.total,
-                activityType: activity.type,
-                durationSec: activity.durationMin * 60,
-                source,
-            });
-
-            dayResult.activities.push(config.label);
-            dayResult.sessionCount++;
-            totalSessions++;
         }
 
         // ── Walking (steps) ───────────────────────────────────────────
-        if (day.steps > 0) {
-            const midnight = `${day.date}T00:00:00.000Z`;
+        if (day.steps > 0 && day.date !== today) {
+            try {
+                const { start, end } = localDayBounds(day.date);
+                const startIso = start.toISOString();
+                const endIso = end.toISOString();
+                const { session, dayPoints } = await getWalkingDaySummary(startIso, endIso);
+                const capRemaining = Math.max(0, WALKING_DAILY_CAP - dayPoints);
 
-            // Check for existing walking session on this day
-            const { data: existingWalk } = await supabase
-                .from('activity_sessions')
-                .select('id')
-                .eq('user_id', user.id)
-                .eq('type', 'walking')
-                .eq('trust_score', 0.85)
-                .gte('started_at', midnight)
-                .lt('started_at', `${day.date}T23:59:59.999Z`)
-                .limit(1)
-                .maybeSingle();
-
-            if (!existingWalk) {
-                const { error: walkErr } = await supabase
-                    .from('activity_sessions')
-                    .insert({
-                        type: 'walking',
-                        started_at: midnight,
-                        ended_at: `${day.date}T23:59:59.000Z`,
-                        duration_sec: 0,
-                        steps: day.steps,
-                        verification: 'health',
-                        trust_score: 0.85,
-                    });
-
-                if (!walkErr) {
-                    await saveHealthSnapshot({
-                        steps: day.steps,
-                        activityType: 'walking',
-                        source,
-                    });
-                    dayResult.sessionCount++;
-                    totalSessions++;
+                if (session) {
+                    // The day is already on the books (the walking sync's own
+                    // backfill got there first). Top the row up to the store's
+                    // total; points award only the tier delta under the cap —
+                    // the same rule as backfillWalkingDays.
+                    if (day.steps > session.steps) {
+                        const additional = Math.min(
+                            Math.max(0, stepTierPoints(day.steps) - session.points),
+                            capRemaining,
+                        );
+                        await updateHealthWalkingSession(session.id, day.steps, additional, endIso);
+                        dayResult.points += additional;
+                    }
+                } else {
+                    const points = Math.min(stepTierPoints(day.steps), capRemaining);
+                    const sessionId = await logHealthWalkingSession(day.steps, points, 'health', startIso, endIso);
+                    if (sessionId) {
+                        await saveHealthSnapshot({ sessionId, steps: day.steps, activityType: 'walking', source });
+                        dayResult.sessionCount++;
+                        dayResult.points += points;
+                        totalSessions++;
+                    }
                 }
+            } catch (e) {
+                console.warn(`[OnboardingSync] Failed to record walking ${day.date}:`, (e as Error)?.message ?? e);
             }
         }
 
         // ── Sleep ─────────────────────────────────────────────────────
-        if (day.sleep && day.sleep.durationHours >= 1) {
-            // Check for existing sleep session
-            const { data: existingSleep } = await supabase
-                .from('activity_sessions')
-                .select('id')
-                .eq('user_id', user.id)
-                .eq('type', 'sleep')
-                .eq('started_at', day.sleep.startedAt)
-                .limit(1)
-                .maybeSingle();
-
-            if (!existingSleep) {
-                const { error: sleepErr } = await supabase
-                    .from('activity_sessions')
-                    .insert({
+        const sleep = day.sleep;
+        if (sleep && sleep.durationHours >= 1) {
+            const key = `sleep_${new Date(sleep.startedAt).toISOString()}`;
+            if (!syncedKeys.has(key)) {
+                syncedKeys.add(key);
+                try {
+const startMs = new Date(sleep.startedAt).getTime();
+const endMs = new Date(sleep.endedAt).getTime();
+const durationSec = Math.max(0, Math.round((endMs - startMs) / 1000));
+const points = calculateSleepPoints(durationSec / 3600, sleep.deepHours, sleep.remHours);
+                    const sessionId = await logManualSession({
                         type: 'sleep',
-                        started_at: day.sleep.startedAt,
-                        ended_at: day.sleep.endedAt,
-                        duration_sec: Math.round(day.sleep.durationHours * 3600),
-                        verification: 'health',
-                        trust_score: 0.85,
-                    });
-
-                if (!sleepErr) {
-                    await saveHealthSnapshot({
-                        sleepDurationH: day.sleep.durationHours,
-                        sleepDeepH: day.sleep.deepHours,
-                        sleepRemH: day.sleep.remHours,
-                        sleepLightH: day.sleep.lightHours,
-                        activityType: 'sleep',
-                        durationSec: Math.round(day.sleep.durationHours * 3600),
+                        duration_sec: durationSec,
+                        started_at: sleep.startedAt,
+                        points,
+                        healthVerified: true,
+                        healthSource: 'health',
+                        sleepDeepH: sleep.deepHours,
+                        sleepRemH: sleep.remHours,
+                        sleepLightH: sleep.lightHours,
                         source,
                     });
-                    dayResult.sleepHours = day.sleep.durationHours;
-                    dayResult.sessionCount++;
-                    totalSessions++;
+                    if (sessionId) {
+                        await saveHealthSnapshot({
+                            sessionId,
+                            sleepDurationH: sleep.durationHours,
+                            sleepDeepH: sleep.deepHours,
+                            sleepRemH: sleep.remHours,
+                            sleepLightH: sleep.lightHours,
+                            activityType: 'sleep',
+                            durationSec,
+                            source,
+                        });
+                        dayResult.sleepHours = sleep.durationHours;
+                        dayResult.sessionCount++;
+                        dayResult.points += points;
+                        totalSessions++;
+                    }
+                } catch (e) {
+                    console.warn(`[OnboardingSync] Failed to record sleep ${day.date}:`, (e as Error)?.message ?? e);
                 }
             }
         }
@@ -247,6 +298,7 @@ export async function syncHistoricalHealthData(
             activeDates.push(day.date);
         }
 
+        totalPoints += dayResult.points;
         dailyBreakdown.push(dayResult);
         onDayComplete?.(dayResult, idx);
     }
@@ -259,9 +311,12 @@ export async function syncHistoricalHealthData(
         data: { initial_health_sync_complete: true },
     });
 
-    console.log(`[OnboardingSync] Complete: ${totalSessions} sessions, ${streakDays}-day streak, ${activeDates.length} active days`);
+    // The home readout caches ['points']; a week just landed in the ledger.
+    if (totalPoints > 0) emitPointsChanged();
 
-    return { totalSessions, streakDays, activeDates, dailyBreakdown };
+    console.log(`[OnboardingSync] Complete: ${totalSessions} sessions, +${totalPoints} POWR, ${streakDays}-day streak, ${activeDates.length} active days`);
+
+    return { totalSessions, totalPoints, streakDays, activeDates, dailyBreakdown };
 }
 
 let onboardingOwnsBackfill = false;
