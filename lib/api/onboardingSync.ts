@@ -256,11 +256,11 @@ if (weekData.length > 0) {
                 try {
                     // Duration is the ASLEEP total (durationHours), never
                     // endedAt − startedAt: the week reader's endedAt is the
-                    // latest sample end in the day bucket and can sit a full
-                    // day past the real wake (Georgie J, 08-30: three nights
-                    // stored as 22:59 → next-day 23:18 with 7.5h asleep). The
-                    // live sync (useHealthSync.syncSleep) prices and stores
-                    // the same way, so ended_at = start + asleep on both paths.
+                    // latest sample end in the day bucket and can sit nearly a full day past the
+                    // real wake in backfilled data (e.g. endedAt ~next-day late while durationHours
+                    // is still ~7.5h asleep).
+                    // The live sync (useHealthSync.syncSleep) prices and stores the same way, so
+                    // ended_at = start + asleep on both paths.
                     const durationSec = Math.round(sleep.durationHours * 3600);
                     const points = calculateSleepPoints(sleep.durationHours, sleep.deepHours, sleep.remHours);
                     const sessionId = await logManualSession({
