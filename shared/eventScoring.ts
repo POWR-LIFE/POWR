@@ -30,6 +30,7 @@ export type Reason =
   | 'challenges_off'
   | 'bonuses_off'
   | 'adjustments_off'
+  | 'referrals_off'
   | 'never_counts'
   | 'no_anchor'
   | 'type_not_scored';
@@ -49,6 +50,7 @@ export interface ScoringEvent {
   count_streak: boolean;
   count_challenges: boolean;
   count_bonuses: boolean;
+  count_referrals: boolean;
   count_adjustments: boolean;
 }
 
@@ -105,15 +107,17 @@ export interface EventAdjustment {
 
 /**
  * Bucket order for the table columns and the detail chips. Activity first
- * (it is nearly always the whole score), corrections last. Invite and
- * attendance never count so they never get a column — they show up only
- * in the excluded tally and the per-person ledger.
+ * (it is nearly always the whole score), corrections last. Attendance never
+ * counts so it never gets a column — it shows up only in the excluded tally
+ * and the per-person ledger. Invite rewards score only when the event's
+ * referral switch is on; activeBuckets drops the column when nothing is in it.
  */
 export const BUCKETS: { key: Bucket; label: string; short: string }[] = [
   { key: 'activity',         label: 'Activity',          short: 'Activity' },
   { key: 'streak',           label: 'Streak bonuses',    short: 'Streaks' },
   { key: 'challenge',        label: 'Challenge payouts', short: 'Challenges' },
   { key: 'bonus',            label: 'Other bonuses',     short: 'Bonuses' },
+  { key: 'invite',           label: 'Invite rewards',    short: 'Invites' },
   { key: 'other',            label: 'Other credits',     short: 'Other' },
   { key: 'adjustment',       label: 'Wallet adjustments', short: 'Wallet adj.' },
   { key: 'penalty',          label: 'Penalties',         short: 'Penalties' },
@@ -151,7 +155,8 @@ const REASON_LABEL: Record<Reason, string> = {
   challenges_off:         'Challenge payouts are off',
   bonuses_off:            'Bonuses are off',
   adjustments_off:        'Wallet adjustments are off',
-  never_counts:           'Never counts (invite / attendance reward)',
+  referrals_off:          'Invite rewards are off',
+  never_counts:           'Never counts (event-night reward)',
   no_anchor:              'No in-window activity to ride on',
   type_not_scored:        'Not a scoring row',
 };
@@ -165,7 +170,7 @@ export function reasonLabel(reason: string | null | undefined): string {
 export function reasonIsSwitch(reason: string | null | undefined): boolean {
   return reason === 'manual_off' || reason === 'walking_off' || reason === 'streak_off'
     || reason === 'challenges_off' || reason === 'bonuses_off' || reason === 'adjustments_off'
-    || reason === 'activity_not_included';
+    || reason === 'referrals_off' || reason === 'activity_not_included';
 }
 
 export interface RuleChip {
@@ -180,7 +185,7 @@ export interface RuleChip {
  */
 export function ruleChips(ev: Pick<ScoringEvent,
   'included_activities' | 'count_manual' | 'count_walking' | 'count_streak'
-  | 'count_challenges' | 'count_bonuses' | 'count_adjustments'>): RuleChip[] {
+  | 'count_challenges' | 'count_bonuses' | 'count_referrals' | 'count_adjustments'>): RuleChip[] {
   const acts = ev.included_activities;
   return [
     {
@@ -195,6 +200,7 @@ export function ruleChips(ev: Pick<ScoringEvent,
     { key: 'streak',      label: 'Streak bonuses',     on: ev.count_streak },
     { key: 'challenges',  label: 'Challenge payouts',  on: ev.count_challenges },
     { key: 'bonuses',     label: 'Other bonuses',      on: ev.count_bonuses },
+    { key: 'referrals',   label: 'Invite rewards',     on: ev.count_referrals },
     { key: 'adjustments', label: 'Wallet adjustments', on: ev.count_adjustments },
   ];
 }
