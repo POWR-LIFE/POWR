@@ -121,18 +121,22 @@ export async function syncHistoricalHealthData(
     // policy, so an unfiltered probe can match a STRANGER's session and
     // silently drop this user's own workout.
     const syncedKeys = new Set<string>();
-    if (weekData.length > 0) {
-        const earliest = weekData.reduce((min, d) => (d.date < min ? d.date : min), weekData[0].date);
-        const { data: existing } = await supabase
-            .from('activity_sessions')
-            .select('type, started_at')
-            .eq('user_id', user.id)
-            .in('verification', ['wearable', 'health'])
-            .gte('started_at', localDayBounds(earliest).start.toISOString());
-        for (const s of existing ?? []) {
-            syncedKeys.add(`${s.type}_${new Date(s.started_at).toISOString()}`);
-        }
+if (weekData.length > 0) {
+    const earliest = weekData.reduce((min, d) => (d.date < min ? d.date : min), weekData[0].date);
+    const latest = weekData.reduce((max, d) => (d.date > max ? d.date : max), weekData[0].date);
+    const { start } = localDayBounds(earliest);
+    const { end } = localDayBounds(latest);
+    const { data: existing } = await supabase
+        .from('activity_sessions')
+        .select('type, started_at')
+        .eq('user_id', user.id)
+        .in('verification', ['wearable', 'health'])
+        .gte('started_at', start.toISOString())
+        .lt('started_at', end.toISOString());
+    for (const s of existing ?? []) {
+        syncedKeys.add(`${s.type}_${new Date(s.started_at).toISOString()}`);
     }
+}
 
     for (let idx = 0; idx < weekData.length; idx++) {
         const day = weekData[idx];
