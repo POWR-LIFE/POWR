@@ -6,8 +6,8 @@
  * (lib/api/onboardingSync). Until 2026-08-30 the backfill had no scorer at all
  * — it wrote 0-point rows by design — and the live sync kept these functions
  * private, so there was nothing for a second caller to share. Keeping them
- * here, with no React or Supabase imports, is what lets both paths agree
- * without a dependency cycle through lib/api/activity.
+ * here, with no React imports and no dependency on lib/api/activity, is what
+ * lets both paths agree without a dependency cycle through lib/api/activity.
  *
  * Mirrors supabase/functions/_shared/points.ts (Terra webhook) and the
  * per-session bound in enforce_point_award_cap; change all three together.
