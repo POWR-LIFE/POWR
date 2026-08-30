@@ -164,7 +164,7 @@ describe('syncHistoricalHealthData pays the week', () => {
         const existingChain = supabase.from as jest.Mock;
         existingChain.mockImplementationOnce(() => {
             const c: any = {};
-            for (const m of ['select', 'eq', 'in', 'gte']) c[m] = jest.fn(() => c);
+            for (const m of ['select', 'eq', 'in', 'gte', 'lt']) c[m] = jest.fn(() => c);
             c.then = (resolve: (v: unknown) => void) => resolve({
                 data: [{ type: 'running', started_at: '2026-08-28T12:22:23+00:00' }], error: null,
             });
