@@ -9,6 +9,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
+import { defineTask } from '@/lib/taskFinishGuard';
 import { Platform } from 'react-native';
 
 import {
@@ -506,7 +507,7 @@ export async function syncWalkingFromWake(): Promise<void> {
 
 // ── Background task ───────────────────────────────────────────────────────────
 
-TaskManager.defineTask(WALKING_SYNC_TASK, async () => {
+defineTask(WALKING_SYNC_TASK, async () => {
     try {
         await syncWalkingNow();
         return BackgroundFetch.BackgroundFetchResult.NewData;

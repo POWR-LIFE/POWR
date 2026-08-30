@@ -20,7 +20,7 @@
 //  • Android force-stop (from Settings) blocks everything until the app is opened.
 
 import * as Notifications from 'expo-notifications';
-import * as TaskManager from 'expo-task-manager';
+import { defineTask } from '@/lib/taskFinishGuard';
 import { noteTask, reportHandled } from '@/lib/crashHandler';
 
 export const BACKGROUND_NOTIFICATION_TASK = 'POWR_BACKGROUND_NOTIFICATION';
@@ -114,7 +114,7 @@ export function extractData(raw: unknown, accepted: string[] = [VISIT_CHECK_TYPE
   return {};
 }
 
-TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
+defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
   if (error) {
     console.warn('[BackgroundNotification] task error:', error);
     return;
