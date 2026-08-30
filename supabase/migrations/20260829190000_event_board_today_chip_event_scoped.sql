@@ -376,17 +376,48 @@ begin
 end;
 $$;
 
--- ── 3. Self-check: the chip can never exceed the score ────────────────────
+-- ── 3. Self-check: today_points matches the scored set for the scoring day ──
 do $$
 declare v_bad int;
 begin
+  with ev as (
+    select id, window_start_at
+    from public.live_events
+    where status <> 'archived'
+  ),
+  day as (
+    select id as event_id,
+           window_start_at
+           + greatest(floor(extract(epoch from (now() - window_start_at)) / 86400), 0) * interval '1 day' as start_at
+    from ev
+  ),
+  rows as (
+    select d.event_id, s.user_id
+    from day d
+    cross join lateral public._live_event_scores(d.event_id, false) s
+  ),
+  expected as (
+    select r.event_id,
+           r.user_id,
+           coalesce(sum(c.amount), 0)::int as today_points
+    from rows r
+    join day d on d.event_id = r.event_id
+    left join lateral public._live_event_counted(r.event_id, r.user_id) as c(user_id, amount, counted_at)
+      on c.counted_at >= d.start_at
+     and c.counted_at <  d.start_at + interval '1 day'
+    group by r.event_id, r.user_id
+  ),
+  actual as (
+    select r.event_id, r.user_id, x.today_points
+    from rows r
+    cross join lateral public._live_event_row_extras(r.event_id, r.user_id) x
+  )
   select count(*) into v_bad
-  from public.live_events ev
-  cross join lateral public._live_event_scores(ev.id, false) s
-  cross join lateral public._live_event_row_extras(ev.id, s.user_id) x
-  where ev.status <> 'archived'
-    and x.today_points > s.score;
+  from expected e
+  join actual a using (event_id, user_id)
+  where e.today_points <> a.today_points;
+
   if v_bad > 0 then
-    raise exception 'event board today chip exceeds score for % rows', v_bad;
+    raise exception 'event board today chip mismatch for % rows', v_bad;
   end if;
 end $$;
