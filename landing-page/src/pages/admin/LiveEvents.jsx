@@ -10,7 +10,7 @@ import {
     Gauge, Download, UserX, UserCheck, ShieldAlert,
     Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users, TicketCheck,
     ImagePlus, LoaderCircle, DoorOpen, MapPin, ChevronDown, Timer, ArrowLeft, ArrowRight,
-    Sigma, Scale,
+    Sigma, Scale, BellRing, Send,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -173,6 +173,8 @@ export default function LiveEvents() {
     const [doorBusy, setDoorBusy] = useState(null);   // user_id of the manual mark in flight
     const [bookingsBusy, setBookingsBusy] = useState(false);
     const [rosterBusy, setRosterBusy] = useState(null);  // 'add' | user_id of the roster edit in flight
+    const [pulseSends, setPulseSends] = useState([]);    // live_event_pulse_sends, newest first
+    const [pulseBusy, setPulseBusy] = useState(null);    // 'rank' | 'gate' action in flight
     const [tab, setTab] = useState('active');
     const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
@@ -209,13 +211,13 @@ export default function LiveEvents() {
     useEffect(() => { fetchEvents(); }, []);
 
     useEffect(() => {
-        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null); lastOpsEventId.current = null; return; }
+        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null); setPulseSends([]); lastOpsEventId.current = null; return; }
         setForm(editableFields(selected));
         // Switching events must never show the previous event's ops data while
         // the new fetch is in flight; same-event refreshes keep what's there.
         if (selected.id !== lastOpsEventId.current) {
             lastOpsEventId.current = selected.id;
-            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null);
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null); setPulseSends([]);
         }
         fetchCounts(selected.id);
         fetchOps(selected.id);
@@ -223,6 +225,7 @@ export default function LiveEvents() {
         fetchRegistrations(selected.id);
         fetchBookings(selected.id);
         fetchDoor(selected.id);
+        fetchPulseSends(selected.id);
         if (selected.venue_partner_id) {
             supabase.from('partners').select('name').eq('id', selected.venue_partner_id).single()
                 .then(({ data }) => setVenueName(data?.name ?? null));
@@ -641,6 +644,60 @@ const setCheckin = async (ev, row, present) => {
         fetchEvents();
     };
 
+    // ── Pulse pushes (placement + referral gate) ──────────────
+    // Per-registrant pushes composed server-side (live_event_send_pulse) —
+    // a broadcast can't carry "you're #4" or "1 signup to go". Times are
+    // instant writes outside the Save payload, like the lifecycle knobs.
+
+    const fetchPulseSends = async (eventId) => {
+        const { data } = await supabase.from('live_event_pulse_sends')
+            .select('*').eq('event_id', eventId)
+            .order('created_at', { ascending: false }).limit(20);
+        setPulseSends(data ?? []);
+    };
+
+    const setPulseTime = async (ev, kind, value) => {   // value 'HH:MM' | null
+        const col = kind === 'rank' ? 'notify_rank_at' : 'notify_gate_at';
+        setPulseBusy(kind);
+        const { error } = await supabase.from('live_events')
+            .update({ [col]: value }).eq('id', ev.id);
+        setPulseBusy(null);
+        if (error) { toast.error(error.message); return; }
+        await logAction(user.id, 'live_event_pulse_schedule', 'live_event', ev.id, { kind, at: value });
+        toast.success(value
+            ? `Daily ${kind === 'rank' ? 'placement' : 'referral reminder'} push at ${value} UK time`
+            : `Daily ${kind === 'rank' ? 'placement' : 'referral reminder'} push off`);
+        fetchEvents();
+    };
+
+    const sendPulseNow = async (ev, kind) => {
+        const label = kind === 'rank' ? 'placement push' : 'referral reminder';
+        setPulseBusy(kind);
+        // Dry-run first: confirm against the real recipient count, not a guess.
+        const { data: dry, error: dryErr } = await supabase.rpc('admin_send_event_pulse',
+            { p_event_id: ev.id, p_kind: kind, p_dry_run: true });
+        if (dryErr) { setPulseBusy(null); toast.error(dryErr.message); return; }
+        const n = dry?.recipients ?? 0;
+        if (n === 0) {
+            setPulseBusy(null);
+            toast.error(kind === 'rank'
+                ? 'No one to send to — the board must be live, visible and before lock'
+                : 'No one is short of the gate right now (or the deadline has passed)');
+            return;
+        }
+        if (!window.confirm(`Send the ${label} to ${n} ${n === 1 ? 'person' : 'people'} now?`)) {
+            setPulseBusy(null); return;
+        }
+        const { data, error } = await supabase.rpc('admin_send_event_pulse',
+            { p_event_id: ev.id, p_kind: kind, p_dry_run: false });
+        setPulseBusy(null);
+        if (error) { toast.error(error.message); return; }
+        const sent = data?.recipients ?? n;
+        await logAction(user.id, 'live_event_pulse_send', 'live_event', ev.id, { kind, recipients: sent });
+        toast.success(`Sent to ${sent} ${sent === 1 ? 'person' : 'people'}`);
+        fetchPulseSends(ev.id);
+    };
+
     // In-app test preview: instant write, deliberately outside the Save
     // payload (like status/hidden) so it can't be reverted by a stale edit.
     const setPreview = async (ev, enabled, emails) => {
@@ -837,6 +894,14 @@ const setCheckin = async (ev, row, present) => {
                         onSetAutoLifecycle={(enabled) => setAutoLifecycle(selected, enabled)}
                     />
 
+                    <PulsePanel
+                        ev={selected}
+                        sends={pulseSends}
+                        busy={pulseBusy}
+                        onSetTime={(kind, value) => setPulseTime(selected, kind, value)}
+                        onSendNow={(kind) => sendPulseNow(selected, kind)}
+                    />
+
                     <RegistrationsPanel
                         ev={selected}
                         data={registrations}
@@ -907,6 +972,145 @@ const setCheckin = async (ev, row, present) => {
                 </div>
             )}
         </div>
+    );
+}
+
+// ─── Pulse notifications ─────────────────────────────────────────
+// Placement ("you're #4 today") and referral-gate ("1 signup to go")
+// pushes, composed per registrant by live_event_send_pulse. This panel
+// only holds the controls: a daily send time per kind (UK time — the
+// venue's clock, fired once per day by a 5-min cron) and a Send now
+// that dry-runs for the recipient count before confirming.
+
+function PulseRow({ title, desc, kind, value, lastSend, busy, onSetTime, onSendNow, inactiveNote }) {
+    const current = value ? value.slice(0, 5) : '';
+    const [draft, setDraft] = useState(current);
+    useEffect(() => { setDraft(current); }, [current]);
+    const dirty = draft !== current;
+
+    return (
+        <div className="py-5 first:pt-0 last:pb-0">
+            <div className="flex items-start gap-4 flex-wrap">
+                <div className="flex-1 min-w-[220px]">
+                    <p className="text-[13px] font-bold text-[#1A1A1A]">{title}</p>
+                    <p className="text-[12px] text-[#888888] leading-relaxed mt-0.5">{desc}</p>
+                    {lastSend && (
+                        <p className="text-[11px] text-[#999999] mt-1.5">
+                            Last sent {fmtDT(lastSend.created_at)} · {lastSend.recipients} recipient{lastSend.recipients === 1 ? '' : 's'} · {lastSend.source === 'auto' ? 'scheduled' : 'manual'}
+                        </p>
+                    )}
+                    {inactiveNote && (
+                        <p className="text-[11px] text-[#B45309] mt-1.5 inline-flex items-center gap-1.5">
+                            <AlertTriangle size={11} /> {inactiveNote}
+                        </p>
+                    )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                        type="time"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        disabled={!!busy}
+                        className="h-10 px-3 rounded-xl border border-[#E6E6E1] bg-[#FAFAF8] text-[13px] text-[#1A1A1A] focus:outline-none focus:border-[#1A1A1A] disabled:opacity-40"
+                    />
+                    {dirty && draft && (
+                        <button
+                            onClick={() => onSetTime(kind, draft)}
+                            disabled={!!busy}
+                            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all bg-[#1A1A1A] border-[#1A1A1A] text-white hover:bg-[#333333] disabled:opacity-40"
+                        >
+                            <Check size={13} /> Set {draft}
+                        </button>
+                    )}
+                    {current && (
+                        <button
+                            onClick={() => onSetTime(kind, null)}
+                            disabled={!!busy}
+                            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all bg-[#F43F5E]/10 border-[#F43F5E]/25 text-[#F43F5E] hover:bg-[#F43F5E]/15 disabled:opacity-40"
+                        >
+                            <X size={13} /> Off
+                        </button>
+                    )}
+                    <button
+                        onClick={() => onSendNow(kind)}
+                        disabled={!!busy}
+                        className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2] disabled:opacity-40"
+                    >
+                        {busy === kind ? <LoaderCircle size={13} className="animate-spin" /> : <Send size={13} />} Send now
+                    </button>
+                </div>
+            </div>
+            <p className="text-[11px] text-[#AAAAAA] mt-2">
+                {current
+                    ? `Sends every day at ${current} UK time (once per day — a manual send doesn't stop it).`
+                    : 'No daily send — set a time, or use Send now for one-offs.'}
+            </p>
+        </div>
+    );
+}
+
+function PulsePanel({ ev, sends, busy, onSetTime, onSendNow }) {
+    const last = (kind) => (sends ?? []).find(s => s.kind === kind) ?? null;
+    const rankInactive =
+        ev.status !== 'live' ? 'Only sends while the event is live — nothing goes out right now.'
+        : ev.hidden ? 'The board is hidden — placement pushes pause until it\'s visible again.'
+        : (ev.lock_at && new Date(ev.lock_at) <= new Date()) ? 'Past the lock time — placement pushes have stopped.'
+        : null;
+    const gateDeadline = ev.conversion_deadline_at ?? ev.lock_at ?? ev.window_end_at;
+    const gateInactive =
+        !(ev.entry_gate_n > 0) ? null
+        : (gateDeadline && new Date(gateDeadline) <= new Date()) ? 'The gate deadline has passed — reminders have stopped.'
+        : null;
+
+    return (
+        <section>
+            <div className="flex items-center gap-4 mb-4 px-1">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-[#3B82F6]/[0.08] border-[#3B82F6]/25">
+                    <BellRing size={18} className="text-[#3B82F6]" />
+                </div>
+                <div className="min-w-0">
+                    <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Pulse notifications</h2>
+                    <p className="text-[12px] text-[#888888] leading-snug">
+                        Personal pushes with each registrant&apos;s own numbers — their rank, their signup count.
+                        Broadcast campaigns can&apos;t do this; they send everyone the same words.
+                    </p>
+                </div>
+                <div className="flex-1 h-[1.5px] rounded-full bg-gradient-to-r from-[#3B82F6]/25 to-transparent" />
+            </div>
+
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 divide-y divide-[#F0F0EC]">
+                <PulseRow
+                    kind="rank"
+                    title="Daily placement push"
+                    desc={'"You\'re #4 today — 26 POWR behind #3." Goes to everyone on the board with their rank, points and movement since the scoring day began (the same ▲/▼ the app shows). Only while the board is live and visible — never from a sealed board.'}
+                    value={ev.notify_rank_at}
+                    lastSend={last('rank')}
+                    busy={busy}
+                    onSetTime={onSetTime}
+                    onSendNow={onSendNow}
+                    inactiveNote={rankInactive}
+                />
+                {ev.entry_gate_n > 0 ? (
+                    <PulseRow
+                        kind="gate"
+                        title="Referral gate reminder"
+                        desc={`"1 more signup to go." Only registrants still short of the ${ev.entry_gate_n}-${ev.entry_gate_counting === 'conversions' ? 'workout' : 'signup'} gate get it, with their own count and the deadline. Keeps running after lock — the gate deadline is later.`}
+                        value={ev.notify_gate_at}
+                        lastSend={last('gate')}
+                        busy={busy}
+                        onSetTime={onSetTime}
+                        onSendNow={onSendNow}
+                        inactiveNote={gateInactive}
+                    />
+                ) : (
+                    <div className="pt-5">
+                        <p className="text-[12px] text-[#999999]">
+                            No entry gate on this event — the referral reminder appears when one is set in Configuration.
+                        </p>
+                    </div>
+                )}
+            </div>
+        </section>
     );
 }
 

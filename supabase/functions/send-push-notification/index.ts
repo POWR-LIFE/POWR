@@ -30,6 +30,10 @@ type NotificationType =
   | 'affiliate_milestone'
   | 'affiliate_conversion'
   | 'event_results_revealed'
+  // Per-event pulse pushes scheduled from /admin/events (live_event_send_pulse):
+  // your rank today / how many signups you still owe the entry gate.
+  | 'event_rank_daily'
+  | 'event_gate_reminder'
   // One-shot setup notice when a user loses 'always' location (dispatch-daily-
   // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
   | 'location_permission_lost'
@@ -67,6 +71,9 @@ const FEED_EXCLUDED: Set<NotificationType> = new Set([
   // "someone posted on the board" is a right-now prompt, not a record. The
   // conversion receipt is NOT excluded: a challenge changing state is history.
   'challenge_open_posted',
+  // Yesterday's rank and an unmet gate are both stale the moment they change —
+  // the board itself is the record. (event_results_revealed IS logged: final.)
+  'event_rank_daily', 'event_gate_reminder',
 ]);
 
 // Coarse bucket the client renders an icon/accent from.
@@ -85,6 +92,8 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'challenge_open_unclaimed':
     case 'challenge_open_posted':
     case 'event_results_revealed':
+    case 'event_rank_daily':
+    case 'event_gate_reminder':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -146,6 +155,9 @@ const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   // Someone has probably taken it by tomorrow; a stale "new on the board" is
   // worse than none, because tapping it lands on a challenge that's gone.
   challenge_open_posted:   12 * 60 * 60,
+  // "You're #4 today" delivered tomorrow is a wrong number, not a late one.
+  event_rank_daily:        6 * 60 * 60,
+  event_gate_reminder:     12 * 60 * 60,
 };
 
 // "on 16 Sep" for a vault maturity date. Falls back to a vaguer phrase rather
@@ -497,6 +509,78 @@ function buildMessage(
             event_id: payload.event_id,
             rank: Number.isFinite(rank) && rank > 0 ? rank : undefined,
           },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'event_rank_daily': {
+        // live_event_send_pulse 'rank' — the daily "where you stand" pulse the
+        // admin schedules per event. rank_delta shares the board arrows'
+        // reference (since the scoring day began), so push and app agree.
+        const eventName = String(payload.event_name ?? 'The event').trim() || 'The event';
+        const rank = Math.round(Number(payload.rank));
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        const delta = Math.round(Number(payload.rank_delta));
+        const gap = Math.round(Number(payload.gap_above));
+        const lead = Math.round(Number(payload.lead));
+        const hasRank = Number.isFinite(rank) && rank > 0;
+        const move = Number.isFinite(delta) && delta > 0 ? ` — up ${delta} today`
+          : Number.isFinite(delta) && delta < 0 ? ` — down ${-delta} today`
+          : '';
+        const chase = hasRank && rank === 1
+          ? (Number.isFinite(lead) && lead > 0
+              ? ` ${lead.toLocaleString()} POWR clear of #2 — keep it.`
+              : ' Keep it.')
+          : (hasRank && Number.isFinite(gap) && gap > 0
+              ? ` ${gap.toLocaleString()} POWR behind #${rank - 1} — today counts.`
+              : ' Today counts.');
+        return {
+          title: hasRank
+            ? (rank === 1 ? `${eventName}: you're in 1st 👑` : `${eventName}: you're #${rank} today`)
+            : `${eventName}: today's board is in`,
+          body: hasRank
+            ? `${points.toLocaleString()} POWR${move}.${chase}`
+            : 'See where you stand on the leaderboard.',
+          data: {
+            type,
+            route: '/(tabs)/league',
+            event_id: payload.event_id,
+            rank: hasRank ? rank : undefined,
+          },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'event_gate_reminder': {
+        // live_event_send_pulse 'gate' — only registrants still short of the
+        // entry gate get this, only while the deadline is ahead.
+        const eventName = String(payload.event_name ?? 'The event').trim() || 'The event';
+        const required = Math.max(1, Math.round(Number(payload.required ?? 1)));
+        const count = Math.min(required - 1, Math.max(0, Math.round(Number(payload.count ?? 0))));
+        const remaining = required - count;
+        const conversions = payload.counting === 'conversions';
+        const unit = conversions ? 'friend workout' : 'signup';
+        // The gate deadline is a real instant (FNL: Fri 18:00), but when it
+        // falls back to a midnight boundary the half-open rule applies — name
+        // the last day that counts, never the boundary day. Minus one minute
+        // does both: 18:00 stays its own day, 00:00 becomes the day before.
+        const dl = new Date(String(payload.deadline_at ?? ''));
+        const day = Number.isNaN(dl.getTime()) ? '' :
+          new Date(dl.getTime() - 60_000).toLocaleDateString('en-GB', {
+            weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London',
+          });
+        const stake = payload.gate_mode === 'entry'
+          ? 'unlocks the leaderboard'
+          : 'keeps your place in the final standings';
+        const progress = conversions
+          ? `${count} of ${required} invited friends have logged their first verified workout.`
+          : `${count} of ${required} friends have signed up with your code.`;
+        return {
+          title: `${eventName}: ${remaining} more ${unit}${remaining === 1 ? '' : 's'} to go 🎟️`,
+          body: `${progress} Hitting ${required}${day ? ` by ${day}` : ''} ${stake}.`,
+          data: { type, route: '/(tabs)/league', event_id: payload.event_id, count, required },
           sound: 'default',
           channelId: 'powr_default_v2',
           priority: 'high',
@@ -1071,6 +1155,12 @@ Deno.serve(async (req: Request) => {
       // You registered for the event; the result of it is not a nudge to opt
       // out of. Admin kill-switch only.
       : type === 'event_results_revealed' ? null
+      // Event-scoped and week-limited: controlled per event by the admin
+      // (live_events.notify_*_at + Send now), killed globally in
+      // notification_config. No preference column exists for them, so mapping
+      // to `type` would 400 on every send — see the warning above.
+      : type === 'event_rank_daily' ? null
+      : type === 'event_gate_reminder' ? null
       : type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
       : type === 'session_upgraded' ? 'session_completed'
       : type === 'vault_unlocked' ? 'points_milestone'
