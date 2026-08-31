@@ -16,6 +16,11 @@ export type LeaderboardEntry = {
     /** Live-event boards only: places moved since the scoring day began.
      *  Absent/null/0 → no arrow. League views never carry it. */
     rank_delta?: number | null;
+    /** Live-event boards only: this user's referral-gate progress (count is
+     *  uncapped — 6/3 renders as 6/3). Either side absent → no chip. League
+     *  views never carry them. */
+    gate_count?: number | null;
+    gate_required?: number | null;
 };
 
 export type LeaderboardMetric = 'weekly' | 'alltime';
