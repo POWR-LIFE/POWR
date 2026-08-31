@@ -43,7 +43,7 @@ import { useLiveEvent } from '@/hooks/useLiveEvent';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
 import type { BoardPreviewState, EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
-import { rankMove, shortDate } from '@/lib/liveEventDisplay';
+import { gateProgress, rankMove, shortDate } from '@/lib/liveEventDisplay';
 import { getLevelInfo } from '@/constants/levels';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -489,7 +489,10 @@ function BoardPreviewSwitcher({
 // registrant behind the gate or staring at the seal still sees the week
 // counting for them.
 
-const asEntries = (rows: EventBoardEntry[] | undefined): LeaderboardEntry[] =>
+const asEntries = (
+  rows: EventBoardEntry[] | undefined,
+  gateRequired: number | null = null,
+): LeaderboardEntry[] =>
   (rows ?? []).map(r => ({
     user_id: r.user_id,
     display_name: r.display_name,
@@ -502,6 +505,8 @@ const asEntries = (rows: EventBoardEntry[] | undefined): LeaderboardEntry[] =>
     total_earned: r.total_earned ?? null,
     today_points: r.today_points ?? 0,
     rank_delta: r.rank_delta ?? null,
+    gate_count: r.gate_count ?? null,
+    gate_required: gateRequired,
   }));
 
 /**
@@ -634,7 +639,9 @@ function EventBoardSection({
   }
 
   const isWinners = board.results != null;
-  const entries = asEntries(board.results ?? board.standings);
+  // The required side of every row's referral chip — the count rides each row,
+  // the requirement is one fact about the event and rides viewer.gate.
+  const entries = asEntries(board.results ?? board.standings, gate?.required ?? null);
   const top3 = entries.slice(0, 3);
   const restRows = entries.slice(entries.length >= 3 ? 3 : 0);
   const prizeWinners = (board.results ?? []).filter(r => r.prize_label).slice(0, 3);
@@ -991,6 +998,7 @@ function RealPodium({
                   </Text>
                 )}
                 <RankMove delta={entry.rank_delta} />
+                <GateChip count={entry.gate_count} required={entry.gate_required} />
               </View>
 
               {/* Avatar with spinning placement rings */}
@@ -1253,16 +1261,37 @@ function TodayChip({ points }: { points: number }) {
   );
 }
 
+/** Referral-gate progress on a board row — "2/3" muted while short, green
+ *  with a check once met (6/3 stays green: over-completion is the flex).
+ *  Renders nothing when either side is missing, so league rows and gateless
+ *  events never grow the chip. */
+function GateChip({ count, required }: { count: number | null | undefined; required: number | null | undefined }) {
+  const progress = gateProgress(count, required);
+  if (!progress) return null;
+  return (
+    <View style={[styles.gateChip, progress.met && styles.gateChipMet]}>
+      <Ionicons
+        name={progress.met ? 'checkmark-circle' : 'person-add-outline'}
+        size={8}
+        color={progress.met ? GREEN : DIM}
+      />
+      <Text style={[styles.gateChipText, progress.met && styles.gateChipTextMet]}>{progress.label}</Text>
+    </View>
+  );
+}
+
 function RowMeta({ entry, showPro }: { entry: LeaderboardEntry; showPro: boolean }) {
   const hasLevel = entry.total_earned != null;
   const hasPro = showPro && entry.is_pro;
   const hasToday = entry.today_points > 0;
-  if (!hasLevel && !hasPro && !hasToday) return null;
+  const hasGate = gateProgress(entry.gate_count, entry.gate_required) != null;
+  if (!hasLevel && !hasPro && !hasToday && !hasGate) return null;
   return (
     <View style={styles.rowMeta}>
       {hasLevel && <LevelPill totalEarned={entry.total_earned!} />}
       {hasPro && <ProBadge size="sm" />}
       {hasToday && <TodayChip points={entry.today_points} />}
+      {hasGate && <GateChip count={entry.gate_count} required={entry.gate_required} />}
     </View>
   );
 }
@@ -1506,6 +1535,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(74,222,128,0.10)', borderWidth: 1, borderColor: 'rgba(74,222,128,0.28)',
   },
   todayChipText: { fontSize: 8, fontWeight: '700', letterSpacing: 0.8, color: GREEN },
+  gateChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)',
+  },
+  gateChipMet: { backgroundColor: 'rgba(74,222,128,0.10)', borderColor: 'rgba(74,222,128,0.28)' },
+  gateChipText: { fontSize: 8, fontWeight: '700', letterSpacing: 0.8, color: DIM },
+  gateChipTextMet: { color: GREEN },
   leaderPts: { fontSize: 14, fontWeight: '400', color: MUTED },
 
   // ── Section header with rule

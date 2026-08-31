@@ -144,3 +144,19 @@ export function rankMove(delta: number | null | undefined): { dir: 'up' | 'down'
     if (delta == null || !Number.isFinite(delta) || delta === 0) return null;
     return { dir: delta > 0 ? 'up' : 'down', places: Math.abs(Math.trunc(delta)) };
 }
+
+/**
+ * Referral-gate progress for a board row: "3/3", "6/3" — the count is never
+ * capped, over-completion is part of the cue. null when there is nothing to
+ * draw: no gate on the event, or a row the server sent no count for (frozen
+ * results, league views). One place so every surface agrees on the format.
+ */
+export function gateProgress(
+    count: number | null | undefined,
+    required: number | null | undefined
+): { label: string; met: boolean } | null {
+    if (count == null || required == null) return null;
+    if (!Number.isFinite(count) || !Number.isFinite(required) || required <= 0) return null;
+    const have = Math.max(0, Math.trunc(count));
+    return { label: `${have}/${Math.trunc(required)}`, met: have >= required };
+}

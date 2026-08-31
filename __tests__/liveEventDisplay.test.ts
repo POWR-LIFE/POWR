@@ -1,4 +1,4 @@
-import { eventNightLine, eventStatusChip, rankMove, scoringLine } from '@/lib/liveEventDisplay';
+import { eventNightLine, eventStatusChip, gateProgress, rankMove, scoringLine } from '@/lib/liveEventDisplay';
 
 const realToLocaleDateString = Date.prototype.toLocaleDateString;
 const realToLocaleTimeString = Date.prototype.toLocaleTimeString;
@@ -144,5 +144,30 @@ describe('rankMove', () => {
         expect(rankMove(null)).toBeNull();
         expect(rankMove(undefined)).toBeNull();
         expect(rankMove(NaN)).toBeNull();
+    });
+});
+
+describe('gateProgress', () => {
+    it('reads count/required, met at the line and beyond it', () => {
+        expect(gateProgress(0, 3)).toEqual({ label: '0/3', met: false });
+        expect(gateProgress(2, 3)).toEqual({ label: '2/3', met: false });
+        expect(gateProgress(3, 3)).toEqual({ label: '3/3', met: true });
+    });
+
+    it('never caps the count — over-completion shows as 6/3', () => {
+        expect(gateProgress(6, 3)).toEqual({ label: '6/3', met: true });
+    });
+
+    it('draws nothing without both sides of the fraction, or without a gate', () => {
+        expect(gateProgress(null, 3)).toBeNull();
+        expect(gateProgress(undefined, 3)).toBeNull();
+        expect(gateProgress(2, null)).toBeNull();
+        expect(gateProgress(2, undefined)).toBeNull();
+        expect(gateProgress(2, 0)).toBeNull();
+        expect(gateProgress(NaN, 3)).toBeNull();
+    });
+
+    it('clamps a negative count to 0 rather than rendering -1/3', () => {
+        expect(gateProgress(-1, 3)).toEqual({ label: '0/3', met: false });
     });
 });

@@ -175,6 +175,11 @@ export type EventBoardEntry = {
      *  rank now): > 0 climbed, < 0 dropped, 0 held, null/absent = no
      *  reference (0→N entrant, frozen results). Server-computed only. */
     rank_delta?: number | null;
+    /** This user's referral-gate count, UNCAPPED (6 on a 3-gate shows 6/3).
+     *  Present only on live standings rows of a gated event — null/absent
+     *  means no gate (or frozen results, where Settle already enforced it).
+     *  The required side comes from viewer.gate.required. */
+    gate_count?: number | null;
 };
 
 export type EventLeaderboard = {
