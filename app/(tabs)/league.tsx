@@ -1231,6 +1231,7 @@ function LadderRow({
         </Text>
         <RowMeta entry={entry} showPro={showPro} />
       </View>
+      <GateChip count={entry.gate_count} required={entry.gate_required} />
       <Text style={[styles.ladderPts, isMe && styles.ladderPtsMe]}>
         {entry.points.toLocaleString()}
       </Text>
@@ -1284,14 +1285,12 @@ function RowMeta({ entry, showPro }: { entry: LeaderboardEntry; showPro: boolean
   const hasLevel = entry.total_earned != null;
   const hasPro = showPro && entry.is_pro;
   const hasToday = entry.today_points > 0;
-  const hasGate = gateProgress(entry.gate_count, entry.gate_required) != null;
-  if (!hasLevel && !hasPro && !hasToday && !hasGate) return null;
+  if (!hasLevel && !hasPro && !hasToday) return null;
   return (
     <View style={styles.rowMeta}>
       {hasLevel && <LevelPill totalEarned={entry.total_earned!} />}
       {hasPro && <ProBadge size="sm" />}
       {hasToday && <TodayChip points={entry.today_points} />}
-      {hasGate && <GateChip count={entry.gate_count} required={entry.gate_required} />}
     </View>
   );
 }
@@ -1377,6 +1376,9 @@ function RealLeaderRow({
         </Text>
         <RowMeta entry={entry} showPro={showPro} />
       </View>
+
+      {/* Referral gate progress, sitting against the points (Jamie 08-31) */}
+      <GateChip count={entry.gate_count} required={entry.gate_required} />
 
       {/* Points */}
       <View style={{ alignItems: 'flex-end', gap: 1 }}>
