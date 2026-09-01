@@ -1380,7 +1380,12 @@ export default function UserProfile() {
                                             )}
                                             {!venue && <div className="mb-2" />}
                                             <div className="flex items-center gap-6 text-[10px] font-black text-[#666666] uppercase tracking-[0.2em]">
-                                                <span className="flex items-center gap-2"><Clock size={12} /> {Math.floor(session.duration_sec / 60)}M</span>
+                                                {/* Walking rows are daily step buckets: duration_sec is 0 by design, steps
+                                                    are the stat. The clock stays as a fallback so a row is never statless. */}
+                                                {(session.duration_sec > 0 || !session.steps) && (
+                                                    <span className="flex items-center gap-2"><Clock size={12} /> {Math.floor(session.duration_sec / 60)}M</span>
+                                                )}
+                                                {session.steps > 0 && <span className="flex items-center gap-2"><Footprints size={12} /> {session.steps.toLocaleString()} STEPS</span>}
                                                 {session.distance_m > 0 && <span className="flex items-center gap-2"><MapPin size={12} /> {(session.distance_m / 1000).toFixed(2)}KM</span>}
                                                 <span className={`px-3 py-1 rounded-full border ${session.verification === 'geofence' ? 'border-[#10B981]/20 text-[#10B981]' : 'border-[#E6E6E1] text-[#666666]'}`}>
                                                     {session.verification} verify

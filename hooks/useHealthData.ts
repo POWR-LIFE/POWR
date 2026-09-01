@@ -534,6 +534,14 @@ export async function androidRequestPermissions(): Promise<boolean> {
             { accessType: 'read', recordType: 'RestingHeartRate' },
         ]);
         console.log('[HealthData] Permissions granted:', granted);
+        // Distance is asked for separately: on binaries built before READ_DISTANCE
+        // was declared in the manifest this request throws, and it must not take
+        // the grants above down with it.
+        try {
+            await requestPermission([{ accessType: 'read', recordType: 'Distance' }]);
+        } catch (e) {
+            console.warn('[HealthData] Distance permission unavailable on this binary:', e);
+        }
         return granted.length > 0;
     } catch (e) {
         console.warn('[HealthData] androidRequestPermissions failed:', e);
@@ -617,6 +625,35 @@ function mapHCExerciseType(exerciseType: number): string {
     return HC_EXERCISE_TYPE[exerciseType] ?? `exercise_${exerciseType}`;
 }
 
+// HC types whose distance we trust from a window aggregate. Kept to activities
+// where distance IS the workout — for a gym/yoga session the same aggregate
+// would pick up incidental walking around the session and misattribute it.
+const HC_DISTANCE_TYPES = new Set([
+    'biking', 'biking_stationary', 'hiking', 'running', 'running_treadmill',
+    'walking', 'swimming_open_water', 'swimming_pool',
+]);
+
+/** Distance covered in one exercise-session window, in metres.
+ *  Unlike HealthKit's per-workout totalDistance, HC ExerciseSession records
+ *  carry no distance — it lives in separate Distance records the workout app
+ *  wrote over the same span, so we aggregate that window. Fails soft
+ *  (undefined): READ_DISTANCE is only declared in binaries built after
+ *  2026-09-01, and the user may decline it. */
+async function androidDistanceForWindow(startTime: string, endTime: string): Promise<number | undefined> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { aggregateRecord } = require('react-native-health-connect');
+        const result = await aggregateRecord({
+            recordType: 'Distance',
+            timeRangeFilter: { operator: 'between', startTime, endTime },
+        });
+        const meters = result?.DISTANCE?.inMeters;
+        return meters > 0 ? Math.round(meters) : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 async function androidGetActivitiesToday(): Promise<HealthActivity[]> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -630,15 +667,20 @@ async function androidGetActivitiesToday(): Promise<HealthActivity[]> {
                 endTime: toLocalISO(new Date()),
             },
         });
-        return (records as Array<{ startTime: string; endTime: string; exerciseType: number; metadata?: { dataOrigin?: string; device?: { type?: number } } }>).map(r => ({
-            type: mapHCExerciseType(r.exerciseType),
-            startedAt: r.startTime,
-            durationMin: Math.round(
-                (new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000,
-            ),
-            source: androidProvenance(r),
-            rawName: HC_EXERCISE_TYPE[r.exerciseType],
-        }));
+        return await Promise.all(
+            (records as Array<{ startTime: string; endTime: string; exerciseType: number; metadata?: { dataOrigin?: string; device?: { type?: number } } }>).map(async r => ({
+                type: mapHCExerciseType(r.exerciseType),
+                startedAt: r.startTime,
+                durationMin: Math.round(
+                    (new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000,
+                ),
+                distanceM: HC_DISTANCE_TYPES.has(HC_EXERCISE_TYPE[r.exerciseType])
+                    ? await androidDistanceForWindow(r.startTime, r.endTime)
+                    : undefined,
+                source: androidProvenance(r),
+                rawName: HC_EXERCISE_TYPE[r.exerciseType],
+            })),
+        );
     } catch {
         return [];
     }
@@ -947,13 +989,18 @@ async function androidGetWeekHistory(): Promise<DayHealthSummary[]> {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const { readRecords } = require('react-native-health-connect');
             const { records } = await readRecords('ExerciseSession', timeFilter);
-            activities = (records as Array<{ startTime: string; endTime: string; exerciseType: number; metadata?: { dataOrigin?: string; device?: { type?: number } } }>).map(r => ({
-                type: mapHCExerciseType(r.exerciseType),
-                startedAt: r.startTime,
-                durationMin: Math.round((new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000),
-                source: androidProvenance(r),
-                rawName: HC_EXERCISE_TYPE[r.exerciseType],
-            }));
+            activities = await Promise.all(
+                (records as Array<{ startTime: string; endTime: string; exerciseType: number; metadata?: { dataOrigin?: string; device?: { type?: number } } }>).map(async r => ({
+                    type: mapHCExerciseType(r.exerciseType),
+                    startedAt: r.startTime,
+                    durationMin: Math.round((new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000),
+                    distanceM: HC_DISTANCE_TYPES.has(HC_EXERCISE_TYPE[r.exerciseType])
+                        ? await androidDistanceForWindow(r.startTime, r.endTime)
+                        : undefined,
+                    source: androidProvenance(r),
+                    rawName: HC_EXERCISE_TYPE[r.exerciseType],
+                })),
+            );
         } catch { /* ignore */ }
 
         // Sleep (look from previous day 6pm)

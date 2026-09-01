@@ -107,8 +107,11 @@ export default function ProgressDetailScreen() {
   // Stats
   const totalSessions = sessions.length;
   const totalPoints   = sessions.reduce((sum, s) => sum + sessionPoints(s), 0);
-  const avgDuration   = sessions.length
-    ? Math.round(sessions.reduce((sum, s) => sum + s.duration_sec, 0) / sessions.length / 60)
+  // Average only the timed sessions — walking step buckets carry duration 0
+  // and would drag the mean toward zero.
+  const timedSessions = sessions.filter(s => s.duration_sec > 0);
+  const avgDuration   = timedSessions.length
+    ? Math.round(timedSessions.reduce((sum, s) => sum + s.duration_sec, 0) / timedSessions.length / 60)
     : 0;
 
   return (
@@ -196,7 +199,14 @@ export default function ProgressDetailScreen() {
 
 function SessionRow({ session, colour }: { session: ActivitySession; colour: string }) {
   const pts    = sessionPoints(session);
-  const detail = formatDistance(session.distance_m) ?? formatDuration(session.duration_sec);
+  // Walking rows are daily step buckets — duration_sec is 0 by design, so steps
+  // are the stat. Timed sessions show distance/duration alongside when present.
+  const parts = [
+    session.steps ? `${session.steps.toLocaleString()} steps` : null,
+    formatDistance(session.distance_m),
+    session.duration_sec > 0 ? formatDuration(session.duration_sec) : null,
+  ].filter((p): p is string => p != null);
+  const detail = parts.length ? parts.join(' · ') : formatDuration(session.duration_sec);
   const label  = session.type.charAt(0).toUpperCase() + session.type.slice(1);
 
   return (
