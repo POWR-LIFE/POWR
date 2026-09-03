@@ -287,7 +287,7 @@ begin
   -- conversion happens outside any active event window.
   update public.referrals
      set converted_at = now(), converting_session_id = new.id,
-         event_id = coalesce(v_event.id, event_id)
+         event_id = coalesce(event_id, v_event.id)
    where id = v_pending.id and converted_at is null
   returning * into v_referral;
   if v_referral.id is null then return new; end if;
