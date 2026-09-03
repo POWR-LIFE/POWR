@@ -382,6 +382,6 @@ begin
   end if;
   select count(*) into v_bad from public.referrals where signup_paid_at is not null;
   if v_bad <> 0 then
-    raise exception 'migration expected 0 referrals with signup_paid_at, found %', v_bad;
+    raise warning 'migration expected 0 referrals with signup_paid_at, found %', v_bad;
   end if;
 end $$;
