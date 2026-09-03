@@ -349,7 +349,8 @@ begin
         if v_paid = 1 then
           insert into public.point_transactions (user_id, amount, type, source, description)
           values (v_referral.referrer_id, v_milestone_bonus, 'bonus', 'invite_milestone',
-                  v_milestone_n || ' friends converted — milestone bonus');
+                  case when v_on_signup then v_milestone_n || ' friends joined — milestone bonus'
+                       else v_milestone_n || ' friends converted — milestone bonus' end);
         end if;
       end if;
     end if;
