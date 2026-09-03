@@ -126,6 +126,7 @@ const editableFields = (ev) => ({
     count_challenges: ev.count_challenges ?? false,
     count_bonuses: ev.count_bonuses ?? false,
     count_referrals: ev.count_referrals ?? false,
+    reward_referrals_on_signup: ev.reward_referrals_on_signup ?? false,
     count_adjustments: ev.count_adjustments ?? true,
     attendance_bonus_points: ev.attendance_bonus_points ?? 0,
     invite_bonus_points: ev.invite_bonus_points,
@@ -1798,8 +1799,9 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                 <div className="min-w-0 flex-1">
                     <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Registrations & invites</h2>
                     <p className="text-[12px] text-[#888888] leading-snug">
-                        Everyone who has registered, plus the invite rewards paid out — +{ev.invite_bonus_points} points to both people
-                        for each friend who completes their first verified workout, and +{ev.invite_milestone_bonus} at {ev.invite_milestone_n} friends.
+                        Everyone who has registered, plus the invite rewards paid out — {ev.reward_referrals_on_signup
+                            ? <>+{ev.invite_bonus_points} points to the inviter as soon as a friend signs up (the friend earns theirs on their first verified workout)</>
+                            : <>+{ev.invite_bonus_points} points to both people for each friend who completes their first verified workout</>}, and +{ev.invite_milestone_bonus} at {ev.invite_milestone_n} friends.
                         Test registrations made while the event is a draft also show up here.
                     </p>
                 </div>
@@ -3364,7 +3366,7 @@ const stepState = (form) => ({
     invites: form.invite_bonus_points > 0
         ? {
             status: 'done',
-            summary: `${form.invite_bonus_points} pts per friend${form.invite_milestone_n > 0 && form.invite_milestone_bonus > 0 ? ` · +${form.invite_milestone_bonus} at ${form.invite_milestone_n}` : ''}`,
+            summary: `${form.invite_bonus_points} pts per friend${form.invite_milestone_n > 0 && form.invite_milestone_bonus > 0 ? ` · +${form.invite_milestone_bonus} at ${form.invite_milestone_n}` : ''}${form.reward_referrals_on_signup ? ' · inviter paid at signup' : ''}`,
         }
         : { status: 'off', summary: 'No invite bonus' },
     gate: form.entry_gate_n > 0
@@ -3606,8 +3608,13 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
             sections: [
                 { title: 'Bonus', fields: (
                     <>
-                        <Field label="Points per friend" hint="Paid to both the inviter and the friend once the friend completes their first verified workout.">
+                        <Field label="Points per friend" hint={form.reward_referrals_on_signup
+                            ? "Paid to the inviter as soon as the friend signs up, and to the friend once they complete their first verified workout."
+                            : "Paid to both the inviter and the friend once the friend completes their first verified workout."}>
                             <NumberInput value={form.invite_bonus_points} onChange={v => set({ invite_bonus_points: v })} min={0} max={1000} unit="pts" />
+                        </Field>
+                        <Field label="Pay the inviter at signup" hint="On: the inviter is paid the moment someone signs up with their code, and the milestone counts signups — matching an entry gate that already counts signups. The friend still earns their own side on their first verified workout, so a fake account is worth nothing to itself. Off (default): nothing is paid until the friend completes a first verified workout.">
+                            <Toggle on={form.reward_referrals_on_signup} onFlip={() => set({ reward_referrals_on_signup: !form.reward_referrals_on_signup })} />
                         </Field>
                         <Field label="Milestone after" hint="Number of friends someone needs to bring in to earn the extra milestone bonus below.">
                             <NumberInput value={form.invite_milestone_n} onChange={v => set({ invite_milestone_n: v })} min={0} max={50} unit="friends" />

@@ -1,4 +1,4 @@
-import { eventNightLine, eventStatusChip, gateProgress, rankMove, scoringLine } from '@/lib/liveEventDisplay';
+import { eventNightLine, eventStatusChip, gateProgress, inviteRewardLine, rankMove, scoringLine } from '@/lib/liveEventDisplay';
 
 const realToLocaleDateString = Date.prototype.toLocaleDateString;
 const realToLocaleTimeString = Date.prototype.toLocaleTimeString;
@@ -169,5 +169,32 @@ describe('gateProgress', () => {
 
     it('clamps a negative count to 0 rather than rendering -1/3', () => {
         expect(gateProgress(-1, 3)).toEqual({ label: '0/3', met: false });
+    });
+});
+
+describe('inviteRewardLine', () => {
+    it('splits the timing when the inviter is paid at signup', () => {
+        const line = inviteRewardLine({ invite_bonus_points: 20, reward_referrals_on_signup: true });
+        expect(line).toBe(
+            'You get +20 POWR the moment a friend joins with your code. '
+            + 'They earn their +20 on their first verified workout.',
+        );
+    });
+
+    it('keeps the both-on-conversion promise when the switch is off', () => {
+        expect(inviteRewardLine({ invite_bonus_points: 20, reward_referrals_on_signup: false })).toBe(
+            'You each get +20 POWR when a friend joins with your code and logs their first verified workout.',
+        );
+    });
+
+    // A payload written before 2026-09-03 has no such key, and reading `undefined`
+    // as "paid at signup" would promise money the server does not pay.
+    it('treats a missing flag as pay-on-conversion', () => {
+        expect(inviteRewardLine({ invite_bonus_points: 20 })).toContain('logs their first verified workout');
+    });
+
+    it('carries the event\'s own bonus figure, never a hardcoded 20', () => {
+        expect(inviteRewardLine({ invite_bonus_points: 50, reward_referrals_on_signup: true }))
+            .toContain('+50 POWR the moment');
     });
 });

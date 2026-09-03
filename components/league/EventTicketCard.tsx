@@ -11,7 +11,7 @@ import type { InviteFriend, InviteProgress, LiveEvent } from '@/lib/api/liveEven
 import { fetchProfile } from '@/lib/api/user';
 import { openEventBooking } from '@/lib/eventBookingLink';
 import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
-import { shortDate } from '@/lib/liveEventDisplay';
+import { inviteRewardLine, shortDate } from '@/lib/liveEventDisplay';
 import type { Friend } from '@/lib/social/types';
 
 const GOLD = '#E8D200';
@@ -211,7 +211,7 @@ export function EventTicketCard({
                     ? keepPlace
                         ? `${gate.required} friends${gateBy ? ` by ${gateBy}` : ''} keeps your place in the final standings · +${event.invite_bonus_points} POWR each`
                         : `${gate.required} friends puts you on the leaderboard · +${event.invite_bonus_points} POWR each`
-                    : `You each get +${event.invite_bonus_points} POWR when a friend joins with your code and logs a first verified workout.${
+                    : `${inviteRewardLine(event)}${
                           !gate && milestoneN > 0 && event.invite_milestone_bonus > 0
                               ? ` +${event.invite_milestone_bonus} more at ${milestoneN} friends.`
                               : ''
