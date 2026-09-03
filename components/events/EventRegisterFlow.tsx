@@ -29,7 +29,7 @@ import {
 import { fetchProfile } from '@/lib/api/user';
 import { openEventBooking } from '@/lib/eventBookingLink';
 import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
-import { consentLine, eventDateRange } from '@/lib/liveEventDisplay';
+import { consentLine, eventDateRange, inviteRewardLine } from '@/lib/liveEventDisplay';
 import { useAuth } from '@/context/AuthContext';
 
 const GOLD = '#E8D200';
@@ -343,8 +343,8 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                                   gate.counting === 'conversions'
                                                       ? ' and logging their first verified workout'
                                                       : ''
-                                              } puts you on the leaderboard. You each get +${event.invite_bonus_points} POWR too.`
-                                            : `You each get +${event.invite_bonus_points} POWR when a friend joins with your code and logs their first verified workout.`}
+                                              } puts you on the leaderboard. ${inviteRewardLine(event)}`
+                                            : inviteRewardLine(event)}
                                     </Text>
 
                                     <View style={styles.qrRow}>

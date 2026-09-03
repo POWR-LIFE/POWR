@@ -160,3 +160,23 @@ export function gateProgress(
     const have = Math.max(0, Math.trunc(count));
     return { label: `${have}/${Math.trunc(required)}`, met: have >= required };
 }
+
+/**
+ * The one sentence that says WHEN an invite pays. Two events can answer this
+ * differently on the same screen, so it must never be hardcoded at the call
+ * site — see `live_events.reward_referrals_on_signup` (2026-09-03).
+ *
+ * With the switch on the two sides are paid at DIFFERENT moments, which is the
+ * whole reason this is a shared helper: the referrer is paid the instant the
+ * code is used, while the friend still earns theirs by moving. Saying "you
+ * each get +N" would be true about the amount and wrong about the timing, and
+ * the timing is the thing people were asking about.
+ */
+export function inviteRewardLine(
+    event: Pick<LiveEvent, 'invite_bonus_points' | 'reward_referrals_on_signup'>,
+): string {
+    const n = event.invite_bonus_points;
+    return event.reward_referrals_on_signup
+        ? `You get +${n} POWR the moment a friend joins with your code. They earn their +${n} on their first verified workout.`
+        : `You each get +${n} POWR when a friend joins with your code and logs their first verified workout.`;
+}

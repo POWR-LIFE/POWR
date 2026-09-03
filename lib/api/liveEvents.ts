@@ -101,6 +101,11 @@ export type LiveEvent = {
     invite_bonus_points: number;
     invite_milestone_n: number;
     invite_milestone_bonus: number;
+    /** True when the REFERRER is paid at signup rather than on the friend's
+     *  first verified workout. The friend's own side is unchanged either way.
+     *  Optional: payloads written before 2026-09-03 lack it, and absent must
+     *  read as the old pay-on-conversion behaviour. */
+    reward_referrals_on_signup?: boolean;
     conversion_deadline_at: string | null;
     /** Marketing fields set in the admin editor's "Promo page" group — shared
      *  with powr.life/promo/<slug> so one upload feeds every surface. */
