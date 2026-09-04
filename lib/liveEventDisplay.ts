@@ -60,8 +60,15 @@ function dayKey(d: Date): string {
  * getHours() so the test agrees with the rendered day across timezones.
  */
 function isDateOnly(d: Date): boolean {
-    const hm = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
-    return hm === '00:00' || hm === '24:00';
+    const parts = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d);
+    const hourPart = parts.find(p => p.type === 'hour')?.value;
+    const minutePart = parts.find(p => p.type === 'minute')?.value;
+    if (!hourPart || !minutePart) return false;
+
+    const hour = Number(hourPart);
+    const minute = Number(minutePart);
+    // Some locales render midnight as 24:00.
+    return (hour === 0 || hour === 24) && minute === 0;
 }
 
 /**
