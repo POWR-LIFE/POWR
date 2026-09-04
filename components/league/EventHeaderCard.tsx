@@ -29,7 +29,7 @@ export function eventStatusLine(event: LiveEvent): string {
         return `Live now — ends ${lastDayOf(event.window_end_at)}`;
     }
     if (event.is_locked && !event.revealed_at) {
-        return 'Scores are locked 🔒 — winners announced in person';
+        return 'Scores sealed 🔒 — revealed live at the final';
     }
     return 'Winners announced';
 }
