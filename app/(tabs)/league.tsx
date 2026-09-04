@@ -25,7 +25,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeaderActions } from '@/components/HeaderActions';
@@ -43,7 +43,7 @@ import { useLiveEvent } from '@/hooks/useLiveEvent';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
 import type { BoardPreviewState, EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
-import { gateProgress, rankMove, shortDate } from '@/lib/liveEventDisplay';
+import { countdownParts, eventNightLine, gateProgress, rankMove, revealMoment, shortDate } from '@/lib/liveEventDisplay';
 import { getLevelInfo } from '@/constants/levels';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -633,7 +633,7 @@ function EventBoardSection({
         {ownPoints != null && (
           <ViewerPointsBlock points={ownPoints} note="Counted and sealed — your rank is revealed at the final" />
         )}
-        <SealedBoard preview={!!board.is_preview} />
+        <SealedBoard event={event} preview={!!board.is_preview} />
       </View>
     );
   }
@@ -773,15 +773,182 @@ function EventBoardSection({
 
 // ─── SealedBoard ──────────────────────────────────────────────────────────────
 // The locked state a whole venue stares at all event week. Deliberately NOT a
-// skeleton loader: rank numerals are real and readable, the name/score bars
-// breathe slowly at different widths — a full board under a seal, not a page
-// that failed to load. No score-shaped data exists client-side; the bars are
-// decoration over the server's silence.
+// skeleton loader: the seal is the hero, the reveal has a clock on it, and the
+// rows beneath are the prize places under glass — one row per prize, real
+// rank numerals, ghost avatars, a light sweeping across bars that carry no
+// data, and the prize on the line beside each. No score-shaped data exists
+// client-side; every bar is decoration over the server's silence.
 
+// Bar widths per row, top down. An event with no prizes configured still
+// gets a board — six anonymous rows fading out — so the seal never sits over
+// nothing.
 const SEALED_ROWS = [0.62, 0.5, 0.58, 0.44, 0.52, 0.4];
+const PRIZE_PILL_W = 132;
+const SEAL_SIZE = 76;
+const SWEEP_W = 72;
 
-function SealedRow({ rank, widthRatio }: { rank: number; widthRatio: number }) {
+/** Podium tints for the sealed rows — the same three metals the real podium
+ *  uses, dimmed: the places exist, the people in them are not yet known. */
+const SEALED_TONE: Record<number, { text: string; ring: string }> = {
+  1: { text: 'rgba(232,210,0,0.75)', ring: 'rgba(232,210,0,0.5)' },
+  2: { text: 'rgba(192,192,192,0.7)', ring: 'rgba(192,192,192,0.45)' },
+  3: { text: 'rgba(205,127,50,0.8)', ring: 'rgba(205,127,50,0.5)' },
+};
+
+/** Ticks once a second while mounted — the countdown is the only consumer,
+ *  so only that leaf re-renders. */
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+/**
+ * The seal itself: a lock inside two gold arcs turning against each other —
+ * the podium rings' motion language, so the board's two hero moments (sealed,
+ * then won) visibly belong to one object.
+ */
+function SealSigil() {
+  const outerRot = useSharedValue(0);
+  const innerRot = useSharedValue(0);
+
+  useEffect(() => {
+    outerRot.value = withRepeat(withTiming(360, { duration: 14000, easing: Easing.linear }), -1, false);
+    innerRot.value = withRepeat(withTiming(-360, { duration: 22000, easing: Easing.linear }), -1, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const outerSpin = useAnimatedStyle(() => ({ transform: [{ rotate: `${outerRot.value}deg` }] }));
+  const innerSpin = useAnimatedStyle(() => ({ transform: [{ rotate: `${innerRot.value}deg` }] }));
+
+  const SZ = SEAL_SIZE;
+  const R_O = SZ / 2 - 2;
+  const R_I = R_O - 8;
+  const C_O = 2 * Math.PI * R_O;
+  const C_I = 2 * Math.PI * R_I;
+
+  return (
+    <View style={styles.sealSigil}>
+      <Animated.View style={[StyleSheet.absoluteFill, outerSpin]}>
+        <Svg width={SZ} height={SZ}>
+          <Defs>
+            <SvgLinearGradient id="seal_outer" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor={GOLD_SOFT} stopOpacity="1" />
+              <Stop offset="1" stopColor={GOLD} stopOpacity="0.05" />
+            </SvgLinearGradient>
+          </Defs>
+          <Circle cx={SZ / 2} cy={SZ / 2} r={R_O} stroke="rgba(232,210,0,0.14)" strokeWidth={1} fill="none" />
+          <Circle
+            cx={SZ / 2} cy={SZ / 2} r={R_O}
+            stroke="url(#seal_outer)"
+            strokeWidth={1.5} strokeLinecap="round" fill="none"
+            strokeDasharray={`${C_O * 0.62} ${C_O * 0.38}`}
+            transform={`rotate(-90 ${SZ / 2} ${SZ / 2})`}
+          />
+        </Svg>
+      </Animated.View>
+      <Animated.View style={[StyleSheet.absoluteFill, innerSpin]}>
+        <Svg width={SZ} height={SZ}>
+          <Circle
+            cx={SZ / 2} cy={SZ / 2} r={R_I}
+            stroke={GOLD} strokeOpacity={0.35}
+            strokeWidth={1} strokeLinecap="round" fill="none"
+            strokeDasharray={`${C_I * 0.18} ${C_I * 0.07}`}
+          />
+        </Svg>
+      </Animated.View>
+      <View style={styles.sealCore}>
+        <Ionicons name="lock-closed" size={20} color={GOLD} />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The clock on the reveal. Counts to the doors time — the night — never the
+ * scoring window, which is the boundary already behind us once the board is
+ * sealed. Above 24h the days take a cell of their own so every cell stays two
+ * digits; a date-only doors time counts days alone; no doors time at all and
+ * the block says where, not when.
+ */
+function RevealCountdown({ event }: { event: LiveEvent }) {
+  const now = useNow(1000);
+  const moment = revealMoment(event);
+  const night = eventNightLine(event);
+  const venue = event.venue?.name ?? null;
+  const where = [night, venue].filter(Boolean).join(' · ');
+
+  if (!moment) {
+    return (
+      <View style={styles.sealedWhen}>
+        <Text style={styles.sealedWhenLabel}>THE REVEAL</Text>
+        <Text style={styles.sealedWhenBig}>{venue ? `Live at ${venue}` : 'Live at the final'}</Text>
+      </View>
+    );
+  }
+
+  const remaining = new Date(moment.at).getTime() - now;
+
+  if (!moment.exact) {
+    const days = Math.ceil(remaining / 86_400_000);
+    const when = days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`;
+    return (
+      <View style={styles.sealedWhen}>
+        <Text style={styles.sealedWhenLabel}>THE REVEAL</Text>
+        <Text style={styles.sealedWhenBig}>{when}</Text>
+        {!!where && <Text style={styles.sealedWhenLine}>{where}</Text>}
+      </View>
+    );
+  }
+
+  const parts = countdownParts(remaining);
+  // Doors are open but the seal is still on: the reveal is a manual press on
+  // the admin side, so promise it's close, never that it's happening.
+  if (parts.total === 0) {
+    return (
+      <View style={styles.sealedWhen}>
+        <Text style={styles.sealedWhenLabel}>THE REVEAL</Text>
+        <Text style={styles.sealedWhenBig}>Any moment now</Text>
+        {!!where && <Text style={styles.sealedWhenLine}>{where}</Text>}
+      </View>
+    );
+  }
+
+  const cells: [number, string][] = parts.days > 0
+    ? [[parts.days, 'DAYS'], [parts.hours, 'HRS'], [parts.minutes, 'MIN']]
+    : [[parts.hours, 'HRS'], [parts.minutes, 'MIN'], [parts.seconds, 'SEC']];
+  const a11y = parts.days > 0
+    ? `Reveal in ${parts.days} days, ${parts.hours} hours and ${parts.minutes} minutes`
+    : `Reveal in ${parts.hours} hours, ${parts.minutes} minutes and ${parts.seconds} seconds`;
+
+  return (
+    <View style={styles.sealedWhen}>
+      <Text style={styles.sealedWhenLabel}>REVEAL IN</Text>
+      <View style={styles.countRow} accessibilityRole="timer" accessibilityLabel={a11y}>
+        {cells.map(([n, unit], i) => (
+          <React.Fragment key={unit}>
+            {i > 0 && <Text style={styles.countColon}>:</Text>}
+            <View style={styles.countCell}>
+              <Text style={styles.countNum}>{String(n).padStart(2, '0')}</Text>
+              <Text style={styles.countUnit}>{unit}</Text>
+            </View>
+          </React.Fragment>
+        ))}
+      </View>
+      {!!where && <Text style={styles.sealedWhenLine}>{where}</Text>}
+    </View>
+  );
+}
+
+function SealedRow({ rank, widthRatio, prize }: { rank: number; widthRatio: number; prize: string | null }) {
   const glow = useSharedValue(0.35);
+  // -1 = parked off the left edge, 1 = fully off the right; the bar's real
+  // width comes from onLayout because the bars are flex-sized.
+  const sweep = useSharedValue(-1);
+  const [barW, setBarW] = useState(0);
 
   useEffect(() => {
     glow.value = withDelay(
@@ -795,30 +962,68 @@ function SealedRow({ rank, widthRatio }: { rank: number; widthRatio: number }) {
         false,
       ),
     );
+    sweep.value = withDelay(
+      600 + rank * 380,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.cubic) }),
+          withDelay(2600, withTiming(-1, { duration: 0 })),
+        ),
+        -1,
+        false,
+      ),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pulse = useAnimatedStyle(() => ({ opacity: glow.value }));
-  const isTop3 = rank <= 3;
+  const sweepStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -SWEEP_W + ((sweep.value + 1) / 2) * (barW + SWEEP_W) }],
+  }));
+
+  const tone = SEALED_TONE[rank];
+  const isTop3 = !!tone;
 
   return (
     <View style={styles.sealedRow}>
-      <Text style={[styles.sealedRank, isTop3 && styles.sealedRankTop]}>{rank}</Text>
-      <Animated.View
-        style={[
-          styles.sealedBar,
-          { flex: widthRatio },
-          isTop3 && styles.sealedBarTop,
-          pulse,
-        ]}
-      />
-      <View style={{ flex: 1 - widthRatio }} />
-      <Animated.View style={[styles.sealedPts, isTop3 && styles.sealedPtsTop, pulse]} />
+      <Text style={[styles.sealedRank, tone && { color: tone.text, fontWeight: '300' }]}>{rank}</Text>
+      <View style={[styles.sealedAvatar, tone && { borderColor: tone.ring }]} />
+      <View style={styles.sealedBarWrap}>
+        <Animated.View
+          style={[styles.sealedBar, { flex: widthRatio }, isTop3 && styles.sealedBarTop, pulse]}
+          onLayout={e => setBarW(e.nativeEvent.layout.width)}
+        >
+          <Animated.View style={[styles.sealedSweep, sweepStyle]}>
+            <LinearGradient
+              colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.28)', 'rgba(255,255,255,0)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+        </Animated.View>
+        <View style={{ flex: 1 - widthRatio }} />
+      </View>
+      {prize ? (
+        <View style={styles.sealedPrizeChip}>
+          <Text style={styles.sealedPrizeText}>{prize}</Text>
+        </View>
+      ) : (
+        <Animated.View style={[styles.sealedPts, isTop3 && styles.sealedPtsTop, pulse]} />
+      )}
     </View>
   );
 }
 
-function SealedBoard({ preview }: { preview: boolean }) {
+function SealedBoard({ event, preview }: { event: LiveEvent; preview: boolean }) {
+  const prizeFor = (rank: number) => event.prizes.find(p => p.rank === rank)?.label ?? null;
+  // The rows ARE the prize positions: rank 1..N for N prizes, every one with
+  // its prize on it. Only a prizeless event falls back to the anonymous
+  // fading board.
+  const prizeRanks = Math.max(0, ...event.prizes.map(p => p.rank));
+  const rowCount = prizeRanks > 0 ? Math.min(prizeRanks, SEALED_ROWS.length) : SEALED_ROWS.length;
+  const showFade = prizeRanks === 0;
+
   return (
     <View style={{ gap: 8 }}>
       {preview && (
@@ -829,21 +1034,49 @@ function SealedBoard({ preview }: { preview: boolean }) {
         </View>
       )}
       <View style={styles.sealedCard}>
-        <View style={styles.sealedLockRing}>
-          <Ionicons name="lock-closed" size={16} color={GOLD} />
-        </View>
+        {/* Ambient gold behind the seal — a glow painted into the card, not a
+            shadow: the design system draws depth with light and borders. */}
+        <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Defs>
+            <RadialGradient id="seal_glow" cx="50%" cy="6%" r="42%">
+              <Stop offset="0" stopColor={GOLD} stopOpacity="0.16" />
+              <Stop offset="0.55" stopColor={GOLD} stopOpacity="0.05" />
+              <Stop offset="1" stopColor={GOLD} stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#seal_glow)" />
+        </Svg>
+        <LinearGradient
+          colors={['rgba(232,210,0,0)', 'rgba(232,210,0,0.75)', 'rgba(232,210,0,0)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.sealedHairline}
+          pointerEvents="none"
+        />
+
+        <SealSigil />
         <Text style={styles.sealedEyebrow}>SCORES SEALED</Text>
-        <Text style={styles.sealedTitle}>Winners announced live at the final</Text>
+        <Text style={styles.sealedTitle}>Winners revealed live at the final</Text>
+
+        <RevealCountdown event={event} />
+
+        <View style={styles.sealedDivider}>
+          <View style={styles.sealedDividerLine} />
+          <Text style={styles.sealedDividerText}>THE BOARD</Text>
+          <View style={styles.sealedDividerLine} />
+        </View>
 
         <View style={styles.sealedRows}>
-          {SEALED_ROWS.map((w, i) => (
-            <SealedRow key={i} rank={i + 1} widthRatio={w} />
+          {SEALED_ROWS.slice(0, rowCount).map((w, i) => (
+            <SealedRow key={i} rank={i + 1} widthRatio={w} prize={prizeFor(i + 1)} />
           ))}
-          <LinearGradient
-            colors={['rgba(16,16,16,0)', 'rgba(16,16,16,0.96)']}
-            style={styles.sealedFade}
-            pointerEvents="none"
-          />
+          {showFade && (
+            <LinearGradient
+              colors={['rgba(14,14,14,0)', 'rgba(14,14,14,0.97)']}
+              style={styles.sealedFade}
+              pointerEvents="none"
+            />
+          )}
         </View>
 
         <Text style={styles.sealedFoot}>
@@ -1695,21 +1928,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(232,210,0,0.22)',
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 28,
     paddingBottom: 20,
     alignItems: 'center',
+    // Clips the glow and the top hairline to the rounded corners.
+    overflow: 'hidden',
   },
-  // Outline only — the gold fill made it read as a yellow disc, and the gated
-  // state now uses a bare outline lock, so the two lock moments match.
-  sealedLockRing: {
+  sealedHairline: { position: 'absolute', top: 0, left: 28, right: 28, height: 1 },
+  sealSigil: {
+    width: SEAL_SIZE,
+    height: SEAL_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  sealCore: {
     width: 42,
     height: 42,
     borderRadius: 21,
+    backgroundColor: 'rgba(232,210,0,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.45)',
+    borderColor: 'rgba(232,210,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
   },
   sealedEyebrow: { fontSize: 10, fontWeight: '800', color: GOLD, letterSpacing: 3.5, opacity: 0.85 },
   sealedTitle: {
@@ -1721,21 +1962,68 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 300,
   },
-  sealedRows: { alignSelf: 'stretch', marginTop: 20, gap: 14, position: 'relative' },
-  sealedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // The clock: label, cells, then where. Gold like the viewer's own numbers,
+  // so it reads as the event's number rather than a system timer.
+  sealedWhen: { alignItems: 'center', marginTop: 20, gap: 6 },
+  sealedWhenLabel: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5 },
+  sealedWhenBig: { fontSize: 32, fontWeight: '100', color: GOLD, letterSpacing: -1, lineHeight: 38, textAlign: 'center' },
+  sealedWhenLine: { fontSize: 11, fontWeight: '300', color: DIM, letterSpacing: 0.2, textAlign: 'center' },
+  countRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' },
+  countCell: { alignItems: 'center', minWidth: 58 },
+  countNum: {
+    fontSize: 42,
+    fontWeight: '100',
+    color: GOLD,
+    letterSpacing: -1.5,
+    lineHeight: 46,
+    fontVariant: ['tabular-nums'],
+  },
+  countUnit: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.5, letterSpacing: 2, marginTop: 2 },
+  // Sits on the numeral baseline, not the unit's — hence the bottom pad.
+  countColon: { fontSize: 30, fontWeight: '100', color: GOLD, opacity: 0.45, lineHeight: 46, paddingBottom: 14 },
+  sealedDivider: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 22 },
+  sealedDividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(232,210,0,0.28)' },
+  sealedDividerText: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.5, letterSpacing: 2.5 },
+  sealedRows: { alignSelf: 'stretch', marginTop: 16, gap: 12, position: 'relative' },
+  sealedRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sealedRank: {
-    width: 22,
+    width: 20,
     fontSize: 15,
     fontWeight: '200',
     color: 'rgba(255,255,255,0.28)',
     letterSpacing: -0.5,
     textAlign: 'center',
   },
-  sealedRankTop: { color: 'rgba(232,210,0,0.55)', fontWeight: '300' },
-  sealedBar: { height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.07)' },
+  // A ghost where the avatar will be — ringed in the place's metal on the
+  // podium rows so the seats are visibly the podium, just not yet filled.
+  sealedAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  sealedBarWrap: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  sealedBar: { height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.07)', overflow: 'hidden' },
   sealedBarTop: { backgroundColor: 'rgba(255,255,255,0.11)' },
+  sealedSweep: { position: 'absolute', top: 0, bottom: 0, width: SWEEP_W },
   sealedPts: { width: 44, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.05)' },
   sealedPtsTop: { backgroundColor: 'rgba(232,210,0,0.14)' },
+  // One width for every pill so the column lines up; the label wraps rather
+  // than truncates — a prize nobody can read is not on the line.
+  sealedPrizeChip: {
+    width: PRIZE_PILL_W,
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.35)',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(232,210,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sealedPrizeText: { fontSize: 9, fontWeight: '700', color: GOLD, letterSpacing: 0.4, textAlign: 'center', lineHeight: 12 },
   sealedFade: { position: 'absolute', left: 0, right: 0, bottom: -6, height: 64 },
   sealedFoot: {
     fontSize: 11,

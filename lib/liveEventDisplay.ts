@@ -54,6 +54,54 @@ function dayKey(d: Date): string {
 }
 
 /**
+ * A doors time that is really just a day: the admin datetime input defaults
+ * to 00:00, so local midnight is the shape produced by picking a DAY and not
+ * touching the time. Read the clock back through the formatter rather than
+ * getHours() so the test agrees with the rendered day across timezones.
+ */
+function isDateOnly(d: Date): boolean {
+    const hm = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+    return hm === '00:00' || hm === '24:00';
+}
+
+/**
+ * The moment the seal comes off: the night at the venue, sourced from
+ * doors_open_at exactly like [[eventNightLine]] — nothing else on the row
+ * records it, and the sealed board must never count down to the scoring
+ * window (that is the boundary already behind us once the board is locked).
+ *
+ * `exact` is false for a date-only doors time: count DAYS to a day the admin
+ * picked, never seconds to a midnight nobody set. Null when unset — callers
+ * hide the countdown rather than guess.
+ */
+export function revealMoment(
+    event: Pick<LiveEvent, 'doors_open_at'>,
+): { at: string; exact: boolean } | null {
+    if (!event.doors_open_at) return null;
+    const at = new Date(event.doors_open_at);
+    if (Number.isNaN(at.getTime())) return null;
+    return { at: at.toISOString(), exact: !isDateOnly(at) };
+}
+
+/**
+ * A countdown, split for display. Clamped at zero — a reveal that has started
+ * reads 0:00:00, never a negative. `days` carries whatever is over 24h so the
+ * clock cells stay two digits.
+ */
+export function countdownParts(
+    msRemaining: number,
+): { days: number; hours: number; minutes: number; seconds: number; total: number } {
+    const total = Math.max(0, Math.floor(msRemaining / 1000));
+    return {
+        total,
+        days: Math.floor(total / 86_400),
+        hours: Math.floor((total % 86_400) / 3600),
+        minutes: Math.floor((total % 3600) / 60),
+        seconds: total % 60,
+    };
+}
+
+/**
  * When the night at the venue actually is — "Fri 4 Sept, 6–7pm".
  *
  * Sourced from doors_open_at/doors_close_at, which are the only fields on the
@@ -80,11 +128,7 @@ export function eventNightLine(
     if (!event.doors_open_at) return null;
     const from = new Date(event.doors_open_at);
     const day = from.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-
-    // Read the clock back through the formatter rather than getHours() so the
-    // midnight test agrees with the rendered day across timezones.
-    const hm = from.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
-    const dateOnly = hm === '00:00' || hm === '24:00';
+    const dateOnly = isDateOnly(from);
 
     const to = event.doors_close_at ? new Date(event.doors_close_at) : null;
     // A close time on a LATER day is a counting boundary, not an end time --

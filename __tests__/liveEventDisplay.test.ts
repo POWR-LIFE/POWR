@@ -1,4 +1,4 @@
-import { eventNightLine, eventStatusChip, gateProgress, inviteRewardLine, rankMove, scoringLine } from '@/lib/liveEventDisplay';
+import { countdownParts, eventNightLine, eventStatusChip, gateProgress, inviteRewardLine, rankMove, revealMoment, scoringLine } from '@/lib/liveEventDisplay';
 
 const realToLocaleDateString = Date.prototype.toLocaleDateString;
 const realToLocaleTimeString = Date.prototype.toLocaleTimeString;
@@ -196,5 +196,39 @@ describe('inviteRewardLine', () => {
     it('carries the event\'s own bonus figure, never a hardcoded 20', () => {
         expect(inviteRewardLine({ invite_bonus_points: 50, reward_referrals_on_signup: true }))
             .toContain('+50 POWR the moment');
+    });
+});
+
+describe('revealMoment', () => {
+    it('is the doors time, exact when a clock was set', () => {
+        expect(revealMoment({ doors_open_at: '2026-09-04T17:00:00Z' })).toEqual({
+            at: '2026-09-04T17:00:00.000Z',
+            exact: true,
+        });
+    });
+
+    it('is a day, not a moment, when the doors time is local midnight', () => {
+        // 23:00Z = 00:00 BST — the admin picked a day and left the time alone.
+        expect(revealMoment({ doors_open_at: '2026-09-03T23:00:00Z' })).toEqual({
+            at: '2026-09-03T23:00:00.000Z',
+            exact: false,
+        });
+    });
+
+    it('is null when doors are unset or unparsable — never the scoring window', () => {
+        expect(revealMoment({})).toBeNull();
+        expect(revealMoment({ doors_open_at: null })).toBeNull();
+        expect(revealMoment({ doors_open_at: 'not a date' })).toBeNull();
+    });
+});
+
+describe('countdownParts', () => {
+    it('splits into days / h / m / s', () => {
+        const ms = ((1 * 24 + 6) * 3600 + 41 * 60 + 22) * 1000 + 999;
+        expect(countdownParts(ms)).toEqual({ total: 110_482, days: 1, hours: 6, minutes: 41, seconds: 22 });
+    });
+
+    it('clamps at zero once the moment has passed', () => {
+        expect(countdownParts(-5000)).toEqual({ total: 0, days: 0, hours: 0, minutes: 0, seconds: 0 });
     });
 });
