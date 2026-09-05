@@ -1,8 +1,9 @@
 import { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { pg, w } from './theme';
-import { StoreBadges } from './stages/shared';
+import { StoreBadges, useCompact } from './stages/shared';
 import { LOGO_SRC } from './LogoMorph';
+import PhoneFrame from './PhoneFrame';
 
 /**
  * The live landing page's video hero, made cinematic:
@@ -57,6 +58,11 @@ export default function Hero() {
   const videoOpacity = useTransform(scrollYProgress, [0.55, 1], [1, 0.35]);
   const contentY = useTransform(scrollYProgress, [0, 1], [0, -160]);
   const contentOpacity = useTransform(scrollYProgress, [0, 0.55], [1, 0]);
+  // The phone lifts faster than the copy and outlives it a touch — parallax
+  // depth, and it hands the frame to the Move act's map rather than vanishing
+  const phoneY = useTransform(scrollYProgress, [0, 1], [0, -300]);
+  const phoneOpacity = useTransform(scrollYProgress, [0.25, 0.7], [1, 0]);
+  const compact = useCompact(900);
 
   return (
     <section ref={ref} style={{ position: 'relative', height: '100vh', overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
@@ -87,12 +93,51 @@ export default function Hero() {
         }}
       />
 
+      {/* The app, in hand — the first thing that says "this is a product" */}
+      <motion.div
+        initial={{ opacity: 0, y: 60, rotate: 0 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 1.4, ease: EASE, delay: 0.55 }}
+        style={
+          compact
+            ? { position: 'absolute', zIndex: 3, left: '50%', x: '-50%', bottom: '-34vh', y: phoneY, opacity: phoneOpacity }
+            : { position: 'absolute', zIndex: 3, right: 'clamp(24px, 7vw, 140px)', top: '50%', y: phoneY, opacity: phoneOpacity }
+        }
+      >
+        <motion.div
+          style={{
+            perspective: 1600,
+            y: compact ? 0 : '-50%',
+          }}
+        >
+          <motion.div
+            animate={{ y: [0, -12, 0] }}
+            transition={{ duration: 6.5, ease: 'easeInOut', repeat: Infinity }}
+            style={{ transformStyle: 'preserve-3d', rotateY: compact ? 0 : -16, rotateX: compact ? 0 : 4, rotate: compact ? 0 : 3 }}
+          >
+            <PhoneFrame src="/app/home.webp" alt="POWR home screen" width={compact ? 250 : 322} topColor="#2d2d2d" priority />
+          </motion.div>
+        </motion.div>
+        {/* Gold underlight so the phone reads as lit by the product, not the video */}
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute', left: '50%', top: compact ? '20%' : '50%', transform: 'translate(-50%, -50%)', width: 640, height: 640, borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(232,210,0,0.14) 0%, transparent 60%)', pointerEvents: 'none', zIndex: -1,
+          }}
+        />
+      </motion.div>
+
       {/* Content */}
       <motion.div
         variants={stagger} initial="hidden" animate="show"
         style={{
           position: 'relative', zIndex: 3, width: '100%', maxWidth: 1200, margin: '0 auto', padding: '0 clamp(22px, 3vw, 28px)',
           y: contentY, opacity: contentOpacity,
+          // Copy owns the left ~55% on desktop; the phone owns the right
+          paddingRight: compact ? undefined : 'clamp(360px, 38vw, 560px)',
+          alignSelf: compact ? 'flex-start' : 'center',
+          marginTop: compact ? 'clamp(88px, 14vh, 130px)' : 0,
         }}
       >
         <motion.div

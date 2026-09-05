@@ -7,6 +7,7 @@ import EarnTrack from './stages/EarnTrack';
 import RedeemTrack from './stages/RedeemTrack';
 import TogetherStage from './stages/TogetherStage';
 import AscendStage from './stages/AscendStage';
+import AppScreens from './stages/AppScreens';
 import { StoreBadges, ChapterBreak } from './stages/shared';
 import SiteFooter from './SiteFooter';
 
@@ -80,6 +81,9 @@ export default function LandingV2() {
       <TogetherStage />
       <ChapterBreak n="05" word="BECOME" kicker="Twenty levels. Four tiers. One identity." />
       <AscendStage />
+
+      {/* The product itself — real screens, after the story has made the case */}
+      <AppScreens />
 
       <Marquee />
 
