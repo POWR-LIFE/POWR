@@ -49,7 +49,7 @@ function Words({ text, style }) {
   ));
 }
 
-export default function Hero() {
+export default function Hero({ kicker = 'Live now', footnote = null }) {
   const ref = useRef(null);
   // How far the hero has scrolled off the top of the viewport
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] });
@@ -156,7 +156,7 @@ export default function Hero() {
               boxShadow: '0 0 0 0 rgba(232,210,0,0.5)', animation: 'powrDot 2s ease-out infinite',
             }}
           />
-          Live now
+          {kicker}
         </motion.div>
 
         {/* Layout slot only — the visible logo is LogoMorph's fixed img,
@@ -182,6 +182,11 @@ export default function Hero() {
         <motion.div variants={rise} style={{ marginTop: 34 }}>
           <StoreBadges />
         </motion.div>
+        {footnote && (
+          <motion.div variants={rise} style={{ marginTop: 18, fontSize: 12.5, color: pg.textMuted, fontWeight: w.light, letterSpacing: 0.2 }}>
+            {footnote}
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Scroll indicator */}

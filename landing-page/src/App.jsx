@@ -101,6 +101,7 @@ import { INPUT as CREATOR_INPUT, LABEL as CREATOR_LABEL, BTN_GOLD as CREATOR_BTN
 import { readHandoffTicket, completeHandoff, arrivedViaApp, markArrivedViaApp } from './pages/creator/portalAuth';
 import AffiliateTermsPage, { AffiliateTermsGate } from './pages/creator/AffiliateTerms';
 import LandingV2 from './landing/LandingV2';
+import LandingV3 from './landing/v3/LandingV3';
 import PartnersPage from './landing/partners/PartnersPage';
 import AffiliatesPage from './landing/affiliates/AffiliatesPage';
 import CookiePolicy from './pages/CookiePolicy';
@@ -1429,6 +1430,8 @@ export default function App() {
                     <Route path="/" element={<LandingV2 />} />
                     {/* The showcase shipped at /v2 before it became the homepage — keep old links working */}
                     <Route path="/v2" element={<Navigate to="/" replace />} />
+                    {/* Conversion-first rebuild of the homepage — isolated here for review */}
+                    <Route path="/v3" element={<LandingV3 />} />
                     {/* Was a standalone static partners.html until it was rebuilt on the
                         homepage canvas; the .html path is still on business cards */}
                     <Route path="/partners" element={<PartnersPage />} />
