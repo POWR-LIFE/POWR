@@ -221,6 +221,38 @@ describe('minSample on the timeline', () => {
   });
 });
 
+describe('minSample on a percentile (claims.wall_p95_s)', () => {
+  const s = sig('claims.wall_p95_s');
+  it('is pinned at 20 samples', () => expect(s.minSample).toBe(20));
+  it('eleven claims cannot make a p95 verdict, however slow the slowest', () => {
+    // 2026-08-30: one 34 s claim among eleven → p95 34 s → two red days.
+    const v = judge(s, fact({ numerator: 33.9, denominator: 11 }));
+    expect(v.status).toBe('unknown');
+    expect(v.value).toBeNull();
+    expect(v.reason).toMatch(/11 samples/);
+  });
+  it('exactly minSample is judged', () => {
+    expect(judge(s, fact({ numerator: 33.9, denominator: 20 })).status).toBe('act');
+    expect(judge(s, fact({ numerator: 2.1, denominator: 20 })).status).toBe('green');
+  });
+  it('no denominator at all is a thin sample, not a verdict', () => {
+    expect(judge(s, fact({ numerator: 33.9, denominator: null })).status).toBe('unknown');
+  });
+  it('the timeline applies the same floor, so a thin day is grey not red', () => {
+    const points: HistoryPoint[] = [
+      ['2026-08-30T11:00:00Z', 33.9, 11, true],
+      ['2026-08-30T12:00:00Z', 33.9, 25, true],
+    ];
+    expect(judgeHistoryPoint(s, points, 0).status).toBe('unknown');
+    expect(judgeHistoryPoint(s, points, 1).status).toBe('act');
+  });
+  it('a percentile without minSample is judged on any sample', () => {
+    const b = sig('beacon.tick_p95_s');
+    expect(b.minSample).toBeUndefined();
+    expect(judge(b, fact({ numerator: 0.07, denominator: null })).status).toBe('green');
+  });
+});
+
 describe('judge on a cumulative signal', () => {
   const s = sig('ledger.insert_mean_ms');
   it('prefers the interval and is not flagged lifetime', () => {

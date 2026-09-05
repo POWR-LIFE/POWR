@@ -1,6 +1,6 @@
 # Scaling plan — check-ins → points at volume
 
-> Status: **Phase 1 done 2026-08-28 · Phase 2 starts after FNL x POWR night (4 Sep) · Phase 3 signal-driven** · Owner: Jamie · Last review: 2026-08-28
+> Status: **Phase 1 done 2026-08-28 · Post-event fixes done 2026-09-05 · Phase 2 open · Phase 3 signal-driven** · Owner: Jamie · Last review: 2026-09-05
 >
 > The work order that came out of the 27 Aug review ("will the geofence → points
 > chain hold for the event, today, and at hundreds of thousands of check-ins?").
@@ -50,6 +50,25 @@ Small, reversible, nothing touches a member's balance.
 After the night: read `beacon_ticks`, `relay.*`, the Live Ops journeys for 4 Sep, and correct §0.
 
 ---
+
+## Post-event read — 5 Sep 2026 · **DONE**
+
+What the System Health page flagged the morning after FNL x POWR, and what shipped
+for it the same day. None of these were on the ceilings table; all five were
+either a small bug or a signal reading its own blind spot.
+
+| # | Flag on the page | What it actually was | Fix | Status |
+| --- | --- | --- | --- | --- |
+| A | Data integrity **disrupted** (28 Aug → 4 Sep) | `integrity.dup_earns` = 2: a `manual_log` earn from the health-import path plus a `health_sync` top-up on the same session, 0.3 s and 2.8 s apart. The 25 Aug race guard only compared health_sync against health_sync. 5 points, two members. | Guard widened to any client-sourced pair (`20260905120000`). Points stay, by rule. | ✅ live |
+| B | Proven but unpaid, 1 (**act**) | The beacon's settle pass has no memory of a refusal. One post-event visit whose day's cap was already spent was retried **676 times over 11 h**, each try inserting and deleting an activity session. Suzi hit the same loop on 27 Aug (33×). | `settleIsTerminal` (409, 422) closes the visit as `settle_declined` on the first final answer. Pinned in `__tests__/settleOutcome.test.ts`. | ✅ beacon v48 |
+| C | Daily-cap overshoot, 1 member-day | Not a race. upgrade-gym-tier counted `gym` only toward the cap where claim-points counts gym **and HIIT**, so a manual HIIT log was invisible to the upgrade: 20 + 10 + 15 = 45. | Same gym+HIIT set in both functions. Overflow banks to the Vault as designed. | ✅ upgrade-gym-tier v34 |
+| D | Gym check-ins **degraded** | `claims.wall_p95_s` on ~11 claims a day is the slowest claim of the day: one 34 s claim made two days red. | `minSample: 20` on the signal; under it the day is grey and out of uptime, same rule as the ledger mean. | ✅ PR |
+| E | Database orange most days | `db.dead_tuple_pct` on gym_visits (355 rows): Postgres' default trigger is 50 + 20 %, so the table sits at 20–27 % dead between vacuums. Nothing wrong. | Per-table autovacuum at ~5 % on gym_visits and activity_sessions (`20260905120100`). | ✅ live |
+| — | ONE LDN radius | Still the 130 m event-night setting; it is what caught B's visit 80 m from the pin. | Reverted to 40 m. | ✅ |
+
+Not done: the Points-ledger row is grey almost every hour because the ledger
+averages six inserts an hour against a 20-insert floor. That is the floor working;
+judging it over 24 h instead of 1 h is a candidate for Phase 2, not a fix.
 
 ## Phase 2 — September, after the event
 

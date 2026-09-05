@@ -283,13 +283,18 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true, delta: 0, message: 'Already at max tier' }), { status: 200 });
   }
 
-  // Check daily cap (30 for gym)
+  // Check daily cap (30 for gym). Gym and HIIT share ONE cap bucket — the same
+  // STRENGTH_TYPES set claim-points reads (its step 9). Until 2026-09-05 this
+  // counted `gym` only, so a member who had manually logged a HIIT session was
+  // clamped correctly at claim time and then paid the full upgrade delta here:
+  // 20 HIIT + 10 claim (clamped) + 15 upgrade = 45 against a 30 cap. That was
+  // the only "cap overshoot" System Health had seen since launch — not a race.
   const sessionDay = session.started_at.split('T')[0];
   const { data: todaySessions } = await supabase
     .from('activity_sessions')
     .select('id')
     .eq('user_id', user.id)
-    .eq('type', 'gym')
+    .in('type', ['gym', 'hiit'])
     .gte('started_at', `${sessionDay}T00:00:00Z`)
     .lte('started_at', `${sessionDay}T23:59:59Z`);
 
