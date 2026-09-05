@@ -22,8 +22,8 @@ export function gymMarkers<T extends GymCoords>(list: T[], max = 25): T[] {
 
 /**
  * Identity of the DRAWN marker set, for use as a React key prefix so the whole
- * set remounts wholesale whenever its membership changes, instead of markers
- * being inserted into / removed from a live native map one by one.
+ * set remounts wholesale whenever its composition or order changes, instead of
+ * markers being inserted into / removed from a live native map one by one.
  *
  * Why (Sentry 2026-09-05 15:55Z, a brand-new user on THIS screen mid-search —
  * stack: AIRGoogleMap.m:191 insertReactSubview ← RCTLegacyViewManagerInterop
