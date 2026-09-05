@@ -4,7 +4,7 @@ import { createGymRequest } from '@/lib/api/gyms';
 import { setPreferredGym } from '@/lib/api/user';
 import { MAP_PROVIDER } from '@/lib/mapProvider';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
-import { continueLabel, displayedGyms, gymMarkers, hasGymCoords, toggleSelection } from '@/lib/onboarding/gym';
+import { continueLabel, displayedGyms, gymMarkerSetKey, gymMarkers, hasGymCoords, toggleSelection } from '@/lib/onboarding/gym';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
@@ -128,6 +128,11 @@ export default function OnboardingGymScreen() {
 
     const fade = useRef(new Animated.Value(0)).current;
     const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Monotonic id of the latest search; a response carrying an older id is
+    // stale and dropped. The debounce only cancels the TIMER — an in-flight
+    // fetch still lands, and out of order it would flip the marker set once
+    // more than the user typed.
+    const searchSeq = useRef(0);
 
     // ── Load "near you" via a one-shot location fix (no native geofence stack) ──
     useEffect(() => {
@@ -165,12 +170,21 @@ export default function OnboardingGymScreen() {
         setSearch(text);
         if (searchDebounce.current) clearTimeout(searchDebounce.current);
         const q = text.trim();
+        const seq = ++searchSeq.current;
         if (!q) { setSearchResults(null); setSearchLoading(false); return; }
         setSearchLoading(true);
         searchDebounce.current = setTimeout(async () => {
-            const results = await searchPartners(q);
-            setSearchResults(results);
-            setSearchLoading(false);
+            try {
+                const results = await searchPartners(q);
+                if (seq !== searchSeq.current) return; // superseded while in flight
+                setSearchResults(results);
+            } catch (e) {
+                console.warn('[OnboardingGym] search failed', e);
+                if (seq !== searchSeq.current) return;
+                setSearchResults([]);
+            } finally {
+                if (seq === searchSeq.current) setSearchLoading(false);
+            }
         }, 350);
     }
 
@@ -214,6 +228,9 @@ export default function OnboardingGymScreen() {
 
     const list = displayedGyms(searchResults, nearby);
     const markers = gymMarkers(list);
+    // Remount the whole pin set when its membership changes rather than mutate
+    // a live map — see gymMarkerSetKey for the iOS attach/crash history.
+    const markerSetKey = gymMarkerSetKey(markers);
     const emptyLabel =
         searchResults !== null
             ? 'No gyms match that search.'
@@ -258,7 +275,7 @@ export default function OnboardingGymScreen() {
                     >
                         {markers.map(gym => (
                             <GymPin
-                                key={gym.id}
+                                key={`${markerSetKey}-${gym.id}`}
                                 gym={gym}
                                 isSelected={gym.dbId === selectedId}
                                 onPress={() => selectGym(gym)}

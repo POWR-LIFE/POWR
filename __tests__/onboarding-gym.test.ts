@@ -9,6 +9,7 @@ import {
     buildGymRequestPayload,
     continueLabel,
     displayedGyms,
+    gymMarkerSetKey,
     gymMarkers,
     hasGymCoords,
     toggleSelection,
@@ -61,6 +62,29 @@ describe('gymMarkers', () => {
         const many = Array.from({ length: 60 }, (_, i) => ({ lat: 51 + i / 1000, lng: -0.1 }));
         expect(gymMarkers(many)).toHaveLength(25);
         expect(gymMarkers(many, 10)).toHaveLength(10);
+    });
+});
+
+describe('gymMarkerSetKey', () => {
+    const a = { id: 'a-0' }, b = { id: 'b-0' }, c = { id: 'c-0' };
+
+    it('is stable for the same set — a repeated query remounts nothing', () => {
+        expect(gymMarkerSetKey([a, b])).toBe(gymMarkerSetKey([{ id: 'a-0' }, { id: 'b-0' }]));
+    });
+
+    it('changes when membership changes', () => {
+        const base = gymMarkerSetKey([a, b]);
+        expect(gymMarkerSetKey([a, b, c])).not.toBe(base);
+        expect(gymMarkerSetKey([a])).not.toBe(base);
+        expect(gymMarkerSetKey([])).not.toBe(base);
+    });
+
+    it('is order-sensitive (the drawn set is an ordered list)', () => {
+        expect(gymMarkerSetKey([a, b])).not.toBe(gymMarkerSetKey([b, a]));
+    });
+
+    it('is a short key fragment, safe to prefix a React key with', () => {
+        expect(gymMarkerSetKey([a, b, c])).toMatch(/^[0-9a-z]{1,8}$/);
     });
 });
 
