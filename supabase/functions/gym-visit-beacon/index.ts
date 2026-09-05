@@ -1309,7 +1309,7 @@ Deno.serve(async (req: Request) => {
       } else {
         stats.settled_claim++;
       }
-      const terminal = respErr !== null && settleIsTerminal(status);
+      const terminal = respErr !== null && settleIsTerminal(status, respErr);
       await admin.from('gym_visit_events').insert({
         visit_id: v.id, user_id: v.user_id,
         event: respErr === null ? 'settled' : 'settle_failed',
