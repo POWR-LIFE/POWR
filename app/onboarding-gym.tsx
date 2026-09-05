@@ -174,10 +174,17 @@ export default function OnboardingGymScreen() {
         if (!q) { setSearchResults(null); setSearchLoading(false); return; }
         setSearchLoading(true);
         searchDebounce.current = setTimeout(async () => {
-            const results = await searchPartners(q);
-            if (seq !== searchSeq.current) return; // superseded while in flight
-            setSearchResults(results);
-            setSearchLoading(false);
+            try {
+                const results = await searchPartners(q);
+                if (seq !== searchSeq.current) return; // superseded while in flight
+                setSearchResults(results);
+            } catch (e) {
+                console.warn('[OnboardingGym] search failed', e);
+                if (seq !== searchSeq.current) return;
+                setSearchResults([]);
+            } finally {
+                if (seq === searchSeq.current) setSearchLoading(false);
+            }
         }, 350);
     }
 
