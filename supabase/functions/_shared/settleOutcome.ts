@@ -19,6 +19,8 @@
  */
 export const TERMINAL_SETTLE_STATUSES: readonly number[] = [409, 422];
 
-export function settleIsTerminal(status: number): boolean {
-  return TERMINAL_SETTLE_STATUSES.includes(status);
+export function settleIsTerminal(status: number, error: string | null): boolean {
+  if (status === 409) return true;
+  if (status !== 422) return false;
+  return (error ?? '').toLowerCase().includes('daily cap reached');
 }
