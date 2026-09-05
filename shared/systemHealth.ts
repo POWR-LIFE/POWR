@@ -102,10 +102,14 @@ export interface Signal {
   /** The source is cumulative since a stats reset; judge on the interval when possible. */
   cumulative?: boolean;
   /**
-   * Cumulative only: the smallest Δdenominator an interval needs before it is
-   * judged. Below it the interval is "not measurable" (grey), never a verdict.
-   * Guards a mean from being owned by one sample: 2026-08-27 06:00 was four
-   * inserts averaging 473 ms and painted the whole Points-ledger day red.
+   * The smallest sample a value needs before it is judged. Below it the reading
+   * is "not measurable" (grey), never a verdict.
+   *  - cumulative signals: the smallest Δdenominator an interval needs. Guards a
+   *    mean from being owned by one sample: 2026-08-27 06:00 was four inserts
+   *    averaging 473 ms and painted the whole Points-ledger day red.
+   *  - ratio_numerator (a percentile the SQL already reduced): the smallest
+   *    denominator (= sample count). A p95 of eleven claims is the slowest
+   *    claim of the day: 2026-08-30 one 34 s claim made two days red.
    */
   minSample?: number;
   /** One line: why this threshold, what it protects. Engineer's voice. */
@@ -150,8 +154,8 @@ export const SIGNALS: Signal[] = [
   },
   {
     key: 'claims.wall_p95_s', workstream: 'W2', label: 'Wake → claim p95', kind: 'ratio_numerator', unit: 's',
-    threshold: { watch: 8, act: 20, direction: 'above' },
-    why: 'Bounded by the PostgREST statement timeout and the client outbox\'s patience.',
+    threshold: { watch: 8, act: 20, direction: 'above' }, minSample: 20,
+    why: 'Bounded by the PostgREST statement timeout and the client outbox\'s patience. A day with fewer than 20 claims is not judged — its p95 is just the slowest single claim (08-30: one 34 s claim, two red days).',
     plain: 'How long a gym check-in takes to turn into points once the phone wakes up.',
   },
   {
@@ -408,7 +412,22 @@ export function judge(signal: Signal, fact: Fact | null | undefined, history?: H
     if (recent != null) return judgeValue(signal, recent);
     return judgeValue(signal, value(signal, fact), { lifetime: true });
   }
+  const thin = thinSample(signal, fact.denominator);
+  if (thin) return thin;
   return judgeValue(signal, value(signal, fact));
+}
+
+/**
+ * A percentile (ratio_numerator) under its sample floor is not a verdict. The
+ * SQL ships the sample count as the denominator; below minSample the reading is
+ * grey and falls out of uptime, the same rule intervalValue applies to
+ * cumulative means.
+ */
+function thinSample(signal: Signal, denominator: number | null | undefined): Verdict | null {
+  if (signal.kind !== 'ratio_numerator' || signal.minSample == null) return null;
+  const n = denominator == null ? 0 : Number(denominator);
+  if (n >= signal.minSample) return null;
+  return { status: 'unknown', value: null, reason: `Not measurable — ${n} sample${n === 1 ? '' : 's'} in the window, a p95 needs ${signal.minSample}.` };
 }
 
 const STATUS_RANK: Record<Status, number> = { act: 3, watch: 2, unknown: 1, green: 0 };
@@ -576,6 +595,8 @@ export function judgeHistoryPoint(signal: Signal, points: HistoryPoint[], i: num
     if (i === 0) return { status: 'unknown', value: null, reason: 'First point of a cumulative source.' };
     return judgeValue(signal, intervalValue(signal, points.slice(i - 1, i + 1)));
   }
+  const thin = thinSample(signal, p[2]);
+  if (thin) return thin;
   return judgeValue(signal, value(signal, { numerator: p[1], denominator: p[2], evidence_ok: true }));
 }
 

@@ -81,6 +81,10 @@ export default function LogoMorph() {
     window.addEventListener('resize', measure);
     window.addEventListener('load', measure);
     document.fonts?.ready?.then(measure);
+    // Dev only: a hot update can move the hero slot (Hero.jsx edited or a
+    // branch switch under a running server) without any resize/load event,
+    // leaving the logo parked at its stale position. Tree-shaken in prod.
+    if (import.meta.hot) import.meta.hot.on('vite:afterUpdate', measure);
     return () => {
       window.removeEventListener('resize', measure);
       window.removeEventListener('load', measure);

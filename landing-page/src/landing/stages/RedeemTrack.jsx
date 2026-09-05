@@ -43,7 +43,7 @@ const HERO_MAX = 1280; // featured card is 420x540 CSS — covers it at ~2x DPR
 const LOGO_MAX = 128; //  largest chip is 54px CSS — covers it at ~2x DPR
 
 /* "15% OFF" / "£10 OFF" from the reward's structured discount columns */
-function discountLabel(type, value) {
+export function discountLabel(type, value) {
   const v = parseFloat(value);
   if (!v) return '';
   const n = Number.isInteger(v) ? v : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
@@ -52,7 +52,7 @@ function discountLabel(type, value) {
   return '';
 }
 
-async function fetchLiveRewards() {
+export async function fetchLiveRewards() {
   const { data, error } = await supabase
     .from('rewards')
     .select('id, title, brand_name, powr_cost, value_label, offer, discount_type, discount_value, image_url, hero_image_url, hero_video_url, brand_color, partners(logo_url)')

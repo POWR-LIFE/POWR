@@ -26,6 +26,7 @@ import { deliverVisiblePush } from '../_shared/visiblePush.ts';
 import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 import { staleVisitVerdict, sessionBelongsToVisit, SESSION_OWNERSHIP_MARGIN_MS } from '../_shared/gymReaper.ts';
+import { settleIsTerminal } from '../_shared/settleOutcome.ts';
 import { MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
 
 // Budgets are PER STAGE and live in their own columns (nudge_count /
@@ -148,7 +149,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settle_declined: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -1226,6 +1227,28 @@ Deno.serve(async (req: Request) => {
     const settleFnHeaders = { 'Content-Type': 'application/json', 'x-resolve-token': token };
     const fnBase = Deno.env.get('SUPABASE_URL')!;
 
+    // A refusal that will not change with time (422 daily cap reached, 409
+    // already claimed — settleIsTerminal) is FINAL for the visit: the session's
+    // day is fixed by started_at, so the cap it hit is spent for good. Until
+    // 2026-09-05 nothing remembered the refusal and both stages re-selected the
+    // same visit every minute until the 12 h reaper — 676 claim-points calls
+    // and 676 activity_sessions insert+delete pairs for ONE post-event visit.
+    // Close it under its own reason so Live Ops can tell "declined" from
+    // "abandoned". Conditional on ended_at: a real client exit racing us wins.
+    const closeDeclinedVisit = async (visitId: string, stage: 'dwell' | 'upgrade', err: string | null) => {
+      const { data: closed, error } = await admin
+        .from('gym_visits')
+        .update({ status: 'closed', close_reason: 'settle_declined', ended_at: new Date().toISOString() })
+        .eq('id', visitId)
+        .is('ended_at', null)
+        .select('id');
+      if (error) { console.error('[gym-visit-beacon] settle-declined close failed', error); return; }
+      if (closed && closed.length > 0) {
+        stats.settle_declined++;
+        console.log(`[gym-visit-beacon] settle ${stage} declined for good (${err}) — visit ${visitId} closed`);
+      }
+    };
+
     const noExitSince = async (v: { user_id: string; region_id: string | null; started_at: string }) => {
       if (!v.region_id) return true;
       // Prefix match: venue region ids share the partner uuid with a location
@@ -1286,11 +1309,13 @@ Deno.serve(async (req: Request) => {
       } else {
         stats.settled_claim++;
       }
+      const terminal = respErr !== null && settleIsTerminal(status);
       await admin.from('gym_visit_events').insert({
         visit_id: v.id, user_id: v.user_id,
         event: respErr === null ? 'settled' : 'settle_failed',
-        detail: { stage: 'dwell', session_id: sess.id, nudges_unanswered: v.nudge_count, status, error: respErr },
+        detail: { stage: 'dwell', session_id: sess.id, nudges_unanswered: v.nudge_count, status, error: respErr, terminal },
       });
+      if (terminal) await closeDeclinedVisit(v.id, 'dwell', respErr);
     }
 
     // Stage 2: claimed-not-upgraded visits past upgrade + grace, same offer test.
@@ -1333,11 +1358,13 @@ Deno.serve(async (req: Request) => {
       } catch (e) { respErr = String(e); }
 
       if (respErr === null) stats.settled_upgrade++;
+      const terminal = respErr !== null && settleIsTerminal(status);
       await admin.from('gym_visit_events').insert({
         visit_id: v.id, user_id: v.user_id,
         event: respErr === null ? 'settled' : 'settle_failed',
-        detail: { stage: 'upgrade', session_id: v.claimed_session_id, nudges_unanswered: v.nudge_count_upgrade, status, error: respErr },
+        detail: { stage: 'upgrade', session_id: v.claimed_session_id, nudges_unanswered: v.nudge_count_upgrade, status, error: respErr, terminal },
       });
+      if (terminal) await closeDeclinedVisit(v.id, 'upgrade', respErr);
     }
   }
 
