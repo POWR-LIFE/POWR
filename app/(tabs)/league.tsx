@@ -29,13 +29,15 @@ import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, RadialGradient,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeaderActions } from '@/components/HeaderActions';
-import { ComingSoon } from '@/components/ComingSoon';
 import { EventPrizeGallery } from '@/components/events/EventPrizeGallery';
 import { EventRegisterFlow } from '@/components/events/EventRegisterFlow';
 import { EventBoardHeader } from '@/components/league/EventBoardHeader';
 import { EventGateStrip } from '@/components/league/EventGateStrip';
 import { EventHeaderCard } from '@/components/league/EventHeaderCard';
 import { EventTicketCard } from '@/components/league/EventTicketCard';
+import { LeaguePreview } from '@/components/league/LeaguePreview';
+import { PodiumAvatarRing } from '@/components/league/PodiumAvatarRing';
+import { SegmentBar } from '@/components/league/SegmentBar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { usePoints } from '@/hooks/usePoints';
@@ -192,7 +194,7 @@ export default function LeagueScreen() {
         /* Event mode: when an event is configured the tab carries the event.
            Three blocks, one job each — what the event IS (header), how you get
            onto the board (ticket), and the board itself. No event → the
-           original teaser. */
+           between-events preview. */
         activeEvent ? (
           <>
             <EventSegmentBar value={segment} onChange={pickSegment} />
@@ -261,11 +263,11 @@ export default function LeagueScreen() {
             />
           </>
         ) : (
-          <ComingSoon
-            eyebrow="KEEP MOVING"
-            title="The league is waiting for you."
-            subtitle="Train consistently to unlock weekly podiums and rankings."
-          />
+          /* Between events: the global board sealed with the viewer's own
+             starting line, and how a live event works — same two-segment
+             shape as event mode, so the tab already looks like what it is
+             about to become. */
+          <LeaguePreview />
         )
       ) : (
         <>
@@ -393,23 +395,13 @@ type EventSegment = 'board' | 'event';
  * vocabulary of switches.
  */
 function EventSegmentBar({ value, onChange }: { value: EventSegment; onChange: (s: EventSegment) => void }) {
-  const x = useSharedValue(value === 'board' ? 0 : TAB_W);
-  useEffect(() => {
-    x.value = withTiming(value === 'board' ? 0 : TAB_W, { duration: 220 });
-  }, [value, x]);
-  const indicator = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
-  return (
-    <View style={styles.topTabBar}>
-      <Pressable style={styles.topTab} onPress={() => { Haptics.selectionAsync(); onChange('board'); }} accessibilityRole="tab" accessibilityState={{ selected: value === 'board' }}>
-        <Text style={[styles.topTabText, value === 'board' && styles.topTabTextActive]}>LEADERBOARD</Text>
-      </Pressable>
-      <Pressable style={styles.topTab} onPress={() => { Haptics.selectionAsync(); onChange('event'); }} accessibilityRole="tab" accessibilityState={{ selected: value === 'event' }}>
-        <Text style={[styles.topTabText, value === 'event' && styles.topTabTextActive]}>EVENT</Text>
-      </Pressable>
-      <Animated.View style={[styles.tabIndicator, indicator]} />
-    </View>
-  );
+  return <SegmentBar items={EVENT_SEGMENTS} value={value} onChange={onChange} />;
 }
+
+const EVENT_SEGMENTS: { key: EventSegment; label: string }[] = [
+  { key: 'board', label: 'LEADERBOARD' },
+  { key: 'event', label: 'EVENT' },
+];
 
 function invitesOpen(event: LiveEvent): boolean {
   // 'locked' stays in: the invite deadline can sit AFTER the lock (FNL:
@@ -1083,103 +1075,6 @@ function SealedBoard({ event, preview }: { event: LiveEvent; preview: boolean })
           Every point is already counted. Nobody sees the board until the reveal.
         </Text>
       </View>
-    </View>
-  );
-}
-
-// ─── PodiumAvatarRing ─────────────────────────────────────────────────────────
-
-
-function PodiumAvatarRing({
-  avatarSize,
-  colour,
-  colourSoft,
-  isFirst,
-  children,
-}: {
-  avatarSize: number;
-  colour: string;
-  colourSoft: string;
-  isFirst: boolean;
-  children: React.ReactNode;
-}) {
-  const outerRot = useSharedValue(0);
-  const innerRot = useSharedValue(0);
-
-  useEffect(() => {
-    outerRot.value = withRepeat(
-      withTiming(360, { duration: isFirst ? 7000 : 11000, easing: Easing.linear }),
-      -1,
-      false,
-    );
-    innerRot.value = withRepeat(
-      withTiming(-360, { duration: isFirst ? 12000 : 18000, easing: Easing.linear }),
-      -1,
-      false,
-    );
-  }, []);
-
-  const outerSpin = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${outerRot.value}deg` }],
-  }));
-  const innerSpin = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${innerRot.value}deg` }],
-  }));
-
-  const PAD = 14;
-  const SZ = avatarSize + PAD * 2;
-  const STROKE = 1.5;
-  const R_O = (SZ - STROKE) / 2 - 2;
-  const R_I = R_O - 7;
-  const C_O = 2 * Math.PI * R_O;
-  const C_I = 2 * Math.PI * R_I;
-  const gradId = `pag_${colour.replace('#', '')}`;
-
-  return (
-    <View style={{
-      width: SZ, height: SZ,
-      alignItems: 'center', justifyContent: 'center',
-      shadowColor: colour,
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: isFirst ? 0.85 : 0.5,
-      shadowRadius: isFirst ? 22 : 11,
-    }}>
-      {/* Outer clockwise arc */}
-      <Animated.View style={[StyleSheet.absoluteFill, outerSpin]}>
-        <Svg width={SZ} height={SZ}>
-          <Defs>
-            <SvgLinearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor={colourSoft} stopOpacity="1" />
-              <Stop offset="1" stopColor={colour} stopOpacity="0.1" />
-            </SvgLinearGradient>
-          </Defs>
-          <Circle cx={SZ / 2} cy={SZ / 2} r={R_O} stroke="rgba(255,255,255,0.05)" strokeWidth={STROKE} fill="none" />
-          <Circle
-            cx={SZ / 2} cy={SZ / 2} r={R_O}
-            stroke={`url(#${gradId})`}
-            strokeWidth={STROKE} strokeLinecap="round" fill="none"
-            strokeDasharray={`${C_O * 0.72} ${C_O * 0.28}`}
-            transform={`rotate(-90 ${SZ / 2} ${SZ / 2})`}
-          />
-        </Svg>
-      </Animated.View>
-
-      {/* Inner counter-clockwise arc */}
-      <Animated.View style={[StyleSheet.absoluteFill, innerSpin]}>
-        <Svg width={SZ} height={SZ}>
-          <Circle cx={SZ / 2} cy={SZ / 2} r={R_I} stroke="rgba(255,255,255,0.04)" strokeWidth={STROKE * 0.6} fill="none" />
-          <Circle
-            cx={SZ / 2} cy={SZ / 2} r={R_I}
-            stroke={colour} strokeOpacity={isFirst ? 0.55 : 0.35}
-            strokeWidth={STROKE * 0.6} strokeLinecap="round" fill="none"
-            strokeDasharray={`${C_I * 0.45} ${C_I * 0.55}`}
-            transform={`rotate(-90 ${SZ / 2} ${SZ / 2})`}
-          />
-        </Svg>
-      </Animated.View>
-
-      {/* Avatar */}
-      {children}
     </View>
   );
 }
