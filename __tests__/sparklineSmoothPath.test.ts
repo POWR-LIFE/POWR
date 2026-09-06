@@ -1,4 +1,4 @@
-import { smoothPath } from '@/components/progress/Sparkline';
+import { smoothPath, splitGaps } from '@/components/progress/Sparkline';
 
 /**
  * Regression cover for the BODY tab's resting-HR chart.
@@ -62,5 +62,38 @@ describe('smoothPath', () => {
 
         expect(Math.min(...yValues)).toBeGreaterThanOrEqual(Math.min(...ys) - 1e-9);
         expect(Math.max(...yValues)).toBeLessThanOrEqual(Math.max(...ys) + 1e-9);
+    });
+});
+
+
+describe('splitGaps', () => {
+    const p = (date: string) => ({ date });
+
+    it('breaks the series wherever consecutive readings are further apart than the gap', () => {
+        const segs = splitGaps([
+            p('2026-09-01'), p('2026-09-02'), p('2026-09-03'),
+            p('2026-09-08'), // 5 days later — a sync gap
+            p('2026-09-09'),
+        ], 3);
+        expect(segs.map(s => s.map(x => x.date))).toEqual([
+            ['2026-09-01', '2026-09-02', '2026-09-03'],
+            ['2026-09-08', '2026-09-09'],
+        ]);
+    });
+
+    it('a gap exactly at the limit does not break', () => {
+        const segs = splitGaps([p('2026-09-01'), p('2026-09-04')], 3);
+        expect(segs).toHaveLength(1);
+    });
+
+    it('a lone reading after a gap is its own segment (drawn as a dot, no curve)', () => {
+        const segs = splitGaps([p('2026-09-01'), p('2026-09-02'), p('2026-09-20')], 3);
+        expect(segs).toHaveLength(2);
+        expect(segs[1]).toHaveLength(1);
+        expect(smoothPath(segs[1].map((x, i) => ({ x: i, y: 0 })))).toBe('');
+    });
+
+    it('empty in, empty out', () => {
+        expect(splitGaps([], 3)).toEqual([]);
     });
 });

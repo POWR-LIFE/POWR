@@ -12,7 +12,9 @@ import {
     isEmptyTrends,
     LOAD_DAYS,
     readinessOf,
+    SLEEP_GOAL_H,
     TREND_DAYS,
+    type BasisSignal,
     type BodySignals,
     type BodyTrends,
     type TrendPoint,
@@ -46,9 +48,14 @@ const HRV_CHART_H = 120;
 const LOAD_BAR_H = 56;
 const SLEEP_BAR_H = 44;
 const SLEEP_NIGHTS = 14;
-const SLEEP_GOAL_H = 8;
 /** Sleep bars scale against 10h, same rule as SleepTab's week chart. */
 const SLEEP_SCALE_H = 10;
+/**
+ * HRV drawn as a line needs this many readings in the window — below it the
+ * device is measuring per workout, not per night, and the dots-on-a-band form
+ * is the honest one (a line would invent a trend across unmeasured days).
+ */
+const HRV_LINE_MIN_READINGS = 10;
 
 /**
  * BODY — the trends behind the sessions: resting heart rate, HRV, sleep and
@@ -57,17 +64,19 @@ const SLEEP_SCALE_H = 10;
  * I trending", not "what happened on the 12th" — the other tabs own that.
  *
  * Each metric wears its OWN visual form, on purpose: resting HR is a filled
- * trend line (a continuous daily signal), HRV is stem-and-dot marks (per-
- * workout events — a line would invent a trend across unmeasured days), sleep
+ * trend line (a continuous daily signal), HRV is the same line once the device
+ * measures it nightly and stem-and-dot marks while it is per-workout, sleep
  * is nightly bars against a goal line (the same visual language as SleepTab),
  * and load is stacked day columns. A stack of identical line charts read as
  * one grey wall; the form is what makes each number recognisable at a glance.
  *
  * Every block renders only when it has real data (HRV needs 3+ readings before
  * a trend means anything), so a phone-only user sees a small tab, not a wall
- * of empty cards. The signals row + insight line are plain language derived
- * from the user's own baselines — never a percentage score, because we can't
- * compute one honestly without continuous overnight data.
+ * of empty cards. The signals row + insight line are plain language from the
+ * user's own baselines. The one number allowed near the verdict is a provider's
+ * own recovery score (Whoop's, Oura's) — computed from the overnight signal we
+ * only hold summaries of, so relayed rather than re-derived. We never invent
+ * a percentage of our own.
  */
 export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }) {
     const [trends, setTrends] = useState<BodyTrends | null>(initialTrends ?? null);
@@ -132,8 +141,13 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
     const d = deriveBodySignals(trends);
     const rhr = latest(trends.restingHr);
     const showHrv = trends.hrv.length >= 3;
+    const hrvAsLine = trends.hrv.length >= HRV_LINE_MIN_READINGS;
     const hrv = latest(trends.hrv);
-    const hasLoad = trends.load.some(day => day.activeMin > 0);
+    const weekMin = trends.load.reduce((s, day) => s + day.activeMin, 0);
+    // The load section stays once the user has trained at all in the last
+    // four weeks: a quiet week reads as seven empty columns against the usual
+    // week, not as a section that has silently disappeared.
+    const hasLoad = weekMin > 0 || trends.loadNormWeekMin != null;
 
     return (
         <View style={styles.tabPanel}>
@@ -152,11 +166,9 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                             {Math.round(rhr!.value)}
                             <Text style={styles.metricUnit}> bpm · {whenLabel(rhr!.date)}</Text>
                         </Text>
-                        {d.rhrAvg != null && trends.restingHr.length >= 5 && (
-                            <Text style={styles.metricDelta}>
-                                {deltaLabel(rhr!.value - d.rhrAvg, 'bpm')} vs your average — lower is fitter
-                            </Text>
-                        )}
+                        <Text style={styles.metricDelta}>
+                            {vitalDelta(rhr!, d.rhrAvg, d.rhrBaselineReady, 'bpm', 'lower is fitter')}
+                        </Text>
                     </View>
                     <View style={styles.chartBlock}>
                         <Sparkline points={trends.restingHr} days={TREND_DAYS} height={RHR_CHART_H} goodDirection="down" />
@@ -177,15 +189,24 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                             {Math.round(hrv!.value)}
                             <Text style={styles.metricUnit}> ms · {whenLabel(hrv!.date)}</Text>
                         </Text>
-                        <Text style={styles.metricDelta}>one dot per reading — higher is fresher</Text>
+                        <Text style={styles.metricDelta}>
+                            {vitalDelta(hrv!, d.hrvAvg, d.hrvBaselineReady, 'ms', 'higher is fresher')}
+                        </Text>
                     </View>
                     <View style={styles.chartBlock}>
-                        <RangeDotChart points={trends.hrv} days={TREND_DAYS} height={HRV_CHART_H} color={TEAL} goodDirection="up" />
+                        {/* Nightly HRV is a signal like resting HR and wears
+                            the same deviation line; a per-workout series stays
+                            as dots on the band of the user's typical range. */}
+                        {hrvAsLine
+                            ? <Sparkline points={trends.hrv} days={TREND_DAYS} height={RHR_CHART_H} goodDirection="up" />
+                            : <RangeDotChart points={trends.hrv} days={TREND_DAYS} height={HRV_CHART_H} color={TEAL} goodDirection="up" />}
                         <AxisRow left={`${TREND_DAYS} days ago`} right="today" />
-                        <ChartLegend items={[
-                            { swatch: 'box', color: 'rgba(45,212,191,0.3)', label: 'your typical range' },
-                            { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: 'average' },
-                        ]} />
+                        {!hrvAsLine && (
+                            <ChartLegend items={[
+                                { swatch: 'box', color: 'rgba(45,212,191,0.3)', label: 'your typical range' },
+                                { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: 'average' },
+                            ]} />
+                        )}
                     </View>
                 </>
             )}
@@ -216,7 +237,7 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                             {d.sleepAvg7 != null ? formatMin(d.sleepAvg7 * 60) : '—'}
                             <Text style={styles.metricUnit}> avg per night this week</Text>
                         </Text>
-                        <Text style={styles.metricDelta}>{regularityLabel(trends.sleepHours)}</Text>
+                        <Text style={styles.metricDelta}>{sleepSummary(d, trends)}</Text>
                     </View>
                     <SleepBars points={trends.sleepHours} />
                 </>
@@ -228,10 +249,10 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                     <Text style={styles.tabSubLabel}>TRAINING LOAD · LAST {LOAD_DAYS} DAYS</Text>
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
-                            {formatMin(trends.load.reduce((s, day) => s + day.activeMin, 0))}
-                            <Text style={styles.metricUnit}> of exercise</Text>
+                            {weekMin > 0 ? formatMin(weekMin) : '—'}
+                            <Text style={styles.metricUnit}>{weekMin > 0 ? ' of exercise' : ' no workouts tracked this week'}</Text>
                         </Text>
-                        <Text style={styles.metricDelta}>{loadSummary(trends)}</Text>
+                        <Text style={styles.metricDelta}>{loadSummary(trends, d)}</Text>
                     </View>
                     <LoadChart trends={trends} />
                 </>
@@ -240,13 +261,50 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
     );
 }
 
-/** "1,850 kcal burned · 45m at hard effort" — whatever of the pair exists.
- *  No "this week" suffix: the section label already says LAST 7 DAYS. */
-function loadSummary(t: BodyTrends): string {
+/** "+40m vs your usual week · 1,850 kcal burned · 45m at hard effort" —
+ *  whatever of the three exists. The comparison leads: it is the one figure
+ *  that says whether this week is a build or a recovery week. No "this week"
+ *  suffix on the rest: the section label already says LAST 7 DAYS. */
+function loadSummary(t: BodyTrends, d: BodySignals): string {
     const parts: string[] = [];
+    if (d.weekVsUsualMin != null) {
+        const diff = Math.round(d.weekVsUsualMin);
+        parts.push(Math.abs(diff) < 10
+            ? 'level with your usual week'
+            : `${diff > 0 ? '+' : '−'}${formatMin(Math.abs(diff))} vs your usual week`);
+    }
     if (t.week.kcal > 0) parts.push(`${t.week.kcal.toLocaleString()} kcal burned`);
     const hard = t.load.reduce((s, day) => s + day.hardMin, 0);
     if (hard > 0) parts.push(`${formatMin(hard)} at hard effort`);
+    return parts.join(' · ');
+}
+
+/**
+ * The line under a vital's headline: how today sits against the user's own
+ * average once there is one — and, when the latest reading is days old, that
+ * fact instead. A "+5 bpm vs your average" printed under a four-day-old
+ * number reads as today's verdict, and it isn't.
+ */
+function vitalDelta(latest: TrendPoint, avg: number | null, baselineReady: boolean, unit: string, tip: string): string {
+    const daysAgo = localDaysAgo(latest.date);
+    if (daysAgo > 3) return `no reading since ${whenLabel(latest.date)} — waiting on your device`;
+    if (avg == null || !baselineReady) return `${tip} — a few more days and you'll see how this compares to your usual`;
+    return `${deltaLabel(latest.value - avg, unit)} vs your average — ${tip}`;
+}
+
+/**
+ * "1h 20m short of 8h this week · 41% deep + REM · 89% efficient" — the
+ * shortfall first, because it is the actionable one, then whatever quality
+ * detail the device sends. A week that met the goal every night says so.
+ */
+function sleepSummary(d: BodySignals, t: BodyTrends): string {
+    if (t.sleepHours.length < 3) return 'trends sharpen as more nights land';
+    const parts: string[] = [];
+    parts.push(d.sleepDebtMin7 >= 15
+        ? `${formatMin(d.sleepDebtMin7)} short of ${SLEEP_GOAL_H}h this week`
+        : `on your ${SLEEP_GOAL_H}h goal this week`);
+    if (d.deepRemShare7 != null) parts.push(`${Math.round(d.deepRemShare7 * 100)}% deep + REM`);
+    if (d.efficiency7 != null) parts.push(`${Math.round(d.efficiency7)}% efficient`);
     return parts.join(' · ');
 }
 
@@ -331,20 +389,33 @@ const LEVEL_TINTS: Record<SignalLevel, string> = {
 function SignalsRow({ d }: { d: BodySignals }) {
     const r = readinessOf(d);
 
-    // One thing off (ring ≥ 2/3) is a caution; more than one is a stop.
+    // With a provider score the word already carries the band (Rest is the
+    // red band, Easy the amber). Derived: one thing off (ring ≥ 2/3) is a
+    // caution; more than one is a stop.
     const readinessLevel: SignalLevel =
         r.level === 'good' ? 'green'
-        : r.level === 'attention' ? (r.ring >= 2 / 3 ? 'amber' : 'red')
+        : r.level === 'attention'
+            ? (d.providerReadiness ? (r.word === 'Rest' ? 'red' : 'amber') : (r.ring >= 2 / 3 ? 'amber' : 'red'))
         : 'none';
 
     // The detail is the RECOMMENDATION, not the cause — the cause is already
     // on the neighbouring lamps and in the insight sentence below, and
-    // repeating "short night" here made the row say one thing twice.
-    const readinessDetail =
-        r.level === 'unknown' ? r.reason
-        : r.level === 'good' ? 'good day to push'
+    // repeating "short night" here made the row say one thing twice. A thin
+    // verdict says what it rests on, so "Primed" from a night alone can't
+    // pass for the full read.
+    const recommendation =
+        r.level === 'good' ? 'good day to push'
         : r.word === 'Rest' ? 'go light today'
         : 'take it easy today';
+    // The short form, for when the detail has to share its line with a
+    // qualifier — "72% recovery · push", "sleep only · take it easy".
+    const shortRecommendation =
+        r.level === 'good' ? 'push' : r.word === 'Rest' ? 'go light' : 'take it easy';
+    const readinessDetail =
+        r.level === 'unknown' ? r.reason
+        : d.providerReadiness ? `${Math.round(d.providerReadiness.value)}% recovery · ${shortRecommendation}`
+        : r.partial ? `${basisLabel(d.basis)} only · ${shortRecommendation}`
+        : recommendation;
 
     const signals: Signal[] = [
         sleepSignal(d),
@@ -582,23 +653,30 @@ function latest(series: TrendPoint[]): TrendPoint | null {
     return series.length > 0 ? series[series.length - 1] : null;
 }
 
-function mean(series: TrendPoint[]): number | null {
-    if (series.length === 0) return null;
-    return series.reduce((s, p) => s + p.value, 0) / series.length;
-}
-
 function deltaLabel(delta: number, unit: string): string {
     const r = Math.round(delta);
     if (r === 0) return 'level';
     return `${r > 0 ? '+' : '−'}${Math.abs(r)} ${unit}`;
 }
 
-/** Spread of nightly hours as plain language — minutes, not "±0.6h". */
-function regularityLabel(series: TrendPoint[]): string {
-    if (series.length < 4) return 'trends sharpen as more nights land';
-    const m = mean(series)!;
-    const sd = Math.sqrt(series.reduce((s, p) => s + (p.value - m) ** 2, 0) / series.length);
-    return `most nights within ${formatMin(sd * 60)} of your average`;
+/** The signals a verdict rests on, as words — "sleep", "sleep + HRV". */
+const BASIS_WORDS: Record<BasisSignal, string> = { sleep: 'sleep', hrv: 'HRV', rhr: 'resting HR' };
+function basisLabel(basis: BasisSignal[]): string {
+    return basis.map(b => BASIS_WORDS[b]).join(' + ');
+}
+
+/** The device behind a score, as the user knows it. */
+const PROVIDER_NAMES: Record<string, string> = {
+    whoop: 'Whoop', garmin: 'Garmin', oura: 'Oura', fitbit: 'Fitbit', polar: 'Polar', zepp: 'Zepp',
+};
+function providerName(source: string | null): string {
+    return (source && PROVIDER_NAMES[source.toLowerCase()]) || 'Your device';
+}
+
+function localDaysAgo(date: string): number {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((today.getTime() - new Date(`${date}T00:00:00`).getTime()) / 86400000);
 }
 
 /**
@@ -607,10 +685,8 @@ function regularityLabel(series: TrendPoint[]): string {
  * pass as a live one (the same worry that made the readiness chip a word).
  */
 function whenLabel(date: string): string {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const daysAgo = localDaysAgo(date);
     const d = new Date(`${date}T00:00:00`);
-    const daysAgo = Math.round((today.getTime() - d.getTime()) / 86400000);
     if (daysAgo <= 0) return 'today';
     if (daysAgo === 1) return 'yesterday';
     if (daysAgo < 7) return d.toLocaleDateString('en-GB', { weekday: 'short' });
@@ -631,14 +707,37 @@ function formatMin(mins: number): string {
     return `${m}m`;
 }
 
+/** "HRV 68 ms (your usual 74)" — a fresh vital against its baseline, or bare. */
+function vitalPhrase(label: string, fresh: TrendPoint, avg: number | null, ready: boolean, unit: string): string {
+    const v = `${label} ${Math.round(fresh.value)} ${unit}`;
+    return ready && avg != null ? `${v} (your usual ${Math.round(avg)})` : v;
+}
+
 /**
- * One plain sentence from the user's own baselines. Deliberately NOT a score:
- * a "Recovery 60%" needs continuous overnight measurement we don't have, so
- * this says only what the data genuinely supports, worst signal first.
+ * One or two plain sentences, worst signal first. What the device scored
+ * leads when it has scored this morning; otherwise the read comes from the
+ * user's own baselines, and says so when it is resting on a single signal.
+ * We never invent a percentage — the only score here is the provider's own.
  */
 function buildInsight(d: BodySignals): string {
+    if (d.providerReadiness) {
+        const score = Math.round(d.providerReadiness.value);
+        const who = providerName(d.providerReadiness.source);
+        const behind: string[] = [];
+        if (d.nightFresh) behind.push(`slept ${formatMin(d.nightFresh.value * 60)}`);
+        if (d.hrvFresh) behind.push(vitalPhrase('HRV', d.hrvFresh, d.hrvAvg, d.hrvBaselineReady, 'ms'));
+        if (d.rhrFresh) behind.push(vitalPhrase('resting HR', d.rhrFresh, d.rhrAvg, d.rhrBaselineReady, 'bpm'));
+        const evidence = behind.length > 0 ? ` — ${behind.join(', ')}` : '';
+        const advice = score >= 67 ? 'Good day to push.'
+            : score >= 34 ? 'Train, but keep it steady.'
+            : 'Rest or go very light today.';
+        return `${who} scores this morning's recovery ${score}%${evidence}. ${advice}`;
+    }
     if (d.rhrElevated) {
         return `Resting heart rate is ${deltaLabel(d.rhrFresh!.value - d.rhrAvg!, 'bpm')} above your usual — worth keeping today steadier.`;
+    }
+    if (d.hrvLow) {
+        return `HRV is ${Math.round(d.hrvFresh!.value)} ms against your usual ${Math.round(d.hrvAvg!)} — your body is still working on something. Keep today easy.`;
     }
     if (d.shortNight) {
         return `Short night (${formatMin(d.nightFresh!.value * 60)}) — an easy session will do more for you than a hard one today.`;
@@ -646,11 +745,20 @@ function buildInsight(d: BodySignals): string {
     if (d.bigDay) {
         return `Big day yesterday (${formatMin(d.yesterdayMin)} of training) — recovery is part of the work.`;
     }
-    if (d.nightFresh && d.rhrFresh && d.rhrAvg != null && d.rhrFresh.value <= d.rhrAvg) {
-        return `Slept ${formatMin(d.nightFresh.value * 60)} and resting heart rate is at or below your average — good day to push.`;
+    if (d.nightFresh && (d.hrvFresh || d.rhrFresh)) {
+        const behind: string[] = [`Slept ${formatMin(d.nightFresh.value * 60)}`];
+        if (d.hrvFresh) behind.push(vitalPhrase('HRV', d.hrvFresh, d.hrvAvg, d.hrvBaselineReady, 'ms'));
+        if (d.rhrFresh) behind.push(vitalPhrase('resting HR', d.rhrFresh, d.rhrAvg, d.rhrBaselineReady, 'bpm'));
+        return `${behind.join(', ')} — nothing out of the ordinary. Good day to push.`;
     }
     if (d.nightFresh) {
-        return `Slept ${formatMin(d.nightFresh.value * 60)} last night. Trends below build as your device syncs.`;
+        // A night alone. Name what is still to come, in the device's own
+        // terms — "trends build as your device syncs" read as broken to a
+        // wearer whose device had been syncing for weeks.
+        const waiting = d.missing.length > 0
+            ? ` ${basisLabel(d.missing)} ${d.missing.length > 1 ? 'haven\'t' : 'hasn\'t'} synced yet, so this is a read from sleep alone.`
+            : '';
+        return `Slept ${formatMin(d.nightFresh.value * 60)} last night.${waiting}`;
     }
     // No night to speak of — for a wearer who never takes the device to bed,
     // resting heart rate carries the whole read. Speak to what IS there rather
@@ -666,11 +774,18 @@ function buildInsight(d: BodySignals): string {
     if (d.rhrFresh) {
         return `Resting heart rate ${Math.round(d.rhrFresh.value)} bpm ${whenLabel(d.rhrFresh.date)}. A few more days and you'll see how that compares to your usual.`;
     }
+    if (d.hrvFresh) {
+        return d.hrvBaselineReady && d.hrvAvg != null
+            ? `HRV ${Math.round(d.hrvFresh.value)} ms against your usual ${Math.round(d.hrvAvg)} — good day to push.`
+            : `HRV ${Math.round(d.hrvFresh.value)} ms ${whenLabel(d.hrvFresh.date)}. A few more nights and you'll see how that compares to your usual.`;
+    }
     if (d.weekActiveDays > 0) {
         const trained = `Trained ${d.weekActiveDays} of the last ${LOAD_DAYS} days (${formatMin(d.weekActiveMin)}).`;
-        return !d.tracksSleep && !d.tracksRhr
-            ? `${trained} Readiness needs sleep or resting heart rate from your device.`
-            : `${trained} No recent sleep or heart-rate reading to judge recovery.`;
+        if (!d.tracksSleep && !d.tracksRhr && !d.tracksHrv) {
+            return `${trained} Readiness needs sleep or resting heart rate from your device.`;
+        }
+        const last = d.rhrDaysAgo != null ? ` Last resting HR reading was ${d.rhrDaysAgo} days ago.` : '';
+        return `${trained} No recent sleep or heart-rate reading to judge recovery.${last}`;
     }
     return 'Your trends build here as your device syncs — the more days, the sharper the picture.';
 }
