@@ -10,6 +10,7 @@ jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(),
   scheduleNotificationAsync: jest.fn(),
   cancelScheduledNotificationAsync: jest.fn(),
+  getAllScheduledNotificationsAsync: jest.fn(),
 }));
 
 jest.mock('expo-device', () => ({ isDevice: true }));
@@ -69,19 +70,35 @@ describe('notifyCheckInAvailable', () => {
     expect(CHECK_IN_BANNER_DELAY_S).toBeGreaterThanOrEqual(60);
   });
 
-  it('cancels the pending banner by the same identifier the schedule used', async () => {
+  it('cancels the pending banner by the same identifier the schedule used, and says it was still pending', async () => {
     const cancel = Notifications.cancelScheduledNotificationAsync as jest.Mock;
+    const scheduled = Notifications.getAllScheduledNotificationsAsync as jest.Mock;
     cancel.mockResolvedValueOnce(undefined);
+    scheduled.mockResolvedValueOnce([{ identifier: `powr-check_in_reminder-${LOCATION_ID}` }]);
 
-    await cancelPendingCheckInBanner(LOCATION_ID);
+    const outcome = await cancelPendingCheckInBanner(LOCATION_ID);
 
+    expect(cancel).toHaveBeenCalledWith(`powr-check_in_reminder-${LOCATION_ID}`);
+    expect(outcome).toBe('cancelled');
+  });
+
+  it('reports not_pending when nothing was waiting — the banner had already drawn', async () => {
+    const cancel = Notifications.cancelScheduledNotificationAsync as jest.Mock;
+    const scheduled = Notifications.getAllScheduledNotificationsAsync as jest.Mock;
+    cancel.mockResolvedValueOnce(undefined);
+    scheduled.mockResolvedValueOnce([{ identifier: 'powr-session_mark-something-else' }]);
+
+    await expect(cancelPendingCheckInBanner(LOCATION_ID)).resolves.toBe('not_pending');
+    // Still withdraws, in case the list and the scheduler disagree.
     expect(cancel).toHaveBeenCalledWith(`powr-check_in_reminder-${LOCATION_ID}`);
   });
 
   it('never lets a cancel failure escape — the finalize must not pay for a banner', async () => {
     const cancel = Notifications.cancelScheduledNotificationAsync as jest.Mock;
+    const scheduled = Notifications.getAllScheduledNotificationsAsync as jest.Mock;
+    scheduled.mockRejectedValueOnce(new Error('no scheduler in this context'));
     cancel.mockRejectedValueOnce(new Error('already delivered'));
 
-    await expect(cancelPendingCheckInBanner(LOCATION_ID)).resolves.toBeUndefined();
+    await expect(cancelPendingCheckInBanner(LOCATION_ID)).resolves.toBe('unknown');
   });
 });

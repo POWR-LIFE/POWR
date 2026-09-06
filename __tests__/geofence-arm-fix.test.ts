@@ -33,6 +33,7 @@ import {
   getArmFix,
   rearmFencesFromWake,
   resetNativeEventDebounceForTests,
+  resetRearmSkippedTallyForTests,
   setLocationStreamMode,
 } from '@/context/GeofenceContext';
 
@@ -152,6 +153,7 @@ const regionEvents = () =>
 beforeEach(async () => {
   jest.clearAllMocks();
   resetNativeEventDebounceForTests();
+  resetRearmSkippedTallyForTests();
   await AsyncStorage.clear();
   await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify({ 'partner-home-0': HOME_GYM, ...TOWN_GYMS }));
   await AsyncStorage.setItem(PARTNER_MAP_META_KEY, JSON.stringify({ fetchedAt: Date.now() }));
