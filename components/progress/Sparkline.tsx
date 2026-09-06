@@ -7,13 +7,14 @@ import type { TrendPoint } from '@/lib/api/bodyTrends';
 /**
  * Trend charts for the BODY tab. Two forms, one scale:
  *
- *  - Sparkline: a continuous daily series (resting HR) drawn as DEVIATION from
- *    the user's own average — see the note on the component itself.
+ *  - Sparkline: a continuous daily series (resting HR, nightly HRV) drawn as
+ *    DEVIATION from the user's own average — see the note on the component
+ *    itself. The curve breaks at sync gaps rather than bridging them.
  *  - RangeDotChart: readings plotted against a band of the user's own typical
  *    range (average ± one standard deviation). For series that are EVENTS, not
- *    a signal — per-workout HRV lands only on days you trained, and joining
- *    those dots with a line would invent a trend across days nothing was
- *    measured.
+ *    a signal — HRV from a device that only measures it per workout lands on
+ *    days you trained, and joining those dots with a line would invent a trend
+ *    across days nothing was measured.
  *
  * Both take `goodDirection`, and with it the marks judge themselves, green
  * always on the healthy side ('down' for resting HR, 'up' for HRV). Discrete
@@ -101,6 +102,34 @@ function byIncreasingX<T extends { x: number }>(input: T[]): T[] {
         else out.push(p);
     }
     return out;
+}
+
+/** Whole local days between two 'YYYY-MM-DD' dates. */
+function daysBetween(a: string, b: string): number {
+    return Math.round((new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / 86400000);
+}
+
+/**
+ * Splits a dated series wherever consecutive readings are more than
+ * `maxGapDays` apart, so the curve is only ever drawn through days that were
+ * actually measured. A smooth ramp across a four-day sync gap is
+ * indistinguishable from four real readings; the dots alone were carrying
+ * that honesty, and on a busy chart they don't carry it far enough. Exported
+ * for the regression test.
+ */
+export function splitGaps<T extends { date: string }>(input: T[], maxGapDays: number): T[][] {
+    const segments: T[][] = [];
+    let current: T[] = [];
+    for (const p of input) {
+        const prev = current[current.length - 1];
+        if (prev && daysBetween(prev.date, p.date) > maxGapDays) {
+            segments.push(current);
+            current = [];
+        }
+        current.push(p);
+    }
+    if (current.length > 0) segments.push(current);
+    return segments;
 }
 
 /**
@@ -260,6 +289,7 @@ export function Sparkline({
     days,
     height = 64,
     goodDirection,
+    maxGapDays = 3,
 }: {
     /** Oldest first, dates within the trailing `days` window. */
     points: TrendPoint[];
@@ -268,6 +298,8 @@ export function Sparkline({
     height?: number;
     /** Which way is healthy — decides which side of the baseline reads green. */
     goodDirection: GoodDirection;
+    /** The line breaks wherever readings are further apart than this. */
+    maxGapDays?: number;
 }) {
     const [width, setWidth] = useState(0);
     if (points.length === 0) return null;
@@ -283,24 +315,31 @@ export function Sparkline({
         >
             {width > 0 && (() => {
                 const scale = makeScale(points, days, width, height);
-                const coords = byIncreasingX(points.map(p => ({ x: scale.x(p.date), y: scale.y(p.value) })));
-                const first = coords[0];
+                const coords = byIncreasingX(points.map(p => ({ x: scale.x(p.date), y: scale.y(p.value), date: p.date })));
                 const last = coords[coords.length - 1];
                 const lastPoint = points[points.length - 1];
                 const avgY = scale.y(scale.avg);
-                const linePath = smoothPath(coords);
+
+                // One curve per run of consecutive readings: the line stops
+                // at a sync gap and starts again after it, rather than
+                // gliding across days the device never measured.
+                const segments = splitGaps(coords, maxGapDays)
+                    .map(seg => ({ seg, line: smoothPath(seg) }))
+                    .filter(s => s.line !== '');
 
                 // The region BETWEEN the curve and the baseline, as one closed
-                // path. It self-intersects wherever the series crosses the
-                // average, which is fine and in fact the point: with the
-                // default nonzero fill rule every lobe still fills, and a
-                // single vertical gradient whose midpoint sits exactly on the
-                // baseline then paints the lobes above in one hue and the
-                // lobes below in the other. No clip path needed — worth
+                // path per segment. It self-intersects wherever the series
+                // crosses the average, which is fine and in fact the point:
+                // with the default nonzero fill rule every lobe still fills,
+                // and a single vertical gradient whose midpoint sits exactly
+                // on the baseline then paints the lobes above in one hue and
+                // the lobes below in the other. No clip path needed — worth
                 // knowing, since react-native-svg does not re-export ClipPath.
-                const areaPath = linePath
-                    ? `${linePath} L ${last.x} ${avgY} L ${first.x} ${avgY} Z`
+                const areaPath = segments.length > 0
+                    ? segments.map(({ seg, line }) =>
+                        `${line} L ${seg[seg.length - 1].x} ${avgY} L ${seg[0].x} ${avgY} Z`).join(' ')
                     : null;
+                const linePath = segments.map(s => s.line).join(' ');
 
                 // 'down' is healthy-is-lower (resting HR): above the baseline
                 // is the bad side, so it wears rose and below wears green.
@@ -366,7 +405,7 @@ export function Sparkline({
                             days is indistinguishable from four real ones.
                             Today is excluded — it gets the haloed mark below. */}
                         {coords.slice(0, -1).map(c => (
-                            <Circle key={`${c.x}`} cx={c.x} cy={c.y} r={2} fill="#ffffff" fillOpacity={0.55} />
+                            <Circle key={c.date} cx={c.x} cy={c.y} r={2} fill="#ffffff" fillOpacity={0.55} />
                         ))}
                         {/* The window's high and low, each sitting on its own
                             dot. v1 printed these too but left them floating
