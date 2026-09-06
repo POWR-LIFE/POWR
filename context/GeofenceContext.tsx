@@ -3,6 +3,7 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { defineTask } from '@/lib/taskFinishGuard';
+import { rearmSkippedDecision, rearmSkippedFlush, type RearmSkippedTally } from '@/lib/rearmSkippedTally';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { ensureFreshSession } from '@/lib/authFresh';
@@ -878,7 +879,11 @@ async function armNativeRegionsUnserialized(
     // it is what Google permits on this device class.
     if (running && Platform.OS === 'android' && AppState.currentState !== 'active') {
       console.warn('[Geofence] Re-arm REFUSED — background re-arm can only destroy a live registration.');
-      logRegionEvent('arm', 'rearm_skipped', {
+      // Tallied, not one row per refusal (2026-09-06): the stream asks on nearly
+      // every fix, so a real Android member wrote 150–250 of these a day — the
+      // largest telemetry source in the table. First refusal at once, then one
+      // row per half hour carrying the count. See lib/rearmSkippedTally.ts.
+      logRearmSkippedThrottled({
         reason: 'background_would_destroy',
         app_state: String(AppState.currentState),
         forced: !!opts.force,
@@ -887,6 +892,9 @@ async function armNativeRegionsUnserialized(
       });
       return;
     }
+    // An arm that gets this far will land (or fail loudly): ship the pending
+    // refusal tally first so a short-lived process never loses its count.
+    flushRearmSkippedTally();
 
     // Same-set dedupe: two arms for an identical set buy nothing and cost a full
     // native re-registration. 2026-08-04: the startup flow armed twice 91 s
@@ -1123,7 +1131,8 @@ function logRegionEvent(
     | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
     | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'visit_stream_ensured'
     | 'exit_noise_suppressed' | 'visit_close_deferred' | 'check_in_announced'
-    | 'visit_open_attempt' | 'visit_open_result' | 'wake_step_hung' | 'stream_first_tick',
+    | 'visit_open_attempt' | 'visit_open_result' | 'wake_step_hung' | 'stream_first_tick'
+    | 'check_in_banner' | 'check_in_open_deferred',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -3234,120 +3243,162 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   // existed solely to un-say a banner these had already promised.)
 
   // Only now the network: open the server-side visit beacon.
+  //
+  // BOUNDED (2026-09-06). Every other visit call is time-boxed (the wake
+  // late-open rides withNetworkTimeout); this one at the front door was not, and
+  // it is the call this codebase has twice recorded as never settling. Field
+  // 08-18: 50 min 45 s on Android, 33.8 min on iOS. In the 14 days to 09-06,
+  // 204 iOS check-in opens resolved at p50 0.7 s while 11 never did inside 30 s
+  // (worst 30.7 min) — and a phone that never learns its visit id re-resolves it
+  // on every wake (191 `reused` rows across 87 visits).
+  //
+  // Everything member-facing has already happened above this line: the banner is
+  // scheduled, the session is persisted, the stream is switched. Behind the await
+  // sit only the visit-id stamp and the announce mark, and both are late-safe. So
+  // the open is raced against CHECK_IN_OPEN_BOUND_MS and WHICHEVER open resolves
+  // first stamps: a late win still lands through the continuation, so the bound
+  // never discards an id the server actually minted, and the late-open paths keep
+  // covering the case where it never lands at all.
+  //
+  // ⚠ Best-effort by nature: RN drives setTimeout off the UI frame clock, so the
+  // race itself can freeze with the app (lib/networkTimeout.ts). When it does,
+  // this behaves exactly as before — the await hangs — never worse.
   let visitId: string | null = null;
   try {
-    visitId = await openVisitTraced('check_in', entry.dbId, regionId, entryTimestamp, null);
+    const opened = openVisitTraced('check_in', entry.dbId, regionId, entryTimestamp, null);
+    let bound: ReturnType<typeof setTimeout> | undefined;
+    visitId = await Promise.race([
+      opened,
+      new Promise<null>((resolve) => { bound = setTimeout(() => resolve(null), CHECK_IN_OPEN_BOUND_MS); }),
+    ]);
+    clearTimeout(bound);
     if (visitId) {
-      const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
-      const active = raw ? JSON.parse(raw) as StoredGeofence : null;
-      // Stamp the visit onto the stored session — never onto a DIFFERENT PLACE.
-      //
-      // This used to demand `active.entryTimestamp === entryTimestamp` exactly,
-      // and on Android that equality failed silently on every single check-in:
-      // field 2026-08-08, `visit: null` in every sweep row for a 60-minute
-      // session, and a `VISIT reused` on every wake because the client had to
-      // re-resolve the visit from the server each time it woke.
-      //
-      // Losing the id is not cosmetic — it is load-bearing four ways over:
-      //   1. finalizeActiveGeofence's close is gated on it, so the visit never closes;
-      //   2. so is the #364 durable-close outbox, so it never even queues a retry;
-      //   3. markGymVisitProgress is gated on it, so claim/upgrade never mark;
-      //   4. and with no id the client re-resolves via openGymVisit on every wake —
-      //      so the moment anything closes the visit server-side (the REAPER does
-      //      exactly this, 45 min after upgrade) the next wake opens a DUPLICATE
-      //      visit with a stale started_at, which the beacon then nudges. Observed
-      //      live on 2026-08-08.
-      //
-      // The guard's real job is to not attach this visit to a session at some
-      // OTHER partner, and regionId says that directly. A timestamp mismatch at
-      // the same region means a concurrent check-in path rewrote the record
-      // (iOS fired `sweep` and `enter_poll` 3 ms apart that same run) — and
-      // open_gym_visit reuses the user's open visit anyway, so the id we hold IS
-      // that session's visit. `!active.visitId` keeps it strictly additive: an
-      // already-stamped session is never overwritten.
-      const sameSession = active?.entryTimestamp === entryTimestamp;
-      const stampable = active && active.regionId === regionId && !active.visitId;
-      if (stampable) {
-        // MERGE, DON'T OVERWRITE (2026-08-17). `active` was parsed before the
-        // awaited openGymVisit above, so writing `{ ...active }` publishes a
-        // pre-network snapshot over whatever landed meanwhile — the exact shape
-        // of both 2026-08-11 bugs. patchActiveGeofence merges onto what is stored
-        // NOW and refuses a finalized or re-regioned record, and its refusal
-        // surfaces as `active_patch_refused` instead of vanishing.
-        await patchActiveGeofence(active, { visitId }, 'check_in_stamp');
-        // Name the relaxed path so we learn how often the strict guard was wrong,
-        // rather than inferring it from `visit: null` months later.
-        if (!sameSession) {
-          logRegionEvent(regionId, 'visit_stamp_relaxed', {
-            stored_entry: active.entryTimestamp ?? null,
-            opened_entry: entryTimestamp,
-          });
-        }
-      } else if (active && !active.visitId) {
-        // Region changed under us — genuinely must not stamp. Previously silent.
-        logRegionEvent(regionId, 'visit_stamp_skipped', {
-          reason: 'region_mismatch',
-          stored_region: active.regionId ?? null,
-        });
-      }
-      // ⚠ MARK ONLY WHAT WE ACTUALLY DREW (2026-08-17). This was `if (checkInShown)`
-      // on a boolean that also read true for a cooldown-suppressed banner, so
-      // `announced_at` could be stamped for a check-in the user was never told
-      // about. That is not merely cosmetic: the server announce pass deleted on
-      // 08-07 left instructions to "fix the mark first" before it is ever
-      // restored, because a mark that lies is exactly what made it duplicate.
-      // Nothing double-announces today, so the strict test costs nothing now and
-      // makes announced_at true.
-      // 'scheduled' too (2026-08-26): the banner now waits on an OS timer the
-      // finalize can cancel, so the user WILL be told unless the visit ends first
-      // — and a visit that ends first has no server announce to double anyway.
-      if (notifyResult === 'shown' || notifyResult === 'scheduled') {
-        // Local banner displayed — tell the beacon not to double-announce.
-        //
-        // This is a RACE against the server's 90-second grace window, and a
-        // background check-in has no business entering the auth machinery to
-        // win it. Field, 2026-08-07 08:54: this fired through supabase-js on a
-        // phone whose auth calls were timing out after 30 s, the mark never
-        // landed inside the window, and the user got BOTH banners — the local
-        // "You're in" and the server's "You're in at POWR".
-        //
-        // Fire-and-forget is still correct (the banner is already on screen, and
-        // the wake's round-trip belongs to the confirm) — but it has to go out
-        // over the transport that lands in milliseconds rather than one that can
-        // outlive the window it is racing.
-        void (async () => {
-          try {
-            // Backgrounded with no usable token, SKIP rather than fall back:
-            // the fallback is the very transport that can outlive the 90 s
-            // window, so attempting it cannot win the race and can only burn
-            // the wake. Losing the mark costs one duplicate banner; the server
-            // fallback is doing its job at that point.
-            const backgrounded = AppState.currentState !== 'active';
-            const auth = backgrounded ? await readBackgroundAuth() : null;
-            if (auth) {
-              const { error } = await bgRpc('mark_gym_visit_announced', { p_visit_id: visitId }, auth);
-              if (error) console.warn('[Geofence] announce mark failed:', error.message);
-              return;
-            }
-            // Backgrounded with no usable token: SKIP rather than fall back. The
-            // fallback is the very transport that can outlive the 90 s window,
-            // so attempting it cannot win the race — it can only burn the wake.
-            // Losing the mark costs one duplicate banner, which is precisely
-            // what the server fallback exists to provide.
-            if (backgrounded) return;
-            const { supabase } = await import('@/lib/supabase');
-            const { error } = await supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId });
-            if (error) console.warn('[Geofence] announce mark failed:', error.message);
-          } catch (rpcErr) {
-            console.warn('[Geofence] announce mark RPC threw:', rpcErr);
-          }
-        })();
-      }
+      await stampCheckInVisit(regionId, entryTimestamp, visitId, notifyResult, 'check_in_stamp');
+    } else {
+      logRegionEvent(regionId, 'check_in_open_deferred', {
+        bound_ms:  CHECK_IN_OPEN_BOUND_MS,
+        app_state: String(AppState.currentState),
+      });
+      void opened
+        .then((lateId) => (lateId
+          ? stampCheckInVisit(regionId, entryTimestamp, lateId, notifyResult, 'check_in_stamp_late')
+          : undefined))
+        .catch(() => { /* openVisitTraced never throws; nothing here may either */ });
     }
   } catch (err) {
     console.warn('[Geofence] Visit beacon failed to open:', err);
   }
 
+}
+
+/** How long the check-in path waits for openGymVisit before carrying on without
+ *  the id. The wake path's late-open answers at p50 0.9 s / p95 6 s (14 days to
+ *  2026-09-06); 8 s is that p95 with room, and a late answer still stamps. */
+export const CHECK_IN_OPEN_BOUND_MS = 8 * 1000;
+
+/** Stamps a freshly opened visit onto the stored session and marks the announce.
+ *  Called by the check-in path when the open resolves inside its bound, and by
+ *  the continuation when it resolves late — the same rules either way.
+ *
+ *  Stamp the visit onto the stored session — never onto a DIFFERENT PLACE.
+ *
+ *  This used to demand `active.entryTimestamp === entryTimestamp` exactly, and on
+ *  Android that equality failed silently on every single check-in: field
+ *  2026-08-08, `visit: null` in every sweep row for a 60-minute session, and a
+ *  `VISIT reused` on every wake because the client had to re-resolve the visit
+ *  from the server each time it woke.
+ *
+ *  Losing the id is not cosmetic — it is load-bearing four ways over:
+ *    1. finalizeActiveGeofence's close is gated on it, so the visit never closes;
+ *    2. so is the #364 durable-close outbox, so it never even queues a retry;
+ *    3. markGymVisitProgress is gated on it, so claim/upgrade never mark;
+ *    4. and with no id the client re-resolves via openGymVisit on every wake —
+ *       so the moment anything closes the visit server-side (the REAPER does
+ *       exactly this) the next wake opens a DUPLICATE visit with a stale
+ *       started_at, which the beacon then nudges. Observed live on 2026-08-08.
+ *
+ *  The guard's real job is to not attach this visit to a session at some OTHER
+ *  partner, and regionId says that directly. A timestamp mismatch at the same
+ *  region means a concurrent check-in path rewrote the record (iOS fired `sweep`
+ *  and `enter_poll` 3 ms apart that same run) — and open_gym_visit reuses the
+ *  user's open visit anyway, so the id we hold IS that session's visit.
+ *  `!active.visitId` keeps it strictly additive: an already-stamped session is
+ *  never overwritten — which is also what makes the late continuation safe.
+ *
+ *  MERGE, DON'T OVERWRITE (2026-08-17): patchActiveGeofence merges onto what is
+ *  stored NOW and refuses a finalized or re-regioned record, and its refusal
+ *  surfaces as `active_patch_refused` instead of vanishing. */
+async function stampCheckInVisit(
+  regionId: string,
+  entryTimestamp: number,
+  visitId: string,
+  notifyResult: CheckInNotifyResult | 'threw',
+  source: 'check_in_stamp' | 'check_in_stamp_late',
+): Promise<void> {
+  const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY).catch(() => null);
+  const active = raw ? JSON.parse(raw) as StoredGeofence : null;
+  const sameSession = active?.entryTimestamp === entryTimestamp;
+  const stampable = active && active.regionId === regionId && !active.visitId;
+  if (stampable) {
+    await patchActiveGeofence(active, { visitId }, source);
+    // Name the relaxed path so we learn how often the strict guard was wrong,
+    // rather than inferring it from `visit: null` months later.
+    if (!sameSession) {
+      logRegionEvent(regionId, 'visit_stamp_relaxed', {
+        source,
+        stored_entry: active.entryTimestamp ?? null,
+        opened_entry: entryTimestamp,
+      });
+    }
+  } else if (active && !active.visitId) {
+    // Region changed under us — genuinely must not stamp. Previously silent.
+    logRegionEvent(regionId, 'visit_stamp_skipped', {
+      reason: 'region_mismatch',
+      source,
+      stored_region: active.regionId ?? null,
+    });
+  }
+  // ⚠ MARK ONLY WHAT WE ACTUALLY DREW (2026-08-17). This was `if (checkInShown)`
+  // on a boolean that also read true for a cooldown-suppressed banner, so
+  // `announced_at` could be stamped for a check-in the user was never told
+  // about. 'scheduled' counts too (2026-08-26): the banner now waits on an OS
+  // timer the finalize can cancel, so the user WILL be told unless the visit
+  // ends first — and a visit that ends first has no server announce to double.
+  if (notifyResult === 'shown' || notifyResult === 'scheduled') {
+    void markVisitAnnounced(visitId);
+  }
+}
+
+/** Local banner displayed — tell the beacon not to double-announce.
+ *
+ *  This is a RACE against the server's 90-second grace window, and a background
+ *  check-in has no business entering the auth machinery to win it. Field,
+ *  2026-08-07 08:54: this fired through supabase-js on a phone whose auth calls
+ *  were timing out after 30 s, the mark never landed inside the window, and the
+ *  user got BOTH banners. Fire-and-forget is still correct (the banner is already
+ *  on screen, and the wake's round-trip belongs to the confirm) — but it has to
+ *  go out over the transport that lands in milliseconds.
+ *
+ *  Backgrounded with no usable token: SKIP rather than fall back. The fallback is
+ *  the very transport that can outlive the 90 s window, so attempting it cannot
+ *  win the race — it can only burn the wake. Losing the mark costs one duplicate
+ *  banner, which is precisely what the server fallback exists to provide. */
+async function markVisitAnnounced(visitId: string): Promise<void> {
+  try {
+    const backgrounded = AppState.currentState !== 'active';
+    const auth = backgrounded ? await readBackgroundAuth() : null;
+    if (auth) {
+      const { error } = await bgRpc('mark_gym_visit_announced', { p_visit_id: visitId }, auth);
+      if (error) console.warn('[Geofence] announce mark failed:', error.message);
+      return;
+    }
+    if (backgrounded) return;
+    const { supabase } = await import('@/lib/supabase');
+    const { error } = await supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId });
+    if (error) console.warn('[Geofence] announce mark failed:', error.message);
+  } catch (rpcErr) {
+    console.warn('[Geofence] announce mark RPC threw:', rpcErr);
+  }
 }
 
 /** Runs the exit claim/upgrade path after finalizeActiveGeofence has persisted
@@ -3606,10 +3657,20 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
     // for the next half hour. See clearCheckInCooldown for the field case.
     if (active.regionId) {
       try {
-        const { clearCheckInCooldown, cancelPendingCheckInBanner } = await import('@/lib/notifications');
+        const { clearCheckInCooldown, cancelPendingCheckInBanner, CHECK_IN_BANNER_DELAY_S } = await import('@/lib/notifications');
         // A drive-by ends here inside the banner's delay — withdraw it before it
         // draws. No-op once delivered. See CHECK_IN_BANNER_DELAY_S.
-        await cancelPendingCheckInBanner(active.regionId);
+        const bannerOutcome = await cancelPendingCheckInBanner(active.regionId);
+        // The receipt the 08-26 deferral never had (2026-09-06): `announced_at`
+        // stamps at SCHEDULE time, so 21 of 26 sub-75-second iOS visits carried it
+        // and proved nothing. One row per visit end: 'cancelled' means the user was
+        // never told, 'not_pending' means the banner had drawn (or was never
+        // scheduled — cross-check check_in_announced.notified for that visit).
+        logRegionEvent(active.regionId, 'check_in_banner', {
+          outcome:     bannerOutcome,
+          visit_age_s: Math.round((Date.now() - active.entryTimestamp) / 1000),
+          delay_s:     CHECK_IN_BANNER_DELAY_S,
+        });
         await clearCheckInCooldown(active.regionId);
       } catch { /* cosmetic — never let it cost the finalize */ }
     }
@@ -5392,6 +5453,33 @@ async function flushSuppressedExitNoise(): Promise<void> {
 // single source of truth, which matters: flushSuppressedExitNoise ships the tally
 // and REMOVES the key, and an in-memory counter would sail past that and re-count
 // events already shipped.
+// ─── Refused re-arm tally ────────────────────────────────────────────────────
+// Module-level on purpose: a headless process is short-lived, and its first
+// refusal is always reported at once, so per-process state costs nothing and
+// needs no storage write on the location hot path. The decision itself is pure
+// (lib/rearmSkippedTally.ts) and unit-tested there.
+let _rearmSkippedTally: RearmSkippedTally | null = null;
+
+function logRearmSkippedThrottled(detail: { reason: string } & Record<string, unknown>): void {
+  const d = rearmSkippedDecision(_rearmSkippedTally, detail.reason, Date.now());
+  _rearmSkippedTally = d.next;
+  if (d.emit) logRegionEvent('arm', 'rearm_skipped', { ...detail, count: d.row.count, window_s: d.row.window_s });
+}
+
+function flushRearmSkippedTally(): void {
+  const f = rearmSkippedFlush(_rearmSkippedTally, Date.now());
+  _rearmSkippedTally = f.next;
+  if (f.row) {
+    logRegionEvent('arm', 'rearm_skipped', {
+      reason: f.row.reason, count: f.row.count, window_s: f.row.window_s, flushed: true,
+    });
+  }
+}
+
+export function resetRearmSkippedTallyForTests(): void {
+  _rearmSkippedTally = null;
+}
+
 let _exitNoiseChain: Promise<void> = Promise.resolve();
 
 /** One `stream_first_tick` row per approach — see the stream task for why, and

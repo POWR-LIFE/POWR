@@ -715,9 +715,24 @@ Deno.serve(async (req: Request) => {
       '234d49f3-d189-44b1-a874-063e724e4380', // Sony bench   (android)
       'a2585666-5b7a-4622-8e43-6bd4fb8013f0', // iPhone bench (ios)
     ]);
-    const FAST_INTERVAL_MIN = 5;    // bench cadence while the sweep is being proven
-    const FLEET_INTERVAL_MIN = 0;   // 0 = fleet OFF; only FAST_USER_IDS are pinged
+    // ── FLEET ON, 2026-09-06 ──────────────────────────────────────────────
+    // A month after the walk-in that gated it (08-07), the two real Android
+    // members had 8,638 `rearm_skipped background_would_destroy` rows and ZERO
+    // check-ins between them: their fences are whatever the last foreground
+    // arm left, and nothing woke them to ask "am I in a gym right now?". iOS
+    // real members detected a departure on 37 of 100 visits. Both are the gap
+    // this ping closes — entry and zombie-exit detection that need no fence.
+    //
+    // Cadence: every 4 h per idle device (6 silent wakes/day, inside Apple's
+    // background-push guidance and a rounding error for FCM). Open visits are
+    // already pinged by the presence pass and the dwell/upgrade nudges, so this
+    // pass does NOT raise its cadence for them — one wake source per question.
+    // The bench cadence drops 5 → 30 min: at 5 the two bench phones were 41%
+    // of every geofence row in the database (8,063 pings / 14 d).
+    const FAST_INTERVAL_MIN = 30;   // bench cadence (was 5 while the sweep was being proven)
+    const FLEET_INTERVAL_MIN = 240; // idle-fleet cadence; 0 = fleet OFF (bench only)
     const TOKEN_FRESH_DAYS = 14; // dormant devices aren't worth the wake budget
+    const TARGET_SCAN_LIMIT = 500; // W3: when fresh tokens pass this, the ping set silently truncates
 
     const { data: refreshTargets, error: refreshScanErr } = await admin
       .from('user_push_tokens')
@@ -726,8 +741,13 @@ Deno.serve(async (req: Request) => {
       .not('device_token', 'is', null)
       .gte('updated_at', new Date(Date.now() - TOKEN_FRESH_DAYS * 86_400_000).toISOString())
       .order('updated_at', { ascending: false })
-      .limit(500);
+      .limit(TARGET_SCAN_LIMIT);
     if (refreshScanErr) console.error('[gym-visit-beacon] fence_refresh target scan failed', refreshScanErr);
+    if ((refreshTargets?.length ?? 0) >= TARGET_SCAN_LIMIT) {
+      // Not an error today (48 fresh tokens); a loud line the day it becomes one,
+      // because a truncated target list drops the OLDEST-updated devices silently.
+      console.warn('[gym-visit-beacon] fence_refresh target scan hit its cap — page it', { limit: TARGET_SCAN_LIMIT });
+    }
 
     // One query for everyone's last ping instead of a count per user per tick.
     const { data: recentPings, error: recentPingsErr } = await admin
@@ -880,25 +900,30 @@ Deno.serve(async (req: Request) => {
     const platformDown = { android: false, ios: false };
     for (const [userId, entries] of tokensByUser) {
       if (!FAST_USER_IDS.has(userId) && FLEET_INTERVAL_MIN <= 0) continue; // fleet off
-      // Pursuit wins over both baselines — but BENCH ONLY until the burst has been
-      // measured in the field. Whoever raises FLEET_INTERVAL_MIN must enable this
-      // deliberately rather than inherit it: against the documented 240-minute
-      // fleet cadence, 1/min is a 240x increase in silent-push volume.
-      const inPursuit = pursuing.has(userId) && FAST_USER_IDS.has(userId);
-      const intervalMin = inPursuit
-        ? PURSUIT_INTERVAL_MIN
-        : (FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN);
-      // 15 s of slack. `lastPingByUser` is stamped a second or two INTO the previous
-      // tick, so an exact comparison against a 1-minute cron loses a whole period to
-      // phase drift — measured: the 5-minute gate actually delivers ~6 (10 pushes an
-      // hour, not 12). Unamended, a 1-minute gate would pay the full push bill for
-      // half the cadence, and the field test would read as "pursuit fired and the
-      // arrival was still missed".
-      if (Date.now() - (lastPingByUser.get(userId) ?? 0) < intervalMin * 60_000 - 15_000) continue;
-      if (inPursuit) stats.pursuit++;
+      const sinceLastPingMs = Date.now() - (lastPingByUser.get(userId) ?? 0);
+      const baselineMin = FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN;
 
       for (const { token, platform } of entries) {
         if (platformDown[platform]) continue;
+        // Pursuit (1/min for ≤ 8 min after a wake-ring ENTER that has not converted)
+        // is enabled DELIBERATELY, per platform, on 2026-09-06 with the fleet switch:
+        //   • Android fleet-wide — FCM data pushes carry no delivery budget, and the
+        //     90-second walk-in gap (pollForCheckIn expires, next sweep is minutes
+        //     away) is exactly the window that cost the 08-09 check-in.
+        //   • iOS bench only — Apple withholds background pushes past ~2-3/hour per
+        //     device, and an 8-push burst at the door could starve the dwell and
+        //     upgrade nudges 30 minutes later, which are the ones that carry credit.
+        //     Turn it on for iOS only with a receipt that the nudges still land.
+        const inPursuit = pursuing.has(userId) && (FAST_USER_IDS.has(userId) || platform === 'android');
+        const intervalMin = inPursuit ? PURSUIT_INTERVAL_MIN : baselineMin;
+        // 15 s of slack. `lastPingByUser` is stamped a second or two INTO the previous
+        // tick, so an exact comparison against a 1-minute cron loses a whole period to
+        // phase drift — measured: the 5-minute gate actually delivers ~6 (10 pushes an
+        // hour, not 12). Unamended, a 1-minute gate would pay the full push bill for
+        // half the cadence, and the field test would read as "pursuit fired and the
+        // arrival was still missed".
+        if (sinceLastPingMs < intervalMin * 60_000 - 15_000) continue;
+        if (inPursuit) stats.pursuit++;
         // iOS takes the documented background-push shape (apns-push-type:
         // background, priority 5) — the same call the dwell/upgrade nudges
         // already use successfully on this device. Android keeps the mirrored

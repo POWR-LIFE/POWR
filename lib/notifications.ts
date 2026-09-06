@@ -360,11 +360,31 @@ export const CHECK_IN_BANNER_DELAY_S = 75;
 
 const checkInBannerIdentifier = (locationId: string) => `powr-check_in_reminder-${locationId}`;
 
+/** What withdrawing the banner found. 'cancelled' = the trigger was still pending
+ *  and is now gone (the user never saw it); 'not_pending' = nothing was waiting —
+ *  it had already drawn, or was never scheduled (cross-check the visit's
+ *  check_in_announced.notified); 'unknown' = the scheduler could not be asked. */
+export type CheckInBannerCancelOutcome = 'cancelled' | 'not_pending' | 'unknown';
+
 /** Withdraws a check-in banner that has not drawn yet. A no-op once it has
  *  delivered — this cancels the trigger, it never dismisses a banner the user
- *  has already seen. Called on every finalize so a drive-by never announces. */
-export async function cancelPendingCheckInBanner(locationId: string): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(checkInBannerIdentifier(locationId)).catch(() => {});
+ *  has already seen. Called on every finalize so a drive-by never announces.
+ *
+ *  Looks before it cancels (2026-09-06): cancelScheduledNotificationAsync
+ *  resolves the same whether it withdrew a pending trigger or found nothing, so
+ *  on its own it cannot say whether the banner drew — and `announced_at` cannot
+ *  either, since it stamps at SCHEDULE time. The scheduled list can. */
+export async function cancelPendingCheckInBanner(locationId: string): Promise<CheckInBannerCancelOutcome> {
+  const identifier = checkInBannerIdentifier(locationId);
+  let pending: boolean | null = null;
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    pending = scheduled.some((n) => n.identifier === identifier);
+  } catch {
+    pending = null;
+  }
+  await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
+  return pending == null ? 'unknown' : pending ? 'cancelled' : 'not_pending';
 }
 
 /** Clears the check-in cooldown for a venue.
