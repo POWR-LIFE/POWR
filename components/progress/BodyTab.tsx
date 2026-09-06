@@ -782,10 +782,10 @@ function buildInsight(d: BodySignals): string {
     if (d.weekActiveDays > 0) {
         const trained = `Trained ${d.weekActiveDays} of the last ${LOAD_DAYS} days (${formatMin(d.weekActiveMin)}).`;
         if (!d.tracksSleep && !d.tracksRhr && !d.tracksHrv) {
-            return `${trained} Readiness needs sleep or resting heart rate from your device.`;
+            return `${trained} Readiness needs sleep, HRV, or resting heart rate from your device.`;
         }
         const last = d.rhrDaysAgo != null ? ` Last resting HR reading was ${d.rhrDaysAgo} days ago.` : '';
-        return `${trained} No recent sleep or heart-rate reading to judge recovery.${last}`;
+        return `${trained} No recent sleep, HRV, or heart-rate reading to judge recovery.${last}`;
     }
     return 'Your trends build here as your device syncs — the more days, the sharper the picture.';
 }
