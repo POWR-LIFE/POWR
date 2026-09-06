@@ -17,6 +17,16 @@ import { bgRpc, isTicketRejection, readBackgroundAuth, readDeviceTicket, ticketR
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '@/lib/supabase';
 
+/** What the check-in knew about the fix that put the user inside the circle.
+ *  Same keys confirm_gym_visit_v2 reads for every other proof writer. Distance
+ *  and accuracy only — never coordinates. */
+export interface CheckInFix {
+  distance_m: number | null;
+  accuracy_m: number | null;
+  fix_trusted: boolean;
+  fix_age_s: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // Nonce-authenticated wake path (2026-08-05).
 //
@@ -137,13 +147,24 @@ export async function openGymVisit(
   partnerId: string,
   regionId: string | undefined,
   startedAtMs: number,
+  /** The fix that DECIDED this check-in, when there was one (2026-09-06). The
+   *  server runs it through the same presence rule as a wake confirm and, if it
+   *  passes, the visit starts life with a proof clock instead of a NULL one —
+   *  which is what lets the beacon's settle pay a phone that never answers a
+   *  wake. Omitted on the late-open paths, which have no fix of their own. */
+  fix?: CheckInFix | null,
 ): Promise<string | null> {
-  const args = {
+  const args: Record<string, unknown> = {
     p_partner_id: partnerId,
     p_region_id:  regionId ?? null,
     p_started_at: new Date(startedAtMs).toISOString(),
     p_platform:   Platform.OS,
   };
+  // Only when there IS one. PostgREST resolves the RPC by argument names, so a
+  // fix-less open keeps the exact wire shape the pre-20260906170000 signature
+  // accepts — the late-open paths cannot break on a bundle that outruns the
+  // migration, and only the check-in itself depends on the new column.
+  if (fix) args.p_fix = fix;
 
   // THE call that must survive a screen-off wake. Everything downstream — every
   // nudge, every nonce, the server-side claim — hangs off this visit existing,
