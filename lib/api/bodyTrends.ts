@@ -503,13 +503,19 @@ export function seriesFromSnapshots(rows: SnapshotRow[]): Omit<BodyTrends, 'load
             ? localDateStr(new Date(r.session.ended_at
                 ?? new Date(r.session.started_at).getTime() + hours * 3600_000))
             : day;
+        const isNap = r.extras?.is_nap === true;
         // Longest record wins the day: a night can arrive alongside its
         // own fragments or an afternoon nap, and "last night" should mean
         // the main sleep, not whichever row happened to land last. The
         // night's vitals travel with it — a nap's HRV must not displace
         // the night's.
-        const prev = nightByDay.get(wakeDay);
-        if (prev != null && hours <= prev.hours) continue;
+        const prev = nightByDay.get(wakeDay) as (SleepNight & { _isNap?: boolean }) | undefined;
+        const prevIsNap = !!prev?._isNap;
+        if (prev != null) {
+            // A non-nap night always outranks a nap, even if shorter.
+            if (!prevIsNap && isNap) continue;
+            if (prevIsNap === isNap && hours <= prev.hours) continue;
+        }
 
         nightByDay.set(wakeDay, {
             date: wakeDay,
@@ -517,7 +523,8 @@ export function seriesFromSnapshots(rows: SnapshotRow[]): Omit<BodyTrends, 'load
             deepH: positive(r.sleep_deep_h),
             remH: positive(r.sleep_rem_h),
             efficiency: positive(r.extras?.sleep_efficiency),
-        });
+            _isNap: isNap,
+        } as SleepNight & { _isNap: boolean });
         if (r.hr_resting != null && r.hr_resting > 0) rhrByNight.set(wakeDay, r.hr_resting);
         const hrv = positive(r.extras?.hrv_rmssd);
         if (hrv != null) hrvByNight.set(wakeDay, hrv);
