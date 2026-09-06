@@ -27,6 +27,7 @@ import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 import { staleVisitVerdict, sessionBelongsToVisit, SESSION_OWNERSHIP_MARGIN_MS } from '../_shared/gymReaper.ts';
 import { settleIsTerminal } from '../_shared/settleOutcome.ts';
+import { EXIT_SETTLE_LOOKBACK_MS, EXIT_SETTLE_RIGHT_OF_WAY_MS, exitSettleDue, exitSettleExhausted } from '../_shared/exitSettle.ts';
 import { MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
 
 // Budgets are PER STAGE and live in their own columns (nudge_count /
@@ -149,7 +150,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settle_declined: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settled_exit: 0, settle_declined: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -1390,6 +1391,88 @@ Deno.serve(async (req: Request) => {
         detail: { stage: 'upgrade', session_id: v.claimed_session_id, nudges_unanswered: v.nudge_count_upgrade, status, error: respErr, terminal },
       });
       if (terminal) await closeDeclinedVisit(v.id, 'upgrade', respErr);
+    }
+
+    // Stage 3 (2026-09-06): visits the device CLOSED on the way out and never
+    // claimed. Stages 1 and 2 select `ended_at is null`, so a proven visit whose
+    // relaunched-at-exit app managed the close (a ticket verb) but not the claim
+    // (needs a session) was invisible here and waited for an app-open: 10 of 73
+    // paid iOS sessions in the 30 days to 09-06 landed more than 90 minutes late
+    // that way. Pays for the length the close recorded — since 20260906170000
+    // that is the exit fence's own time for a proven visit. Selection facts live
+    // in _shared/exitSettle.ts (tested); the queries here only narrow the scan.
+    {
+      const { data: exitCandidates, error: exErr } = await admin
+        .from('gym_visits')
+        .select('id, user_id, partner_id, region_id, started_at, ended_at, close_reason, claimed_session_id, last_proven_at')
+        .eq('status', 'closed')
+        .eq('close_reason', 'exit')
+        .is('claimed_session_id', null)
+        .not('last_proven_at', 'is', null)
+        .gte('ended_at', new Date(Date.now() - EXIT_SETTLE_LOOKBACK_MS).toISOString())
+        .lte('ended_at', new Date(Date.now() - EXIT_SETTLE_RIGHT_OF_WAY_MS).toISOString())
+        .lte('started_at', new Date(Date.now() - dwellMin * 60_000).toISOString())
+        .limit(50);
+      if (exErr) console.error('[gym-visit-beacon] settle exit scan failed', exErr);
+
+      for (const v of exitCandidates ?? []) {
+        if (!exitSettleDue(v, dwellMin, Date.now())) continue;
+
+        const { data: prior } = await admin
+          .from('gym_visit_events')
+          .select('event, detail')
+          .eq('visit_id', v.id)
+          .in('event', ['settled', 'settle_failed']);
+        if (exitSettleExhausted(prior ?? [])) continue;
+
+        const durationSec = Math.max(0, Math.round((Date.parse(v.ended_at) - Date.parse(v.started_at)) / 1000));
+        const { data: sess, error: sessErr } = await admin
+          .from('activity_sessions')
+          .insert({
+            user_id: v.user_id, type: 'gym', verification: 'geofence',
+            trust_score: 0.85, // same footing as the dwell settle: server-paid, device-proven
+            started_at: v.started_at, ended_at: v.ended_at, duration_sec: durationSec,
+            partner_id: v.partner_id,
+          })
+          .select('id')
+          .single();
+        if (sessErr || !sess) {
+          // 23505 = the one-gym-session-per-day index: a session for this day
+          // already exists (the device claimed a sibling visit), so this can
+          // never succeed — record it as terminal rather than retrying it out.
+          const terminal = (sessErr as { code?: string } | null)?.code === '23505';
+          console.error('[gym-visit-beacon] exit settle session insert failed', sessErr);
+          await admin.from('gym_visit_events').insert({
+            visit_id: v.id, user_id: v.user_id, event: 'settle_failed',
+            detail: { stage: 'exit', session_id: null, status: 0, error: sessErr?.message ?? 'no session', terminal },
+          });
+          continue;
+        }
+
+        let status = 0; let respErr: string | null = null;
+        try {
+          const resp = await fetch(`${fnBase}/functions/v1/claim-points`, {
+            method: 'POST', headers: settleFnHeaders,
+            body: JSON.stringify({ session_id: sess.id, user_id: v.user_id, visit_id: v.id }),
+          });
+          status = resp.status;
+          if (!resp.ok) respErr = (await resp.json().catch(() => null))?.error ?? `http ${resp.status}`;
+        } catch (e) { respErr = String(e); }
+
+        if (respErr !== null || status !== 200) {
+          await admin.from('activity_sessions').delete().eq('id', sess.id);
+        } else {
+          stats.settled_exit++;
+        }
+        const terminal = respErr !== null && settleIsTerminal(status, respErr);
+        // claim-points' late-stamp (11c) marks the ended visit itself, so the
+        // "Session complete" pass finds it on the next tick. Nothing to close.
+        await admin.from('gym_visit_events').insert({
+          visit_id: v.id, user_id: v.user_id,
+          event: respErr === null ? 'settled' : 'settle_failed',
+          detail: { stage: 'exit', session_id: sess.id, duration_sec: durationSec, status, error: respErr, terminal },
+        });
+      }
     }
   }
 

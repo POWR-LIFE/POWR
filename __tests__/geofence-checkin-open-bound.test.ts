@@ -100,7 +100,7 @@ jest.mock('@/lib/supabase', () => ({
 }));
 
 import { Platform, AppState } from 'react-native';
-import { CHECK_IN_OPEN_BOUND_MS } from '@/context/GeofenceContext';
+import { CHECK_IN_OPEN_BOUND_MS, buildCheckInFix } from '@/context/GeofenceContext';
 
 const PARTNER_MAP_KEY = '@powr/partner_map';
 const PARTNER_MAP_META_KEY = '@powr/partner_map_meta';
@@ -191,5 +191,55 @@ describe('the check-in open is bounded, and a late answer still stamps', () => {
     const active = await readActive();
     expect(active?.visitId).toBe('visit-fast');
     expect(regionEvents('check_in_open_deferred')).toHaveLength(0);
+  });
+
+  // 2026-09-06: the fix that decided the check-in rides the open, so the visit
+  // starts with a proof clock. 23 of 77 real iOS sessions in the prior 30 days
+  // closed with none, and the beacon's settle refuses a NULL clock — so a phone
+  // that never answers a wake was paid only on app-open.
+  it('carries the entry fix on the open — distance, accuracy, trust and age, never coordinates', async () => {
+    mockOpenGymVisit.mockImplementationOnce(async () => 'visit-fixed');
+    const taken = Date.now() - 4_000;
+
+    await mockTasks[LOCATION_TRACKING_TASK]({
+      data: { locations: [{ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 20 }, timestamp: taken }] },
+      error: null,
+    });
+    await flush();
+
+    expect(mockOpenGymVisit).toHaveBeenCalledTimes(1);
+    const [partnerId, regionId, entryTs, fix] = mockOpenGymVisit.mock.calls[0] as unknown as
+      [string, string, number, Record<string, unknown>];
+    expect(partnerId).toBe('partner-home');
+    expect(regionId).toBe('partner-home-0');
+    expect(typeof entryTs).toBe('number');
+    expect(fix).toEqual({
+      distance_m:  0,
+      accuracy_m:  20,
+      fix_trusted: true,
+      fix_age_s:   expect.any(Number),
+    });
+    expect((fix.fix_age_s as number)).toBeGreaterThanOrEqual(3);
+    expect((fix.fix_age_s as number)).toBeLessThanOrEqual(6);
+    expect(Object.keys(fix).sort()).toEqual(['accuracy_m', 'distance_m', 'fix_age_s', 'fix_trusted']);
+    expect(regionEvents('visit_open_attempt')[0].detail.fix_carried).toBe(true);
+  });
+});
+
+describe('buildCheckInFix', () => {
+  const gym = { lat: GYM.lat, lng: GYM.lng };
+
+  it('returns null when the check-in had no fix (native enter without a position)', () => {
+    expect(buildCheckInFix(gym, undefined)).toBeNull();
+  });
+
+  it('marks a coarse fix untrusted so the server never stamps proof from it', () => {
+    const fix = buildCheckInFix(gym, { coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 150 } as any, timestamp: 1_000 }, 5_000);
+    expect(fix).toMatchObject({ fix_trusted: false, accuracy_m: 150, fix_age_s: 4 });
+  });
+
+  it('reports an unknown age as null rather than zero', () => {
+    const fix = buildCheckInFix(gym, { coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 10 } as any });
+    expect(fix?.fix_age_s).toBeNull();
   });
 });

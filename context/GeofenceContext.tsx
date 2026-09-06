@@ -15,6 +15,7 @@ import { withNetworkTimeout } from '@/lib/networkTimeout';
 // Type-only: erased at compile time, so it does NOT pull lib/notifications into a
 // headless context. The value import stays dynamic, below, for that reason.
 import type { CheckInNotifyResult } from '@/lib/notifications';
+import type { CheckInFix } from '@/lib/gymVisits';
 import { supabase } from '@/lib/supabase';
 import { getGymDwellMinutes, getGymUpgradeMinutes, getLocationCloseMode, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
 
@@ -3121,7 +3122,7 @@ async function upgradeGymTier(sessionId: string, partnerName?: string, visitId?:
  *  withdraw the iOS mark banners whose copy promises points that won't bank.
  *  `regionId` is the composite UI key so the notification cooldown dedups
  *  against the native ENTER path for the same gym. */
-async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Promise<void> {
+async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry, fix?: EntryFix): Promise<void> {
   if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
   const entryTimestamp = Date.now();
 
@@ -3265,7 +3266,7 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   // this behaves exactly as before — the await hangs — never worse.
   let visitId: string | null = null;
   try {
-    const opened = openVisitTraced('check_in', entry.dbId, regionId, entryTimestamp, null);
+    const opened = openVisitTraced('check_in', entry.dbId, regionId, entryTimestamp, null, buildCheckInFix(entry, fix));
     let bound: ReturnType<typeof setTimeout> | undefined;
     visitId = await Promise.race([
       opened,
@@ -3295,6 +3296,46 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
  *  the id. The wake path's late-open answers at p50 0.9 s / p95 6 s (14 days to
  *  2026-09-06); 8 s is that p95 with room, and a late answer still stamps. */
 export const CHECK_IN_OPEN_BOUND_MS = 8 * 1000;
+
+/** The fix that decided a check-in: the coords and, when the producer knows it,
+ *  when the fix was TAKEN (LocationObject.timestamp). Without the timestamp the
+ *  server treats the age as unknown, which its rule accepts — so the last-known
+ *  poll paths pass theirs, or a day-old cached position could stamp proof. */
+export interface EntryFix {
+  coords: Location.LocationObjectCoords;
+  timestamp?: number | null;
+}
+
+/** What the open call carries so the server can stamp the check-in as the
+ *  visit's first proof (2026-09-06). Mirrors heartbeatVisitStream's confirm
+ *  detail key for key: the server decides with ONE rule whether a fix proves
+ *  presence, and this is the same fix that just passed the 25 m entry test.
+ *
+ *  Why this exists: 23 of 77 real iOS sessions in the 30 days to 09-06 closed
+ *  with no proof at all, because a stationary phone never produces the LATER
+ *  fix the heartbeat needs and a wake it does not answer writes nothing. The
+ *  settle pass refuses a NULL proof clock, so those members were paid only on
+ *  app-open. The entry fix was there every time; it was never sent. */
+export function buildCheckInFix(
+  entry: Pick<PartnerMapEntry, 'lat' | 'lng'>,
+  fix: EntryFix | undefined,
+  nowMs: number = Date.now(),
+): CheckInFix | null {
+  if (!fix) return null;
+  const { coords } = fix;
+  const distanceM = (entry.lat != null && entry.lng != null)
+    ? haversineMetres(coords.latitude, coords.longitude, entry.lat, entry.lng)
+    : null;
+  const ageS = typeof fix.timestamp === 'number' && Number.isFinite(fix.timestamp)
+    ? Math.max(0, Math.round((nowMs - fix.timestamp) / 1000))
+    : null;
+  return {
+    distance_m:  distanceM != null ? Math.round(distanceM) : null,
+    accuracy_m:  coords.accuracy != null ? Math.round(coords.accuracy) : null,
+    fix_trusted: coords.accuracy == null || coords.accuracy <= MAX_FIX_ACCURACY_M,
+    fix_age_s:   ageS,
+  };
+}
 
 /** Stamps a freshly opened visit onto the stored session and marks the announce.
  *  Called by the check-in path when the open resolves inside its bound, and by
@@ -5146,7 +5187,7 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords, fixTim
     if (nearestM == null || dist < nearestM) { nearestM = dist; nearestId = regionId; }
     // Exact partner radius — no accuracy buffer added, so a 25 m circle means 25 m.
     if (dist <= (entry.radius ?? 100)) {
-      await setActiveAndNotify(regionId, entry);
+      await setActiveAndNotify(regionId, entry, { coords, timestamp: fixTimestamp });
       return;
     }
     if (dist <= APPROACH_RADIUS_M) withinAnyApproach = true;
@@ -5510,6 +5551,8 @@ async function openVisitTraced(
   regionId: string | undefined,
   entryTimestamp: number,
   storedVisit: string | null,
+  /** Only the 'check_in' source has one: the fix that decided the entry. */
+  fix: CheckInFix | null = null,
 ): Promise<string | null> {
   const rid = regionId ?? 'visit';
   logRegionEvent(rid, 'visit_open_attempt', {
@@ -5517,11 +5560,12 @@ async function openVisitTraced(
     stored_visit:  storedVisit,
     opened_entry:  entryTimestamp,
     app_state:     AppState.currentState,
+    fix_carried:   fix != null,
   });
   const startedAt = Date.now();
   try {
     const { openGymVisit } = await import('@/lib/gymVisits');
-    const id = await openGymVisit(partnerId, regionId, entryTimestamp);
+    const id = await openGymVisit(partnerId, regionId, entryTimestamp, fix);
     logRegionEvent(rid, 'visit_open_result', {
       source,
       resolved: !!id,
@@ -6083,7 +6127,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
                 if (haversineMetres(loc.coords.latitude, loc.coords.longitude, entry.lat, entry.lng) <= (entry.radius ?? 100)) {
                   // No-ops if a session is already active or a gym was already
                   // logged today; dedups against the native ENTER notification.
-                  await setActiveAndNotify(regionId, entry);
+                  await setActiveAndNotify(regionId, entry, { coords: loc.coords, timestamp: loc.timestamp });
                   break;
                 }
               }
@@ -6452,7 +6496,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
               // Exact partner radius — no accuracy buffer added, so a 25 m circle means 25 m.
               if (dist <= (entry.radius ?? 100)) {
                 // No-ops if a session is already active or a gym was already logged today.
-                await setActiveAndNotify(regionId, entry);
+                await setActiveAndNotify(regionId, entry, { coords: loc.coords, timestamp: loc.timestamp });
                 break;
               }
             }
