@@ -1,12 +1,13 @@
 import { HeaderActions } from '@/components/HeaderActions';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
-import PermissionFixScreen from '@/components/PermissionFixScreen';
+import PermissionFixScreen, { type PermissionFixKind } from '@/components/PermissionFixScreen';
 import { fetchPartnersInArea, getPartnerGeometry, searchPartners, useGeofenceContext, type DayKey, type OpeningHours, type Partner, type PartnerGeoPoint, type Trainer } from '@/context/GeofenceContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { createGymRequest } from '@/lib/api/gyms';
 import {
   getLocationPromptState,
   isForegroundMissing,
+  isWhileUsingOnly,
   recordForegroundPromptDismissed,
   recordForegroundPromptShown,
   shouldShowForegroundPrompt,
@@ -282,7 +283,15 @@ export default function DiscoverScreen() {
   const [locationGranted, setLocationGranted] = useState(false);
   const [userLoc, setUserLoc] = useState<Location.LocationObject | null>(null);
   const [locSettled, setLocSettled] = useState(false); // permission answered + first fix obtained (or unavailable)
-  const [locationFixVisible, setLocationFixVisible] = useState(false);
+  // Foreground granted but not Always / Allow all the time. The map works
+  // perfectly in this state — blue dot, distances, the lot — which is exactly
+  // why nothing else on this tab ever told a While-Using user that their gym
+  // visits will never check in. This is the flag the second banner hangs off.
+  const [backgroundMissing, setBackgroundMissing] = useState(false);
+  // Which primed permission screen is open, if any. Only the two location
+  // tiers live here; the foreground one paces itself (see the mount effect),
+  // the background one is only ever opened off a deliberate banner tap.
+  const [locationFix, setLocationFix] = useState<Extract<PermissionFixKind, 'location' | 'location-background'> | null>(null);
 
   // Filter state
   const [openNowFilter, setOpenNowFilter] = useState(false);
@@ -609,15 +618,32 @@ export default function DiscoverScreen() {
    *  moment the grant lands, so a granted permission here is a success, not a
    *  dismissal: don't spend one of the capped prompts, just pick up the fix the
    *  mount effect skipped. Anything else is the user backing out. */
+  /** Re-read the background tier. READ only — the ask lives behind the primed
+   *  screen. null (native blip) leaves the flag alone rather than flashing a
+   *  banner on or off over a transient fault. */
+  const refreshBackgroundMissing = useCallback(async () => {
+    const whileUsing = await isWhileUsingOnly();
+    if (whileUsing !== null) setBackgroundMissing(whileUsing);
+  }, []);
+
   const closeLocationFix = useCallback(async () => {
-    setLocationFixVisible(false);
+    const kind = locationFix;
+    setLocationFix(null);
+    if (kind === 'location-background') {
+      // No pacing to spend here: the banner tap was the user's own choice and
+      // the background dismissal cap (MAX 3, shared with Home's sheet) exists
+      // to stop US nagging, not to punish someone who opened the screen and
+      // backed out. The banner simply stays until the tier is fixed.
+      await refreshBackgroundMissing();
+      return;
+    }
     const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
     if (fg?.status === 'granted') {
-      await acquireUserFix();
+      await Promise.all([refreshBackgroundMissing(), acquireUserFix()]);
       return;
     }
     recordForegroundPromptDismissed().catch(() => { /* pacing is best-effort */ });
-  }, [acquireUserFix]);
+  }, [acquireUserFix, locationFix, refreshBackgroundMissing]);
 
   useEffect(() => {
     (async () => {
@@ -632,7 +658,12 @@ export default function DiscoverScreen() {
         const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
         if (!fg) return;
         if (fg.status === 'granted') {
-          await acquireUserFix();
+          // Background tier is a permission read, not a fix — run it alongside
+          // the GPS acquire rather than behind it so the banner doesn't wait
+          // on a satellite. Deliberately NO takeover for this tier: Home's
+          // LocationPrimeSheet owns that conversation (value moment, at-venue
+          // trigger, shared dismissal cap); here it's a banner the user taps.
+          await Promise.all([refreshBackgroundMissing(), acquireUserFix()]);
           return;
         }
         const missing = await isForegroundMissing();
@@ -640,7 +671,7 @@ export default function DiscoverScreen() {
         const state = await getLocationPromptState();
         if (!shouldShowForegroundPrompt(state, Date.now())) return;
         recordForegroundPromptShown().catch(() => { /* pacing is best-effort */ });
-        setLocationFixVisible(true);
+        setLocationFix('location');
       } finally {
         // Map overlays are held back until this flips — see mapOverlay. Every
         // path above must reach here, including the ones that no longer ask.
@@ -661,17 +692,23 @@ export default function DiscoverScreen() {
   locationGrantedRef.current = locationGranted;
   useFocusEffect(
     useCallback(() => {
-      // Only the flip to granted is interesting. Re-acquiring unconditionally
-      // would fire a fresh GPS fix every time the user touched the tab bar.
-      if (locationGrantedRef.current) return;
       let cancelled = false;
       (async () => {
+        // Already on foreground: the only thing that can still change under
+        // us is the background tier (Settings › Location, Home's sheet, the
+        // system settings app). That's a permission read, cheap enough for
+        // every focus. Re-acquiring the GPS fix is not — that only happens on
+        // the flip to granted below.
+        if (locationGrantedRef.current) {
+          await refreshBackgroundMissing();
+          return;
+        }
         const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
         if (cancelled || fg?.status !== 'granted') return;
-        await acquireUserFix();
+        await Promise.all([refreshBackgroundMissing(), acquireUserFix()]);
       })();
       return () => { cancelled = true; };
-    }, [acquireUserFix]),
+    }, [acquireUserFix, refreshBackgroundMissing]),
   );
 
   // Debounced DB search — fires when user types, bypasses the nearby-only local list
@@ -840,6 +877,16 @@ export default function DiscoverScreen() {
   // up after two dismissals — this row is what's left, and the only route back
   // for a user whose OS dialog is already burned.
   const showLocationBanner = locSettled && !locationGranted;
+  // Foreground granted, background not. Passive by design — no pacing, no
+  // dismiss — because a While-Using user has no other signal on this tab that
+  // anything is wrong: the map is fully working. Tapping opens the same primed
+  // background screen Settings uses (iOS Always alert / Android "Allow all the
+  // time" radio list, or the Settings deep-link once the alert is burned).
+  // Known blind spot: iOS reports Always during Apple's provisional window
+  // while the chain is dead, so those users don't see this — see
+  // project_ios_provisional_always_gap.
+  const showBackgroundBanner = locSettled && locationGranted && backgroundMissing;
+  const alwaysLabel = Platform.OS === 'ios' ? '“Always”' : '“Allow all the time”';
 
   const sortLabel = sortMode === 'nearest' ? 'Nearest' : sortMode === 'pts' ? 'Most Points' : 'A–Z';
 
@@ -1175,13 +1222,29 @@ export default function DiscoverScreen() {
               style={({ pressed }) => [styles.locationBanner, pressed && { opacity: 0.75 }]}
               onPress={() => {
                 recordForegroundPromptShown().catch(() => { /* pacing is best-effort */ });
-                setLocationFixVisible(true);
+                setLocationFix('location');
               }}
             >
               <Ionicons name="location-outline" size={16} color={GOLD} />
               <Text style={styles.locationBannerText}>
                 <Text style={styles.locationBannerStrong}>Location is off.</Text> Turn it on for
                 distances, directions and automatic check-ins.
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={GOLD} />
+            </Pressable>
+          )}
+
+          {/* Same row, second tier: the map is on but check-ins are not. No
+              pacing recorded on the tap — see closeLocationFix. */}
+          {showBackgroundBanner && (
+            <Pressable
+              style={({ pressed }) => [styles.locationBanner, pressed && { opacity: 0.75 }]}
+              onPress={() => setLocationFix('location-background')}
+            >
+              <Ionicons name="location-outline" size={16} color={GOLD} />
+              <Text style={styles.locationBannerText}>
+                <Text style={styles.locationBannerStrong}>Automatic check-ins are off.</Text> Set
+                location to {alwaysLabel} so visits count with the app closed.
               </Text>
               <Ionicons name="chevron-forward" size={14} color={GOLD} />
             </Pressable>
@@ -1844,7 +1907,7 @@ export default function DiscoverScreen() {
       {/* Primed foreground-location recovery — the only place this screen asks.
           It picks ask-vs-settings from live state itself, so a burned dialog
           coaches the user to the right settings row instead of dead-ending. */}
-      <PermissionFixScreen kind={locationFixVisible ? 'location' : null} onClose={closeLocationFix} />
+      <PermissionFixScreen kind={locationFix} onClose={closeLocationFix} />
     </View>
   );
 }
