@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { fetchPointsSummary } from '@/lib/api/points';
 import { onSessionCompleted } from '@/context/GeofenceContext';
@@ -61,6 +61,13 @@ export function usePoints(): PointsState {
         return () => sub.remove();
     }, [queryClient]);
 
+    // Stable identity: callers put this in useFocusEffect / useEffect deps.
+    // A fresh closure per render made the Rewards tab re-run its focus effect
+    // on every render (refetch -> setState -> render -> new refresh -> ...),
+    // hammering Supabase at ~13 req/s while the tab was open.
+    // Returns the refetch promise so pull-to-refresh can await completion.
+    const refresh = useCallback(() => refetch(), [refetch]);
+
     return {
         balance: data?.balance ?? 0,
         todayEarned: data?.todayEarned ?? 0,
@@ -70,7 +77,6 @@ export function usePoints(): PointsState {
         vaultNextVestAt: data?.vaultNextVestAt ?? null,
         loading: isPending,
         error: error ? (error instanceof Error ? error.message : 'Failed to load points') : null,
-        // Returns the refetch promise so pull-to-refresh can await completion.
-        refresh: () => refetch(),
+        refresh,
     };
 }
