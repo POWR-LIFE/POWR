@@ -116,4 +116,37 @@ describe('orderedProgressActivities', () => {
     expect(orderedProgressActivities(PREFS, metrics({ gym: 2, swimming: 1 })))
       .toEqual(['gym', 'running', 'walking', 'swimming']);
   });
+
+  describe('history gate', () => {
+    const history = (...types: ActivityType[]) => new Set<ActivityType>(types);
+
+    it('drops a preference with no history at all (no empty radials)', () => {
+      expect(orderedProgressActivities(PREFS, metrics({}), history('gym', 'walking')))
+        .toEqual(['gym', 'walking']);
+    });
+
+    it('keeps a preference with history even when this week is empty (lookback stays reachable)', () => {
+      expect(orderedProgressActivities(PREFS, metrics({}), history('running')))
+        .toEqual(['running']);
+    });
+
+    it("counts this week's sessions as proof before the history lookup catches up", () => {
+      expect(orderedProgressActivities(PREFS, metrics({ running: 1 }), history()))
+        .toEqual(['running']);
+    });
+
+    it('returns nothing for a brand-new user — the page-level empty state takes over', () => {
+      expect(orderedProgressActivities(PREFS, metrics({}), history())).toEqual([]);
+    });
+
+    it('keeps every preference when history is unknown (null) or omitted', () => {
+      expect(orderedProgressActivities(PREFS, metrics({}), null)).toEqual(PREFS);
+      expect(orderedProgressActivities(PREFS, metrics({}), undefined)).toEqual(PREFS);
+    });
+
+    it('still appends detected extras after the gated prefs', () => {
+      expect(orderedProgressActivities(PREFS, metrics({ swimming: 2 }), history('gym')))
+        .toEqual(['gym', 'swimming']);
+    });
+  });
 });
