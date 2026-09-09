@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useToast } from '../lib/toast';
 import { loadGoogleMaps } from '../lib/googleMaps';
 import {
-    GOLD, RED, CELL_CAP, Z_MAX,
+    GOLD, RED, AMBER, CELL_CAP, Z_MAX,
     nAt, lngLatToTile, tileNW, tileBounds, cellKey, parseKey,
     tilesOverlap, clampZoom, buildWeekMask, startOfDayISO, endOfDayISO,
 } from '../lib/placementGrid';
@@ -21,7 +21,8 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
     const searchRef = useRef(null);
     const mapRef = useRef(null);
     const rectsRef = useRef([]);
-    const takenRef = useRef([]);          // [{z,x,y}] occupied by other placements for this slice
+    const takenRef = useRef([]);          // [{z,x,y}] booked by other LIVE placements for this slice
+    const pendingRef = useRef([]);        // [{z,x,y}] held by campaigns awaiting review — paintable, but first approved wins
     const selectedRef = useRef(form.cells);
     const modeRef = useRef('pan');
     const mapTypeRef = useRef('roadmap');
@@ -116,6 +117,10 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
         for (let y = ymin; y <= ymax; y++)
             for (let x = xmin; x <= xmax; x++)
                 addRect(tileBounds(z, x, y), { fillOpacity: 0, strokeColor: '#94a3b8', strokeOpacity: 0.22, strokeWeight: 1 });
+        // awaiting-review cells (their own zoom) — under the selection so a
+        // square you paint over one still reads as yours
+        for (const t of pendingRef.current)
+            addRect(tileBounds(t.z, t.x, t.y), { fillColor: AMBER, fillOpacity: 0.3, strokeColor: AMBER, strokeOpacity: 0.9, strokeWeight: 1 });
         // taken cells (their own zoom)
         for (const t of takenRef.current)
             addRect(tileBounds(t.z, t.x, t.y), { fillColor: RED, fillOpacity: 0.38, strokeColor: RED, strokeOpacity: 0.9, strokeWeight: 1 });
@@ -132,8 +137,10 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
                 p_south: sw.lat(), p_west: sw.lng(), p_north: ne.lat(), p_east: ne.lng(),
                 p_exclude: excludeId ?? null, p_starts: startISO, p_ends: endISO, p_mask: mask,
             });
-            takenRef.current = data ?? [];
-        } catch { takenRef.current = []; }
+            // Only live bookings block painting; pending ones are shown, not enforced.
+            takenRef.current = (data ?? []).filter((c) => !c.pending);
+            pendingRef.current = (data ?? []).filter((c) => c.pending);
+        } catch { takenRef.current = []; pendingRef.current = []; }
         redraw();
     };
 

@@ -7,9 +7,9 @@ import { useAuth } from '../../App';
 import PlacementGridMap from '../../components/PlacementGridMap';
 import PlacementExplainer from '../../components/PlacementExplainer';
 import {
-    ACTIVITIES, DOW, DEFAULT_CENTER, GOLD, RED,
+    ACTIVITIES, DOW, DEFAULT_CENTER, GOLD, RED, AMBER,
     cellKey, parseKey, tileNW, tileBounds, boundsIntersect, buildWeekMask, mergeCells,
-    startOfDayISO, endOfDayISO, isoToDateInput,
+    startOfDayISO, endOfDayISO, isoToDateInput, effectiveStatus, STATUS_LABELS,
 } from '../../lib/placementGrid';
 
 // Brand self-serve placements are locked to the "sponsored boost" shape;
@@ -39,16 +39,6 @@ const STEPS = [
     { label: 'Place & time', detail: 'Set where and when' },
     { label: 'Audience & review', detail: 'Confirm your plan' },
 ];
-
-const statusLabel = (status) => ({
-    draft: 'Draft',
-    pending_review: 'In review',
-    scheduled: 'Scheduled',
-    live: 'Live',
-    paused: 'Paused',
-    ended: 'Ended',
-    rejected: 'Needs changes',
-}[status] || 'Live');
 
 export default function PartnerPlacements() {
     const toast = useToast();
@@ -88,12 +78,14 @@ export default function PartnerPlacements() {
 
         const ids = (pl.data || []).map((p) => p.id);
         if (ids.length) {
+            // Counted server-side: fetching cell rows to tally them hit
+            // PostgREST's 1000-row cap once a single large area existed.
             const [{ data: cells }, { data: s }] = await Promise.all([
-                supabase.from('reward_placement_cells').select('placement_id').in('placement_id', ids),
+                supabase.rpc('get_placement_cell_counts', { p_placement_ids: ids }),
                 supabase.rpc('get_placement_stats', { p_placement_ids: ids }),
             ]);
             const counts = {};
-            for (const c of cells ?? []) counts[c.placement_id] = (counts[c.placement_id] ?? 0) + 1;
+            for (const c of cells ?? []) counts[c.placement_id] = Number(c.cells);
             setCellCounts(counts);
             const m = {};
             for (const r of s ?? []) m[r.placement_id] = r;
@@ -335,6 +327,7 @@ export default function PartnerPlacements() {
                         <div className="flex items-center gap-4 text-[10px] text-[#999] font-black uppercase tracking-[0.15em]">
                             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: GOLD, opacity: 0.6 }} /> Selected</span>
                             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: RED, opacity: 0.45 }} /> Booked (these times)</span>
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: AMBER, opacity: 0.45 }} /> Requested by another brand</span>
                         </div>
                     </div> : (
                         <div className="border border-[#E6E6E1] bg-white p-8 min-h-[420px] flex flex-col justify-between">
@@ -536,13 +529,18 @@ export default function PartnerPlacements() {
                     {placements.map((p) => {
                         const r = p.rewards || rewardById(p.reward_id);
                         const editable = p.status === 'draft' || p.status === 'rejected';
-                        const statusTone = p.status === 'live'
+                        // Shown state folds in pause + flight window; the stored
+                        // column only tracks review.
+                        const shown = effectiveStatus(p);
+                        const statusTone = shown === 'live'
                             ? 'bg-[#10B981]/10 text-[#10B981]'
-                            : p.status === 'rejected'
-                                ? 'bg-red-50 text-red-500'
-                                : p.status === 'pending_review'
-                                    ? 'bg-[#E8D200]/15 text-[#8a7600]'
-                                    : 'bg-[#F4F4F1] text-[#888]';
+                            : shown === 'scheduled'
+                                ? 'bg-sky-50 text-sky-600'
+                                : shown === 'rejected'
+                                    ? 'bg-red-50 text-red-500'
+                                    : shown === 'pending_review'
+                                        ? 'bg-[#E8D200]/15 text-[#8a7600]'
+                                        : 'bg-[#F4F4F1] text-[#888]';
                         return (
                             <div key={p.id} className="flex items-center gap-5 bg-white border border-[#E6E6E1] rounded-3xl px-7 py-5">
                                 {r?.image_url ? (
@@ -572,8 +570,8 @@ export default function PartnerPlacements() {
                                     </div>
                                 )}
                                 <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] shrink-0 ${statusTone}`}>
-                                    <span className={`h-1.5 w-1.5 rounded-full ${p.status === 'live' ? 'bg-[#10B981] animate-pulse' : p.status === 'pending_review' ? 'bg-[#8a7600]' : 'bg-current'}`} />
-                                    {statusLabel(p.status)}
+                                    <span className={`h-1.5 w-1.5 rounded-full ${shown === 'live' ? 'bg-[#10B981] animate-pulse' : shown === 'pending_review' ? 'bg-[#8a7600]' : 'bg-current'}`} />
+                                    {STATUS_LABELS[shown]}
                                 </span>
                                 {editable ? <>
                                     <button onClick={() => openEdit(p)} className="h-9 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all shrink-0">{p.status === 'rejected' ? 'Revise' : 'Continue'}</button>

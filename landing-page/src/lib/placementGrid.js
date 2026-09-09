@@ -11,6 +11,32 @@ export const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; // index =
 export const DEFAULT_CENTER = { lat: 51.5074, lng: -0.1278 };
 export const GOLD = '#E8D200';
 export const RED = '#ef4444';
+// Squares held by a campaign that is awaiting review: not booked, but not
+// free either — the first one approved wins, so they're painted as a warning.
+export const AMBER = '#f59e0b';
+
+// ── Campaign lifecycle ───────────────────────────────────────────────────────
+// The stored `status` column only moves through review (draft → pending →
+// live/rejected). Pausing, an as-yet-unstarted flight window and an expired
+// one are all facts about `active` + dates, so the state a person should see
+// is derived here — one rule for the admin list and the partner list.
+export const STATUS_LABELS = {
+    draft: 'Draft',
+    pending_review: 'In review',
+    scheduled: 'Scheduled',
+    live: 'Live',
+    paused: 'Paused',
+    ended: 'Ended',
+    rejected: 'Needs changes',
+};
+export function effectiveStatus(p, now = Date.now()) {
+    const stored = p.status || (p.active ? 'live' : 'paused');
+    if (stored === 'draft' || stored === 'pending_review' || stored === 'rejected') return stored;
+    if (!p.active) return 'paused';
+    if (p.starts_at && new Date(p.starts_at).getTime() > now) return 'scheduled';
+    if (p.ends_at && new Date(p.ends_at).getTime() < now) return 'ended';
+    return 'live';
+}
 
 // Adaptive grid: cell zoom follows the map zoom (clamped). Big cells when
 // zoomed out (cover a city), down to ~19 m cells when zoomed all the way in
