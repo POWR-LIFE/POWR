@@ -36,10 +36,11 @@ export function weeklyRingPct(type: ActivityType, metrics: WeeklyMetricsLike): n
  * `historyTypes` is the set of activities the user has EVER logged (see
  * fetchActivityHistoryTypes). When given, a preference with no history at all
  * is dropped rather than shown as an empty radial — the page-level empty
- * state covers the nothing-yet case instead. This week's sessions always
- * count as proof on their own, so a session that lands before the history
- * lookup catches up still surfaces. Pass null/undefined while the lookup is
- * unresolved (or failed) to keep every preference, as before.
+  * state covers the nothing-yet case instead. This week's sessions always
+  * count as proof on their own, so a session that lands before the history
+  * lookup catches up still surfaces. Pass an empty set to show only activities
+  * proven this week while history is still loading; pass null/undefined when
+  * history is unknown (or you want to keep every preference, as before).
  */
 export function orderedProgressActivities(
   prefs: ActivityType[],
