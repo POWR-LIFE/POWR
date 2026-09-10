@@ -1,4 +1,4 @@
-import { BarChart3, Clock, Edit2, Eye, Globe, Image as ImageIcon, Loader2, MapPin, Plus, Satellite, Search, Settings2, Trash2, Upload, User, Users, X } from 'lucide-react';
+import { BarChart3, Clock, Edit2, Eye, Globe, Image as ImageIcon, Loader2, MapPin, Plus, Satellite, Search, Settings2, Trash2, Tv, Upload, User, Users, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import GeofenceMap from '../../components/GeofenceMap';
@@ -6,7 +6,9 @@ import { uploadPublicImage } from '../../lib/storage';
 import { supabase } from '../../lib/supabase';
 import { usePagedList, Pager } from '../../lib/usePagedList';
 import { useToast } from '../../lib/toast';
+import { useAuth } from '../../App';
 import PartnerPerformancePanel from './PartnerPerformancePanel';
+import GymBoardPanel from './GymBoardPanel';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -671,7 +673,8 @@ export default function PartnerManager() {
     const [filterStatus, setFilterStatus] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPartner, setEditingPartner] = useState(null);
-    const [editTab, setEditTab] = useState('configure'); // configure | performance
+    const [editTab, setEditTab] = useState('configure'); // configure | performance | screen
+    const { user: adminUser } = useAuth();
     const [formData, setFormData] = useState(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -1089,6 +1092,7 @@ export default function PartnerManager() {
                                     {[
                                         { key: 'configure', label: 'Configure', icon: Settings2 },
                                         { key: 'performance', label: 'Performance', icon: BarChart3 },
+                                        { key: 'screen', label: 'Big screen', icon: Tv },
                                     ].map(t => (
                                         <button
                                             key={t.key}
@@ -1199,6 +1203,12 @@ export default function PartnerManager() {
                         {editTab === 'performance' && editingPartner && (
                             <div className="px-12 pb-12 animate-in fade-in duration-300">
                                 <PartnerPerformancePanel partner={editingPartner} />
+                            </div>
+                        )}
+
+                        {editTab === 'screen' && editingPartner && (
+                            <div className="px-12 pb-12 animate-in fade-in duration-300">
+                                <GymBoardPanel partner={editingPartner} adminId={adminUser?.id} />
                             </div>
                         )}
                     </div>

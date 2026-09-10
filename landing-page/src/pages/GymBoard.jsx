@@ -119,6 +119,7 @@ export default function GymBoard() {
 
     const stale = board && lastOkAt > 0 && now - lastOkAt > STALE_MS;
 
+    if (!token) return <Shell><CenterNote big="This link is missing its key" small="Copy the full big-screen URL from the admin — it ends in ?k=…" /></Shell>;
     if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Ask the POWR team for a fresh display URL." /></Shell>;
     if (!board) return <Shell><CenterNote big="POWR" small="Connecting…" pulse /></Shell>;
 
