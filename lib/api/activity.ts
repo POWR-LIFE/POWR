@@ -2161,7 +2161,7 @@ export async function fetchActivityHistoryTypes(): Promise<Set<ActivityType> | n
     if (!uid) return null;
     const types = (Object.keys(ACTIVITIES) as ActivityType[]).filter(t => !ACTIVITIES[t].hideFromPicker);
     try {
-        const [counts, suppressed] = await Promise.all([
+        const [counts, suppressedCounts] = await Promise.all([
             // One HEAD count per type: a single `select type` over every session
             // would page against the 1000-row cap for any daily walker.
             Promise.all(types.map(async (type) => {
@@ -2173,11 +2173,21 @@ export async function fetchActivityHistoryTypes(): Promise<Set<ActivityType> | n
                 if (error) throw error;
                 return [type, count ?? 0] as const;
             })),
-            // A run inside a gym visit IS a run (see fetchWeeklyMetrics), so
-            // suppressed workouts count as history for their type too.
-            fetchSuppressedWorkouts(uid, { limit: 500 }),
+            // Suppressed workouts count as lifetime history for their type too.
+            Promise.all(types.map(async (type) => {
+                const { count, error } = await supabase
+                    .from('suppressed_workouts')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('user_id', uid)
+                    .eq('type', type);
+                if (error) throw error;
+                return [type, count ?? 0] as const;
+            })),
         ]);
-        return historyTypesFrom(counts, suppressed.map(w => w.type));
+        return historyTypesFrom(
+            counts,
+            suppressedCounts.filter(([, count]) => count > 0).map(([type]) => type),
+        );
     } catch (e) {
         console.warn('[activity] history lookup failed:', e instanceof Error ? e.message : String(e));
         return null;
