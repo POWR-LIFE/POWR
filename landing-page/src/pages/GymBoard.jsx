@@ -982,7 +982,7 @@ function HourProfile({ byHour, peakHour }) {
     if (max <= 1 && counts.reduce((a, b) => a + b, 0) === 0) return null;
     return (
         <div>
-            <div className="flex items-end gap-[0.25rem] h-[3.2rem]">
+            <div className="flex items-end gap-[0.25rem] h-[6rem]">
                 {hours.map((h, i) => (
                     <motion.div
                         key={h}
