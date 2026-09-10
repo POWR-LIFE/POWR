@@ -62,6 +62,17 @@ type ScoreRow = {
   member_since?: string | null;
 };
 
+type ActivityRow = {
+  session_id: string;
+  user_id: string;
+  s_type: string;
+  started_at: string;
+  ended_at: string;
+  minutes: number;
+  points: number;
+  verification: string;
+};
+
 // Level from lifetime points — same ladder as the app (constants/levels.ts
 // via _shared/levels.ts). Number, name and tier colour; never the raw XP.
 function levelBits(totalEarned: number | null | undefined) {
@@ -119,11 +130,17 @@ Deno.serve(async (req: Request) => {
   if (!board || !board.enabled || !partner?.active) return json(404, { error: "not_found" });
   if (board.display_token !== token) return json(404, { error: "not_found" });
 
-  const { data: payload, error } = await admin.rpc("gym_board_payload", { p_partner_id: board.partner_id });
+  const [{ data: payload, error }, { data: activityRows, error: actErr }] = await Promise.all([
+    admin.rpc("gym_board_payload", { p_partner_id: board.partner_id }),
+    admin.rpc("_gym_board_activity", { p_partner_id: board.partner_id, p_limit: 24 }),
+  ]);
   if (error || !payload) {
     console.error("gym-board payload failed:", error?.message ?? "null payload");
     return json(500, { error: "board_unavailable" });
   }
+  // The feed is decoration; a failed feed never blanks the board.
+  if (actErr) console.error("gym-board activity failed:", actErr.message);
+  const activity = (activityRows ?? []) as ActivityRow[];
 
   const standings = (payload.standings ?? []) as ScoreRow[];
   const podium = (payload.last_week?.podium ?? []) as ScoreRow[];
@@ -137,6 +154,7 @@ Deno.serve(async (req: Request) => {
     ...standings.map((r) => r.user_id),
     ...podium.map((r) => r.user_id),
     ...spotIds,
+    ...activity.map((a) => a.user_id),
   ]);
 
   const who = async (userId: string) => ({
@@ -171,6 +189,20 @@ Deno.serve(async (req: Request) => {
     new_members: await Promise.all(((spot.new_members ?? []) as string[]).map(who)),
   };
 
+  // Session ids are hashed the same way as user ids — stable per poll so
+  // the marquee can key on them, meaningless off this screen.
+  const feed = await Promise.all(activity.map(async (a) => ({
+    ...(await who(a.user_id)),
+    // after the spread: one member has many sessions, the card is the session
+    key: await displayKey(board.partner_id, a.session_id),
+    type: a.s_type,
+    started_at: a.started_at,
+    ended_at: a.ended_at,
+    minutes: a.minutes,
+    points: a.points,
+    verified: a.verification !== "manual",
+  })));
+
   return json(200, {
     gym: {
       name: partner.name,
@@ -186,6 +218,7 @@ Deno.serve(async (req: Request) => {
     day_start_at: payload.day_start_at,
     stats: payload.stats ?? { members: 0, points: 0, sessions: 0, minutes: 0 },
     spotlight,
+    activity: feed,
     community: payload.community ?? 0,
     standings: await Promise.all(standings.map(row)),
     last_week: {

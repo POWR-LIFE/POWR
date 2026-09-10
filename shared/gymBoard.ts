@@ -193,3 +193,87 @@ export function spotlightCards(spot: { session?: unknown; improved?: unknown; ne
   if (Array.isArray(spot.new_members) && spot.new_members.length > 0) out.push('new');
   return out;
 }
+
+// ─── Activity feed ──────────────────────────────────────────────
+
+export type FeedItem = {
+  key: string;
+  display_name?: string | null;
+  username?: string | null;
+  avatar_url?: string | null;
+  type: string;
+  started_at: string;
+  ended_at: string;
+  minutes: number;
+  points: number;
+  verified: boolean;
+};
+
+/** How each activity reads on the wall. Glyph + label; the label is what they "earned on". */
+export const ACTIVITY_META: Record<string, { glyph: string; label: string }> = {
+  gym:      { glyph: '🏋️', label: 'Gym session' },
+  running:  { glyph: '🏃', label: 'Run' },
+  cycling:  { glyph: '🚴', label: 'Ride' },
+  swimming: { glyph: '🏊', label: 'Swim' },
+  hiit:     { glyph: '⚡', label: 'HIIT' },
+  yoga:     { glyph: '🧘', label: 'Yoga' },
+  sports:   { glyph: '🏅', label: 'Sport' },
+  dance:    { glyph: '💃', label: 'Dance' },
+  walking:  { glyph: '🚶', label: 'Walk' },
+};
+
+export function activityMeta(type: string): { glyph: string; label: string } {
+  return ACTIVITY_META[type] ?? { glyph: '✦', label: 'Session' };
+}
+
+/** "Just now" / "35m ago" / "3h ago" / "Yesterday 18:54" / "Wed 07:10" — when a session finished. */
+export function whenLabel(iso: string, nowMs: number, tz: string, locale = 'en-GB'): string {
+  const t = new Date(iso).getTime();
+  const diffMin = Math.floor((nowMs - t) / 60_000);
+  if (diffMin < 2) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 6) return `${diffH}h ago`;
+  const dayKey = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+  const time = new Intl.DateTimeFormat(locale, { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(t));
+  const today = dayKey(nowMs);
+  const yesterday = dayKey(nowMs - 86_400_000);
+  const day = dayKey(t);
+  if (day === today) return `Today ${time}`;
+  if (day === yesterday) return `Yesterday ${time}`;
+  const wd = new Intl.DateTimeFormat(locale, { timeZone: tz, weekday: 'short' }).format(new Date(t));
+  return `${wd} ${time}`;
+}
+
+export type Scene = 'board' | 'activity' | 'chasing';
+
+/** The rotation the main column plays, given what the board has to show.
+ *  Board always; activity when there's a feed; chasing only past the list. */
+export function scenePlan(opts: { feed: number; rest: number }): Array<{ scene: Scene; ms: number }> {
+  const plan: Array<{ scene: Scene; ms: number }> = [{ scene: 'board', ms: 36_000 }];
+  if (opts.feed > 0) plan.push({ scene: 'activity', ms: 14_000 });
+  if (opts.rest > 0) plan.push({ scene: 'chasing', ms: 10_000 });
+  return plan;
+}
+
+/** Sample feed for the admin preview. */
+export function sampleActivity(nowMs: number): FeedItem[] {
+  const rows = sampleStandings(12);
+  const types = ['gym', 'running', 'hiit', 'gym', 'swimming', 'yoga', 'gym', 'cycling', 'gym', 'sports', 'gym', 'walking'];
+  return rows.map((r, i) => {
+    const ended = nowMs - (8 + i * 137) * 60_000;
+    const minutes = 35 + ((i * 23) % 70);
+    return {
+      key: `feed-${i}`,
+      display_name: r.display_name,
+      username: null,
+      avatar_url: null,
+      type: types[i % types.length],
+      started_at: new Date(ended - minutes * 60_000).toISOString(),
+      ended_at: new Date(ended).toISOString(),
+      minutes,
+      points: 12 + ((i * 7) % 31),
+      verified: i % 5 !== 4,
+    };
+  });
+}

@@ -4,6 +4,7 @@ import { AnimatePresence, animate, motion, useMotionValue } from 'framer-motion'
 import { QRCodeSVG } from 'qrcode.react';
 import { storageImage } from '../lib/storage';
 import {
+    activityMeta,
     barFraction,
     boardName,
     countdownParts,
@@ -12,10 +13,13 @@ import {
     memberSince,
     resetLabel,
     rootFontSize,
+    sampleActivity,
     sampleStandings,
+    scenePlan,
     splitStandings,
     spotlightCards,
     weekLabel,
+    whenLabel,
 } from '../../../shared/gymBoard.ts';
 
 /**
@@ -31,6 +35,12 @@ import {
  * here this week, points today, and NEW / PB marks. A spotlight card on the
  * rail rotates through the week's biggest session, the most improved member
  * and who trained here for the first time.
+ *
+ * The wall moves. The main column plays scenes — the board, then the latest
+ * sessions members earned on here (what, how long, when, how many points),
+ * then the chasing pack past the top ten — and a marquee of that same feed
+ * runs along the bottom the whole time. A gym floor is a broadcast, not a
+ * spreadsheet.
  *
  * Layout is authored at 1920×1080 in rem and the root font-size is scaled
  * to the actual screen (rootFontSize), so a 4K wall or a 720p bar TV gets
@@ -61,6 +71,7 @@ function applyPreview(board, preview) {
             stats: { members: 0, points: 0, sessions: 0, minutes: 0 },
             last_week: { ...board.last_week, podium: [] },
             spotlight: { session: null, improved: null, new_members: [] },
+            activity: [],
         };
     }
     const standings = sampleStandings(18);
@@ -80,6 +91,7 @@ function applyPreview(board, preview) {
             improved: { ...standings[6], this_week: 874, last_week: 610, gain: 264 },
             new_members: [standings[5], standings[11]],
         },
+        activity: sampleActivity(Date.now()),
         community: Math.max(board.community ?? 0, 64),
     };
 }
@@ -90,6 +102,10 @@ export default function GymBoard() {
     const token = params.get('k') ?? '';
     const previewParam = params.get('preview');
     const preview = PREVIEW_STATES.includes(previewParam) ? previewParam : null;
+    // ?scene=activity|chasing|board pins the main column — for the admin's
+    // preview links and for checking a scene without waiting for the rotation.
+    const sceneParam = params.get('scene');
+    const pinnedScene = ['board', 'activity', 'chasing'].includes(sceneParam) ? sceneParam : null;
 
     const [board, setBoard] = useState(null);
     const [invalid, setInvalid] = useState(false);
@@ -149,9 +165,12 @@ export default function GymBoard() {
 
     return (
         <Shell>
-            <div className="relative h-full grid grid-cols-[29rem_1fr] gap-[4rem] px-[4rem] py-[2.75rem]">
-                <Rail board={shown} now={now} />
-                <Main board={shown} stale={stale && !preview} />
+            <div className="relative h-full flex flex-col">
+                <div className="flex-1 min-h-0 grid grid-cols-[29rem_1fr] gap-[4rem] px-[4rem] pt-[2.5rem] pb-[1.5rem]">
+                    <Rail board={shown} now={now} />
+                    <Main board={shown} now={now} stale={stale && !preview} pinned={pinnedScene} />
+                </div>
+                <Marquee feed={shown.activity ?? []} now={now} tz={shown.tz} />
             </div>
             {preview && (
                 <div className="pointer-events-none absolute top-[1.25rem] left-1/2 -translate-x-1/2 rounded-full border border-amber-400/50 bg-amber-400/10 px-[1rem] py-[0.3rem] text-[0.7rem] font-black uppercase tracking-[0.3em] text-amber-300">
@@ -174,6 +193,7 @@ function Shell({ children }) {
                 @keyframes gbSweep { 0% { transform: translateX(-120%); } 35% { transform: translateX(220%); } 100% { transform: translateX(220%); } }
                 @keyframes gbDrift { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(4vw, -3vh) scale(1.08); } }
                 @keyframes gbPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+                @keyframes gbMarquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
                 .gb-sweep::after { content: ''; position: absolute; inset: 0; width: 40%; background: linear-gradient(100deg, transparent, rgba(255,255,255,0.16), transparent); animation: gbSweep 7s ease-in-out infinite; }
             `}</style>
             {/* ambient light — a warm source low-right, a cooler one top-left */}
@@ -545,14 +565,49 @@ function Spotlight({ spot, tz }) {
 
 // ─── Main ────────────────────────────────────────────────────────
 
-function Main({ board, stale }) {
+function Main({ board, now, stale, pinned }) {
     const { podium, list, rest } = useMemo(() => splitStandings(board.standings, 7), [board.standings]);
     const leader = podium[0]?.points ?? 0;
+    const feed = board.activity ?? [];
+    const plan = useMemo(() => scenePlan({ feed: feed.length, rest: rest.length }), [feed.length, rest.length]);
+
+    // Scene rotation — board, activity, chasing — each for its own dwell.
+    const [step, setStep] = useState(0);
+    useEffect(() => {
+        if (plan.length <= 1 || pinned) return;
+        const id = setTimeout(() => setStep((x) => x + 1), plan[step % plan.length].ms);
+        return () => clearTimeout(id);
+    }, [step, plan, pinned]);
+    const rotating = plan[step % plan.length].scene;
+    const scene = board.standings.length === 0 ? 'empty' : (pinned && plan.some((p) => p.scene === pinned) ? pinned : rotating);
+
+    const SCENE_LABEL = { board: 'Leaderboard', activity: 'Latest activity', chasing: 'The chasing pack', empty: 'Leaderboard' };
 
     return (
         <section className="min-h-0 flex flex-col">
             <div className="flex items-center justify-between shrink-0">
-                <div className="text-[0.9rem] font-black tracking-[0.5em] uppercase">POWR</div>
+                <div className="flex items-center gap-[1.4rem]">
+                    <div className="text-[0.9rem] font-black tracking-[0.5em] uppercase">POWR</div>
+                    <AnimatePresence mode="wait">
+                        <motion.span
+                            key={scene}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 8 }}
+                            transition={{ duration: 0.35 }}
+                            className="text-[0.7rem] uppercase tracking-[0.4em] text-white/45 font-black"
+                        >
+                            {SCENE_LABEL[scene]}
+                        </motion.span>
+                    </AnimatePresence>
+                    {plan.length > 1 && scene !== 'empty' && (
+                        <span className="flex items-center gap-[0.35rem]">
+                            {plan.map((p, idx) => (
+                                <span key={p.scene} className="w-[0.35rem] h-[0.35rem] rounded-full" style={{ background: p.scene === scene ? GOLD : 'rgba(255,255,255,0.18)' }} />
+                            ))}
+                        </span>
+                    )}
+                </div>
                 <div className="flex items-center gap-[1.5rem]">
                     {stale && (
                         <span className="text-[0.7rem] uppercase tracking-[0.3em] text-amber-400/80 font-bold">Reconnecting — showing last scores</span>
@@ -561,17 +616,30 @@ function Main({ board, stale }) {
                 </div>
             </div>
 
-            {board.standings.length === 0 ? (
-                <EmptyBoard />
-            ) : (
-                <>
-                    <Podium rows={podium} />
-                    <div className="flex-1 min-h-0 flex flex-col justify-evenly mt-[1rem]">
-                        {list.map((row) => <Row key={row.key} row={row} leader={leader} />)}
-                    </div>
-                    {rest.length > 0 && <Ticker rows={rest} />}
-                </>
-            )}
+            <div className="flex-1 min-h-0 flex flex-col">
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={scene}
+                        initial={{ opacity: 0, y: 14 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.45, ease: 'easeOut' }}
+                        className="flex-1 min-h-0 flex flex-col"
+                    >
+                        {scene === 'empty' && <EmptyBoard />}
+                        {scene === 'board' && (
+                            <>
+                                <Podium rows={podium} />
+                                <div className="flex-1 min-h-0 flex flex-col justify-evenly mt-[1rem]">
+                                    {list.map((row) => <Row key={row.key} row={row} leader={leader} />)}
+                                </div>
+                            </>
+                        )}
+                        {scene === 'activity' && <ActivityScene feed={feed} now={now} tz={board.tz} gym={board.gym.name} />}
+                        {scene === 'chasing' && <ChasingScene rows={rest} leader={leader} />}
+                    </motion.div>
+                </AnimatePresence>
+            </div>
         </section>
     );
 }
@@ -691,38 +759,128 @@ function Row({ row, leader }) {
     );
 }
 
-// Ranks beyond the list, a page at a time — rank 19 gets its moment.
-function Ticker({ rows }) {
-    const PAGE = 5;
-    const pages = Math.max(1, Math.ceil(rows.length / PAGE));
-    const [page, setPage] = useState(0);
-    useEffect(() => {
-        if (pages <= 1) return;
-        const id = setInterval(() => setPage((p) => (p + 1) % pages), 7000);
-        return () => clearInterval(id);
-    }, [pages]);
-    const shown = rows.slice(page * PAGE, page * PAGE + PAGE);
+// ─── Activity scene ──────────────────────────────────────────────
+// The latest sessions members earned on here: nine cards, newest first,
+// each one saying who, what, how long, when and what it paid.
+
+const FEED_MAX_MINUTES = 360; // past six hours a duration is a data glitch, not a workout
+
+function ActivityScene({ feed, now, tz, gym }) {
+    const cards = feed.slice(0, 12);
+    const top = Math.max(1, ...cards.map((c) => c.points));
     return (
-        <div className="shrink-0 mt-[1rem] pt-[0.9rem] border-t border-white/[0.07] flex items-center gap-[1.2rem]">
-            <Eyebrow className="shrink-0">Chasing · {rows.length} more</Eyebrow>
-            <div className="flex-1 min-w-0 flex items-center gap-[0.8rem] overflow-hidden">
-                <AnimatePresence mode="popLayout">
-                    {shown.map((row) => (
-                        <motion.span
-                            key={row.key}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.35 }}
-                            className="flex items-center gap-[0.6rem] rounded-full border border-white/10 bg-white/[0.03] pl-[0.35rem] pr-[0.9rem] py-[0.3rem] min-w-0"
+        <div className="flex-1 min-h-0 flex flex-col">
+            <div className="mt-[1.4rem] flex items-baseline justify-between shrink-0">
+                <div className="text-[2.2rem] font-light tracking-tighter leading-none">Latest at {gym}</div>
+                <div className="text-[0.7rem] uppercase tracking-[0.35em] text-white/30 font-bold">What members earned on · last 7 days</div>
+            </div>
+            <div className="flex-1 min-h-0 grid grid-cols-3 grid-rows-4 gap-[0.9rem] mt-[1.2rem]">
+                {cards.map((item, i) => {
+                    const meta = activityMeta(item.type);
+                    const dur = item.minutes > 0 && item.minutes <= FEED_MAX_MINUTES ? fmtMinutes(item.minutes) : null;
+                    const frac = Math.max(0.06, Math.min(1, item.points / top));
+                    return (
+                        <motion.div
+                            key={item.key}
+                            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ delay: 0.06 * i, duration: 0.45, ease: 'easeOut' }}
+                            className={`relative min-h-0 rounded-[1.1rem] border bg-white/[0.03] px-[1.1rem] py-[0.9rem] flex flex-col justify-center overflow-hidden ${i === 0 ? 'border-[#E8D200]/35' : 'border-white/10'}`}
                         >
-                            <Avatar row={row} size={1.8} />
-                            <span className="text-[0.85rem] tabular-nums text-white/35">{row.rank}</span>
-                            <span className="text-[1rem] text-white/75 font-light truncate max-w-[10rem]">{boardName(row)}</span>
-                            <span className="text-[1rem] tabular-nums text-white/50 font-light">{row.points.toLocaleString()}</span>
-                        </motion.span>
+                            {/* watermark: the activity, big and quiet */}
+                            <span className="pointer-events-none absolute -right-[0.6rem] -bottom-[0.9rem] text-[5.2rem] leading-none opacity-[0.07] select-none">{meta.glyph}</span>
+                            {i === 0 && (
+                                <span className="absolute top-[0.7rem] right-[0.9rem] text-[0.6rem] uppercase tracking-[0.3em] font-black" style={{ color: GOLD }}>Latest</span>
+                            )}
+                            <div className="flex items-center gap-[0.8rem] min-w-0">
+                                <Avatar row={item} size={2.7} ring="rgba(255,255,255,0.14)" ringWidth={0.08} />
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-baseline gap-[0.6rem] min-w-0">
+                                        <span className="text-[1.3rem] font-light leading-tight truncate">{boardName(item)}</span>
+                                        <span className="text-[0.72rem] text-white/40 font-light shrink-0">{whenLabel(item.ended_at, now, tz)}</span>
+                                    </div>
+                                    <div className="text-[0.95rem] text-white/70 font-light truncate mt-[0.1rem]">
+                                        {meta.label}{dur ? ` · ${dur}` : ''}
+                                        <span className="text-[0.6rem] uppercase tracking-[0.3em] text-white/30 font-black ml-[0.6rem]">{item.verified ? 'Verified' : 'Logged'}</span>
+                                    </div>
+                                </div>
+                                <div className="text-right shrink-0 pl-[0.4rem]">
+                                    <span className="text-[1.9rem] leading-none font-extralight tabular-nums" style={{ color: GOLD }}>+{item.points.toLocaleString()}</span>
+                                    <span className="text-[0.58rem] uppercase tracking-[0.3em] text-white/35 font-black ml-[0.3rem]">pts</span>
+                                </div>
+                            </div>
+                            <div className="absolute left-[1.1rem] right-[1.1rem] bottom-0 h-[2px] bg-white/[0.06] rounded-full overflow-hidden">
+                                <motion.div
+                                    className="h-full rounded-full"
+                                    style={{ background: `linear-gradient(90deg, ${GOLD}, ${GOLD}55)` }}
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${frac * 100}%` }}
+                                    transition={{ delay: 0.06 * i + 0.3, duration: 0.8, ease: 'easeOut' }}
+                                />
+                            </div>
+                        </motion.div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+// ─── Chasing scene ───────────────────────────────────────────────
+// Ranks past the list, as full rows — rank 19 gets its moment.
+
+function ChasingScene({ rows, leader }) {
+    const shown = rows.slice(0, 10);
+    return (
+        <div className="flex-1 min-h-0 flex flex-col">
+            <div className="mt-[1.4rem] flex items-baseline justify-between shrink-0">
+                <div className="text-[2.2rem] font-light tracking-tighter leading-none">The chasing pack</div>
+                <div className="text-[0.7rem] uppercase tracking-[0.35em] text-white/30 font-bold">{rows.length} more on the board this week</div>
+            </div>
+            <div className="flex-1 min-h-0 flex flex-col justify-evenly mt-[0.6rem]">
+                {shown.map((row) => <Row key={row.key} row={row} leader={leader} />)}
+            </div>
+        </div>
+    );
+}
+
+// ─── Marquee ─────────────────────────────────────────────────────
+// The feed, always moving, along the bottom of the wall. The track holds the
+// list twice and slides half its width, so the loop is seamless.
+
+function Marquee({ feed, now, tz }) {
+    const items = feed.slice(0, 16);
+    const sig = items.map((x) => x.key).join('|');
+    const list = useMemo(() => items, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (list.length === 0) return null;
+    const seconds = Math.max(30, list.length * 6);
+    return (
+        <div className="shrink-0 border-t border-white/[0.07] bg-black/30 h-[3.2rem] flex items-center overflow-hidden">
+            <div className="shrink-0 h-full flex items-center gap-[0.6rem] pl-[4rem] pr-[1.4rem] bg-[#070707] z-10" style={{ boxShadow: '1rem 0 1.5rem #070707' }}>
+                <span className="w-[0.5rem] h-[0.5rem] rounded-full bg-emerald-400" style={{ animation: 'gbPulse 1.6s ease-in-out infinite' }} />
+                <span className="text-[0.65rem] uppercase tracking-[0.4em] text-white/45 font-black">Live feed</span>
+            </div>
+            <div className="flex-1 min-w-0 h-full overflow-hidden">
+                <div className="h-full flex items-center whitespace-nowrap will-change-transform" style={{ animation: `gbMarquee ${seconds}s linear infinite` }}>
+                    {[0, 1].map((dup) => (
+                        <span key={dup} className="flex items-center" aria-hidden={dup === 1}>
+                            {list.map((item) => {
+                                const meta = activityMeta(item.type);
+                                const dur = item.minutes > 0 && item.minutes <= FEED_MAX_MINUTES ? fmtMinutes(item.minutes) : null;
+                                return (
+                                    <span key={`${dup}-${item.key}`} className="inline-flex items-center gap-[0.55rem] pr-[2.6rem] text-[0.95rem]">
+                                        <span>{meta.glyph}</span>
+                                        <span className="text-white/90 font-medium">{boardName(item)}</span>
+                                        <span className="text-white/45 font-light">{meta.label}{dur ? ` · ${dur}` : ''}</span>
+                                        <span className="tabular-nums font-semibold" style={{ color: GOLD }}>+{item.points}</span>
+                                        <span className="text-white/30 font-light text-[0.8rem]">{whenLabel(item.ended_at, now, tz)}</span>
+                                        <span className="text-white/15 pl-[1.2rem]">●</span>
+                                    </span>
+                                );
+                            })}
+                        </span>
                     ))}
-                </AnimatePresence>
+                </div>
             </div>
         </div>
     );

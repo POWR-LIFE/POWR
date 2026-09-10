@@ -1,4 +1,5 @@
 import {
+  activityMeta,
   barFraction,
   boardName,
   boardUrl,
@@ -10,10 +11,13 @@ import {
   newDisplayToken,
   resetLabel,
   rootFontSize,
+  sampleActivity,
   sampleStandings,
+  scenePlan,
   splitStandings,
   spotlightCards,
   weekLabel,
+  whenLabel,
 } from '../shared/gymBoard';
 
 describe('gymSlug', () => {
@@ -138,5 +142,34 @@ describe('fmtMinutes / memberSince / spotlightCards', () => {
     expect(spotlightCards(null)).toEqual([]);
     expect(spotlightCards({ session: null, improved: null, new_members: [] })).toEqual([]);
     expect(spotlightCards({ session: { points: 1 }, improved: null, new_members: ['a'] })).toEqual(['session', 'new']);
+  });
+});
+
+describe('activity feed helpers', () => {
+  const tz = 'Europe/London';
+  const now = Date.parse('2026-09-10T12:00:00Z'); // Thu 13:00 London
+  it('labels when a session finished at the scale that reads best', () => {
+    expect(whenLabel('2026-09-10T11:59:30Z', now, tz)).toBe('Just now');
+    expect(whenLabel('2026-09-10T11:25:00Z', now, tz)).toBe('35m ago');
+    expect(whenLabel('2026-09-10T09:00:00Z', now, tz)).toBe('3h ago');
+    expect(whenLabel('2026-09-10T05:30:00Z', now, tz)).toBe('Today 06:30');
+    expect(whenLabel('2026-09-09T17:54:00Z', now, tz)).toBe('Yesterday 18:54');
+    expect(whenLabel('2026-09-07T06:10:00Z', now, tz)).toBe('Mon 07:10');
+  });
+  it('names every activity and falls back safely', () => {
+    expect(activityMeta('gym').label).toBe('Gym session');
+    expect(activityMeta('running').label).toBe('Run');
+    expect(activityMeta('unknown').label).toBe('Session');
+  });
+  it('plans scenes from what there is to show', () => {
+    expect(scenePlan({ feed: 0, rest: 0 }).map((s) => s.scene)).toEqual(['board']);
+    expect(scenePlan({ feed: 5, rest: 0 }).map((s) => s.scene)).toEqual(['board', 'activity']);
+    expect(scenePlan({ feed: 5, rest: 3 }).map((s) => s.scene)).toEqual(['board', 'activity', 'chasing']);
+  });
+  it('sample feed is newest first and obviously fake', () => {
+    const f = sampleActivity(now);
+    expect(f).toHaveLength(12);
+    for (let i = 1; i < f.length; i++) expect(Date.parse(f[i].ended_at)).toBeLessThan(Date.parse(f[i - 1].ended_at));
+    expect(f.every((x) => x.key.startsWith('feed-'))).toBe(true);
   });
 });
