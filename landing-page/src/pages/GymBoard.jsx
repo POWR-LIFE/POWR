@@ -476,7 +476,9 @@ function Stat({ label, value, text, gold }) {
 const ACTIVITY_LABEL = { gym: 'Gym session', running: 'Run', cycling: 'Ride', swimming: 'Swim', hiit: 'HIIT', yoga: 'Yoga', sports: 'Sport', dance: 'Dance', walking: 'Walk' };
 
 function Spotlight({ spot, tz }) {
-    const cards = useMemo(() => spotlightCards(spot), [spot]);
+    const cardsKey = spotlightCards(spot).join('>');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const cards = useMemo(() => spotlightCards(spot), [cardsKey]);
     const [i, setI] = useState(0);
     useEffect(() => {
         if (cards.length <= 1) return;
@@ -581,18 +583,24 @@ function Main({ board, now, stale, pinned }) {
     const leader = podium[0]?.points ?? 0;
     const feed = board.activity ?? [];
     const community = board.community_stats ?? null;
+    const hasCommunity = !!community;
+    // Memo on the SHAPE of the plan, never on the payload objects: a new
+    // payload lands every 12 s, and a timer that restarted with it would
+    // never reach a 36 s dwell. (It didn't — the wall sat on the board.)
     const plan = useMemo(
-        () => scenePlan({ feed: feed.length, rest: rest.length, community: !!community }),
-        [feed.length, rest.length, community],
+        () => scenePlan({ feed: feed.length, rest: rest.length, community: hasCommunity }),
+        [feed.length, rest.length, hasCommunity],
     );
+    const planKey = plan.map((p) => p.scene).join('>');
 
-    // Scene rotation — board, activity, chasing — each for its own dwell.
+    // Scene rotation — board, community, chasing — each for its own dwell.
     const [step, setStep] = useState(0);
     useEffect(() => {
         if (plan.length <= 1 || pinned) return;
         const id = setTimeout(() => setStep((x) => x + 1), plan[step % plan.length].ms);
         return () => clearTimeout(id);
-    }, [step, plan, pinned]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [step, planKey, pinned]);
     const rotating = plan[step % plan.length].scene;
     const pinnable = pinned && (plan.some((p) => p.scene === pinned) || (pinned === 'activity' && feed.length > 0));
     const scene = board.standings.length === 0 && pinned !== 'community' ? 'empty' : (pinnable ? pinned : rotating);
