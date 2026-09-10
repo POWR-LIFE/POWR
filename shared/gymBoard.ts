@@ -4,6 +4,8 @@
  * No React, no network: everything here is unit-testable.
  */
 
+export type BoardLevel = { level: number; name: string; tier: string; colour: string };
+
 export type BoardRow = {
   key: string;
   rank: number;
@@ -13,7 +15,24 @@ export type BoardRow = {
   display_name?: string | null;
   username?: string | null;
   avatar_url?: string | null;
+  minutes?: number;
+  today_points?: number;
+  streak?: number;
+  is_new?: boolean;
+  is_pb?: boolean;
+  last_week_points?: number;
+  level?: BoardLevel | null;
+  member_since?: string | null;
 };
+
+const SAMPLE_LEVELS: BoardLevel[] = [
+  { level: 12, name: 'Move Machine', tier: 'Elite', colour: '#E8D200' },
+  { level: 8, name: 'Pavement Predator', tier: 'Athlete', colour: '#fb923c' },
+  { level: 4, name: 'Motion Magic', tier: 'Recruit', colour: '#999999' },
+  { level: 16, name: 'Limit Breaker', tier: 'Legend', colour: '#E8D200' },
+  { level: 6, name: "Can't Sit Still", tier: 'Athlete', colour: '#fb923c' },
+  { level: 2, name: 'Cardio Goblin', tier: 'Recruit', colour: '#999999' },
+];
 
 /** URL slug for a gym: lower-case, dashes, nothing else. */
 export function gymSlug(name: string): string {
@@ -125,6 +144,7 @@ export function sampleStandings(n: number): BoardRow[] {
     'Emerson V.', 'Finley O.', 'Harper E.', 'Kendall A.', 'Logan I.', 'Marley U.', 'Noel Y.', 'Parker Z.',
   ];
   const deltas = [0, 2, -1, 1, 0, 3, -2, 0, 1, -1, 0, 2];
+  const streaks = [14, 3, 27, 0, 6, 2, 41, 1, 9, 0, 5, 12];
   return names.slice(0, n).map((name, i) => ({
     key: `sample-${i}`,
     rank: i + 1,
@@ -134,5 +154,42 @@ export function sampleStandings(n: number): BoardRow[] {
     display_name: name,
     username: null,
     avatar_url: null,
+    minutes: 55 * Math.max(1, 6 - Math.floor(i / 3)) + (i * 7) % 40,
+    today_points: i % 4 === 0 ? 85 - i * 3 : 0,
+    streak: streaks[i % streaks.length],
+    is_new: i === 5 || i === 11,
+    is_pb: i === 1 || i === 6,
+    last_week_points: i % 5 === 0 ? 0 : 900 - i * 50,
+    level: SAMPLE_LEVELS[i % SAMPLE_LEVELS.length],
+    member_since: '2026-03-14T10:00:00Z',
   }));
+}
+
+/** "2h 10m" / "45m" — minutes trained, as the wall prints them. */
+export function fmtMinutes(min: number, opts: { compact?: boolean } = {}): string {
+  if (!min || min <= 0) return '0m';
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  if (h === 0) return `${m}m`;
+  // Stat tiles: past ten hours the minutes are noise and the tile is narrow.
+  if (opts.compact && h >= 10) return `${h}h`;
+  return m === 0 ? `${h}h` : `${h}h ${String(m).padStart(2, '0')}m`;
+}
+
+/** "Sept 2026" for a member-since stamp. */
+export function memberSince(iso: string | null | undefined, tz = 'Europe/London', locale = 'en-GB'): string | null {
+  if (!iso) return null;
+  return new Intl.DateTimeFormat(locale, { timeZone: tz, month: 'short', year: 'numeric' }).format(new Date(iso));
+}
+
+export type Spotlight = { kind: 'session' | 'improved' | 'new'; [k: string]: unknown };
+
+/** Which spotlight cards a board can show, in rotation order. Empty → no card. */
+export function spotlightCards(spot: { session?: unknown; improved?: unknown; new_members?: unknown[] } | null | undefined): Array<'session' | 'improved' | 'new'> {
+  if (!spot) return [];
+  const out: Array<'session' | 'improved' | 'new'> = [];
+  if (spot.session) out.push('session');
+  if (spot.improved) out.push('improved');
+  if (Array.isArray(spot.new_members) && spot.new_members.length > 0) out.push('new');
+  return out;
 }

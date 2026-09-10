@@ -3,13 +3,16 @@ import {
   boardName,
   boardUrl,
   countdownParts,
+  fmtMinutes,
   gymSlug,
   initials,
+  memberSince,
   newDisplayToken,
   resetLabel,
   rootFontSize,
   sampleStandings,
   splitStandings,
+  spotlightCards,
   weekLabel,
 } from '../shared/gymBoard';
 
@@ -115,5 +118,25 @@ describe('sampleStandings', () => {
     const rows = sampleStandings(10);
     for (let i = 1; i < rows.length; i++) expect(rows[i].points).toBeLessThan(rows[i - 1].points);
     expect(rows.every((r) => r.key.startsWith('sample-'))).toBe(true);
+  });
+});
+
+describe('fmtMinutes / memberSince / spotlightCards', () => {
+  it('prints minutes the way the wall does', () => {
+    expect(fmtMinutes(0)).toBe('0m');
+    expect(fmtMinutes(45)).toBe('45m');
+    expect(fmtMinutes(120)).toBe('2h');
+    expect(fmtMinutes(130)).toBe('2h 10m');
+    expect(fmtMinutes(2620, { compact: true })).toBe('43h');
+    expect(fmtMinutes(130, { compact: true })).toBe('2h 10m');
+  });
+  it('stamps month and year in the board zone', () => {
+    expect(memberSince('2026-03-14T10:00:00Z')).toBe('Mar 2026');
+    expect(memberSince(null)).toBeNull();
+  });
+  it('lists only the spotlight cards that have content', () => {
+    expect(spotlightCards(null)).toEqual([]);
+    expect(spotlightCards({ session: null, improved: null, new_members: [] })).toEqual([]);
+    expect(spotlightCards({ session: { points: 1 }, improved: null, new_members: ['a'] })).toEqual(['session', 'new']);
   });
 });

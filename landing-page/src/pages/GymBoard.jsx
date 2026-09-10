@@ -7,11 +7,14 @@ import {
     barFraction,
     boardName,
     countdownParts,
+    fmtMinutes,
     initials,
+    memberSince,
     resetLabel,
     rootFontSize,
     sampleStandings,
     splitStandings,
+    spotlightCards,
     weekLabel,
 } from '../../../shared/gymBoard.ts';
 
@@ -23,6 +26,11 @@ import {
  * Sibling of LiveBoard (the live-event screen) but with no lifecycle — the
  * wall is always on. Monday it resets; last week's champion stays on the
  * rail so the room remembers who won.
+ *
+ * Each row carries the member's level (tier-coloured), streak, time trained
+ * here this week, points today, and NEW / PB marks. A spotlight card on the
+ * rail rotates through the week's biggest session, the most improved member
+ * and who trained here for the first time.
  *
  * Layout is authored at 1920×1080 in rem and the root font-size is scaled
  * to the actual screen (rootFontSize), so a 4K wall or a 720p bar TV gets
@@ -38,6 +46,7 @@ const SILVER = '#C9CCD3';
 const BRONZE = '#C98A4B';
 const POLL_MS = 12_000;
 const STALE_MS = 45_000;
+const SPOTLIGHT_MS = 9_000;
 const FN_BASE = `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/gym-board`;
 const JOIN_URL = 'https://powr.life/app';
 const PREVIEW_STATES = ['sample', 'empty'];
@@ -46,9 +55,16 @@ const ringColour = (rank) => (rank === 1 ? GOLD : rank === 2 ? SILVER : rank ===
 
 function applyPreview(board, preview) {
     if (preview === 'empty') {
-        return { ...board, standings: [], stats: { members: 0, points: 0, sessions: 0 }, last_week: { ...board.last_week, podium: [] } };
+        return {
+            ...board,
+            standings: [],
+            stats: { members: 0, points: 0, sessions: 0, minutes: 0 },
+            last_week: { ...board.last_week, podium: [] },
+            spotlight: { session: null, improved: null, new_members: [] },
+        };
     }
     const standings = sampleStandings(18);
+    const lw = sampleStandings(3).map((r) => ({ ...r, key: `lw-${r.key}`, points: r.points + 96 }));
     return {
         ...board,
         standings,
@@ -56,8 +72,14 @@ function applyPreview(board, preview) {
             members: standings.length,
             points: standings.reduce((a, r) => a + r.points, 0),
             sessions: standings.reduce((a, r) => a + r.sessions, 0),
+            minutes: standings.reduce((a, r) => a + (r.minutes ?? 0), 0),
         },
-        last_week: { ...board.last_week, podium: sampleStandings(3).map((r) => ({ ...r, key: `lw-${r.key}`, points: r.points + 96 })) },
+        last_week: { ...board.last_week, podium: lw },
+        spotlight: {
+            session: { ...standings[3], points: 212, type: 'gym', started_at: new Date(Date.now() - 26 * 3_600_000).toISOString(), minutes: 84 },
+            improved: { ...standings[6], this_week: 874, last_week: 610, gain: 264 },
+            new_members: [standings[5], standings[11]],
+        },
         community: Math.max(board.community ?? 0, 64),
     };
 }
@@ -236,6 +258,66 @@ function Avatar({ row, size, ring, ringWidth = 0.2 }) {
     );
 }
 
+// ─── Member marks ────────────────────────────────────────────────
+// Everything a row says about the member beyond rank and points. Each mark
+// renders nothing when it has nothing to say, so a quiet row stays quiet.
+
+function LevelPill({ level, size = 'sm' }) {
+    if (!level) return null;
+    const cls = size === 'lg' ? 'text-[0.8rem] px-[0.6rem] py-[0.2rem]' : 'text-[0.65rem] px-[0.45rem] py-[0.12rem]';
+    return (
+        <span
+            className={`inline-flex items-center rounded-md font-black uppercase tracking-[0.18em] tabular-nums shrink-0 ${cls}`}
+            style={{ color: level.colour, background: `${level.colour}1f`, border: `1px solid ${level.colour}44` }}
+            title={level.name}
+        >
+            Lvl {level.level}
+        </span>
+    );
+}
+
+function Streak({ streak, size = 'sm' }) {
+    if (!streak || streak < 2) return null;
+    const cls = size === 'lg' ? 'text-[1rem]' : 'text-[0.8rem]';
+    return (
+        <span className={`inline-flex items-center gap-[0.25rem] tabular-nums font-bold text-white/70 shrink-0 ${cls}`} title={`${streak}-day streak`}>
+            <span style={{ fontSize: '0.95em' }}>🔥</span>{streak}
+        </span>
+    );
+}
+
+function Tag({ children, colour = GOLD }) {
+    return (
+        <span
+            className="inline-flex items-center rounded-md px-[0.45rem] py-[0.12rem] text-[0.62rem] font-black uppercase tracking-[0.25em] shrink-0"
+            style={{ color: '#070707', background: colour }}
+        >
+            {children}
+        </span>
+    );
+}
+
+function Marks({ row, size = 'sm' }) {
+    return (
+        <span className="inline-flex items-center gap-[0.5rem] min-w-0">
+            <LevelPill level={row.level} size={size} />
+            <Streak streak={row.streak} size={size} />
+            {row.is_new && <Tag>New</Tag>}
+            {row.is_pb && <Tag colour="#4ade80">PB</Tag>}
+        </span>
+    );
+}
+
+function Today({ points, size = 'sm' }) {
+    if (!points || points <= 0) return null;
+    const cls = size === 'lg' ? 'text-[0.85rem] px-[0.6rem] py-[0.2rem]' : 'text-[0.68rem] px-[0.5rem] py-[0.15rem]';
+    return (
+        <span className={`inline-flex items-center rounded-full font-black uppercase tracking-[0.2em] tabular-nums shrink-0 ${cls}`} style={{ color: '#4ade80', background: 'rgba(74,222,128,0.12)' }}>
+            +{points.toLocaleString()} today
+        </span>
+    );
+}
+
 // ─── Left rail ───────────────────────────────────────────────────
 
 function Rail({ board, now }) {
@@ -245,6 +327,7 @@ function Rail({ board, now }) {
     const span = new Date(board.week_end_at) - new Date(board.week_start_at);
     const elapsed = span > 0 ? Math.min(1, Math.max(0, (now - new Date(board.week_start_at)) / span)) : 0;
     const logoDark = board.gym.logo_bg !== 'light';
+    const since = champ ? memberSince(champ.member_since, board.tz) : null;
 
     return (
         <aside className="min-h-0 flex flex-col justify-between">
@@ -263,15 +346,20 @@ function Rail({ board, now }) {
                         <h1 className="text-[2.9rem] leading-[0.95] font-light tracking-tighter mt-[0.35rem] truncate">{board.gym.name}</h1>
                     </div>
                 </div>
-                <div className="mt-[1.6rem] flex items-center gap-[0.9rem]">
+                <div className="mt-[1.4rem] flex items-center gap-[0.9rem]">
                     <span className="text-[1.05rem] text-white/60 font-light">{weekLabel(board.week_start_at, board.week_end_at, board.tz)}</span>
                     <span className="flex items-center gap-[0.45rem] text-[0.7rem] font-black uppercase tracking-[0.3em] text-emerald-400">
                         <span className="w-[0.55rem] h-[0.55rem] rounded-full bg-emerald-400" style={{ animation: 'gbPulse 1.6s ease-in-out infinite' }} />
                         Live
                     </span>
                 </div>
-                <div className="text-[0.7rem] uppercase tracking-[0.3em] text-white/30 font-bold mt-[0.5rem]">
-                    Only points earned here, this week
+                {/* Reset clock, folded into the identity block */}
+                <div className="mt-[0.7rem] flex items-baseline justify-between">
+                    <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/30 font-bold">Only points earned here · resets Monday</span>
+                    <span className="text-[1.15rem] font-light tabular-nums text-white/80">{resetLabel(parts)}</span>
+                </div>
+                <div className="mt-[0.5rem] h-[2px] w-full bg-white/10 rounded-full overflow-hidden">
+                    <motion.div className="h-full rounded-full" style={{ background: GOLD }} animate={{ width: `${elapsed * 100}%` }} transition={{ duration: 1 }} />
                 </div>
             </div>
 
@@ -279,20 +367,11 @@ function Rail({ board, now }) {
             <div className="grid grid-cols-3 gap-[1rem]">
                 <Stat label="Members" value={board.stats.members} />
                 <Stat label="Points" value={board.stats.points} gold />
-                <Stat label="Sessions" value={board.stats.sessions} />
+                <Stat label="Time trained" text={fmtMinutes(board.stats.minutes ?? 0, { compact: true })} />
             </div>
 
-            {/* Reset clock */}
-            <div>
-                <div className="flex items-end justify-between">
-                    <Eyebrow>Week resets in</Eyebrow>
-                    <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/30 font-bold">Monday 00:00</span>
-                </div>
-                <div className="text-[2.6rem] font-extralight tracking-tight tabular-nums leading-none mt-[0.5rem]">{resetLabel(parts)}</div>
-                <div className="mt-[0.9rem] h-[2px] w-full bg-white/10 rounded-full overflow-hidden">
-                    <motion.div className="h-full rounded-full" style={{ background: GOLD }} animate={{ width: `${elapsed * 100}%` }} transition={{ duration: 1 }} />
-                </div>
-            </div>
+            {/* Spotlight — rotates through the week's stories */}
+            <Spotlight spot={board.spotlight} tz={board.tz} />
 
             {/* Last week */}
             <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-[1.4rem]">
@@ -301,9 +380,13 @@ function Rail({ board, now }) {
                     <div className="mt-[1rem] flex items-center gap-[1rem]">
                         <Avatar row={champ} size={3.8} ring={GOLD} ringWidth={0.15} />
                         <div className="min-w-0 flex-1">
-                            <div className="text-[1.55rem] font-light leading-tight truncate">{boardName(champ)}</div>
+                            <div className="flex items-center gap-[0.6rem] min-w-0">
+                                <span className="text-[1.55rem] font-light leading-tight truncate">{boardName(champ)}</span>
+                                <LevelPill level={champ.level} />
+                            </div>
                             <div className="text-[1rem] tabular-nums font-light" style={{ color: GOLD }}>
                                 {champ.points.toLocaleString()} <span className="text-[0.6em] uppercase tracking-[0.25em] text-white/35 font-bold">pts</span>
+                                {since && <span className="text-[0.6em] uppercase tracking-[0.25em] text-white/35 font-bold ml-[0.8rem]">Member since {since}</span>}
                             </div>
                         </div>
                         <span className="text-[2.4rem] leading-none">🏆</span>
@@ -346,11 +429,116 @@ function Rail({ board, now }) {
     );
 }
 
-function Stat({ label, value, gold }) {
+function Stat({ label, value, text, gold }) {
     return (
         <div className="rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-[1rem] py-[0.9rem] min-w-0">
-            <Num value={value} className="block text-[2.2rem] leading-none font-extralight tracking-tight" style={{ color: gold ? GOLD : '#F2F2F2' }} />
+            {text != null ? (
+                <span className="block text-[2.2rem] leading-none font-extralight tracking-tight tabular-nums truncate" style={{ color: gold ? GOLD : '#F2F2F2' }}>{text}</span>
+            ) : (
+                <Num value={value} className="block text-[2.2rem] leading-none font-extralight tracking-tight" style={{ color: gold ? GOLD : '#F2F2F2' }} />
+            )}
             <div className="text-[0.62rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.55rem] truncate">{label}</div>
+        </div>
+    );
+}
+
+const ACTIVITY_LABEL = { gym: 'Gym session', running: 'Run', cycling: 'Ride', swimming: 'Swim', hiit: 'HIIT', yoga: 'Yoga', sports: 'Sport', dance: 'Dance', walking: 'Walk' };
+
+function Spotlight({ spot, tz }) {
+    const cards = useMemo(() => spotlightCards(spot), [spot]);
+    const [i, setI] = useState(0);
+    useEffect(() => {
+        if (cards.length <= 1) return;
+        const id = setInterval(() => setI((x) => x + 1), SPOTLIGHT_MS);
+        return () => clearInterval(id);
+    }, [cards.length]);
+    const kind = cards.length ? cards[i % cards.length] : null;
+
+    const dayOf = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short' }).format(new Date(iso));
+
+    let eyebrow = 'This week';
+    let body = null;
+    if (kind === 'session' && spot.session) {
+        const s = spot.session;
+        eyebrow = 'Session of the week';
+        body = (
+            <div className="flex items-center gap-[1rem]">
+                <Avatar row={s} size={3.2} ring="rgba(255,255,255,0.18)" ringWidth={0.1} />
+                <div className="min-w-0 flex-1">
+                    <div className="text-[1.4rem] font-light leading-tight truncate">{boardName(s)}</div>
+                    <div className="text-[0.85rem] text-white/50 font-light truncate">
+                        {ACTIVITY_LABEL[s.type] ?? 'Session'} · {dayOf(s.started_at)}{s.minutes > 0 ? ` · ${fmtMinutes(s.minutes)}` : ''}
+                    </div>
+                </div>
+                <div className="text-right shrink-0">
+                    <div className="text-[1.9rem] leading-none font-extralight tabular-nums" style={{ color: GOLD }}>{s.points.toLocaleString()}</div>
+                    <div className="text-[0.6rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.2rem]">pts · one session</div>
+                </div>
+            </div>
+        );
+    } else if (kind === 'improved' && spot.improved) {
+        const s = spot.improved;
+        eyebrow = 'Most improved';
+        body = (
+            <div className="flex items-center gap-[1rem]">
+                <Avatar row={s} size={3.2} ring="rgba(255,255,255,0.18)" ringWidth={0.1} />
+                <div className="min-w-0 flex-1">
+                    <div className="text-[1.4rem] font-light leading-tight truncate">{boardName(s)}</div>
+                    <div className="text-[0.85rem] text-white/50 font-light truncate">
+                        {s.last_week.toLocaleString()} last week → {s.this_week.toLocaleString()} so far
+                    </div>
+                </div>
+                <div className="text-right shrink-0">
+                    <div className="text-[1.9rem] leading-none font-extralight tabular-nums text-[#4ade80]">+{s.gain.toLocaleString()}</div>
+                    <div className="text-[0.6rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.2rem]">on last week</div>
+                </div>
+            </div>
+        );
+    } else if (kind === 'new') {
+        const list = spot.new_members;
+        eyebrow = list.length === 1 ? 'New on the wall this week' : `New on the wall this week · ${list.length}`;
+        body = (
+            <div className="flex items-center gap-[0.9rem] min-w-0">
+                <div className="flex -space-x-[0.6rem] shrink-0">
+                    {list.slice(0, 4).map((m) => <Avatar key={m.key} row={m} size={2.6} ring="#070707" ringWidth={0.08} />)}
+                </div>
+                <div className="min-w-0">
+                    <div className="text-[1.25rem] font-light leading-tight truncate">
+                        {list.slice(0, 3).map(boardName).join(', ')}{list.length > 3 ? ` +${list.length - 3}` : ''}
+                    </div>
+                    <div className="text-[0.85rem] text-white/50 font-light">First session here. Welcome to the board.</div>
+                </div>
+            </div>
+        );
+    } else {
+        body = <div className="text-[1.15rem] text-white/55 font-light leading-snug">The week’s stories appear here — biggest session, most improved, new faces.</div>;
+    }
+
+    return (
+        <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-[1.4rem] overflow-hidden">
+            <div className="flex items-center justify-between">
+                <Eyebrow colour={GOLD}>{eyebrow}</Eyebrow>
+                {cards.length > 1 && (
+                    <span className="flex items-center gap-[0.35rem]">
+                        {cards.map((c, idx) => (
+                            <span key={c} className="w-[0.35rem] h-[0.35rem] rounded-full" style={{ background: idx === i % cards.length ? GOLD : 'rgba(255,255,255,0.18)' }} />
+                        ))}
+                    </span>
+                )}
+            </div>
+            <div className="mt-[1rem] min-h-[3.4rem]">
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={kind ?? 'none'}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.4 }}
+                    >
+                        {body}
+                    </motion.div>
+                </AnimatePresence>
+            </div>
         </div>
     );
 }
@@ -378,7 +566,7 @@ function Main({ board, stale }) {
             ) : (
                 <>
                     <Podium rows={podium} />
-                    <div className="flex-1 min-h-0 flex flex-col justify-evenly mt-[1.2rem]">
+                    <div className="flex-1 min-h-0 flex flex-col justify-evenly mt-[1rem]">
                         {list.map((row) => <Row key={row.key} row={row} leader={leader} />)}
                     </div>
                     {rest.length > 0 && <Ticker rows={rest} />}
@@ -393,11 +581,11 @@ const PODIUM_ORDER = [2, 1, 3];
 function Podium({ rows }) {
     const byRank = (r) => rows.find((x) => x.rank === r);
     return (
-        <div className="shrink-0 grid grid-cols-3 gap-[1.5rem] items-end mt-[1.5rem]">
+        <div className="shrink-0 grid grid-cols-3 gap-[1.5rem] items-end mt-[1.2rem]">
             {PODIUM_ORDER.map((rank) => {
                 const row = byRank(rank);
                 const first = rank === 1;
-                const platform = first ? 6.5 : rank === 2 ? 4.6 : 3.6;
+                const platform = first ? 6 : rank === 2 ? 4.3 : 3.4;
                 return (
                     <div key={rank} className="flex flex-col items-center">
                         <AnimatePresence mode="popLayout">
@@ -411,24 +599,30 @@ function Podium({ rows }) {
                                     transition={{ type: 'spring', stiffness: 110, damping: 16 }}
                                     className="flex flex-col items-center text-center w-full"
                                 >
-                                    <Avatar row={row} size={first ? 7.2 : 5.4} ring={ringColour(rank)} />
-                                    <div className="mt-[0.9rem] flex items-center gap-[0.6rem] max-w-full">
+                                    <Avatar row={row} size={first ? 6.8 : 5.2} ring={ringColour(rank)} />
+                                    <div className="mt-[0.8rem] flex items-center gap-[0.6rem] max-w-full">
                                         <span className={`truncate font-light leading-tight ${first ? 'text-[2.1rem]' : 'text-[1.6rem] text-white/90'}`}>{boardName(row)}</span>
                                         <Move delta={row.rank_delta} size={first ? 'lg' : 'sm'} />
                                     </div>
-                                    <div className="mt-[0.2rem] flex items-baseline gap-[0.5rem]">
+                                    <div className="mt-[0.35rem] flex items-center justify-center gap-[0.6rem] max-w-full">
+                                        <Marks row={row} size={first ? 'lg' : 'sm'} />
+                                    </div>
+                                    <div className="mt-[0.25rem] flex items-baseline gap-[0.5rem]">
                                         <Num value={row.points} className={`font-extralight tracking-tight ${first ? 'text-[2.7rem]' : 'text-[2rem]'}`} style={{ color: ringColour(rank) }} />
                                         <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/35 font-black">pts</span>
                                     </div>
-                                    <div className="text-[0.75rem] uppercase tracking-[0.25em] text-white/35 font-bold mt-[0.1rem]">
-                                        {row.sessions} {row.sessions === 1 ? 'session' : 'sessions'}
+                                    <div className="flex items-center gap-[0.7rem]">
+                                        <span className="text-[0.75rem] uppercase tracking-[0.25em] text-white/35 font-bold">
+                                            {row.sessions} {row.sessions === 1 ? 'session' : 'sessions'}{row.minutes > 0 ? ` · ${fmtMinutes(row.minutes)}` : ''}
+                                        </span>
+                                        <Today points={row.today_points} />
                                     </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
-                        {!row && <GhostSeat size={first ? 7.2 : 5.4} />}
+                        {!row && <GhostSeat size={first ? 6.8 : 5.2} />}
                         <div
-                            className={`relative w-full mt-[1rem] rounded-t-[1.1rem] overflow-hidden border-t ${first ? 'gb-sweep' : ''}`}
+                            className={`relative w-full mt-[0.9rem] rounded-t-[1.1rem] overflow-hidden border-t ${first ? 'gb-sweep' : ''}`}
                             style={{
                                 height: `${platform}rem`,
                                 borderColor: ringColour(rank),
@@ -465,14 +659,19 @@ function Row({ row, leader }) {
         <motion.div
             layout
             transition={{ type: 'spring', stiffness: 120, damping: 18 }}
-            className="relative grid grid-cols-[3rem_3.2rem_3.2rem_1fr_auto_9rem] items-center gap-[1rem] px-[1rem] py-[0.55rem] rounded-[0.9rem]"
+            className="relative grid grid-cols-[3rem_3.2rem_3.2rem_1fr_auto_auto_9rem] items-center gap-[1rem] px-[1rem] py-[0.5rem] rounded-[0.9rem]"
         >
             <span className="text-right text-[1.7rem] font-extralight tabular-nums text-white/40">{row.rank}</span>
             <span className="flex justify-center"><Move delta={row.rank_delta} /></span>
             <Avatar row={row} size={2.8} />
-            <span className="truncate text-[1.5rem] font-light text-white/90">{boardName(row)}</span>
+            <span className="flex items-center gap-[0.7rem] min-w-0 overflow-hidden">
+                <span className="truncate text-[1.5rem] font-light text-white/90">{boardName(row)}</span>
+                <Marks row={row} />
+            </span>
+            {/* always a cell, even when empty — a null child would shift every column after it */}
+            <span className="flex justify-end"><Today points={row.today_points} /></span>
             <span className="text-[0.7rem] uppercase tracking-[0.25em] text-white/30 font-bold whitespace-nowrap">
-                {row.sessions} {row.sessions === 1 ? 'session' : 'sessions'}
+                {row.sessions} {row.sessions === 1 ? 'session' : 'sessions'}{row.minutes > 0 ? ` · ${fmtMinutes(row.minutes)}` : ''}
             </span>
             <span className="text-right">
                 <Num value={row.points} className="text-[1.6rem] font-light text-white/85" />

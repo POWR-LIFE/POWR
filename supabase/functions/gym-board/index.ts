@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { LEVELS, TIER_COLOR, TIER_LABEL } from "../_shared/levels.ts";
 
 /**
  * Public JSON feed for a gym's big-screen weekly leaderboard
@@ -51,7 +52,24 @@ type ScoreRow = {
   active_days?: number;
   rank: number;
   prev_rank?: number | null;
+  minutes?: number;
+  today_points?: number;
+  total_earned?: number | null;
+  streak?: number;
+  is_new?: boolean;
+  is_pb?: boolean;
+  last_week_points?: number;
+  member_since?: string | null;
 };
+
+// Level from lifetime points — same ladder as the app (constants/levels.ts
+// via _shared/levels.ts). Number, name and tier colour; never the raw XP.
+function levelBits(totalEarned: number | null | undefined) {
+  if (totalEarned == null) return null;
+  let def = LEVELS[0];
+  for (const l of LEVELS) if (totalEarned >= l.xpMin) def = l;
+  return { level: def.level, name: def.name, tier: TIER_LABEL[def.tier], colour: TIER_COLOR[def.tier] };
+}
 
 async function displayKey(scope: string, userId: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -109,20 +127,49 @@ Deno.serve(async (req: Request) => {
 
   const standings = (payload.standings ?? []) as ScoreRow[];
   const podium = (payload.last_week?.podium ?? []) as ScoreRow[];
+  const spot = payload.spotlight ?? {};
+  const spotIds: string[] = [
+    spot.session?.user_id,
+    spot.improved?.user_id,
+    ...((spot.new_members ?? []) as string[]),
+  ].filter(Boolean);
   const profiles = await profilesById([
     ...standings.map((r) => r.user_id),
     ...podium.map((r) => r.user_id),
+    ...spotIds,
   ]);
 
+  const who = async (userId: string) => ({
+    key: await displayKey(board.partner_id, userId),
+    ...(profiles.get(userId) ?? NO_PROFILE),
+  });
+
   const row = async (r: ScoreRow) => ({
-    key: await displayKey(board.partner_id, r.user_id),
+    ...(await who(r.user_id)),
     rank: r.rank,
     points: r.score,
     sessions: r.sessions,
     active_days: r.active_days ?? null,
     rank_delta: r.prev_rank == null ? null : r.prev_rank - r.rank,
-    ...(profiles.get(r.user_id) ?? NO_PROFILE),
+    minutes: r.minutes ?? 0,
+    today_points: r.today_points ?? 0,
+    streak: r.streak ?? 0,
+    is_new: !!r.is_new,
+    is_pb: !!r.is_pb,
+    last_week_points: r.last_week_points ?? 0,
+    level: levelBits(r.total_earned),
+    member_since: r.member_since ?? null,
   });
+
+  const spotlight = {
+    session: spot.session
+      ? { ...(await who(spot.session.user_id)), points: spot.session.points, type: spot.session.type, started_at: spot.session.started_at, minutes: spot.session.minutes }
+      : null,
+    improved: spot.improved
+      ? { ...(await who(spot.improved.user_id)), this_week: spot.improved.this_week, last_week: spot.improved.last_week, gain: spot.improved.gain }
+      : null,
+    new_members: await Promise.all(((spot.new_members ?? []) as string[]).map(who)),
+  };
 
   return json(200, {
     gym: {
@@ -137,7 +184,8 @@ Deno.serve(async (req: Request) => {
     week_start_at: payload.week_start_at,
     week_end_at: payload.week_end_at,
     day_start_at: payload.day_start_at,
-    stats: payload.stats ?? { members: 0, points: 0, sessions: 0 },
+    stats: payload.stats ?? { members: 0, points: 0, sessions: 0, minutes: 0 },
+    spotlight,
     community: payload.community ?? 0,
     standings: await Promise.all(standings.map(row)),
     last_week: {
