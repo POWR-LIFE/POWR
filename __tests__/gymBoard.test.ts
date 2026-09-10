@@ -4,10 +4,15 @@ import {
   boardName,
   boardUrl,
   countdownParts,
+  fmtKm,
   fmtMinutes,
+  fmtSteps,
   gymSlug,
   hourLabel,
   initials,
+  kmLandmark,
+  kmMilestone,
+  landmarkLine,
   memberSince,
   newDisplayToken,
   ordinal,
@@ -15,6 +20,7 @@ import {
   resetLabel,
   rootFontSize,
   sampleActivity,
+  sampleBeyond,
   sampleCommunity,
   sampleStandings,
   scenePlan,
@@ -172,6 +178,7 @@ describe('activity feed helpers', () => {
     expect(scenePlan({ feed: 0, rest: 0 }).map((s) => s.scene)).toEqual(['board']);
     expect(scenePlan({ feed: 5, rest: 0, community: true }).map((s) => s.scene)).toEqual(['board', 'community']);
     expect(scenePlan({ feed: 5, rest: 3, community: true }).map((s) => s.scene)).toEqual(['board', 'community', 'chasing']);
+    expect(scenePlan({ feed: 5, rest: 3, community: true, beyond: true }).map((s) => s.scene)).toEqual(['board', 'community', 'beyond', 'chasing']);
     // the per-session wall is never in rotation
     expect(scenePlan({ feed: 50, rest: 3 }).map((s) => s.scene)).not.toContain('activity');
   });
@@ -205,5 +212,36 @@ describe('community helpers', () => {
     const c = sampleCommunity(Date.parse('2026-09-10T12:00:00Z')) as { week: unknown[]; rank: { rank: number } };
     expect(c.week).toHaveLength(7);
     expect(c.rank.rank).toBe(2);
+  });
+});
+
+describe('beyond helpers', () => {
+  it('prints distance and steps at wall scale', () => {
+    expect(fmtKm(0)).toBe('0 km');
+    expect(fmtKm(0.74)).toBe('740 m');
+    expect(fmtKm(5.26)).toBe('5.3 km');
+    expect(fmtKm(1955.5)).toBe('1,956 km');
+    expect(fmtSteps(812)).toBe('812');
+    expect(fmtSteps(494_000)).toBe('494k');
+    expect(fmtSteps(4_276_074)).toBe('4.3M');
+  });
+  it('picks a landmark a room can picture', () => {
+    expect(kmLandmark(3)).toBeNull();
+    expect(kmLandmark(45)).toEqual({ label: 'a marathon', times: 1.1 });
+    expect(kmLandmark(186)).toEqual({ label: 'London to Brighton', times: 2.1 });
+    expect(landmarkLine(186)).toBe("That's London to Brighton, twice over.");
+    expect(landmarkLine(340)).toBe("That's London to Manchester.");
+    expect(landmarkLine(3014)).toBe("That's Land's End to John o' Groats, 2.2 times over.");
+    expect(landmarkLine(130)).toBe("That's London to Brighton, and half again.");
+  });
+  it('chases the next round number', () => {
+    expect(kmMilestone(186)).toEqual({ target: 250, frac: 186 / 250 });
+    expect(kmMilestone(3014).target).toBe(5000);
+    expect(kmMilestone(0).target).toBe(100);
+  });
+  it('sample beyond has seven days and the walking tile first', () => {
+    const b = sampleBeyond(Date.parse('2026-09-10T12:00:00Z')) as { days: unknown[]; week: Array<{ type: string }> };
+    expect(b.days).toHaveLength(7);
+    expect(b.week[0].type).toBe('walking');
   });
 });

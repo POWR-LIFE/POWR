@@ -245,16 +245,17 @@ export function whenLabel(iso: string, nowMs: number, tz: string, locale = 'en-G
   return `${wd} ${time}`;
 }
 
-export type Scene = 'board' | 'community' | 'activity' | 'chasing';
+export type Scene = 'board' | 'community' | 'beyond' | 'activity' | 'chasing';
 
 /** The rotation the main column plays, given what the board has to show.
  *  Board always; the community picture when the server sent one; chasing
  *  only past the list. The per-session activity wall is NOT in rotation —
  *  twelve random cards stop meaning anything past a few dozen members — but
  *  it stays reachable by pin (?scene=activity) while there is a feed. */
-export function scenePlan(opts: { feed: number; rest: number; community?: boolean }): Array<{ scene: Scene; ms: number }> {
+export function scenePlan(opts: { feed: number; rest: number; community?: boolean; beyond?: boolean }): Array<{ scene: Scene; ms: number }> {
   const plan: Array<{ scene: Scene; ms: number }> = [{ scene: 'board', ms: 36_000 }];
   if (opts.community) plan.push({ scene: 'community', ms: 16_000 });
+  if (opts.beyond) plan.push({ scene: 'beyond', ms: 16_000 });
   if (opts.rest > 0) plan.push({ scene: 'chasing', ms: 10_000 });
   return plan;
 }
@@ -355,5 +356,120 @@ export function sampleCommunity(nowMs: number, tz = 'Europe/London'): Record<str
     streaks: { on_7plus: 23, on_30plus: 4, longest: { key: 'sample-streak', display_name: 'Riley S.', username: null, avatar_url: null, streak: 41 } },
     rank: { rank: 2, of: 37, points: 8800 },
     all_time: { sessions: 6420, minutes: 391000, members: 214, points: 128400, since: '2026-03-02T09:00:00Z' },
+  };
+}
+
+// ─── Beyond the gym ─────────────────────────────────────────────
+
+/** "186 km" / "1,956 km" / "740 m" — distance as the wall prints it. */
+export function fmtKm(km: number): string {
+  if (!km || km <= 0) return '0 km';
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  if (km < 10) return `${Math.round(km * 10) / 10} km`;
+  return `${Math.round(km).toLocaleString()} km`;
+}
+
+/** "494k" / "4.3M" / "812" — steps at wall scale. */
+export function fmtSteps(n: number): string {
+  if (!n || n <= 0) return '0';
+  if (n >= 1_000_000) return `${(Math.round(n / 100_000) / 10).toLocaleString()}M`;
+  if (n >= 10_000) return `${Math.round(n / 1000).toLocaleString()}k`;
+  return Math.round(n).toLocaleString();
+}
+
+/** Something a room can picture. Largest landmark the distance covers at least once. */
+const LANDMARKS: Array<{ km: number; label: string }> = [
+  { km: 1400, label: "Land's End to John o' Groats" },
+  { km: 650, label: 'London to Edinburgh' },
+  { km: 460, label: 'London to Paris' },
+  { km: 335, label: 'London to Manchester' },
+  { km: 190, label: 'London to Birmingham' },
+  { km: 87, label: 'London to Brighton' },
+  { km: 42.2, label: 'a marathon' },
+  { km: 21.1, label: 'a half marathon' },
+  { km: 5, label: 'a parkrun' },
+];
+
+export function kmLandmark(km: number): { label: string; times: number } | null {
+  if (!km || km < 5) return null;
+  for (const l of LANDMARKS) {
+    if (km >= l.km) {
+      const times = Math.round((km / l.km) * 10) / 10;
+      return { label: l.label, times };
+    }
+  }
+  return null;
+}
+
+/** "London to Brighton, twice over" / "London to Manchester" / "1.4 marathons" */
+export function landmarkLine(km: number): string | null {
+  const l = kmLandmark(km);
+  if (!l) return null;
+  if (l.times < 1.15) return `That's ${l.label}.`;
+  if (l.times < 1.85) return `That's ${l.label}, and half again.`;
+  if (l.times < 2.15) return `That's ${l.label}, twice over.`;
+  return `That's ${l.label}, ${l.times.toFixed(1).replace(/\.0$/, '')} times over.`;
+}
+
+/** The next round number of km the community is chasing, and progress to it. */
+export function kmMilestone(km: number): { target: number; frac: number } {
+  const steps = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
+  const target = steps.find((t) => t > km) ?? Math.ceil(km / 100000) * 100000 + 100000;
+  return { target, frac: Math.max(0, Math.min(1, km / target)) };
+}
+
+/** Which activities lead the "beyond" tiles, and in what order. Sleep never. */
+export const BEYOND_ORDER = ['walking', 'running', 'cycling', 'gym', 'hiit', 'swimming', 'yoga', 'sports', 'dance'];
+
+export function sampleBeyond(nowMs: number, tz = 'Europe/London'): Record<string, unknown> {
+  const key = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+  const dow = (new Date(nowMs).getUTCDay() + 6) % 7;
+  const monday = nowMs - dow * 86_400_000;
+  const perDay = [
+    { walking: 41, running: 9, cycling: 4, gym: 38, hiit: 6 },
+    { walking: 44, running: 11, cycling: 3, gym: 42, hiit: 7, swimming: 2 },
+    { walking: 39, running: 8, cycling: 5, gym: 35, hiit: 5, yoga: 3 },
+    { walking: 46, running: 12, cycling: 6, gym: 44, hiit: 8 },
+    { walking: 40, running: 7, cycling: 2, gym: 31, hiit: 4, swimming: 1 },
+    { walking: 37, running: 14, cycling: 9, gym: 22, hiit: 3 },
+    { walking: 35, running: 6, cycling: 11, gym: 15, hiit: 2, yoga: 4 },
+  ];
+  const days = perDay.map((by_type, i) => {
+    const on = i <= dow;
+    const sessions = on ? Object.values(by_type).reduce((a, b) => a + b, 0) : 0;
+    return { date: key(monday + i * 86_400_000), sessions, km: on ? 260 + i * 17 : 0, minutes: on ? sessions * 44 : 0, by_type: on ? by_type : {} };
+  });
+  const scale = (dow + 1) / 7;
+  const r = (n: number) => Math.round(n * scale);
+  return {
+    tz,
+    members: 112,
+    week: [
+      { type: 'walking', sessions: r(282), members: 98, minutes: 0, km: r(1210), km_measured: true, steps: r(1_640_000), here_minutes: 0, longest_km: 14.2, longest_minutes: 0 },
+      { type: 'gym', sessions: r(227), members: 84, minutes: r(13_600), km: 0, km_measured: false, steps: 0, here_minutes: r(11_900), longest_km: 0, longest_minutes: 118 },
+      { type: 'running', sessions: r(67), members: 31, minutes: r(3_900), km: r(612), km_measured: true, steps: 0, here_minutes: 0, longest_km: 21.4, longest_minutes: 112 },
+      { type: 'hiit', sessions: r(35), members: 22, minutes: r(1_400), km: 0, km_measured: false, steps: 0, here_minutes: r(900), longest_km: 0, longest_minutes: 55 },
+      { type: 'cycling', sessions: r(40), members: 17, minutes: r(2_700), km: r(1_180), km_measured: true, steps: 0, here_minutes: 0, longest_km: 96.5, longest_minutes: 240 },
+      { type: 'swimming', sessions: r(9), members: 6, minutes: r(360), km: r(11.4), km_measured: true, steps: 0, here_minutes: 0, longest_km: 2.4, longest_minutes: 58 },
+      { type: 'yoga', sessions: r(7), members: 5, minutes: r(400), km: 0, km_measured: false, steps: 0, here_minutes: 0, longest_km: 0, longest_minutes: 75 },
+    ],
+    month: [
+      { type: 'walking', sessions: 1180, members: 108, minutes: 0, km: 5100, steps: 6_900_000 },
+      { type: 'gym', sessions: 940, members: 101, minutes: 56_000, km: 0, steps: 0 },
+      { type: 'running', sessions: 280, members: 44, minutes: 16_000, km: 2560, steps: 0 },
+      { type: 'cycling', sessions: 160, members: 23, minutes: 11_000, km: 4900, steps: 0 },
+    ],
+    days,
+    totals: {
+      week: { sessions: r(667), members: 104, minutes: r(22_400), km: r(3_014), steps: r(1_640_000) },
+      last_week: { sessions: 640, km: 2_870, minutes: 21_100 },
+      month: { sessions: 2_690, members: 110, minutes: 90_000, km: 12_700, steps: 6_900_000 },
+    },
+    longest: {
+      running: { key: 'sample-run', display_name: 'Morgan K.', username: null, avatar_url: null, km: 21.4, minutes: 112, started_at: new Date(nowMs - 30 * 3_600_000).toISOString() },
+      cycling: { key: 'sample-ride', display_name: 'Sam T.', username: null, avatar_url: null, km: 96.5, minutes: 240, started_at: new Date(nowMs - 50 * 3_600_000).toISOString() },
+      swimming: { key: 'sample-swim', display_name: 'Riley S.', username: null, avatar_url: null, km: 2.4, minutes: 58, started_at: new Date(nowMs - 20 * 3_600_000).toISOString() },
+      walking: { key: 'sample-walk', display_name: 'Casey D.', username: null, avatar_url: null, steps: 31_400, started_at: new Date(nowMs - 26 * 3_600_000).toISOString() },
+    },
   };
 }

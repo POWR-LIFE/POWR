@@ -8,15 +8,20 @@ import {
     barFraction,
     boardName,
     countdownParts,
+    fmtKm,
     fmtMinutes,
+    fmtSteps,
     hourLabel,
     initials,
+    kmMilestone,
+    landmarkLine,
     memberSince,
     ordinal,
     pctChange,
     resetLabel,
     rootFontSize,
     sampleActivity,
+    sampleBeyond,
     sampleCommunity,
     sampleStandings,
     scenePlan,
@@ -27,6 +32,7 @@ import {
     weekdayFull,
     weekdayShort,
     whenLabel,
+    BEYOND_ORDER,
 } from '../../../shared/gymBoard.ts';
 
 /**
@@ -82,6 +88,7 @@ function applyPreview(board, preview) {
             spotlight: { session: null, improved: null, new_members: [] },
             activity: [],
             community_stats: null,
+            beyond: null,
         };
     }
     const standings = sampleStandings(18);
@@ -103,6 +110,7 @@ function applyPreview(board, preview) {
         },
         activity: sampleActivity(Date.now()),
         community_stats: sampleCommunity(Date.now(), board.tz),
+        beyond: sampleBeyond(Date.now(), board.tz),
         community: Math.max(board.community ?? 0, 64),
     };
 }
@@ -116,7 +124,7 @@ export default function GymBoard() {
     // ?scene=activity|chasing|board pins the main column — for the admin's
     // preview links and for checking a scene without waiting for the rotation.
     const sceneParam = params.get('scene');
-    const pinnedScene = ['board', 'community', 'activity', 'chasing'].includes(sceneParam) ? sceneParam : null;
+    const pinnedScene = ['board', 'community', 'beyond', 'activity', 'chasing'].includes(sceneParam) ? sceneParam : null;
 
     const [board, setBoard] = useState(null);
     const [invalid, setInvalid] = useState(false);
@@ -584,12 +592,14 @@ function Main({ board, now, stale, pinned }) {
     const feed = board.activity ?? [];
     const community = board.community_stats ?? null;
     const hasCommunity = !!community;
+    const beyond = board.beyond ?? null;
+    const hasBeyond = !!beyond && (beyond.totals?.week?.sessions ?? 0) > 0;
     // Memo on the SHAPE of the plan, never on the payload objects: a new
     // payload lands every 12 s, and a timer that restarted with it would
     // never reach a 36 s dwell. (It didn't — the wall sat on the board.)
     const plan = useMemo(
-        () => scenePlan({ feed: feed.length, rest: rest.length, community: hasCommunity }),
-        [feed.length, rest.length, hasCommunity],
+        () => scenePlan({ feed: feed.length, rest: rest.length, community: hasCommunity, beyond: hasBeyond }),
+        [feed.length, rest.length, hasCommunity, hasBeyond],
     );
     const planKey = plan.map((p) => p.scene).join('>');
 
@@ -603,9 +613,9 @@ function Main({ board, now, stale, pinned }) {
     }, [step, planKey, pinned]);
     const rotating = plan[step % plan.length].scene;
     const pinnable = pinned && (plan.some((p) => p.scene === pinned) || (pinned === 'activity' && feed.length > 0));
-    const scene = board.standings.length === 0 && pinned !== 'community' ? 'empty' : (pinnable ? pinned : rotating);
+    const scene = board.standings.length === 0 && pinned !== 'community' && pinned !== 'beyond' ? 'empty' : (pinnable ? pinned : rotating);
 
-    const SCENE_LABEL = { board: 'Leaderboard', community: 'The gym this week', activity: 'Latest activity', chasing: 'The chasing pack', empty: 'Leaderboard' };
+    const SCENE_LABEL = { board: 'Leaderboard', community: 'The gym this week', beyond: 'Beyond the gym', activity: 'Latest activity', chasing: 'The chasing pack', empty: 'Leaderboard' };
 
     return (
         <section className="min-h-0 flex flex-col">
@@ -660,6 +670,7 @@ function Main({ board, now, stale, pinned }) {
                             </>
                         )}
                         {scene === 'community' && community && <CommunityScene c={community} now={now} tz={board.tz} gym={board.gym.name} />}
+                        {scene === 'beyond' && beyond && <BeyondScene b={beyond} now={now} tz={board.tz} gym={board.gym.name} />}
                         {scene === 'activity' && <ActivityScene feed={feed} now={now} tz={board.tz} gym={board.gym.name} />}
                         {scene === 'chasing' && <ChasingScene rows={rest} leader={leader} />}
                     </motion.div>
@@ -1030,6 +1041,175 @@ function AllTime({ label, value, gold }) {
         <div className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-[1.1rem] py-[0.8rem] min-w-0">
             <div className="text-[1.9rem] leading-none font-extralight tabular-nums truncate" style={{ color: gold ? GOLD : '#F2F2F2' }}>{value}</div>
             <div className="text-[0.6rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.4rem] truncate">{label} · all time</div>
+        </div>
+    );
+}
+
+// ─── Beyond the gym ──────────────────────────────────────────────
+// The gym's members and everything they do, anywhere. Walks, runs, rides,
+// swims, sessions at other gyms — the community's week, not the floor's.
+
+const TYPE_COLOUR = { walking: '#34d399', running: '#60a5fa', cycling: '#a78bfa', gym: GOLD, hiit: '#fb923c', swimming: '#22d3ee', yoga: '#f472b6', sports: '#f59e0b', dance: '#e879f9' };
+
+function BeyondScene({ b, now, tz, gym }) {
+    const wk = b.totals?.week ?? {};
+    const lw = b.totals?.last_week ?? {};
+    const month = b.totals?.month ?? {};
+    const tiles = BEYOND_ORDER.map((t) => (b.week ?? []).find((w) => w.type === t)).filter((w) => w && w.sessions > 0).slice(0, 6);
+    const days = b.days ?? [];
+    const today = todayIndex(days, now, tz);
+    const maxDay = Math.max(1, ...days.map((d) => d.sessions));
+    const line = landmarkLine(wk.km ?? 0);
+    const dKm = pctChange(wk.km ?? 0, lw.km ?? 0);
+    const milestone = kmMilestone(month.km ?? 0);
+    const longest = b.longest ?? {};
+    // Only print a time when it is physically possible for the distance;
+    // a broken duration should cost the caption, not the effort.
+    const timeIf = (l, minPerKm) => (l?.minutes > 0 && l.minutes >= (l.km ?? 0) * minPerKm ? fmtMinutes(l.minutes) : null);
+    const callouts = [
+        longest.running && { key: 'run', row: longest.running, label: 'Longest run', value: fmtKm(longest.running.km), meta: timeIf(longest.running, 2.5) },
+        longest.cycling && { key: 'ride', row: longest.cycling, label: 'Longest ride', value: fmtKm(longest.cycling.km), meta: timeIf(longest.cycling, 1) },
+        longest.walking && { key: 'walk', row: longest.walking, label: 'Biggest day on foot', value: `${fmtSteps(longest.walking.steps)} steps`, meta: null },
+        longest.swimming && { key: 'swim', row: longest.swimming, label: 'Longest swim', value: fmtKm(longest.swimming.km), meta: timeIf(longest.swimming, 10) },
+    ].filter(Boolean).slice(0, 3);
+
+    return (
+        <div className="flex-1 min-h-0 flex flex-col">
+            <div className="mt-[1.3rem] flex items-end justify-between gap-[2rem] shrink-0">
+                <div className="min-w-0">
+                    <div className="text-[2.2rem] font-light tracking-tighter leading-none">Beyond the gym</div>
+                    <div className="text-[0.7rem] uppercase tracking-[0.35em] text-white/30 font-bold mt-[0.5rem] truncate">
+                        What {gym}&apos;s {b.members} members did this week, everywhere
+                    </div>
+                </div>
+                <div className="text-right shrink-0 max-w-[30rem]">
+                    <div className="flex items-baseline justify-end gap-[0.5rem]">
+                        <Num value={Math.round(wk.km ?? 0)} className="text-[3.6rem] leading-none font-extralight tracking-tight" style={{ color: GOLD }} />
+                        <span className="text-[1rem] uppercase tracking-[0.3em] text-white/40 font-black">km</span>
+                        {dKm && <span className="text-[0.85rem] font-bold tabular-nums ml-[0.3rem]" style={{ color: dKm.pct >= 0 ? '#4ade80' : '#f87171' }}>{dKm.label}</span>}
+                    </div>
+                    <div className="text-[0.95rem] text-white/60 font-light mt-[0.2rem]">
+                        moved together this week{line ? ` · ${line}` : ''}
+                    </div>
+                </div>
+            </div>
+
+            {/* Activity tiles */}
+            <div className={`shrink-0 grid gap-[0.9rem] mt-[1.2rem] ${tiles.length >= 5 ? 'grid-cols-6' : tiles.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                {tiles.map((t, i) => {
+                    const meta = activityMeta(t.type);
+                    const colour = TYPE_COLOUR[t.type] ?? 'rgba(255,255,255,0.5)';
+                    const isWalk = t.type === 'walking';
+                    const hasKm = (t.km ?? 0) > 0 && (t.km_measured || isWalk);
+                    const big = isWalk ? fmtSteps(t.steps) : hasKm ? fmtKm(t.km) : fmtMinutes(t.minutes);
+                    const bigUnit = isWalk ? 'steps' : hasKm ? '' : '';
+                    const hrs = (m) => (m >= 60 ? `${Math.round(m / 60)}h` : `${m}m`);
+                    const sub = t.type === 'gym' && t.here_minutes > 0
+                        ? `${hrs(t.here_minutes)} here · ${hrs(Math.max(0, t.minutes - t.here_minutes))} elsewhere`
+                        : hasKm && t.minutes > 0 ? `${fmtMinutes(t.minutes)} · longest ${fmtKm(t.longest_km)}`
+                        : isWalk && t.km > 0 ? `≈ ${fmtKm(t.km)}`
+                        : t.minutes > 0 ? `${fmtMinutes(t.minutes)} total` : '';
+                    return (
+                        <motion.div
+                            key={t.type}
+                            initial={{ opacity: 0, y: 14 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1 + i * 0.07, duration: 0.45, ease: 'easeOut' }}
+                            className="relative rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-[1rem] py-[0.9rem] min-w-0 overflow-hidden"
+                        >
+                            <span className="pointer-events-none absolute -right-[0.5rem] -bottom-[0.8rem] text-[4rem] leading-none opacity-[0.08] select-none">{meta.glyph}</span>
+                            <div className="flex items-center gap-[0.5rem]">
+                                <span className="w-[0.5rem] h-[0.5rem] rounded-full" style={{ background: colour }} />
+                                <span className="text-[0.68rem] uppercase tracking-[0.3em] text-white/45 font-black truncate">{meta.label}{t.type === 'gym' ? 's' : ''}</span>
+                            </div>
+                            <div className="mt-[0.5rem] flex items-baseline gap-[0.35rem] min-w-0">
+                                <span className="text-[1.9rem] leading-none font-extralight tabular-nums truncate" style={{ color: colour }}>{big}</span>
+                                {bigUnit && <span className="text-[0.6rem] uppercase tracking-[0.3em] text-white/35 font-black">{bigUnit}</span>}
+                            </div>
+                            <div className="text-[0.78rem] text-white/60 font-light mt-[0.35rem] truncate">
+                                {t.sessions.toLocaleString()} {t.sessions === 1 ? 'session' : 'sessions'} · {t.members} {t.members === 1 ? 'member' : 'members'}
+                            </div>
+                            {sub && <div className="text-[0.72rem] text-white/40 font-light truncate">{sub}</div>}
+                        </motion.div>
+                    );
+                })}
+            </div>
+
+            <div className="flex-1 min-h-0 grid grid-cols-[3fr_2fr] gap-[1.2rem] mt-[1.2rem]">
+                {/* The week, stacked by activity */}
+                <div className="min-h-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col">
+                    <div className="flex items-baseline justify-between shrink-0">
+                        <Eyebrow colour={GOLD}>Sessions by day · everywhere</Eyebrow>
+                        <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/35 font-bold tabular-nums">
+                            {(wk.sessions ?? 0).toLocaleString()} sessions · {fmtMinutes(wk.minutes ?? 0)} · {wk.members ?? 0} members
+                        </span>
+                    </div>
+                    <div className="flex-1 min-h-0 grid grid-cols-7 gap-[0.8rem] items-end mt-[1rem]">
+                        {days.map((d, i) => {
+                            const future = today >= 0 && i > today;
+                            const isToday = i === today;
+                            const parts = BEYOND_ORDER.filter((t) => (d.by_type?.[t] ?? 0) > 0);
+                            return (
+                                <div key={d.date} className="h-full flex flex-col justify-end items-center min-w-0">
+                                    <div className={`text-[0.95rem] tabular-nums font-light mb-[0.4rem] ${isToday ? 'text-white' : 'text-white/55'}`}>{future ? '' : d.sessions}</div>
+                                    <div className="w-[58%] flex-1 min-h-0 flex flex-col-reverse rounded-t-[0.4rem] overflow-hidden" style={{ background: future ? 'rgba(255,255,255,0.05)' : 'transparent', maxHeight: '100%' }}>
+                                        {!future && parts.map((t, j) => (
+                                            <motion.div
+                                                key={t}
+                                                style={{ background: TYPE_COLOUR[t] ?? 'rgba(255,255,255,0.4)', opacity: isToday ? 1 : 0.8 }}
+                                                initial={{ height: 0 }}
+                                                animate={{ height: `${((d.by_type[t] ?? 0) / maxDay) * 100}%` }}
+                                                transition={{ delay: 0.2 + i * 0.05 + j * 0.03, duration: 0.7, ease: 'easeOut' }}
+                                            />
+                                        ))}
+                                    </div>
+                                    <div className={`mt-[0.6rem] text-[0.7rem] uppercase tracking-[0.3em] font-black ${isToday ? 'text-white' : 'text-white/35'}`}>{weekdayShort(d.date)}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div className="shrink-0 mt-[0.9rem] flex flex-wrap gap-x-[1rem] gap-y-[0.3rem]">
+                        {tiles.map((t) => (
+                            <span key={t.type} className="flex items-center gap-[0.4rem] text-[0.75rem] text-white/55 font-light">
+                                <span className="w-[0.45rem] h-[0.45rem] rounded-full" style={{ background: TYPE_COLOUR[t.type] ?? 'rgba(255,255,255,0.4)' }} />{activityMeta(t.type).label}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Longest efforts + the milestone */}
+                <div className="min-h-0 flex flex-col gap-[1.2rem]">
+                    <div className="flex-1 min-h-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col justify-between">
+                        <Eyebrow colour={GOLD}>Efforts of the week</Eyebrow>
+                        {callouts.length === 0 ? (
+                            <div className="text-[1rem] text-white/50 font-light">The first run, ride or big day on foot this week lands here.</div>
+                        ) : callouts.map((c) => (
+                            <div key={c.key} className="flex items-center gap-[0.9rem] min-w-0">
+                                <Avatar row={c.row} size={2.6} ring="rgba(255,255,255,0.14)" ringWidth={0.08} />
+                                <div className="min-w-0 flex-1">
+                                    <div className="text-[1.05rem] font-light leading-tight truncate">{boardName(c.row)}</div>
+                                    <div className="text-[0.72rem] uppercase tracking-[0.25em] text-white/35 font-black truncate">{c.label}{c.meta ? ` · ${c.meta}` : ''}</div>
+                                </div>
+                                <div className="text-[1.5rem] leading-none font-extralight tabular-nums shrink-0" style={{ color: GOLD }}>{c.value}</div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem]">
+                        <div className="flex items-baseline justify-between">
+                            <Eyebrow colour={GOLD}>Last 28 days, together</Eyebrow>
+                            <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/35 font-bold tabular-nums">next stop {milestone.target.toLocaleString()} km</span>
+                        </div>
+                        <div className="mt-[0.6rem] flex items-baseline gap-[0.5rem]">
+                            <Num value={Math.round(month.km ?? 0)} className="text-[2.4rem] leading-none font-extralight" style={{ color: GOLD }} />
+                            <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/40 font-black">km</span>
+                            <span className="text-[0.85rem] text-white/50 font-light ml-[0.6rem]">{fmtSteps(month.steps ?? 0)} steps · {fmtMinutes(month.minutes ?? 0)}</span>
+                        </div>
+                        <div className="mt-[0.8rem] h-[0.45rem] w-full bg-white/10 rounded-full overflow-hidden">
+                            <motion.div className="h-full rounded-full gb-sweep relative overflow-hidden" style={{ background: GOLD }} initial={{ width: 0 }} animate={{ width: `${milestone.frac * 100}%` }} transition={{ delay: 0.4, duration: 1, ease: 'easeOut' }} />
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

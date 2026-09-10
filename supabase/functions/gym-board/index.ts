@@ -130,10 +130,16 @@ Deno.serve(async (req: Request) => {
   if (!board || !board.enabled || !partner?.active) return json(404, { error: "not_found" });
   if (board.display_token !== token) return json(404, { error: "not_found" });
 
-  const [{ data: payload, error }, { data: activityRows, error: actErr }, { data: communityRaw, error: comErr }] = await Promise.all([
+  const [
+    { data: payload, error },
+    { data: activityRows, error: actErr },
+    { data: communityRaw, error: comErr },
+    { data: beyondRaw, error: beyErr },
+  ] = await Promise.all([
     admin.rpc("gym_board_payload", { p_partner_id: board.partner_id }),
     admin.rpc("_gym_board_activity", { p_partner_id: board.partner_id, p_limit: 24 }),
     admin.rpc("_gym_board_community", { p_partner_id: board.partner_id }),
+    admin.rpc("_gym_board_beyond", { p_partner_id: board.partner_id }),
   ]);
   if (error || !payload) {
     console.error("gym-board payload failed:", error?.message ?? "null payload");
@@ -142,6 +148,13 @@ Deno.serve(async (req: Request) => {
   // The feed is decoration; a failed feed never blanks the board.
   if (actErr) console.error("gym-board activity failed:", actErr.message);
   if (comErr) console.error("gym-board community failed:", comErr.message);
+  if (beyErr) console.error("gym-board beyond failed:", beyErr.message);
+  // deno-lint-ignore no-explicit-any
+  const beyond = (beyondRaw ?? null) as any;
+  const longestIds: string[] = Object.values(beyond?.longest ?? {})
+    // deno-lint-ignore no-explicit-any
+    .map((l: any) => l?.user_id)
+    .filter(Boolean) as string[];
   const activity = (activityRows ?? []) as ActivityRow[];
   // deno-lint-ignore no-explicit-any
   const community = (communityRaw ?? null) as any;
@@ -161,6 +174,7 @@ Deno.serve(async (req: Request) => {
     ...spotIds,
     ...activity.map((a) => a.user_id),
     ...(longestId ? [longestId] : []),
+    ...longestIds,
   ]);
 
   const who = async (userId: string) => ({
@@ -224,6 +238,21 @@ Deno.serve(async (req: Request) => {
       }
     : null;
 
+  // Beyond the gym: aggregates straight through; the four longest-effort
+  // callouts get a name and avatar, never an id.
+  let beyondOut = null;
+  if (beyond) {
+    const longest: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(beyond.longest ?? {})) {
+      // deno-lint-ignore no-explicit-any
+      const l = v as any;
+      longest[k] = l?.user_id
+        ? { ...(await who(l.user_id)), km: l.km ?? null, minutes: l.minutes ?? null, steps: l.steps ?? null, started_at: l.started_at }
+        : null;
+    }
+    beyondOut = { ...beyond, longest };
+  }
+
   return json(200, {
     gym: {
       name: partner.name,
@@ -241,6 +270,7 @@ Deno.serve(async (req: Request) => {
     spotlight,
     activity: feed,
     community_stats: communityOut,
+    beyond: beyondOut,
     community: payload.community ?? 0,
     standings: await Promise.all(standings.map(row)),
     last_week: {
