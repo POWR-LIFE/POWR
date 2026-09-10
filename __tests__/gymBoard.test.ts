@@ -6,17 +6,24 @@ import {
   countdownParts,
   fmtMinutes,
   gymSlug,
+  hourLabel,
   initials,
   memberSince,
   newDisplayToken,
+  ordinal,
+  pctChange,
   resetLabel,
   rootFontSize,
   sampleActivity,
+  sampleCommunity,
   sampleStandings,
   scenePlan,
   splitStandings,
   spotlightCards,
+  todayIndex,
   weekLabel,
+  weekdayFull,
+  weekdayShort,
   whenLabel,
 } from '../shared/gymBoard';
 
@@ -163,13 +170,40 @@ describe('activity feed helpers', () => {
   });
   it('plans scenes from what there is to show', () => {
     expect(scenePlan({ feed: 0, rest: 0 }).map((s) => s.scene)).toEqual(['board']);
-    expect(scenePlan({ feed: 5, rest: 0 }).map((s) => s.scene)).toEqual(['board', 'activity']);
-    expect(scenePlan({ feed: 5, rest: 3 }).map((s) => s.scene)).toEqual(['board', 'activity', 'chasing']);
+    expect(scenePlan({ feed: 5, rest: 0, community: true }).map((s) => s.scene)).toEqual(['board', 'community']);
+    expect(scenePlan({ feed: 5, rest: 3, community: true }).map((s) => s.scene)).toEqual(['board', 'community', 'chasing']);
+    // the per-session wall is never in rotation
+    expect(scenePlan({ feed: 50, rest: 3 }).map((s) => s.scene)).not.toContain('activity');
   });
   it('sample feed is newest first and obviously fake', () => {
     const f = sampleActivity(now);
     expect(f).toHaveLength(12);
     for (let i = 1; i < f.length; i++) expect(Date.parse(f[i].ended_at)).toBeLessThan(Date.parse(f[i - 1].ended_at));
     expect(f.every((x) => x.key.startsWith('feed-'))).toBe(true);
+  });
+});
+
+describe('community helpers', () => {
+  it('labels and indexes the week', () => {
+    expect(weekdayShort('2026-09-07')).toBe('Mon');
+    const week = ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13'].map((date) => ({ date, points: 0, sessions: 0 }));
+    expect(todayIndex(week, Date.parse('2026-09-10T12:00:00Z'), 'Europe/London')).toBe(3);
+    expect(todayIndex(week, Date.parse('2026-09-06T23:30:00Z'), 'Europe/London')).toBe(0); // 00:30 Monday London
+  });
+  it('formats change, hours, ordinals', () => {
+    expect(pctChange(123, 100)).toEqual({ pct: 23, label: '+23%' });
+    expect(pctChange(92, 100)?.label).toBe('−8%');
+    expect(pctChange(5, 0)).toBeNull();
+    expect(hourLabel(18)).toBe('6pm');
+    expect(hourLabel(7)).toBe('7am');
+    expect(hourLabel(0)).toBe('12am');
+    expect(hourLabel(12)).toBe('12pm');
+    expect(weekdayFull(2)).toBe('Tuesday');
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st']);
+  });
+  it('sample community has seven days and a rank', () => {
+    const c = sampleCommunity(Date.parse('2026-09-10T12:00:00Z')) as { week: unknown[]; rank: { rank: number } };
+    expect(c.week).toHaveLength(7);
+    expect(c.rank.rank).toBe(2);
   });
 });

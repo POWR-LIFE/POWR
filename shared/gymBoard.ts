@@ -245,13 +245,16 @@ export function whenLabel(iso: string, nowMs: number, tz: string, locale = 'en-G
   return `${wd} ${time}`;
 }
 
-export type Scene = 'board' | 'activity' | 'chasing';
+export type Scene = 'board' | 'community' | 'activity' | 'chasing';
 
 /** The rotation the main column plays, given what the board has to show.
- *  Board always; activity when there's a feed; chasing only past the list. */
-export function scenePlan(opts: { feed: number; rest: number }): Array<{ scene: Scene; ms: number }> {
+ *  Board always; the community picture when the server sent one; chasing
+ *  only past the list. The per-session activity wall is NOT in rotation —
+ *  twelve random cards stop meaning anything past a few dozen members — but
+ *  it stays reachable by pin (?scene=activity) while there is a feed. */
+export function scenePlan(opts: { feed: number; rest: number; community?: boolean }): Array<{ scene: Scene; ms: number }> {
   const plan: Array<{ scene: Scene; ms: number }> = [{ scene: 'board', ms: 36_000 }];
-  if (opts.feed > 0) plan.push({ scene: 'activity', ms: 14_000 });
+  if (opts.community) plan.push({ scene: 'community', ms: 16_000 });
   if (opts.rest > 0) plan.push({ scene: 'chasing', ms: 10_000 });
   return plan;
 }
@@ -276,4 +279,81 @@ export function sampleActivity(nowMs: number): FeedItem[] {
       verified: i % 5 !== 4,
     };
   });
+}
+
+// ─── Community scene ────────────────────────────────────────────
+
+export type DayPoint = { date: string; points: number; sessions: number; minutes?: number; members?: number };
+
+/** Mon..Sun labels for a week series, with today's index on the board's grid. */
+export function weekdayShort(dateIso: string, locale = 'en-GB'): string {
+  // dates are bare YYYY-MM-DD from the server; parse as UTC noon to dodge DST
+  return new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' }).format(new Date(`${dateIso}T12:00:00Z`));
+}
+
+export function todayIndex(week: DayPoint[], nowMs: number, tz: string): number {
+  const key = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(nowMs));
+  return week.findIndex((d) => d.date === key);
+}
+
+/** "+23%" / "−8%" / null when there is nothing to compare against. */
+export function pctChange(now: number, before: number): { pct: number; label: string } | null {
+  if (!before || before <= 0) return null;
+  const pct = Math.round(((now - before) / before) * 100);
+  const sign = pct > 0 ? '+' : pct < 0 ? '−' : '';
+  return { pct, label: `${sign}${Math.abs(pct)}%` };
+}
+
+/** "6pm" / "7am" / "12pm" — the wall's hour label. */
+export function hourLabel(h: number): string {
+  if (h === 0) return '12am';
+  if (h === 12) return '12pm';
+  return h < 12 ? `${h}am` : `${h - 12}pm`;
+}
+
+const WEEKDAY_FULL = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+export function weekdayFull(isodow: number): string {
+  return WEEKDAY_FULL[isodow] ?? '';
+}
+
+/** "1st" / "2nd" / "23rd" */
+export function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+}
+
+/** Sample community block for the admin preview. */
+export function sampleCommunity(nowMs: number, tz = 'Europe/London'): Record<string, unknown> {
+  const key = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+  const dow = (new Date(nowMs).getUTCDay() + 6) % 7; // 0 = Monday
+  const monday = nowMs - dow * 86_400_000;
+  const pts = [1420, 1660, 1310, 1890, 1540, 980, 0];
+  const lastPts = [1210, 1480, 1390, 1500, 1320, 1110, 640];
+  const week = pts.map((p, i) => ({
+    date: key(monday + i * 86_400_000),
+    points: i <= dow ? p : 0,
+    sessions: i <= dow ? Math.round(p / 21) : 0,
+    minutes: i <= dow ? Math.round(p * 2.4) : 0,
+    members: i <= dow ? Math.round(p / 48) : 0,
+  }));
+  const last_week = lastPts.map((p, i) => ({ date: key(monday - (7 - i) * 86_400_000), points: p, sessions: Math.round(p / 21) }));
+  return {
+    tz,
+    week,
+    last_week,
+    now: { in_gym: 7, sessions: 41, points: 890, members: 33, minutes: 2210 },
+    vs_last: { points: 8800, points_last: 7250, sessions: 412, sessions_last: 361, members: 96, members_last: 84 },
+    mix: [
+      { type: 'gym', sessions: 1180, points: 24500, minutes: 71000 },
+      { type: 'hiit', sessions: 260, points: 6100, minutes: 11200 },
+      { type: 'running', sessions: 140, points: 3900, minutes: 7600 },
+      { type: 'yoga', sessions: 90, points: 1700, minutes: 5100 },
+      { type: 'swimming', sessions: 40, points: 900, minutes: 1900 },
+    ],
+    peak: { hour: 18, weekday: 2, by_hour: Array.from({ length: 24 }, (_, h) => ({ hour: h, sessions: Math.round(Math.max(0, 40 * Math.exp(-((h - 18) ** 2) / 8) + 22 * Math.exp(-((h - 7) ** 2) / 4))) })) },
+    streaks: { on_7plus: 23, on_30plus: 4, longest: { key: 'sample-streak', display_name: 'Riley S.', username: null, avatar_url: null, streak: 41 } },
+    rank: { rank: 2, of: 37, points: 8800 },
+    all_time: { sessions: 6420, minutes: 391000, members: 214, points: 128400, since: '2026-03-02T09:00:00Z' },
+  };
 }

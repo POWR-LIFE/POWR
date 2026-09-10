@@ -130,9 +130,10 @@ Deno.serve(async (req: Request) => {
   if (!board || !board.enabled || !partner?.active) return json(404, { error: "not_found" });
   if (board.display_token !== token) return json(404, { error: "not_found" });
 
-  const [{ data: payload, error }, { data: activityRows, error: actErr }] = await Promise.all([
+  const [{ data: payload, error }, { data: activityRows, error: actErr }, { data: communityRaw, error: comErr }] = await Promise.all([
     admin.rpc("gym_board_payload", { p_partner_id: board.partner_id }),
     admin.rpc("_gym_board_activity", { p_partner_id: board.partner_id, p_limit: 24 }),
+    admin.rpc("_gym_board_community", { p_partner_id: board.partner_id }),
   ]);
   if (error || !payload) {
     console.error("gym-board payload failed:", error?.message ?? "null payload");
@@ -140,7 +141,11 @@ Deno.serve(async (req: Request) => {
   }
   // The feed is decoration; a failed feed never blanks the board.
   if (actErr) console.error("gym-board activity failed:", actErr.message);
+  if (comErr) console.error("gym-board community failed:", comErr.message);
   const activity = (activityRows ?? []) as ActivityRow[];
+  // deno-lint-ignore no-explicit-any
+  const community = (communityRaw ?? null) as any;
+  const longestId: string | undefined = community?.streaks?.longest?.user_id;
 
   const standings = (payload.standings ?? []) as ScoreRow[];
   const podium = (payload.last_week?.podium ?? []) as ScoreRow[];
@@ -155,6 +160,7 @@ Deno.serve(async (req: Request) => {
     ...podium.map((r) => r.user_id),
     ...spotIds,
     ...activity.map((a) => a.user_id),
+    ...(longestId ? [longestId] : []),
   ]);
 
   const who = async (userId: string) => ({
@@ -203,6 +209,21 @@ Deno.serve(async (req: Request) => {
     verified: a.verification !== "manual",
   })));
 
+  // Community block: aggregates straight through, the one member id
+  // (longest streak) resolved and hashed like every other row.
+  const communityOut = community
+    ? {
+        ...community,
+        streaks: {
+          on_7plus: community.streaks?.on_7plus ?? 0,
+          on_30plus: community.streaks?.on_30plus ?? 0,
+          longest: longestId
+            ? { ...(await who(longestId)), streak: community.streaks.longest.streak }
+            : null,
+        },
+      }
+    : null;
+
   return json(200, {
     gym: {
       name: partner.name,
@@ -219,6 +240,7 @@ Deno.serve(async (req: Request) => {
     stats: payload.stats ?? { members: 0, points: 0, sessions: 0, minutes: 0 },
     spotlight,
     activity: feed,
+    community_stats: communityOut,
     community: payload.community ?? 0,
     standings: await Promise.all(standings.map(row)),
     last_week: {

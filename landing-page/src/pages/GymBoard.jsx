@@ -9,16 +9,23 @@ import {
     boardName,
     countdownParts,
     fmtMinutes,
+    hourLabel,
     initials,
     memberSince,
+    ordinal,
+    pctChange,
     resetLabel,
     rootFontSize,
     sampleActivity,
+    sampleCommunity,
     sampleStandings,
     scenePlan,
     splitStandings,
     spotlightCards,
+    todayIndex,
     weekLabel,
+    weekdayFull,
+    weekdayShort,
     whenLabel,
 } from '../../../shared/gymBoard.ts';
 
@@ -36,11 +43,13 @@ import {
  * rail rotates through the week's biggest session, the most improved member
  * and who trained here for the first time.
  *
- * The wall moves. The main column plays scenes — the board, then the latest
- * sessions members earned on here (what, how long, when, how many points),
- * then the chasing pack past the top ten — and a marquee of that same feed
- * runs along the bottom the whole time. A gym floor is a broadcast, not a
- * spreadsheet.
+ * The wall moves. The main column plays scenes — the board, then the gym's
+ * community picture (the week day by day, who's in now, what the gym earns
+ * on, its rank across POWR, all-time totals), then the chasing pack past the
+ * top ten — and a marquee of the latest sessions runs along the bottom the
+ * whole time. Aggregates, not a wall of session cards: at a hundred members
+ * twelve random sessions say nothing, while the collective numbers only get
+ * bigger. (The per-session wall survives on ?scene=activity.)
  *
  * Layout is authored at 1920×1080 in rem and the root font-size is scaled
  * to the actual screen (rootFontSize), so a 4K wall or a 720p bar TV gets
@@ -72,6 +81,7 @@ function applyPreview(board, preview) {
             last_week: { ...board.last_week, podium: [] },
             spotlight: { session: null, improved: null, new_members: [] },
             activity: [],
+            community_stats: null,
         };
     }
     const standings = sampleStandings(18);
@@ -92,6 +102,7 @@ function applyPreview(board, preview) {
             new_members: [standings[5], standings[11]],
         },
         activity: sampleActivity(Date.now()),
+        community_stats: sampleCommunity(Date.now(), board.tz),
         community: Math.max(board.community ?? 0, 64),
     };
 }
@@ -105,7 +116,7 @@ export default function GymBoard() {
     // ?scene=activity|chasing|board pins the main column — for the admin's
     // preview links and for checking a scene without waiting for the rotation.
     const sceneParam = params.get('scene');
-    const pinnedScene = ['board', 'activity', 'chasing'].includes(sceneParam) ? sceneParam : null;
+    const pinnedScene = ['board', 'community', 'activity', 'chasing'].includes(sceneParam) ? sceneParam : null;
 
     const [board, setBoard] = useState(null);
     const [invalid, setInvalid] = useState(false);
@@ -569,7 +580,11 @@ function Main({ board, now, stale, pinned }) {
     const { podium, list, rest } = useMemo(() => splitStandings(board.standings, 7), [board.standings]);
     const leader = podium[0]?.points ?? 0;
     const feed = board.activity ?? [];
-    const plan = useMemo(() => scenePlan({ feed: feed.length, rest: rest.length }), [feed.length, rest.length]);
+    const community = board.community_stats ?? null;
+    const plan = useMemo(
+        () => scenePlan({ feed: feed.length, rest: rest.length, community: !!community }),
+        [feed.length, rest.length, community],
+    );
 
     // Scene rotation — board, activity, chasing — each for its own dwell.
     const [step, setStep] = useState(0);
@@ -579,9 +594,10 @@ function Main({ board, now, stale, pinned }) {
         return () => clearTimeout(id);
     }, [step, plan, pinned]);
     const rotating = plan[step % plan.length].scene;
-    const scene = board.standings.length === 0 ? 'empty' : (pinned && plan.some((p) => p.scene === pinned) ? pinned : rotating);
+    const pinnable = pinned && (plan.some((p) => p.scene === pinned) || (pinned === 'activity' && feed.length > 0));
+    const scene = board.standings.length === 0 && pinned !== 'community' ? 'empty' : (pinnable ? pinned : rotating);
 
-    const SCENE_LABEL = { board: 'Leaderboard', activity: 'Latest activity', chasing: 'The chasing pack', empty: 'Leaderboard' };
+    const SCENE_LABEL = { board: 'Leaderboard', community: 'The gym this week', activity: 'Latest activity', chasing: 'The chasing pack', empty: 'Leaderboard' };
 
     return (
         <section className="min-h-0 flex flex-col">
@@ -635,6 +651,7 @@ function Main({ board, now, stale, pinned }) {
                                 </div>
                             </>
                         )}
+                        {scene === 'community' && community && <CommunityScene c={community} now={now} tz={board.tz} gym={board.gym.name} />}
                         {scene === 'activity' && <ActivityScene feed={feed} now={now} tz={board.tz} gym={board.gym.name} />}
                         {scene === 'chasing' && <ChasingScene rows={rest} leader={leader} />}
                     </motion.div>
@@ -756,6 +773,256 @@ function Row({ row, leader }) {
                 />
             </div>
         </motion.div>
+    );
+}
+
+// ─── Community scene ─────────────────────────────────────────────
+// The gym as a whole. Every number here grows with the membership, which is
+// the point: a hundred members make this scene better, not worse.
+
+function CommunityScene({ c, now, tz, gym }) {
+    const week = c.week ?? [];
+    const last = c.last_week ?? [];
+    const today = todayIndex(week, now, tz);
+    const maxPts = Math.max(1, ...week.map((d) => d.points), ...last.map((d) => d.points));
+    const vs = c.vs_last ?? {};
+    const dPts = pctChange(vs.points ?? 0, vs.points_last ?? 0);
+    const dSess = pctChange(vs.sessions ?? 0, vs.sessions_last ?? 0);
+    const dMem = pctChange(vs.members ?? 0, vs.members_last ?? 0);
+    const mix = (c.mix ?? []).filter((m) => m.points > 0);
+    const mixTotal = Math.max(1, mix.reduce((a, m) => a + m.points, 0));
+    const rank = c.rank ?? {};
+    const all = c.all_time ?? {};
+    const nowB = c.now ?? {};
+    const st = c.streaks ?? {};
+    const peak = c.peak ?? {};
+    const mixColour = (i) => [GOLD, '#fb923c', '#60a5fa', '#a78bfa', '#34d399', '#f472b6'][i % 6];
+
+    return (
+        <div className="flex-1 min-h-0 flex flex-col">
+            {/* Title + rank */}
+            <div className="mt-[1.3rem] flex items-end justify-between shrink-0">
+                <div>
+                    <div className="text-[2.2rem] font-light tracking-tighter leading-none">{gym} this week</div>
+                    <div className="text-[0.7rem] uppercase tracking-[0.35em] text-white/30 font-bold mt-[0.5rem]">Everyone, together · verified sessions only</div>
+                </div>
+                {rank.rank != null && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.3, duration: 0.5 }}
+                        className="flex items-center gap-[0.9rem] rounded-full border px-[1.2rem] py-[0.55rem]"
+                        style={{ borderColor: `${GOLD}55`, background: `${GOLD}14` }}
+                    >
+                        <span className="text-[1.9rem] leading-none font-extralight tabular-nums" style={{ color: GOLD }}>{ordinal(rank.rank)}</span>
+                        <span className="text-[0.68rem] uppercase tracking-[0.3em] text-white/70 font-black leading-tight">
+                            of {rank.of} POWR gyms<br />this week
+                        </span>
+                    </motion.div>
+                )}
+            </div>
+
+            <div className="flex-1 min-h-0 grid grid-cols-[3fr_2fr] gap-[1.2rem] mt-[1.2rem]">
+                {/* The week, day by day */}
+                <div className="min-h-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col">
+                    <div className="flex items-baseline justify-between shrink-0">
+                        <Eyebrow colour={GOLD}>Points by day</Eyebrow>
+                        <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/35 font-bold">
+                            <span className="inline-block w-[0.7rem] h-[0.35rem] rounded-sm align-middle mr-[0.4rem]" style={{ background: GOLD }} />this week
+                            <span className="inline-block w-[0.7rem] h-[0.35rem] rounded-sm align-middle ml-[1rem] mr-[0.4rem] border border-white/30" />last week
+                        </span>
+                    </div>
+                    <div className="flex-1 min-h-0 grid grid-cols-7 gap-[0.8rem] items-end mt-[1rem]">
+                        {week.map((d, i) => {
+                            const lw = last[i]?.points ?? 0;
+                            const future = today >= 0 && i > today;
+                            const isToday = i === today;
+                            return (
+                                <div key={d.date} className="h-full flex flex-col justify-end items-center min-w-0">
+                                    <div className={`text-[1rem] tabular-nums font-light mb-[0.4rem] ${isToday ? 'text-white' : 'text-white/55'}`}>
+                                        {future ? '' : d.points.toLocaleString()}
+                                    </div>
+                                    <div className="relative w-full flex-1 min-h-0 flex items-end justify-center gap-[0.25rem]">
+                                        {/* last week, ghost */}
+                                        <motion.div
+                                            className="w-[38%] rounded-t-[0.4rem] border border-white/20 border-b-0"
+                                            initial={{ height: 0 }}
+                                            animate={{ height: `${(lw / maxPts) * 100}%` }}
+                                            transition={{ delay: 0.1 + i * 0.05, duration: 0.7, ease: 'easeOut' }}
+                                        />
+                                        {/* this week */}
+                                        <motion.div
+                                            className={`w-[38%] rounded-t-[0.4rem] ${isToday ? 'gb-sweep' : ''}`}
+                                            style={{
+                                                background: future ? 'rgba(255,255,255,0.05)' : isToday ? GOLD : `${GOLD}99`,
+                                                position: 'relative', overflow: 'hidden',
+                                                minHeight: future ? '0.35rem' : undefined,
+                                            }}
+                                            initial={{ height: 0 }}
+                                            animate={{ height: future ? '0.35rem' : `${Math.max(2, (d.points / maxPts) * 100)}%` }}
+                                            transition={{ delay: 0.2 + i * 0.05, duration: 0.8, ease: 'easeOut' }}
+                                        />
+                                    </div>
+                                    <div className={`mt-[0.6rem] text-[0.7rem] uppercase tracking-[0.3em] font-black ${isToday ? 'text-white' : 'text-white/35'}`}>
+                                        {weekdayShort(d.date)}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div className="shrink-0 mt-[1rem] pt-[0.9rem] border-t border-white/[0.07] grid grid-cols-3 gap-[1rem]">
+                        <Delta label="Points" value={vs.points ?? 0} change={dPts} gold />
+                        <Delta label="Sessions" value={vs.sessions ?? 0} change={dSess} />
+                        <Delta label="Members" value={vs.members ?? 0} change={dMem} />
+                    </div>
+                </div>
+
+                {/* Right rail of the scene */}
+                <div className="min-h-0 flex flex-col gap-[1.2rem]">
+                    {/* Right now */}
+                    <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex items-center gap-[1.2rem]">
+                        <div className="shrink-0 text-center">
+                            <div className="flex items-center justify-center gap-[0.6rem]">
+                                <span className="w-[0.6rem] h-[0.6rem] rounded-full bg-emerald-400" style={{ animation: 'gbPulse 1.6s ease-in-out infinite' }} />
+                                <Num value={nowB.in_gym ?? 0} className="text-[3.4rem] leading-none font-extralight" />
+                            </div>
+                            <div className="text-[0.62rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.3rem]">In the gym now</div>
+                        </div>
+                        <div className="flex-1 min-w-0 border-l border-white/[0.08] pl-[1.2rem]">
+                            <div className="text-[1.05rem] text-white/85 font-light leading-snug">
+                                <span className="tabular-nums">{(nowB.sessions ?? 0).toLocaleString()}</span> {nowB.sessions === 1 ? 'session' : 'sessions'} today ·{' '}
+                                <span className="tabular-nums" style={{ color: GOLD }}>+{(nowB.points ?? 0).toLocaleString()}</span> pts
+                            </div>
+                            <div className="text-[0.85rem] text-white/45 font-light mt-[0.2rem]">
+                                {(nowB.members ?? 0)} {nowB.members === 1 ? 'member' : 'members'} · {fmtMinutes(nowB.minutes ?? 0)} trained
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Streaks */}
+                    <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem]">
+                        <Eyebrow colour={GOLD}>Streaks alive this week</Eyebrow>
+                        <div className="mt-[0.8rem] flex items-center gap-[1.2rem]">
+                            <div className="shrink-0">
+                                <Num value={st.on_7plus ?? 0} className="text-[2.6rem] leading-none font-extralight" />
+                                <div className="text-[0.62rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.25rem]">on 7+ days</div>
+                            </div>
+                            {(st.on_30plus ?? 0) > 0 && (
+                                <div className="shrink-0">
+                                    <Num value={st.on_30plus} className="text-[2.6rem] leading-none font-extralight" />
+                                    <div className="text-[0.62rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.25rem]">on 30+ days</div>
+                                </div>
+                            )}
+                            {st.longest && (
+                                <div className="flex-1 min-w-0 flex items-center gap-[0.7rem] border-l border-white/[0.08] pl-[1.2rem]">
+                                    <Avatar row={st.longest} size={2.6} ring="rgba(255,255,255,0.14)" ringWidth={0.08} />
+                                    <div className="min-w-0">
+                                        <div className="text-[1.05rem] font-light truncate">{boardName(st.longest)}</div>
+                                        <div className="text-[0.8rem] text-white/50 font-light">🔥 {st.longest.streak} days · longest here</div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* What the gym earns on */}
+                    <div className="flex-1 min-h-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col justify-between">
+                        <div>
+                            <Eyebrow colour={GOLD}>What {gym} earns on</Eyebrow>
+                            <div className="mt-[0.8rem] h-[0.7rem] w-full rounded-full overflow-hidden flex bg-white/[0.06]">
+                                {mix.map((m, i) => (
+                                    <motion.div
+                                        key={m.type}
+                                        style={{ background: mixColour(i) }}
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${(m.points / mixTotal) * 100}%` }}
+                                        transition={{ delay: 0.3 + i * 0.08, duration: 0.7, ease: 'easeOut' }}
+                                    />
+                                ))}
+                            </div>
+                            <div className="mt-[0.7rem] flex flex-wrap gap-x-[1.1rem] gap-y-[0.3rem]">
+                                {mix.slice(0, 5).map((m, i) => (
+                                    <span key={m.type} className="flex items-center gap-[0.4rem] text-[0.85rem] text-white/70 font-light">
+                                        <span className="w-[0.5rem] h-[0.5rem] rounded-full" style={{ background: mixColour(i) }} />
+                                        {activityMeta(m.type).label}
+                                        <span className="text-white/40 tabular-nums">{Math.round((m.points / mixTotal) * 100)}%</span>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        {/* when the gym trains — 24 hours, the busiest lit */}
+                        <div className="mt-[0.8rem]">
+                            <HourProfile byHour={peak.by_hour ?? []} peakHour={peak.hour} />
+                            <div className="text-[0.85rem] text-white/45 font-light mt-[0.6rem]">
+                                {peak.hour != null && peak.weekday != null
+                                    ? <>Busiest on <span className="text-white/80">{weekdayFull(peak.weekday)}s</span> around <span className="text-white/80">{hourLabel(peak.hour)}</span> · last 28 days</>
+                                    : 'Last 28 days'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* All time — the numbers that only ever go up */}
+            <div className="shrink-0 mt-[1.2rem] grid grid-cols-4 gap-[1.2rem]">
+                <AllTime label="Sessions here" value={(all.sessions ?? 0).toLocaleString()} />
+                <AllTime label="Hours trained" value={Math.round((all.minutes ?? 0) / 60).toLocaleString()} />
+                <AllTime label="Points earned" value={(all.points ?? 0).toLocaleString()} gold />
+                <AllTime label="Members on POWR" value={(all.members ?? 0).toLocaleString()} />
+            </div>
+        </div>
+    );
+}
+
+// 24 thin bars, 5am to midnight, the peak hour in gold. Sessions by start hour.
+function HourProfile({ byHour, peakHour }) {
+    const counts = Array.from({ length: 24 }, (_, h) => byHour.find((x) => x.hour === h)?.sessions ?? 0);
+    const max = Math.max(1, ...counts);
+    const hours = Array.from({ length: 19 }, (_, i) => i + 5); // 05:00 → 23:00
+    if (max <= 1 && counts.reduce((a, b) => a + b, 0) === 0) return null;
+    return (
+        <div>
+            <div className="flex items-end gap-[0.25rem] h-[3.2rem]">
+                {hours.map((h, i) => (
+                    <motion.div
+                        key={h}
+                        className="flex-1 rounded-t-[0.2rem]"
+                        style={{ background: h === peakHour ? GOLD : 'rgba(255,255,255,0.18)', minHeight: '0.15rem' }}
+                        initial={{ height: 0 }}
+                        animate={{ height: `${Math.max(4, (counts[h] / max) * 100)}%` }}
+                        transition={{ delay: 0.4 + i * 0.03, duration: 0.6, ease: 'easeOut' }}
+                    />
+                ))}
+            </div>
+            <div className="flex justify-between text-[0.58rem] uppercase tracking-[0.25em] text-white/30 font-black mt-[0.35rem]">
+                <span>5am</span><span>midday</span><span>6pm</span><span>11pm</span>
+            </div>
+        </div>
+    );
+}
+
+function Delta({ label, value, change, gold }) {
+    const up = change && change.pct > 0;
+    const down = change && change.pct < 0;
+    return (
+        <div className="min-w-0">
+            <div className="flex items-baseline gap-[0.6rem]">
+                <Num value={value} className="text-[1.7rem] leading-none font-extralight" style={{ color: gold ? GOLD : '#F2F2F2' }} />
+                {change && (
+                    <span className="text-[0.75rem] font-bold tabular-nums" style={{ color: up ? '#4ade80' : down ? '#f87171' : 'rgba(255,255,255,0.4)' }}>{change.label}</span>
+                )}
+            </div>
+            <div className="text-[0.6rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.3rem] truncate">{label}{change ? ' · vs last week' : ''}</div>
+        </div>
+    );
+}
+
+function AllTime({ label, value, gold }) {
+    return (
+        <div className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-[1.1rem] py-[0.8rem] min-w-0">
+            <div className="text-[1.9rem] leading-none font-extralight tabular-nums truncate" style={{ color: gold ? GOLD : '#F2F2F2' }}>{value}</div>
+            <div className="text-[0.6rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.4rem] truncate">{label} · all time</div>
+        </div>
     );
 }
 
