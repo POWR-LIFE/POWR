@@ -34,8 +34,11 @@ export function newDisplayToken(random: (bytes: Uint8Array) => void): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function boardUrl(slug: string, token: string, preview?: string | null): string {
-  const base = `https://powr.life/gym/${slug}?k=${token}`;
+/** The board's URL. `origin` defaults to the canonical host the gym receives;
+ *  pass the admin's own origin for Open/Preview so they work from localhost
+ *  and Vercel branch previews before the route is on powr.life. */
+export function boardUrl(slug: string, token: string, preview?: string | null, origin = 'https://powr.life'): string {
+  const base = `${origin.replace(/\/+$/, '')}/gym/${slug}?k=${token}`;
   return preview ? `${base}&preview=${preview}` : base;
 }
 

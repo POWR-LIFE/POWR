@@ -38,6 +38,7 @@ describe('boardUrl / boardName / initials', () => {
   it('builds the screen URL with and without preview', () => {
     expect(boardUrl('one-ldn', 'tok')).toBe('https://powr.life/gym/one-ldn?k=tok');
     expect(boardUrl('one-ldn', 'tok', 'sample')).toBe('https://powr.life/gym/one-ldn?k=tok&preview=sample');
+    expect(boardUrl('one-ldn', 'tok', null, 'http://localhost:5173/')).toBe('http://localhost:5173/gym/one-ldn?k=tok');
   });
   it('prefers display name, then username, then a neutral label', () => {
     expect(boardName({ display_name: 'Suzi', username: 'suz' })).toBe('Suzi');

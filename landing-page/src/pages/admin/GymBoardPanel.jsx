@@ -139,7 +139,11 @@ export default function GymBoardPanel({ partner, adminId }) {
     }
 
     // ── Provisioned ──────────────────────────────────────────────────────
+    // The copyable link is canonical (powr.life); Open/Preview use this
+    // admin's own host so they work from localhost and branch previews.
     const url = boardUrl(board.slug, board.display_token);
+    const here = typeof window !== 'undefined' ? window.location.origin : 'https://powr.life';
+    const open = (preview) => boardUrl(board.slug, board.display_token, preview, here);
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
             <div className="lg:col-span-2 space-y-16">
@@ -167,7 +171,7 @@ export default function GymBoardPanel({ partner, adminId }) {
                             <div className="flex items-center gap-3 flex-wrap">
                                 <code className="text-[12px] font-mono text-[#555555] bg-[#F4F4F1] border border-[#EAEAE5] rounded-lg px-3 py-2 select-all break-all">{url}</code>
                                 <Btn icon={Copy} label="Copy" onClick={() => copy(url)} />
-                                <Btn icon={ExternalLink} label="Open" href={url} />
+                                <Btn icon={ExternalLink} label="Open" href={open(null)} />
                                 <Btn icon={RefreshCw} label="Regenerate token" tone="danger" onClick={regenerate} />
                             </div>
                             <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
@@ -187,7 +191,7 @@ export default function GymBoardPanel({ partner, adminId }) {
                                 {[['sample', 'With sample members'], ['empty', 'Empty board']].map(([state, label]) => (
                                     <a
                                         key={state}
-                                        href={boardUrl(board.slug, board.display_token, state)}
+                                        href={open(state)}
                                         target="_blank" rel="noopener noreferrer"
                                         className="inline-flex items-center h-7 px-3 rounded-lg border text-[10px] font-bold uppercase tracking-[0.15em] transition-all bg-[#F4F4F1] border-[#E6E6E1] text-[#666666] hover:text-[#1A1A1A] hover:border-[#D8D8D2]"
                                     >
