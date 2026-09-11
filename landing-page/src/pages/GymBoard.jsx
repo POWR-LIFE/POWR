@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, animate, motion, useMotionValue } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
@@ -8,6 +8,7 @@ import {
     barFraction,
     boardName,
     countdownParts,
+    densityFor,
     fmtKm,
     fmtMinutes,
     fmtSteps,
@@ -33,7 +34,12 @@ import {
     weekdayShort,
     whenLabel,
     BEYOND_ORDER,
+    VIEWINGS,
 } from '../../../shared/gymBoard.ts';
+
+// The board's viewing-distance profile, available to every component.
+const DensityCtx = createContext(densityFor('near'));
+const useDensity = () => useContext(DensityCtx);
 
 /**
  * The gym's wall — powr.life/gym/<slug>?k=<display_token>.
@@ -59,7 +65,11 @@ import {
  *
  * Layout is authored at 1920×1080 in rem and the root font-size is scaled
  * to the actual screen (rootFontSize), so a 4K wall or a 720p bar TV gets
- * the same composition, just bigger or smaller.
+ * the same composition, just bigger or smaller. On top of that sits the
+ * board's VIEWING DISTANCE (gym_boards.viewing → densityFor): a 50" across a
+ * room gets type a third bigger and fewer things per scene; across a gym
+ * floor, one idea per scene. ?viewing=near|standard|far overrides it for a
+ * look.
  *
  * ?preview=sample | empty — re-renders the last good payload with sample or
  * no standings so the admin can see both screens before a gym has members
@@ -125,21 +135,25 @@ export default function GymBoard() {
     // preview links and for checking a scene without waiting for the rotation.
     const sceneParam = params.get('scene');
     const pinnedScene = ['board', 'community', 'beyond', 'activity', 'chasing'].includes(sceneParam) ? sceneParam : null;
+    const viewingParam = params.get('viewing');
+    const viewingOverride = VIEWINGS.includes(viewingParam) ? viewingParam : null;
 
     const [board, setBoard] = useState(null);
     const [invalid, setInvalid] = useState(false);
     const [lastOkAt, setLastOkAt] = useState(0);
     const [now, setNow] = useState(Date.now());
 
-    // Scale the whole composition to the screen.
+    const density = densityFor(viewingOverride ?? board?.viewing);
+
+    // Scale the whole composition to the screen, then by viewing distance.
     useEffect(() => {
         const html = document.documentElement;
         const prev = html.style.fontSize;
-        const fit = () => { html.style.fontSize = `${rootFontSize(window.innerWidth, window.innerHeight)}px`; };
+        const fit = () => { html.style.fontSize = `${rootFontSize(window.innerWidth, window.innerHeight, 16 * density.scale)}px`; };
         fit();
         window.addEventListener('resize', fit);
         return () => { window.removeEventListener('resize', fit); html.style.fontSize = prev; };
-    }, []);
+    }, [density.scale]);
 
     // Poll; keep the last good payload through venue wifi blips.
     useEffect(() => {
@@ -183,13 +197,17 @@ export default function GymBoard() {
     const shown = preview ? applyPreview(board, preview) : board;
 
     return (
-        <Shell>
+        <DensityCtx.Provider value={density}>
+        <Shell density={density}>
             <div className="relative h-full flex flex-col">
-                <div className="flex-1 min-h-0 grid grid-cols-[29rem_1fr] gap-[4rem] px-[4rem] pt-[2.5rem] pb-[1.5rem]">
+                <div
+                    className="flex-1 min-h-0 grid px-[4rem] pt-[2.5rem] pb-[1.5rem]"
+                    style={{ gridTemplateColumns: `${density.railRem}rem minmax(0, 1fr)`, columnGap: density.viewing === 'far' ? '3rem' : '4rem' }}
+                >
                     <Rail board={shown} now={now} />
                     <Main board={shown} now={now} stale={stale && !preview} pinned={pinnedScene} />
                 </div>
-                <Marquee feed={shown.activity ?? []} now={now} tz={shown.tz} />
+                {density.marquee && <Marquee feed={shown.activity ?? []} now={now} tz={shown.tz} />}
             </div>
             {preview && (
                 <div className="pointer-events-none absolute top-[1.25rem] left-1/2 -translate-x-1/2 rounded-full border border-amber-400/50 bg-amber-400/10 px-[1rem] py-[0.3rem] text-[0.7rem] font-black uppercase tracking-[0.3em] text-amber-300">
@@ -197,17 +215,32 @@ export default function GymBoard() {
                 </div>
             )}
         </Shell>
+        </DensityCtx.Provider>
     );
 }
 
 // ─── Chrome ──────────────────────────────────────────────────────
 
-function Shell({ children }) {
+// Muted text on the wall is written as text-white/30…/55. From across a
+// room those alphas vanish, so the density profile sets a floor and this
+// lifts every dimmer class to it. Scoped to the wall; nothing else on the
+// site is touched.
+function contrastFloorCss(minAlpha) {
+    const steps = [30, 35, 40, 45, 50, 55, 60];
+    return steps
+        .filter((a) => a / 100 < minAlpha)
+        .map((a) => `.gb-wall .text-white\\/${a} { color: rgba(255,255,255,${minAlpha}) !important; }`)
+        .join('\n');
+}
+
+function Shell({ children, density }) {
+    const floor = density ? contrastFloorCss(density.minAlpha) : '';
     return (
         <div
-            className="fixed inset-0 bg-[#070707] text-[#F2F2F2] overflow-hidden select-none"
+            className="gb-wall fixed inset-0 bg-[#070707] text-[#F2F2F2] overflow-hidden select-none"
             style={{ fontFamily: "'Outfit', 'Helvetica Neue', sans-serif" }}
         >
+            <style>{floor}</style>
             <style>{`
                 @keyframes gbSweep { 0% { transform: translateX(-120%); } 35% { transform: translateX(220%); } 100% { transform: translateX(220%); } }
                 @keyframes gbDrift { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(4vw, -3vh) scale(1.08); } }
@@ -249,9 +282,13 @@ function CenterNote({ big, small, pulse }) {
     );
 }
 
-const Eyebrow = ({ children, colour = 'rgba(255,255,255,0.35)', className = '' }) => (
-    <div className={`text-[0.7rem] font-black uppercase tracking-[0.45em] ${className}`} style={{ color: colour }}>{children}</div>
-);
+const Eyebrow = ({ children, colour, className = '' }) => {
+    const d = useDensity();
+    const size = d.viewing === 'near' ? 'text-[0.7rem]' : 'text-[0.8rem]';
+    return (
+        <div className={`${size} font-black uppercase tracking-[0.45em] ${className}`} style={{ color: colour ?? `rgba(255,255,255,${Math.max(0.35, d.minAlpha)})` }}>{children}</div>
+    );
+};
 
 // Tweens between values so a score landing on the wall counts up, not snaps.
 function Num({ value, className, style }) {
@@ -337,6 +374,8 @@ function Tag({ children, colour = GOLD }) {
 }
 
 function Marks({ row, size = 'sm' }) {
+    const d = useDensity();
+    if (!d.marks) return null;
     return (
         <span className="inline-flex items-center gap-[0.5rem] min-w-0">
             <LevelPill level={row.level} size={size} />
@@ -348,7 +387,8 @@ function Marks({ row, size = 'sm' }) {
 }
 
 function Today({ points, size = 'sm' }) {
-    if (!points || points <= 0) return null;
+    const d = useDensity();
+    if (!d.marks || !points || points <= 0) return null;
     const cls = size === 'lg' ? 'text-[0.85rem] px-[0.6rem] py-[0.2rem]' : 'text-[0.68rem] px-[0.5rem] py-[0.15rem]';
     return (
         <span className={`inline-flex items-center rounded-full font-black uppercase tracking-[0.2em] tabular-nums shrink-0 ${cls}`} style={{ color: '#4ade80', background: 'rgba(74,222,128,0.12)' }}>
@@ -360,6 +400,7 @@ function Today({ points, size = 'sm' }) {
 // ─── Left rail ───────────────────────────────────────────────────
 
 function Rail({ board, now }) {
+    const d = useDensity();
     const champ = board.last_week?.podium?.[0] ?? null;
     const runners = (board.last_week?.podium ?? []).slice(1, 3);
     const parts = countdownParts(board.week_end_at, now);
@@ -393,9 +434,9 @@ function Rail({ board, now }) {
                     </span>
                 </div>
                 {/* Reset clock, folded into the identity block */}
-                <div className="mt-[0.7rem] flex items-baseline justify-between">
-                    <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/30 font-bold">Only points earned here · resets Monday</span>
-                    <span className="text-[1.15rem] font-light tabular-nums text-white/80">{resetLabel(parts)}</span>
+                <div className="mt-[0.7rem] flex items-baseline justify-between gap-[1rem]">
+                    <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/30 font-bold truncate">{d.shortLabels ? 'Resets Monday' : 'Only points earned here · resets Monday'}</span>
+                    <span className="text-[1.15rem] font-light tabular-nums text-white/80 whitespace-nowrap">{resetLabel(parts)}</span>
                 </div>
                 <div className="mt-[0.5rem] h-[2px] w-full bg-white/10 rounded-full overflow-hidden">
                     <motion.div className="h-full rounded-full" style={{ background: GOLD }} animate={{ width: `${elapsed * 100}%` }} transition={{ duration: 1 }} />
@@ -403,14 +444,16 @@ function Rail({ board, now }) {
             </div>
 
             {/* The week in numbers */}
-            <div className="grid grid-cols-3 gap-[1rem]">
-                <Stat label="Members" value={board.stats.members} />
-                <Stat label="Points" value={board.stats.points} gold />
-                <Stat label="Time trained" text={fmtMinutes(board.stats.minutes ?? 0, { compact: true })} />
-            </div>
+            {d.rail.stats && (
+                <div className="grid grid-cols-3 gap-[1rem]">
+                    <Stat label="Members" value={board.stats.members} />
+                    <Stat label="Points" value={board.stats.points} gold />
+                    <Stat label={d.shortLabels ? 'Trained' : 'Time trained'} text={fmtMinutes(board.stats.minutes ?? 0, { compact: true })} />
+                </div>
+            )}
 
             {/* Spotlight — rotates through the week's stories */}
-            <Spotlight spot={board.spotlight} tz={board.tz} />
+            {d.rail.spotlight && <Spotlight spot={board.spotlight} tz={board.tz} />}
 
             {/* Last week */}
             <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-[1.4rem]">
@@ -425,7 +468,7 @@ function Rail({ board, now }) {
                             </div>
                             <div className="text-[1rem] tabular-nums font-light" style={{ color: GOLD }}>
                                 {champ.points.toLocaleString()} <span className="text-[0.6em] uppercase tracking-[0.25em] text-white/35 font-bold">pts</span>
-                                {since && <span className="text-[0.6em] uppercase tracking-[0.25em] text-white/35 font-bold ml-[0.8rem]">Member since {since}</span>}
+                                {since && d.viewing !== 'far' && <span className="text-[0.6em] uppercase tracking-[0.25em] text-white/35 font-bold ml-[0.8rem] whitespace-nowrap">Member since {since}</span>}
                             </div>
                         </div>
                         <span className="text-[2.4rem] leading-none">🏆</span>
@@ -435,7 +478,7 @@ function Rail({ board, now }) {
                         No champion yet. Win this week and your name lives here.
                     </div>
                 )}
-                {runners.length > 0 && (
+                {d.rail.runners && runners.length > 0 && (
                     <div className="mt-[1rem] pt-[0.9rem] border-t border-white/[0.07] flex items-center gap-[1.25rem] text-[0.9rem] text-white/50 font-light">
                         {runners.map((r) => (
                             <span key={r.key} className="flex items-center gap-[0.5rem] min-w-0">
@@ -587,7 +630,8 @@ function Spotlight({ spot, tz }) {
 // ─── Main ────────────────────────────────────────────────────────
 
 function Main({ board, now, stale, pinned }) {
-    const { podium, list, rest } = useMemo(() => splitStandings(board.standings, 7), [board.standings]);
+    const d = useDensity();
+    const { podium, list, rest } = useMemo(() => splitStandings(board.standings, d.rows), [board.standings, d.rows]);
     const leader = podium[0]?.points ?? 0;
     const feed = board.activity ?? [];
     const community = board.community_stats ?? null;
@@ -618,9 +662,9 @@ function Main({ board, now, stale, pinned }) {
     const SCENE_LABEL = { board: 'Leaderboard', community: 'The gym this week', beyond: 'Beyond the gym', activity: 'Latest activity', chasing: 'The chasing pack', empty: 'Leaderboard' };
 
     return (
-        <section className="min-h-0 flex flex-col">
+        <section className="min-h-0 min-w-0 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-[1.4rem]">
+                <div className="flex items-center gap-[1.4rem] min-w-0">
                     <div className="text-[0.9rem] font-black tracking-[0.5em] uppercase">POWR</div>
                     <AnimatePresence mode="wait">
                         <motion.span
@@ -758,12 +802,13 @@ function GhostSeat({ size }) {
 }
 
 function Row({ row, leader }) {
+    const d = useDensity();
     const frac = barFraction(row.points, leader);
     return (
         <motion.div
             layout
             transition={{ type: 'spring', stiffness: 120, damping: 18 }}
-            className="relative grid grid-cols-[3rem_3.2rem_3.2rem_1fr_auto_auto_9rem] items-center gap-[1rem] px-[1rem] py-[0.5rem] rounded-[0.9rem]"
+            className={`relative grid items-center gap-[1rem] px-[1rem] py-[0.5rem] rounded-[0.9rem] ${d.rowMeta ? 'grid-cols-[3rem_3.2rem_3.2rem_1fr_auto_auto_9rem]' : 'grid-cols-[3rem_3.2rem_3.2rem_1fr_9rem]'}`}
         >
             <span className="text-right text-[1.7rem] font-extralight tabular-nums text-white/40">{row.rank}</span>
             <span className="flex justify-center"><Move delta={row.rank_delta} /></span>
@@ -773,10 +818,12 @@ function Row({ row, leader }) {
                 <Marks row={row} />
             </span>
             {/* always a cell, even when empty — a null child would shift every column after it */}
-            <span className="flex justify-end"><Today points={row.today_points} /></span>
-            <span className="text-[0.7rem] uppercase tracking-[0.25em] text-white/30 font-bold whitespace-nowrap">
-                {row.sessions} {row.sessions === 1 ? 'session' : 'sessions'}{row.minutes > 0 ? ` · ${fmtMinutes(row.minutes)}` : ''}
-            </span>
+            {d.rowMeta && <span className="flex justify-end"><Today points={row.today_points} /></span>}
+            {d.rowMeta && (
+                <span className="text-[0.7rem] uppercase tracking-[0.25em] text-white/30 font-bold whitespace-nowrap">
+                    {row.sessions} {row.sessions === 1 ? 'session' : 'sessions'}{row.minutes > 0 ? ` · ${fmtMinutes(row.minutes)}` : ''}
+                </span>
+            )}
             <span className="text-right">
                 <Num value={row.points} className="text-[1.6rem] font-light text-white/85" />
                 <span className="text-[0.65rem] uppercase tracking-[0.25em] text-white/30 font-bold ml-[0.45rem]">pts</span>
@@ -800,6 +847,7 @@ function Row({ row, leader }) {
 // the point: a hundred members make this scene better, not worse.
 
 function CommunityScene({ c, now, tz, gym }) {
+    const d = useDensity();
     const week = c.week ?? [];
     const last = c.last_week ?? [];
     const today = todayIndex(week, now, tz);
@@ -841,15 +889,17 @@ function CommunityScene({ c, now, tz, gym }) {
                 )}
             </div>
 
-            <div className="flex-1 min-h-0 grid grid-cols-[3fr_2fr] gap-[1.2rem] mt-[1.2rem]">
+            <div className={`flex-1 min-h-0 grid gap-[1.2rem] mt-[1.2rem] ${d.community.streaks || d.community.mix ? 'grid-cols-[3fr_2fr]' : 'grid-cols-[2fr_1fr]'}`}>
                 {/* The week, day by day */}
-                <div className="min-h-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col">
+                <div className="min-h-0 min-w-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col">
                     <div className="flex items-baseline justify-between shrink-0">
                         <Eyebrow colour={GOLD}>Points by day</Eyebrow>
-                        <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/35 font-bold">
-                            <span className="inline-block w-[0.7rem] h-[0.35rem] rounded-sm align-middle mr-[0.4rem]" style={{ background: GOLD }} />this week
-                            <span className="inline-block w-[0.7rem] h-[0.35rem] rounded-sm align-middle ml-[1rem] mr-[0.4rem] border border-white/30" />last week
-                        </span>
+                        {d.viewing !== 'far' && (
+                            <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/35 font-bold whitespace-nowrap">
+                                <span className="inline-block w-[0.7rem] h-[0.35rem] rounded-sm align-middle mr-[0.4rem]" style={{ background: GOLD }} />this week
+                                <span className="inline-block w-[0.7rem] h-[0.35rem] rounded-sm align-middle ml-[1rem] mr-[0.4rem] border border-white/30" />last week
+                            </span>
+                        )}
                     </div>
                     <div className="flex-1 min-h-0 grid grid-cols-7 gap-[0.8rem] items-end mt-[1rem]">
                         {week.map((d, i) => {
@@ -889,25 +939,28 @@ function CommunityScene({ c, now, tz, gym }) {
                             );
                         })}
                     </div>
-                    <div className="shrink-0 mt-[1rem] pt-[0.9rem] border-t border-white/[0.07] grid grid-cols-3 gap-[1rem]">
-                        <Delta label="Points" value={vs.points ?? 0} change={dPts} gold />
-                        <Delta label="Sessions" value={vs.sessions ?? 0} change={dSess} />
-                        <Delta label="Members" value={vs.members ?? 0} change={dMem} />
-                    </div>
+                    {d.community.deltas && (
+                        <div className="shrink-0 mt-[1rem] pt-[0.9rem] border-t border-white/[0.07] grid grid-cols-3 gap-[1rem]">
+                            <Delta label="Points" value={vs.points ?? 0} change={dPts} gold />
+                            <Delta label="Sessions" value={vs.sessions ?? 0} change={dSess} />
+                            <Delta label="Members" value={vs.members ?? 0} change={dMem} />
+                        </div>
+                    )}
                 </div>
 
                 {/* Right rail of the scene */}
-                <div className="min-h-0 flex flex-col gap-[1.2rem]">
-                    {/* Right now */}
-                    <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex items-center gap-[1.2rem]">
+                <div className="min-h-0 min-w-0 flex flex-col gap-[1.2rem]">
+                    {/* Right now — stands alone and stacks vertically at Far */}
+                    {(() => { const alone = !d.community.streaks && !d.community.mix; return (
+                    <div className={`rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex gap-[1.2rem] min-w-0 ${alone ? 'flex-1 flex-col items-center justify-center text-center' : 'items-center'}`}>
                         <div className="shrink-0 text-center">
                             <div className="flex items-center justify-center gap-[0.6rem]">
                                 <span className="w-[0.6rem] h-[0.6rem] rounded-full bg-emerald-400" style={{ animation: 'gbPulse 1.6s ease-in-out infinite' }} />
-                                <Num value={nowB.in_gym ?? 0} className="text-[3.4rem] leading-none font-extralight" />
+                                <Num value={nowB.in_gym ?? 0} className={`${alone ? 'text-[5rem]' : 'text-[3.4rem]'} leading-none font-extralight`} />
                             </div>
                             <div className="text-[0.62rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.3rem]">In the gym now</div>
                         </div>
-                        <div className="flex-1 min-w-0 border-l border-white/[0.08] pl-[1.2rem]">
+                        <div className={`min-w-0 ${alone ? 'border-t border-white/[0.08] pt-[1rem] mt-[0.4rem]' : 'flex-1 border-l border-white/[0.08] pl-[1.2rem]'}`}>
                             <div className="text-[1.05rem] text-white/85 font-light leading-snug">
                                 <span className="tabular-nums">{(nowB.sessions ?? 0).toLocaleString()}</span> {nowB.sessions === 1 ? 'session' : 'sessions'} today ·{' '}
                                 <span className="tabular-nums" style={{ color: GOLD }}>+{(nowB.points ?? 0).toLocaleString()}</span> pts
@@ -917,34 +970,39 @@ function CommunityScene({ c, now, tz, gym }) {
                             </div>
                         </div>
                     </div>
+                    ); })()}
 
                     {/* Streaks */}
+                    {d.community.streaks && (
                     <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem]">
                         <Eyebrow colour={GOLD}>Streaks alive this week</Eyebrow>
-                        <div className="mt-[0.8rem] flex items-center gap-[1.2rem]">
+                        <div className="mt-[0.8rem] flex items-center gap-[1.6rem]">
                             <div className="shrink-0">
                                 <Num value={st.on_7plus ?? 0} className="text-[2.6rem] leading-none font-extralight" />
-                                <div className="text-[0.62rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.25rem]">on 7+ days</div>
+                                <div className="text-[0.62rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.25rem] whitespace-nowrap">on 7+ days</div>
                             </div>
                             {(st.on_30plus ?? 0) > 0 && (
                                 <div className="shrink-0">
                                     <Num value={st.on_30plus} className="text-[2.6rem] leading-none font-extralight" />
-                                    <div className="text-[0.62rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.25rem]">on 30+ days</div>
-                                </div>
-                            )}
-                            {st.longest && (
-                                <div className="flex-1 min-w-0 flex items-center gap-[0.7rem] border-l border-white/[0.08] pl-[1.2rem]">
-                                    <Avatar row={st.longest} size={2.6} ring="rgba(255,255,255,0.14)" ringWidth={0.08} />
-                                    <div className="min-w-0">
-                                        <div className="text-[1.05rem] font-light truncate">{boardName(st.longest)}</div>
-                                        <div className="text-[0.8rem] text-white/50 font-light">🔥 {st.longest.streak} days · longest here</div>
-                                    </div>
+                                    <div className="text-[0.62rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.25rem] whitespace-nowrap">on 30+ days</div>
                                 </div>
                             )}
                         </div>
+                        {st.longest && (
+                            <div className="mt-[0.9rem] pt-[0.8rem] border-t border-white/[0.08] flex items-center gap-[0.7rem] min-w-0">
+                                <Avatar row={st.longest} size={2.4} ring="rgba(255,255,255,0.14)" ringWidth={0.08} />
+                                <div className="min-w-0 flex-1 flex items-baseline gap-[0.6rem]">
+                                    <span className="text-[1.05rem] font-light truncate">{boardName(st.longest)}</span>
+                                    <span className="text-[0.8rem] text-white/50 font-light whitespace-nowrap">🔥 {st.longest.streak} days · longest here</span>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
+                    )}
+
                     {/* What the gym earns on */}
+                    {d.community.mix && (
                     <div className="flex-1 min-h-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col justify-between">
                         <div>
                             <Eyebrow colour={GOLD}>What {gym} earns on</Eyebrow>
@@ -971,7 +1029,7 @@ function CommunityScene({ c, now, tz, gym }) {
                         </div>
                         {/* when the gym trains — 24 hours, the busiest lit */}
                         <div className="mt-[0.8rem]">
-                            <HourProfile byHour={peak.by_hour ?? []} peakHour={peak.hour} />
+                            {d.community.hours && <HourProfile byHour={peak.by_hour ?? []} peakHour={peak.hour} />}
                             <div className="text-[0.85rem] text-white/45 font-light mt-[0.6rem]">
                                 {peak.hour != null && peak.weekday != null
                                     ? <>Busiest on <span className="text-white/80">{weekdayFull(peak.weekday)}s</span> around <span className="text-white/80">{hourLabel(peak.hour)}</span> · last 28 days</>
@@ -979,16 +1037,19 @@ function CommunityScene({ c, now, tz, gym }) {
                             </div>
                         </div>
                     </div>
+                    )}
                 </div>
             </div>
 
             {/* All time — the numbers that only ever go up */}
-            <div className="shrink-0 mt-[1.2rem] grid grid-cols-4 gap-[1.2rem]">
-                <AllTime label="Sessions here" value={(all.sessions ?? 0).toLocaleString()} />
-                <AllTime label="Hours trained" value={Math.round((all.minutes ?? 0) / 60).toLocaleString()} />
-                <AllTime label="Points earned" value={(all.points ?? 0).toLocaleString()} gold />
-                <AllTime label="Members on POWR" value={(all.members ?? 0).toLocaleString()} />
-            </div>
+            {d.community.allTime && (
+                <div className="shrink-0 mt-[1.2rem] grid grid-cols-4 gap-[1.2rem]">
+                    <AllTime label="Sessions here" value={(all.sessions ?? 0).toLocaleString()} />
+                    <AllTime label="Hours trained" value={Math.round((all.minutes ?? 0) / 60).toLocaleString()} />
+                    <AllTime label="Points earned" value={(all.points ?? 0).toLocaleString()} gold />
+                    <AllTime label="Members on POWR" value={(all.members ?? 0).toLocaleString()} />
+                </div>
+            )}
         </div>
     );
 }
@@ -1021,6 +1082,7 @@ function HourProfile({ byHour, peakHour }) {
 }
 
 function Delta({ label, value, change, gold }) {
+    const d = useDensity();
     const up = change && change.pct > 0;
     const down = change && change.pct < 0;
     return (
@@ -1031,7 +1093,7 @@ function Delta({ label, value, change, gold }) {
                     <span className="text-[0.75rem] font-bold tabular-nums" style={{ color: up ? '#4ade80' : down ? '#f87171' : 'rgba(255,255,255,0.4)' }}>{change.label}</span>
                 )}
             </div>
-            <div className="text-[0.6rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.3rem] truncate">{label}{change ? ' · vs last week' : ''}</div>
+            <div className="text-[0.6rem] uppercase tracking-[0.3em] text-white/35 font-black mt-[0.3rem] truncate">{label}{change && !d.shortLabels ? ' · vs last week' : ''}</div>
         </div>
     );
 }
@@ -1052,10 +1114,11 @@ function AllTime({ label, value, gold }) {
 const TYPE_COLOUR = { walking: '#34d399', running: '#60a5fa', cycling: '#a78bfa', gym: GOLD, hiit: '#fb923c', swimming: '#22d3ee', yoga: '#f472b6', sports: '#f59e0b', dance: '#e879f9' };
 
 function BeyondScene({ b, now, tz, gym }) {
+    const d = useDensity();
     const wk = b.totals?.week ?? {};
     const lw = b.totals?.last_week ?? {};
     const month = b.totals?.month ?? {};
-    const tiles = BEYOND_ORDER.map((t) => (b.week ?? []).find((w) => w.type === t)).filter((w) => w && w.sessions > 0).slice(0, 6);
+    const tiles = BEYOND_ORDER.map((t) => (b.week ?? []).find((w) => w.type === t)).filter((w) => w && w.sessions > 0).slice(0, d.tiles);
     const days = b.days ?? [];
     const today = todayIndex(days, now, tz);
     const maxDay = Math.max(1, ...days.map((d) => d.sessions));
@@ -1066,11 +1129,12 @@ function BeyondScene({ b, now, tz, gym }) {
     // Only print a time when it is physically possible for the distance;
     // a broken duration should cost the caption, not the effort.
     const timeIf = (l, minPerKm) => (l?.minutes > 0 && l.minutes >= (l.km ?? 0) * minPerKm ? fmtMinutes(l.minutes) : null);
+    const short = d.shortLabels;
     const callouts = [
-        longest.running && { key: 'run', row: longest.running, label: 'Longest run', value: fmtKm(longest.running.km), meta: timeIf(longest.running, 2.5) },
-        longest.cycling && { key: 'ride', row: longest.cycling, label: 'Longest ride', value: fmtKm(longest.cycling.km), meta: timeIf(longest.cycling, 1) },
-        longest.walking && { key: 'walk', row: longest.walking, label: 'Biggest day on foot', value: `${fmtSteps(longest.walking.steps)} steps`, meta: null },
-        longest.swimming && { key: 'swim', row: longest.swimming, label: 'Longest swim', value: fmtKm(longest.swimming.km), meta: timeIf(longest.swimming, 10) },
+        longest.running && { key: 'run', row: longest.running, label: 'Longest run', value: fmtKm(longest.running.km), meta: short ? null : timeIf(longest.running, 2.5) },
+        longest.cycling && { key: 'ride', row: longest.cycling, label: 'Longest ride', value: fmtKm(longest.cycling.km), meta: short ? null : timeIf(longest.cycling, 1) },
+        longest.walking && { key: 'walk', row: longest.walking, label: short ? 'Most steps' : 'Biggest day on foot', value: `${fmtSteps(longest.walking.steps)} steps`, meta: null },
+        longest.swimming && { key: 'swim', row: longest.swimming, label: 'Longest swim', value: fmtKm(longest.swimming.km), meta: short ? null : timeIf(longest.swimming, 10) },
     ].filter(Boolean).slice(0, 3);
 
     return (
@@ -1082,9 +1146,9 @@ function BeyondScene({ b, now, tz, gym }) {
                         What {gym}&apos;s {b.members} members did this week, everywhere
                     </div>
                 </div>
-                <div className="text-right shrink-0 max-w-[30rem]">
+                <div className="text-right shrink min-w-0 max-w-[30rem]">
                     <div className="flex items-baseline justify-end gap-[0.5rem]">
-                        <Num value={Math.round(wk.km ?? 0)} className="text-[3.6rem] leading-none font-extralight tracking-tight" style={{ color: GOLD }} />
+                        <Num value={Math.round(wk.km ?? 0)} className={`${d.viewing === 'far' ? 'text-[3rem]' : 'text-[3.6rem]'} leading-none font-extralight tracking-tight`} style={{ color: GOLD }} />
                         <span className="text-[1rem] uppercase tracking-[0.3em] text-white/40 font-black">km</span>
                         {dKm && <span className="text-[0.85rem] font-bold tabular-nums ml-[0.3rem]" style={{ color: dKm.pct >= 0 ? '#4ade80' : '#f87171' }}>{dKm.label}</span>}
                     </div>
@@ -1095,7 +1159,7 @@ function BeyondScene({ b, now, tz, gym }) {
             </div>
 
             {/* Activity tiles */}
-            <div className={`shrink-0 grid gap-[0.9rem] mt-[1.2rem] ${tiles.length >= 5 ? 'grid-cols-6' : tiles.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
+            <div className={`shrink-0 grid gap-[0.9rem] mt-[1.2rem] ${tiles.length >= 5 ? 'grid-cols-6' : tiles.length === 4 ? 'grid-cols-4' : tiles.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                 {tiles.map((t, i) => {
                     const meta = activityMeta(t.type);
                     const colour = TYPE_COLOUR[t.type] ?? 'rgba(255,255,255,0.5)';
@@ -1135,14 +1199,17 @@ function BeyondScene({ b, now, tz, gym }) {
                 })}
             </div>
 
-            <div className="flex-1 min-h-0 grid grid-cols-[3fr_2fr] gap-[1.2rem] mt-[1.2rem]">
+            <div className={`flex-1 min-h-0 grid gap-[1.2rem] mt-[1.2rem] ${d.beyond.efforts || d.beyond.milestone ? 'grid-cols-[3fr_2fr]' : 'grid-cols-1'}`}>
                 {/* The week, stacked by activity */}
-                <div className="min-h-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col">
+                {d.beyond.chart && (
+                <div className="min-h-0 min-w-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col">
                     <div className="flex items-baseline justify-between shrink-0">
-                        <Eyebrow colour={GOLD}>Sessions by day · everywhere</Eyebrow>
-                        <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/35 font-bold tabular-nums">
-                            {(wk.sessions ?? 0).toLocaleString()} sessions · {fmtMinutes(wk.minutes ?? 0)} · {wk.members ?? 0} members
-                        </span>
+                        <Eyebrow colour={GOLD} className="whitespace-nowrap">{short ? 'Sessions by day' : 'Sessions by day · everywhere'}</Eyebrow>
+                        {!short && (
+                            <span className="text-[0.7rem] uppercase tracking-[0.3em] text-white/35 font-bold tabular-nums">
+                                {(wk.sessions ?? 0).toLocaleString()} sessions · {fmtMinutes(wk.minutes ?? 0)} · {wk.members ?? 0} members
+                            </span>
+                        )}
                     </div>
                     <div className="flex-1 min-h-0 grid grid-cols-7 gap-[0.8rem] items-end mt-[1rem]">
                         {days.map((d, i) => {
@@ -1168,17 +1235,22 @@ function BeyondScene({ b, now, tz, gym }) {
                             );
                         })}
                     </div>
-                    <div className="shrink-0 mt-[0.9rem] flex flex-wrap gap-x-[1rem] gap-y-[0.3rem]">
-                        {tiles.map((t) => (
-                            <span key={t.type} className="flex items-center gap-[0.4rem] text-[0.75rem] text-white/55 font-light">
-                                <span className="w-[0.45rem] h-[0.45rem] rounded-full" style={{ background: TYPE_COLOUR[t.type] ?? 'rgba(255,255,255,0.4)' }} />{activityMeta(t.type).label}
-                            </span>
-                        ))}
-                    </div>
+                    {d.beyond.legend && (
+                        <div className="shrink-0 mt-[0.9rem] flex flex-wrap gap-x-[1rem] gap-y-[0.3rem]">
+                            {tiles.map((t) => (
+                                <span key={t.type} className="flex items-center gap-[0.4rem] text-[0.75rem] text-white/55 font-light">
+                                    <span className="w-[0.45rem] h-[0.45rem] rounded-full" style={{ background: TYPE_COLOUR[t.type] ?? 'rgba(255,255,255,0.4)' }} />{activityMeta(t.type).label}
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
+                )}
 
                 {/* Longest efforts + the milestone */}
-                <div className="min-h-0 flex flex-col gap-[1.2rem]">
+                {(d.beyond.efforts || d.beyond.milestone) && (
+                <div className="min-h-0 min-w-0 flex flex-col gap-[1.2rem]">
+                    {d.beyond.efforts && (
                     <div className="flex-1 min-h-0 rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem] flex flex-col justify-between">
                         <Eyebrow colour={GOLD}>Efforts of the week</Eyebrow>
                         {callouts.length === 0 ? (
@@ -1194,6 +1266,8 @@ function BeyondScene({ b, now, tz, gym }) {
                             </div>
                         ))}
                     </div>
+                    )}
+                    {d.beyond.milestone && (
                     <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-[1.3rem]">
                         <div className="flex items-baseline justify-between">
                             <Eyebrow colour={GOLD}>Last 28 days, together</Eyebrow>
@@ -1208,7 +1282,9 @@ function BeyondScene({ b, now, tz, gym }) {
                             <motion.div className="h-full rounded-full gb-sweep relative overflow-hidden" style={{ background: GOLD }} initial={{ width: 0 }} animate={{ width: `${milestone.frac * 100}%` }} transition={{ delay: 0.4, duration: 1, ease: 'easeOut' }} />
                         </div>
                     </div>
+                    )}
                 </div>
+                )}
             </div>
         </div>
     );
@@ -1285,7 +1361,8 @@ function ActivityScene({ feed, now, tz, gym }) {
 // Ranks past the list, as full rows — rank 19 gets its moment.
 
 function ChasingScene({ rows, leader }) {
-    const shown = rows.slice(0, 10);
+    const d = useDensity();
+    const shown = rows.slice(0, Math.min(10, d.rows + 3));
     return (
         <div className="flex-1 min-h-0 flex flex-col">
             <div className="mt-[1.4rem] flex items-baseline justify-between shrink-0">

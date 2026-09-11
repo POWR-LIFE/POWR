@@ -116,7 +116,7 @@ Deno.serve(async (req: Request) => {
   const { data: board } = await admin
     .from("gym_boards")
     .select(
-      "partner_id, slug, display_token, enabled, board_size, tz, partners!inner(name, logo_url, logo_bg, image1_url, address, active)",
+      "partner_id, slug, display_token, enabled, board_size, tz, viewing, partners!inner(name, logo_url, logo_bg, image1_url, address, active)",
     )
     .eq("slug", slug)
     .single();
@@ -262,6 +262,7 @@ Deno.serve(async (req: Request) => {
       address: partner.address,
     },
     slug: board.slug,
+    viewing: board.viewing ?? "standard",
     tz: payload.tz,
     week_start_at: payload.week_start_at,
     week_end_at: payload.week_end_at,

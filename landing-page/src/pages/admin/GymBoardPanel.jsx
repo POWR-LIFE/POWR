@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Copy, ExternalLink, Link2, MonitorPlay, Pause, Play, RefreshCw, Tv } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { boardUrl, gymSlug, newDisplayToken } from '../../../../shared/gymBoard.ts';
+import { boardUrl, gymSlug, newDisplayToken, VIEWINGS, VIEWING_LABEL } from '../../../../shared/gymBoard.ts';
 
 /**
  * "Big screen" tab on the admin partner profile — provisions and manages the
@@ -200,6 +200,31 @@ export default function GymBoardPanel({ partner, adminId }) {
                                 ))}
                                 <span className="text-[10px] text-[#AAAAAA]">— badged PREVIEW; the real board is the plain link.</span>
                             </div>
+                        </div>
+
+                        {/* Viewing distance */}
+                        <div className="border-t border-[#F0F0EC] pt-6">
+                            <span className="block text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">Viewing distance</span>
+                            <div className="flex items-stretch gap-2 flex-wrap">
+                                {VIEWINGS.map((v) => {
+                                    const on = (board.viewing ?? 'standard') === v;
+                                    return (
+                                        <button
+                                            key={v}
+                                            type="button"
+                                            disabled={acting}
+                                            onClick={() => !on && update({ viewing: v }, `Viewing distance: ${VIEWING_LABEL[v].label}`, 'gym_board_viewing')}
+                                            className={`text-left w-[15.5rem] rounded-xl border px-4 py-3 transition-all ${on ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white' : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:border-[#D8D8D2]'}`}
+                                        >
+                                            <span className="block text-[10.5px] font-bold uppercase tracking-[0.18em]">{VIEWING_LABEL[v].label}</span>
+                                            <span className={`block text-[11px] mt-1 leading-snug ${on ? 'text-white/70' : 'text-[#888888]'}`}>{VIEWING_LABEL[v].hint}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
+                                How far members stand from the screen. Further means bigger type and less on screen at once. The screen picks it up on its next refresh.
+                            </p>
                         </div>
 
                         {/* Controls */}

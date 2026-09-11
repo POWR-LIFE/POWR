@@ -4,6 +4,7 @@ import {
   boardName,
   boardUrl,
   countdownParts,
+  densityFor,
   fmtKm,
   fmtMinutes,
   fmtSteps,
@@ -243,5 +244,31 @@ describe('beyond helpers', () => {
     const b = sampleBeyond(Date.parse('2026-09-10T12:00:00Z')) as { days: unknown[]; week: Array<{ type: string }> };
     expect(b.days).toHaveLength(7);
     expect(b.week[0].type).toBe('walking');
+  });
+});
+
+describe('densityFor', () => {
+  it('scales up and carries less the further the room stands', () => {
+    const near = densityFor('near');
+    const std = densityFor('standard');
+    const far = densityFor('far');
+    expect(near.scale).toBeLessThan(std.scale);
+    expect(std.scale).toBeLessThan(far.scale);
+    expect(near.rows).toBeGreaterThan(std.rows);
+    expect(std.rows).toBeGreaterThan(far.rows);
+    expect(far.rail.spotlight).toBe(false);
+    expect(far.marks).toBe(false);
+    expect(far.rowMeta).toBe(false);
+    expect(near.railRem).toBeGreaterThan(std.railRem);
+    expect(std.railRem).toBeGreaterThan(far.railRem);
+    expect(near.minAlpha).toBeLessThan(std.minAlpha);
+  });
+  it('defaults to standard', () => {
+    expect(densityFor(undefined).viewing).toBe('standard');
+    expect(densityFor('nonsense').viewing).toBe('standard');
+  });
+  it('root font follows the scale', () => {
+    expect(rootFontSize(1920, 1080, 16 * densityFor('standard').scale)).toBe(20);
+    expect(rootFontSize(1920, 1080, 16 * densityFor('far').scale)).toBe(24);
   });
 });

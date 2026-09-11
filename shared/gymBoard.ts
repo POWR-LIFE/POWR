@@ -473,3 +473,74 @@ export function sampleBeyond(nowMs: number, tz = 'Europe/London'): Record<string
     },
   };
 }
+
+// ─── Viewing distance ───────────────────────────────────────────
+// One setting per board. The wall was authored at 16px/1080p dashboard
+// density; a 50" screen across a room needs bigger type and less of it.
+
+export type Viewing = 'near' | 'standard' | 'far';
+export const VIEWINGS: Viewing[] = ['near', 'standard', 'far'];
+
+export type Density = {
+  viewing: Viewing;
+  /** multiplier on the root font-size (16px at 1080p) */
+  scale: number;
+  /** rank rows under the podium on the board scene */
+  rows: number;
+  /** activity tiles on the Beyond scene */
+  tiles: number;
+  /** rail cards */
+  rail: { stats: boolean; spotlight: boolean; champion: boolean; runners: boolean };
+  community: { hours: boolean; allTime: boolean; streaks: boolean; mix: boolean; deltas: boolean };
+  beyond: { chart: boolean; efforts: boolean; milestone: boolean; legend: boolean };
+  /** the muted-text floor: labels never dimmer than this alpha */
+  minAlpha: number;
+  /** callout chips (level, streak, today) on rows */
+  marks: boolean;
+  /** the bottom marquee */
+  marquee: boolean;
+  /** width of the left rail in rem — narrower as type grows so the main column keeps its share of the screen */
+  railRem: number;
+  /** "N sessions · 2h 10m" on rank rows */
+  rowMeta: boolean;
+  /** shorter captions (efforts, deltas) */
+  shortLabels: boolean;
+};
+
+export function densityFor(viewing: string | null | undefined): Density {
+  switch (viewing) {
+    case 'far':
+      return {
+        viewing: 'far', scale: 1.5, rows: 3, tiles: 3,
+        rail: { stats: false, spotlight: false, champion: true, runners: false },
+        community: { hours: false, allTime: false, streaks: false, mix: false, deltas: true },
+        beyond: { chart: true, efforts: true, milestone: false, legend: false },
+        minAlpha: 0.7, marks: false, marquee: true,
+        railRem: 21, rowMeta: false, shortLabels: true,
+      };
+    case 'near':
+      return {
+        viewing: 'near', scale: 1, rows: 7, tiles: 6,
+        rail: { stats: true, spotlight: true, champion: true, runners: true },
+        community: { hours: true, allTime: true, streaks: true, mix: true, deltas: true },
+        beyond: { chart: true, efforts: true, milestone: true, legend: true },
+        minAlpha: 0.35, marks: true, marquee: true,
+        railRem: 29, rowMeta: true, shortLabels: false,
+      };
+    default:
+      return {
+        viewing: 'standard', scale: 1.25, rows: 5, tiles: 4,
+        rail: { stats: true, spotlight: true, champion: true, runners: true },
+        community: { hours: true, allTime: false, streaks: true, mix: true, deltas: true },
+        beyond: { chart: true, efforts: true, milestone: true, legend: true },
+        minAlpha: 0.6, marks: true, marquee: true,
+        railRem: 26, rowMeta: true, shortLabels: true,
+      };
+  }
+}
+
+export const VIEWING_LABEL: Record<Viewing, { label: string; hint: string }> = {
+  near: { label: 'Near', hint: 'A monitor, or a screen behind reception. Everything on.' },
+  standard: { label: 'Standard', hint: 'A 50" TV in a room. A third bigger, a little less on screen.' },
+  far: { label: 'Far', hint: 'Across a gym floor. One idea per scene, big enough from the far wall.' },
+};
