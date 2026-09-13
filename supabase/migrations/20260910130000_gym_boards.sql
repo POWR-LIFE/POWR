@@ -33,7 +33,7 @@ create table if not exists public.gym_boards (
                   check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and length(slug) between 2 and 64),
   -- Gates the big-screen URL. Regenerate to kill old links.
   display_token text not null
-                  default replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+                  default encode(gen_random_bytes(24), 'hex'),
   enabled       boolean not null default true,
   board_size    integer not null default 25 check (board_size between 3 and 100),
   tz            text not null default 'Europe/London',
