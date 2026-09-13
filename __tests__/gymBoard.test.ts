@@ -127,7 +127,7 @@ describe('rootFontSize', () => {
     expect(rootFontSize(9000, 9000)).toBe(40);
   });
   it('follows the tighter axis on an odd aspect', () => {
-    expect(rootFontSize(1920, 540)).toBe(8 < 9 ? 9 : 8);
+    expect(rootFontSize(1920, 540)).toBe(9);
   });
 });
 
