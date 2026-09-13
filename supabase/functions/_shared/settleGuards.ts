@@ -42,12 +42,13 @@ export function disownedAnswers(events: VisitEventRow[]): number {
 
 /**
  * True when the device reported itself OUTSIDE (for any reason) after `sinceIso`
- * — the visit's last proof, or its start when it never proved anything. A
- * malformed timestamp counts as a contradiction: the settle pays real points,
+ * (typically the visit's last proof). If `sinceIso` is null/undefined, any
+ * `confirmed_outside` counts as a contradiction (fail closed).
+ * A malformed timestamp counts as a contradiction: the settle pays real points,
  * and "could not read the evidence" must fail closed.
  */
 export function deviceContradictsPresence(events: VisitEventRow[], sinceIso: string | null | undefined): boolean {
-  const since = sinceIso ? Date.parse(sinceIso) : Number.NEGATIVE_INFINITY;
+  const since = sinceIso ? Date.parse(sinceIso) : Number.MIN_SAFE_INTEGER;
   for (const e of events) {
     if (e.event !== 'confirmed_outside') continue;
     const at = Date.parse(e.created_at);
