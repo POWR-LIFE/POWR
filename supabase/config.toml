@@ -615,3 +615,9 @@ verify_jwt = false
 # A TV can't carry a user JWT; access is the board's display_token (?k=),
 # checked in the function. Same model as event-board.
 verify_jwt = false
+
+[functions.gym-league]
+# Public JSON feed for the gym-vs-gym league screen (powr.life/league/<slug>).
+# Same credential as gym-board: the gym's display_token (?k=), checked in the
+# function. Gym and session ids are hashed before they leave.
+verify_jwt = false
