@@ -1,21 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import geo from '../data/geoEurope.json';
 import { activityMeta, boardName, countdownParts, resetLabel, rootFontSize, weekLabel } from '../../../shared/gymBoard.ts';
 import {
-    boundsOf,
-    clusterNodes,
     countryCode,
     haversineKm,
     leagueScenePlan,
     localGyms,
     momentum,
     monogram,
-    nodeLabel,
     ordinal,
     placeLabel,
-    projector,
     rankByEffort,
     rankGyms,
     rawPerAthlete,
@@ -35,7 +30,7 @@ import {
  * gym's point of view throughout. Three scenes rotate — LOCAL (gyms within
  * the board's radius), GLOBAL (every gym), EFFORT (points per athlete, the
  * table a small gym can win), then HEAD-TO-HEAD against the gym directly
- * above — with a network map and a live feed on the rail.
+ * above — with a real map of the network and a live feed on the rail.
  *
  * It moves on real data: every poll is diffed against the last, and each
  * session that landed since flashes its lane, rolls its number, ripples on
@@ -50,6 +45,8 @@ const STALE_MS = 60_000;
 const HIT_MS = 2_400;
 const FN_BASE = `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/gym-league`;
 const SCENES = ['local', 'global', 'effort', 'duel'];
+// The basemap library is heavy; only this page ever loads it.
+const GymLeagueMap = React.lazy(() => import('./GymLeagueMap'));
 const DAY_L = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const fmt = (n) => Math.round(n).toLocaleString('en-GB');
 
@@ -70,7 +67,6 @@ export default function GymLeague() {
     // Sessions that landed since the previous payload: { [gymKey]: { points, at, key } }
     const [hits, setHits] = useState({});
     const seenRef = useRef(null);
-    const ripplesRef = useRef([]);
 
     useEffect(() => {
         const html = document.documentElement;
@@ -95,7 +91,6 @@ export default function GymLeague() {
                     for (const f of landed) next[f.gym_key] = { points: (next[f.gym_key]?.at > at - HIT_MS ? next[f.gym_key].points : 0) + f.points, at, key: f.key };
                     return next;
                 });
-                for (const f of landed) ripplesRef.current.push({ gymKey: f.gym_key, t: performance.now() });
                 setTimeout(() => setHits((h) => Object.fromEntries(Object.entries(h).filter(([, v]) => v.at > Date.now() - HIT_MS))), HIT_MS + 50);
             }
         }
@@ -176,7 +171,7 @@ export default function GymLeague() {
 
     return (
         <Shell>
-            <Wall league={league} now={now} stale={stale && !preview} pinned={pinned} hits={hits} ripplesRef={ripplesRef} />
+            <Wall league={league} now={now} stale={stale && !preview} pinned={pinned} hits={hits} />
             {preview && (
                 <div className="pointer-events-none absolute bottom-[0.55rem] left-[2.2rem] rounded-full border border-amber-400/50 bg-amber-400/10 px-[1rem] py-[0.3rem] text-[0.7rem] font-black uppercase tracking-[0.3em] text-amber-300 z-20">
                     Preview — simulated sessions on real gyms
@@ -188,7 +183,7 @@ export default function GymLeague() {
 
 // ─── Wall ────────────────────────────────────────────────────────
 
-function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
+function Wall({ league, now, stale, pinned, hits }) {
     const gyms = useMemo(() => league.gyms ?? [], [league.gyms]);
     const host = useMemo(() => gyms.find((g) => g.key === league.host_key) ?? null, [gyms, league.host_key]);
     const local = useMemo(() => (host ? localGyms(gyms, host, league.radius_km) : []), [gyms, host, league.radius_km]);
@@ -266,7 +261,9 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
                     <div className="gl-card">
                         <h3>Network <span>{scope === 'local' ? `${local.length} gyms in view` : `${gyms.length} gyms${countries > 1 ? ` · ${countries} countries` : ''}`}</span></h3>
                         <div className="gl-mapwrap">
-                            <NetworkMap scope={scope} gyms={scope === 'local' ? local : gyms} host={host} radiusKm={league.radius_km} hostKey={league.host_key} ripplesRef={ripplesRef} />
+                            <Suspense fallback={null}>
+                                <GymLeagueMap scope={scope} gyms={scope === 'local' ? local : gyms} host={host} radiusKm={league.radius_km} hostKey={league.host_key} hits={hits} />
+                            </Suspense>
                         </div>
                         <div className="gl-legend">
                             <span><i style={{ background: GOLD }} />This gym</span>
@@ -490,136 +487,6 @@ function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset }) {
 
 // ─── Rail ────────────────────────────────────────────────────────
 
-function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
-    const canvasRef = useRef(null);
-    const stateRef = useRef({ scope, gyms, host, hostKey, radiusKm, target: null, cur: null });
-    stateRef.current = { ...stateRef.current, scope, gyms, host, hostKey, radiusKm };
-
-    useEffect(() => {
-        const s = stateRef.current;
-        s.target = boundsOf(gyms.length ? gyms : (host ? [host] : []));
-        if (!s.cur) s.cur = { ...s.target };
-    }, [scope, gyms, host]);
-
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return undefined;
-        const ctx = canvas.getContext('2d');
-        let raf = 0;
-        const draw = () => {
-            raf = requestAnimationFrame(draw);
-            const s = stateRef.current;
-            if (!s.target) return;
-            const t = performance.now();
-            const dpr = window.devicePixelRatio || 1;
-            const r = canvas.getBoundingClientRect();
-            if (r.width === 0) return;
-            if (canvas.width !== Math.round(r.width * dpr)) { canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr); }
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            const W = r.width;
-            const H = r.height;
-            ctx.clearRect(0, 0, W, H);
-            if (!s.cur) s.cur = { ...s.target };
-            for (const k of ['n', 's', 'e', 'w']) s.cur[k] += (s.target[k] - s.cur[k]) * 0.06;
-            const b = s.cur;
-            const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-            const p = projector(b, W, H);
-            const wide = (b.n - b.s) > 2;
-
-            // land — sea is the card, land a shade lighter
-            ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-            ctx.fillStyle = 'rgba(255,255,255,0.045)'; ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1; ctx.lineJoin = 'round';
-            ctx.beginPath();
-            for (const ring of geo.land) { ring.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); }
-            ctx.fill('evenodd'); if (wide) ctx.stroke();
-            if (!wide) {
-                const a = Math.min(1, (2 - (b.n - b.s)) / 1.5);
-                ctx.strokeStyle = `rgba(255,255,255,${0.16 * a})`; ctx.lineWidth = Math.max(1.5, 0.0009 * p.sc); ctx.lineCap = 'round';
-                ctx.beginPath(); for (const line of geo.thames) line.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.stroke();
-                if (s.host && s.scope === 'local') {
-                    const [hx, hy] = p(s.host.lat, s.host.lng);
-                    const [ex] = p(s.host.lat, s.host.lng + s.radiusKm / (111 * Math.cos((s.host.lat * Math.PI) / 180)));
-                    ctx.strokeStyle = `rgba(250,204,21,${0.22 * a})`; ctx.setLineDash([4, 6]); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(hx, hy, Math.max(0, ex - hx), 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-                }
-            }
-            ctx.restore();
-
-            const nodes = clusterNodes(s.gyms, p, wide ? 0.7 * rem : 1.5 * rem, rem, s.hostKey);
-            const ranked = rankGyms(s.gyms);
-            const hostNode = nodes.find((n) => n.host);
-            if (hostNode) {
-                const rivals = nodes.filter((n) => n !== hostNode && n.points > 0).sort((x, y) => y.points - x.points).slice(0, 3);
-                ctx.strokeStyle = 'rgba(250,204,21,0.22)'; ctx.lineWidth = 1; ctx.setLineDash([3, 5]); ctx.lineDashOffset = -(t / 60) % 8;
-                for (const n of rivals) {
-                    const mx = (hostNode.x + n.x) / 2, my = (hostNode.y + n.y) / 2, dx = n.x - hostNode.x, dy = n.y - hostNode.y, k = 0.18;
-                    ctx.beginPath(); ctx.moveTo(hostNode.x, hostNode.y); ctx.quadraticCurveTo(mx - dy * k, my + dx * k, n.x, n.y); ctx.stroke();
-                }
-                ctx.setLineDash([]);
-            }
-            ripplesRef.current = ripplesRef.current.filter((rp) => t - rp.t >= 0 && t - rp.t < 1600);
-            for (const rp of ripplesRef.current) {
-                const n = nodes.find((x) => x.gyms.some((g) => g.key === rp.gymKey));
-                if (!n) continue;
-                const k = (t - rp.t) / 1600;
-                ctx.strokeStyle = `rgba(${n.host ? '250,204,21' : '242,242,242'},${(1 - k) * 0.7})`; ctx.lineWidth = 1.5;
-                ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(0, 0.3 * rem + k * 2.2 * rem), 0, Math.PI * 2); ctx.stroke();
-            }
-            ctx.textBaseline = 'middle';
-            let labels = [];
-            for (const n of [...nodes].sort((x, y) => x.host - y.host)) {
-                const count = n.gyms.length;
-                const rr = n.r;
-                if (Math.hypot(n.x - n.ox, n.y - n.oy) > 1) { ctx.strokeStyle = 'rgba(242,242,242,0.25)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(n.ox, n.oy); ctx.lineTo(n.x, n.y); ctx.stroke(); }
-                const lit = n.points > 0;
-                ctx.fillStyle = n.host ? GOLD : lit ? 'rgba(242,242,242,0.78)' : 'rgba(242,242,242,0.22)';
-                ctx.beginPath(); ctx.arc(n.x, n.y, rr, 0, Math.PI * 2); ctx.fill();
-                if (n.host) { ctx.strokeStyle = 'rgba(250,204,21,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(0, rr + 0.25 * rem + Math.sin(t / 500) * 0.06 * rem), 0, Math.PI * 2); ctx.stroke(); }
-                if (count > 1) { ctx.fillStyle = '#0d0d0d'; ctx.font = `700 ${0.62 * rem}px Outfit, sans-serif`; ctx.textAlign = 'center'; ctx.fillText(String(count), n.x, n.y + 0.02 * rem); ctx.textAlign = 'left'; }
-                let text = '';
-                let sub = '';
-                if (wide) {
-                    if (lit || n.host) { text = nodeLabel(n, s.hostKey); sub = fmt(n.points); }
-                } else {
-                    const rk = ranked.indexOf(n.lead) + 1;
-                    text = count > 1 ? n.gyms.map((g) => ranked.indexOf(g) + 1).join(' · ') : `${rk}`;
-                    if (n.host || rk === 1) text += `  ${n.lead.name}`;
-                }
-                if (text) labels.push({ n, rr, text, sub, gold: n.host });
-            }
-            ctx.font = `500 ${0.66 * rem}px Outfit, sans-serif`;
-            const hitsNode = (x0, y0, w, self) => nodes.some((o) => o !== self && o.x + o.r > x0 && o.x - o.r < x0 + w && Math.abs(o.y - y0) < o.r + 0.45 * rem);
-            labels.forEach((l) => {
-                const w = ctx.measureText(l.text).width + (l.sub ? ctx.measureText(` ${l.sub}`).width : 0);
-                l.w = w; l.y = l.n.y;
-                const rx = l.n.x + l.rr + 0.35 * rem;
-                const lx = l.n.x - l.rr - 0.35 * rem - w;
-                const rOk = rx + w < W - 0.3 * rem && !hitsNode(rx, l.y, w, l.n);
-                const lOk = lx > 0.3 * rem && !hitsNode(lx, l.y, w, l.n);
-                l.right = rOk || (!lOk && rx + w < W - 0.3 * rem);
-                l.drop = !rOk && !lOk && !l.n.host && l.n.gyms.length === 1;
-            });
-            labels = labels.filter((l) => !l.drop).sort((x, y) => x.y - y.y);
-            for (let i = 0; i < labels.length; i++) {
-                for (let j = 0; j < i; j++) {
-                    const a = labels[j], c = labels[i];
-                    const ax0 = a.right ? a.n.x : a.n.x - a.w, cx0 = c.right ? c.n.x : c.n.x - c.w;
-                    if (Math.abs(c.y - a.y) < 1.0 * rem && ax0 < cx0 + c.w + 0.4 * rem && cx0 < ax0 + a.w + 0.4 * rem) c.y = a.y + 1.0 * rem;
-                }
-            }
-            for (const l of labels) {
-                const x = l.right ? l.n.x + l.rr + 0.35 * rem : l.n.x - l.rr - 0.35 * rem - l.w;
-                ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(14,14,14,0.9)'; ctx.lineWidth = 3; ctx.strokeText(l.text + (l.sub ? ` ${l.sub}` : ''), x, l.y);
-                ctx.fillStyle = l.gold ? GOLD : 'rgba(242,242,242,0.7)'; ctx.fillText(l.text, x, l.y);
-                if (l.sub) { const tw = ctx.measureText(l.text).width; ctx.fillStyle = l.gold ? 'rgba(250,204,21,0.7)' : 'rgba(242,242,242,0.4)'; ctx.fillText(` ${l.sub}`, x + tw, l.y); }
-            }
-        };
-        raf = requestAnimationFrame(draw);
-        return () => cancelAnimationFrame(raf);
-    }, [ripplesRef]);
-
-    return <canvas ref={canvasRef} className="gl-canvas" />;
-}
-
 function FeedList({ feed, gyms, hostKey, now, tz }) {
     const byKey = useMemo(() => new Map(gyms.map((g) => [g.key, g])), [gyms]);
     const time = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
@@ -797,8 +664,7 @@ const CSS = `
 .gl-card { background: var(--bg-2); border: 1px solid var(--line); border-radius: 1rem; padding: 1rem 1.1rem; min-height: 0; display: flex; flex-direction: column; }
 .gl-card h3 { margin: 0 0 0.6rem; font-size: 0.75rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; display: flex; justify-content: space-between; gap: 1rem; }
 .gl-card h3 span { letter-spacing: 0.04em; text-transform: none; color: var(--ink-2); text-align: right; }
-.gl-mapwrap { position: relative; aspect-ratio: 1 / 0.82; width: 100%; }
-.gl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.gl-mapwrap { position: relative; aspect-ratio: 1 / 0.82; width: 100%; border-radius: 0.6rem; overflow: hidden; background: #121212; }
 .gl-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-top: 0.7rem; font-size: 0.72rem; color: var(--ink-3); }
 .gl-legend span { white-space: nowrap; }
 .gl-legend i { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
