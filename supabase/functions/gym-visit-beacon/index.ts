@@ -1261,7 +1261,8 @@ Deno.serve(async (req: Request) => {
       .eq('event', 'confirmed_outside')
       .eq('detail->>reason', 'no_active_session')
       .gte('created_at', since)
-      .limit(500);
+      .order('created_at', { ascending: false })
+      .limit(50);
     if (disownErr) console.error('[gym-visit-beacon] disown scan failed', disownErr);
     const disownIds = [...new Set((disownRows ?? []).map((r: { visit_id: string }) => r.visit_id))];
 
