@@ -2371,13 +2371,18 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
 
     if (sessionError) {
       if (sessionError.code === '23505') {
-        // Session already exists (recorded when duration was too short) — update to actual elapsed time
+        // Session already exists (recorded when duration was too short) — update to actual elapsed time.
+        // GEOFENCE ROWS ONLY. The unique index is per (type, trust_score, day), so
+        // the row that conflicted is always the day's geofence session — but
+        // "latest gym session today" also matches a wearable import (trust 0.85,
+        // no points). On 2026-09-08 that import was picked, relayed, refused 422,
+        // and re-relayed every 10 s for 3 h 10 min: 1,198 refusals for one visit.
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setUTCHours(0, 0, 0, 0);
         const existing = bgAuth
           ? (await bgSelect<{ id: string; duration_sec: number | null }>(
               'activity_sessions',
-              `select=id,duration_sec&user_id=eq.${userId}&type=eq.gym&started_at=gte.${today.toISOString()}`
+              `select=id,duration_sec&user_id=eq.${userId}&type=eq.gym&verification=eq.geofence&started_at=gte.${today.toISOString()}`
                 + '&order=started_at.desc&limit=1',
               bgAuth,
             )).data?.[0] ?? null
@@ -2386,6 +2391,7 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
               .select('id, duration_sec')
               .eq('user_id', userId)
               .eq('type', 'gym')
+              .eq('verification', 'geofence')
               .gte('started_at', today.toISOString())
               .order('started_at', { ascending: false })
               .limit(1)

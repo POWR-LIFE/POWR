@@ -265,7 +265,7 @@ export const SIGNALS: Signal[] = [
   {
     key: 'integrity.proven_unpaid_24h', workstream: 'integrity', label: 'Proven but unpaid visits, 24h', kind: 'count', unit: '',
     threshold: { watch: 1, act: 1, direction: 'above' },
-    why: 'Presence proven for the full dwell, visit closed, no claim. The 08-13 class — nothing else records it.',
+    why: 'Presence proven for the full dwell, visit closed, no claim, and the member was NOT paid for a gym that UTC day. The 08-13 class — nothing else records it. A visit superseded by a paid check-in elsewhere, or refused because the day\'s cap was already spent, is not unpaid (09-11: a 100 m fix "proved" a drive-by at Psycle while the member was being paid at ONE LDN).',
     plain: 'Members proven to be at the gym long enough who never got their points.',
   },
   {
@@ -277,7 +277,7 @@ export const SIGNALS: Signal[] = [
   {
     key: 'integrity.postgrest_cap', workstream: 'integrity', label: 'Largest unbounded read', kind: 'count', unit: 'rows',
     threshold: { watch: 700, act: 1000, direction: 'above' },
-    why: 'PostgREST silently truncates every response at 1000 rows. A member\'s own ledger and sessions are read unbounded.',
+    why: 'PostgREST silently truncates every response at 1000 rows. The ledger history read is capped at 500 (lib/api/points.ts); a member\'s own sessions and `rewards` are still read whole. Test and showcase accounts are excluded — the seeded showcase member alone sat at 841 rows from 2026-09-05 and kept this row orange.',
     plain: 'The largest single read the app does, against the 1,000-row limit that silently cuts data off.',
   },
   {
@@ -360,6 +360,19 @@ export function intervalValue(signal: Signal, points: HistoryPoint[] | undefined
   return signal.kind === 'pct' ? (dn / dd) * 100 : dn / dd;
 }
 
+/**
+ * Δdenominator between the last two usable points — the interval's sample
+ * count. Null when there are not two usable points or the counter reset.
+ */
+export function intervalSamples(points: HistoryPoint[] | undefined): number | null {
+  if (!points || points.length < 2) return null;
+  const usable = points.filter(p => p[3] && p[1] != null && p[2] != null);
+  if (usable.length < 2) return null;
+  const dn = Number(usable[usable.length - 1][1]) - Number(usable[usable.length - 2][1]);
+  const dd = Number(usable[usable.length - 1][2]) - Number(usable[usable.length - 2][2]);
+  return dn < 0 || dd < 0 ? null : dd;
+}
+
 // ── Judgement ────────────────────────────────────────────────────────────────
 
 export interface Verdict {
@@ -369,6 +382,12 @@ export interface Verdict {
   reason: string;
   /** True when the number shown is a lifetime mean rather than a recent interval. */
   lifetime?: boolean;
+  /**
+   * True when the verdict is unknown ONLY because the window held fewer events
+   * than the signal's sample floor. Not evidence of a problem and not missing
+   * evidence — it never outranks a measured green in a roll-up (see rollUp).
+   */
+  thin?: boolean;
 }
 
 function breach(t: Threshold, v: number, level: 'watch' | 'act'): boolean {
@@ -427,7 +446,15 @@ function thinSample(signal: Signal, denominator: number | null | undefined): Ver
   if (signal.kind !== 'ratio_numerator' || signal.minSample == null) return null;
   const n = denominator == null ? 0 : Number(denominator);
   if (n >= signal.minSample) return null;
-  return { status: 'unknown', value: null, reason: `Not measurable — ${n} sample${n === 1 ? '' : 's'} in the window, a p95 needs ${signal.minSample}.` };
+  return thinVerdict(signal, n);
+}
+
+function thinVerdict(signal: Signal, n: number): Verdict {
+  const what = signal.kind === 'ratio_numerator' ? 'a p95' : 'a mean';
+  return {
+    status: 'unknown', value: null, thin: true,
+    reason: `Not measurable — ${n} sample${n === 1 ? '' : 's'} in the window, ${what} needs ${signal.minSample}.`,
+  };
 }
 
 const STATUS_RANK: Record<Status, number> = { act: 3, watch: 2, unknown: 1, green: 0 };
@@ -435,6 +462,28 @@ const STATUS_RANK: Record<Status, number> = { act: 3, watch: 2, unknown: 1, gree
 export function worstStatus(statuses: Status[]): Status {
   if (statuses.length === 0) return 'unknown';
   return statuses.reduce((w, s) => (STATUS_RANK[s] > STATUS_RANK[w] ? s : w), 'green' as Status);
+}
+
+/**
+ * Worst-of for a group of verdicts. A thin-sample unknown is not a verdict —
+ * it says "too few events to judge", not "something is wrong" or "we could
+ * not look" — so it never outranks a measured green. It decides the group only
+ * when nothing in the group was measured. An unknown from MISSING evidence
+ * (evidence_ok=false, a probe that threw) still outranks green: a workstream
+ * we cannot see is not operational.
+ * Before 2026-09-12 one thin p95 (3–8 claims a day against a floor of 20)
+ * turned the whole Gym check-ins row grey every hour, and its uptime read 0.0%
+ * on three green signals.
+ */
+export function rollUp(verdicts: Verdict[]): Status {
+  const measured = verdicts.filter(v => !v.thin);
+  return worstStatus((measured.length ? measured : verdicts).map(v => v.status));
+}
+
+/** The members of a group that decide it: the measured ones, or all when none were. */
+function deciders<T extends { verdict: Verdict }>(xs: T[]): T[] {
+  const measured = xs.filter(x => !x.verdict.thin);
+  return measured.length ? measured : xs;
 }
 
 export interface Judged { signal: Signal; verdict: Verdict; fact: Fact | null }
@@ -450,7 +499,7 @@ export function judgeAll(doc: LiveDoc | null | undefined, history?: HistoryDoc |
 export function workstreamStatus(judged: Judged[]): Record<Workstream, Status> {
   const out = {} as Record<Workstream, Status>;
   for (const w of WORKSTREAMS) {
-    out[w.key] = worstStatus(judged.filter(j => j.signal.workstream === w.key).map(j => j.verdict.status));
+    out[w.key] = rollUp(judged.filter(j => j.signal.workstream === w.key).map(j => j.verdict));
   }
   return out;
 }
@@ -459,7 +508,8 @@ export function workstreamStatus(judged: Judged[]): Record<Workstream, Status> {
 export function drivingSignal(judged: Judged[], workstream: Workstream): Judged | null {
   const mine = judged.filter(j => j.signal.workstream === workstream);
   if (mine.length === 0) return null;
-  return mine.reduce((w, j) => (STATUS_RANK[j.verdict.status] > STATUS_RANK[w.verdict.status] ? j : w), mine[0]);
+  const pool = deciders(mine);
+  return pool.reduce((w, j) => (STATUS_RANK[j.verdict.status] > STATUS_RANK[w.verdict.status] ? j : w), pool[0]);
 }
 
 /** Count feeding the admin dashboard tile: signals at ACT. */
@@ -593,7 +643,13 @@ export function judgeHistoryPoint(signal: Signal, points: HistoryPoint[], i: num
   if (!p || !p[3]) return { status: 'unknown', value: null, reason: 'No evidence at this point.' };
   if (signal.cumulative) {
     if (i === 0) return { status: 'unknown', value: null, reason: 'First point of a cumulative source.' };
-    return judgeValue(signal, intervalValue(signal, points.slice(i - 1, i + 1)));
+    const pair = points.slice(i - 1, i + 1);
+    const v = intervalValue(signal, pair);
+    if (v == null && signal.minSample != null) {
+      const n = intervalSamples(pair);
+      if (n != null && n < signal.minSample) return thinVerdict(signal, n);
+    }
+    return judgeValue(signal, v);
   }
   const thin = thinSample(signal, p[2]);
   if (thin) return thin;
@@ -615,23 +671,26 @@ export interface TimelinePoint {
  */
 export function hourlyTimeline(history: HistoryDoc | null | undefined, workstream: Workstream): TimelinePoint[] {
   if (!history) return [];
-  const byAt = new Map<number, { status: Status; driver: Signal | null }>();
+  const byAt = new Map<number, { signal: Signal; verdict: Verdict }[]>();
   for (const signal of SIGNALS) {
     if (signal.workstream !== workstream) continue;
     const points = history[signal.key];
     if (!points) continue;
     for (let i = 0; i < points.length; i++) {
       const at = Date.parse(points[i][0]);
-      const v = judgeHistoryPoint(signal, points, i);
+      const verdict = judgeHistoryPoint(signal, points, i);
       const cur = byAt.get(at);
-      if (!cur || STATUS_RANK[v.status] > STATUS_RANK[cur.status]) {
-        byAt.set(at, { status: v.status, driver: v.status === 'green' ? null : signal });
-      }
+      if (cur) cur.push({ signal, verdict }); else byAt.set(at, [{ signal, verdict }]);
     }
   }
   return [...byAt.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([at, x]) => ({ at, status: x.status, driver: x.driver }));
+    .map(([at, xs]) => {
+      const status = rollUp(xs.map(x => x.verdict));
+      const pool = deciders(xs);
+      const worst = pool.reduce((w, x) => (STATUS_RANK[x.verdict.status] > STATUS_RANK[w.verdict.status] ? x : w), pool[0]);
+      return { at, status, driver: status === 'green' ? null : worst.signal };
+    });
 }
 
 export interface DayCell {

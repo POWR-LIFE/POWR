@@ -606,29 +606,46 @@ begin
   -- The 2026-08-13 class: the wake landed, the fix was trusted, the claim never
   -- did — and nothing else in the system records that it should have.
   begin
+    -- 09-12: a visit whose member WAS paid for a gym that UTC day is not
+    -- unpaid — superseded by a check-in elsewhere (09-11: a 100 m last-known
+    -- fix "proved" a drive-by at Psycle while she was being paid at ONE LDN)
+    -- or refused because the day's cap was already spent (09-04). Both are
+    -- counted in detail.paid_that_day; only the 08-13 shape is the number.
+    with cand as (
+      select gv.id, gv.ended_at,
+             (gv.user_id = any(v_excl_users)) as is_test,
+             exists (
+               select 1 from public.point_transactions pt
+               join public.activity_sessions a on a.id = pt.session_id
+               where pt.user_id = gv.user_id and pt.type = 'earn'
+                 and a.type::text in ('gym', 'hiit')
+                 and date_trunc('day', a.started_at at time zone 'UTC')
+                   = date_trunc('day', gv.started_at at time zone 'UTC')
+             ) as paid_that_day
+      from public.gym_visits gv
+      where gv.ended_at >= v_24h
+        and gv.claimed_session_id is null
+        and gv.last_proven_at is not null
+        and gv.last_proven_at - gv.started_at >= make_interval(mins => v_dwell)
+    )
     select jsonb_build_object(
-      'numerator', count(*) filter (where not (gv.user_id = any(v_excl_users))),
+      'numerator', count(*) filter (where not is_test and not paid_that_day),
       'denominator', null,
       'detail', jsonb_build_object(
-        'including_test', count(*),
+        'including_test', count(*) filter (where not paid_that_day),
+        'paid_that_day',  count(*) filter (where paid_that_day and not is_test),
         'dwell_minutes',  v_dwell,
         'visit_ids', coalesce((
           select jsonb_agg(x.id) from (
-            select gv2.id from public.gym_visits gv2
-            where gv2.ended_at >= v_24h and gv2.claimed_session_id is null and gv2.last_proven_at is not null
-              and gv2.last_proven_at - gv2.started_at >= make_interval(mins => v_dwell)
-              and not (gv2.user_id = any(v_excl_users))
-            order by gv2.ended_at desc limit 20
+            select c2.id from cand c2
+            where not c2.is_test and not c2.paid_that_day
+            order by c2.ended_at desc limit 20
           ) x
         ), '[]'::jsonb)
       ),
       'evidence_ok', true
     ) into s
-    from public.gym_visits gv
-    where gv.ended_at >= v_24h
-      and gv.claimed_session_id is null
-      and gv.last_proven_at is not null
-      and gv.last_proven_at - gv.started_at >= make_interval(mins => v_dwell);
+    from cand;
     v := v || jsonb_build_object('integrity.proven_unpaid_24h', s);
   exception when others then
     v := v || jsonb_build_object('integrity.proven_unpaid_24h', jsonb_build_object('evidence_ok', false, 'error', sqlerrm));
@@ -654,8 +671,14 @@ begin
   -- reads a member's own ledger and own sessions unbounded; `rewards` is read
   -- whole. `partners` (7.8k) is already paginated and listed for the record.
   begin
-    with per_user_pt as (select count(*) as n from public.point_transactions group by user_id),
-         per_user_as as (select count(*) as n from public.activity_sessions group by user_id)
+    -- 09-12: test and showcase accounts excluded — the seeded showcase member
+    -- (841 rows, +~100/month) had owned this reading since 2026-09-05.
+    with per_user_pt as (
+           select count(*) as n from public.point_transactions
+           where not (user_id = any(v_excl_users)) group by user_id),
+         per_user_as as (
+           select count(*) as n from public.activity_sessions
+           where not (user_id = any(v_excl_users)) group by user_id)
     select jsonb_build_object(
       'numerator', greatest(
         coalesce((select max(n) from per_user_pt), 0),
@@ -668,6 +691,7 @@ begin
         'sessions_max_user',      coalesce((select max(n) from per_user_as), 0),
         'rewards',                (select count(*) from public.rewards),
         'partners_paginated',     (select count(*) from public.partners),
+        'excluded_users',         coalesce(array_length(v_excl_users, 1), 0),
         'cap', 1000
       ),
       'evidence_ok', true

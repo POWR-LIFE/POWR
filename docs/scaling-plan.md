@@ -72,6 +72,23 @@ Not done: the Points-ledger row is grey almost every hour because the ledger
 averages six inserts an hour against a 20-insert floor. That is the floor working;
 judging it over 24 h instead of 1 h is a candidate for Phase 2, not a fix.
 
+## 12 Sep read · **DONE**
+
+Jamie: "showing disruptions". Both red items were the page misreading its own
+data; the roll-up rule was hiding three green signals behind one thin one; and
+the 8 Sep Server-messaging incident, once opened, was a real client loop.
+
+| # | Flag on the page | What it actually was | Fix | Status |
+| --- | --- | --- | --- | --- |
+| A | Data integrity **disrupted** — proven but unpaid, 1 | A drive-by at Psycle Oxford Circus (in and out in 50 s) that stayed open, was "proven" 45 min later by a stale 100 m last-known fix 19 m from the pin, then superseded by the member's ONE LDN check-in 5.7 km away, where she was paid 15 + 5. The signal counted per visit. | Signal excludes visits whose member was paid for a gym that UTC day (also the cap-spent class); those are reported in `detail.paid_that_day`. | ✅ prod patch `admin_system_health_facts_v6_paid_that_day_and_rig_exclusion` |
+| B | Data integrity **degraded** — largest unbounded read, 841 rows | The seeded showcase account `alexcarter` (841 rows, +~100 a month, never opens the app). Jumped 432 → 841 on 5 Sep when the rig landed; real max is 443. The ledger read is already capped at 500. | Showcase accounts (`showcase-*@powr.life`) join the exclusion list; the signal skips excluded users; `why` reworded. | ✅ `20260912120000` + the v6 patch |
+| C | Gym check-ins **0.0% · NO DATA** | `unknown` outranked `green` in the roll-up. The wake→claim p95 sits under its 20-claim floor every day (3–8 claims), so the whole row was grey; the only measured days were the seven orange days of the 4 Sep cap overshoot (fixed 5 Sep, aged out 11 Sep 08:00). | Thin-sample unknowns never outrank a measured green (`Verdict.thin`, `rollUp`); a row is NO DATA only when nothing was measured. Missing evidence still outranks green. | ✅ PR |
+| D | Server messaging **disrupted** 8 Sep 17:00 → 9 Sep 02:00 | 1,198 × claim-points 422, one every 10 s for 3 h 10 min, all from pg_net for one iPhone on its second ONE LDN visit of the day. Session insert hit the one-gym-session-per-day index; the recovery picked "latest gym session today" = an Apple-Watch import (trust 0.85, no points); `relay_gym_claim` saw no earn rows and posted; the server refused (terminal); the relay had said "accepted", so every tick repeated. The beacon learned this on 5 Sep; the client relay had not. No points affected. | `relay_gym_claim`: a day already holding a paid geofence session answers `already_claimed_today`; a non-geofence session is `not_relayable` — neither posts. Client recovery filters `verification=geofence` at the next OTA. | ✅ `20260912120100` live · client in PR |
+
+Also seen: one Android member answers every dwell wake `no_active_session` and
+claims ~8 min later (the background gap class); a 100 m-accuracy fix proving a
+25 m fence is the 13 Aug tolerance doing exactly what it was set to do.
+
 ## Phase 2 — September, after the event
 
 Cheap, behaviour-neutral, all found on 27 Aug. In this order.
