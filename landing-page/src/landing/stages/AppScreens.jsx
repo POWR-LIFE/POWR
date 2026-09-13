@@ -11,7 +11,7 @@ import { SectionTag, useCompact } from './shared';
  * right→left as the section scrolls; each one brightens as it crosses centre.
  */
 const SCREENS = [
-  { src: '/app/home.webp', tag: 'HOME', title: 'Your day, scored live.', body: 'Streak, rings, level and crew — one glance.' , top: '#2d2d2d' },
+  { src: '/app/home.webp', tag: 'HOME', title: 'Your day, scored live.', body: 'Streak, rings, level and crew — one glance.', top: '#2d2d2d' },
   { src: '/app/progress.webp', tag: 'PROGRESS', title: 'Every session, mapped.', body: 'Gym, run, walk, body and sleep, by day, week or month.', top: '#2d2d2d' },
   { src: '/app/spend.webp', tag: 'SPEND', title: 'The partner vault.', body: 'Real brands, priced in points. Redeem in one tap.', top: '#2d2d2d' },
   { src: '/app/wallet.webp', tag: 'WALLET', title: 'Codes, ready at checkout.', body: 'Every redeemed reward lives here until you use it.', top: '#171717' },
