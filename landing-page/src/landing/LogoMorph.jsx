@@ -84,7 +84,12 @@ export default function LogoMorph() {
     // Dev only: a hot update can move the hero slot (Hero.jsx edited or a
     // branch switch under a running server) without any resize/load event,
     // leaving the logo parked at its stale position. Tree-shaken in prod.
-    if (import.meta.hot) import.meta.hot.on('vite:afterUpdate', measure);
+    // Read into a const first: a statement that BEGINS with `import.meta`
+    // is parsed as an import declaration by CodeQL's extractor (syntax error
+    // → the whole file is skipped and the PR check fails). Vite is fine
+    // either way; the expression position is what keeps every parser happy.
+    const hot = import.meta.hot;
+    if (hot) hot.on('vite:afterUpdate', measure);
     return () => {
       window.removeEventListener('resize', measure);
       window.removeEventListener('load', measure);
