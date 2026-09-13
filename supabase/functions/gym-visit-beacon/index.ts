@@ -28,6 +28,7 @@ import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 import { staleVisitVerdict, sessionBelongsToVisit, SESSION_OWNERSHIP_MARGIN_MS } from '../_shared/gymReaper.ts';
 import { settleIsTerminal } from '../_shared/settleOutcome.ts';
 import { EXIT_SETTLE_LOOKBACK_MS, EXIT_SETTLE_RIGHT_OF_WAY_MS, exitSettleDue, exitSettleExhausted } from '../_shared/exitSettle.ts';
+import { deviceContradictsPresence, disownedAnswers } from '../_shared/settleGuards.ts';
 import { MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
 
 // Budgets are PER STAGE and live in their own columns (nudge_count /
@@ -150,7 +151,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settled_exit: 0, settle_declined: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settled_exit: 0, settle_declined: 0, disowned_closed: 0, settle_contradicted: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -1238,6 +1239,71 @@ Deno.serve(async (req: Request) => {
   // absorb the overlap. ⚠ Known cost: the reaper reads claimed_at/upgraded_at
   // as device-proven moments — a settled stamp weakens that invariant by up
   // to one settle delay; acceptable against losing the session outright.
+  // ── Disowned visits (2026-09-07) ──────────────────────────────────────────
+  // A device that answers a wake with `confirmed_outside{reason:'no_active_session'}`
+  // is telling us it holds no session for this visit. That is the drive-by
+  // shape — one passive-stream fix inside a roadside 25 m circle opened a
+  // server visit, the next fix was outside and the client finalized, but the
+  // close never landed because the open's answer never reached the phone.
+  // Member "Butt" (Android), 09-07: 11 visits in 9 days, every wake answered
+  // this way, none closed by the device, one sitting on Live Ops as CLAIM
+  // OVERDUE at 153 min. Close it here, now, under its own reason: no more
+  // nudges for it, no 12 h abandon wait, and — load-bearing since the check-in
+  // proof stamp — nothing left for the settle pass to pay. Unclaimed visits
+  // only: a claimed one that later loses its local state is the reaper's case,
+  // and its points are already banked. ended_at = last proof or start: a
+  // disowned visit's length is whatever it proved, usually nothing.
+  {
+    const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+    const { data: disownRows, error: disownErr } = await admin
+      .from('gym_visit_events')
+      .select('visit_id')
+      .eq('event', 'confirmed_outside')
+      .eq('detail->>reason', 'no_active_session')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (disownErr) console.error('[gym-visit-beacon] disown scan failed', disownErr);
+    const disownIds = [...new Set((disownRows ?? []).map((r: { visit_id: string }) => r.visit_id))];
+
+    if (disownIds.length > 0) {
+      const { data: openDisowned } = await admin
+        .from('gym_visits')
+        .select('id, user_id, started_at, last_proven_at')
+        .in('id', disownIds)
+        .eq('status', 'open')
+        .is('claimed_session_id', null)
+        .is('ended_at', null);
+
+      for (const v of openDisowned ?? []) {
+        const { data: evs } = await admin
+          .from('gym_visit_events')
+          .select('event, created_at, detail')
+          .eq('visit_id', v.id)
+          .eq('event', 'confirmed_outside');
+        const answers = disownedAnswers(evs ?? []);
+        if (answers === 0) continue;
+
+        const endedAtIso = v.last_proven_at && Date.parse(v.last_proven_at) > Date.parse(v.started_at)
+          ? v.last_proven_at : v.started_at;
+        const { data: closed, error: closeErr } = await admin
+          .from('gym_visits')
+          .update({ status: 'closed', close_reason: 'disowned_by_device', ended_at: endedAtIso })
+          .eq('id', v.id)
+          .is('ended_at', null)          // conditional: a real client close racing us wins
+          .select('id');
+        if (closeErr) { console.error('[gym-visit-beacon] disown close failed', closeErr); continue; }
+        if (!closed || closed.length === 0) continue;
+
+        await admin.from('gym_visit_events').insert({
+          visit_id: v.id, user_id: v.user_id, event: 'closed_stale',
+          detail: { reason: 'disowned_by_device', answers, ended_at: endedAtIso },
+        });
+        stats.disowned_closed++;
+      }
+    }
+  }
+
   {
     const SETTLE_GRACE_MIN = 5;
     const SETTLE_MIN_NUDGES = 2;
@@ -1302,9 +1368,26 @@ Deno.serve(async (req: Request) => {
       .limit(50);
     if (scErr) console.error('[gym-visit-beacon] settle claim scan failed', scErr);
 
+    // The device's own word outranks "no exit observed". A `confirmed_outside`
+    // after the last proof is an exit the fence never logged (location-detected
+    // exits write no `exit` region row) — and since the check-in proof stamp a
+    // drive-by's clock is not null, so this is the only thing between the settle
+    // and paying someone for driving past a gym.
+    const contradicted = async (visitId: string, sinceIso: string | null): Promise<boolean> => {
+      const { data: evs } = await admin
+        .from('gym_visit_events')
+        .select('event, created_at, detail')
+        .eq('visit_id', visitId)
+        .eq('event', 'confirmed_outside');
+      const hit = deviceContradictsPresence(evs ?? [], sinceIso);
+      if (hit) stats.settle_contradicted++;
+      return hit;
+    };
+
     for (const v of settleClaims ?? []) {
       if (!v.last_proven_at) continue;             // check-in never proved an inside fix
       if (!(await noExitSince(v))) continue;       // user observably left — exit path owns it
+      if (await contradicted(v.id, v.last_proven_at)) continue; // the device said "outside" since
 
       const nowIso = new Date().toISOString();
       const durationSec = Math.max(0, Math.round((Date.now() - Date.parse(v.started_at)) / 1000));
@@ -1347,7 +1430,7 @@ Deno.serve(async (req: Request) => {
     // Stage 2: claimed-not-upgraded visits past upgrade + grace, same offer test.
     const { data: settleUpgrades, error: suErr } = await admin
       .from('gym_visits')
-      .select('id, user_id, region_id, started_at, claimed_session_id, nudge_count_upgrade')
+      .select('id, user_id, region_id, started_at, claimed_session_id, nudge_count_upgrade, last_proven_at')
       .not('claimed_session_id', 'is', null)
       .is('upgraded_at', null)
       .is('ended_at', null)
@@ -1359,6 +1442,7 @@ Deno.serve(async (req: Request) => {
 
     for (const v of settleUpgrades ?? []) {
       if (!(await noExitSince(v))) continue;
+      if (await contradicted(v.id, v.last_proven_at ?? null)) continue;
 
       // upgrade-gym-tier gates on the RECORDED length, and a device that never
       // answered post-claim left the session frozen at claim time. Extend to
