@@ -14,7 +14,7 @@ as $function$
   from auth.users u
   where split_part(split_part(lower(u.email), '@', 1), '+', 1)
         in ('jamiemasonwright', 'bluegigsolutions')
-     or split_part(lower(u.email), '@', 1) like 'showcase-%'
+     or lower(u.email) like 'showcase-%@powr.life'
 $function$;
 
 revoke all on function public.liveops_excluded_user_ids() from public, anon, authenticated;
