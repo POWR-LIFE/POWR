@@ -178,7 +178,7 @@ export default function GymLeague() {
         <Shell>
             <Wall league={league} now={now} stale={stale && !preview} pinned={pinned} hits={hits} ripplesRef={ripplesRef} />
             {preview && (
-                <div className="pointer-events-none absolute bottom-[3.4rem] left-[2.2rem] rounded-full border border-amber-400/50 bg-amber-400/10 px-[1rem] py-[0.3rem] text-[0.7rem] font-black uppercase tracking-[0.3em] text-amber-300 z-20">
+                <div className="pointer-events-none absolute bottom-[0.55rem] left-[2.2rem] rounded-full border border-amber-400/50 bg-amber-400/10 px-[1rem] py-[0.3rem] text-[0.7rem] font-black uppercase tracking-[0.3em] text-amber-300 z-20">
                     Preview — simulated sessions on real gyms
                 </div>
             )}
