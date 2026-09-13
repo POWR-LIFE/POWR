@@ -77,7 +77,7 @@ function Nav({ compact }) {
         background: 'linear-gradient(180deg, rgba(8,8,8,0.9), rgba(8,8,8,0))', backdropFilter: 'blur(6px)',
       }}
     >
-      <a href="/v3" style={{ display: 'flex', alignItems: 'center' }}>
+      <a href="/" style={{ display: 'flex', alignItems: 'center' }}>
         <img src={LOGO_SRC} alt="POWR" style={{ height: 32, width: 'auto', display: 'block' }} />
       </a>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(14px, 2vw, 26px)' }}>

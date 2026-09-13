@@ -1437,11 +1437,13 @@ export default function App() {
         <ToastProvider>
             <AuthProvider>
                 <Routes>
-                    <Route path="/" element={<LandingV2 />} />
-                    {/* The showcase shipped at /v2 before it became the homepage — keep old links working */}
-                    <Route path="/v2" element={<Navigate to="/" replace />} />
-                    {/* Conversion-first rebuild of the homepage — isolated here for review */}
-                    <Route path="/v3" element={<LandingV3 />} />
+                    {/* The homepage: the conversion-first page (reviewed at /v3, promoted 2026-09-13) */}
+                    <Route path="/" element={<LandingV3 />} />
+                    <Route path="/v3" element={<Navigate to="/" replace />} />
+                    {/* The scroll-driven film that was the homepage before — kept as "The story".
+                        /v2 was its review URL; both keep resolving. */}
+                    <Route path="/story" element={<LandingV2 />} />
+                    <Route path="/v2" element={<Navigate to="/story" replace />} />
                     {/* Was a standalone static partners.html until it was rebuilt on the
                         homepage canvas; the .html path is still on business cards */}
                     <Route path="/partners" element={<PartnersPage />} />
