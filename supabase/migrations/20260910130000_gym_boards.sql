@@ -92,7 +92,7 @@ as $$
       and s.started_at < p_to
   ),
   pts as (
-    select pt.user_id, pt.amount, pt.created_at
+    select s.user_id, pt.amount, s.ended_at as counted_at
     from public.point_transactions pt
     join sess s on s.id = pt.session_id
     where pt.type in ('earn', 'adjustment', 'penalty')
@@ -110,10 +110,10 @@ as $$
     coalesce(sum(pt.amount), 0)::integer as score,
     u.sessions,
     u.active_days,
-    max(pt.created_at)                   as last_counted_at,
+    max(pt.counted_at)                   as last_counted_at,
     rank() over (
       order by coalesce(sum(pt.amount), 0) desc,
-               max(pt.created_at) asc nulls last,
+               max(pt.counted_at) asc nulls last,
                u.user_id asc
     ) as rank
   from per_user u
