@@ -125,7 +125,8 @@ export function placeLabel(address: string | null | undefined, fallback = ''): s
   const isCountry = (p: string) => COUNTRY_WORDS.some(([re]) => new RegExp(`^${re.source}$`, 'i').test(p));
   const parts = a
     .split(',')
-    .map((p) => p.replace(UK_POSTCODE, '').replace(PLUS_CODE, '').replace(/\s+/g, ' ').trim())
+    // strip postcodes of every shape: UK, plus codes, and bare numeric blocks ("166 73", "03730")
+    .map((p) => p.replace(UK_POSTCODE, '').replace(PLUS_CODE, '').replace(/\b\d{3,}(?:\s\d{2,})?\b/g, '').replace(/\s+/g, ' ').trim())
     .filter((p) => p && !isCountry(p));
   if (parts.length === 0) return fallback;
   // The town is the last part without digits (streets and units carry numbers).

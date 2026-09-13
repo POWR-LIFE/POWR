@@ -63,6 +63,8 @@ describe('placeLabel / countryCode', () => {
     expect(placeLabel('7P6M+77, Worcester WR9 9RB')).toBe('Worcester');
     expect(placeLabel(null, 'Somewhere')).toBe('Somewhere');
     expect(placeLabel('Carrer Roma, 3, Nave 2, 03730 Badia de Xàbia, Alicante, Spain')).toBe('Alicante');
+    expect(placeLabel('Arkadiou 55, Voula 166 73, Greece')).toBe('Voula');
+    expect(placeLabel('Imperial Wharf the Boulevard, 3 The Blvd, London SW6 2UB')).toBe('London');
   });
   it('reads the country from the address tail, else from the coordinates', () => {
     expect(countryCode('151 London Rd, Worcester WR5 2ED, UK')).toBe('UK');
