@@ -269,7 +269,7 @@ function Wall({ league, now, stale, pinned, hits }) {
                             <span><i style={{ background: GOLD }} />This gym</span>
                             <span><i style={{ background: 'rgba(242,242,242,.7)' }} />Scoring this week</span>
                             <span><i style={{ background: 'rgba(242,242,242,.22)' }} />Quiet</span>
-                            <span>· a number = gyms in that spot</span>
+                            <span>· number = rank · ringed = gyms sharing a spot</span>
                         </div>
                     </div>
                     <div className="gl-card gl-feedcard">

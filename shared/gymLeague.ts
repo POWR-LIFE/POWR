@@ -308,7 +308,8 @@ export function clusterNodes(gyms: LeagueGym[], p: Projector, px: number, rem: n
     else nodes.push({ x, y, ox: x, oy: y, r: 0, gyms: [g], points: g.points_week, host: g.key === hostKey, lead: g });
   }
   for (const n of nodes) {
-    n.r = n.gyms.length > 1 ? 0.34 * rem + 0.07 * rem * Math.min(6, n.gyms.length - 1) : (n.host ? 0.32 : 0.22) * rem;
+    // a single disc carries its rank, so it needs room for a digit or two
+    n.r = n.gyms.length > 1 ? 0.4 * rem + 0.06 * rem * Math.min(6, n.gyms.length - 1) : (n.host ? 0.44 : 0.36) * rem;
     if (n.gyms.length > 1) {
       n.x = n.gyms.reduce((s, g) => s + p(g.lat, g.lng)[0], 0) / n.gyms.length;
       n.y = n.gyms.reduce((s, g) => s + p(g.lat, g.lng)[1], 0) / n.gyms.length;

@@ -209,28 +209,32 @@ export default function GymLeagueMap({ scope, gyms, host, hostKey, radiusKm, hit
             }
             const count = n.gyms.length;
             const lit = n.points > 0;
-            el.className = `glm-pin${n.host ? ' host' : lit ? ' lit' : ' quiet'}`;
+            el.className = `glm-pin${n.host ? ' host' : lit ? ' lit' : ' quiet'}${count > 1 ? ' many' : ''}`;
             const disc = el.firstChild;
-            disc.textContent = count > 1 ? String(count) : '';
+            // the disc carries the rank; a ringed disc carries how many gyms share the spot
+            const rk = s.ranked.indexOf(n.lead) + 1;
+            disc.textContent = count > 1 ? String(count) : String(rk);
             disc.style.width = disc.style.height = `${(n.r * 2) / rem}rem`;
             let text = '';
             if (wide) {
                 if (lit || n.host) text = `${nodeLabel(n, s.hostKey)} <em>${fmt(n.points)}</em>`;
             } else {
-                const rk = s.ranked.indexOf(n.lead) + 1;
-                text = count > 1 ? n.gyms.map((g) => s.ranked.indexOf(g) + 1).join(' · ') : `${rk}`;
-                if (n.host || rk === 1) text += `  ${n.lead.name}`;
+                // close in, the disc's rank does the talking; names only where the room looks first
+                text = count > 1 ? `${count} gyms` : (n.host || rk <= 3 ? n.lead.name : '');
             }
             const lbl = el.lastChild;
             if (lbl.innerHTML !== text) lbl.innerHTML = text;
-            const left = n.x > width * 0.62;
+            const lw = text ? lbl.offsetWidth : 0;
+            const fitsRight = n.x + n.r + 0.35 * rem + lw < width - 0.3 * rem;
+            const fitsLeft = n.x - n.r - 0.35 * rem - lw > 0.3 * rem;
+            const left = !fitsRight && fitsLeft;
             lbl.style.left = left ? 'auto' : `${(n.r + 0.35 * rem) / rem}rem`;
             lbl.style.right = left ? `${(n.r + 0.35 * rem) / rem}rem` : 'auto';
             el.style.transform = `translate(${n.x}px, ${n.y}px)`;
         }
         for (const [key, el] of els) if (!keep.has(key)) { el.remove(); els.delete(key); }
-        // labels that would overlap step down, in rank order
-        const placed = [];
+        // labels that would overlap another label or disc step down, in rank order
+        const placed = nodes.map((n) => ({ x0: n.x - n.r, x1: n.x + n.r, y: n.y }));
         for (const n of nodes) {
             const el = els.get(n.gyms.map((g) => g.key).sort().join('+'));
             const lbl = el?.lastChild;
@@ -240,6 +244,7 @@ export default function GymLeagueMap({ scope, gyms, host, hostKey, radiusKm, hit
             const x0 = left ? n.x - n.r - 0.35 * rem - w : n.x + n.r + 0.35 * rem;
             let y = n.y;
             for (const o of placed) {
+                if (o.x0 === n.x - n.r && o.y === n.y) continue; // its own disc
                 if (x0 < o.x1 + 0.4 * rem && x0 + w > o.x0 - 0.4 * rem && Math.abs(y - o.y) < 1.0 * rem) y = o.y + 1.0 * rem;
             }
             lbl.style.top = `${y - n.y}px`;
@@ -277,8 +282,10 @@ const CSS = `
 .glm-pin { position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform; }
 .glm-pin .disc { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); display: grid; place-items: center; border-radius: 50%; box-sizing: border-box;
   font: 700 0.62rem Outfit, sans-serif; color: #0d0d0d; background: rgba(242,242,242,0.78); }
-.glm-pin.quiet .disc { background: rgba(242,242,242,0.28); }
+.glm-pin.quiet .disc { background: rgba(242,242,242,0.22); color: rgba(242,242,242,0.75); }
 .glm-pin.host .disc { background: #facc15; box-shadow: 0 0 0 0.25rem rgba(250,204,21,0.18); animation: glmPulse 2.4s ease-in-out infinite; }
+.glm-pin.many .disc { background: #151515; color: #f2f2f2; border: 1.5px solid rgba(242,242,242,0.75); }
+.glm-pin.many.host .disc { background: #151515; color: #facc15; border-color: #facc15; }
 .glm-pin .lbl { position: absolute; top: 0; transform: translateY(-50%); white-space: nowrap; font: 500 0.66rem Outfit, sans-serif; color: rgba(242,242,242,0.72);
   text-shadow: 0 0 3px #0e0e0e, 0 0 3px #0e0e0e, 0 1px 2px #0e0e0e; }
 .glm-pin .lbl em { font-style: normal; color: rgba(242,242,242,0.42); margin-left: 0.25rem; font-variant-numeric: tabular-nums; }
