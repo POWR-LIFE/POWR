@@ -1,7 +1,7 @@
 import { pg, w } from '../../theme';
 import { useCompact } from '../../stages/shared';
 import { storageImage } from '../../../lib/storage';
-import { EVENT, WEARABLES } from '../data';
+import { DEMO_GYM, WEARABLES } from '../data';
 import { CARD, Check, Head, Pts, Reveal, Section } from '../ui';
 
 /**
@@ -68,7 +68,7 @@ function SessionCard() {
     <div style={{ ...APP_CARD, padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ width: 40, height: 40, borderRadius: 12, background: '#fff', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
-          <img src={storageImage(EVENT.venueLogo, 96)} alt="" width={40} height={40} style={{ width: 30, height: 30, objectFit: 'contain' }} />
+          <img src={storageImage(DEMO_GYM.logo, 96)} alt="" width={40} height={40} style={{ width: 30, height: 30, objectFit: 'contain' }} />
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: w.semiBold, color: pg.text }}>ONE LDN</div>

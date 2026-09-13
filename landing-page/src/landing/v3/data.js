@@ -83,23 +83,49 @@ export const LADDER = [
 ];
 export const GYM_PTS = 20;
 
-/* FNL x POWR — the first live event, read from live_events on 2026-09-05 */
-export const EVENT = {
-  name: 'FNL x POWR',
-  venue: 'ONE LDN',
-  venueArea: 'Imperial Wharf, London',
-  venueLogo: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/partners/1780309700450-phgw9x.webp',
-  scoring: '27 Aug – 4 Sep 2026',
-  night: 'Friday 4 September, 6–7pm',
-  competitors: 25,
-  prizes: [
-    { rank: 1, label: 'Mandarin Oriental Wellness Day', img: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/event-prizes/1787239532955-ql2qvy.png' },
-    { rank: 2, label: 'Unbound Testing Package', img: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/event-prizes/1787134225188-eu7abr.png' },
-    { rank: 3, label: 'Form Smart Swim 2 Goggles', img: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/event-prizes/1787133997902-c2yfwr.png' },
-    { rank: 4, label: 'Huel Hamper', img: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/event-prizes/1787141434856-a0sl2u.png' },
-  ].map((p) => ({ ...p, img: storageImage(p.img, 720) })),
-  rules: ['Only points earned during the event week count', 'Multipliers and streaks do not count', 'Winners revealed at the doors'],
-};
+/* The gym in the "Show up" demo card — ONE LDN, the first event venue */
+const ONE_LDN_LOGO = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/partners/1780309700450-phgw9x.webp';
+export const DEMO_GYM = { name: 'ONE LDN', logo: ONE_LDN_LOGO };
+
+/*
+ * Live events — public.landing_events() (migration 20260913120000). Never
+ * hand-dated: the RPC decides which event is CURRENT (the app's own rule:
+ * not draft, not archived, ended < 7 days ago) and which are history.
+ * Prizes ride along as public storage URLs.
+ */
+export const PAST_EVENTS_FALLBACK = [
+  {
+    slug: 'fnl-x-powr', name: 'FNL x POWR', status: 'archived',
+    window_start_at: '2026-08-26T23:00:00Z', window_end_at: '2026-09-04T18:00:00Z', doors_open_at: '2026-09-04T17:00:00Z',
+    venue: 'ONE LDN', venue_address: 'Imperial Wharf, London', venueLogo: storageImage(ONE_LDN_LOGO, 128),
+    participants: 25, prizes: [{}, {}, {}, {}], is_current: false,
+  },
+];
+
+function normaliseEvent(r) {
+  const prizes = Array.isArray(r.prizes) ? r.prizes : [];
+  return {
+    ...r,
+    venueLogo: storageImage(r.venue_logo || r.logo_url || null, 128),
+    prizes: prizes
+      .slice()
+      .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+      .map((p) => ({ rank: p.rank, label: p.label, img: storageImage(p.image_url || null, 720) })),
+  };
+}
+
+export async function fetchEvents() {
+  try {
+    const { data, error } = await supabase.rpc('landing_events');
+    if (error) throw error;
+    const rows = (Array.isArray(data) ? data : []).map(normaliseEvent);
+    const current = rows.find((r) => r.is_current) || null;
+    const past = rows.filter((r) => !r.is_current && new Date(r.window_end_at).getTime() < Date.now());
+    return { current, past, live: true };
+  } catch {
+    return { current: null, past: PAST_EVENTS_FALLBACK, live: false };
+  }
+}
 
 /* Wearable marks — white-alpha PNGs in /public/wearables */
 export const WEARABLES = [

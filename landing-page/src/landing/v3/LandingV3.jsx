@@ -150,6 +150,7 @@ function GlobalStyles() {
       @keyframes powrGlow { 0% { opacity: 0.4; transform: translateX(-50%) scale(1); } 100% { opacity: 0.7; transform: translateX(-50%) scale(1.1); } }
       @keyframes powrDot { 0% { box-shadow: 0 0 0 0 rgba(232,210,0,0.45); } 70% { box-shadow: 0 0 0 9px rgba(232,210,0,0); } 100% { box-shadow: 0 0 0 0 rgba(232,210,0,0); } }
       @keyframes powrRing { 0% { transform: scale(0.85); opacity: 0; } 30% { opacity: 1; } 100% { transform: scale(1.25); opacity: 0; } }
+      @keyframes powrSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       .powr-nav-secondary { font-size: 12px; font-weight: 300; color: ${pg.textSec}; text-decoration: none; white-space: nowrap; transition: color 0.2s; }
       .powr-nav-secondary:hover { color: ${pg.text}; }
       @media (max-width: 380px) { .powr-nav-secondary { display: none; } }
