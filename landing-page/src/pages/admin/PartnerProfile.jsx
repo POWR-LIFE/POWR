@@ -5,9 +5,10 @@ import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
     ChevronLeft, MapPin, Globe, Mail, Phone, Upload, Save,
-    Activity, Award, Edit2, Trash2, Image, X, Calendar, Building2, Clock, BarChart3
+    Activity, Award, Edit2, Trash2, Image, X, Calendar, Building2, Clock, BarChart3, Tv
 } from 'lucide-react';
 import PartnerPerformancePanel from './PartnerPerformancePanel';
+import GymBoardPanel from './GymBoardPanel';
 import GeofenceMap from '../../components/GeofenceMap';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -98,7 +99,7 @@ export default function PartnerProfile() {
     const [form, setForm] = useState({});
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
-    const [activeTab, setActiveTab] = useState('profile'); // profile | performance
+    const [activeTab, setActiveTab] = useState('profile'); // profile | performance | screen
 
     useEffect(() => { if (partnerId) fetchData(); }, [partnerId]);
 
@@ -288,6 +289,7 @@ export default function PartnerProfile() {
                 {[
                     { key: 'profile', label: 'Profile', icon: Building2 },
                     { key: 'performance', label: 'Performance', icon: BarChart3 },
+                    { key: 'screen', label: 'Big screen', icon: Tv },
                 ].map(t => (
                     <button
                         key={t.key}
@@ -558,6 +560,10 @@ export default function PartnerProfile() {
 
             {activeTab === 'performance' && (
                 <PartnerPerformancePanel partner={partner} />
+            )}
+
+            {activeTab === 'screen' && (
+                <GymBoardPanel partner={partner} adminId={adminUser?.id} />
             )}
         </div>
     );
