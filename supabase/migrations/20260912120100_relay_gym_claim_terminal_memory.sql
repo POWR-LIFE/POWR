@@ -62,7 +62,13 @@ begin
 
   -- Only a geofence-verified session is a gym claim. Anything else is the
   -- 2026-09-08 shape and must not reach claim-points.
-  if v_verification is distinct from 'geofence' then
+  if v_verification is distinct from 'geofence'
+     or not exists (
+       select 1
+         from activity_sessions
+        where id = p_session_id
+          and type = 'gym'
+     ) then
     return jsonb_build_object('status', 'not_relayable', 'verification', v_verification);
   end if;
 
