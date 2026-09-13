@@ -15,7 +15,9 @@
 -- every gym ON POWR — an active gym partner with a location where someone
 -- has earned points in the last 28 days (the catalogue holds ~7,900 gyms;
 -- a gym nobody trains at is not in the race) — and its week so far (points,
--- points today, sessions, athletes, points by day, members in now) plus
+-- points today, sessions, athletes, points by day, members in now, and the
+-- SAME STRETCH of last week — Monday to now minus 7 days, never a whole week
+-- against a partial one — for the momentum badge) plus
 -- the last 24 h of scoring sessions across the network for the live feed.
 -- Scoring is the wall's rule: earn / adjustment / penalty rows on sessions
 -- with activity_sessions.partner_id = the gym, session started inside the
@@ -47,6 +49,8 @@ declare
   v_week_start timestamptz;
   v_week_end   timestamptz;
   v_day_start  timestamptz;
+  v_prev_start timestamptz;
+  v_prev_now   timestamptz;
   v_gyms       jsonb;
   v_feed       jsonb;
 begin
@@ -60,6 +64,8 @@ begin
   v_week_start := date_trunc('week', v_local_now) at time zone v_tz;
   v_week_end   := (date_trunc('week', v_local_now) + interval '7 days') at time zone v_tz;
   v_day_start  := date_trunc('day', v_local_now) at time zone v_tz;
+  v_prev_start := v_week_start - interval '7 days';
+  v_prev_now   := now() - interval '7 days';
 
   -- Every gym's week so far.
   with active_gyms as (
@@ -79,24 +85,25 @@ begin
     join public.point_transactions pt
       on pt.session_id = s.id and pt.type in ('earn', 'adjustment', 'penalty')
     where s.partner_id is not null
-      and s.started_at >= v_week_start
+      and s.started_at >= v_prev_start
       and s.started_at <  v_week_end
     group by s.id, s.user_id, s.partner_id, s.started_at
   ),
   per as (
     select partner_id,
-           sum(points)::integer                                             as points_week,
-           coalesce(sum(points) filter (where started_at >= v_day_start), 0)::integer as points_today,
-           count(*)::integer                                                as sessions_week,
-           count(distinct user_id)::integer                                 as athletes_week,
+           coalesce(sum(points) filter (where started_at >= v_week_start), 0)::integer as points_week,
+           coalesce(sum(points) filter (where started_at >= v_day_start), 0)::integer  as points_today,
+           coalesce(sum(points) filter (where started_at >= v_prev_start and started_at < v_prev_now), 0)::integer as points_last_same,
+           count(*) filter (where started_at >= v_week_start)::integer                as sessions_week,
+           count(distinct user_id) filter (where started_at >= v_week_start)::integer as athletes_week,
            array[
-             coalesce(sum(points) filter (where dow = 0), 0)::integer,
-             coalesce(sum(points) filter (where dow = 1), 0)::integer,
-             coalesce(sum(points) filter (where dow = 2), 0)::integer,
-             coalesce(sum(points) filter (where dow = 3), 0)::integer,
-             coalesce(sum(points) filter (where dow = 4), 0)::integer,
-             coalesce(sum(points) filter (where dow = 5), 0)::integer,
-             coalesce(sum(points) filter (where dow = 6), 0)::integer
+             coalesce(sum(points) filter (where started_at >= v_week_start and dow = 0), 0)::integer,
+             coalesce(sum(points) filter (where started_at >= v_week_start and dow = 1), 0)::integer,
+             coalesce(sum(points) filter (where started_at >= v_week_start and dow = 2), 0)::integer,
+             coalesce(sum(points) filter (where started_at >= v_week_start and dow = 3), 0)::integer,
+             coalesce(sum(points) filter (where started_at >= v_week_start and dow = 4), 0)::integer,
+             coalesce(sum(points) filter (where started_at >= v_week_start and dow = 5), 0)::integer,
+             coalesce(sum(points) filter (where started_at >= v_week_start and dow = 6), 0)::integer
            ] as days
     from sess
     group by partner_id
@@ -116,6 +123,7 @@ begin
            'lng',           l.lng,
            'points_week',   coalesce(x.points_week, 0),
            'points_today',  coalesce(x.points_today, 0),
+           'points_last_same', coalesce(x.points_last_same, 0),
            'sessions_week', coalesce(x.sessions_week, 0),
            'athletes_week', coalesce(x.athletes_week, 0),
            'days',          coalesce(to_jsonb(x.days), '[0,0,0,0,0,0,0]'::jsonb),
@@ -165,6 +173,8 @@ begin
     'week_start_at', v_week_start,
     'week_end_at',   v_week_end,
     'day_start_at',  v_day_start,
+    'prev_start_at', v_prev_start,
+    'prev_now_at',   v_prev_now,
     'gyms',          coalesce(v_gyms, '[]'::jsonb),
     'feed',          coalesce(v_feed, '[]'::jsonb)
   );

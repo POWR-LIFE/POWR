@@ -10,12 +10,15 @@ import {
     haversineKm,
     leagueScenePlan,
     localGyms,
+    momentum,
     monogram,
     nodeLabel,
     ordinal,
     placeLabel,
     projector,
+    rankByEffort,
     rankGyms,
+    rawPerAthlete,
     ranksAtDayStart,
     rivalOf,
     sampleLeague,
@@ -30,8 +33,9 @@ import {
  * The gym's second screen: its gym racing every other POWR gym on points
  * earned this week. Same credential as the wall (GymBoard.jsx), the host
  * gym's point of view throughout. Three scenes rotate — LOCAL (gyms within
- * the board's radius), GLOBAL (every gym), then HEAD-TO-HEAD against the gym
- * directly above — with a network map and a live feed on the rail.
+ * the board's radius), GLOBAL (every gym), EFFORT (points per athlete, the
+ * table a small gym can win), then HEAD-TO-HEAD against the gym directly
+ * above — with a network map and a live feed on the rail.
  *
  * It moves on real data: every poll is diffed against the last, and each
  * session that landed since flashes its lane, rolls its number, ripples on
@@ -45,7 +49,7 @@ const POLL_MS = 15_000;
 const STALE_MS = 60_000;
 const HIT_MS = 2_400;
 const FN_BASE = `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/gym-league`;
-const SCENES = ['local', 'global', 'duel'];
+const SCENES = ['local', 'global', 'effort', 'duel'];
 const DAY_L = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const fmt = (n) => Math.round(n).toLocaleString('en-GB');
 
@@ -192,11 +196,12 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
     const globalRanked = useMemo(() => rankGyms(gyms), [gyms]);
     const duelPool = localRanked.length >= 2 ? localRanked : globalRanked;
     const { rival, ahead } = rivalOf(duelPool, league.host_key);
+    const effort = useMemo(() => rankByEffort(gyms), [gyms]);
 
     const plan = useMemo(
-        () => leagueScenePlan({ localCount: local.length, globalCount: gyms.length, hasRival: !!(host && rival) }),
+        () => leagueScenePlan({ localCount: local.length, globalCount: gyms.length, hasRival: !!(host && rival), effortCount: effort.ranked.length }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [local.length, gyms.length, !!(host && rival)],
+        [local.length, gyms.length, !!(host && rival), effort.ranked.length],
     );
     const planKey = plan.map((p) => p.scene).join();
     const [idx, setIdx] = useState(0);
@@ -210,7 +215,7 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [idx, planKey, pinned]);
     const scene = pinned && plan.some((p) => p.scene === pinned) ? pinned : plan[idx % plan.length].scene;
-    const scope = scene === 'global' ? 'global' : local.length >= 2 ? 'local' : 'global';
+    const scope = scene === 'global' || scene === 'effort' ? 'global' : local.length >= 2 ? 'local' : 'global';
 
     const hostPlace = host ? placeLabel(host.address, host.name) : '';
     const countries = new Set(gyms.map((g) => countryCode(g.address, g.lat, g.lng)).filter(Boolean)).size;
@@ -244,6 +249,10 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
                         {scene === 'duel' && host && rival ? (
                             <motion.section key="duel" className="gl-scene" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.45 }}>
                                 <DuelScene host={host} rival={rival} ahead={ahead} pool={duelPool} scopeName={localRanked.length >= 2 ? hostPlace : 'POWR'} feed={league.feed ?? []} hits={hits} reset={reset} />
+                            </motion.section>
+                        ) : scene === 'effort' ? (
+                            <motion.section key="effort" className="gl-scene" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.45 }}>
+                                <EffortScene effort={effort} host={host} hits={hits} />
                             </motion.section>
                         ) : (
                             <motion.section key={`race-${scope}`} className="gl-scene" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.45 }}>
@@ -317,7 +326,7 @@ function RaceScene({ scope, ranked, host, hits }) {
                             <div className="gl-mono">{monogram(g.name)}</div>
                             <div className="gl-name">
                                 <b>{g.name}</b>
-                                <small>{meta} · {g.sessions_week} sessions{g.in_now ? <> · <span className="in">{g.in_now} in now</span></> : null}</small>
+                                <small>{meta} · {g.sessions_week} sessions{rawPerAthlete(g) != null ? ` · ${Math.round(rawPerAthlete(g))} pts/athlete` : ''}{g.in_now ? <> · <span className="in">{g.in_now} in now</span></> : null}<Momentum g={g} /></small>
                             </div>
                             <div className="gl-bar">
                                 {hit && hit.points > 0 && (
@@ -334,6 +343,55 @@ function RaceScene({ scope, ranked, host, hits }) {
                 <div className="gl-more">
                     <span>and <b>{rest.length} more gyms</b> · {rest.filter((g) => g.points_week > 0).length} scoring this week</span>
                     {host && hostRank > 0 && <span>{host.name} is <b>{ordinal(hostRank)} of {ranked.length}</b></span>}
+                </div>
+            )}
+        </>
+    );
+}
+
+function Momentum({ g }) {
+    const m = momentum(g);
+    if (!m) return null;
+    return <span className={`gl-mom ${m.up ? 'up' : 'down'}`} title="vs the same stretch of last week">{m.up ? '▲' : '▼'} {m.pct}%</span>;
+}
+
+// ─── Effort: points per athlete, the table a small gym can win ───
+
+function EffortScene({ effort, host, hits }) {
+    const { ranked, unranked } = effort;
+    const show = ranked.slice(0, 10);
+    const leader = Math.max(1e-6, ranked[0]?.perAthlete ?? 1);
+    const hostRank = ranked.findIndex((r) => r.gym.key === host?.key) + 1;
+    return (
+        <>
+            <div className="gl-eyebrow"><h2>Effort · points per athlete this week</h2><div className="gl-hint">The table a small gym can win · ranked with at least 3 athletes</div></div>
+            <div className="gl-lanes">
+                {show.map(({ gym: g, perAthlete }, i) => {
+                    const hit = hits[g.key];
+                    const isHost = host && g.key === host.key;
+                    const place = placeLabel(g.address, '');
+                    return (
+                        <motion.div key={g.key} layout transition={{ type: 'spring', stiffness: 260, damping: 32 }} className={`gl-lane${isHost ? ' host' : ''}${hit ? ' hit' : ''}`}>
+                            <div className="gl-rank">{i + 1}</div>
+                            <div className="gl-move" />
+                            <div className="gl-mono">{monogram(g.name)}</div>
+                            <div className="gl-name">
+                                <b>{g.name}</b>
+                                <small>{place ? `${place} · ` : ''}{g.athletes_week} athletes · {fmt(g.points_week)} pts<Momentum g={g} /></small>
+                            </div>
+                            <div className="gl-bar"><div className="gl-fill" style={{ width: `${Math.max(2, (perAthlete / leader) * 100)}%` }}><i /></div></div>
+                            <div className="gl-pts"><span className="plus">{hit ? `+${hit.points}` : ''}</span><RollNum value={Math.round(perAthlete)} /><span className="unit">per athlete</span></div>
+                        </motion.div>
+                    );
+                })}
+            </div>
+            {(unranked.length > 0 || ranked.length > 10) && (
+                <div className="gl-more">
+                    <span>
+                        {ranked.length > 10 ? <>and <b>{ranked.length - 10} more</b> ranked · </> : null}
+                        {unranked.length > 0 ? `Needs 3 athletes to rank · ${unranked.slice(0, 4).map((g) => `${g.name} (${g.athletes_week})`).join(' · ')}${unranked.length > 4 ? ` · +${unranked.length - 4} more` : ''}` : null}
+                    </span>
+                    {host && hostRank > 10 && <span>{host.name} is <b>{ordinal(hostRank)} of {ranked.length}</b> on effort</span>}
                 </div>
             )}
         </>
@@ -681,6 +739,9 @@ const CSS = `
 @keyframes glDelta { 0% { opacity: 1 } 55% { opacity: 1 } 100% { opacity: 0 } }
 .gl-pts { text-align: right; font-weight: 700; font-size: 1.45rem; font-variant-numeric: tabular-nums; }
 .gl-pts .plus { display: block; font-size: 0.7rem; font-weight: 600; color: var(--up); letter-spacing: 0.06em; height: 0.9rem; }
+.gl-pts .unit { display: block; font-size: 0.6rem; font-weight: 500; color: var(--ink-3); letter-spacing: 0.12em; text-transform: uppercase; margin-top: -0.1rem; }
+.gl-mom { display: inline-block; margin-left: 0.5rem; padding: 0 0.4rem; border-radius: 999px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em; border: 1px solid var(--line); color: var(--ink-2); vertical-align: 0.05rem; }
+.gl-mom.up { color: var(--up); border-color: rgba(74,222,128,0.35); } .gl-mom.down { color: var(--down); border-color: rgba(248,113,113,0.35); }
 .gl-more { margin-top: 0.4rem; padding: 0.6rem 0.9rem; font-size: 0.85rem; color: var(--ink-3); border-top: 1px solid var(--line); display: flex; justify-content: space-between; }
 .gl-more b { color: var(--ink-2); font-weight: 500; }
 .gl-duel { flex: 1; display: grid; grid-template-columns: 1fr 13rem 1fr; grid-template-rows: auto auto; gap: 1.2rem 2rem; align-content: center; align-items: center; padding: 0 1.5rem; min-height: 0; }

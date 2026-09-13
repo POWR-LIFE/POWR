@@ -16,6 +16,8 @@ export type LeagueGym = {
   lng: number;
   points_week: number;
   points_today: number;
+  /** Points over the same stretch of last week (Monday → now − 7 days). */
+  points_last_same?: number;
   sessions_week: number;
   athletes_week: number;
   days: number[];
@@ -187,13 +189,58 @@ export function shareOf(a: number, b: number): number {
   return t <= 0 ? 0.5 : a / t;
 }
 
-export type LeagueScene = 'local' | 'global' | 'duel';
+// ── Effort: the fair table ───────────────────────────────────────────────
+//
+// Totals reward size. POWR's own argument is effort over size, so the second
+// table ranks points per active athlete — the only denominator POWR can
+// honestly use (it never knows a gym's membership, only who trained on
+// POWR). One guard keeps a lone hero from topping it: a gym ranks on effort
+// only with EFFORT_MIN_ATHLETES athletes this week. The table ranks on the
+// exact figure it shows — a shrunk score was tried and put 151 above 155 on
+// the wall, which a room reads as a bug, not statistics.
+
+export const EFFORT_MIN_ATHLETES = 3;
+
+/** Network average points per active athlete across the league. */
+export function networkAvgPerAthlete(gyms: LeagueGym[]): number {
+  const points = gyms.reduce((s, g) => s + g.points_week, 0);
+  const athletes = gyms.reduce((s, g) => s + g.athletes_week, 0);
+  return athletes > 0 ? points / athletes : 0;
+}
+
+/** The figure a lane shows: points per athlete this week, or null with no athletes. */
+export function rawPerAthlete(g: LeagueGym): number | null {
+  return g.athletes_week > 0 ? g.points_week / g.athletes_week : null;
+}
+
+export type EffortRow = { gym: LeagueGym; perAthlete: number };
+
+/** Effort table: gyms with enough athletes ranked by points per athlete (ties to the bigger squad); the rest listed unranked. */
+export function rankByEffort(gyms: LeagueGym[], minAthletes = EFFORT_MIN_ATHLETES): { ranked: EffortRow[]; unranked: LeagueGym[] } {
+  const ranked = gyms
+    .filter((g) => g.athletes_week >= minAthletes)
+    .map((g) => ({ gym: g, perAthlete: rawPerAthlete(g) ?? 0 }))
+    .sort((a, b) => b.perAthlete - a.perAthlete || b.gym.athletes_week - a.gym.athletes_week || a.gym.name.localeCompare(b.gym.name));
+  const unranked = rankGyms(gyms.filter((g) => g.athletes_week < minAthletes));
+  return { ranked, unranked };
+}
+
+/** Change against the same stretch of last week, as a badge — null when last week is too small to compare. */
+export function momentum(g: LeagueGym, floor = 20): { pct: number; up: boolean } | null {
+  const last = g.points_last_same ?? 0;
+  if (last < floor) return null;
+  const pct = Math.round(((g.points_week - last) / last) * 100);
+  return { pct: Math.abs(pct), up: pct >= 0 };
+}
+
+export type LeagueScene = 'local' | 'global' | 'effort' | 'duel';
 
 /** Local → Global → Head-to-head; the duel only when there is someone to race. */
-export function leagueScenePlan(opts: { localCount: number; globalCount: number; hasRival: boolean }): Array<{ scene: LeagueScene; ms: number }> {
+export function leagueScenePlan(opts: { localCount: number; globalCount: number; hasRival: boolean; effortCount?: number }): Array<{ scene: LeagueScene; ms: number }> {
   const plan: Array<{ scene: LeagueScene; ms: number }> = [];
   if (opts.localCount >= 2) plan.push({ scene: 'local', ms: 28_000 });
   plan.push({ scene: 'global', ms: opts.localCount >= 2 ? 28_000 : 40_000 });
+  if ((opts.effortCount ?? 0) >= 2) plan.push({ scene: 'effort', ms: 18_000 });
   if (opts.hasRival) plan.push({ scene: 'duel', ms: 12_000 });
   return plan;
 }
@@ -329,7 +376,8 @@ export function sampleLeague(nowMs: number, tz = 'Europe/London'): LeaguePayload
     days[6] = Math.max(0, pts - days.slice(0, 6).reduce((s, v) => s + v, 0));
     return {
       key: `sample-${i}`, name, address, lat, lng,
-      points_week: pts, points_today: days[6], sessions_week: Math.round(pts / 18), athletes_week: members, days,
+      points_week: pts, points_today: days[6], points_last_same: Math.round(pts * (0.6 + rnd() * 0.8)),
+      sessions_week: Math.round(pts / 18), athletes_week: members, days,
       in_now: rnd() < 0.3 ? 1 + Math.floor(rnd() * 3) : 0,
     };
   });

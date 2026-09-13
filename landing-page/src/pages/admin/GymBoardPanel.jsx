@@ -282,8 +282,8 @@ export default function GymBoardPanel({ partner, adminId }) {
                     <div className="p-10 space-y-8">
                         <p className="text-[13px] text-[#555555] leading-relaxed">
                             A second screen for the gym: <span className="font-semibold text-[#1A1A1A]">{partner.name}</span> against every
-                            other POWR gym on points earned this week — first the gyms nearby, then the whole network, then a head-to-head
-                            with the gym directly above. Every session that lands anywhere on POWR moves it. Same link key as the leaderboard.
+                            other POWR gym on points earned this week — first the gyms nearby, then the whole network, then points per athlete,
+                            then a head-to-head with the gym directly above. Every session that lands anywhere on POWR moves it. Same link key as the leaderboard.
                         </p>
                         <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -345,7 +345,7 @@ export default function GymBoardPanel({ partner, adminId }) {
                         <p>Points from verified sessions <span className="font-semibold text-[#1A1A1A]">at this gym</span> — the same earn, adjustment and penalty rows as the app&apos;s weekly board. Streak and referral bonuses don&apos;t buy rank.</p>
                         <p>The week runs Monday 00:00 → Sunday 23:59 in <span className="font-mono text-[11px]">{board.tz}</span>. Arrows show places moved since the day began.</p>
                         <p>Only members with &ldquo;show on leaderboard&rdquo; on appear. Names and avatars come from their POWR profile.</p>
-                        <p>The Gym League adds up the same points per gym — raw totals, so bigger gyms carry more weight — across every gym where someone has earned points in the last 28 days.</p>
+                        <p>The Gym League adds up the same points per gym across every gym where someone has earned points in the last 28 days. Totals are the race; a second table ranks <span className="font-semibold text-[#1A1A1A]">points per athlete</span> (three athletes minimum) so a small gym can beat a chain on effort.</p>
                     </div>
                 </section>
                 <section className="bg-white border border-[#E6E6E1] p-10 rounded-[2rem]">

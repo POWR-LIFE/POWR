@@ -6,13 +6,17 @@ import {
   leagueScenePlan,
   leagueUrl,
   localGyms,
+  momentum,
   monogram,
+  networkAvgPerAthlete,
   nodeLabel,
   ordinal,
   placeLabel,
   projector,
+  rankByEffort,
   rankGyms,
   ranksAtDayStart,
+  rawPerAthlete,
   rivalOf,
   sampleLeague,
   sessionsLastHour,
@@ -101,7 +105,33 @@ describe('distance and lenses', () => {
   });
 });
 
+describe('effort', () => {
+  const big = { ...gym('big', 'Third Space', 51.5, -0.1, 1200), athletes_week: 40 };        // 30 per athlete
+  const small = { ...gym('small', 'Valhalla', 52.18, -2.2, 240), athletes_week: 4 };       // 60 per athlete
+  const solo = { ...gym('solo', 'Iron Asylum', 52.27, -2.15, 180), athletes_week: 1 };     // 180 per athlete, unranked
+  const quiet = gym('quiet', 'Stars Gym', 51.48, -0.17, 0);
+  it('ranks points per athlete with a three-athlete floor', () => {
+    expect(rawPerAthlete(big)).toBe(30);
+    expect(rawPerAthlete(quiet)).toBeNull();
+    expect(networkAvgPerAthlete([big, small, solo, quiet])).toBeCloseTo(1620 / 45);
+    const { ranked, unranked } = rankByEffort([big, small, solo, quiet]);
+    expect(ranked.map((r) => r.gym.key)).toEqual(['small', 'big']);
+    expect(ranked[0].perAthlete).toBe(60);
+    expect(unranked.map((g) => g.key)).toEqual(['solo', 'quiet']);
+  });
+  it('turns last week\'s same stretch into a badge, or nothing when last week was too small', () => {
+    expect(momentum({ ...big, points_last_same: 1000 })).toEqual({ pct: 20, up: true });
+    expect(momentum({ ...big, points_last_same: 1500 })).toEqual({ pct: 20, up: false });
+    expect(momentum({ ...big, points_last_same: 10 })).toBeNull();
+    expect(momentum(big)).toBeNull();
+  });
+});
+
 describe('scene plan', () => {
+  it('adds the effort table only when two gyms can rank on it', () => {
+    expect(leagueScenePlan({ localCount: 9, globalCount: 40, hasRival: true, effortCount: 5 }).map((s) => s.scene)).toEqual(['local', 'global', 'effort', 'duel']);
+    expect(leagueScenePlan({ localCount: 9, globalCount: 40, hasRival: true, effortCount: 1 }).map((s) => s.scene)).toEqual(['local', 'global', 'duel']);
+  });
   it('drops the local lens with one gym and the duel with no rival', () => {
     expect(leagueScenePlan({ localCount: 9, globalCount: 40, hasRival: true }).map((s) => s.scene)).toEqual(['local', 'global', 'duel']);
     expect(leagueScenePlan({ localCount: 1, globalCount: 40, hasRival: true }).map((s) => s.scene)).toEqual(['global', 'duel']);

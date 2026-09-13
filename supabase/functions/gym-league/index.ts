@@ -41,6 +41,7 @@ type GymRow = {
   lng: number;
   points_week: number;
   points_today: number;
+  points_last_same: number;
   sessions_week: number;
   athletes_week: number;
   days: number[];
@@ -119,6 +120,7 @@ Deno.serve(async (req: Request) => {
     lng: g.lng,
     points_week: g.points_week,
     points_today: g.points_today,
+    points_last_same: g.points_last_same ?? 0,
     sessions_week: g.sessions_week,
     athletes_week: g.athletes_week,
     days: g.days,
@@ -153,6 +155,8 @@ Deno.serve(async (req: Request) => {
     week_start_at: payload.week_start_at,
     week_end_at: payload.week_end_at,
     day_start_at: payload.day_start_at,
+    prev_start_at: payload.prev_start_at ?? null,
+    prev_now_at: payload.prev_now_at ?? null,
     gyms: gymsOut,
     feed,
     generated_at: new Date().toISOString(),
