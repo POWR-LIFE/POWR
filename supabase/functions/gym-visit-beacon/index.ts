@@ -1328,18 +1328,12 @@ Deno.serve(async (req: Request) => {
     // Close it under its own reason so Live Ops can tell "declined" from
     // "abandoned". Conditional on ended_at: a real client exit racing us wins.
     const closeDeclinedVisit = async (visitId: string, stage: 'dwell' | 'upgrade', err: string | null) => {
-      let q = admin
+      const { data: closed, error } = await admin
         .from('gym_visits')
         .update({ status: 'closed', close_reason: 'settle_declined', ended_at: new Date().toISOString() })
         .eq('id', visitId)
-        .is('ended_at', null);
-
-      // Avoid clobbering a visit that was claimed/upgraded after we selected it.
-      q = stage === 'dwell'
-        ? q.eq('status', 'open').is('claimed_session_id', null)
-        : q.not('claimed_session_id', 'is', null).is('upgraded_at', null);
-
-      const { data: closed, error } = await q.select('id');
+        .is('ended_at', null)
+        .select('id');
       if (error) { console.error('[gym-visit-beacon] settle-declined close failed', error); return; }
       if (closed && closed.length > 0) {
         stats.settle_declined++;
