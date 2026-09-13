@@ -181,7 +181,7 @@ function NextEvent({ past, compact }) {
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 14, color: pg.text, fontWeight: w.medium, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.name}</span>
                   <span style={{ display: 'block', fontSize: 12, color: pg.textMuted, marginTop: 2 }}>
-                    {[ev.venue, monthYear(ev.window_start_at), ev.participants ? `${fmt(ev.participants)} competitors` : null].filter(Boolean).join(' · ')}
+                    {[ev.venue, monthYear(ev.window_end_at), ev.participants ? `${fmt(ev.participants)} competitors` : null].filter(Boolean).join(' · ')}
                   </span>
                 </span>
                 {(ev.prizes?.length > 0) && <Pts size={10.5}>{ev.prizes.length} PRIZES</Pts>}
