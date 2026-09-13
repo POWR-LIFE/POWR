@@ -368,8 +368,9 @@ export function intervalSamples(points: HistoryPoint[] | undefined): number | nu
   if (!points || points.length < 2) return null;
   const usable = points.filter(p => p[3] && p[1] != null && p[2] != null);
   if (usable.length < 2) return null;
+  const dn = Number(usable[usable.length - 1][1]) - Number(usable[usable.length - 2][1]);
   const dd = Number(usable[usable.length - 1][2]) - Number(usable[usable.length - 2][2]);
-  return dd < 0 ? null : dd;
+  return dn < 0 || dd < 0 ? null : dd;
 }
 
 // ── Judgement ────────────────────────────────────────────────────────────────
