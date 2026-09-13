@@ -2378,7 +2378,7 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
         // no points). On 2026-09-08 that import was picked, relayed, refused 422,
         // and re-relayed every 10 s for 3 h 10 min: 1,198 refusals for one visit.
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setUTCHours(0, 0, 0, 0);
         const existing = bgAuth
           ? (await bgSelect<{ id: string; duration_sec: number | null }>(
               'activity_sessions',
