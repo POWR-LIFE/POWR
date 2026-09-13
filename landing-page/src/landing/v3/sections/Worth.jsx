@@ -82,6 +82,71 @@ export default function Worth() {
   );
 }
 
+/*
+ * Brand chip that fits the mark it holds. Two things went wrong with a fixed
+ * white square: half the vault's marks are wide wordmarks (HUEL is
+ * 7554×2123) that a 26px square crushed to a smudge, and three of them
+ * (HUEL, Frank, Omnity) are white ink that vanishes on white — while swt,
+ * MAJIC, REP and TRIBE are dark or coloured ink that vanishes on the film's
+ * dark chip. So: a pill sized by the mark's height, on a background chosen
+ * by reading the mark's own luminance off a canvas. Supabase storage sends
+ * CORS headers, so the readback works; if it ever doesn't, the chip falls
+ * back to the app's dark glass, which is what the film uses.
+ */
+const toneCache = new Map();
+
+function useLogoTone(src) {
+  const [tone, setTone] = useState(() => toneCache.get(src) ?? null);
+  useEffect(() => {
+    if (!src || toneCache.has(src)) { setTone(toneCache.get(src) ?? null); return; }
+    let alive = true;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      let result = 'light';
+      try {
+        const c = document.createElement('canvas');
+        c.width = 32; c.height = 32;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, 32, 32);
+        const { data } = ctx.getImageData(0, 0, 32, 32);
+        let sum = 0, n = 0;
+        for (let p = 0; p < data.length; p += 4) {
+          if (data[p + 3] < 48) continue; // transparent: not ink
+          sum += (0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2]) / 255;
+          n += 1;
+        }
+        result = n && sum / n > 0.62 ? 'light' : 'dark';
+      } catch { result = 'light'; }
+      toneCache.set(src, result);
+      if (alive) setTone(result);
+    };
+    img.onerror = () => { toneCache.set(src, 'light'); if (alive) setTone('light'); };
+    img.src = src;
+    return () => { alive = false; };
+  }, [src]);
+  return tone;
+}
+
+function LogoChip({ src, alt }) {
+  const tone = useLogoTone(src);
+  const lightInk = tone !== 'dark'; // unknown → dark glass, the app's default
+  return (
+    <span
+      style={{
+        height: 32, padding: '0 9px', borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'hidden', flexShrink: 0, maxWidth: '62%',
+        background: lightInk ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.94)',
+        border: lightInk ? '1px solid rgba(255,255,255,0.16)' : '1px solid rgba(0,0,0,0.06)',
+        backdropFilter: lightInk ? 'blur(10px)' : 'none',
+        opacity: tone ? 1 : 0, transition: 'opacity 0.3s',
+      }}
+    >
+      <img src={src} alt={alt} style={{ display: 'block', height: 18, width: 'auto', maxWidth: 96, objectFit: 'contain' }} />
+    </span>
+  );
+}
+
 function Poster({ r, i }) {
   const sessions = Math.ceil(r.pts / GYM_PTS);
   return (
@@ -105,11 +170,7 @@ function Poster({ r, i }) {
       )}
       <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 62%, rgba(0,0,0,0.92) 100%)' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        {r.logo ? (
-          <span style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.92)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
-            <img src={r.logo} alt="" width={34} height={34} style={{ width: 26, height: 26, objectFit: 'contain' }} />
-          </span>
-        ) : <span />}
+        {r.logo ? <LogoChip src={r.logo} alt={r.brand} /> : <span />}
         {r.flash && <Pts size={11}>{r.flash}</Pts>}
       </div>
       <div style={{ position: 'absolute', left: 14, right: 14, bottom: 14 }}>
