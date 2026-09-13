@@ -355,6 +355,25 @@ describe('the wake path prefers the ticket', () => {
     });
   });
 
+  it('adds p_fix to the ticketed open only when the check-in has a fix to carry', async () => {
+    storeTicket();
+    fetchMock.mockResolvedValueOnce(okJson('visit-43'));
+    const fix = { distance_m: 12, accuracy_m: 8, fix_trusted: true, fix_age_s: 2 };
+
+    await expect(openGymVisit('partner-1', 'region-1', 1_700_000_000_000, fix)).resolves.toBe('visit-43');
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/rpc/open_gym_visit_by_ticket');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      p_ticket: 'raw-secret',
+      p_device_id: 'device-abc',
+      p_partner_id: 'partner-1',
+      p_region_id: 'region-1',
+      p_started_at: new Date(1_700_000_000_000).toISOString(),
+      p_platform: 'ios',
+      p_fix: fix,
+    });
+  });
+
   it('carries the region-event and tick telemetry too — the trail that went blank', async () => {
     storeTicket();
     fetchMock.mockResolvedValue(okJson(null, 204));

@@ -105,8 +105,23 @@ export interface DeviceHeader {
   newest_ota_on_channel: string | null;
 }
 
+/**
+ * The `visit` object inside a VisitDoc.
+ *
+ * NOT a BoardRow, and it used to claim to be one. The drill-in RPC enumerates its
+ * columns by hand (the raw row carries wake_nonce_hash, a wake credential), so it
+ * carries the two nudge counters the board omits and omits the last_heard_* pair
+ * the document already carries as `last_heard`. Typing it as BoardRow hid the
+ * fact that the alert fields were missing until the drawer printed
+ * "threshold undefinedm" at a human.
+ */
+export interface VisitDocRow extends Omit<BoardRow, 'last_heard_at' | 'last_heard_kind' | 'is_test'> {
+  nudge_count: number;
+  nudge_count_upgrade: number;
+}
+
 export interface VisitDoc {
-  visit: BoardRow & { venue_name: string | null };
+  visit: VisitDocRow;
   thresholds: { dwell_minutes: number; upgrade_minutes: number };
   entered_at: string | null;
   checkin_via: string | null;
@@ -225,13 +240,29 @@ export interface Alert {
 }
 
 /**
+ * Everything visitAlerts() reads. Spelled out rather than taking a BoardRow so
+ * the drill-in document can be passed too — and so the four fields that arrive
+ * only from a deployed RPC are optional AT THE TYPE, not silently undefined at
+ * runtime. A landing-page deploy can land ahead of a migration; when it does,
+ * a missing threshold must drop the clause, never print "undefined".
+ */
+export type AlertInput =
+  Pick<BoardRow, 'started_at' | 'ended_at' | 'claimed_at' | 'upgraded_at' | 'last_proven_at' | 'last_confirmed_at'>
+  & Partial<Pick<BoardRow, 'dwell_minutes' | 'upgrade_minutes' | 'unanswered_nudge_streak' | 'undrawn_push_count'>>;
+
+/** ` (threshold 30m)`, or nothing at all when the RPC did not send one. */
+function thresholdClause(minutes: number | null | undefined): string {
+  return typeof minutes === 'number' ? ` (threshold ${minutes}m)` : '';
+}
+
+/**
  * The badges on the live board.
  *
  * Only OPEN visits can be claim/upgrade/presence-stuck: a closed visit that
  * never claimed is a finished story (usually a short walk-through), not a live
  * problem to chase.
  */
-export function visitAlerts(row: BoardRow, now: number = Date.now()): Alert[] {
+export function visitAlerts(row: AlertInput, now: number = Date.now()): Alert[] {
   const alerts: Alert[] = [];
   const open = !row.ended_at;
   const elapsed = elapsedMinutes(row, now);
@@ -240,7 +271,7 @@ export function visitAlerts(row: BoardRow, now: number = Date.now()): Alert[] {
     alerts.push({
       key: 'claim_overdue',
       label: 'CLAIM OVERDUE',
-      detail: `${Math.round(elapsed)}m in, no claim (threshold ${row.dwell_minutes}m)`,
+      detail: `${Math.round(elapsed)}m in, no claim${thresholdClause(row.dwell_minutes)}`,
       severity: 'bad',
     });
   }
@@ -249,7 +280,7 @@ export function visitAlerts(row: BoardRow, now: number = Date.now()): Alert[] {
     alerts.push({
       key: 'upgrade_overdue',
       label: 'UPGRADE OVERDUE',
-      detail: `${Math.round(elapsed)}m in, no upgrade (threshold ${row.upgrade_minutes}m)`,
+      detail: `${Math.round(elapsed)}m in, no upgrade${thresholdClause(row.upgrade_minutes)}`,
       severity: 'bad',
     });
   }
@@ -274,16 +305,17 @@ export function visitAlerts(row: BoardRow, now: number = Date.now()): Alert[] {
     }
   }
 
-  if (row.unanswered_nudge_streak >= WAKE_STARVED_STREAK) {
+  const nudgeStreak = row.unanswered_nudge_streak ?? 0;
+  if (nudgeStreak >= WAKE_STARVED_STREAK) {
     alerts.push({
       key: 'wake_starved',
       label: 'WAKE STARVED',
-      detail: `${row.unanswered_nudge_streak} wakes with no device response`,
+      detail: `${nudgeStreak} wakes with no device response`,
       severity: 'bad',
     });
   }
 
-  if (row.undrawn_push_count > 0) {
+  if ((row.undrawn_push_count ?? 0) > 0) {
     alerts.push({
       key: 'push_never_drew',
       label: 'PUSH NEVER DREW',

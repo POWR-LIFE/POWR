@@ -7,14 +7,15 @@
 import { TERMINAL_SETTLE_STATUSES, settleIsTerminal } from '@/supabase/functions/_shared/settleOutcome';
 
 describe('settleIsTerminal', () => {
-  it('is pinned to 409 (already claimed) and 422 (daily cap reached)', () => {
-    expect([...TERMINAL_SETTLE_STATUSES].sort()).toEqual([409, 422]);
-  });
   it('final answers stop the retry loop', () => {
-    expect(settleIsTerminal(422)).toBe(true);
-    expect(settleIsTerminal(409)).toBe(true);
+    expect(settleIsTerminal(422, 'Daily cap reached')).toBe(true);
+    expect(settleIsTerminal(409, 'Session already claimed')).toBe(true);
+  });
+  it('422 is only terminal for the daily-cap refusal', () => {
+    expect(settleIsTerminal(422, 'Session does not meet eligibility minimum')).toBe(false);
+    expect(settleIsTerminal(422, `Session has not reached the 40-min tier`)).toBe(false);
   });
   it('transient answers keep the visit in play', () => {
-    for (const s of [0, 200, 401, 403, 429, 500, 502, 503, 504]) expect(settleIsTerminal(s)).toBe(false);
+    for (const s of [0, 200, 401, 403, 429, 500, 502, 503, 504]) expect(settleIsTerminal(s, null)).toBe(false);
   });
 });

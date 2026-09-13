@@ -806,7 +806,7 @@ async function handleActivity(supabase, payload): Promise<void> {
 async function readSleepSnapshot(supabase, sessionId: string) {
   const { data, error } = await supabase
     .from('health_snapshots')
-    .select('id, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h')
+    .select('id, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h, hr_resting, extras')
     .eq('session_id', sessionId)
     .eq('activity_type', 'sleep')
     .order('created_at', { ascending: true })
@@ -873,11 +873,17 @@ async function sendSleepReceipt(userId: string, endIso: string, hours: number, p
  * 'contiguous' — a night the provider split across an awake gap. Duration and
  *                stages SUM: two segments of one night are one night's sleep.
  */
-async function mergeSleepInto(supabase, { userId, target, incoming, reading, source }): Promise<void> {
+async function mergeSleepInto(supabase, { userId, target, incoming, reading, source, vitals }): Promise<void> {
   const { row: sessionRow, existing, relation } = target;
   const merged = mergeWorkouts(existing, incoming, relation);
 
   const snap = await readSleepSnapshot(supabase, sessionRow.id);
+  // Vitals ride on the fullest telling: a restatement that brings resting HR
+  // or a recovery score the row lacks is worth writing even when the night's
+  // window and stages are unchanged (the backfill after 2026-09-06 re-lands
+  // every held night exactly this way).
+  const night: NightVitals = vitals ?? { hrResting: null, extras: {} };
+  const vitalsChanged = vitalsDiffer(snap, night);
   const pick = (a: number | null | undefined, b: number | null | undefined) => {
     if (a == null && b == null) return null;
     return relation === 'contiguous' ? (a ?? 0) + (b ?? 0) : Math.max(a ?? 0, b ?? 0);
@@ -895,7 +901,7 @@ async function mergeSleepInto(supabase, { userId, target, incoming, reading, sou
     || mergedLight !== (snap.sleep_light_h ?? null)
     || mergedHours !== (snap.sleep_duration_h ?? null)
   );
-  if (snap && !merged.changed && !stagesChanged) return; // a replay of something we already hold
+  if (snap && !merged.changed && !stagesChanged && !vitalsChanged) return; // a replay of something we already hold
 
   if (merged.changed) {
     const { error } = await supabase.from('activity_sessions').update({
@@ -917,6 +923,12 @@ async function mergeSleepInto(supabase, { userId, target, incoming, reading, sou
     if (mergedDeep != null) patch.sleep_deep_h = mergedDeep;
     if (mergedRem != null) patch.sleep_rem_h = mergedRem;
     if (mergedLight != null) patch.sleep_light_h = mergedLight;
+    if (vitalsChanged) {
+      if (night.hrResting != null) patch.hr_resting = night.hrResting;
+      // Incoming keys win; anything the row already knew that this telling
+      // doesn't mention (a zone bag, an earlier SpO2) is kept.
+      patch.extras = { ...(snap.extras ?? {}), ...night.extras };
+    }
     const { error } = await supabase.from('health_snapshots').update(patch).eq('id', snap.id);
     if (error) console.error('[terra-webhook] sleep snapshot merge failed:', error.message);
   } else {
@@ -930,6 +942,8 @@ async function mergeSleepInto(supabase, { userId, target, incoming, reading, sou
       sleep_deep_h: mergedDeep,
       sleep_rem_h: mergedRem,
       sleep_light_h: mergedLight,
+      hr_resting: night.hrResting,
+      extras: Object.keys(night.extras).length > 0 ? night.extras : null,
       activity_type: 'sleep',
       duration_sec: merged.durationSec,
       source,
@@ -1018,6 +1032,7 @@ async function handleSleep(supabase, payload): Promise<void> {
       ? asleep.duration_light_sleep_state_seconds / 3600 : undefined;
     const points = calculateSleepPoints(hours, deepH, remH);
     const reading = { deepH, remH, lightH };
+    const vitals = nightVitalsFrom(s);
 
     const durationSec = Math.round(hours * 3600);
     const incoming: WorkoutWindow = {
@@ -1035,7 +1050,7 @@ async function handleSleep(supabase, payload): Promise<void> {
     // relateWorkouts calls them 'separate') while a restatement still folds in.
     const target = await findMergeTarget(supabase, userId, 'sleep', incoming);
     if (target) {
-      await mergeSleepInto(supabase, { userId, target, incoming, reading, source });
+      await mergeSleepInto(supabase, { userId, target, incoming, reading, source, vitals });
       continue;
     }
 
@@ -1063,7 +1078,7 @@ async function handleSleep(supabase, payload): Promise<void> {
       // idx_one_wearable_session_per_start). Re-look and fold into whichever
       // landed first — mirrors the workout path.
       const raced = await findMergeTarget(supabase, userId, 'sleep', incoming);
-      if (raced) await mergeSleepInto(supabase, { userId, target: raced, incoming, reading, source });
+      if (raced) await mergeSleepInto(supabase, { userId, target: raced, incoming, reading, source, vitals });
       continue;
     }
 
@@ -1075,6 +1090,8 @@ async function handleSleep(supabase, payload): Promise<void> {
         sleep_deep_h: deepH ?? null,
         sleep_rem_h: remH ?? null,
         sleep_light_h: lightH ?? null,
+        hr_resting: vitals.hrResting,
+        extras: Object.keys(vitals.extras).length > 0 ? vitals.extras : null,
         activity_type: 'sleep',
         duration_sec: durationSec,
         source,
@@ -1090,6 +1107,86 @@ async function handleSleep(supabase, payload): Promise<void> {
 
 function finitePositive(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+}
+
+function finiteNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** The recovery vitals a night carries, ready to sit on its snapshot row. */
+type NightVitals = {
+  hrResting: number | null;
+  /** Only the keys the payload actually had — never a bag of nulls. */
+  extras: Record<string, unknown>;
+};
+
+/**
+ * What a SLEEP delivery says about recovery, beyond how long it lasted.
+ *
+ * For a Whoop, Oura or Garmin the night is where the body's baseline is
+ * measured: resting HR and HRV come off the sleeping heart, and the provider's
+ * own recovery/readiness verdict is computed from them. Until 2026-09-06 the
+ * sleep handler read only the durations and dropped all of it, which left the
+ * BODY tab judging readiness from hours slept alone — while Whoop's daily
+ * summary never carries HRV at all, and its resting HR arrives on roughly half
+ * the days (it is a sleep measure there, restated into the day). Reading the
+ * night fixes both: every night that lands now brings its vitals with it.
+ *
+ * Terra Sleep model paths (docs.tryterra.co, data models):
+ *   heart_rate_data.summary.{resting_hr_bpm, avg_hrv_rmssd, avg_hrv_sdnn}
+ *   respiration_data.breaths_data.avg_breaths_per_min
+ *   respiration_data.oxygen_saturation_data.avg_saturation_percentage
+ *   temperature_data.delta                (skin temp vs the user's baseline)
+ *   readiness_data.{readiness, recovery_level}
+ *   sleep_durations_data.sleep_efficiency
+ *   metadata.is_nap
+ *
+ * Every field is optional and provider-dependent; anything absent or malformed
+ * is simply left out. `hrv_rmssd` keeps the key the daily handler and the
+ * client already use, so a night's HRV and a day's HRV are one series.
+ */
+function nightVitalsFrom(s): NightVitals {
+  const hr = s?.heart_rate_data?.summary ?? {};
+  const resp = s?.respiration_data ?? {};
+  const readiness = s?.readiness_data ?? {};
+  const extras: Record<string, unknown> = {};
+  const round1 = (v: number) => Math.round(v * 10) / 10;
+
+  const hrv = finitePositive(hr.avg_hrv_rmssd);
+  if (hrv != null) extras.hrv_rmssd = round1(hrv);
+  const sdnn = finitePositive(hr.avg_hrv_sdnn);
+  if (sdnn != null) extras.hrv_sdnn = round1(sdnn);
+  const breaths = finitePositive(resp.breaths_data?.avg_breaths_per_min);
+  if (breaths != null) extras.resp_rate = round1(breaths);
+  const spo2 = finitePositive(resp.oxygen_saturation_data?.avg_saturation_percentage);
+  if (spo2 != null) extras.spo2 = round1(spo2);
+  // A delta can legitimately be negative — the one vital that is not "positive".
+  const tempDelta = finiteNum(s?.temperature_data?.delta);
+  if (tempDelta != null) extras.temp_delta = Math.round(tempDelta * 100) / 100;
+  const score = finitePositive(readiness.readiness);
+  if (score != null) extras.readiness = Math.round(score);
+  const level = finiteNum(readiness.recovery_level);
+  if (level != null) extras.recovery_level = Math.round(level);
+  const efficiency = finitePositive(s?.sleep_durations_data?.sleep_efficiency);
+  if (efficiency != null) extras.sleep_efficiency = round1(efficiency);
+  if (s?.metadata?.is_nap === true) extras.is_nap = true;
+
+  const rhr = finitePositive(hr.resting_hr_bpm);
+  return { hrResting: rhr != null ? Math.round(rhr) : null, extras };
+}
+
+/**
+ * True when `incoming` would change what the row already holds — a new key,
+ * or a different value for one it has. Restatements that carry the same vitals
+ * stay no-ops, exactly as the durations do.
+ */
+function vitalsDiffer(
+  existing: { hr_resting?: number | null; extras?: Record<string, unknown> | null } | null,
+  incoming: NightVitals,
+): boolean {
+  if (incoming.hrResting != null && existing?.hr_resting !== incoming.hrResting) return true;
+  const have = existing?.extras ?? {};
+  return Object.entries(incoming.extras).some(([k, v]) => have[k] !== v);
 }
 
 /**
@@ -1116,7 +1213,12 @@ async function upsertDailyVitals(supabase, userId: string, source: string | null
   const summary = d.heart_rate_data?.summary ?? {};
   const rhr = finitePositive(summary.resting_hr_bpm);
   const hrv = finitePositive(summary.avg_hrv_rmssd);
-  if (rhr == null && hrv == null) return;
+  // The provider's own day-level verdicts, where it has them (Terra Daily:
+  // scores.recovery is Whoop's recovery / Oura's readiness; strain_data.
+  // strain_level is Whoop's strain). Stored, not interpreted here.
+  const recovery = finitePositive(d.scores?.recovery);
+  const strain = finitePositive(d.strain_data?.strain_level);
+  if (rhr == null && hrv == null && recovery == null && strain == null) return;
 
   const dayStart = new Date(start);
   if (Number.isNaN(dayStart.getTime())) return;
@@ -1138,11 +1240,15 @@ async function upsertDailyVitals(supabase, userId: string, source: string | null
 
   const extras: Record<string, unknown> = { ...(existing?.extras ?? {}), scope: 'day' };
   if (hrv != null) extras.hrv_rmssd = Math.round(hrv * 10) / 10;
+  if (recovery != null) extras.recovery_score = Math.round(recovery);
+  if (strain != null) extras.strain = Math.round(strain * 10) / 10;
   const hrResting = rhr != null ? Math.round(rhr) : (existing?.hr_resting ?? null);
 
   if (existing) {
     const unchanged = existing.hr_resting === hrResting
-      && existing.extras?.hrv_rmssd === extras.hrv_rmssd;
+      && existing.extras?.hrv_rmssd === extras.hrv_rmssd
+      && existing.extras?.recovery_score === extras.recovery_score
+      && existing.extras?.strain === extras.strain;
     if (unchanged) return;
     const { error } = await supabase.from('health_snapshots')
       .update({ hr_resting: hrResting, extras })

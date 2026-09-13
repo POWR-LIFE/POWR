@@ -241,7 +241,10 @@ export async function bgRpc<T>(fn: string, args: Record<string, unknown>, auth: 
 // no more — open a visit, close a visit, and three kinds of telemetry — and
 // there is deliberately no ticket path to confirm_gym_visit, claim-points or
 // upgrade-gym-tier. Credit still requires a GPS confirm carrying the server's
-// own visit nonce, so no ticket can manufacture a point. That boundary lives in
+// own visit nonce, so no ticket can manufacture a point. (Since 2026-09-06 the
+// open may CARRY the fix that decided the check-in; the server judges it under
+// the confirm rule with credit disabled, and the resulting proof clock is what
+// the beacon's settle later acts on — the verbs, and the boundary, are unchanged.) That boundary lives in
 // the migration (20260807150000_device_wake_ticket.sql), is asserted by
 // __tests__/device-wake-ticket.test.ts, and is the reason storing this in
 // AsyncStorage rather than the keychain is a fair trade.

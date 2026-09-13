@@ -166,6 +166,41 @@ describe('stuck heuristics', () => {
     const alert = alerts.find(a => a.key === 'push_never_drew');
     expect(alert?.detail).toContain('2 accepted');
   });
+
+  it('names the configured threshold in the overdue detail', () => {
+    const alert = visitAlerts(boardRow({ started_at: ago(41), dwell_minutes: 30 }), NOW)
+      .find(a => a.key === 'claim_overdue');
+    expect(alert?.detail).toBe('41m in, no claim (threshold 30m)');
+  });
+
+  // The drill-in RPC used to omit these four fields, so the drawer showed
+  // "threshold undefinedm" and — because `undefined >= 3` and `undefined > 0` are
+  // both false — silently dropped WAKE STARVED and PUSH NEVER DREW on the one
+  // screen you open when a visit looks stuck. The RPC now sends them; these
+  // guard the window where a web deploy is ahead of the migration.
+  describe('a row missing the RPC-supplied fields', () => {
+    const bare = () => {
+      const row = { ...boardRow({ started_at: ago(41), undrawn_push_count: 4 }) } as Partial<BoardRow>;
+      delete row.dwell_minutes;
+      delete row.upgrade_minutes;
+      delete row.unanswered_nudge_streak;
+      return row as Parameters<typeof visitAlerts>[0];
+    };
+
+    it('drops the threshold clause rather than printing "undefined"', () => {
+      const alert = visitAlerts(bare(), NOW).find(a => a.key === 'claim_overdue');
+      expect(alert?.detail).toBe('41m in, no claim');
+      expect(alert?.detail).not.toContain('undefined');
+    });
+
+    it('still reports the alerts whose inputs DID arrive', () => {
+      expect(visitAlerts(bare(), NOW).map(a => a.key)).toContain('push_never_drew');
+    });
+
+    it('treats an absent nudge streak as zero, not as starved', () => {
+      expect(visitAlerts(bare(), NOW).map(a => a.key)).not.toContain('wake_starved');
+    });
+  });
 });
 
 describe('pushVerdict — accepted is not displayed', () => {
@@ -276,9 +311,15 @@ describe('collapseTimeline — arm bursts and phantom exits', () => {
 });
 
 describe('stageDeltas', () => {
+  /** The drill-in RPC's shape: a board row plus the two nudge counters, minus the last_heard_* pair the document carries separately. */
+  function docRow(over: Partial<BoardRow> = {}): VisitDoc['visit'] {
+    const { last_heard_at: _at, last_heard_kind: _kind, is_test: _test, ...rest } = boardRow(over);
+    return { ...rest, nudge_count: 0, nudge_count_upgrade: 0 };
+  }
+
   function visitDoc(over: Partial<VisitDoc> = {}): VisitDoc {
     return {
-      visit: boardRow({ started_at: ago(90), checked_in_at: ago(90) }),
+      visit: docRow({ started_at: ago(90), checked_in_at: ago(90) }),
       thresholds: { dwell_minutes: 30, upgrade_minutes: 40 },
       entered_at: null,
       checkin_via: null,
@@ -297,7 +338,7 @@ describe('stageDeltas', () => {
 
   it('measures the claim against the CONFIGURED threshold, not a hardcoded 30', () => {
     const doc = visitDoc({
-      visit: boardRow({ started_at: ago(90), checked_in_at: ago(90), claimed_at: ago(58) }),
+      visit: docRow({ started_at: ago(90), checked_in_at: ago(90), claimed_at: ago(58) }),
       thresholds: { dwell_minutes: 25, upgrade_minutes: 35 },
     });
     const claim = stageDeltas(doc, NOW).find(d => d.key === 'checkin_to_claim')!;
@@ -317,7 +358,7 @@ describe('stageDeltas', () => {
     expect(open.missing).toBe('not claimed yet');
 
     const closed = stageDeltas(
-      visitDoc({ visit: boardRow({ started_at: ago(90), ended_at: ago(80), status: 'closed' }) }),
+      visitDoc({ visit: docRow({ started_at: ago(90), ended_at: ago(80), status: 'closed' }) }),
       NOW,
     ).find(d => d.key === 'checkin_to_claim')!;
     expect(closed.missing).toBe('closed before the dwell threshold');
@@ -325,7 +366,7 @@ describe('stageDeltas', () => {
 
   it('names the close_reason when a visit ended with no exit event', () => {
     const doc = visitDoc({
-      visit: boardRow({ started_at: ago(90), ended_at: ago(10), status: 'closed', close_reason: 'stale_after_upgrade' }),
+      visit: docRow({ started_at: ago(90), ended_at: ago(10), status: 'closed', close_reason: 'stale_after_upgrade' }),
     });
     const leg = stageDeltas(doc, NOW).find(d => d.key === 'exit_to_close')!;
     expect(leg.missing).toContain('stale_after_upgrade');
@@ -333,7 +374,7 @@ describe('stageDeltas', () => {
 
   it('measures door-to-notification from the DISPLAY receipt, never from the send', () => {
     const doc = visitDoc({
-      visit: boardRow({
+      visit: docRow({
         started_at: ago(90), checked_in_at: ago(90), claimed_at: ago(60),
         ended_at: ago(20), completed_push_at: ago(18), status: 'closed',
       }),
@@ -346,7 +387,7 @@ describe('stageDeltas', () => {
 
   it('refuses to claim a banner drew when only the SEND is stamped', () => {
     const doc = visitDoc({
-      visit: boardRow({ started_at: ago(90), ended_at: ago(20), completed_push_at: ago(18), status: 'closed' }),
+      visit: docRow({ started_at: ago(90), ended_at: ago(20), completed_push_at: ago(18), status: 'closed' }),
       pushes: [pushRow({ created_at: ago(18), delivered_at: null })],
     });
     const leg = stageDeltas(doc, NOW).find(d => d.key === 'door_to_notification')!;

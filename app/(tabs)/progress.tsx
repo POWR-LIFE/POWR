@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     NativeScrollEvent,
@@ -12,6 +12,7 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { RadialCarousel } from '@/components/home/RadialCarousel';
@@ -29,7 +30,7 @@ import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { usePoints } from '@/hooks/usePoints';
 import { bumpActivityRevision } from '@/lib/activityRevision';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
-import { fetchWeeklySleepHours, localDateStr } from '@/lib/api/activity';
+import { fetchActivityHistoryTypes, fetchWeeklySleepHours, localDateStr } from '@/lib/api/activity';
 import { deriveBodySignals, fetchBodyTrends, isEmptyTrends, readinessOf, type BodyTrends } from '@/lib/api/bodyTrends';
 import { fetchProfile } from '@/lib/api/user';
 import { orderedProgressActivities } from '@/lib/weeklyActivities';
@@ -59,6 +60,8 @@ type Period = 'D' | 'W' | 'M';
 
 // Fallback when no real sleep data is available yet
 const EMPTY_SLEEP_HRS = [0, 0, 0, 0, 0, 0, 0];
+/** Stable empty set for the not-yet-resolved history gate (no re-renders). */
+const NO_HISTORY: ReadonlySet<ActivityType> = new Set();
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -66,7 +69,17 @@ export default function ProgressScreen() {
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const router = useRouter();
   const { weekActiveDays, weeklyMetrics, refresh: refreshActivity } = useActivity();
+  // Which activities have EVER had a session — the gate that decides whether a
+  // preference gets a radial at all. Lives under the ['activity'] key so the
+  // revision bump in useActivity refetches it when a new session lands.
+  const historyQuery = useQuery({
+    queryKey: ['activity', 'historyTypes'],
+    queryFn: fetchActivityHistoryTypes,
+    enabled: !!user,
+  });
+  const historyResolved = !user || !historyQuery.isPending;
   const { refresh: refreshPoints } = usePoints();
   const walking = useWalkingProgress();
   const [refreshing, setRefreshing] = useState(false);
@@ -144,6 +157,7 @@ export default function ProgressScreen() {
         refreshPoints(),
         walking.refresh(),
         refreshProviders(),
+        historyQuery.refetch(),
         loadSleep(),
         loadBody(),
       ]);
@@ -155,7 +169,7 @@ export default function ProgressScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [refreshActivity, refreshPoints, walking.refresh, refreshProviders, loadSleep, loadBody]);
+  }, [refreshActivity, refreshPoints, walking.refresh, refreshProviders, historyQuery.refetch, loadSleep, loadBody]);
 
   // Run on mount/dep-change and whenever the screen comes into focus (handles
   // the case where the user connects WHOOP in settings then returns here).
@@ -205,10 +219,21 @@ export default function ProgressScreen() {
     if (tab) setActiveTab(tab);
   }, [tab]);
   
-  // Show the user's preferences plus any activity they actually did this week
-  // — each gets its own radial and breakdown page. The tab bar scrolls (4
-  // labels visible at a time) so multi-sport users lose nothing.
-  const displayTypes = orderedProgressActivities(activePrefs, weeklyMetrics);
+  // Show the user's preferences that have any history, plus any activity they
+  // actually did this week — each gets its own radial and breakdown page. The
+  // tab bar scrolls (4 labels visible at a time) so multi-sport users lose
+  // nothing. While the history lookup is still pending only this week's
+  // proven activities show, so a preference never paints and then vanishes;
+  // a failed lookup (data null after resolving) keeps every preference.
+  const displayTypes = orderedProgressActivities(
+    activePrefs,
+    weeklyMetrics,
+    historyResolved ? (historyQuery.data ?? null) : NO_HISTORY,
+  );
+  // Page-level empty state: nothing has ever been logged for any activity.
+  // Sleep/Body radials may still render below it (they gate themselves).
+  const showActivityEmpty = historyResolved && displayTypes.length === 0;
+  const hasProviderConnected = rows.some((row) => !!row.connection);
 
   // Build dynamic radial data
   const radialData = displayTypes.map((type) => {
@@ -362,8 +387,17 @@ export default function ProgressScreen() {
         }
       >
 
+        {showActivityEmpty && (
+          <ActivityEmptyCard
+            hasProviderConnected={hasProviderConnected}
+            onConnect={() => router.push('/wearables')}
+            onLog={() => router.push('/manual-log')}
+          />
+        )}
+
+        {radialData.length > 0 && (<>
         {/* ── Activity Radials ───────────────────────────── */}
-        <Text style={styles.sectionLabelFirst}>ACTIVITY OVERVIEW</Text>
+        <Text style={showActivityEmpty ? styles.sectionLabel : styles.sectionLabelFirst}>ACTIVITY OVERVIEW</Text>
         <RadialCarousel
           data={radialData}
           activeIndex={radialIndex}
@@ -390,6 +424,7 @@ export default function ProgressScreen() {
           sleepBedtimes={sleepBedtimes}
           bodyTrends={bodyTrends}
         />
+        </>)}
 
       </ScrollView>
 
@@ -408,7 +443,42 @@ export default function ProgressScreen() {
 }
 
 
-// Removed WeeklyRing logic
+// ─── Empty state ─────────────────────────────────────────────────────────────
+// Shown in place of the radials when no activity has EVER been logged. A brand
+// new user used to meet three zeroed radials over "No gym sessions this
+// month" — now they get one card that says what produces the first radial.
+
+function ActivityEmptyCard({ hasProviderConnected, onConnect, onLog }: {
+  hasProviderConnected: boolean;
+  onConnect: () => void;
+  onLog: () => void;
+}) {
+  return (
+    <View style={styles.emptyCard}>
+      <View style={styles.emptyIconRing}>
+        <Ionicons name="pulse" size={22} color={GOLD} />
+      </View>
+      <Text style={styles.emptyTitle}>Your progress starts here</Text>
+      <Text style={styles.emptyBody}>
+        {hasProviderConnected
+          ? 'Your first gym visit, walk or workout lands here as a radial, with a full day, week and month breakdown behind it.'
+          : 'Connect Apple Health, Health Connect or a wearable and every gym visit, walk and workout shows up here automatically.'}
+      </Text>
+      <Pressable
+        style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.85 }]}
+        onPress={hasProviderConnected ? onLog : onConnect}
+        accessibilityRole="button"
+      >
+        <Text style={styles.emptyCtaText}>{hasProviderConnected ? 'Log a session' : 'Connect a wearable'}</Text>
+      </Pressable>
+      {!hasProviderConnected && (
+        <Pressable onPress={onLog} hitSlop={8} accessibilityRole="button">
+          <Text style={styles.emptyLink}>Or log a session manually</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
 
 
 type BreakdownTabItem = { key: string; label: string };
@@ -656,6 +726,42 @@ const styles = StyleSheet.create({
     minHeight: 480,
   },
 
+  emptyCard: {
+    marginTop: 8,
+    marginHorizontal: 4,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(40,40,40,0.55)',
+  },
+  emptyIconRing: {
+    width: 48, height: 48, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(232,210,0,0.35)',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 16, fontWeight: '400', color: TEXT, letterSpacing: -0.2,
+  },
+  emptyBody: {
+    fontSize: 12, fontWeight: '300', lineHeight: 18, textAlign: 'center',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  emptyCta: {
+    marginTop: 8,
+    paddingVertical: 11, paddingHorizontal: 22,
+    borderRadius: 999, backgroundColor: GOLD,
+  },
+  emptyCtaText: {
+    fontSize: 12, fontWeight: '600', letterSpacing: 0.8, color: '#0d0d0d',
+  },
+  emptyLink: {
+    fontSize: 11, fontWeight: '300', color: MUTED, paddingTop: 4,
+  },
   sectionLabelFirst: {
     paddingHorizontal: 14,
     paddingTop: 8,

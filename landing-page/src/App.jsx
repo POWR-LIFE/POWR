@@ -109,6 +109,7 @@ import DeleteAccount from './pages/DeleteAccount';
 import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import LiveBoard from './pages/LiveBoard';
+import GymBoard from './pages/GymBoard';
 import EventPromo from './pages/EventPromo';
 import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
@@ -1216,6 +1217,7 @@ const AdminLayout = ({ children }) => {
     const [pendingSubmissions, setPendingSubmissions] = useState(0);
     const [pendingGymRequests, setPendingGymRequests] = useState(0);
     const [pendingSlotRequests, setPendingSlotRequests] = useState(0);
+    const [pendingPlacements, setPendingPlacements] = useState(0);
     const [pendingCreatorRequests, setPendingCreatorRequests] = useState(0);
     const [openTickets, setOpenTickets] = useState(0);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('admin_sidebar') === '1');
@@ -1247,6 +1249,13 @@ const AdminLayout = ({ children }) => {
             .select('id', { count: 'exact', head: true })
             .eq('status', 'pending')
             .then(({ count }) => setPendingSlotRequests(count ?? 0));
+        // Partner placement campaigns submitted for review sit silently
+        // otherwise — nothing else tells an admin one is waiting.
+        supabase
+            .from('reward_placements')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending_review')
+            .then(({ count }) => setPendingPlacements(count ?? 0));
         supabase
             .from('creator_invite_requests')
             .select('id', { count: 'exact', head: true })
@@ -1268,7 +1277,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Rewards',     path: '/admin/rewards',            icon: Award           },
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,          badge: pendingSubmissions },
         { label: 'Featured',    path: '/admin/featured',           icon: Star,           badge: pendingSlotRequests },
-        { label: 'Placements',  path: '/admin/placements',         icon: MapPin          },
+        { label: 'Placements',  path: '/admin/placements',         icon: MapPin,         badge: pendingPlacements },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
         { label: 'Users',       path: '/admin/users',              icon: Users           },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,           badge: pendingAthletes },
@@ -1446,6 +1455,7 @@ export default function App() {
                     <Route path="/delete-account" element={<DeleteAccount />} />
                     <Route path="/athlete/:token" element={<AthleteSignup />} />
                     <Route path="/live/:slug" element={<LiveBoard />} />
+                    <Route path="/gym/:slug" element={<GymBoard />} />
                     <Route path="/promo/:slug" element={<EventPromo />} />
                     <Route path="/partner-reward/:token" element={<PartnerRewardSubmit />} />
                     {/* "Affiliate" is the user-facing name (Jamie, 2026-08-26 — "creator" read as

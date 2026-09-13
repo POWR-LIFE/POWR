@@ -27,20 +27,33 @@ export function weeklyRingPct(type: ActivityType, metrics: WeeklyMetricsLike): n
 }
 
 /**
- * Ordered activity list for the Progress screen: the user's preferences lead
- * (always shown, even at zero — they opted to track them), then every other
- * activity detected with sessions this week, ranked by weekly progress. Every
- * entry gets its own radial + breakdown page; the Progress tab bar scrolls
- * when there are more than fit on screen, so nothing is capped or folded.
+ * Ordered activity list for the Progress screen: the user's preferences lead,
+ * then every other activity detected with sessions this week, ranked by
+ * weekly progress. Every entry gets its own radial + breakdown page; the
+ * Progress tab bar scrolls when there are more than fit on screen, so nothing
+ * is capped or folded.
+ *
+ * `historyTypes` is the set of activities the user has EVER logged (see
+ * fetchActivityHistoryTypes). When given, a preference with no history at all
+ * is dropped rather than shown as an empty radial — the page-level empty
+  * state covers the nothing-yet case instead. This week's sessions always
+  * count as proof on their own, so a session that lands before the history
+  * lookup catches up still surfaces. Pass an empty set to show only activities
+  * proven this week while history is still loading; pass null/undefined when
+  * history is unknown (or you want to keep every preference, as before).
  */
 export function orderedProgressActivities(
   prefs: ActivityType[],
   metrics: WeeklyMetricsLike,
+  historyTypes?: ReadonlySet<ActivityType> | null,
 ): ActivityType[] {
   const seen = new Set<ActivityType>();
   const ordered: ActivityType[] = [];
   for (const p of prefs) {
-    if (ACTIVITIES[p] && !seen.has(p)) { seen.add(p); ordered.push(p); }
+    if (!ACTIVITIES[p] || seen.has(p)) continue;
+    seen.add(p);
+    const hasHistory = !historyTypes || historyTypes.has(p) || (metrics.perType[p] ?? 0) > 0;
+    if (hasHistory) ordered.push(p);
   }
   const extras = (Object.keys(metrics.perType) as ActivityType[])
     .filter(type =>

@@ -4,10 +4,18 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import PlacementGridMap from '../../components/PlacementGridMap';
 import {
-    ACTIVITIES, DOW, DEFAULT_CENTER, GOLD, RED,
+    ACTIVITIES, DOW, DEFAULT_CENTER, GOLD, RED, AMBER,
     cellKey, parseKey, tileNW, tileBounds, boundsIntersect, buildWeekMask, mergeCells,
-    startOfDayISO, endOfDayISO, isoToDateInput,
+    startOfDayISO, endOfDayISO, isoToDateInput, effectiveStatus, STATUS_LABELS,
 } from '../../lib/placementGrid';
+
+const REVIEW_STATES = ['draft', 'pending_review', 'rejected'];
+const STATUS_TONE = {
+    live: 'bg-emerald-50 text-emerald-600',
+    scheduled: 'bg-sky-50 text-sky-600',
+    pending_review: 'bg-[#E8D200]/20 text-[#8a7600]',
+    rejected: 'bg-red-50 text-red-500',
+};
 
 const blankForm = () => ({
     id: null,
@@ -55,29 +63,34 @@ export default function RewardPlacements() {
 
     const fetchData = async () => {
         setLoading(true);
-        const [pl, rew, cells] = await Promise.all([
+        const [pl, rew] = await Promise.all([
             supabase
                 .from('reward_placements')
                 .select('id, campaign_name, status, review_note, reward_id, geo_mode, paid, billing_status, visibility, priority, starts_at, ends_at, active_days, active_hour_start, active_hour_end, target_activities, affordability, activity_recency, activity_window_hours, audience_history, max_impressions_per_user_per_day, cooldown_hours, max_impressions_per_user_total, active, created_at, rewards(title, brand_name)')
                 .order('created_at', { ascending: false }),
             supabase.from('rewards').select('id, title, brand_name').eq('active', true).order('title'),
-            supabase.from('reward_placement_cells').select('placement_id'),
         ]);
         if (pl.error) toast.error('Failed to load placements');
         else setPlacements(pl.data || []);
         if (rew.data) setRewards(rew.data);
-        const counts = {};
-        for (const c of cells.data ?? []) counts[c.placement_id] = (counts[c.placement_id] ?? 0) + 1;
-        setCellCounts(counts);
-        // Funnel stats (surfaced → present → redeemed). Resilient: if the RPC
-        // isn't deployed yet, rows just render without a performance line.
+        // Square counts + funnel stats come from RPCs: counting cell rows
+        // client-side ran into PostgREST's 1000-row cap once a single large
+        // placement existed. Resilient: if an RPC isn't deployed yet, rows just
+        // render without that line.
         const ids = (pl.data || []).map((p) => p.id);
         if (ids.length) {
-            const { data: s } = await supabase.rpc('get_placement_stats', { p_placement_ids: ids });
+            const [{ data: cells }, { data: s }] = await Promise.all([
+                supabase.rpc('get_placement_cell_counts', { p_placement_ids: ids }),
+                supabase.rpc('get_placement_stats', { p_placement_ids: ids }),
+            ]);
+            const counts = {};
+            for (const c of cells ?? []) counts[c.placement_id] = Number(c.cells);
+            setCellCounts(counts);
             const m = {};
             for (const r of s ?? []) m[r.placement_id] = r;
             setStats(m);
         } else {
+            setCellCounts({});
             setStats({});
         }
         setLoading(false);
@@ -181,6 +194,11 @@ export default function RewardPlacements() {
             active: form.active,
             updated_at: new Date().toISOString(),
         };
+        // Keep the stored lifecycle honest with the switch: a campaign an
+        // admin turns off is paused, not live. Review states are owned by the
+        // submit/review RPCs and are left alone (the check constraint would
+        // reject `live` + active=false anyway).
+        if (!REVIEW_STATES.includes(form.status)) payload.status = form.active ? 'live' : 'paused';
 
         const flat = [];
         for (const key of form.cells) { const { z, x, y } = parseKey(key); flat.push(z, x, y); }
@@ -247,7 +265,13 @@ export default function RewardPlacements() {
             p_decision: decision,
             p_note: note,
         });
-        if (error) { toast.error(error.message); return; }
+        if (error) {
+            // Approval re-runs the square conflict scan: a live campaign may have
+            // taken the ground since this one was submitted.
+            if (/CELL_CONFLICT/.test(error.message)) toast.error('Some of its squares are now booked by a live campaign for these times. Edit it to see them in red, or request changes.');
+            else toast.error(error.message);
+            return;
+        }
         toast.success(decision === 'approve' ? 'Campaign approved and live' : 'Changes requested');
         fetchData();
     };
@@ -305,6 +329,7 @@ export default function RewardPlacements() {
                         <div className="flex items-center gap-4 text-[11px] text-[#999]">
                             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: GOLD, opacity: 0.6 }} /> Selected</span>
                             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: RED, opacity: 0.45 }} /> Taken (these times)</span>
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: AMBER, opacity: 0.45 }} /> Awaiting review (first approved wins)</span>
                         </div>
                     </div>
 
@@ -464,7 +489,7 @@ export default function RewardPlacements() {
                                 <input type="checkbox" checked={form.paid} onChange={(e) => setField({ paid: e.target.checked })} className="accent-[#E8D200] w-4 h-4" />
                                 Paid <span className="text-[#AAAAAA]">(Sponsored)</span>
                             </label>
-                            {['draft', 'pending_review', 'rejected'].includes(form.status) ? (
+                            {REVIEW_STATES.includes(form.status) ? (
                                 <span className="text-[12px] text-[#999999]">Activation is controlled by campaign review.</span>
                             ) : (
                                 <label className="flex items-center gap-2 text-[13px] text-[#444444] font-medium">
@@ -513,7 +538,9 @@ export default function RewardPlacements() {
                 <div className="text-[#AAAAAA] text-sm py-16 text-center border border-dashed border-[#E0E0DB] rounded-2xl">No placements yet. Paint your first grid.</div>
             ) : (
                 <div className="grid gap-3">
-                    {placements.map((p) => (
+                    {placements.map((p) => {
+                    const shown = effectiveStatus(p);
+                    return (
                         <div key={p.id} className="flex items-center gap-4 bg-white border border-[#E6E6E1] rounded-2xl px-5 py-4">
                             <div className="w-9 h-9 rounded-xl bg-[#F4F4F1] flex items-center justify-center flex-shrink-0">
                                 <MapPin size={17} className="text-[#8a7600]" />
@@ -533,8 +560,8 @@ export default function RewardPlacements() {
                                 {p.status === 'rejected' && p.review_note && <div className="text-[11px] text-red-500 mt-1 truncate">Feedback: {p.review_note}</div>}
                             </div>
                             <StatLine id={p.id} />
-                            <span className={`text-[9px] font-black uppercase tracking-[0.18em] px-2 py-1 rounded-md ${p.status === 'live' ? 'bg-emerald-50 text-emerald-600' : p.status === 'pending_review' ? 'bg-[#E8D200]/20 text-[#8a7600]' : p.status === 'rejected' ? 'bg-red-50 text-red-500' : 'bg-[#F4F4F1] text-[#888]'}`}>
-                                {(p.status || (p.active ? 'live' : 'paused')).replace('_', ' ')}
+                            <span className={`text-[9px] font-black uppercase tracking-[0.18em] px-2 py-1 rounded-md ${STATUS_TONE[shown] ?? 'bg-[#F4F4F1] text-[#888]'}`}>
+                                {STATUS_LABELS[shown]}
                             </span>
                             {p.paid && <span className="text-[9px] font-black uppercase tracking-[0.2em] bg-[#E8D200] text-[#080808] px-2 py-1 rounded-md">Paid</span>}
                             {p.status === 'pending_review' && <>
@@ -544,7 +571,8 @@ export default function RewardPlacements() {
                             <button onClick={() => openEdit(p)} className="text-[11px] uppercase tracking-[0.2em] font-semibold text-[#8a7600] hover:underline">Edit</button>
                             <button onClick={() => remove(p.id)} className="text-[#CCCCCC] hover:text-red-500 transition"><Trash2 size={16} /></button>
                         </div>
-                    ))}
+                    );
+                    })}
                 </div>
             )}
         </div>

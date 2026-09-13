@@ -1,4 +1,4 @@
-import { type ActivityType } from '@/constants/activities';
+import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { getDeviceId } from '@/lib/device';
 import { emitPointsChanged } from '@/lib/pointsEvents';
 import { dayAnchor, monthAnchorEnd, monthAnchorStart, weekAnchorMonday } from '@/lib/progressLookback';
@@ -2140,4 +2140,71 @@ export async function fetchMonthlyMetrics(): Promise<MonthlyMetrics> {
         activeDayTypes: activeDayTypesSorted,
         dayDetails,
     };
+}
+
+// ── Activity history presence ───────────────────────────────────────────────
+
+/**
+ * Which activity types the user has EVER logged a session for. The Progress
+ * page hides any activity (preferred or detected) with no history at all, so a
+ * preference picked at onboarding that never produced a session doesn't sit
+ * there as an empty radial over "No running sessions this month". Gated on
+ * lifetime rather than this week: the breakdown stepper can walk back through
+ * every month, so an activity that has any history must keep its tab.
+ *
+ * Returns null when the lookup fails — callers treat null as "unknown" and
+ * fall back to showing every preference, so a transient error can never blank
+ * the page.
+ */
+export async function fetchActivityHistoryTypes(): Promise<Set<ActivityType> | null> {
+    const uid = await getCurrentUserId();
+    if (!uid) return null;
+    const types = (Object.keys(ACTIVITIES) as ActivityType[]).filter(t => !ACTIVITIES[t].hideFromPicker);
+    try {
+        const [counts, suppressedCounts] = await Promise.all([
+            // One HEAD count per type: a single `select type` over every session
+            // would page against the 1000-row cap for any daily walker.
+            Promise.all(types.map(async (type) => {
+                const { count, error } = await supabase
+                    .from('activity_sessions')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('user_id', uid)
+                    .eq('type', type);
+                if (error) throw error;
+                return [type, count ?? 0] as const;
+            })),
+            // Suppressed workouts count as lifetime history for their type too.
+            Promise.all(types.map(async (type) => {
+                const { count, error } = await supabase
+                    .from('suppressed_workouts')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('user_id', uid)
+                    .eq('type', type);
+                if (error) throw error;
+                return [type, count ?? 0] as const;
+            })),
+        ]);
+        return historyTypesFrom(
+            counts,
+            suppressedCounts.filter(([, count]) => count > 0).map(([type]) => type),
+        );
+    } catch (e) {
+        console.warn('[activity] history lookup failed:', e instanceof Error ? e.message : String(e));
+        return null;
+    }
+}
+
+/** Pure reducer behind fetchActivityHistoryTypes — exported for tests. */
+export function historyTypesFrom(
+    counts: ReadonlyArray<readonly [ActivityType, number]>,
+    suppressedTypes: ReadonlyArray<string>,
+): Set<ActivityType> {
+    const out = new Set<ActivityType>();
+    for (const [type, count] of counts) if (count > 0) out.add(type);
+    for (const type of suppressedTypes) {
+        if (ACTIVITIES[type as ActivityType] && !ACTIVITIES[type as ActivityType].hideFromPicker) {
+            out.add(type as ActivityType);
+        }
+    }
+    return out;
 }

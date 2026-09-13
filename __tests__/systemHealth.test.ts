@@ -14,6 +14,7 @@ import {
   needsAttentionCount,
   pct,
   ratio,
+  rollUp,
   sortJudged,
   sparkSeries,
   value,
@@ -483,5 +484,68 @@ describe('incidents', () => {
 
   it('an all-green history has no incidents', () => {
     expect(incidents(greenHistory(captures))).toEqual([]);
+  });
+});
+
+// ── Thin samples never outrank green (2026-09-12) ────────────────────────────
+// One p95 under its 20-claim floor had turned the whole Gym check-ins row grey
+// every hour, and its 30-day uptime read 0.0% on three green signals.
+
+describe('thin samples never outrank green', () => {
+  const t0 = Date.parse('2026-09-01T00:00:00Z');
+  const captures = Array.from({ length: 48 }, (_, i) => t0 + i * H);
+  const thin = (): import('@/shared/systemHealth').Verdict => ({ status: 'unknown', value: null, reason: 'thin', thin: true });
+  const missing = (): import('@/shared/systemHealth').Verdict => ({ status: 'unknown', value: null, reason: 'no evidence' });
+  const green = (): import('@/shared/systemHealth').Verdict => ({ status: 'green', value: 0, reason: 'ok' });
+
+  it('rollUp: thin yields to any measured verdict; missing evidence still outranks green', () => {
+    expect(rollUp([thin(), green()])).toBe('green');
+    expect(rollUp([thin()])).toBe('unknown');
+    expect(rollUp([thin(), thin()])).toBe('unknown');
+    expect(rollUp([missing(), green()])).toBe('unknown');
+    expect(rollUp([thin(), { status: 'watch', value: 1, reason: '' }])).toBe('watch');
+    expect(rollUp([])).toBe('unknown');
+  });
+
+  it('live: a workstream with three green signals and one thin p95 is green, not no-data', () => {
+    const doc = greenDoc();
+    doc.signals['claims.wall_p95_s'] = fact({ numerator: 34, denominator: 4 }); // 4 claims → under the floor
+    const judged = judgeAll(doc);
+    const p95 = judged.find(j => j.signal.key === 'claims.wall_p95_s')!;
+    expect(p95.verdict.status).toBe('unknown');
+    expect(p95.verdict.thin).toBe(true);
+    expect(workstreamStatus(judged).W2).toBe('green');
+    expect(drivingSignal(judged, 'W2')!.verdict.status).toBe('green');
+  });
+
+  it('history: a thin hour on one signal keeps the workstream green and inside uptime', () => {
+    const h = greenHistory(captures);
+    for (let i = 0; i < captures.length; i++) h['claims.wall_p95_s'][i] = [iso(captures[i]), 30, 4, true];
+    const tl = hourlyTimeline(h, 'W2');
+    expect(tl).toHaveLength(48);
+    expect(tl.every(p => p.status === 'green' && p.driver === null)).toBe(true);
+    expect(uptimePct(tl)).toBe(100);
+  });
+
+  it('history: a measured breach still wins over a thin neighbour and names itself', () => {
+    const h = greenHistory(captures);
+    for (let i = 0; i < captures.length; i++) h['claims.wall_p95_s'][i] = [iso(captures[i]), 30, 4, true];
+    h['claims.cap_overshoot_7d'][7] = [iso(captures[7]), 1, null, true]; // watch
+    const tl = hourlyTimeline(h, 'W2');
+    expect(tl[7].status).toBe('watch');
+    expect(tl[7].driver?.key).toBe('claims.cap_overshoot_7d');
+  });
+
+  it('a cumulative mean under its floor is thin, and an idle hour is thin too', () => {
+    const s = sig('ledger.insert_mean_ms');
+    const pts: HistoryPoint[] = [[iso(0), 100, 5, true], [iso(H), 400, 10, true], [iso(2 * H), 400, 10, true]];
+    const v = judgeHistoryPoint(s, pts, 1);   // 5 inserts in the hour
+    expect(v.status).toBe('unknown');
+    expect(v.thin).toBe(true);
+    const idle = judgeHistoryPoint(s, pts, 2); // 0 inserts in the hour
+    expect(idle.status).toBe('unknown');
+    expect(idle.thin).toBe(true);
+    const reset: HistoryPoint[] = [[iso(0), 400, 10, true], [iso(H), 100, 5, true]];
+    expect(judgeHistoryPoint(s, reset, 1).thin).toBeUndefined(); // a counter reset is not a thin sample
   });
 });

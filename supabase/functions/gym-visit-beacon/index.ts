@@ -27,6 +27,8 @@ import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 import { staleVisitVerdict, sessionBelongsToVisit, SESSION_OWNERSHIP_MARGIN_MS } from '../_shared/gymReaper.ts';
 import { settleIsTerminal } from '../_shared/settleOutcome.ts';
+import { EXIT_SETTLE_LOOKBACK_MS, EXIT_SETTLE_RIGHT_OF_WAY_MS, exitSettleDue, exitSettleExhausted } from '../_shared/exitSettle.ts';
+import { deviceContradictsPresence, disownedAnswers } from '../_shared/settleGuards.ts';
 import { MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
 
 // Budgets are PER STAGE and live in their own columns (nudge_count /
@@ -149,7 +151,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settle_declined: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settled_exit: 0, settle_declined: 0, disowned_closed: 0, settle_contradicted: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -715,9 +717,24 @@ Deno.serve(async (req: Request) => {
       '234d49f3-d189-44b1-a874-063e724e4380', // Sony bench   (android)
       'a2585666-5b7a-4622-8e43-6bd4fb8013f0', // iPhone bench (ios)
     ]);
-    const FAST_INTERVAL_MIN = 5;    // bench cadence while the sweep is being proven
-    const FLEET_INTERVAL_MIN = 0;   // 0 = fleet OFF; only FAST_USER_IDS are pinged
+    // ── FLEET ON, 2026-09-06 ──────────────────────────────────────────────
+    // A month after the walk-in that gated it (08-07), the two real Android
+    // members had 8,638 `rearm_skipped background_would_destroy` rows and ZERO
+    // check-ins between them: their fences are whatever the last foreground
+    // arm left, and nothing woke them to ask "am I in a gym right now?". iOS
+    // real members detected a departure on 37 of 100 visits. Both are the gap
+    // this ping closes — entry and zombie-exit detection that need no fence.
+    //
+    // Cadence: every 4 h per idle device (6 silent wakes/day, inside Apple's
+    // background-push guidance and a rounding error for FCM). Open visits are
+    // already pinged by the presence pass and the dwell/upgrade nudges, so this
+    // pass does NOT raise its cadence for them — one wake source per question.
+    // The bench cadence drops 5 → 30 min: at 5 the two bench phones were 41%
+    // of every geofence row in the database (8,063 pings / 14 d).
+    const FAST_INTERVAL_MIN = 30;   // bench cadence (was 5 while the sweep was being proven)
+    const FLEET_INTERVAL_MIN = 240; // idle-fleet cadence; 0 = fleet OFF (bench only)
     const TOKEN_FRESH_DAYS = 14; // dormant devices aren't worth the wake budget
+    const TARGET_SCAN_LIMIT = 500; // W3: when fresh tokens pass this, the ping set silently truncates
 
     const { data: refreshTargets, error: refreshScanErr } = await admin
       .from('user_push_tokens')
@@ -726,8 +743,13 @@ Deno.serve(async (req: Request) => {
       .not('device_token', 'is', null)
       .gte('updated_at', new Date(Date.now() - TOKEN_FRESH_DAYS * 86_400_000).toISOString())
       .order('updated_at', { ascending: false })
-      .limit(500);
+      .limit(TARGET_SCAN_LIMIT);
     if (refreshScanErr) console.error('[gym-visit-beacon] fence_refresh target scan failed', refreshScanErr);
+    if ((refreshTargets?.length ?? 0) >= TARGET_SCAN_LIMIT) {
+      // Not an error today (48 fresh tokens); a loud line the day it becomes one,
+      // because a truncated target list drops the OLDEST-updated devices silently.
+      console.warn('[gym-visit-beacon] fence_refresh target scan hit its cap — page it', { limit: TARGET_SCAN_LIMIT });
+    }
 
     // One query for everyone's last ping instead of a count per user per tick.
     const { data: recentPings, error: recentPingsErr } = await admin
@@ -880,25 +902,30 @@ Deno.serve(async (req: Request) => {
     const platformDown = { android: false, ios: false };
     for (const [userId, entries] of tokensByUser) {
       if (!FAST_USER_IDS.has(userId) && FLEET_INTERVAL_MIN <= 0) continue; // fleet off
-      // Pursuit wins over both baselines — but BENCH ONLY until the burst has been
-      // measured in the field. Whoever raises FLEET_INTERVAL_MIN must enable this
-      // deliberately rather than inherit it: against the documented 240-minute
-      // fleet cadence, 1/min is a 240x increase in silent-push volume.
-      const inPursuit = pursuing.has(userId) && FAST_USER_IDS.has(userId);
-      const intervalMin = inPursuit
-        ? PURSUIT_INTERVAL_MIN
-        : (FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN);
-      // 15 s of slack. `lastPingByUser` is stamped a second or two INTO the previous
-      // tick, so an exact comparison against a 1-minute cron loses a whole period to
-      // phase drift — measured: the 5-minute gate actually delivers ~6 (10 pushes an
-      // hour, not 12). Unamended, a 1-minute gate would pay the full push bill for
-      // half the cadence, and the field test would read as "pursuit fired and the
-      // arrival was still missed".
-      if (Date.now() - (lastPingByUser.get(userId) ?? 0) < intervalMin * 60_000 - 15_000) continue;
-      if (inPursuit) stats.pursuit++;
+      const sinceLastPingMs = Date.now() - (lastPingByUser.get(userId) ?? 0);
+      const baselineMin = FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN;
 
       for (const { token, platform } of entries) {
         if (platformDown[platform]) continue;
+        // Pursuit (1/min for ≤ 8 min after a wake-ring ENTER that has not converted)
+        // is enabled DELIBERATELY, per platform, on 2026-09-06 with the fleet switch:
+        //   • Android fleet-wide — FCM data pushes carry no delivery budget, and the
+        //     90-second walk-in gap (pollForCheckIn expires, next sweep is minutes
+        //     away) is exactly the window that cost the 08-09 check-in.
+        //   • iOS bench only — Apple withholds background pushes past ~2-3/hour per
+        //     device, and an 8-push burst at the door could starve the dwell and
+        //     upgrade nudges 30 minutes later, which are the ones that carry credit.
+        //     Turn it on for iOS only with a receipt that the nudges still land.
+        const inPursuit = pursuing.has(userId) && (FAST_USER_IDS.has(userId) || platform === 'android');
+        const intervalMin = inPursuit ? PURSUIT_INTERVAL_MIN : baselineMin;
+        // 15 s of slack. `lastPingByUser` is stamped a second or two INTO the previous
+        // tick, so an exact comparison against a 1-minute cron loses a whole period to
+        // phase drift — measured: the 5-minute gate actually delivers ~6 (10 pushes an
+        // hour, not 12). Unamended, a 1-minute gate would pay the full push bill for
+        // half the cadence, and the field test would read as "pursuit fired and the
+        // arrival was still missed".
+        if (sinceLastPingMs < intervalMin * 60_000 - 15_000) continue;
+        if (inPursuit) stats.pursuit++;
         // iOS takes the documented background-push shape (apns-push-type:
         // background, priority 5) — the same call the dwell/upgrade nudges
         // already use successfully on this device. Android keeps the mirrored
@@ -1212,6 +1239,71 @@ Deno.serve(async (req: Request) => {
   // absorb the overlap. ⚠ Known cost: the reaper reads claimed_at/upgraded_at
   // as device-proven moments — a settled stamp weakens that invariant by up
   // to one settle delay; acceptable against losing the session outright.
+  // ── Disowned visits (2026-09-07) ──────────────────────────────────────────
+  // A device that answers a wake with `confirmed_outside{reason:'no_active_session'}`
+  // is telling us it holds no session for this visit. That is the drive-by
+  // shape — one passive-stream fix inside a roadside 25 m circle opened a
+  // server visit, the next fix was outside and the client finalized, but the
+  // close never landed because the open's answer never reached the phone.
+  // Member "Butt" (Android), 09-07: 11 visits in 9 days, every wake answered
+  // this way, none closed by the device, one sitting on Live Ops as CLAIM
+  // OVERDUE at 153 min. Close it here, now, under its own reason: no more
+  // nudges for it, no 12 h abandon wait, and — load-bearing since the check-in
+  // proof stamp — nothing left for the settle pass to pay. Unclaimed visits
+  // only: a claimed one that later loses its local state is the reaper's case,
+  // and its points are already banked. ended_at = last proof or start: a
+  // disowned visit's length is whatever it proved, usually nothing.
+  {
+    const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+    const { data: disownRows, error: disownErr } = await admin
+      .from('gym_visit_events')
+      .select('visit_id')
+      .eq('event', 'confirmed_outside')
+      .eq('detail->>reason', 'no_active_session')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (disownErr) console.error('[gym-visit-beacon] disown scan failed', disownErr);
+    const disownIds = [...new Set((disownRows ?? []).map((r: { visit_id: string }) => r.visit_id))];
+
+    if (disownIds.length > 0) {
+      const { data: openDisowned } = await admin
+        .from('gym_visits')
+        .select('id, user_id, started_at, last_proven_at')
+        .in('id', disownIds)
+        .eq('status', 'open')
+        .is('claimed_session_id', null)
+        .is('ended_at', null);
+
+      for (const v of openDisowned ?? []) {
+        const { data: evs } = await admin
+          .from('gym_visit_events')
+          .select('event, created_at, detail')
+          .eq('visit_id', v.id)
+          .eq('event', 'confirmed_outside');
+        const answers = disownedAnswers(evs ?? []);
+        if (answers === 0) continue;
+
+        const endedAtIso = v.last_proven_at && Date.parse(v.last_proven_at) > Date.parse(v.started_at)
+          ? v.last_proven_at : v.started_at;
+        const { data: closed, error: closeErr } = await admin
+          .from('gym_visits')
+          .update({ status: 'closed', close_reason: 'disowned_by_device', ended_at: endedAtIso })
+          .eq('id', v.id)
+          .is('ended_at', null)          // conditional: a real client close racing us wins
+          .select('id');
+        if (closeErr) { console.error('[gym-visit-beacon] disown close failed', closeErr); continue; }
+        if (!closed || closed.length === 0) continue;
+
+        await admin.from('gym_visit_events').insert({
+          visit_id: v.id, user_id: v.user_id, event: 'closed_stale',
+          detail: { reason: 'disowned_by_device', answers, ended_at: endedAtIso },
+        });
+        stats.disowned_closed++;
+      }
+    }
+  }
+
   {
     const SETTLE_GRACE_MIN = 5;
     const SETTLE_MIN_NUDGES = 2;
@@ -1282,9 +1374,26 @@ Deno.serve(async (req: Request) => {
       .limit(50);
     if (scErr) console.error('[gym-visit-beacon] settle claim scan failed', scErr);
 
+    // The device's own word outranks "no exit observed". A `confirmed_outside`
+    // after the last proof is an exit the fence never logged (location-detected
+    // exits write no `exit` region row) — and since the check-in proof stamp a
+    // drive-by's clock is not null, so this is the only thing between the settle
+    // and paying someone for driving past a gym.
+    const contradicted = async (visitId: string, sinceIso: string | null): Promise<boolean> => {
+      const { data: evs } = await admin
+        .from('gym_visit_events')
+        .select('event, created_at, detail')
+        .eq('visit_id', visitId)
+        .eq('event', 'confirmed_outside');
+      const hit = deviceContradictsPresence(evs ?? [], sinceIso);
+      if (hit) stats.settle_contradicted++;
+      return hit;
+    };
+
     for (const v of settleClaims ?? []) {
       if (!v.last_proven_at) continue;             // check-in never proved an inside fix
       if (!(await noExitSince(v))) continue;       // user observably left — exit path owns it
+      if (await contradicted(v.id, v.last_proven_at)) continue; // the device said "outside" since
 
       const nowIso = new Date().toISOString();
       const durationSec = Math.max(0, Math.round((Date.now() - Date.parse(v.started_at)) / 1000));
@@ -1315,7 +1424,7 @@ Deno.serve(async (req: Request) => {
       } else {
         stats.settled_claim++;
       }
-      const terminal = respErr !== null && settleIsTerminal(status);
+      const terminal = respErr !== null && settleIsTerminal(status, respErr);
       await admin.from('gym_visit_events').insert({
         visit_id: v.id, user_id: v.user_id,
         event: respErr === null ? 'settled' : 'settle_failed',
@@ -1327,7 +1436,7 @@ Deno.serve(async (req: Request) => {
     // Stage 2: claimed-not-upgraded visits past upgrade + grace, same offer test.
     const { data: settleUpgrades, error: suErr } = await admin
       .from('gym_visits')
-      .select('id, user_id, region_id, started_at, claimed_session_id, nudge_count_upgrade')
+      .select('id, user_id, region_id, started_at, claimed_session_id, nudge_count_upgrade, last_proven_at')
       .not('claimed_session_id', 'is', null)
       .is('upgraded_at', null)
       .is('ended_at', null)
@@ -1339,6 +1448,7 @@ Deno.serve(async (req: Request) => {
 
     for (const v of settleUpgrades ?? []) {
       if (!(await noExitSince(v))) continue;
+      if (await contradicted(v.id, v.last_proven_at ?? null)) continue;
 
       // upgrade-gym-tier gates on the RECORDED length, and a device that never
       // answered post-claim left the session frozen at claim time. Extend to
@@ -1371,6 +1481,88 @@ Deno.serve(async (req: Request) => {
         detail: { stage: 'upgrade', session_id: v.claimed_session_id, nudges_unanswered: v.nudge_count_upgrade, status, error: respErr, terminal },
       });
       if (terminal) await closeDeclinedVisit(v.id, 'upgrade', respErr);
+    }
+
+    // Stage 3 (2026-09-06): visits the device CLOSED on the way out and never
+    // claimed. Stages 1 and 2 select `ended_at is null`, so a proven visit whose
+    // relaunched-at-exit app managed the close (a ticket verb) but not the claim
+    // (needs a session) was invisible here and waited for an app-open: 10 of 73
+    // paid iOS sessions in the 30 days to 09-06 landed more than 90 minutes late
+    // that way. Pays for the length the close recorded — since 20260906170000
+    // that is the exit fence's own time for a proven visit. Selection facts live
+    // in _shared/exitSettle.ts (tested); the queries here only narrow the scan.
+    {
+      const { data: exitCandidates, error: exErr } = await admin
+        .from('gym_visits')
+        .select('id, user_id, partner_id, region_id, started_at, ended_at, close_reason, claimed_session_id, last_proven_at')
+        .eq('status', 'closed')
+        .eq('close_reason', 'exit')
+        .is('claimed_session_id', null)
+        .not('last_proven_at', 'is', null)
+        .gte('ended_at', new Date(Date.now() - EXIT_SETTLE_LOOKBACK_MS).toISOString())
+        .lte('ended_at', new Date(Date.now() - EXIT_SETTLE_RIGHT_OF_WAY_MS).toISOString())
+        .lte('started_at', new Date(Date.now() - dwellMin * 60_000).toISOString())
+        .limit(50);
+      if (exErr) console.error('[gym-visit-beacon] settle exit scan failed', exErr);
+
+      for (const v of exitCandidates ?? []) {
+        if (!exitSettleDue(v, dwellMin, Date.now())) continue;
+
+        const { data: prior } = await admin
+          .from('gym_visit_events')
+          .select('event, detail')
+          .eq('visit_id', v.id)
+          .in('event', ['settled', 'settle_failed']);
+        if (exitSettleExhausted(prior ?? [])) continue;
+
+        const durationSec = Math.max(0, Math.round((Date.parse(v.ended_at) - Date.parse(v.started_at)) / 1000));
+        const { data: sess, error: sessErr } = await admin
+          .from('activity_sessions')
+          .insert({
+            user_id: v.user_id, type: 'gym', verification: 'geofence',
+            trust_score: 0.85, // same footing as the dwell settle: server-paid, device-proven
+            started_at: v.started_at, ended_at: v.ended_at, duration_sec: durationSec,
+            partner_id: v.partner_id,
+          })
+          .select('id')
+          .single();
+        if (sessErr || !sess) {
+          // 23505 = the one-gym-session-per-day index: a session for this day
+          // already exists (the device claimed a sibling visit), so this can
+          // never succeed — record it as terminal rather than retrying it out.
+          const terminal = (sessErr as { code?: string } | null)?.code === '23505';
+          console.error('[gym-visit-beacon] exit settle session insert failed', sessErr);
+          await admin.from('gym_visit_events').insert({
+            visit_id: v.id, user_id: v.user_id, event: 'settle_failed',
+            detail: { stage: 'exit', session_id: null, status: 0, error: sessErr?.message ?? 'no session', terminal },
+          });
+          continue;
+        }
+
+        let status = 0; let respErr: string | null = null;
+        try {
+          const resp = await fetch(`${fnBase}/functions/v1/claim-points`, {
+            method: 'POST', headers: settleFnHeaders,
+            body: JSON.stringify({ session_id: sess.id, user_id: v.user_id, visit_id: v.id }),
+          });
+          status = resp.status;
+          if (!resp.ok) respErr = (await resp.json().catch(() => null))?.error ?? `http ${resp.status}`;
+        } catch (e) { respErr = String(e); }
+
+        if (respErr !== null || status !== 200) {
+          await admin.from('activity_sessions').delete().eq('id', sess.id);
+        } else {
+          stats.settled_exit++;
+        }
+        const terminal = respErr !== null && settleIsTerminal(status, respErr);
+        // claim-points' late-stamp (11c) marks the ended visit itself, so the
+        // "Session complete" pass finds it on the next tick. Nothing to close.
+        await admin.from('gym_visit_events').insert({
+          visit_id: v.id, user_id: v.user_id,
+          event: respErr === null ? 'settled' : 'settle_failed',
+          detail: { stage: 'exit', session_id: sess.id, duration_sec: durationSec, status, error: respErr, terminal },
+        });
+      }
     }
   }
 
