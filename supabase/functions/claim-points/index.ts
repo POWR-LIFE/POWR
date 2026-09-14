@@ -1,6 +1,6 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 import { createClient } from '@supabase/supabase-js';
-import { provenSec, shouldFlagUnproven } from '../_shared/proofAudit.ts';
+import { exitWitnessedAtFromExitEvent, provenSec, shouldFlagUnproven } from '../_shared/proofAudit.ts';
 import { geofenceSupersedes } from '../_shared/sessionPriority.ts';
 import { streakFromSessions } from '../_shared/streak.ts';
 
@@ -339,7 +339,7 @@ Deno.serve(async (req) => {
   );
 
   // 1. Parse request body (before auth — the relay leg carries user_id in it)
-  let body: ClaimRequest & { user_id?: string; visit_id?: string };
+  let body: ClaimRequest & { user_id?: string; visit_id?: string; settle?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -418,6 +418,71 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Session already claimed' }), { status: 409 });
   }
 
+  // 4b. ONE VISIT, ONE SESSION (2026-09-14). Step 4 is keyed on THIS row, and
+  // the beacon's settle writes its own row (trust 0.85, no device_id) for a
+  // visit the phone later revisits with a row of its own — same started_at to
+  // the millisecond, a different id, so step 4 passes and the visit is paid
+  // twice. 11 twin visits since 08-01, four real users paid twice (Alfie
+  // 08-19 15+15, Matt 09-08 15+12, Alfie 09-06 20+10, Elliot 09-04 20+10),
+  // and 11 of the queue's 15 'duplicate' flags were twins, not abuse. The
+  // visit is the unit of payment: if it already carries another session,
+  // this one is an orphan. Refuse it, and delete it when nothing references
+  // it yet, so the day's history shows one workout and the client's
+  // "Session already claimed" branch surfaces completion as usual.
+  //
+  // Resolution mirrors 11b/11c: the visit the caller names, else the caller's
+  // visit at this partner whose start sits within ±30 min of the session's —
+  // a genuine second visit hours later (Butt 09-09, 10:18 and 12:59) is a
+  // different visit and passes.
+  if (session.verification === 'geofence' && session.type === 'gym' && (body.visit_id || session.partner_id)) {
+    try {
+      let taken = supabase
+        .from('gym_visits')
+        .select('id, claimed_session_id')
+        .eq('user_id', user.id)
+        .not('claimed_session_id', 'is', null)
+        .neq('claimed_session_id', session.id)
+        .limit(1);
+      if (body.visit_id) {
+        taken = taken.eq('id', body.visit_id);
+      } else {
+        const startMs = Date.parse(session.started_at);
+        taken = taken
+          .eq('partner_id', session.partner_id)
+          .gte('started_at', new Date(startMs - 30 * 60_000).toISOString())
+          .lte('started_at', new Date(startMs + 30 * 60_000).toISOString());
+      }
+      const { data: takenRows } = await taken;
+      const winner = takenRows?.[0];
+      if (winner) {
+        const { count: refs } = await supabase
+          .from('point_transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session.id);
+        let deleted = false;
+        if ((refs ?? 0) === 0) {
+          const { error: delErr } = await supabase.from('activity_sessions').delete().eq('id', session.id);
+          deleted = !delErr;
+        }
+        console.log(
+          `[claim-points] refused twin session ${session.id}: visit ${winner.id} already claimed by ` +
+          `${winner.claimed_session_id}${deleted ? ' (orphan deleted)' : ''}`,
+        );
+        await supabase.from('gym_visit_events').insert({
+          visit_id: winner.id, user_id: user.id, event: 'twin_refused',
+          detail: { session_id: session.id, winner_session_id: winner.claimed_session_id, deleted, via: viaRelay ? 'relay' : 'direct' },
+        });
+        return new Response(JSON.stringify({
+          error: 'Session already claimed', session_id: winner.claimed_session_id, visit_id: winner.id,
+        }), { status: 409 });
+      }
+    } catch (twinErr) {
+      // Best-effort: a broken gate must not block a claim — the daily cap and
+      // the unique index still bound the damage exactly as before.
+      console.warn('[claim-points] twin gate failed:', twinErr);
+    }
+  }
+
   // 5. Trust score gate — manual logs below threshold flagged automatically
   const MIN_TRUST = 0.5;
   if (session.trust_score < MIN_TRUST) {
@@ -468,7 +533,18 @@ Deno.serve(async (req) => {
 
   // Allow walking & sleep multiple times but flag same typed session for others
   if (session.type !== 'walking' && session.type !== 'sleep' && (dupeCount ?? 0) > 0) {
-    const { count: typedDupe } = await supabase
+    // Only a sibling of the SAME evidence class is a duplicate (2026-09-14). A
+    // wearable workout on the day of a geofence visit is the normal shape of a
+    // gym-goer with a watch — the overlapping case is already superseded in 5b,
+    // and a non-overlapping one is a second workout, not a second claim.
+    // Georgie's 217-min strength session and Tim's 70-min Whoop session were
+    // both flagged against their own check-ins. Manual logs keep the wide net:
+    // a manual entry on a day with any verified session is the abuse shape.
+    const siblingClass =
+      session.verification === 'geofence' ? ['geofence']
+      : session.verification === 'manual' ? null
+      : ['wearable', 'health'];
+    let dupeQuery = supabase
       .from('activity_sessions')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
@@ -476,6 +552,8 @@ Deno.serve(async (req) => {
       .gte('started_at', `${sessionDay}T00:00:00Z`)
       .lte('started_at', `${sessionDay}T23:59:59Z`)
       .neq('id', session.id);
+    if (siblingClass) dupeQuery = dupeQuery.in('verification', siblingClass);
+    const { count: typedDupe } = await dupeQuery;
 
     if ((typedDupe ?? 0) > 0) {
       // Flag but don't block — let the claim go through as a flagged transaction
@@ -859,19 +937,57 @@ Deno.serve(async (req) => {
     try {
       const { data: auditVisit, error: auditVisitErr } = await supabase
         .from('gym_visits')
-        .select('id, started_at, last_proven_at')
+        .select('id, started_at, last_proven_at, ended_at')
         .eq('claimed_session_id', session.id)
         .eq('user_id', user.id)
         .order('started_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (auditVisitErr) throw auditVisitErr;
+      // An END WITNESS is proof the visit engine already accepted (close_gym_visit
+      // 20260906170000): a device-presented exit on a visit with a proof clock is
+      // believed unless the record places the phone elsewhere. Read it from the
+      // exit row so this audit and that clamp agree on the same evidence.
+      let exitWitnessedAt: string | null = null;
+      if (auditVisit?.ended_at) {
+        const { data: exitEv } = await supabase
+          .from('gym_visit_events')
+          .select('detail')
+          .eq('visit_id', auditVisit.id)
+          .eq('event', 'exit')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        exitWitnessedAt = exitWitnessedAtFromExitEvent(exitEv?.detail ?? null);
+      }
       const auditInputs = {
         durationSec: session.duration_sec ?? 0,
         visitStartedAt: auditVisit?.started_at ?? null,
         lastProvenAt: auditVisit?.last_proven_at ?? null,
+        exitWitnessedAt,
       };
-      if (shouldFlagUnproven(auditInputs)) {
+      // A SETTLE IS POLICY, NOT AN ANOMALY (2026-09-14). The beacon pays a visit
+      // that proved its check-in, saw no exit and was never contradicted by the
+      // device — a deliberate never-drop-a-workout rule with its own guards
+      // (settleGuards.ts). Flagging that same row seconds later at "proven =
+      // check-in" was double-judging one decision: 14 of the queue's 34
+      // unproven rows were settles, every one predictable. Record the audit on
+      // the visit for Live Ops, but do not flag — a flag costs the user their
+      // weekly recap and any referral conversion (weekly_summary,
+      // referral_conversion_check both skip flagged rows).
+      const isSettle = viaRelay && body.settle === true;
+      if (isSettle && auditVisit) {
+        await supabase.from('gym_visit_events').insert({
+          visit_id: auditVisit.id, user_id: user.id, event: 'proof_audit',
+          detail: {
+            session_id: session.id,
+            session_sec: session.duration_sec ?? 0,
+            proven_sec: provenSec(auditInputs),
+            flagged: false,
+            settled: true,
+          },
+        });
+      } else if (shouldFlagUnproven(auditInputs)) {
         // First writer sets the reason outright; the guard is the WHERE, not the
         // stale step-3 read, so a concurrent flag can't be lost.
         const { data: flaggedRows } = await supabase

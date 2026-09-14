@@ -1407,7 +1407,10 @@ Deno.serve(async (req: Request) => {
       try {
         const resp = await fetch(`${fnBase}/functions/v1/claim-points`, {
           method: 'POST', headers: settleFnHeaders,
-          body: JSON.stringify({ session_id: sess.id, user_id: v.user_id, visit_id: v.id }),
+          // `settle: true` tells claim-points this row is the beacon's own policy
+          // decision, so its proof audit records the verdict without flagging
+          // (a flag costs the user recap + referral credit — see 11d there).
+          body: JSON.stringify({ session_id: sess.id, user_id: v.user_id, visit_id: v.id, settle: true }),
         });
         status = resp.status;
         if (!resp.ok) respErr = (await resp.json().catch(() => null))?.error ?? `http ${resp.status}`;
