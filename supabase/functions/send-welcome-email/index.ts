@@ -89,6 +89,7 @@ Deno.serve(async (req: Request) => {
       subject: email.subject,
       html: email.html,
       text: email.text,
+      tag: "welcome",
     });
   } catch (err) {
     console.error("send-welcome-email: failed to send:", err);
