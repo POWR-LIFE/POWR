@@ -15,8 +15,10 @@
 // safe manual runs and previews.
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "../_shared/mailgun.ts";
-import { weeklySummaryEmail, type WeeklyActivityStat, type WeeklyRewardTile, type WeeklySummaryData } from "../_shared/emails/weekly-summary.ts";
+import { weeklySummaryEmail, type WeeklyActivityStat, type WeeklyDay, type WeeklyLevel, type WeeklyRewardTile, type WeeklySummaryData } from "../_shared/emails/weekly-summary.ts";
+import { WEEKLY_SAMPLES, type WeeklySampleId } from "../_shared/emails/weekly-summary.samples.ts";
 import { getChallengeById } from "../_shared/challenges.ts";
+import { levelImageUrl, LEVELS, TIER_COLOR, TIER_LABEL } from "../_shared/levels.ts";
 
 // Health-provider / wearable slug → display label. Mirrors the connect screen.
 const WEARABLE_LABELS: Record<string, string> = {
@@ -122,46 +124,32 @@ interface RecipientRow {
   reward_value: string | null;
 }
 
-/** Representative data for previewing the design via { sample: true }. */
-function sampleWeeklyData(weekLabel: string): WeeklySummaryData {
+/** get_weekly_summary_extras() row — presentation data merged in by user_id. */
+interface ExtrasRow {
+  user_id: string;
+  days: WeeklyDay[] | null;
+  total_earned: number;
+  vault_banked: number | null;
+  is_first_week: boolean;
+  longest_sec: number | null;
+  longest_type: string | null;
+  longest_partner: string | null;
+}
+
+/** Level card from the canonical lifetime total (same basis as the app + level-up email). */
+function levelFor(totalEarned: number): WeeklyLevel {
+  const def = [...LEVELS].reverse().find((l) => totalEarned >= l.xpMin) ?? LEVELS[0];
+  const next = LEVELS.find((l) => l.level === def.level + 1) ?? null;
   return {
-    name: "Jamie",
-    weekLabel,
-    pointsThisWeek: 1240,
-    pointsLastWeek: 980,
-    workouts: 6,
-    activeDays: 5,
-    currentStreak: 12,
-    topActivity: { type: "gym", count: 4 },
-    distanceKm: 18.4,
-    steps: 52340,
-    prevSteps: 47100,
-    activities: [
-      { type: "gym", count: 4, prevCount: 2 },
-      { type: "running", count: 2, prevCount: 3 },
-      { type: "cycling", count: 1, prevCount: 1 },
-      { type: "hiit", count: 1, prevCount: 0 },
-    ],
-    weeklyRank: 7,
-    referralCode: "JAMIE20",
-    longestSession: { type: "gym", durationSec: 4920, partner: "PureGym Holborn" },
-    gyms: [
-      { name: "PureGym Holborn", count: 3 },
-      { name: "The Gym Group Old Street", count: 2 },
-      { name: "F45 Shoreditch", count: 1 },
-    ],
-    wearable: "Whoop",
-    challengesCompleted: 3,
-    challengeTitles: ["No Days Off", "5 Days Active", "3km Run"],
-    // Mid-tier balance so the preview shows the featured card with progress + sessions.
-    balance: 250,
-    topRewards: [
-      { brand: "MATHAN", cost: 300, valueLabel: "£15 OFF", image: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-submissions/logos/1780493633701-o9l9sp.png", hero: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/heroes/1780820340343-3z0403.jpeg" },
-      { brand: "Tribe", cost: 220, valueLabel: "50% OFF", image: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/rewards/1776850967371-0q1bco.png", hero: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/heroes/1780820340343-3z0403.jpeg" },
-      { brand: "OMNITY", cost: 210, valueLabel: "20% OFF", image: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/rewards/1781177374575-acu6oe.png", hero: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/heroes/1780820340343-3z0403.jpeg" },
-    ],
-    closestReward: { brand: "MATHAN", title: "MATHAN", cost: 300, valueLabel: "£15 OFF", image: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-submissions/logos/1780493633701-o9l9sp.png", hero: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/heroes/1780820340343-3z0403.jpeg" },
-    upcomingRewards: [],
+    level: def.level,
+    name: def.name,
+    tierLabel: TIER_LABEL[def.tier],
+    tierColor: TIER_COLOR[def.tier],
+    totalEarned,
+    levelAt: def.xpMin,
+    nextName: next?.name ?? null,
+    nextAt: next?.xpMin ?? null,
+    imageUrl: levelImageUrl(def.level),
   };
 }
 
@@ -213,9 +201,13 @@ Deno.serve(async (req: Request) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-    const email = weeklySummaryEmail(sampleWeeklyData(weekLabel));
+    // { variant: "up" | "down" | "starter" } picks the shape to preview (default "up").
+    const variant = (typeof body?.variant === "string" && body.variant in WEEKLY_SAMPLES
+      ? body.variant
+      : "up") as WeeklySampleId;
+    const email = weeklySummaryEmail({ ...WEEKLY_SAMPLES[variant], weekLabel });
     try {
-      await sendEmail({ to: onlyEmail, subject: email.subject, html: email.html, text: email.text });
+      await sendEmail({ to: onlyEmail, subject: email.subject, html: email.html, text: email.text, tag: "weekly-summary-sample" });
       return new Response(JSON.stringify({ ok: true, sample: true, sent_to: onlyEmail }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -280,6 +272,10 @@ Deno.serve(async (req: Request) => {
   // When the balance can't unlock anything yet, surface the 3 cheapest (low→high).
   const ladderFor = (bal: number): WeeklyRewardTile[] =>
     bal < cheapestCost ? dedupAsc.slice(0, 3) : [];
+  // Rewards the balance already covers, best value first. Most members hold more
+  // than the cheapest reward costs, so this — not the ladder — is the usual case.
+  const readyFor = (bal: number): WeeklyRewardTile[] =>
+    dedupAsc.filter((r) => r.cost <= bal).sort((a, b) => b.cost - a.cost);
 
   const { data, error } = await supabase.rpc("get_weekly_summary_recipients", {
     p_since: since.toISOString(),
@@ -289,6 +285,19 @@ Deno.serve(async (req: Request) => {
   if (error) {
     console.error("send-weekly-summary: rpc error", error);
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+  }
+
+  // Presentation extras (day strip, level basis, vault, plausible longest). Additive:
+  // if the RPC is missing or fails, the email still sends — just without them.
+  const extrasByUser = new Map<string, ExtrasRow>();
+  const { data: extrasRows, error: extrasError } = await supabase.rpc("get_weekly_summary_extras", {
+    p_since: since.toISOString(),
+    p_until: until.toISOString(),
+  });
+  if (extrasError) {
+    console.error("send-weekly-summary: extras rpc error (sending without extras)", extrasError);
+  } else {
+    for (const row of (extrasRows ?? []) as ExtrasRow[]) extrasByUser.set(row.user_id, row);
   }
 
   let recipients = (data ?? []) as RecipientRow[];
@@ -327,6 +336,13 @@ Deno.serve(async (req: Request) => {
     await Promise.all(
       batch.map(async (r) => {
         if (!r.email) return;
+        const extras = extrasByUser.get(r.user_id) ?? null;
+        const ready = readyFor(r.balance ?? 0);
+        // With extras, trust its plausibility-bounded longest (null = nothing worth
+        // featuring); without, fall back to the raw one — the template bounds it too.
+        const longestSec = extras ? extras.longest_sec : r.longest_sec;
+        const longestType = extras ? extras.longest_type : r.longest_type;
+        const longestPartner = extras ? extras.longest_partner : r.longest_partner;
         const payload: WeeklySummaryData = {
           name: r.display_name,
           weekLabel,
@@ -342,8 +358,8 @@ Deno.serve(async (req: Request) => {
           activities: r.activities ?? null,
           weeklyRank: r.weekly_rank,
           referralCode: r.referral_code,
-          longestSession: r.longest_sec && r.longest_sec > 0
-            ? { type: r.longest_type ?? "workout", durationSec: r.longest_sec, partner: r.longest_partner }
+          longestSession: longestSec && longestSec > 0
+            ? { type: longestType ?? "workout", durationSec: longestSec, partner: longestPartner }
             : null,
           gyms: r.gyms?.length ? r.gyms : null,
           wearable: wearableLabel(r.wearable),
@@ -353,10 +369,16 @@ Deno.serve(async (req: Request) => {
           topRewards,
           closestReward: closestRewardFor(r.balance ?? 0),
           upcomingRewards: ladderFor(r.balance ?? 0),
+          rewardsReady: ready.slice(0, 3),
+          affordableCount: ready.length,
+          days: extras?.days?.length === 7 ? extras.days : null,
+          level: extras ? levelFor(extras.total_earned ?? 0) : null,
+          vaultBanked: extras?.vault_banked ?? null,
+          isFirstWeek: extras?.is_first_week ?? false,
         };
         const email = weeklySummaryEmail(payload);
         try {
-          await sendEmail({ to: deliverTo ?? r.email, subject: email.subject, html: email.html, text: email.text });
+          await sendEmail({ to: deliverTo ?? r.email, subject: email.subject, html: email.html, text: email.text, tag: "weekly-summary" });
           sent++;
         } catch (e) {
           failed++;

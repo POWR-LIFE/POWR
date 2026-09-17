@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
       nextLevelName: "Iron Lungs",
       nextLevelAt: 10000,
     });
-    await sendEmail({ to: onlyEmail, subject: email.subject, html: email.html, text: email.text });
+    await sendEmail({ to: onlyEmail, subject: email.subject, html: email.html, text: email.text, tag: "level-up-sample" });
     return new Response(JSON.stringify({ ok: true, mode: "sample", to: onlyEmail }), {
       headers: { "Content-Type": "application/json" },
     });
@@ -126,6 +126,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const next = LEVELS.find((l) => l.level === def.level + 1) ?? null;
+  const { data: vaultAccess } = await admin.rpc("vault_has_access", { p_user: userId });
+  const vaultVisible = vaultAccess === true;
   const rendered = levelUpEmail({
     name: profile?.display_name ?? null,
     level: def.level,
@@ -134,14 +136,16 @@ Deno.serve(async (req: Request) => {
     tierColor: TIER_COLOR[def.tier],
     // The trigger sends the exact level basis; fall back to the threshold floor.
     totalEarned: totalEarned ?? def.xpMin,
-    vaultBonus: bonus,
+    // The Vault is a gated rollout — never tell a member to "open the Vault" when
+    // they have no Vault to open. The bonus still banks; it just isn't named here.
+    vaultBonus: vaultVisible ? bonus : null,
     levelImageUrl: levelImageUrl(def.level),
     nextLevelName: next?.name ?? null,
     nextLevelAt: next?.xpMin ?? null,
   });
 
   try {
-    await sendEmail({ to: email, subject: rendered.subject, html: rendered.html, text: rendered.text });
+    await sendEmail({ to: email, subject: rendered.subject, html: rendered.html, text: rendered.text, tag: "level-up" });
   } catch (err) {
     // Free the dedupe slot so a retry can send.
     await admin.from("level_up_email_log").delete().eq("user_id", userId).eq("level", level);

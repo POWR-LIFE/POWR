@@ -1,13 +1,14 @@
 // email-previews — TEMPORARY QA rig for reviewing the email set.
 //
 // Renders every email in the (proposed) lineup with realistic sample data and
-// sends the lot to jamie@powr.life so the set can be judged in a real inbox.
-// The recipient is hardcoded — this function cannot email anyone else.
+// sends the lot to Jamie so the set can be judged in a real inbox. Recipients are
+// a hardcoded allowlist — this function cannot email anyone else.
 // Delete once the set is approved and wired to its real triggers.
 //
-// POST { key: "powr-email-previews", only?: string[] }
-//   `only` filters by preview id: welcome | weekly | invite | partner_welcome |
-//   partner_weekly | recovery | level_up
+// POST { key: "powr-email-previews", only?: string[], to?: string }
+//   `only` filters by preview id: welcome | weekly | weekly_down | weekly_starter |
+//   invite | partner_welcome | partner_weekly | recovery | level_up
+//   `to` must be one of ALLOWED_RECIPIENTS (default: the first).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { sendEmail } from "../_shared/mailgun.ts";
@@ -19,8 +20,10 @@ import {
   partnerWeeklySummaryEmail,
   levelUpEmail,
 } from "../_shared/email-templates.ts";
+import { WEEKLY_SAMPLES } from "../_shared/emails/weekly-summary.samples.ts";
 
-const RECIPIENT = "jamie@powr.life";
+// Work inbox + Jamie's personal Gmail (Gmail is where font/dark-mode quirks show).
+const ALLOWED_RECIPIENTS = ["jamie@powr.life", "jamiemasonwright@gmail.com"];
 const PREVIEW_KEY = "powr-email-previews";
 
 /** supabase/templates/recovery.html with GoTrue's {{ .ConfirmationURL }} filled in. */
@@ -103,40 +106,9 @@ function buildPreviews(): { id: string; email: { subject: string; html: string; 
         pointsEarned: 40,
       }),
     },
-    {
-      id: "weekly",
-      email: weeklySummaryEmail({
-        name: "Jamie Wright",
-        weekLabel: "7–13 Jul",
-        pointsThisWeek: 240,
-        pointsLastWeek: 205,
-        workouts: 5,
-        activeDays: 5,
-        currentStreak: 4,
-        topActivity: { type: "gym", count: 3 },
-        distanceKm: 18.4,
-        steps: 52340,
-        prevSteps: 47820,
-        activities: [
-          { type: "gym", count: 3, prevCount: 2 },
-          { type: "running", count: 2, prevCount: 1 },
-          { type: "cycling", count: 1, prevCount: 2 },
-        ],
-        referralCode: "JAMIE20",
-        longestSession: { type: "running", durationSec: 3840 },
-        gyms: [{ name: "ONE LDN", count: 3 }],
-        wearable: "Whoop",
-        challengesCompleted: 1,
-        challengeTitles: ["Back Again"],
-        balance: 385,
-        closestReward: {
-          brand: "Forge Athletics",
-          title: "20% off everything",
-          cost: 450,
-          valueLabel: "20% OFF",
-        },
-      }),
-    },
+    { id: "weekly", email: weeklySummaryEmail(WEEKLY_SAMPLES.up) },
+    { id: "weekly_down", email: weeklySummaryEmail(WEEKLY_SAMPLES.down) },
+    { id: "weekly_starter", email: weeklySummaryEmail(WEEKLY_SAMPLES.starter) },
     {
       id: "invite",
       email: brandInviteEmail({
@@ -193,7 +165,7 @@ Deno.serve(async (req: Request) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  let body: { key?: string; only?: string[] };
+  let body: { key?: string; only?: string[]; to?: string };
   try {
     body = await req.json();
   } catch {
@@ -202,6 +174,11 @@ Deno.serve(async (req: Request) => {
 
   if (body.key !== PREVIEW_KEY) {
     return new Response("Unauthorized", { status: 401 });
+  }
+
+  const RECIPIENT = typeof body.to === "string" ? body.to.trim().toLowerCase() : ALLOWED_RECIPIENTS[0];
+  if (!ALLOWED_RECIPIENTS.includes(RECIPIENT)) {
+    return new Response("Recipient not allowed", { status: 403 });
   }
 
   const only = Array.isArray(body.only) && body.only.length ? new Set(body.only) : null;
@@ -214,9 +191,10 @@ Deno.serve(async (req: Request) => {
     try {
       await sendEmail({
         to: RECIPIENT,
-        subject: p.email.subject,
+        subject: `[Preview · ${p.id}] ${p.email.subject}`,
         html: p.email.html,
         text: p.email.text,
+        tag: `preview-${p.id}`,
       });
       sent.push(p.id);
     } catch (err) {
