@@ -200,7 +200,13 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
     };
 
     const handleDone = () => {
-        dismissThen(origin === 'home' ? () => router.push('/(tabs)/league') : undefined);
+        dismissThen(
+            origin === 'home'
+                // Pinned: with several events on, League must open on the one
+                // just joined, not whichever ranks first.
+                ? () => router.push({ pathname: '/(tabs)/league', params: { event: event.slug } })
+                : undefined,
+        );
     };
 
     const openFullQr = () => {

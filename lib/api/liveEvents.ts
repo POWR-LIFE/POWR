@@ -1,3 +1,4 @@
+import { designJoin } from '@/lib/dev/multiEventDesign';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -269,6 +270,9 @@ export async function resetLiveEventPreview(eventId: string): Promise<LiveEventV
  *  humans ("Your account was created after the eligibility cutoff") and the
  *  register flow surfaces them verbatim instead of a generic shrug. */
 export async function joinLiveEvent(eventId: string): Promise<LiveEventViewer | null> {
+    // Dev-only design samples — always null outside __DEV__.
+    const sample = designJoin(eventId);
+    if (sample) return sample;
     const { data, error } = await supabase.rpc('join_live_event', { p_event_id: eventId });
     if (error) throw error;
     return (data as LiveEventViewer | null) ?? null;

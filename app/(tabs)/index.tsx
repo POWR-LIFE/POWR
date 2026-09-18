@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChallengeCard } from '@/components/home/ChallengeCard';
 import { TogetherSection } from '@/components/home/TogetherSection';
 import { UpdateBanner } from '@/components/home/UpdateBanner';
-import { LiveEventCard } from '@/components/home/LiveEventCard';
+import { LiveEventCarousel } from '@/components/home/LiveEventCarousel';
 import { CreatorInviteCard } from '@/components/home/CreatorInviteCard';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
@@ -701,10 +701,9 @@ export default function HomeScreen() {
                     />
                 )}
 
-                {/* Upcoming live event — the registration sell. Renders nothing
-                    unless there's an opt-in event the viewer can still join;
-                    once registered the event lives on the League tab instead. */}
-                <LiveEventCard />
+                {/* Live events — one card, or a rail when several are on. Renders
+                    nothing unless there's an opt-in event the viewer can see. */}
+                <LiveEventCarousel />
 
                 {/* Earned creator invite — nothing for almost everyone; the ask
                     for a member who has brought enough people in, then the
