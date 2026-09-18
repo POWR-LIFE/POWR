@@ -49,6 +49,10 @@ const ACTIVITY_TYPES = ['walking', 'running', 'cycling', 'swimming', 'gym', 'hii
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Pins the actions column to the table's right edge so Query Profile stays in reach when the
+// columns overflow. The hairline is an inset shadow: a collapsed border doesn't travel with a sticky cell.
+const STICKY_ACTIONS = 'sticky right-0 z-10 shadow-[inset_1px_0_0_#E6E6E1]';
+
 const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();
     const m = Math.floor(diff / 60000);
@@ -630,15 +634,15 @@ export default function UserManager() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
-                                    {['User Identity', 'Protocol Level', 'Devices', 'Activity', 'Country', 'Location', 'Registration', 'Status', ''].map(h => (
-                                        <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#888888] whitespace-nowrap ${h === '' ? 'text-right' : ''}`}>{h}</th>
+                                    {['User Identity', 'Protocol Level', 'Devices', 'Activity', 'Country', 'Location', 'Registration', ''].map(h => (
+                                        <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#888888] whitespace-nowrap ${h === '' ? `text-right ${STICKY_ACTIONS} bg-[#F4F4F1]` : ''}`}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[#E6E6E1]">
                                 {filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="px-6 py-24 text-center">
+                                        <td colSpan={8} className="px-6 py-24 text-center">
                                             <div className="flex flex-col items-center gap-6">
                                                 <div className="w-20 h-20 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center">
                                                     <Users size={32} className="text-[#333333]" />
@@ -653,7 +657,7 @@ export default function UserManager() {
                                     <tr key={user.id} className="group hover:bg-[#F4F4F1] transition-all">
                                         <td className="px-6 py-5">
                                             <div className="flex items-center gap-6 max-w-[280px]">
-                                                <div className="w-12 h-12 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
+                                                <Link to={`/admin/users/${user.id}`} title="Query profile" className="w-12 h-12 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0 hover:border-[#E8D200]/60 transition-colors">
                                                     {user.avatar_url ? (
                                                         <img
                                                             src={user.avatar_url}
@@ -663,14 +667,23 @@ export default function UserManager() {
                                                         />
                                                     ) : null}
                                                     <User size={18} className="text-[#888888]" style={{ display: user.avatar_url ? 'none' : '' }} />
-                                                </div>
+                                                </Link>
                                                 <div className="min-w-0">
-                                                    <span className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors block mb-1 truncate">
-                                                        {user.display_name || user.username || user.email?.split('@')[0] || 'Anonymous Node'}
-                                                    </span>
-                                                    <span className="block truncate text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">
-                                                        {user.username ? `@${user.username}` : user.email || 'unidentified'}
-                                                    </span>
+                                                    <Link to={`/admin/users/${user.id}`} title="Query profile" className="block group/name">
+                                                        <span className="flex items-center gap-2 mb-1">
+                                                            <span className="text-base font-bold text-[#222222] group-hover/name:text-[#8a7600] transition-colors truncate">
+                                                                {user.display_name || user.username || user.email?.split('@')[0] || 'Anonymous Node'}
+                                                            </span>
+                                                            {user.is_pro && (
+                                                                <span className="flex items-center gap-1 px-2 py-0.5 shrink-0 rounded-full bg-[#E8D200]/10 border border-[#E8D200]/30 text-[#8a7600] text-[8px] font-black uppercase tracking-[0.2em]">
+                                                                    <Star size={8} fill="#E8D200" /> Pro
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                        <span className="block truncate text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">
+                                                            {user.username ? `@${user.username}` : user.email || 'unidentified'}
+                                                        </span>
+                                                    </Link>
                                                     {user.member_id && (
                                                         <span className="block font-mono text-[10px] tracking-[0.15em] text-[#999999] mt-1" title="POWR ID — what the member sees under Settings › Account">
                                                             {formatMemberId(user.member_id)}
@@ -755,20 +768,7 @@ export default function UserManager() {
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-5">
-                                            <div className="flex flex-col gap-2">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.4)]"></div>
-                                                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#555555] font-black">ACTIVE</span>
-                                                </div>
-                                                {user.is_pro && (
-                                                    <span className="flex items-center gap-1.5 px-3 py-1 self-start rounded-full bg-[#E8D200]/10 border border-[#E8D200]/30 text-[#8a7600] text-[9px] font-black uppercase tracking-[0.2em]">
-                                                        <Star size={9} fill="#E8D200" /> Pro
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-5 text-right">
+                                        <td className={`px-6 py-5 text-right ${STICKY_ACTIONS} bg-white group-hover:bg-[#F4F4F1] transition-all`}>
                                             <div className="flex items-center justify-end gap-3">
                                                 <Link
                                                     to={`/admin/users/${user.id}`}
