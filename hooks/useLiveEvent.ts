@@ -10,6 +10,7 @@ import {
     type InviteProgress,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
+import { designBoard, designEventBySlug, designEvents, isDesignEventId } from '@/lib/dev/multiEventDesign';
 
 /**
  * The current live event (or null when none is configured) plus the viewer's
@@ -28,10 +29,13 @@ export function useLiveEvent(slug?: string, boardPreviewState?: BoardPreviewStat
         queryKey: ['liveEvent', slug ?? 'active'],
         queryFn: async () => {
             if (slug) {
+                // Dev-only design samples — null outside __DEV__.
+                const sample = designEventBySlug(slug);
+                if (sample) return sample;
                 const pinned = await fetchLiveEventBySlug(slug);
                 if (pinned) return pinned;
             }
-            return fetchActiveLiveEvent();
+            return (await fetchActiveLiveEvent()) ?? designEvents(null)[0] ?? null;
         },
         staleTime: 60_000,
     });
@@ -51,7 +55,10 @@ export function useLiveEvent(slug?: string, boardPreviewState?: BoardPreviewStat
     // payload, and Home's board entry (which passes no state) keeps its own.
     const boardQuery = useQuery<EventLeaderboard | null>({
         queryKey: ['liveEventBoard', eventQuery.data?.id, boardPreviewState ?? null],
-        queryFn: () => fetchEventLeaderboard(eventQuery.data!.id, boardPreviewState),
+        queryFn: () =>
+            isDesignEventId(eventQuery.data!.id)
+                ? designBoard(eventQuery.data!.id)
+                : fetchEventLeaderboard(eventQuery.data!.id, boardPreviewState),
         // Scheduled events have no board — except in preview, where the admin
         // can force the board into any state for the design walkthrough, so
         // previewers always ask and let the server decide the shape.

@@ -35,6 +35,7 @@ import { EventBoardHeader } from '@/components/league/EventBoardHeader';
 import { EventGateStrip } from '@/components/league/EventGateStrip';
 import { EventHeaderCard } from '@/components/league/EventHeaderCard';
 import { EventTicketCard } from '@/components/league/EventTicketCard';
+import { EventSwitcherLine, EventSwitcherSheet } from '@/components/league/EventSwitcher';
 import { LeaguePreview } from '@/components/league/LeaguePreview';
 import { PodiumAvatarRing } from '@/components/league/PodiumAvatarRing';
 import { SegmentBar } from '@/components/league/SegmentBar';
@@ -42,6 +43,7 @@ import { ProBadge } from '@/components/ui/ProBadge';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { usePoints } from '@/hooks/usePoints';
 import { useLiveEvent } from '@/hooks/useLiveEvent';
+import { useLiveEvents } from '@/hooks/useLiveEvents';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
 import type { BoardPreviewState, EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
@@ -107,8 +109,18 @@ export default function LeagueScreen() {
   // gets — the server ignores this argument for anyone else.
   const [boardPreview, setBoardPreview] = useState<BoardPreviewState | null>(null);
 
-  const { event: activeEvent, invites, board: eventBoard } =
-    useLiveEvent(typeof eventSlug === 'string' ? eventSlug : undefined, boardPreview);
+  // Several events can be on at once; the tab shows ONE at a time. A slug the
+  // user picked in the switcher wins, then the deep-link/Home pin, then the
+  // most relevant event in the list. A fresh pin (another Home card tapped)
+  // clears the pick so the tab follows the tap.
+  const { events: liveEvents } = useLiveEvents();
+  const paramSlug = typeof eventSlug === 'string' ? eventSlug : undefined;
+  const [pickedSlug, setPickedSlug] = useState<string | undefined>(undefined);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  useEffect(() => { setPickedSlug(undefined); }, [paramSlug]);
+  const shownSlug = pickedSlug ?? paramSlug ?? (liveEvents.length > 1 ? liveEvents[0].slug : undefined);
+
+  const { event: activeEvent, invites, board: eventBoard } = useLiveEvent(shownSlug, boardPreview);
   const [registerOpen, setRegisterOpen] = useState(false);
 
   // Event mode is two segments: the LEADERBOARD and the EVENT (hero, prizes,
@@ -121,11 +133,15 @@ export default function LeagueScreen() {
   const evStatus = activeEvent?.status;
   const evJoined = activeEvent?.viewer.joined;
   const evScope  = activeEvent?.scope;
+  // A different event is a different question — the segment a user chose for
+  // one event says nothing about where the next should open.
+  const evId = activeEvent?.id;
+  useEffect(() => { segmentTouched.current = false; }, [evId]);
   useEffect(() => {
     if (!evStatus || segmentTouched.current) return;
     const inEvent = !!evJoined || evScope === 'global';
     setSegment(evStatus !== 'scheduled' && inEvent ? 'board' : 'event');
-  }, [evStatus, evJoined, evScope]);
+  }, [evId, evStatus, evJoined, evScope]);
   const pickSegment = (next: EventSegment) => {
     segmentTouched.current = true;
     setSegment(next);
@@ -186,7 +202,12 @@ export default function LeagueScreen() {
       <GeometricBackground />
       {/* ── Screen header ─────────────────────────── */}
       <View style={styles.header}>
-        <Text style={styles.title}>League</Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>League</Text>
+          {!LEAGUE_LIVE && activeEvent && liveEvents.length > 1 && (
+            <EventSwitcherLine event={activeEvent} onPress={() => setSwitcherOpen(true)} />
+          )}
+        </View>
         <HeaderActions />
       </View>
 
@@ -249,6 +270,13 @@ export default function LeagueScreen() {
                 )}
               </ScrollView>
             )}
+            <EventSwitcherSheet
+              visible={switcherOpen}
+              onClose={() => setSwitcherOpen(false)}
+              events={liveEvents}
+              activeId={activeEvent.id}
+              onSelect={e => setPickedSlug(e.slug)}
+            />
             <EventRegisterFlow
               event={activeEvent}
               visible={registerOpen}
@@ -1527,6 +1555,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 10,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
+  titleBlock: { flex: 1, marginRight: 12 },
   title: { fontSize: 28, fontWeight: '200', letterSpacing: -0.4, color: TEXT },
 
   // ── Top tab bar

@@ -8,11 +8,11 @@ import { EventLockup } from '@/components/events/EventLockup';
 import { EventRegisterFlow } from '@/components/events/EventRegisterFlow';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import {
-    fetchActiveLiveEvent,
     fetchEventLeaderboard,
     type EventLeaderboard,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
+import { designBoard, isDesignEventId } from '@/lib/dev/multiEventDesign';
 import { eventStatusChip, isVideoUrl, scoringLine } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
@@ -91,9 +91,22 @@ function registeredPill(
     return { label: 'YOU’RE IN', a11y: 'You’re registered.' };
 }
 
+/** Whether Home carries this event at all — the carousel filters on it so a
+ *  card that would render nothing never takes a page. */
+export function showsOnHome(event: LiveEvent): boolean {
+    if (event.status !== 'scheduled' && event.status !== 'live') return false;
+    if (event.scope !== 'opt_in') return false;
+    if (!event.viewer.eligible || event.viewer.disqualified) return false;
+    // Locked means scores are being verified for the in-person reveal: there
+    // is nothing left to register for, so the card only survives the lock for
+    // people who are actually in the event.
+    if (event.is_locked && !event.viewer.joined) return false;
+    return true;
+}
+
 /**
  * The home-screen presence of whatever live event is on: promo video/image
- * background, venue logo, dates. Entirely driven by get_active_live_event(),
+ * background, venue logo, dates. Entirely driven by the event payload,
  * so a future event only needs its admin row filled in (promo media +
  * headline in the "Promo page" group) to take this slot.
  *
@@ -103,19 +116,14 @@ function registeredPill(
  * progress in the run-up, your score once the window opens — and tapping it
  * goes to the League tab, where the ticket and the board live. Home is where
  * the event is sold, so it shouldn't go quiet the moment someone says yes.
+ *
+ * `active` is the carousel's "this page is the one on screen": only the active
+ * card plays its promo video, so two events never means two HLS streams
+ * decoding on the busiest screen in the app. A lone card is always active.
  */
-export function LiveEventCard() {
+export function LiveEventCard({ event, active = true }: { event: LiveEvent; active?: boolean }) {
     const [sheetOpen, setSheetOpen] = useState(false);
     const router = useRouter();
-
-    // Shares useLiveEvent's cache key so home and League stay in sync, but
-    // deliberately NOT the full hook — that would drag the invite-progress
-    // query and the 60s board poll onto Home for the whole event window.
-    const { data: event } = useQuery<LiveEvent | null>({
-        queryKey: ['liveEvent', 'active'],
-        queryFn: fetchActiveLiveEvent,
-        staleTime: 60_000,
-    });
 
     // Your standing, for the pill only. Shares League's board cache key so the
     // two never show different numbers, but sets NO refetchInterval — Home
@@ -125,27 +133,21 @@ export function LiveEventCard() {
     // useLiveEvent builds, or Home stops sharing League's cache entry and the
     // two can drift. Home never forces a state — it always reads the real one.
     const { data: board } = useQuery<EventLeaderboard | null>({
-        queryKey: ['liveEventBoard', event?.id, null],
-        queryFn: () => fetchEventLeaderboard(event!.id, null),
-        enabled: !!event && event.viewer.joined && event.status === 'live' && !event.is_locked,
+        queryKey: ['liveEventBoard', event.id, null],
+        queryFn: () =>
+            isDesignEventId(event.id) ? designBoard(event.id) : fetchEventLeaderboard(event.id, null),
+        enabled: event.viewer.joined && event.status === 'live' && !event.is_locked,
         staleTime: 60_000,
     });
 
-    if (!event) return null;
-    if (event.status !== 'scheduled' && event.status !== 'live') return null;
-    if (event.scope !== 'opt_in') return null;
-    if (!event.viewer.eligible || event.viewer.disqualified) return null;
+    if (!showsOnHome(event)) return null;
 
     const registered = event.viewer.joined;
 
-    // Locked means scores are being verified for the in-person reveal: there
-    // is nothing left to register for, so the card only survives the lock for
-    // people who are actually in the event.
-    if (event.is_locked && !registered) return null;
-
     const media = event.promo_media_url;
-    const videoUrl = isVideoUrl(media) ? media : null;
-    const imageUrl = videoUrl ? null : media;
+    const isVideo = isVideoUrl(media);
+    const videoUrl = isVideo && active ? media : null;
+    const imageUrl = isVideo ? null : media;
     const large = event.logo_only;
 
     // Preview keeps the register sheet reachable after joining so the flow can
@@ -157,7 +159,13 @@ export function LiveEventCard() {
     return (
         <>
             <Pressable
-                onPress={() => (opensSheet ? setSheetOpen(true) : router.push('/(tabs)/league'))}
+                onPress={() =>
+                    opensSheet
+                        ? setSheetOpen(true)
+                        // Pin the event: with several on, League has to open on
+                        // the one that was tapped, not whichever ranks first.
+                        : router.push({ pathname: '/(tabs)/league', params: { event: event.slug } })
+                }
                 style={({ pressed }) => [pressed && { opacity: 0.92 }]}
                 accessibilityRole="button"
                 accessibilityLabel={
