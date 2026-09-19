@@ -118,9 +118,7 @@ export function sweepWitnessesOutside(
   for (const s of sweeps) {
     const d = s.detail;
     if (!d || d.outcome !== 'handoff') continue;
-    const { acc_m, age_s, nearest_m } = d;
-    if (typeof acc_m !== 'number' || typeof age_s !== 'number' || typeof nearest_m !== 'number') continue;
-    if (acc_m > SWEEP_WITNESS_MAX_ACC_M || age_s < 0) continue;
+    if (!Number.isFinite(acc_m) || !Number.isFinite(age_s) || !Number.isFinite(nearest_m) || acc_m < 0 || age_s < 0) continue;
     const loggedAt = Date.parse(s.created_at);
     if (!Number.isFinite(loggedAt)) continue;
     const fixAt = loggedAt - age_s * 1000;
