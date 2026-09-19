@@ -1377,8 +1377,8 @@ Deno.serve(async (req: Request) => {
         .eq('id', v.id)
         .eq('status', 'open')
         .is('claimed_session_id', null)
-        .is('ended_at', null)
-        .select('id')
+        .is('ended_at', null)          // conditional: a real client close or claim racing us wins
+        .select('id');
       if (closeErr) { console.error('[gym-visit-beacon] sweep close failed', closeErr); continue; }
       if (!closed || closed.length === 0) continue;
 

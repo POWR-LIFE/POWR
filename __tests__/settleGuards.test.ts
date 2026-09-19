@@ -108,6 +108,14 @@ describe('sweepWitnessesOutside', () => {
     expect(sweepWitnessesOutside(rows, PROOF, BOUND)).toBe(0);
   });
 
+  it('refuses non-finite and negative numbers rather than doing arithmetic on them', () => {
+    const rows = [
+      sweep('2026-09-19T12:00:00Z', Infinity), sweep('2026-09-19T12:05:00Z', 5000, NaN),
+      sweep('2026-09-19T12:10:00Z', 5000, -1), sweep('2026-09-19T12:15:00Z', 5000, 10, -30),
+    ];
+    expect(sweepWitnessesOutside(rows, PROOF, BOUND)).toBe(0);
+  });
+
   it('fails open (no witnesses) when the clock or the bound is unreadable', () => {
     const rows = [sweep('2026-09-19T12:00:00Z', 5000)];
     expect(sweepWitnessesOutside(rows, null, BOUND)).toBe(0);
