@@ -47,8 +47,10 @@ export function MonthHeatmap({
     fill: (value: number) => string;
     /** True when the fill is dark/strong enough to need light-on-dark inverted. */
     isSolid: (value: number) => boolean;
+    /** Date key of the cell to mark — the day whose sheet is, or was last, open. */
     selected: string | null;
-    onSelect: (date: string | null) => void;
+    /** One tap opens that day's breakdown; there is no deselect. */
+    onSelect: (date: string) => void;
 }) {
     const today = localDateStr(new Date());
 
@@ -81,7 +83,7 @@ export function MonthHeatmap({
                                 {...(hasData ? {
                                     // Cells are ~42x30 — below the touch minimum, so the
                                     // slop does the work rather than a sparser grid.
-                                    onPress: () => onSelect(selected === cell.date ? null : cell.date),
+                                    onPress: () => onSelect(cell.date),
                                     hitSlop: 6,
                                     accessibilityRole: 'button',
                                     accessibilityLabel: `${cell.date} — see what you earned`,

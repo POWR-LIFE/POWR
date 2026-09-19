@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { DayCaption, addDays } from '@/components/progress/DayCaption';
+import { addDays, dayFromKey, useDaySelection } from '@/components/progress/daySelection';
 import { MonthHeatmap } from '@/components/progress/MonthHeatmap';
 import PointsBreakdownSheet, { PointsInfoDot } from '@/components/progress/PointsBreakdownSheet';
 import { StalePanel } from '@/components/progress/StalePanel';
@@ -172,7 +172,7 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
 // ─── Week View ───────────────────────────────────────────────────────────────
 
 function WorkoutWeekView({
-  type, count, weekActiveDays, weeklyEarned, isCurrentWeek, onInfo, weekStart, perDay, onSelectDay,
+  type, count, weekActiveDays, weeklyEarned, isCurrentWeek, onInfo, weekStart, markedKey, onSelectDay,
 }: {
   type: ActivityType;
   count: number;
@@ -182,16 +182,12 @@ function WorkoutWeekView({
   onInfo: () => void;
   /** Local-midnight Monday of the week on screen — days are offsets from here. */
   weekStart: Date;
-  perDay: WeekActivityData | null;
-  onSelectDay: (day: Date) => void;
+  /** Local date key of the bar to mark — see useDaySelection. */
+  markedKey: string | null;
+  /** A tapped day, plus every tappable day this week for the sheet to step through. */
+  onSelectDay: (day: Date, days: Date[]) => void;
 }) {
   const config = ACTIVITIES[type];
-  // Which bar is selected, as a Mon=0 index. Cleared when the week changes.
-  const [selected, setSelected] = useState<number | null>(null);
-  // Compare by time value — callers build a fresh Date each render, so the
-  // object identity would clear the selection on every re-render.
-  const weekKey = weekStart.getTime();
-  useEffect(() => { setSelected(null); }, [weekKey, type]);
   const sessionPct = Math.min(count / 5, 1);
   const capPct = config.dailyCap > 0 ? Math.min(weeklyEarned / (config.dailyCap * 5), 1) : sessionPct;
 
@@ -241,15 +237,20 @@ function WorkoutWeekView({
           const isFuture = isCurrentWeek && i > TODAY_INDEX;
           const barColor = isToday ? config.colour : `${config.colour}80`;
           const hasData  = active && !isFuture;
+          const selected = markedKey === localDateStr(addDays(weekStart, i));
           // Only days with something to say respond — a blank day that reacts
           // teaches people the chart isn't interactive.
           const Col: any = hasData ? Pressable : View;
           return (
             <Col
               key={i}
-              style={[styles.weekBarCol, selected === i && styles.weekBarColSelected]}
+              style={[styles.weekBarCol, selected && styles.weekBarColSelected]}
               {...(hasData ? {
-                onPress: () => setSelected(prev => (prev === i ? null : i)),
+                onPress: () => onSelectDay(
+                  addDays(weekStart, i),
+                  weekActiveDays.flatMap((a, j) =>
+                    a && !(isCurrentWeek && j > TODAY_INDEX) ? [addDays(weekStart, j)] : []),
+                ),
                 hitSlop: 8,
                 accessibilityRole: 'button',
                 accessibilityLabel: `${DAY_LABELS[i]} — see what you earned`,
@@ -263,7 +264,7 @@ function WorkoutWeekView({
               <Text style={[
                 styles.weekBarLabel,
                 isToday && { color: TEXT, fontWeight: '600' },
-                selected === i && { color: GOLD, fontWeight: '600' },
+                selected && { color: GOLD, fontWeight: '600' },
               ]}>
                 {day.charAt(0)}
               </Text>
@@ -271,16 +272,6 @@ function WorkoutWeekView({
           );
         })}
       </View>
-
-      {selected !== null && (
-        <DayCaption
-          date={addDays(weekStart, selected)}
-          sessions={perDay?.sessionsPerDay[selected] ?? 0}
-          durationMin={perDay?.durationPerDay[selected] ?? 0}
-          points={perDay?.pointsPerDay[selected] ?? 0}
-          onPress={() => onSelectDay(addDays(weekStart, selected))}
-        />
-      )}
 
       {streak >= 2 && (
         <View style={styles.insightRow}>
@@ -324,19 +315,18 @@ function heatmapColorForType(count: number, colour: string): string {
 }
 
 function WorkoutMonthView({
-  type, data, offset, onSelectDay,
+  type, data, offset, markedKey, onSelectDay,
 }: {
   type: ActivityType;
   data: MonthlyActivityData | null;
   offset: number;
-  onSelectDay: (day: Date) => void;
+  markedKey: string | null;
+  onSelectDay: (day: Date, days: Date[]) => void;
 }) {
   // "This Month" / "June" — the window is a calendar month, so every label the
   // panel shows has to name it rather than say "30 days".
   const label = monthLabel(offset);
   const config = ACTIVITIES[type];
-  const [selected, setSelected] = useState<string | null>(null);
-  useEffect(() => { setSelected(null); }, [type, data]);
 
   if (!data) {
     return (
@@ -437,25 +427,13 @@ function WorkoutMonthView({
         // Two states only, so this is a clean binary: a filled day is full brand
         // colour and needs dark ink; an empty one is near-black and needs light.
         isSolid={count => count > 0}
-        selected={selected}
-        onSelect={setSelected}
+        selected={markedKey}
+        onSelect={key => onSelectDay(
+          dayFromKey(key),
+          // Mirrors MonthHeatmap's own rule for which cells respond to a tap.
+          rows.flat().filter(c => c.inRange && c.count > 0).map(c => dayFromKey(c.date)),
+        )}
       />
-
-      {selected && (() => {
-        const entry = lookup.get(selected);
-        // toISOString keys are UTC-dated; parse back at local noon so the caption
-        // can't render the neighbouring day in a negative-offset timezone.
-        const day = new Date(`${selected}T12:00:00`);
-        return (
-          <DayCaption
-            date={day}
-            sessions={entry?.sessionCount ?? 0}
-            durationMin={entry?.totalDurationMin ?? 0}
-            points={entry?.points ?? 0}
-            onPress={() => onSelectDay(day)}
-          />
-        );
-      })()}
 
     </View>
   );
@@ -491,7 +469,7 @@ export function WorkoutsTab({
   const [weekLoaded, setWeekLoaded] = useState(false);
   const [monthLoaded, setMonthLoaded] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const daySel = useDaySelection(`${type}:${period}:${offset}`);
 
   // Invalidate on type/offset change, but KEEP the data: clearing it made the
   // period view fall back to its "Loading…" placeholder, collapsing the panel
@@ -609,14 +587,14 @@ export function WorkoutsTab({
             isCurrentWeek={isCurrent}
             onInfo={() => setInfoOpen(true)}
             weekStart={weekAnchorMonday(offset)}
-            perDay={weekData}
-            onSelectDay={setSelectedDay}
+            markedKey={daySel.markedKey}
+            onSelectDay={daySel.open}
           />
         </StalePanel>
       )}
       {period === 'M' && (
         <StalePanel stale={monthStale}>
-          <WorkoutMonthView type={type} data={monthData} offset={offset} onSelectDay={setSelectedDay} />
+          <WorkoutMonthView type={type} data={monthData} offset={offset} markedKey={daySel.markedKey} onSelectDay={daySel.open} />
         </StalePanel>
       )}
 
@@ -631,12 +609,14 @@ export function WorkoutsTab({
       {/* Same sheet, pinned to a single tapped day. Kept separate from the (i)
           so closing one can't clear the other's state mid-animation. */}
       <PointsBreakdownSheet
-        visible={selectedDay !== null}
-        onClose={() => setSelectedDay(null)}
+        visible={daySel.day !== null}
+        onClose={daySel.close}
         type={type}
         period="D"
         offset={0}
-        day={selectedDay}
+        day={daySel.day}
+        days={daySel.days}
+        onDayChange={daySel.step}
       />
     </View>
   );

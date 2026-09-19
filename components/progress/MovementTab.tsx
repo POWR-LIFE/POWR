@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { DayCaption, addDays } from '@/components/progress/DayCaption';
+import { addDays, dayFromKey, useDaySelection } from '@/components/progress/daySelection';
 import { HeatmapLegend, MonthHeatmap } from '@/components/progress/MonthHeatmap';
 import PointsBreakdownSheet, { PointsInfoDot } from '@/components/progress/PointsBreakdownSheet';
 import { StalePanel } from '@/components/progress/StalePanel';
@@ -224,7 +224,7 @@ function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<type
 // ─── Week View ───────────────────────────────────────────────────────────────
 
 function MovementWeekView({
-  walking, totalSteps, stepsF, weekActiveDays, offset, onInfo, onSelectDay,
+  walking, totalSteps, stepsF, weekActiveDays, offset, onInfo, markedKey, onSelectDay,
 }: {
   walking: ReturnType<typeof useWalkingProgress>;
   totalSteps: number;
@@ -232,11 +232,13 @@ function MovementWeekView({
   weekActiveDays: boolean[];
   offset: number;
   onInfo: () => void;
-  onSelectDay: (day: Date) => void;
+  /** Local date key of the bar to mark — see useDaySelection. */
+  markedKey: string | null;
+  /** A tapped day, plus every tappable day this week for the sheet to step through. */
+  onSelectDay: (day: Date, days: Date[]) => void;
 }) {
   const isCurrent  = offset === 0;
-  const [selected, setSelected] = useState<number | null>(null);
-  useEffect(() => { setSelected(null); }, [offset]);
+  const weekStart  = weekAnchorMonday(offset);
   const todaySteps = walking.stepsToday ?? 0;
   const todayPct   = Math.min(todaySteps / 10000, 1);
   const remaining  = Math.max(0, 10000 - todaySteps);
@@ -327,6 +329,7 @@ function MovementWeekView({
       <View style={styles.weekBarChart}>
         {DAY_LABELS.map((day, i) => {
           const steps   = displaySteps[i];
+          const selected = markedKey === localDateStr(addDays(weekStart, i));
           const isToday = isCurrent && i === TODAY_INDEX;
           const isBest  = hasBest && i === bestIdx;
           const isFuture = isCurrent && i > TODAY_INDEX;
@@ -338,9 +341,13 @@ function MovementWeekView({
           return (
             <Col
               key={i}
-              style={[styles.weekBarCol, selected === i && styles.weekBarColSelected]}
+              style={[styles.weekBarCol, selected && styles.weekBarColSelected]}
               {...(hasData ? {
-                onPress: () => setSelected(prev => (prev === i ? null : i)),
+                onPress: () => onSelectDay(
+                  addDays(weekStart, i),
+                  displaySteps.flatMap((s, j) =>
+                    s > 0 && !(isCurrent && j > TODAY_INDEX) ? [addDays(weekStart, j)] : []),
+                ),
                 hitSlop: 8,
                 accessibilityRole: 'button',
                 accessibilityLabel: `${DAY_LABELS[i]} — see what you earned`,
@@ -357,7 +364,7 @@ function MovementWeekView({
               <Text style={[
                 styles.weekBarLabel,
                 isToday && { color: TEXT, fontWeight: '600' },
-                selected === i && { color: GOLD, fontWeight: '600' },
+                selected && { color: GOLD, fontWeight: '600' },
               ]}>
                 {day.charAt(0)}
               </Text>
@@ -370,16 +377,6 @@ function MovementWeekView({
           );
         })}
       </View>
-
-      {selected !== null && (
-        <DayCaption
-          date={addDays(weekAnchorMonday(offset), selected)}
-          sessions={pastWeek?.sessionsPerDay[selected] ?? 0}
-          durationMin={0}
-          points={pastWeek?.pointsPerDay[selected] ?? 0}
-          onPress={() => onSelectDay(addDays(weekAnchorMonday(offset), selected))}
-        />
-      )}
 
       {hasBest && (
         <View style={styles.insightRow}>
@@ -419,16 +416,15 @@ function heatmapColor(steps: number): string {
 }
 
 function MovementMonthView({
-  data, offset, onSelectDay,
+  data, offset, markedKey, onSelectDay,
 }: {
   data: MonthlyActivityData | null;
   offset: number;
-  onSelectDay: (day: Date) => void;
+  markedKey: string | null;
+  onSelectDay: (day: Date, days: Date[]) => void;
 }) {
   // "This Month" / "June" — see WorkoutMonthView.
   const label = monthLabel(offset);
-  const [selected, setSelected] = useState<string | null>(null);
-  useEffect(() => { setSelected(null); }, [data]);
 
   if (!data) {
     return (
@@ -517,25 +513,13 @@ function MovementMonthView({
         // The top two stops are near-solid #4ade80; below that the fill is dark
         // enough that light ink is the readable one.
         isSolid={steps => steps >= 6000}
-        selected={selected}
-        onSelect={setSelected}
+        selected={markedKey}
+        onSelect={key => onSelectDay(
+          dayFromKey(key),
+          // Mirrors MonthHeatmap's own rule for which cells respond to a tap.
+          rows.flat().filter(c => c.inRange && c.steps > 0).map(c => dayFromKey(c.date)),
+        )}
       />
-
-      {selected && (() => {
-        const entry = lookup.get(selected);
-        // Grid keys are UTC-dated via toISOString; parse at local noon so the
-        // caption can't show the neighbouring day west of Greenwich.
-        const day = new Date(`${selected}T12:00:00`);
-        return (
-          <DayCaption
-            date={day}
-            sessions={0}
-            durationMin={0}
-            points={entry?.points ?? 0}
-            onPress={() => onSelectDay(day)}
-          />
-        );
-      })()}
 
       <HeatmapLegend colours={HEATMAP_COLORS} />
     </View>
@@ -566,7 +550,7 @@ export function MovementTab({
   const [monthData, setMonthData] = useState<MonthlyActivityData | null>(null);
   const [monthLoaded, setMonthLoaded] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const daySel = useDaySelection(`${period}:${offset}`);
 
   // Invalidate on offset change, but KEEP monthData: clearing it dropped
   // MovementMonthView to its "Loading monthly walking data..." placeholder,
@@ -619,12 +603,13 @@ export function MovementTab({
           weekActiveDays={weekActiveDays}
           offset={offset}
           onInfo={() => setInfoOpen(true)}
-          onSelectDay={setSelectedDay}
+          markedKey={daySel.markedKey}
+          onSelectDay={daySel.open}
         />
       )}
       {period === 'M' && (
         <StalePanel stale={!monthLoaded && monthData !== null}>
-          <MovementMonthView data={monthData} offset={offset} onSelectDay={setSelectedDay} />
+          <MovementMonthView data={monthData} offset={offset} markedKey={daySel.markedKey} onSelectDay={daySel.open} />
         </StalePanel>
       )}
 
@@ -638,12 +623,14 @@ export function MovementTab({
 
       {/* Same sheet pinned to one tapped day; separate state from the (i). */}
       <PointsBreakdownSheet
-        visible={selectedDay !== null}
-        onClose={() => setSelectedDay(null)}
+        visible={daySel.day !== null}
+        onClose={daySel.close}
         type="walking"
         period="D"
         offset={0}
-        day={selectedDay}
+        day={daySel.day}
+        days={daySel.days}
+        onDayChange={daySel.step}
       />
     </View>
   );
