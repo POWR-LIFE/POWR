@@ -1,4 +1,5 @@
 import {
+  exitWitnessedAtFromExitEvent,
   provenSec,
   shouldFlagUnproven,
   unprovenExcessSec,
@@ -28,6 +29,42 @@ describe('proofAudit', () => {
         visitStartedAt: T0,
         lastProvenAt: null,
       })).toBe(true);
+    });
+
+    it('does not flag a claim whose visit was closed on an exit witness covering the claim', () => {
+      // LP 2026-09-14: check-in proof only, no dwell wake ever reached JS, the
+      // device witnessed its own exit at 102 min and close_gym_visit believed it
+      // (end_basis exit_witness, clamped:false). The visit engine and the audit
+      // must read the same evidence.
+      expect(provenSec({
+        durationSec: 102 * MIN,
+        visitStartedAt: T0,
+        lastProvenAt: at(0),
+        exitWitnessedAt: at(102),
+      })).toBe(102 * MIN);
+      expect(shouldFlagUnproven({
+        durationSec: 102 * MIN,
+        visitStartedAt: T0,
+        lastProvenAt: at(0),
+        exitWitnessedAt: at(102),
+      })).toBe(false);
+    });
+
+    it('an exit witness that does not cover the claim still flags', () => {
+      expect(shouldFlagUnproven({
+        durationSec: 120 * MIN,
+        visitStartedAt: T0,
+        lastProvenAt: null,
+        exitWitnessedAt: at(40),
+      })).toBe(true);
+    });
+
+    it('only end-witness bases count as a witness', () => {
+      expect(exitWitnessedAtFromExitEvent({ end_basis: 'exit_witness', ended_at: at(50) })).toBe(at(50));
+      expect(exitWitnessedAtFromExitEvent({ end_basis: 'capped_12h', ended_at: at(720) })).toBe(at(720));
+      expect(exitWitnessedAtFromExitEvent({ end_basis: 'proof_clamp', ended_at: at(50) })).toBeNull();
+      expect(exitWitnessedAtFromExitEvent({ end_basis: 'enter_elsewhere', ended_at: at(50) })).toBeNull();
+      expect(exitWitnessedAtFromExitEvent(null)).toBeNull();
     });
 
     it('flags a geofence claim that resolved NO visit at all — zero evidence', () => {

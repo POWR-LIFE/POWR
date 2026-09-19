@@ -44,17 +44,44 @@ export interface ProofAuditInputs {
   /** gym_visits.last_proven_at — the last moment the device PROVED presence.
    *  Null when the visit never proved once. */
   lastProvenAt?: string | null;
+  /** gym_visits.ended_at when close_gym_visit closed the visit on an END
+   *  WITNESS (exit event `end_basis` = 'exit_witness' | 'capped_12h'). The
+   *  visit engine already believes the device was present until that moment
+   *  (20260906170000), so the audit must too — otherwise a claim that settles
+   *  on the way out is flagged at "proven 0" while the visit that produced it
+   *  was closed unclamped on the same evidence (LP, 2026-09-14: 102 min,
+   *  exit_witness, clamped:false, flagged). Null for every other close. */
+  exitWitnessedAt?: string | null;
 }
 
 /** Seconds of presence the server can actually vouch for. 0 when there is no
  *  visit, no proof, or unparseable timestamps — absence of evidence is the
  *  honest reading here, because this value only ever widens leniency. */
 export function provenSec(i: ProofAuditInputs): number {
-  if (!i.visitStartedAt || !i.lastProvenAt) return 0;
+  if (!i.visitStartedAt) return 0;
   const start = Date.parse(i.visitStartedAt);
-  const proven = Date.parse(i.lastProvenAt);
-  if (!Number.isFinite(start) || !Number.isFinite(proven)) return 0;
-  return Math.max(0, Math.round((proven - start) / 1000));
+  if (!Number.isFinite(start)) return 0;
+  const proven = i.lastProvenAt ? Date.parse(i.lastProvenAt) : NaN;
+  const witnessed = i.exitWitnessedAt ? Date.parse(i.exitWitnessedAt) : NaN;
+  const until = Math.max(
+    Number.isFinite(proven) ? proven : Number.NEGATIVE_INFINITY,
+    Number.isFinite(witnessed) ? witnessed : Number.NEGATIVE_INFINITY,
+  );
+  if (!Number.isFinite(until)) return 0;
+  return Math.max(0, Math.round((until - start) / 1000));
+}
+
+/** Exit-event `end_basis` values under which the visit engine believed the
+ *  device's own end time (see close_gym_visit, 20260906170000). Shared with
+ *  the SQL reconcile so both readers agree on what an end witness is. */
+export const END_WITNESS_BASES = ['exit_witness', 'capped_12h'] as const;
+
+export function exitWitnessedAtFromExitEvent(
+  detail: { end_basis?: string | null; ended_at?: string | null } | null | undefined,
+): string | null {
+  if (!detail) return null;
+  if (!END_WITNESS_BASES.includes(detail.end_basis as typeof END_WITNESS_BASES[number])) return null;
+  return detail.ended_at ?? null;
 }
 
 /** Claimed seconds beyond what was proven. Never negative. */

@@ -2306,13 +2306,39 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
     // it outright would reinstate the wedge the NEVER SHRINK comment records from
     // 2026-08-06. Only an already-recorded session is skipped outright, because
     // that has nothing left to write.
-    if (activeGeofence.visitId && bgAuth) {
+    // ── THE VISIT MAY ALREADY OWN A SESSION (2026-09-14) ─────────────────────
+    //
+    // The beacon's settle pays a visit the phone never answered for by writing
+    // ITS OWN activity_sessions row (trust 0.85, no device_id) and claiming it.
+    // When the phone later comes back to this code with the same visit, the
+    // insert below used to write a second row — same started_at to the
+    // millisecond, different id — and claim that. claim-points' idempotency is
+    // keyed on the row, so the visit was paid twice (Alfie 08-19, Matt 09-08,
+    // Alfie 09-06, Elliot 09-04), and every unpaid twin sat in the admin queue
+    // as a 'duplicate'. The visit is the unit of payment: if the server already
+    // holds a session for it, ADOPT that id, extend it grows-only with what this
+    // device measured, and let the claim below answer 'already claimed' — the
+    // same completion path a retried claim has always taken.
+    let adoptedSessionId: string | null = null;
+    if (activeGeofence.visitId) {
       try {
-        const { data: visitRows } = await bgSelect<{ ended_at: string | null }>(
-          'gym_visits',
-          `id=eq.${activeGeofence.visitId}&select=ended_at`,
-          bgAuth,
-        );
+        type VisitPeek = { ended_at: string | null; claimed_session_id: string | null };
+        const visitRows: VisitPeek[] | null = bgAuth
+          ? (await bgSelect<VisitPeek>(
+              'gym_visits',
+              `id=eq.${activeGeofence.visitId}&select=ended_at,claimed_session_id`,
+              bgAuth,
+            )).data ?? null
+          : (await withNetworkTimeout(supabase
+              .from('gym_visits')
+              .select('ended_at, claimed_session_id')
+              .eq('id', activeGeofence.visitId)
+              .limit(1), 'gym_visits peek')).data as VisitPeek[] | null;
+        const claimedBy = visitRows?.[0]?.claimed_session_id ?? null;
+        if (claimedBy && claimedBy !== activeGeofence.sessionId) {
+          console.log(`[Geofence] Visit ${activeGeofence.visitId} already carries session ${claimedBy} — adopting it instead of writing a twin.`);
+          adoptedSessionId = claimedBy;
+        }
         const closedAt = visitRows?.[0]?.ended_at ? Date.parse(visitRows[0].ended_at) : NaN;
         if (Number.isFinite(closedAt)) {
           if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending) {
@@ -2361,13 +2387,32 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
       },
     };
 
-    const { data: session, error: sessionError } = bgAuth
-      ? await bgInsert<{ id: string }>('activity_sessions', sessionRow, bgAuth)
-      : await withNetworkTimeout(supabase
-          .from('activity_sessions')
-          .insert(sessionRow)
-          .select()
-          .single(), 'activity_sessions insert');
+    const { data: session, error: sessionError } = adoptedSessionId
+      ? { data: { id: adoptedSessionId }, error: null }
+      : bgAuth
+        ? await bgInsert<{ id: string }>('activity_sessions', sessionRow, bgAuth)
+        : await withNetworkTimeout(supabase
+            .from('activity_sessions')
+            .insert(sessionRow)
+            .select()
+            .single(), 'activity_sessions insert');
+
+    if (adoptedSessionId) {
+      // Extend the server's row with this device's measurement. The DB guard
+      // (guard_client_session_window) is grows-only, so this can lengthen a
+      // settle that froze at claim time and can never shorten anything.
+      const patch = { ended_at: endedAt.toISOString(), duration_sec: durationSec };
+      try {
+        if (bgAuth) {
+          await bgUpdate('activity_sessions', `id=eq.${adoptedSessionId}`, patch, bgAuth);
+        } else {
+          await withNetworkTimeout(supabase
+            .from('activity_sessions')
+            .update(patch)
+            .eq('id', adoptedSessionId), 'adopted session update');
+        }
+      } catch { /* the row already exists and is paid — a failed extend is not a failed claim */ }
+    }
 
     if (sessionError) {
       if (sessionError.code === '23505') {
@@ -2454,6 +2499,23 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
         return { outcome: 'error' };
       }
       const relayStatus = (relay as { status?: string } | null)?.status;
+      if (relayStatus === 'already_claimed_today') {
+        // The day's gym claim is paid by ANOTHER row and the server may have
+        // deleted ours. Terminal, or pointsPending never clears and every tick
+        // inserts a fresh twin — but do NOT stamp the visit: our id may be the
+        // wrong row (the reason this status is distinct from 'already_claimed').
+        const winner = (relay as { session_id?: unknown } | null)?.session_id;
+        if (typeof winner === 'string' && winner && winner !== sessionId) {
+          console.log(`[Geofence] Day already paid by session ${winner} — adopting it.`);
+          sessionId = winner;
+        }
+        await AsyncStorage.setItem(
+          SESSION_COMPLETED_KEY,
+          JSON.stringify({ partnerName: activeGeofence.partnerName, durationSec, timestamp: Date.now() }),
+        );
+        _emitSessionCompleted();
+        return { outcome: 'claimed', sessionId };
+      }
       if (relayStatus === 'already_claimed') {
         console.log('[Geofence] Relayed claim already landed — surfacing completion to UI.');
         await AsyncStorage.setItem(
@@ -2495,6 +2557,14 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
       if (body?.error === 'Session already claimed') {
         // Points were already awarded (e.g. previous claim or duplicate call).
         // Still surface the completion so the UI and usePoints refresh correctly.
+        // claim-points' twin gate (2026-09-14) names the row that actually holds
+        // the visit's points and may have deleted ours — carry the winner so the
+        // upgrade poll doesn't chase a row that no longer exists.
+        const winner = (body as { session_id?: unknown })?.session_id;
+        if (typeof winner === 'string' && winner && winner !== sessionId) {
+          console.log(`[Geofence] Visit already paid by session ${winner} — adopting it.`);
+          sessionId = winner;
+        }
         console.log('[Geofence] Session already claimed — surfacing completion to UI.');
         await AsyncStorage.setItem(
           SESSION_COMPLETED_KEY,
