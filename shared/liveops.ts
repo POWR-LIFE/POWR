@@ -534,7 +534,7 @@ export function stageDeltas(doc: VisitDoc, now: number = Date.now()): StageDelta
       label: 'Exit detected → closed',
       seconds: secondsBetween(doc.exit_detected_at, v.ended_at),
       missing: !v.ended_at ? 'still open'
-        : !doc.exit_detected_at ? `no exit event — closed by ${v.close_reason ?? 'sweep'}`
+        : !doc.exit_detected_at ? `no exit event — closed by ${v.close_reason ?? 'unknown'}`
         : undefined,
     },
     {
@@ -766,7 +766,24 @@ export function journeyFindings(j: JourneyRow): Alert[] {
     });
   }
 
-  if (j.evidence_complete && j.ended_at && !j.exit_detected_at) {
+  // A `disowned_*` close IS something observing them leave — the device itself,
+  // either answering a wake with "I hold no session" (disowned_by_device) or
+  // reporting fixes well clear of the venue in its own sweeps (disowned_by_sweep).
+  // It is the drive-by shape, not a blind walk-out, and scoring it as one buries
+  // the real exit-detection failures.
+  const disowned = j.close_reason === 'disowned_by_device' || j.close_reason === 'disowned_by_sweep';
+  if (j.ended_at && disowned) {
+    out.push({
+      key: 'presence_stale',
+      label: 'DEVICE DISOWNED',
+      detail: j.close_reason === 'disowned_by_sweep'
+        ? 'its own sweeps put it well clear of the venue — a pass-by, not a session'
+        : 'it answered a wake holding no session for this visit — a pass-by, not a session',
+      severity: 'warn',
+    });
+  }
+
+  if (j.evidence_complete && j.ended_at && !j.exit_detected_at && !disowned) {
     out.push({
       key: 'presence_stale',
       label: 'NO EXIT DETECTED',
