@@ -78,7 +78,11 @@ const HRV_LINE_MIN_READINGS = 10;
  * only hold summaries of, so relayed rather than re-derived. We never invent
  * a percentage of our own.
  */
-export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }) {
+export function BodyTab({ initialTrends, deviceName }: {
+    initialTrends?: BodyTrends | null;
+    /** The connected wearable as the user knows it ("WHOOP"); omit for phone-only. */
+    deviceName?: string;
+}) {
     const [trends, setTrends] = useState<BodyTrends | null>(initialTrends ?? null);
     const [failed, setFailed] = useState(false);
     // Re-fetches on pull-to-refresh, which bumps the shared activity revision.
@@ -149,6 +153,69 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
     // week, not as a section that has silently disappeared.
     const hasLoad = weekMin > 0 || trends.loadNormWeekMin != null;
 
+    const loadSection = hasLoad && (
+        <>
+            <Text style={styles.tabSubLabel}>TRAINING LOAD · LAST {LOAD_DAYS} DAYS</Text>
+            <View style={styles.metricHead}>
+                <Text style={styles.metricVal}>
+                    {weekMin > 0 ? formatMin(weekMin) : '—'}
+                    <Text style={styles.metricUnit}>{weekMin > 0 ? ' of exercise' : ' no workouts tracked this week'}</Text>
+                </Text>
+                <Text style={styles.metricDelta}>{loadSummary(trends, d)}</Text>
+            </View>
+            <LoadChart trends={trends} />
+        </>
+    );
+
+    const effortSection = trends.week.zoneMixSec.length > 0 && (
+        <>
+            <Text style={styles.tabSubLabel}>EFFORT MIX · THIS WEEK</Text>
+            <View style={styles.metricHead}>
+                <Text style={styles.metricVal}>
+                    {formatMin(trends.week.zoneMixSec.reduce((s, v) => s + v, 0) / 60)}
+                    <Text style={styles.metricUnit}> at raised heart rate</Text>
+                </Text>
+                {trends.week.peakHr != null && (
+                    <Text style={styles.metricDelta}>peak heart rate {Math.round(trends.week.peakHr)} bpm</Text>
+                )}
+            </View>
+            <EffortMixBar zoneMixSec={trends.week.zoneMixSec} />
+        </>
+    );
+
+    // The device has gone quiet. Everything that judged TODAY — the lamps,
+    // the insight, "68 bpm · 11 Sep", charts that stop a third short of the
+    // right edge — was a page about a week that is over, and it read as dead
+    // (Jamie, eight days off the wrist). So the tab re-forms around what is
+    // still true: one plain statement of the gap and how to end it, the
+    // training that POWR sees without a wearable, and the usual the first
+    // morning back will be read against. The charts return with the data.
+    if (d.quiet) {
+        return (
+            <View style={styles.tabPanel}>
+                <QuietCard d={d} deviceName={deviceName} hasBaselines={hasBaselines(d)} />
+                {loadSection && (
+                    <>
+                        <View style={styles.tabSep} />
+                        {loadSection}
+                    </>
+                )}
+                {effortSection && (
+                    <>
+                        <View style={styles.tabSep} />
+                        {effortSection}
+                    </>
+                )}
+                {hasBaselines(d) && (
+                    <>
+                        <View style={styles.tabSep} />
+                        <Baselines d={d} trends={trends} />
+                    </>
+                )}
+            </View>
+        );
+    }
+
     return (
         <View style={styles.tabPanel}>
             <SignalsRow d={d} />
@@ -211,20 +278,10 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                 </>
             )}
 
-            {trends.week.zoneMixSec.length > 0 && (
+            {effortSection && (
                 <>
                     <View style={styles.tabSep} />
-                    <Text style={styles.tabSubLabel}>EFFORT MIX · THIS WEEK</Text>
-                    <View style={styles.metricHead}>
-                        <Text style={styles.metricVal}>
-                            {formatMin(trends.week.zoneMixSec.reduce((s, v) => s + v, 0) / 60)}
-                            <Text style={styles.metricUnit}> at raised heart rate</Text>
-                        </Text>
-                        {trends.week.peakHr != null && (
-                            <Text style={styles.metricDelta}>peak heart rate {Math.round(trends.week.peakHr)} bpm</Text>
-                        )}
-                    </View>
-                    <EffortMixBar zoneMixSec={trends.week.zoneMixSec} />
+                    {effortSection}
                 </>
             )}
 
@@ -235,7 +292,9 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
                             {d.sleepAvg7 != null ? formatMin(d.sleepAvg7 * 60) : '—'}
-                            <Text style={styles.metricUnit}> avg per night this week</Text>
+                            <Text style={styles.metricUnit}>
+                                {d.sleepAvg7 != null ? ' avg per night this week' : ' no nights in the last 7 days'}
+                            </Text>
                         </Text>
                         <Text style={styles.metricDelta}>{sleepSummary(d, trends)}</Text>
                     </View>
@@ -243,22 +302,106 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                 </>
             )}
 
-            {hasLoad && (
+            {loadSection && (
                 <>
                     <View style={styles.tabSep} />
-                    <Text style={styles.tabSubLabel}>TRAINING LOAD · LAST {LOAD_DAYS} DAYS</Text>
-                    <View style={styles.metricHead}>
-                        <Text style={styles.metricVal}>
-                            {weekMin > 0 ? formatMin(weekMin) : '—'}
-                            <Text style={styles.metricUnit}>{weekMin > 0 ? ' of exercise' : ' no workouts tracked this week'}</Text>
-                        </Text>
-                        <Text style={styles.metricDelta}>{loadSummary(trends, d)}</Text>
-                    </View>
-                    <LoadChart trends={trends} />
+                    {loadSection}
                 </>
             )}
         </View>
     );
+}
+
+// ─── Quiet device ────────────────────────────────────────────────────────────
+
+const hasBaselines = (d: BodySignals): boolean =>
+    d.rhrAvg != null || d.hrvAvg != null || d.sleepAvg30 != null;
+
+/**
+ * The gap, said once. Names the device, how long, and the one thing that ends
+ * it — then the other reading of the same silence, because from here a strap
+ * on the bedside table and a strap that has stopped syncing look identical.
+ */
+function QuietCard({ d, deviceName, hasBaselines: withBaselines }: {
+    d: BodySignals; deviceName?: string; hasBaselines: boolean;
+}) {
+    const days = d.vitalDaysAgo ?? 0;
+    const it = deviceName ? `your ${deviceName}` : 'your device';
+    const app = deviceName ? `the ${deviceName} app` : 'its app';
+    return (
+        <View style={styles.quietCard}>
+            <View style={styles.quietIcon}>
+                <Ionicons name="watch-outline" size={18} color={DIM} />
+            </View>
+            <View style={styles.quietBody}>
+                <Text style={styles.tabSubLabel}>
+                    {(deviceName ?? 'Device').toUpperCase()} · QUIET FOR {days} DAYS
+                </Text>
+                <Text style={styles.quietTitle}>
+                    No readings since {d.lastVitalDate ? whenLabel(d.lastVitalDate) : 'a while back'}
+                </Text>
+                <Text style={styles.insightText}>
+                    {withBaselines
+                        ? `Wear ${it} tonight and your readiness is back by morning, read against your usual below.`
+                        : `Wear ${it} tonight and your trends start again from the morning.`}
+                    {' '}Been wearing it? Open {app} to sync.
+                </Text>
+            </View>
+        </View>
+    );
+}
+
+/**
+ * What the charts boil down to while there is nothing new to chart: the
+ * user's own usual, per domain. Not a consolation prize — these are the
+ * numbers the first night back is judged against, which is the only thing
+ * about last month's vitals that still matters today.
+ */
+function Baselines({ d, trends }: { d: BodySignals; trends: BodyTrends }) {
+    const cells = [
+        d.rhrAvg != null && {
+            key: 'rhr', tint: ROSE, label: 'RESTING HR',
+            value: `${Math.round(d.rhrAvg)}`, unit: ' bpm',
+            detail: countLabel(trends.restingHr.length, 'reading'),
+        },
+        d.hrvAvg != null && {
+            key: 'hrv', tint: TEAL, label: 'HRV',
+            value: `${Math.round(d.hrvAvg)}`, unit: ' ms',
+            detail: countLabel(trends.hrv.length, 'reading'),
+        },
+        d.sleepAvg30 != null && {
+            key: 'sleep', tint: INDIGO, label: 'SLEEP',
+            value: formatMin(d.sleepAvg30 * 60), unit: '',
+            detail: countLabel(trends.sleepHours.length, 'night'),
+        },
+    ].filter((c): c is Exclude<typeof c, false> => !!c);
+
+    return (
+        <>
+            <Text style={styles.tabSubLabel}>YOUR USUAL · BEFORE THE GAP</Text>
+            <View style={styles.signalsRow}>
+                {cells.map((c, i) => (
+                    <React.Fragment key={c.key}>
+                        {i > 0 && <View style={styles.signalDivider} />}
+                        <View style={styles.signal}>
+                            <View style={styles.signalLamp}>
+                                <View style={[styles.zoneDot, { backgroundColor: c.tint }]} />
+                                <Text style={styles.signalLabel}>{c.label}</Text>
+                            </View>
+                            <Text style={styles.baselineVal}>
+                                {c.value}<Text style={styles.metricUnit}>{c.unit}</Text>
+                            </Text>
+                            <Text style={styles.signalDetail}>{c.detail}</Text>
+                        </View>
+                    </React.Fragment>
+                ))}
+            </View>
+        </>
+    );
+}
+
+function countLabel(n: number, noun: string): string {
+    return `from ${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 /** "+40m vs your usual week · 1,850 kcal burned · 45m at hard effort" —
@@ -299,6 +442,9 @@ function vitalDelta(latest: TrendPoint, avg: number | null, baselineReady: boole
  */
 function sleepSummary(d: BodySignals, t: BodyTrends): string {
     if (t.sleepHours.length < 3) return 'trends sharpen as more nights land';
+    // No nights this week is not "on your goal" — a debt summed over nothing
+    // is zero, and zero was being read out as a perfect week.
+    if (d.nights7 === 0) return `last night recorded ${whenLabel(t.sleepHours[t.sleepHours.length - 1].date)}`;
     const parts: string[] = [];
     parts.push(d.sleepDebtMin7 >= 15
         ? `${formatMin(d.sleepDebtMin7)} short of ${SLEEP_GOAL_H}h this week`
@@ -822,6 +968,21 @@ const styles = StyleSheet.create({
     signalDot: { width: 8, height: 8, borderRadius: 4 },
     signalVerdict: { fontSize: 14, fontWeight: '400', letterSpacing: -0.2, color: TEXT },
     signalDetail: { fontSize: 9, fontWeight: '300', color: DIM },
+
+    quietCard: {
+        flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+        padding: 14, borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+    },
+    quietIcon: {
+        width: 34, height: 34, borderRadius: 17,
+        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+    },
+    quietBody: { flex: 1, gap: 5 },
+    quietTitle: { fontSize: 15, fontWeight: '400', letterSpacing: -0.2, color: TEXT },
+    baselineVal: { fontSize: 22, fontWeight: '200', letterSpacing: -0.6, color: TEXT },
 
     insightRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
     insightText: { fontSize: 12, fontWeight: '300', color: DIM, flex: 1, lineHeight: 18 },

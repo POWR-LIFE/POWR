@@ -71,6 +71,13 @@ export type BodyTrends = {
     loadNormWeekMin: number | null;
     /** This week's effort, aggregated across every tracked workout. */
     week: WeekVitals;
+    /**
+     * Local date of the last vital reading from BEFORE the trend window —
+     * looked up only when the window itself holds none. It is what lets a
+     * wearer who has been away for more than a month read "nothing since
+     * 11 Aug" rather than the first-run "no body data yet".
+     */
+    priorVitalDate?: string | null;
 };
 
 export const TREND_DAYS = 30;
@@ -81,6 +88,12 @@ export const LOAD_NORM_DAYS = LOAD_DAYS * 4;
 export const SLEEP_TRACKED_DAYS = 7;
 /** The nightly goal the sleep bars and the weekly shortfall are measured against. */
 export const SLEEP_GOAL_H = 8;
+/**
+ * Days without a single vital (night, resting HR, HRV) before the tab stops
+ * waiting on the device and says it has gone quiet. Terra can deliver a night
+ * a day late, so one or two silent days are still ordinary sync lag.
+ */
+export const QUIET_AFTER_DAYS = 3;
 
 const EMPTY_WEEK: WeekVitals = { zoneMixSec: [], peakHr: null, kcal: 0 };
 const EMPTY: BodyTrends = {
@@ -91,7 +104,8 @@ const EMPTY: BodyTrends = {
 /** True when there is genuinely nothing to draw on the tab. */
 export function isEmptyTrends(t: BodyTrends): boolean {
     return t.restingHr.length === 0 && t.hrv.length === 0
-        && t.sleepHours.length === 0 && t.load.every(d => d.activeMin === 0);
+        && t.sleepHours.length === 0 && t.load.every(d => d.activeMin === 0)
+        && !t.priorVitalDate;
 }
 
 // ─── Readiness derivation ────────────────────────────────────────────────────
@@ -125,7 +139,12 @@ export type BodySignals = {
     providerReadiness: ReadinessPoint | null;
     nightFresh: TrendPoint | null;
     shortNight: boolean;
+    /** Average over the nights of the last 7 DAYS — null when there were none. */
     sleepAvg7: number | null;
+    /** How many nights landed in the last 7 days. */
+    nights7: number;
+    /** Average night across the whole trend window — the user's usual. */
+    sleepAvg30: number | null;
     /**
      * Minutes short of the nightly goal, summed over the last 7 nights that
      * were recorded. Nights over the goal don't pay it back — sleep debt
@@ -163,6 +182,16 @@ export type BodySignals = {
      */
     basis: BasisSignal[];
     missing: BasisSignal[];
+    /** Local date of the newest vital of any kind, in the window or before it. */
+    lastVitalDate: string | null;
+    vitalDaysAgo: number | null;
+    /**
+     * The device HAS produced vitals, and then stopped: nothing for
+     * QUIET_AFTER_DAYS or more. Not worn, flat, or out of sync — whichever, a
+     * page of day-old verdicts and charts that end short of today is not a
+     * read of the body any more, and the tab says so instead of waiting.
+     */
+    quiet: boolean;
 };
 
 const seriesLatest = <T extends TrendPoint>(s: T[]): T | null => s.length > 0 ? s[s.length - 1] : null;
@@ -231,6 +260,15 @@ export function deriveBodySignals(t: BodyTrends): BodySignals {
     const tracksRhr = t.restingHr.length > 0;
     const tracksHrv = t.hrv.length > 0;
 
+    const newestInWindow = [rhr, hrvLatest, night]
+        .map(p => p?.date)
+        .filter((date): date is string => !!date)
+        .sort()
+        .pop() ?? null;
+    const lastVitalDate = newestInWindow ?? t.priorVitalDate ?? null;
+    const vitalDaysAgo = lastVitalDate ? localDaysAgo(lastVitalDate) : null;
+    const quiet = vitalDaysAgo != null && vitalDaysAgo >= QUIET_AFTER_DAYS;
+
     const basis: BasisSignal[] = [];
     const missing: BasisSignal[] = [];
     if (tracksSleep) (nightFresh ? basis : missing).push('sleep');
@@ -250,7 +288,12 @@ export function deriveBodySignals(t: BodyTrends): BodySignals {
         providerReadiness,
         nightFresh,
         shortNight,
-        sleepAvg7: seriesMean(t.sleepHours.slice(-7)),
+        // By DATE, not the last seven records: after a week off the wrist the
+        // "last seven" are a fortnight old, and were being read out as "this
+        // week" — alongside a sleep debt of zero summed over no nights at all.
+        sleepAvg7: mean(last7.map(n => n.hours)),
+        nights7: last7.length,
+        sleepAvg30: seriesMean(t.sleepHours),
         sleepDebtMin7,
         deepRemShare7,
         efficiency7,
@@ -264,6 +307,9 @@ export function deriveBodySignals(t: BodyTrends): BodySignals {
         weekActiveMin,
         basis,
         missing,
+        lastVitalDate,
+        vitalDaysAgo,
+        quiet,
     };
 }
 
@@ -334,8 +380,9 @@ export function readinessOf(d: BodySignals): Readiness {
     // Nothing fresh to judge by. Say WHICH kind of nothing: a device that has
     // never sent sleep or resting HR needs wearing differently; one that has
     // just hasn't sent anything lately.
-    const reason = !d.tracksSleep && !d.tracksRhr && !d.tracksHrv
-        ? 'needs sleep or resting HR' : 'no recent readings';
+    const reason = d.quiet ? `no readings for ${d.vitalDaysAgo} days`
+        : !d.tracksSleep && !d.tracksRhr && !d.tracksHrv
+            ? 'needs sleep or resting HR' : 'no recent readings';
     return { word: '—', reason, level: 'unknown', ring: 0, partial: false };
 }
 
@@ -408,8 +455,29 @@ export async function fetchBodyTrends(): Promise<BodyTrends> {
     // as an object — the generated types mistake it for an array.
     const snapRows = (snapshots.data ?? []) as unknown as SnapshotRow[];
     const sessionRows = (sessions.data ?? []) as SessionRow[];
+    const series = seriesFromSnapshots(snapRows);
+
+    // A window with no vitals is either a first-run user or a wearer who has
+    // been away for over a month. One extra single-row lookup tells the two
+    // apart; everyone with a reading in the window skips it. Best-effort: a
+    // failure here only costs the "nothing since…" date, never the tab.
+    let priorVitalDate: string | null = null;
+    if (series.restingHr.length === 0 && series.hrv.length === 0 && series.sleepHours.length === 0) {
+        const prior = await supabase
+            .from('health_snapshots')
+            .select('recorded_at')
+            .eq('user_id', user.id)
+            .lt('recorded_at', since.toISOString())
+            .or('hr_resting.gt.0,sleep_duration_h.gte.1')
+            .order('recorded_at', { ascending: false })
+            .limit(1);
+        const at = prior.data?.[0]?.recorded_at;
+        if (at) priorVitalDate = localDateStr(new Date(at));
+    }
+
     return {
-        ...seriesFromSnapshots(snapRows),
+        ...series,
+        priorVitalDate,
         load: loadFrom(sessionRows, snapRows, loadSince),
         loadNormWeekMin: loadNormFrom(sessionRows, normSince, loadSince),
         week: weekVitalsFrom(snapRows, loadSince),

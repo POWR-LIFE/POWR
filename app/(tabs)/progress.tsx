@@ -306,8 +306,11 @@ export default function ProgressScreen() {
   // the same proof-or-promise rule the sleep radial uses. A brand-new
   // phone-only user sees no BODY surface until their first session or night
   // lands.
-  const showBody = (bodyState?.hasData ?? false)
-    || rows.some((row) => !!row.connection && !row.meta.native);
+  const cloudWearable = rows.find((row) => !!row.connection && !row.meta.native);
+  const showBody = (bodyState?.hasData ?? false) || !!cloudWearable;
+  // A wearable that has gone quiet: the ring counts the days instead of
+  // holding a dash, so the slide says why it is empty and changes daily.
+  const bodyQuietDays = bodySignals?.quiet ? bodySignals.vitalDaysAgo : null;
   const bodyDays = new Set<string>([
     ...(bodyTrends?.restingHr ?? []).map(p => p.date),
     ...(bodyTrends?.hrv ?? []).map(p => p.date),
@@ -322,10 +325,10 @@ export default function ProgressScreen() {
   // selection is still the first activity — see the init effect below.
   if (showBody) radialData.unshift({
     id: 'body',
-    pct: bodyState?.readiness.ring ?? 0,
-    value: bodyState?.readiness.word ?? '—',
+    pct: bodyQuietDays != null ? 0 : bodyState?.readiness.ring ?? 0,
+    value: bodyQuietDays != null ? `${bodyQuietDays}d` : bodyState?.readiness.word ?? '—',
     maxLabel: '',
-    subLabel: 'READINESS',
+    subLabel: bodyQuietDays != null ? 'SINCE LAST READING' : 'READINESS',
     gradientColors: [TEAL, GREEN],
     iconName: 'pulse',
     iconLib: 'ionicons',
@@ -423,6 +426,7 @@ export default function ProgressScreen() {
           sleepHrs={sleepHrs}
           sleepBedtimes={sleepBedtimes}
           bodyTrends={bodyTrends}
+          bodyDeviceName={cloudWearable?.meta.name}
         />
         </>)}
 
@@ -484,7 +488,7 @@ function ActivityEmptyCard({ hasProviderConnected, onConnect, onLog }: {
 type BreakdownTabItem = { key: string; label: string };
 
 function BreakdownSection({
-  activeTab, activeIndex, onIndexChange, period, onPeriodChange, lookback, onLookbackChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, sleepHrs, sleepBedtimes, bodyTrends,
+  activeTab, activeIndex, onIndexChange, period, onPeriodChange, lookback, onLookbackChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, sleepHrs, sleepBedtimes, bodyTrends, bodyDeviceName,
 }: {
   activeTab: string;
   activeIndex: number;
@@ -501,6 +505,7 @@ function BreakdownSection({
   sleepHrs: number[];
   sleepBedtimes: (string | null)[];
   bodyTrends: BodyTrends | null;
+  bodyDeviceName?: string;
 }) {
   const carouselRef = useRef<ScrollView>(null);
   const [pageWidth, setPageWidth] = useState(0);
@@ -634,7 +639,7 @@ function BreakdownSection({
                   onOffsetChange={onLookbackChange}
                 />
               )}
-              {key === 'body' && <BodyTab initialTrends={bodyTrends} />}
+              {key === 'body' && <BodyTab initialTrends={bodyTrends} deviceName={bodyDeviceName} />}
               {key !== 'walking' && key !== 'sleep' && key !== 'body' && (
                 <WorkoutsTab
                   type={key as ActivityType}

@@ -16,6 +16,7 @@ jest.mock('@/lib/api/pointsBreakdown', () => ({ hrZonesFrom: () => undefined, is
 
 import {
     deriveBodySignals,
+    isEmptyTrends,
     loadNormFrom,
     readinessOf,
     seriesFromSnapshots,
@@ -87,8 +88,10 @@ describe('readiness without sleep', () => {
         expect(d.rhrDaysAgo).toBe(12);
         const r = readinessOf(d);
         expect(r.level).toBe('unknown');
-        // RHR HAS landed before — the device is worn, it just hasn't sent lately.
-        expect(r.reason).toBe('no recent readings');
+        // RHR HAS landed before — the device is worn, it just hasn't sent
+        // lately, and twelve days is long enough to say how long.
+        expect(d.quiet).toBe(true);
+        expect(r.reason).toBe('no readings for 12 days');
     });
 
     test('training only, no sleep and no RHR ever, names what is missing', () => {
@@ -337,5 +340,62 @@ describe('seriesFromSnapshots — night vitals belong to the morning you woke', 
         expect(s.restingHr).toEqual([{ date: daysAgo(1), value: 60 }]);
         expect(s.hrv).toEqual([{ date: daysAgo(1), value: 50 }]);
         expect(s.sleepNights).toEqual([]);
+    });
+});
+
+/**
+ * 2026-09-19 — Jamie, eight days off the wrist: the tab kept judging a week
+ * that was over ("waiting on your device" ×3, charts ending short of today,
+ * "on your 8h goal this week" summed over no nights at all).
+ */
+describe('a device that has gone quiet', () => {
+    /** `values` oldest first, the newest reading `endAgo` days back. */
+    const seriesEnding = (endAgo: number, values: number[]): TrendPoint[] =>
+        values.map((value, i) => ({ date: daysAgo(endAgo + values.length - 1 - i), value }));
+
+    test('a day or two of silence is still sync lag, not quiet', () => {
+        const d = deriveBodySignals(trends({ sleepHours: seriesEnding(2, [7, 7.5, 6.8]) }));
+        expect(d.quiet).toBe(false);
+        expect(d.vitalDaysAgo).toBe(2);
+    });
+
+    test('three days without any vital is quiet, dated from the newest of them', () => {
+        const d = deriveBodySignals(trends({
+            sleepHours: seriesEnding(8, [7, 7.5, 6.8]),
+            restingHr: seriesEnding(5, [66, 67, 68]),
+        }));
+        expect(d.quiet).toBe(true);
+        expect(d.vitalDaysAgo).toBe(5);
+        expect(d.lastVitalDate).toBe(daysAgo(5));
+        expect(readinessOf(d).reason).toBe('no readings for 5 days');
+    });
+
+    test('one fresh signal keeps the tab live even while another has lapsed', () => {
+        const d = deriveBodySignals(trends({
+            sleepHours: seriesEnding(9, [7, 7.5, 6.8]),
+            restingHr: seriesEnding(0, [66, 67, 68]),
+        }));
+        expect(d.quiet).toBe(false);
+    });
+
+    test('someone who has never sent a vital is not quiet — they are new', () => {
+        const d = deriveBodySignals(trends({ load: load([0, 40, 0, 0, 0, 0, 0]) }));
+        expect(d.quiet).toBe(false);
+        expect(d.lastVitalDate).toBeNull();
+    });
+
+    test('a reading from before the window still dates the gap', () => {
+        const t = trends({ priorVitalDate: daysAgo(40) });
+        const d = deriveBodySignals(t);
+        expect(d.quiet).toBe(true);
+        expect(d.vitalDaysAgo).toBe(40);
+        expect(isEmptyTrends(t)).toBe(false);
+    });
+
+    test('"this week" sleep figures count only nights from the last 7 days', () => {
+        const d = deriveBodySignals(trends({ sleepHours: seriesEnding(8, [7, 7, 7, 7, 7, 7, 7]) }));
+        expect(d.nights7).toBe(0);
+        expect(d.sleepAvg7).toBeNull();
+        expect(d.sleepAvg30).toBe(7);
     });
 });
