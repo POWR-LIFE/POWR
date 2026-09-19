@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     Animated,
     Modal,
@@ -63,6 +63,8 @@ export default function PointsBreakdownSheet({
     period,
     offset,
     day,
+    days,
+    onDayChange,
 }: {
     visible: boolean;
     onClose: () => void;
@@ -75,10 +77,26 @@ export default function PointsBreakdownSheet({
      * date the D/W/M stepper can't address directly.
      */
     day?: Date | null;
+    /**
+     * Every tappable day on the chart the sheet was opened from, ascending. With
+     * `onDayChange`, turns the date line into a stepper so days can be compared
+     * without closing the sheet — the job the old under-chart caption did.
+     * Bounded to what the chart shows, so the chart's mark can follow along.
+     */
+    days?: Date[];
+    onDayChange?: (day: Date) => void;
 }) {
     const config = ACTIVITIES[type];
     const [data, setData] = useState<PointsBreakdown | null>(null);
     const [failed, setFailed] = useState(false);
+    // True while `data` still belongs to the day being stepped AWAY from.
+    const [stale, setStale] = useState(false);
+    const wasOpen = useRef(false);
+    // Tallest the sheet has been this open, applied back as a minHeight while
+    // stepping. The sheet is bottom-anchored and sized by its rows, so without
+    // this every step to a shorter or longer day moves the arrows out from under
+    // the thumb that is about to press them again.
+    const [pinnedHeight, setPinnedHeight] = useState(0);
 
     /**
      * Pull-down-to-dismiss + the animated close, shared with LedgerFilterSheet
@@ -94,9 +112,18 @@ export default function PointsBreakdownSheet({
     const { dragY, backdropOpacity, panHandlers, dismiss } = useSheetDragDismiss(onClose, visible);
 
     useEffect(() => {
-        if (!visible) return;
+        if (!visible) {
+            wasOpen.current = false;
+            setPinnedHeight(0);
+            return;
+        }
         let cancelled = false;
-        setData(null);
+        // Only `day` can change while the sheet is up, so a run that finds it
+        // already open is a step: keep the previous day's rows on screen, dimmed,
+        // rather than flashing through "Loading…" on every arrow press.
+        if (wasOpen.current) setStale(true);
+        else setData(null);
+        wasOpen.current = true;
         setFailed(false);
 
         // Sleep runs on its own clock — see sleepDayWindow. Using the plain
@@ -105,10 +132,17 @@ export default function PointsBreakdownSheet({
             ? (type === 'sleep' ? sleepDayWindow(day) : singleDayWindow(day))
             : breakdownWindow(period, offset);
         fetchPointsBreakdown(type, start, end)
-            .then(result => { if (!cancelled) setData(result); })
+            .then(result => {
+                if (cancelled) return;
+                setData(result);
+                setStale(false);
+            })
             .catch(err => {
                 console.error('[PointsBreakdownSheet] load failed:', err);
-                if (!cancelled) setFailed(true);
+                if (cancelled) return;
+                setData(null);
+                setStale(false);
+                setFailed(true);
             });
 
         return () => { cancelled = true; };
@@ -139,6 +173,8 @@ export default function PointsBreakdownSheet({
     const showUnpaid = type !== 'walking' && type !== 'sleep';
     const unpaid = showUnpaid ? data?.unpaid ?? [] : [];
 
+    const stepper = day && days && onDayChange ? dayNeighbours(day, days) : null;
+
     return (
         // animationType="none" on purpose: Modal's own "slide" moves the entire
         // container, so the scrim rode down the screen behind the sheet as a
@@ -151,7 +187,19 @@ export default function PointsBreakdownSheet({
                     style={[StyleSheet.absoluteFill, styles.scrim, { opacity: backdropOpacity }]}
                 />
                 <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
-                <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>
+                <Animated.View
+                    style={[
+                        styles.sheet,
+                        stepper && pinnedHeight > 0 && { minHeight: pinnedHeight },
+                        { transform: [{ translateY: dragY }] },
+                    ]}
+                    onLayout={stepper
+                        ? e => {
+                            const h = e.nativeEvent.layout.height;
+                            setPinnedHeight(prev => Math.max(prev, h));
+                        }
+                        : undefined}
+                >
                     {/* Header owns the drag gesture; the body below keeps its scroll. */}
                     <View style={styles.dragHeader} {...panHandlers}>
                         <View style={styles.handle} />
@@ -160,20 +208,44 @@ export default function PointsBreakdownSheet({
                         <Text style={styles.headline}>
                             {config.label}{' '}
                             <Text style={styles.headlineGold}>
-                                {data ? `${data.total} POWR` : '—'}
+                                {data && !stale ? `${data.total} POWR` : '—'}
                             </Text>
                         </Text>
-                        <Text style={styles.rangeLabel}>
-                            {day ? formatFullDate(day) : rangeLabel(period, offset)}
-                        </Text>
+                        {!stepper && (
+                            <Text style={styles.rangeLabel}>
+                                {day ? formatFullDate(day) : rangeLabel(period, offset)}
+                            </Text>
+                        )}
+                    </View>
+
+                    {/* OUTSIDE the drag header on purpose: that view claims every
+                        touch on the way down (see useSheetDragDismiss), so a
+                        Pressable inside it never receives its press. */}
+                    {stepper && day && onDayChange && (
+                        <View style={styles.dayStepper}>
+                            <DayStepArrow
+                                direction="back"
+                                target={stepper.prev}
+                                onPress={onDayChange}
+                            />
+                            <Text style={styles.dayStepperLabel}>{formatFullDate(day)}</Text>
+                            <DayStepArrow
+                                direction="forward"
+                                target={stepper.next}
+                                onPress={onDayChange}
+                            />
+                        </View>
+                    )}
+
+                    <View style={styles.dragHeader} {...panHandlers}>
                         {/* Hold the slot while loading so the sheet doesn't jump. */}
                         <Text style={styles.summary}>
-                            {data || failed ? summaryLine(type, whenLabel, data, groups) : ' '}
+                            {(data && !stale) || failed ? summaryLine(type, whenLabel, data, groups) : ' '}
                         </Text>
                     </View>
 
                     <ScrollView
-                        style={styles.body}
+                        style={[styles.body, stale && styles.bodyStale]}
                         contentContainerStyle={styles.bodyContent}
                         showsVerticalScrollIndicator={false}
                     >
@@ -283,6 +355,45 @@ export default function PointsBreakdownSheet({
                 </Animated.View>
             </View>
         </Modal>
+    );
+}
+
+/** The tappable days either side of `day`, or null at that end of the chart. */
+function dayNeighbours(day: Date, days: Date[]): { prev: Date | null; next: Date | null } {
+    const i = days.findIndex(d => isSameLocalDay(d, day));
+    if (i < 0) return { prev: null, next: null };
+    return { prev: days[i - 1] ?? null, next: days[i + 1] ?? null };
+}
+
+/**
+ * One end of the day stepper. At the end of the chart the arrow stays in place,
+ * spent rather than removed, so the date between them doesn't shift sideways.
+ */
+function DayStepArrow({
+    direction, target, onPress,
+}: {
+    direction: 'back' | 'forward';
+    target: Date | null;
+    onPress: (day: Date) => void;
+}) {
+    return (
+        <Pressable
+            onPress={target ? () => onPress(target) : undefined}
+            disabled={!target}
+            hitSlop={{ top: 14, bottom: 14, left: 18, right: 18 }}
+            style={({ pressed }) => [styles.dayStepArrow, pressed && { opacity: 0.5 }]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !target }}
+            accessibilityLabel={target
+                ? `${direction === 'back' ? 'Previous' : 'Next'} day, ${formatFullDate(target)}`
+                : `No ${direction === 'back' ? 'earlier' : 'later'} day on this chart`}
+        >
+            <Ionicons
+                name={direction === 'back' ? 'chevron-back' : 'chevron-forward'}
+                size={14}
+                color={target ? DIM : 'rgba(255,255,255,0.1)'}
+            />
+        </Pressable>
     );
 }
 
@@ -974,7 +1085,38 @@ const styles = StyleSheet.create({
         paddingHorizontal: 4,
     },
 
+    // Stands in for rangeLabel when the sheet can step between days, on the same
+    // margins (4 above, 10 below) so the summary sits where it always does.
+    dayStepper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 14,
+        marginTop: 4,
+        marginBottom: 10,
+    },
+    // A step brighter than rangeLabel: here the date is the control's readout,
+    // not a footnote to the total.
+    dayStepperLabel: {
+        color: DIM,
+        fontSize: 11,
+        fontWeight: '300',
+        minWidth: 132,
+        textAlign: 'center',
+    },
+    dayStepArrow: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+    },
+
     body: { alignSelf: 'stretch' },
+    // Same idea as StalePanel: the previous day's rows stay put, dimmed, until
+    // the next day's land.
+    bodyStale: { opacity: 0.35 },
     bodyContent: { paddingBottom: 4 },
 
     stateText: {

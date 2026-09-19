@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { DayCaption, addDays } from '@/components/progress/DayCaption';
+import { addDays, dayFromKey, useDaySelection } from '@/components/progress/daySelection';
 import { HeatmapLegend, MonthHeatmap } from '@/components/progress/MonthHeatmap';
 import PointsBreakdownSheet from '@/components/progress/PointsBreakdownSheet';
 import { StalePanel } from '@/components/progress/StalePanel';
@@ -260,28 +260,22 @@ function SleepHistoryRow({ night }: { night: DailySleepHistory }) {
 // ─── Week View (existing chart, moved verbatim) ──────────────────────────────
 
 function SleepWeekView({
-  sleepHrs, sleepBedtimes, isCurrentWeek, weekStart, perDayPoints, onSelectDay,
+  sleepHrs, sleepBedtimes, isCurrentWeek, weekStart, markedKey, onSelectDay,
 }: {
   sleepHrs: number[];
   sleepBedtimes: (string | null)[];
   isCurrentWeek: boolean;
   /** Local-midnight Monday of the week on screen — bars are offsets from here. */
   weekStart: Date;
-  /** Mon=0…Sun=6 POWR, bucketed by the same wake-day rule as `sleepHrs`. */
-  perDayPoints: number[] | null;
-  onSelectDay: (day: Date) => void;
+  /** Local date key of the bar to mark — see useDaySelection. */
+  markedKey: string | null;
+  /** A tapped night, plus every tappable night this week for the sheet to step through. */
+  onSelectDay: (day: Date, days: Date[]) => void;
 }) {
   // A past week has no "today" column to highlight — TODAY_INDEX is the current
   // weekday, so using it unguarded would accent an arbitrary bar.
   const todayIndex = isCurrentWeek ? TODAY_INDEX : -1;
 
-  // Which bar is selected, as a Mon=0 index — matching WorkoutsTab rather than
-  // the month grid's date-keyed state, because a bar only knows its offset.
-  const [selected, setSelected] = useState<number | null>(null);
-  // Compare by time value: the parent builds a fresh Date each render, so
-  // depending on the object identity would clear the selection every render.
-  const weekKey = weekStart.getTime();
-  useEffect(() => { setSelected(null); }, [weekKey]);
   const daysWithSleep = sleepHrs.filter(h => h > 0).length;
   const avg = daysWithSleep > 0
     ? (sleepHrs.reduce((s, v) => s + v, 0) / daysWithSleep).toFixed(1)
@@ -333,13 +327,17 @@ function SleepWeekView({
           // Only nights that actually recorded sleep respond to a tap — a blank
           // bar that reacts teaches people the chart isn't interactive.
           const hasNight = hrs > 0;
+          const selected = markedKey === localDateStr(addDays(weekStart, i));
           const Col: any = hasNight ? Pressable : View;
           return (
             <Col
               key={i}
-              style={[styles.sleepBarCol, selected === i && styles.sleepBarColSelected]}
+              style={[styles.sleepBarCol, selected && styles.sleepBarColSelected]}
               {...(hasNight ? {
-                onPress: () => setSelected(prev => (prev === i ? null : i)),
+                onPress: () => onSelectDay(
+                  addDays(weekStart, i),
+                  sleepHrs.flatMap((h, j) => (h > 0 ? [addDays(weekStart, j)] : [])),
+                ),
                 hitSlop: 8,
                 accessibilityRole: 'button',
                 accessibilityLabel: `${DAY_LABELS[i]} — see what you earned`,
@@ -359,7 +357,7 @@ function SleepWeekView({
               <Text style={[
                 styles.sleepBarDay,
                 isToday && { color: TEXT, fontWeight: '600' },
-                selected === i && { color: GOLD, fontWeight: '600' },
+                selected && { color: GOLD, fontWeight: '600' },
               ]}>
                 {DAY_LABELS[i].charAt(0)}
               </Text>
@@ -367,16 +365,6 @@ function SleepWeekView({
           );
         })}
       </View>
-
-      {selected !== null && (
-        <DayCaption
-          date={addDays(weekStart, selected)}
-          sessions={0}
-          durationMin={Math.round((sleepHrs[selected] ?? 0) * 60)}
-          points={perDayPoints?.[selected] ?? 0}
-          onPress={() => onSelectDay(addDays(weekStart, selected))}
-        />
-      )}
 
       {hasBest && (
         <View style={styles.insightRow}>
@@ -422,16 +410,15 @@ function heatmapColor(hours: number): string {
 }
 
 function SleepMonthView({
-  data, offset, onSelectDay,
+  data, offset, markedKey, onSelectDay,
 }: {
   data: MonthlySleepData | null;
   offset: number;
-  onSelectDay: (day: Date) => void;
+  markedKey: string | null;
+  onSelectDay: (day: Date, days: Date[]) => void;
 }) {
   // "This Month" / "June" — see WorkoutMonthView.
   const label = monthLabel(offset);
-  const [selected, setSelected] = useState<string | null>(null);
-  useEffect(() => { setSelected(null); }, [data]);
 
   if (!data) {
     return (
@@ -527,23 +514,13 @@ function SleepMonthView({
         fill={heatmapColor}
         // 7h+ is where the indigo goes near-solid and light ink stops reading.
         isSolid={hours => hours >= 7}
-        selected={selected}
-        onSelect={setSelected}
+        selected={markedKey}
+        onSelect={key => onSelectDay(
+          dayFromKey(key),
+          // Mirrors MonthHeatmap's own rule for which cells respond to a tap.
+          rows.flat().filter(c => c.inRange && c.hours > 0).map(c => dayFromKey(c.date)),
+        )}
       />
-
-      {selected && (() => {
-        const entry = lookup.get(selected);
-        const day = new Date(`${selected}T12:00:00`);
-        return (
-          <DayCaption
-            date={day}
-            sessions={0}
-            durationMin={Math.round((entry?.hours ?? 0) * 60)}
-            points={entry?.points ?? 0}
-            onPress={() => onSelectDay(day)}
-          />
-        );
-      })()}
 
       <HeatmapLegend colours={HEATMAP_COLORS} />
     </View>
@@ -570,14 +547,9 @@ export function SleepTab({
 }) {
   const [period, setPeriod] = useState<Period>('W');
   const [offset, setOffset] = useState(0);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const daySel = useDaySelection(`${period}:${offset}`);
   const [dayData, setDayData] = useState<SleepDayDetail | null>(null);
   const [weekData, setWeekData] = useState<{ hours: number[]; bedtimes: (string | null)[] } | null>(null);
-  // Per-day POWR behind the tappable week bars, bucketed by the SAME wake-day
-  // rule as the hours (see fetchWeeklySleepHours), so a bar's caption can't
-  // disagree with the bar. Fetched for the current week too — the parent supplies
-  // hours live but not points, and every bar has to be tappable.
-  const [weekPoints, setWeekPoints] = useState<number[] | null>(null);
   const [monthData, setMonthData] = useState<MonthlySleepData | null>(null);
   const [dayLoaded, setDayLoaded] = useState(false);
   const [weekLoaded, setWeekLoaded] = useState(false);
@@ -702,21 +674,6 @@ export function SleepTab({
     return () => { cancelled = true; };
   }, [period, weekLoaded, isCurrent, offset]);
 
-  // Per-day POWR for the week bars' caption. Separate from the hours fetch
-  // above because that one skips the current week (the parent supplies it live)
-  // while this is needed for every week, including the current one.
-  useEffect(() => {
-    if (period !== 'W') return;
-    let cancelled = false;
-    setWeekPoints(null);
-
-    fetchWeeklySleepHours(weekAnchorMonday(offset))
-      .then(d => { if (!cancelled) setWeekPoints(d.points); })
-      .catch(err => console.error('[SleepTab] Error loading week sleep points:', err));
-
-    return () => { cancelled = true; };
-  }, [period, offset]);
-
   // Load Month data reactively
   useEffect(() => {
     if (period !== 'M' || monthLoaded) return;
@@ -758,24 +715,26 @@ export function SleepTab({
             sleepBedtimes={isCurrent ? sleepBedtimes : weekData?.bedtimes ?? EMPTY_WEEK_BEDTIMES}
             isCurrentWeek={isCurrent}
             weekStart={weekAnchorMonday(offset)}
-            perDayPoints={weekPoints}
-            onSelectDay={setSelectedDay}
+            markedKey={daySel.markedKey}
+            onSelectDay={daySel.open}
           />
         </StalePanel>
       )}
       {period === 'M' && (
         <StalePanel stale={monthStale}>
-          <SleepMonthView data={monthData} offset={offset} onSelectDay={setSelectedDay} />
+          <SleepMonthView data={monthData} offset={offset} markedKey={daySel.markedKey} onSelectDay={daySel.open} />
         </StalePanel>
       )}
 
       <PointsBreakdownSheet
-        visible={selectedDay !== null}
-        onClose={() => setSelectedDay(null)}
+        visible={daySel.day !== null}
+        onClose={daySel.close}
         type="sleep"
         period="D"
         offset={0}
-        day={selectedDay}
+        day={daySel.day}
+        days={daySel.days}
+        onDayChange={daySel.step}
       />
     </View>
   );
