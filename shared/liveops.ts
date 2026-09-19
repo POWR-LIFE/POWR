@@ -772,7 +772,7 @@ export function journeyFindings(j: JourneyRow): Alert[] {
   // It is the drive-by shape, not a blind walk-out, and scoring it as one buries
   // the real exit-detection failures.
   const disowned = j.close_reason === 'disowned_by_device' || j.close_reason === 'disowned_by_sweep';
-  if (j.ended_at && disowned) {
+  if (j.evidence_complete && j.ended_at && disowned) {
     out.push({
       key: 'presence_stale',
       label: 'DEVICE DISOWNED',
