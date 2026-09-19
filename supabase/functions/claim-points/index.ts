@@ -438,22 +438,23 @@ Deno.serve(async (req) => {
   if (session.verification === 'geofence' && session.type === 'gym' && (body.visit_id || session.partner_id)) {
     try {
       if (body.visit_id) {
+        // 11b/11c write the visit with the service role, so the id the caller
+        // names must be the caller's own visit at this session's partner. No
+        // start-window test: a stale-reused open visit legitimately starts
+        // hours before the session it pays, and the window only matters for
+        // the partner fallback below, where there is no id to go on.
         const { data: ownVisit, error: ownVisitErr } = await supabase
           .from('gym_visits')
-          .select('id, partner_id, started_at, claimed_session_id')
+          .select('id, partner_id')
           .eq('id', body.visit_id)
           .eq('user_id', user.id)
-          .single();
-        if (ownVisitErr || !ownVisit) {
+          .maybeSingle();
+        if (ownVisitErr) throw ownVisitErr;
+        if (!ownVisit) {
           return new Response(JSON.stringify({ error: 'Visit not found' }), { status: 404 });
         }
         if (session.partner_id && ownVisit.partner_id !== session.partner_id) {
           return new Response(JSON.stringify({ error: 'Visit does not match session partner' }), { status: 409 });
-        }
-        const startMs = Date.parse(session.started_at);
-        const visitStartMs = Date.parse(ownVisit.started_at);
-        if (Math.abs(visitStartMs - startMs) > 30 * 60_000) {
-          return new Response(JSON.stringify({ error: 'Visit does not match session window' }), { status: 409 });
         }
         validatedVisitId = ownVisit.id;
       }
@@ -503,35 +504,12 @@ Deno.serve(async (req) => {
         }), { status: 409 });
       }
 
-      if (validatedVisitId) {
-        const nowIso = new Date().toISOString();
-        const { data: lockedRows, error: lockErr } = await supabase
-          .from('gym_visits')
-          .update({ status: 'claimed', claimed_session_id: session.id, claimed_at: nowIso, last_confirmed_at: nowIso })
-          .eq('id', validatedVisitId)
-          .eq('user_id', user.id)
-          .is('claimed_session_id', null)
-          .select('id');
-        if (lockErr) {
-          console.error('[claim-points] visit lock failed:', lockErr);
-          return new Response(JSON.stringify({ error: 'Claim integrity check unavailable' }), { status: 503 });
-        }
-        if ((lockedRows?.length ?? 0) === 0) {
-          const { data: winnerVisit } = await supabase
-            .from('gym_visits')
-            .select('id, claimed_session_id')
-            .eq('id', validatedVisitId)
-            .eq('user_id', user.id)
-            .single();
-          if (winnerVisit?.claimed_session_id && winnerVisit.claimed_session_id !== session.id) {
-            return new Response(JSON.stringify({
-              error: 'Session already claimed',
-              session_id: winnerVisit.claimed_session_id,
-              visit_id: winnerVisit.id,
-            }), { status: 409 });
-          }
-        }
-      }
+      // The visit is NOT stamped here. Trust, rate limit, eligibility and the
+      // daily cap can all still refuse this claim, and a visit stamped by a
+      // session that was never paid turns the beacon's settle into the "twin"
+      // — refused and deleted, so nobody pays the visit. The stamp stays at
+      // 11b/11c, after the award; a claim that loses the race between this
+      // read and that stamp is reversed there.
     } catch (twinErr) {
       console.warn('[claim-points] twin gate failed:', twinErr);
       return new Response(JSON.stringify({ error: 'Claim integrity check unavailable' }), { status: 503 });
@@ -931,6 +909,13 @@ Deno.serve(async (req) => {
         if (winnerErr) throw winnerErr;
         const winner = winners?.[0];
         if (winner?.claimed_session_id) {
+          // LOST RACE: 4b read the visit as free, another session stamped it
+          // while this one was being paid. Reverse what this row earned (its
+          // cap-overflow deposit cannot have vested yet, so it just goes) and
+          // answer exactly as 4b would have.
+          let reversedPoints = 0;
+          await supabase.from('vault_deposits').delete()
+            .eq('session_id', session.id).eq('source', 'cap_overflow').is('released_at', null);
           const { data: awardedRows, error: awardedErr } = await supabase
             .from('point_transactions')
             .select('amount, type')
@@ -947,10 +932,18 @@ Deno.serve(async (req) => {
                 multiplier: 1.0,
               });
               if (penaltyErr) console.warn('[claim-points] twin compensation failed:', penaltyErr);
+              else reversedPoints = awarded;
             }
           } else {
             console.warn('[claim-points] twin compensation read failed:', awardedErr);
           }
+          await supabase.from('gym_visit_events').insert({
+            visit_id: winner.id, user_id: user.id, event: 'twin_refused',
+            detail: {
+              session_id: session.id, winner_session_id: winner.claimed_session_id, deleted: false,
+              lost_race: true, reversed_points: reversedPoints, via: viaRelay ? 'relay' : 'direct',
+            },
+          });
           return new Response(JSON.stringify({
             error: 'Session already claimed',
             session_id: winner.claimed_session_id,
@@ -1006,6 +999,7 @@ Deno.serve(async (req) => {
             .from('gym_visits')
             .update({ claimed_session_id: session.id, claimed_at: nowIso })
             .eq('id', targetVisitId)
+            .eq('user_id', user.id)
             .is('claimed_session_id', null)
             .select('id');
       for (const row of lateMarked ?? []) {

@@ -2499,7 +2499,24 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
         return { outcome: 'error' };
       }
       const relayStatus = (relay as { status?: string } | null)?.status;
-      if (relayStatus === 'already_claimed' || relayStatus === 'already_claimed_today') {
+      if (relayStatus === 'already_claimed_today') {
+        // The day's gym claim is paid by ANOTHER row and the server may have
+        // deleted ours. Terminal, or pointsPending never clears and every tick
+        // inserts a fresh twin — but do NOT stamp the visit: our id may be the
+        // wrong row (the reason this status is distinct from 'already_claimed').
+        const winner = (relay as { session_id?: unknown } | null)?.session_id;
+        if (typeof winner === 'string' && winner && winner !== sessionId) {
+          console.log(`[Geofence] Day already paid by session ${winner} — adopting it.`);
+          sessionId = winner;
+        }
+        await AsyncStorage.setItem(
+          SESSION_COMPLETED_KEY,
+          JSON.stringify({ partnerName: activeGeofence.partnerName, durationSec, timestamp: Date.now() }),
+        );
+        _emitSessionCompleted();
+        return { outcome: 'claimed', sessionId };
+      }
+      if (relayStatus === 'already_claimed') {
         console.log('[Geofence] Relayed claim already landed — surfacing completion to UI.');
         await AsyncStorage.setItem(
           SESSION_COMPLETED_KEY,

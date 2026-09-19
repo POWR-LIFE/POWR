@@ -165,10 +165,26 @@ export default function SessionReview() {
             );
             if (!ok) return;
         }
+        // The edge function takes 100 ids a request and select-all can hold the
+        // whole queue, so send in chunks and fold the answers into one result.
+        const result = { approved: 0, rejected: 0, reversed_points: 0, results: [] };
         setBusy(true);
-        const result = await callReview(action, ids);
-        setBusy(false);
-        if (result.error) { toast.error(result.error); return; }
+        try {
+            for (let i = 0; i < ids.length; i += 100) {
+                const part = await callReview(action, ids.slice(i, i + 100));
+                if (part.error) { result.error = part.error; break; }
+                result.approved += part.approved ?? 0;
+                result.rejected += part.rejected ?? 0;
+                result.reversed_points += part.reversed_points ?? 0;
+                result.results.push(...(part.results || []));
+            }
+        } catch (err) {
+            result.error = err?.message || 'Request failed';
+        } finally {
+            setBusy(false);
+        }
+        if (result.error) toast.error(result.error);
+        if (result.error && !result.results.length) return;
         const done = result[action === 'approve' ? 'approved' : 'rejected'] ?? 0;
         const failed = ids.length - done;
         if (action === 'approve') {
