@@ -248,6 +248,8 @@ export default function LiveEvents() {
             supabase.from('live_event_participants').select('*', { count: 'exact', head: true }).eq('event_id', eventId),
             supabase.from('live_event_results').select('*', { count: 'exact', head: true }).eq('event_id', eventId),
         ]);
+        // Never paint event A's data under event B (same guard as the door).
+        if (lastOpsEventId.current !== eventId) return;
         setCounts({ participants: p.count ?? 0, results: r.count ?? 0 });
     };
 
@@ -255,6 +257,8 @@ export default function LiveEvents() {
     // included, so preview test runs are inspectable end-to-end.
     const fetchRegistrations = async (eventId) => {
         const { data, error } = await supabase.rpc('admin_get_event_registrations', { p_event_id: eventId });
+        // Never paint event A's data under event B (same guard as the door).
+        if (lastOpsEventId.current !== eventId) return;
         if (error) { console.error(error); setRegistrations(null); return; }
         setRegistrations(data);
     };
@@ -312,6 +316,8 @@ const setCheckin = async (ev, row, present) => {
     // RPC returns the intersection plus both differences.
     const fetchBookings = async (eventId) => {
         const { data, error } = await supabase.rpc('admin_get_event_bookings', { p_event_id: eventId });
+        // Never paint event A's data under event B (same guard as the door).
+        if (lastOpsEventId.current !== eventId) return;
         if (error) { console.error(error); setBookings(null); return; }
         setBookings(data);
     };
@@ -349,6 +355,8 @@ const setCheckin = async (ev, row, present) => {
                 .eq('event_id', eventId)
                 .not('disqualified_at', 'is', null),
         ]);
+        // Never paint event A's data under event B (same guard as the door).
+        if (lastOpsEventId.current !== eventId) return;
         if (!opsRes.error) setOps(opsRes.data);
         if (!boardRes.error) setStandings(boardRes.data?.standings ?? []);
         if (!acRes.error) setAnticheat(acRes.data);
@@ -550,8 +558,24 @@ const setCheckin = async (ev, row, present) => {
         setSelectedId(data.id);
     };
 
+    // A duplicate carries the SETTINGS, never the schedule. The door board and
+    // the invite panels are derived from the event's dates (venue visits in
+    // the door band, signups in the invite period), so a copy left on the
+    // source's past dates shows the source's people under a brand-new event.
+    // Every timestamp moves by one delta — scoring starts two weeks out, at
+    // the same time of day — so lock, doors and deadlines keep their offsets.
     const duplicateEvent = async (ev) => {
         const copy = { ...editableFields(ev) };
+        const oldStart = new Date(ev.window_start_at);
+        const newStart = new Date(); newStart.setDate(newStart.getDate() + 14);
+        newStart.setHours(oldStart.getHours(), oldStart.getMinutes(), 0, 0);
+        const delta = newStart.getTime() - oldStart.getTime();
+        for (const k of ['window_start_at', 'window_end_at', 'lock_at', 'doors_open_at', 'doors_close_at', 'eligibility_cutoff_at', 'conversion_deadline_at']) {
+            if (copy[k]) copy[k] = new Date(new Date(copy[k]).getTime() + delta).toISOString();
+        }
+        // Invites count from the copy's own birth: friends brought in for the
+        // source event must not pre-clear this one's entry gate.
+        copy.entry_gate_since = new Date().toISOString();
         const { data, error } = await supabase.from('live_events').insert({
             ...copy,
             name: `${ev.name} (copy)`,
@@ -561,7 +585,7 @@ const setCheckin = async (ev, row, present) => {
         }).select().single();
         if (error) { toast.error(error.message); return; }
         await logAction(user.id, 'live_event_duplicate', 'live_event', data.id, { source: ev.id });
-        toast.success('Event duplicated as draft');
+        toast.success('Settings duplicated as a draft — set the new dates');
         await fetchEvents();
         setSelectedId(data.id);
     };
@@ -2150,10 +2174,10 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                 {/* Bonus ledger */}
                 <div className="border-t border-[#F0F0EC] pt-6">
                     <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">
-                        Invite bonus ledger — latest {ledger.length} across all events
+                        Invite bonus ledger — {ledger.length} paid during this event
                     </div>
                     {ledger.length === 0 ? (
-                        <p className="text-[13px] text-[#999999]">No invite bonus transactions yet, ever.</p>
+                        <p className="text-[13px] text-[#999999]">No invite bonuses paid during this event yet.</p>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-[13px]">
