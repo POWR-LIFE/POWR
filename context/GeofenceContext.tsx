@@ -2499,7 +2499,7 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
         return { outcome: 'error' };
       }
       const relayStatus = (relay as { status?: string } | null)?.status;
-      if (relayStatus === 'already_claimed') {
+      if (relayStatus === 'already_claimed' || relayStatus === 'already_claimed_today') {
         console.log('[Geofence] Relayed claim already landed — surfacing completion to UI.');
         await AsyncStorage.setItem(
           SESSION_COMPLETED_KEY,

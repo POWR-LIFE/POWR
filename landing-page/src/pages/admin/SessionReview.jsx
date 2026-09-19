@@ -319,7 +319,12 @@ export default function SessionReview() {
                                     return (
                                         <tr key={row.session_id} className={`group transition-all ${isSelected ? 'bg-[#FFFBE6]' : 'hover:bg-[#F4F4F1]'}`}>
                                             <td className="px-6 py-5">
-                                                <button onClick={() => toggleOne(row.session_id)} className="text-[#888888] hover:text-[#1A1A1A]">
+                                                <button
+                                                    onClick={() => toggleOne(row.session_id)}
+                                                    className="text-[#888888] hover:text-[#1A1A1A]"
+                                                    aria-label={isSelected ? 'Deselect session' : 'Select session'}
+                                                    aria-pressed={isSelected}
+                                                >
                                                     {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
                                                 </button>
                                             </td>

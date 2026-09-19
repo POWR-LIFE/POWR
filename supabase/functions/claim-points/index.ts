@@ -434,8 +434,30 @@ Deno.serve(async (req) => {
   // visit at this partner whose start sits within ±30 min of the session's —
   // a genuine second visit hours later (Butt 09-09, 10:18 and 12:59) is a
   // different visit and passes.
+  let validatedVisitId: string | null = null;
   if (session.verification === 'geofence' && session.type === 'gym' && (body.visit_id || session.partner_id)) {
     try {
+      if (body.visit_id) {
+        const { data: ownVisit, error: ownVisitErr } = await supabase
+          .from('gym_visits')
+          .select('id, partner_id, started_at, claimed_session_id')
+          .eq('id', body.visit_id)
+          .eq('user_id', user.id)
+          .single();
+        if (ownVisitErr || !ownVisit) {
+          return new Response(JSON.stringify({ error: 'Visit not found' }), { status: 404 });
+        }
+        if (session.partner_id && ownVisit.partner_id !== session.partner_id) {
+          return new Response(JSON.stringify({ error: 'Visit does not match session partner' }), { status: 409 });
+        }
+        const startMs = Date.parse(session.started_at);
+        const visitStartMs = Date.parse(ownVisit.started_at);
+        if (Math.abs(visitStartMs - startMs) > 30 * 60_000) {
+          return new Response(JSON.stringify({ error: 'Visit does not match session window' }), { status: 409 });
+        }
+        validatedVisitId = ownVisit.id;
+      }
+
       let taken = supabase
         .from('gym_visits')
         .select('id, claimed_session_id')
@@ -443,8 +465,8 @@ Deno.serve(async (req) => {
         .not('claimed_session_id', 'is', null)
         .neq('claimed_session_id', session.id)
         .limit(1);
-      if (body.visit_id) {
-        taken = taken.eq('id', body.visit_id);
+      if (validatedVisitId) {
+        taken = taken.eq('id', validatedVisitId);
       } else {
         const startMs = Date.parse(session.started_at);
         taken = taken
@@ -452,7 +474,11 @@ Deno.serve(async (req) => {
           .gte('started_at', new Date(startMs - 30 * 60_000).toISOString())
           .lte('started_at', new Date(startMs + 30 * 60_000).toISOString());
       }
-      const { data: takenRows } = await taken;
+      const { data: takenRows, error: takenErr } = await taken;
+      if (takenErr) {
+        console.error('[claim-points] twin gate read failed:', takenErr);
+        return new Response(JSON.stringify({ error: 'Claim integrity check unavailable' }), { status: 503 });
+      }
       const winner = takenRows?.[0];
       if (winner) {
         const { count: refs } = await supabase
@@ -476,10 +502,39 @@ Deno.serve(async (req) => {
           error: 'Session already claimed', session_id: winner.claimed_session_id, visit_id: winner.id,
         }), { status: 409 });
       }
+
+      if (validatedVisitId) {
+        const nowIso = new Date().toISOString();
+        const { data: lockedRows, error: lockErr } = await supabase
+          .from('gym_visits')
+          .update({ status: 'claimed', claimed_session_id: session.id, claimed_at: nowIso, last_confirmed_at: nowIso })
+          .eq('id', validatedVisitId)
+          .eq('user_id', user.id)
+          .is('claimed_session_id', null)
+          .select('id');
+        if (lockErr) {
+          console.error('[claim-points] visit lock failed:', lockErr);
+          return new Response(JSON.stringify({ error: 'Claim integrity check unavailable' }), { status: 503 });
+        }
+        if ((lockedRows?.length ?? 0) === 0) {
+          const { data: winnerVisit } = await supabase
+            .from('gym_visits')
+            .select('id, claimed_session_id')
+            .eq('id', validatedVisitId)
+            .eq('user_id', user.id)
+            .single();
+          if (winnerVisit?.claimed_session_id && winnerVisit.claimed_session_id !== session.id) {
+            return new Response(JSON.stringify({
+              error: 'Session already claimed',
+              session_id: winnerVisit.claimed_session_id,
+              visit_id: winnerVisit.id,
+            }), { status: 409 });
+          }
+        }
+      }
     } catch (twinErr) {
-      // Best-effort: a broken gate must not block a claim — the daily cap and
-      // the unique index still bound the damage exactly as before.
       console.warn('[claim-points] twin gate failed:', twinErr);
+      return new Response(JSON.stringify({ error: 'Claim integrity check unavailable' }), { status: 503 });
     }
   }
 
@@ -845,7 +900,8 @@ Deno.serve(async (req) => {
   // another hour). Direct claims don't carry a visit_id, so fall back to the
   // caller's open visit at the session's partner. The status='open' guard keeps
   // it idempotent against the client's own later mark.
-  if (body.visit_id || session.partner_id) {
+  const requestVisitId = validatedVisitId ?? body.visit_id ?? null;
+  if (requestVisitId || session.partner_id) {
     try {
       const nowIso = new Date().toISOString();
       let mark = supabase
@@ -853,8 +909,55 @@ Deno.serve(async (req) => {
         .update({ status: 'claimed', claimed_session_id: session.id, claimed_at: nowIso, last_confirmed_at: nowIso })
         .eq('user_id', user.id)
         .eq('status', 'open');
-      mark = body.visit_id ? mark.eq('id', body.visit_id) : mark.eq('partner_id', session.partner_id);
-      const { data: marked } = await mark.select('id');
+      mark = requestVisitId ? mark.eq('id', requestVisitId) : mark.eq('partner_id', session.partner_id);
+      const { data: marked, error: markErr } = await mark.select('id');
+      if (markErr) throw markErr;
+      if ((marked?.length ?? 0) === 0 && session.verification === 'geofence' && session.type === 'gym') {
+        const startMs = Date.parse(session.started_at);
+        let winnerQuery = supabase
+          .from('gym_visits')
+          .select('id, claimed_session_id')
+          .eq('user_id', user.id)
+          .not('claimed_session_id', 'is', null)
+          .neq('claimed_session_id', session.id)
+          .limit(1);
+        winnerQuery = requestVisitId
+          ? winnerQuery.eq('id', requestVisitId)
+          : winnerQuery
+              .eq('partner_id', session.partner_id)
+              .gte('started_at', new Date(startMs - 30 * 60_000).toISOString())
+              .lte('started_at', new Date(startMs + 30 * 60_000).toISOString());
+        const { data: winners, error: winnerErr } = await winnerQuery;
+        if (winnerErr) throw winnerErr;
+        const winner = winners?.[0];
+        if (winner?.claimed_session_id) {
+          const { data: awardedRows, error: awardedErr } = await supabase
+            .from('point_transactions')
+            .select('amount, type')
+            .eq('session_id', session.id)
+            .in('type', ['earn', 'streak']);
+          if (!awardedErr) {
+            const awarded = (awardedRows ?? []).reduce((sum, row) => sum + Math.max(0, row.amount ?? 0), 0);
+            if (awarded > 0) {
+              const { error: penaltyErr } = await supabase.from('point_transactions').insert({
+                user_id: user.id,
+                amount: -awarded,
+                type: 'penalty',
+                description: `Reversed twin claim ${session.id} (winner ${winner.claimed_session_id})`,
+                multiplier: 1.0,
+              });
+              if (penaltyErr) console.warn('[claim-points] twin compensation failed:', penaltyErr);
+            }
+          } else {
+            console.warn('[claim-points] twin compensation read failed:', awardedErr);
+          }
+          return new Response(JSON.stringify({
+            error: 'Session already claimed',
+            session_id: winner.claimed_session_id,
+            visit_id: winner.id,
+          }), { status: 409 });
+        }
+      }
       for (const row of marked ?? []) {
         await supabase.from('gym_visit_events').insert({
           visit_id: row.id, user_id: user.id, event: 'claimed',
@@ -876,12 +979,12 @@ Deno.serve(async (req) => {
   // idempotency rides claimed_session_id IS NULL. Bounded to visits ended in
   // the last 6h so a partner-fallback stamp can never resurrect ancient
   // history into the complete-push window.
-  if (session.verification === 'geofence' && (body.visit_id || session.partner_id)) {
+  if (session.verification === 'geofence' && (requestVisitId || session.partner_id)) {
     try {
       const nowIso = new Date().toISOString();
       const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
 
-      let targetVisitId = body.visit_id ?? null;
+      let targetVisitId = requestVisitId ?? null;
       if (!targetVisitId) {
         const { data: candidates } = await supabase
           .from('gym_visits')

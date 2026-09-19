@@ -111,12 +111,37 @@ Deno.serve(async (req) => {
     // ── Reject: reverse EVERYTHING it earned, then delete the session ───
     // Sum before deleting — the FK is ON DELETE SET NULL, so after deletion
     // these rows can't be found by session_id.
-    const { data: earned } = await adminClient
+    const { data: earned, error: earnedErr } = await adminClient
       .from('point_transactions')
       .select('amount, type')
       .eq('session_id', id)
       .in('type', EARNED_TYPES);
-    const reversed = (earned ?? []).reduce((sum, t) => sum + Math.max(0, t.amount ?? 0), 0);
+    if (earnedErr) { results.push({ session_id: id, ok: false, error: `Failed to read earned points: ${earnedErr.message}` }); continue; }
+
+    const { data: capOverflowRows, error: capOverflowErr } = await adminClient
+      .from('vault_deposits')
+      .select('id, amount, released_at')
+      .eq('session_id', id)
+      .eq('source', 'cap_overflow');
+    if (capOverflowErr) { results.push({ session_id: id, ok: false, error: `Failed to read cap-overflow deposits: ${capOverflowErr.message}` }); continue; }
+
+    const pendingDepositIds = (capOverflowRows ?? [])
+      .filter((d) => d.released_at == null)
+      .map((d) => d.id);
+    const releasedVault = (capOverflowRows ?? [])
+      .filter((d) => d.released_at != null)
+      .reduce((sum, d) => sum + Math.max(0, d.amount ?? 0), 0);
+
+    if (pendingDepositIds.length > 0) {
+      const { error: cancelVaultErr } = await adminClient
+        .from('vault_deposits')
+        .delete()
+        .in('id', pendingDepositIds);
+      if (cancelVaultErr) { results.push({ session_id: id, ok: false, error: `Failed to cancel cap-overflow deposits: ${cancelVaultErr.message}` }); continue; }
+    }
+
+    const reversedEarned = (earned ?? []).reduce((sum, t) => sum + Math.max(0, t.amount ?? 0), 0);
+    const reversed = reversedEarned + releasedVault;
 
     // Insert a compensating penalty so the balance is clawed back. The ledger is
     // append-only (no client mutations), so we negate rather than delete.
@@ -145,6 +170,9 @@ Deno.serve(async (req) => {
       metadata: {
         user_id: session.user_id, type: session.type, flag_reason: session.flag_reason,
         reversed_points: reversed,
+        reversed_earned_points: reversedEarned,
+        reversed_released_vault_points: releasedVault,
+        cancelled_pending_vault_deposits: pendingDepositIds.length,
         reversed_breakdown: (earned ?? []).reduce((acc, t) => {
           acc[t.type] = (acc[t.type] ?? 0) + (t.amount ?? 0); return acc;
         }, {}),

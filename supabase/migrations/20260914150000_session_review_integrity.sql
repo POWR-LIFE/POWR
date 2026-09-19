@@ -134,6 +134,27 @@ create trigger gym_visits_reconcile_session_flag
   when (new.claimed_session_id is not null)
   execute function public.gym_visit_reconcile_session_flag();
 
+-- close_gym_visit also updates the claimed activity_session's ended_at/duration.
+-- Reconcile there too so an exit witness written in the same close path is seen
+-- against the final claimed duration rather than a pre-close snapshot.
+create or replace function public.activity_session_reconcile_proof_flag()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  perform reconcile_session_proof_flag(new.id);
+  return null;
+end;
+$$;
+
+drop trigger if exists activity_sessions_reconcile_proof_flag on public.activity_sessions;
+create trigger activity_sessions_reconcile_proof_flag
+  after update of ended_at, duration_sec on public.activity_sessions
+  for each row
+  when (coalesce(new.flagged, false) and coalesce(new.flag_reason, '') like '%unproven_duration%')
+  execute function public.activity_session_reconcile_proof_flag();
+
 -- ── 3. The review queue, joined ────────────────────────────────────────
 
 -- One row per flagged session with everything a reviewer needs to decide:
