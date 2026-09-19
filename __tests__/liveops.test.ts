@@ -548,6 +548,16 @@ describe('journeyFindings', () => {
     expect(f.map(a => a.label)).toContain('NO OS ENTER');
   });
 
+  it('reads a disowned close as the device observing the exit, not as a blind walk-out', () => {
+    for (const close_reason of ['disowned_by_device', 'disowned_by_sweep']) {
+      const labels = journeyFindings(journey({
+        close_reason, exit_detected_at: null, ended_at: '2026-09-19T11:17:29Z',
+      })).map(a => a.label);
+      expect(labels).toContain('DEVICE DISOWNED');
+      expect(labels).not.toContain('NO EXIT DETECTED');
+    }
+  });
+
   it('names the settle stages when the server banked the credit', () => {
     const f = journeyFindings(journey({ settled_stages: ['dwell', 'upgrade'] }));
     expect(f.map(a => a.label)).toContain('SERVER SETTLED · dwell, upgrade');
