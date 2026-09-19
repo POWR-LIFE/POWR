@@ -1319,7 +1319,7 @@ Deno.serve(async (req: Request) => {
   // independent sharp fixes, taken after the last thing the device said from
   // inside, well clear of the exit bound).
   const EXIT_HYSTERESIS_M = 50;       // the client's LOCATION_EXIT_HYSTERESIS_M
-  const DEFAULT_RADIUS_M = 25;
+  const DEFAULT_RADIUS_M = 100;
   type WitnessVisit = {
     user_id: string; partner_id: string | null; region_id: string | null;
     started_at: string; last_proven_at?: string | null; last_confirmed_at?: string | null;
