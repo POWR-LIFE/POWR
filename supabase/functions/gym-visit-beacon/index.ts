@@ -28,7 +28,10 @@ import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 import { staleVisitVerdict, sessionBelongsToVisit, SESSION_OWNERSHIP_MARGIN_MS } from '../_shared/gymReaper.ts';
 import { settleIsTerminal } from '../_shared/settleOutcome.ts';
 import { EXIT_SETTLE_LOOKBACK_MS, EXIT_SETTLE_RIGHT_OF_WAY_MS, exitSettleDue, exitSettleExhausted } from '../_shared/exitSettle.ts';
-import { deviceContradictsPresence, disownedAnswers } from '../_shared/settleGuards.ts';
+import {
+  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepWitnessesOutside,
+  SWEEP_WITNESSES_REQUIRED,
+} from '../_shared/settleGuards.ts';
 import { MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
 
 // Budgets are PER STAGE and live in their own columns (nudge_count /
@@ -151,7 +154,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settled_exit: 0, settle_declined: 0, disowned_closed: 0, settle_contradicted: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settled_exit: 0, settle_declined: 0, disowned_closed: 0, settle_contradicted: 0, sweep_closed: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -1304,6 +1307,89 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // ── The device's own sweeps as an exit witness (2026-09-19) ───────────────
+  // The disown pass above needs the phone to ANSWER A WAKE, and a phone with no
+  // push token is never woken: the no-token branch only touches last_nudge_at,
+  // so nudge_count stays 0, the settle never selects it, the reaper only reads
+  // upgraded visits, and the row waits 12 h for the abandon net. Field 09-19,
+  // visit 9587b7e4 (Android, notifications denied, zero token rows): checked in
+  // riding past a roadside gym at 11:17, 9 km away by 13:09 — and saying so every
+  // ~15 min in its own `sweep` rows, which ride the device ticket and need no
+  // push. sweepWitnessesOutside reads those rows under strict terms (two
+  // independent sharp fixes, taken after the last thing the device said from
+  // inside, well clear of the exit bound).
+  const EXIT_HYSTERESIS_M = 50;       // the client's LOCATION_EXIT_HYSTERESIS_M
+  const DEFAULT_RADIUS_M = 100;
+  type WitnessVisit = {
+    user_id: string; partner_id: string | null; region_id: string | null;
+    started_at: string; last_proven_at?: string | null; last_confirmed_at?: string | null;
+  };
+  const sweepWitnesses = async (v: WitnessVisit): Promise<number> => {
+    let radiusM = DEFAULT_RADIUS_M;
+    if (v.partner_id) {
+      const { data: partner } = await admin.from('partners').select('locations').eq('id', v.partner_id).maybeSingle();
+      const locs = Array.isArray(partner?.locations) ? partner.locations as { radius?: number }[] : [];
+      // region ids are '<partner uuid>-<location index>'; an unreadable index
+      // falls back to the LARGEST circle the partner has — the cautious bound.
+      const idx = v.region_id ? Number(v.region_id.slice(37)) : NaN;
+      const radii = locs.map((l) => Number(l?.radius)).filter((r) => Number.isFinite(r) && r > 0);
+      const own = Number.isInteger(idx) ? Number(locs[idx]?.radius) : NaN;
+      if (Number.isFinite(own) && own > 0) radiusM = own;
+      else if (radii.length > 0) radiusM = Math.max(...radii);
+    }
+    const since = lastInsideWordIso(v);
+    const { data: sweeps, error } = await admin
+      .from('geofence_region_events')
+      .select('created_at, detail')
+      .eq('user_id', v.user_id)
+      .eq('event', 'sweep')
+      .gt('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) { console.error('[gym-visit-beacon] sweep witness read failed', error); return 0; }
+    return sweepWitnessesOutside(sweeps ?? [], since, radiusM + EXIT_HYSTERESIS_M);
+  };
+
+  {
+    // Unclaimed visits only, like the disown pass: nothing is banked, and
+    // claim-points stamps a closed-unclaimed visit post hoc, so a client claim
+    // that lands later is not blocked by this close. Ten minutes of right-of-way
+    // for the client's own finalize.
+    const { data: sweepCandidates, error: swErr } = await admin
+      .from('gym_visits')
+      .select('id, user_id, partner_id, region_id, started_at, last_proven_at, last_confirmed_at')
+      .eq('status', 'open')
+      .is('claimed_session_id', null)
+      .is('ended_at', null)
+      .lte('started_at', new Date(Date.now() - 10 * 60_000).toISOString())
+      .limit(50);
+    if (swErr) console.error('[gym-visit-beacon] sweep witness scan failed', swErr);
+
+    for (const v of sweepCandidates ?? []) {
+      const witnesses = await sweepWitnesses(v);
+      if (witnesses < SWEEP_WITNESSES_REQUIRED) continue;
+
+      const endedAtIso = v.last_proven_at && Date.parse(v.last_proven_at) > Date.parse(v.started_at)
+        ? v.last_proven_at : v.started_at;
+      const { data: closed, error: closeErr } = await admin
+        .from('gym_visits')
+        .update({ status: 'closed', close_reason: 'disowned_by_sweep', ended_at: endedAtIso })
+        .eq('id', v.id)
+        .eq('status', 'open')
+        .is('claimed_session_id', null)
+        .is('ended_at', null)
+        .select('id')
+      if (closeErr) { console.error('[gym-visit-beacon] sweep close failed', closeErr); continue; }
+      if (!closed || closed.length === 0) continue;
+
+      await admin.from('gym_visit_events').insert({
+        visit_id: v.id, user_id: v.user_id, event: 'closed_stale',
+        detail: { reason: 'disowned_by_sweep', witnesses, ended_at: endedAtIso },
+      });
+      stats.sweep_closed++;
+    }
+  }
+
   {
     const SETTLE_GRACE_MIN = 5;
     const SETTLE_MIN_NUDGES = 2;
@@ -1358,7 +1444,7 @@ Deno.serve(async (req: Request) => {
     // Stage 1: unclaimed visits past dwell + grace with an exhausted wake offer.
     const { data: settleClaims, error: scErr } = await admin
       .from('gym_visits')
-      .select('id, user_id, partner_id, region_id, started_at, last_proven_at, nudge_count')
+      .select('id, user_id, partner_id, region_id, started_at, last_proven_at, last_confirmed_at, nudge_count')
       .eq('status', 'open')
       .is('claimed_session_id', null)
       .is('ended_at', null)
@@ -1373,13 +1459,17 @@ Deno.serve(async (req: Request) => {
     // exits write no `exit` region row) — and since the check-in proof stamp a
     // drive-by's clock is not null, so this is the only thing between the settle
     // and paying someone for driving past a gym.
-    const contradicted = async (visitId: string, sinceIso: string | null): Promise<boolean> => {
+    //
+    // Its sweeps count too (2026-09-19): a phone that never answers a wake but
+    // keeps reporting itself kilometres away has said the same thing.
+    const contradicted = async (v: WitnessVisit & { id: string }): Promise<boolean> => {
       const { data: evs } = await admin
         .from('gym_visit_events')
         .select('event, created_at, detail')
-        .eq('visit_id', visitId)
+        .eq('visit_id', v.id)
         .eq('event', 'confirmed_outside');
-      const hit = deviceContradictsPresence(evs ?? [], sinceIso);
+      const hit = deviceContradictsPresence(evs ?? [], v.last_proven_at ?? null)
+        || (await sweepWitnesses(v)) >= SWEEP_WITNESSES_REQUIRED;
       if (hit) stats.settle_contradicted++;
       return hit;
     };
@@ -1387,7 +1477,7 @@ Deno.serve(async (req: Request) => {
     for (const v of settleClaims ?? []) {
       if (!v.last_proven_at) continue;             // check-in never proved an inside fix
       if (!(await noExitSince(v))) continue;       // user observably left — exit path owns it
-      if (await contradicted(v.id, v.last_proven_at)) continue; // the device said "outside" since
+      if (await contradicted(v)) continue;         // the device said "outside" since
 
       const nowIso = new Date().toISOString();
       const durationSec = Math.max(0, Math.round((Date.now() - Date.parse(v.started_at)) / 1000));
@@ -1433,7 +1523,7 @@ Deno.serve(async (req: Request) => {
     // Stage 2: claimed-not-upgraded visits past upgrade + grace, same offer test.
     const { data: settleUpgrades, error: suErr } = await admin
       .from('gym_visits')
-      .select('id, user_id, region_id, started_at, claimed_session_id, nudge_count_upgrade, last_proven_at')
+      .select('id, user_id, partner_id, region_id, started_at, claimed_session_id, nudge_count_upgrade, last_proven_at, last_confirmed_at')
       .not('claimed_session_id', 'is', null)
       .is('upgraded_at', null)
       .is('ended_at', null)
@@ -1445,7 +1535,7 @@ Deno.serve(async (req: Request) => {
 
     for (const v of settleUpgrades ?? []) {
       if (!(await noExitSince(v))) continue;
-      if (await contradicted(v.id, v.last_proven_at ?? null)) continue;
+      if (await contradicted(v)) continue;
 
       // upgrade-gym-tier gates on the RECORDED length, and a device that never
       // answered post-claim left the session frozen at claim time. Extend to

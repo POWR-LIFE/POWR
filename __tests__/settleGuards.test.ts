@@ -2,7 +2,9 @@
  * The beacon must never pay a visit the device has contradicted, and must close
  * a visit the device has disowned. Both read gym_visit_events; both are pure.
  */
-import { deviceContradictsPresence, disownedAnswers } from '@/supabase/functions/_shared/settleGuards';
+import {
+  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepWitnessesOutside,
+} from '@/supabase/functions/_shared/settleGuards';
 
 const T0 = '2026-09-07T11:19:08.078Z';   // started_at
 const T1 = '2026-09-07T11:50:02.951Z';   // first wake answer
@@ -45,5 +47,79 @@ describe('deviceContradictsPresence', () => {
   it('fails closed on a timestamp it cannot read', () => {
     expect(deviceContradictsPresence([outside('garbage')], T0)).toBe(true);
     expect(deviceContradictsPresence([outside(T2)], 'garbage')).toBe(true);
+  });
+});
+
+// Field 2026-09-19: visit 9587b7e4, Mayflower Gym (radius 25), Android, no push
+// token. Check-in proof 11:17:29; the rows below are the device's own sweeps.
+describe('sweepWitnessesOutside', () => {
+  const PROOF = '2026-09-19T11:17:29.217Z';
+  const BOUND = 25 + 50;
+  const sweep = (created_at: string, nearest_m: number | null, acc_m: number | null = 10, age_s: number | null = 0, outcome = 'handoff') =>
+    ({ created_at, detail: { outcome, nearest_m, acc_m, age_s } });
+
+  it('counts the field case: two sharp fixes, kilometres out, after the proof', () => {
+    const rows = [
+      sweep('2026-09-19T11:24:05.861Z', 471, 4, 1),
+      sweep('2026-09-19T11:42:07.346Z', 2232, 4, 0),
+      sweep('2026-09-19T12:08:38.381Z', 5260, 4, 111),
+    ];
+    expect(sweepWitnessesOutside(rows, PROOF, BOUND)).toBe(3);
+  });
+
+  it('does not count a member still training — sweeps a few metres from the pin', () => {
+    const rows = [sweep('2026-09-19T11:32:00Z', 18), sweep('2026-09-19T11:47:00Z', 37, 6)];
+    expect(sweepWitnessesOutside(rows, PROOF, BOUND)).toBe(0);
+  });
+
+  it('holds the margin: just outside the exit bound is not a witness', () => {
+    // bound 75 + margin 150 = 225 m of clearance needed AFTER the error bar.
+    expect(sweepWitnessesOutside([sweep('2026-09-19T11:40:00Z', 230, 10)], PROOF, BOUND)).toBe(0);
+    expect(sweepWitnessesOutside([sweep('2026-09-19T11:40:00Z', 235, 10)], PROOF, BOUND)).toBe(1);
+  });
+
+  it('refuses coarse fixes — the 300–1500 m cell fixes this device also logged', () => {
+    const rows = [sweep('2026-09-19T12:25:56Z', 4222, 300, 395), sweep('2026-09-19T12:38:51Z', 9714, 100, 115)];
+    expect(sweepWitnessesOutside(rows, PROOF, BOUND)).toBe(0);
+  });
+
+  it('judges the FIX time, not the row time: a cached fix from before the proof is no witness', () => {
+    // Logged 3 min after the proof, but the fix is 5 min old — taken on the approach.
+    expect(sweepWitnessesOutside([sweep('2026-09-19T11:20:29Z', 900, 5, 300)], PROOF, BOUND)).toBe(0);
+  });
+
+  it('counts one cached fix reported by two sweeps once', () => {
+    const rows = [
+      sweep('2026-09-19T13:24:00Z', 9226, 4, 100),   // fix 13:22:20
+      sweep('2026-09-19T13:24:40Z', 9226, 4, 140),   // same fix, reported again
+    ];
+    expect(sweepWitnessesOutside(rows, PROOF, BOUND)).toBe(1);
+  });
+
+  it('ignores rows it cannot read, and sweeps that found no fix', () => {
+    const rows = [
+      sweep('2026-09-19T12:00:00Z', null),
+      sweep('2026-09-19T12:05:00Z', 5000, null),
+      sweep('2026-09-19T12:10:00Z', 5000, 10, null),
+      sweep('not-a-date', 5000),
+      sweep('2026-09-19T12:15:00Z', 5000, 10, 0, 'no_fix'),
+      { created_at: '2026-09-19T12:20:00Z', detail: null },
+    ];
+    expect(sweepWitnessesOutside(rows, PROOF, BOUND)).toBe(0);
+  });
+
+  it('fails open (no witnesses) when the clock or the bound is unreadable', () => {
+    const rows = [sweep('2026-09-19T12:00:00Z', 5000)];
+    expect(sweepWitnessesOutside(rows, null, BOUND)).toBe(0);
+    expect(sweepWitnessesOutside(rows, 'garbage', BOUND)).toBe(0);
+    expect(sweepWitnessesOutside(rows, PROOF, NaN)).toBe(0);
+  });
+});
+
+describe('lastInsideWordIso', () => {
+  it('takes the newest of start, proof and loose confirm', () => {
+    expect(lastInsideWordIso({ started_at: T0 })).toBe(T0);
+    expect(lastInsideWordIso({ started_at: T0, last_proven_at: T1, last_confirmed_at: null })).toBe(T1);
+    expect(lastInsideWordIso({ started_at: T0, last_proven_at: T1, last_confirmed_at: T2 })).toBe(T2);
   });
 });
