@@ -23,6 +23,7 @@ import {
 } from '@/lib/api/activity';
 import { dayAnchor, monthLabel, weekAnchorMonday } from '@/lib/progressLookback';
 import { formatDistance } from '@/lib/units';
+import { isDistanceLed } from '@/lib/weeklyActivities';
 
 // ─── Design tokens (match progress.tsx) ──────────────────────────────────────
 
@@ -88,6 +89,8 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
 
   const hasToday = data && data.sessionCount > 0;
   const hasHistory = history.some(d => d.sessions > 0);
+  // Distance-led sports lead with how far — when the day's sessions carried one.
+  const dayDistance = isDistanceLed(type) && data?.distanceM ? data.distanceM : 0;
 
   return (
     <View style={styles.tabPanel}>
@@ -104,11 +107,11 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
           <View style={styles.bigMetricRow}>
             <View style={styles.bigMetric}>
               <Text style={styles.bigMetricSup}>{isToday ? "TODAY'S " : ''}{config.labelShort.toUpperCase()}</Text>
-              <Text style={[styles.bigMetricVal, { color: config.colour }]}>
-                {data!.sessionCount}
+              <Text style={[styles.bigMetricVal, { color: config.colour }, dayDistance > 0 && { fontSize: 30, lineHeight: 32 }]}>
+                {dayDistance > 0 ? formatDistance(dayDistance, type) : data!.sessionCount}
               </Text>
               <Text style={styles.bigMetricMax}>
-                {data!.sessionCount === 1 ? 'session' : 'sessions'} · {formatDuration(data!.totalDurationMin)}
+                {dayDistance > 0 ? `${data!.sessionCount} ` : ''}{data!.sessionCount === 1 ? 'session' : 'sessions'} · {formatDuration(data!.totalDurationMin)}
               </Text>
               <View style={styles.metricBar}>
                 <View style={[styles.metricBarFill, { width: `${Math.round(Math.min(data!.sessionCount / 1, 1) * 100)}%` as any, backgroundColor: config.colour }]} />
@@ -156,7 +159,15 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
                   {hasData && <View style={[styles.historyBarFill, { backgroundColor: config.colour }]} />}
                 </View>
                 <Text style={[styles.historyMeta, !hasData && { color: MUTED }]}>
-                  {hasData ? formatDuration(day.totalDurationMin) : '—'}
+                  {!hasData
+                    ? '—'
+                    : isDistanceLed(type) && day.distanceM > 0
+                      ? formatDistance(day.distanceM, type)
+                      // "45m" beside "5.0 mi" and "830 m" reads as metres — in a
+                      // column that mixes the two, spell the minutes out.
+                      : isDistanceLed(type) && day.totalDurationMin < 60
+                        ? `${day.totalDurationMin} min`
+                        : formatDuration(day.totalDurationMin)}
                 </Text>
                 <Text style={[styles.historyPoints, !hasData && { color: MUTED }]}>
                   {hasData && day.points > 0 ? `${day.points}pt` : '—'}
@@ -173,10 +184,12 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
 // ─── Week View ───────────────────────────────────────────────────────────────
 
 function WorkoutWeekView({
-  type, count, weekActiveDays, weeklyEarned, isCurrentWeek, onInfo, weekStart, markedKey, onSelectDay,
+  type, count, weekActiveDays, weeklyEarned, isCurrentWeek, onInfo, weekStart, markedKey, onSelectDay, distancePerDay,
 }: {
   type: ActivityType;
   count: number;
+  /** Mon–Sun metres. Null until the week has loaded, or for a week with no distance. */
+  distancePerDay: number[] | null;
   weekActiveDays: boolean[];
   weeklyEarned: number;
   isCurrentWeek: boolean;
@@ -202,14 +215,23 @@ function WorkoutWeekView({
     }
   }
   const activeDays = weekActiveDays.filter(Boolean).length;
+  // Distance-led sports lead with how far, and the day bars scale to it — a
+  // 65 km ride and a 5 km spin to the shops shouldn't draw the same bar.
+  const weekDistance = distancePerDay?.reduce((sum, m) => sum + m, 0) ?? 0;
+  const byDistance = isDistanceLed(type) && weekDistance > 0;
+  const maxDayDistance = byDistance ? Math.max(...distancePerDay!) : 0;
 
   return (
     <View style={styles.tabPanel}>
       <View style={styles.bigMetricRow}>
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>{config.labelShort.toUpperCase()} SESSIONS</Text>
-          <Text style={[styles.bigMetricVal, { color: config.colour }]}>{count}</Text>
-          <Text style={styles.bigMetricMax}>/ 5 goal</Text>
+          <Text style={styles.bigMetricSup}>{config.labelShort.toUpperCase()} {byDistance ? 'DISTANCE' : 'SESSIONS'}</Text>
+          <Text style={[styles.bigMetricVal, { color: config.colour }, byDistance && { fontSize: 30, lineHeight: 32 }]}>
+            {byDistance ? formatDistance(weekDistance, type) : count}
+          </Text>
+          <Text style={styles.bigMetricMax}>
+            {byDistance ? `${count} of 5 sessions` : '/ 5 goal'}
+          </Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(sessionPct * 100)}%` as any, backgroundColor: config.colour }]} />
           </View>
@@ -259,7 +281,14 @@ function WorkoutWeekView({
             >
               <View style={styles.weekBarTrack}>
                 {hasData && (
-                  <View style={[styles.weekBarFill, { height: '100%', backgroundColor: barColor }]} />
+                  <View style={[styles.weekBarFill, {
+                    // A day with a session but no distance (an indoor ride in
+                    // an outdoor week) keeps a visible stub rather than vanishing.
+                    height: byDistance
+                      ? `${Math.round(Math.max((distancePerDay![i] ?? 0) / maxDayDistance, 0.12) * 100)}%` as any
+                      : '100%',
+                    backgroundColor: barColor,
+                  }]} />
                 )}
               </View>
               <Text style={[
@@ -599,6 +628,7 @@ export function WorkoutsTab({
             weekStart={weekAnchorMonday(offset)}
             markedKey={daySel.markedKey}
             onSelectDay={daySel.open}
+            distancePerDay={weekData?.distancePerDay ?? null}
           />
         </StalePanel>
       )}

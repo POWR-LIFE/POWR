@@ -1158,6 +1158,9 @@ export type WeekActivityData = {
     sessionsPerDay: number[];
     /** Mon–Sun step counts (walking only; zeros otherwise) */
     stepsPerDay: number[];
+    /** Mon–Sun metres covered (zeros when no session carried a distance) */
+    distancePerDay: number[];
+    totalDistanceM: number;
     totalSteps: number;
 };
 
@@ -1177,6 +1180,8 @@ export async function fetchWeekActivityData(type: ActivityType, weekStart: Date)
         sessionsPerDay: [0, 0, 0, 0, 0, 0, 0],
         stepsPerDay: [0, 0, 0, 0, 0, 0, 0],
         totalSteps: 0,
+        distancePerDay: [0, 0, 0, 0, 0, 0, 0],
+        totalDistanceM: 0,
     };
     const uid = await getCurrentUserId();
     if (!uid) return empty;
@@ -1189,7 +1194,7 @@ export async function fetchWeekActivityData(type: ActivityType, weekStart: Date)
     const [{ data, error }, suppressed] = await Promise.all([
         supabase
             .from('activity_sessions')
-            .select('started_at, duration_sec, steps, point_transactions(amount)')
+            .select('started_at, duration_sec, steps, distance_m, point_transactions(amount)')
             .eq('user_id', uid)
             .eq('type', type)
             .gte('started_at', start.toISOString())
@@ -1205,14 +1210,16 @@ export async function fetchWeekActivityData(type: ActivityType, weekStart: Date)
         durationPerDay: [...empty.durationPerDay],
         sessionsPerDay: [...empty.sessionsPerDay],
         stepsPerDay: [...empty.stepsPerDay],
+        distancePerDay: [...empty.distancePerDay],
     };
     const weekRows = [
-        ...((data ?? []) as Array<{ started_at: string; duration_sec: number | null; steps: number | null; point_transactions: { amount: number }[] }>),
+        ...((data ?? []) as Array<{ started_at: string; duration_sec: number | null; steps: number | null; distance_m: number | null; point_transactions: { amount: number }[] }>),
         // Workouts a check-in suppressed still count as training done that week.
         ...suppressed.map(w => ({
             started_at: w.started_at,
             duration_sec: w.duration_sec,
             steps: null,
+            distance_m: w.distance_m,
             point_transactions: [] as { amount: number }[],
         })),
     ];
@@ -1230,6 +1237,8 @@ export async function fetchWeekActivityData(type: ActivityType, weekStart: Date)
         result.pointsPerDay[idx] += pts;
         result.stepsPerDay[idx] += s.steps ?? 0;
         result.totalSteps += s.steps ?? 0;
+        result.distancePerDay[idx] += s.distance_m ?? 0;
+        result.totalDistanceM += s.distance_m ?? 0;
     }
     return result;
 }
@@ -1241,6 +1250,8 @@ export type DailyWorkoutHistory = {
     sessions: number;
     totalDurationMin: number;
     points: number;
+    /** Metres covered that day. 0 when no session carried a distance. */
+    distanceM: number;
 };
 
 /**
@@ -1263,7 +1274,7 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5, be
     const [{ data, error }, suppressed] = await Promise.all([
         supabase
             .from('activity_sessions')
-            .select('started_at, duration_sec, point_transactions(amount)')
+            .select('started_at, duration_sec, distance_m, point_transactions(amount)')
             .eq('user_id', uid)
             .eq('type', type)
             .gte('started_at', rangeStart.toISOString())
@@ -1274,14 +1285,15 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5, be
     if (error) throw error;
 
     const historyRows = [
-        ...((data ?? []) as Array<{ started_at: string; duration_sec: number | null; point_transactions: { amount: number }[] }>),
+        ...((data ?? []) as Array<{ started_at: string; duration_sec: number | null; distance_m: number | null; point_transactions: { amount: number }[] }>),
         ...suppressed.map(w => ({
             started_at: w.started_at,
             duration_sec: w.duration_sec,
+            distance_m: w.distance_m,
             point_transactions: [] as { amount: number }[],
         })),
     ];
-    const byDate = new Map<string, { sessions: number; durationMin: number; points: number }>();
+    const byDate = new Map<string, { sessions: number; durationMin: number; points: number; distanceM: number }>();
     for (const s of historyRows) {
         const dateKey = localDateStr(new Date(s.started_at));
         const pts = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
@@ -1291,8 +1303,9 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5, be
             existing.sessions++;
             existing.durationMin += durMin;
             existing.points += pts;
+            existing.distanceM += s.distance_m ?? 0;
         } else {
-            byDate.set(dateKey, { sessions: 1, durationMin: durMin, points: pts });
+            byDate.set(dateKey, { sessions: 1, durationMin: durMin, points: pts, distanceM: s.distance_m ?? 0 });
         }
     }
 
@@ -1307,6 +1320,7 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5, be
             sessions: val?.sessions ?? 0,
             totalDurationMin: val?.durationMin ?? 0,
             points: val?.points ?? 0,
+            distanceM: val?.distanceM ?? 0,
         });
     }
     return result;
@@ -1687,7 +1701,7 @@ export type TodayActivityDetail = {
     totalPoints: number;
     /** Walking-only: step count */
     steps: number | null;
-    /** Walking-only: distance in metres */
+    /** Metres covered. Walking always reports it; other types only when a session carried one. */
     distanceM: number | null;
     /** ISO timestamp of the most recent session start */
     latestStartedAt: string | null;
@@ -1754,7 +1768,7 @@ export async function fetchTodayActivityDetail(type: ActivityType, day?: Date): 
         totalDurationMin,
         totalPoints,
         steps: type === 'walking' ? totalSteps : null,
-        distanceM: type === 'walking' ? totalDistance : null,
+        distanceM: type === 'walking' || totalDistance > 0 ? totalDistance : null,
         latestStartedAt: sessions.length > 0 ? sessions[0].started_at : null,
     };
 }
