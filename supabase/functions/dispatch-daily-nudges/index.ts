@@ -13,7 +13,8 @@
 //
 // Candidate selection is one SQL pass (nudge_dispatch_candidates — all the
 // timezone math lives there). This function stays deliberately dumb: it just
-// forwards each candidate to send-push-notification, which owns EVERY gate —
+// forwards the candidates to send-push-notification — one BATCH call per
+// phase, never one call per user (see sendBatch) — which owns EVERY gate —
 // admin kill-switch, the shared nudge budget (one nudge-class push per user
 // per local day), user preference, streak recompute + min-streak floor, and
 // push_send_log forensics. Duplicate cron overlap is therefore harmless: the
@@ -41,8 +42,13 @@ import {
 import { shouldSendRegressionNotice, REGRESSION_GRACE_MS } from '../_shared/locationRegression.ts';
 import { isGymRelevant, observedActivityTypes, relevantActivities, RELEVANCE_WINDOW_MS } from '../_shared/activityRelevance.ts';
 
-const CONCURRENCY = 10;
+// Targets per send-push-notification call. That function rejects > 200; 100
+// keeps one call comfortably inside its per-request CPU / idle-timeout budget.
+const BATCH_CHUNK = 100;
 const MAX_SEND_ATTEMPTS = 3;
+
+type PushTarget = { target_user_id: string; type: string; payload: Record<string, unknown> };
+type PushStatus = 'sent' | 'skipped' | 'failed';
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
 /** Human progress readout per rule shape — mirrors the client card's units. */
@@ -89,15 +95,21 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-  // Supabase's own function-to-function fetch is itself rate-limited: a big
-  // enough candidate batch (e.g. everyone sharing a popular reminder slot)
-  // can trip it, and the Deno runtime throws RateLimitError with a
-  // retryAfterMs *before* the request goes out — no response, nothing to
-  // read a status code from. `rateLimitUntil` is shared across every worker
-  // so one hit backs the whole pool off at once instead of every in-flight
-  // fetch failing independently against the same window.
+  // Supabase's own function-to-function fetch is itself rate-limited — ~30
+  // calls per minute on this project, whatever the docs say. One call per
+  // candidate meant the 07:00 UTC reminder slot (~90 users) lost everyone past
+  // #30, every day. So each phase collects its targets and sends them as ONE
+  // batch call; a whole tick is now 1–3 internal calls.
+  //
+  // The retry below is the safety net, not the mechanism: past the limit the
+  // Deno runtime throws RateLimitError with a retryAfterMs *before* the
+  // request goes out — no response, nothing to read a status code from.
+  // Only that error is retried. Any other failure may have been partially
+  // processed on the far side, and a blind resend would double-write the
+  // activity feed for everyone who already went through.
   let rateLimitUntil = 0;
-  async function sendPush(targetUserId: string, type: string, payload: Record<string, unknown>): Promise<'sent' | 'skipped' | 'failed'> {
+  async function sendChunk(targets: PushTarget[]): Promise<PushStatus[]> {
+    const allFailed = () => targets.map((): PushStatus => 'failed');
     for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS; attempt++) {
       const waitMs = rateLimitUntil - Date.now();
       if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
@@ -108,33 +120,47 @@ Deno.serve(async (req: Request) => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${serviceKey}`,
           },
-          body: JSON.stringify({ target_user_id: targetUserId, type, payload }),
+          body: JSON.stringify({ targets }),
         });
         const body = await res.json().catch(() => null);
-        if (body?.skipped) return 'skipped';
-        return res.ok ? 'sent' : 'failed';
+        const results = body?.results;
+        if (!res.ok || !Array.isArray(results) || results.length !== targets.length) {
+          console.warn(`[dispatch-daily-nudges] batch of ${targets.length} rejected (${res.status}):`, body);
+          return allFailed();
+        }
+        // Results are positional — same order as the targets sent.
+        return results.map((r: any, i: number): PushStatus => {
+          if (r?.status === 'sent' || r?.status === 'skipped') return r.status;
+          console.warn(`[dispatch-daily-nudges] ${targets[i].type} → ${targets[i].target_user_id} failed:`, r?.reason);
+          return 'failed';
+        });
       } catch (err: any) {
         if (err?.name === 'RateLimitError' && attempt < MAX_SEND_ATTEMPTS - 1) {
           rateLimitUntil = Math.max(rateLimitUntil, Date.now() + Math.min(Number(err.retryAfterMs) || 5000, 60000));
           continue;
         }
-        console.warn(`[dispatch-daily-nudges] ${type} → ${targetUserId} failed:`, err);
-        return 'failed';
+        console.warn(`[dispatch-daily-nudges] batch of ${targets.length} failed:`, err);
+        return allFailed();
       }
     }
-    return 'failed';
+    return allFailed();
   }
 
-  const queue = [...(candidates ?? [])];
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-    while (cursor < queue.length) {
-      const c = queue[cursor++];
-      if (!c) break;
-      stats[await sendPush(c.user_id, c.kind, {})]++;
+  /** One status per target, in order. Never throws. */
+  async function sendBatch(targets: PushTarget[]): Promise<PushStatus[]> {
+    const statuses: PushStatus[] = [];
+    for (let i = 0; i < targets.length; i += BATCH_CHUNK) {
+      statuses.push(...await sendChunk(targets.slice(i, i + BATCH_CHUNK)));
     }
-  });
-  await Promise.all(workers);
+    return statuses;
+  }
+
+  // ── Phase 1: daily_reminder / streak_at_risk ──────────────────────────────
+  // Awaited before Phase 2 starts: the nudge budget is first-come, and the
+  // reminder / streak warning are meant to win the day's slot.
+  const phase1: PushTarget[] = (candidates ?? [])
+    .map((c) => ({ target_user_id: c.user_id, type: c.kind, payload: {} }));
+  for (const status of await sendBatch(phase1)) stats[status]++;
 
   // ── Phase 2: weekly-board nudges ──────────────────────────────────────────
   const { data: wkCandidates, error: wkErr } = await admin.rpc('weekly_nudge_candidates');
@@ -156,6 +182,7 @@ Deno.serve(async (req: Request) => {
       if (ov?.value) weekOverrides = typeof ov.value === 'string' ? JSON.parse(ov.value) : ov.value;
     } catch { /* bundled catalog, no overrides */ }
 
+    const wkTargets: PushTarget[] = [];
     for (const c of wkCandidates ?? []) {
       try {
         const offm = Number(c.tz_offset_minutes) || 0;
@@ -236,19 +263,26 @@ Deno.serve(async (req: Request) => {
           if ((prior ?? []).length > 0) { stats.wk_skipped++; continue; }
         }
 
-        const outcome = await sendPush(c.user_id, c.kind, {
-          challenge_id: best.ch.id,
-          challenge_name: best.ch.title,
-          progress_text: progressText(best.ch.rule, best.ch.category, best.progress, best.target),
-          points: best.ch.points,
+        wkTargets.push({
+          target_user_id: c.user_id,
+          type: c.kind,
+          payload: {
+            challenge_id: best.ch.id,
+            challenge_name: best.ch.title,
+            progress_text: progressText(best.ch.rule, best.ch.category, best.progress, best.target),
+            points: best.ch.points,
+          },
         });
-        if (outcome === 'skipped') stats.wk_skipped++;
-        else if (outcome === 'sent') stats.wk_sent++;
-        else stats.failed++;
       } catch (err) {
         stats.failed++;
         console.warn(`[dispatch-daily-nudges] weekly ${c.kind} → ${c.user_id} failed:`, err);
       }
+    }
+
+    for (const status of await sendBatch(wkTargets)) {
+      if (status === 'skipped') stats.wk_skipped++;
+      else if (status === 'sent') stats.wk_sent++;
+      else stats.failed++;
     }
   }
 
@@ -325,6 +359,7 @@ Deno.serve(async (req: Request) => {
         if (Number.isFinite(t) && t > (lastAttempt.get(l.user_id) ?? 0)) lastAttempt.set(l.user_id, t);
       }
 
+      const locTargets: PushTarget[] = [];
       for (const [userId, reg] of latest) {
         const prof = profById.get(userId);
         let localHour: number;
@@ -351,18 +386,20 @@ Deno.serve(async (req: Request) => {
         })) continue;
 
         stats.loc_candidates++;
-        try {
-          const outcome = await sendPush(userId, 'location_permission_lost', {
+        locTargets.push({
+          target_user_id: userId,
+          type: 'location_permission_lost',
+          payload: {
             level: reg.level,
             gym_relevant: isGymRelevant(prof?.activity_preferences, gymRowsByUser.get(userId) ?? [], nowMs),
-          });
-          if (outcome === 'skipped') stats.loc_skipped++;
-          else if (outcome === 'sent') stats.loc_sent++;
-          else stats.failed++;
-        } catch (err) {
-          stats.failed++;
-          console.warn(`[dispatch-daily-nudges] location_permission_lost → ${userId} failed:`, err);
-        }
+          },
+        });
+      }
+
+      for (const status of await sendBatch(locTargets)) {
+        if (status === 'skipped') stats.loc_skipped++;
+        else if (status === 'sent') stats.loc_sent++;
+        else stats.failed++;
       }
     }
   } catch (locErr) {
