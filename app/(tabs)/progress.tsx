@@ -33,7 +33,7 @@ import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchActivityHistoryTypes, fetchWeeklySleepHours, localDateStr } from '@/lib/api/activity';
 import { deriveBodySignals, fetchBodyTrends, isEmptyTrends, readinessOf, type BodyTrends } from '@/lib/api/bodyTrends';
 import { fetchProfile } from '@/lib/api/user';
-import { orderedProgressActivities } from '@/lib/weeklyActivities';
+import { orderedProgressActivities, weeklyDistanceLabel, WEEKLY_STEPS_TARGET } from '@/lib/weeklyActivities';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -241,10 +241,11 @@ export default function ProgressScreen() {
     if (type === 'walking') {
       return {
         id: 'walking',
-        pct: Math.min(weeklyMetrics.totalSteps / 10000, 1),
+        // totalSteps is the Mon–Sun sum, so it is labelled and measured as a week.
+        pct: Math.min(weeklyMetrics.totalSteps / WEEKLY_STEPS_TARGET, 1),
         value: stepsF,
         maxLabel: ' steps',
-        subLabel: 'TODAY',
+        subLabel: 'THIS WEEK',
         gradientColors: [GREEN, '#10b981'],
         iconName: config.iconActive,
         iconLib: config.iconLib,
@@ -259,12 +260,15 @@ export default function ProgressScreen() {
 
     const count = weeklyMetrics.perType[type] ?? 0;
     const typeDays = weeklyMetrics.activeDaysPerType?.[type] ?? new Array(7).fill(false);
+    const distance = weeklyDistanceLabel(type, weeklyMetrics.distancePerType);
     return {
       id: type,
       pct: Math.min(count / 5, 1),
-      value: String(count),
-      maxLabel: '/ 5',
-      subLabel: `${config.labelShort.toUpperCase()} SESSIONS`,
+      value: distance?.value ?? String(count),
+      maxLabel: distance ? ` ${distance.unit}` : '/ 5',
+      subLabel: distance
+        ? `${config.labelShort.toUpperCase()} THIS WEEK`
+        : `${config.labelShort.toUpperCase()} SESSIONS`,
       gradientColors: [config.colour, ORANGE],
       iconName: config.iconActive,
       iconLib: config.iconLib,

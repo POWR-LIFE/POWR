@@ -3,6 +3,7 @@ import { getDeviceId } from '@/lib/device';
 import { emitPointsChanged } from '@/lib/pointsEvents';
 import { dayAnchor, monthAnchorEnd, monthAnchorStart, weekAnchorMonday } from '@/lib/progressLookback';
 import { getSessionUser, supabase } from '@/lib/supabase';
+import { isDistanceLed } from '@/lib/weeklyActivities';
 import {
     fetchSuppressedWorkouts,
     recordSuppressedNativeWorkout,
@@ -208,6 +209,11 @@ export type WeeklyMetrics = {
      * standalone bonuses have no session to attribute them to).
      */
     pointsPerType: Record<string, number>;
+    /**
+     * Metres covered this week, keyed by activity type. Types whose sessions
+     * carry no distance (indoor rides, Whoop spins) are absent or 0.
+     */
+    distancePerType: Record<string, number>;
 };
 
 export type DailyMetrics = {
@@ -717,7 +723,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
 
 export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
     const uid = await getCurrentUserId();
-    if (!uid) return { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {}, pointsPerType: {} };
+    if (!uid) return { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {}, pointsPerType: {}, distancePerType: {} };
     const now = new Date();
     const dayOfWeek = now.getDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -728,7 +734,7 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
     const [{ data, error }, suppressed] = await Promise.all([
         supabase
             .from('activity_sessions')
-            .select('type, steps, started_at, point_transactions(amount)')
+            .select('type, steps, distance_m, started_at, point_transactions(amount)')
             .eq('user_id', uid)
             .gte('started_at', monday.toISOString()),
         fetchSuppressedWorkouts(uid, { from: monday }),
@@ -739,6 +745,7 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
         ...((data ?? []) as unknown as {
             type: string;
             steps: number | null;
+            distance_m: number | null;
             started_at: string;
             point_transactions: { amount: number }[] | null;
         }[]),
@@ -747,6 +754,7 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
         ...suppressed.map(w => ({
             type: w.type,
             steps: null,
+            distance_m: w.distance_m,
             started_at: w.started_at,
             point_transactions: [] as { amount: number }[],
         })),
@@ -754,8 +762,10 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
     const perType: Record<string, number> = {};
     const activeDaysPerType: Record<string, boolean[]> = {};
     const pointsPerType: Record<string, number> = {};
+    const distancePerType: Record<string, number> = {};
     for (const s of sessions) {
         perType[s.type] = (perType[s.type] ?? 0) + 1;
+        distancePerType[s.type] = (distancePerType[s.type] ?? 0) + (s.distance_m ?? 0);
         if (!activeDaysPerType[s.type]) {
             activeDaysPerType[s.type] = [false, false, false, false, false, false, false];
         }
@@ -774,6 +784,7 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
         perType,
         activeDaysPerType,
         pointsPerType,
+        distancePerType,
     };
 }
 
@@ -1765,6 +1776,8 @@ export type DailyActivityEntry = {
     /** Session-linked points earned that day for this type. */
     points: number;
     steps: number | null;   // walking only
+    /** Metres covered that day. 0 when no session carried a distance. */
+    distanceM: number;
 };
 
 /**
@@ -1773,12 +1786,17 @@ export type DailyActivityEntry = {
  * (idx_one_session_per_type_per_day folds a second visit into the first), so a
  * session count is a constant 1 for essentially everyone and says nothing.
  * Other workouts still rank on sessions, where a second row a day is real.
+ * Distance-led sports (ride / run / swim) rank on distance whenever the month
+ * holds any — "best day: 1" under an 81 km ride said nothing either — and fall
+ * back to sessions for a month of indoor efforts that carry none.
  */
-export type BestDayMetric = 'steps' | 'sessions' | 'longestSession';
+export type BestDayMetric = 'steps' | 'sessions' | 'longestSession' | 'distance';
 
 export type MonthlyActivityData = {
     entries: DailyActivityEntry[];   // 30 entries, oldest → newest
     totalSessions: number;
+    /** Metres covered in the month. 0 when no session carried a distance. */
+    totalDistanceM: number;
     avgPerDay: number;               // avg sessions/day (workouts) or avg steps (walking)
     bestDay: DailyActivityEntry | null;
     bestDayMetric: BestDayMetric;
@@ -1801,6 +1819,7 @@ function bestDayValue(e: DailyActivityEntry, metric: BestDayMetric): number {
     switch (metric) {
         case 'steps': return e.steps ?? 0;
         case 'longestSession': return e.longestSessionMin;
+        case 'distance': return e.distanceM;
         default: return e.sessionCount;
     }
 }
@@ -1813,8 +1832,7 @@ function bestDayValue(e: DailyActivityEntry, metric: BestDayMetric): number {
  */
 export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): Promise<MonthlyActivityData> {
     const uid = await getCurrentUserId();
-    const bestDayMetric = bestDayMetricFor(type);
-    if (!uid) return { entries: [], totalSessions: 0, avgPerDay: 0, bestDay: null, bestDayMetric, type };
+    if (!uid) return { entries: [], totalSessions: 0, totalDistanceM: 0, avgPerDay: 0, bestDay: null, bestDayMetric: bestDayMetricFor(type), type };
 
     // No time-of-day normalisation needed. The anchors used to be pinned to local
     // noon, because the entry keys were built with toISOString() and a
@@ -1836,7 +1854,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
     const [{ data, error }, suppressed] = await Promise.all([
         supabase
             .from('activity_sessions')
-            .select('started_at, duration_sec, steps, point_transactions(amount)')
+            .select('started_at, duration_sec, steps, distance_m, point_transactions(amount)')
             .eq('user_id', uid)
             .eq('type', type)
             .gte('started_at', rangeStart.toISOString())
@@ -1847,19 +1865,21 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
     if (error) throw error;
 
     // Aggregate by date
-    const byDate = new Map<string, { count: number; durationMin: number; longestMin: number; points: number; steps: number }>();
+    const byDate = new Map<string, { count: number; durationMin: number; longestMin: number; points: number; steps: number; distanceM: number }>();
 
     const monthRows = [
         ...((data ?? []) as Array<{
             started_at: string;
             duration_sec: number | null;
             steps: number | null;
+            distance_m: number | null;
             point_transactions: { amount: number }[] | null;
         }>),
         ...suppressed.map(w => ({
             started_at: w.started_at,
             duration_sec: w.duration_sec as number | null,
             steps: null,
+            distance_m: w.distance_m,
             point_transactions: [] as { amount: number }[],
         })),
     ];
@@ -1875,6 +1895,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
         // DAYS shows too) — it just can't be anyone's longest.
         const longestMin = (s.duration_sec ?? 0) >= GYM_BACKSTOP_SEC ? 0 : durMin;
         const steps = s.steps ?? 0;
+        const distanceM = s.distance_m ?? 0;
         // Every row on the session counts, streak bonuses included — same rule as
         // fetchWeeklyMetrics.pointsPerType, so the two agree.
         const pts = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
@@ -1885,8 +1906,9 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
             existing.longestMin = Math.max(existing.longestMin, longestMin);
             existing.points += pts;
             existing.steps += steps;
+            existing.distanceM += distanceM;
         } else {
-            byDate.set(dateKey, { count: 1, durationMin: durMin, longestMin, points: pts, steps });
+            byDate.set(dateKey, { count: 1, durationMin: durMin, longestMin, points: pts, steps, distanceM });
         }
     }
 
@@ -1911,11 +1933,16 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
             longestSessionMin: val?.longestMin ?? 0,
             points: val?.points ?? 0,
             steps: type === 'walking' ? (val?.steps ?? 0) : null,
+            distanceM: val?.distanceM ?? 0,
         });
     }
 
     const withData = entries.filter(e => e.sessionCount > 0);
     const totalSessions = withData.reduce((s, e) => s + e.sessionCount, 0);
+    const totalDistanceM = withData.reduce((s, e) => s + e.distanceM, 0);
+    const bestDayMetric: BestDayMetric = isDistanceLed(type) && totalDistanceM > 0
+        ? 'distance'
+        : bestDayMetricFor(type);
 
     // For walking: avg steps/day; for others: avg sessions/day
     const avgPerDay = withData.length > 0
@@ -1934,7 +1961,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
         if (!bestDay || metric > bestDayValue(bestDay, bestDayMetric)) bestDay = e;
     }
 
-    return { entries, totalSessions, avgPerDay, bestDay, bestDayMetric, type };
+    return { entries, totalSessions, totalDistanceM, avgPerDay, bestDay, bestDayMetric, type };
 }
 
 // ── Health snapshot persistence ───────────────────────────────────────────────

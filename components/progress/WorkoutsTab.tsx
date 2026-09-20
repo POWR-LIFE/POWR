@@ -22,6 +22,7 @@ import {
     type WeekActivityData,
 } from '@/lib/api/activity';
 import { dayAnchor, monthLabel, weekAnchorMonday } from '@/lib/progressLookback';
+import { formatDistance } from '@/lib/units';
 
 // ─── Design tokens (match progress.tsx) ──────────────────────────────────────
 
@@ -382,16 +383,23 @@ function WorkoutMonthView({
   }
 
   const activeDays = data.entries.filter(e => e.sessionCount > 0).length;
+  const byDistance = data.bestDayMetric === 'distance';
 
   return (
     <View style={[styles.tabPanel, { gap: 10 }]}>
       <View style={styles.bigMetricRow}>
+        {/* Distance-led sports lead with how far, and keep the session count as
+            the caption — "2 rides" still matters, it just isn't the headline. */}
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>TOTAL SESSIONS</Text>
+          <Text style={styles.bigMetricSup}>{byDistance ? 'TOTAL DISTANCE' : 'TOTAL SESSIONS'}</Text>
           <Text style={[styles.bigMetricVal, { color: config.colour, fontSize: 30, lineHeight: 32 }]}>
-            {data.totalSessions}
+            {byDistance ? formatDistance(data.totalDistanceM, type) : data.totalSessions}
           </Text>
-          <Text style={styles.bigMetricMax}>{offset === 0 ? 'this month' : `in ${label}`}</Text>
+          <Text style={styles.bigMetricMax}>
+            {byDistance
+              ? `${data.totalSessions} ${data.totalSessions === 1 ? 'session' : 'sessions'} ${offset === 0 ? 'this month' : `in ${label}`}`
+              : offset === 0 ? 'this month' : `in ${label}`}
+          </Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(Math.min(data.totalSessions / 20, 1) * 100)}%` as any, backgroundColor: config.colour }]} />
           </View>
@@ -408,7 +416,9 @@ function WorkoutMonthView({
             {data.bestDay
               ? data.bestDayMetric === 'longestSession'
                 ? formatDuration(data.bestDay.longestSessionMin)
-                : data.bestDay.sessionCount
+                : byDistance
+                  ? formatDistance(data.bestDay.distanceM, type)
+                  : data.bestDay.sessionCount
               : '—'}
           </Text>
           <Text style={styles.bigMetricMax}>

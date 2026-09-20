@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchRecentSessions, type ActivitySession } from '@/lib/api/activity';
+import { formatDistance } from '@/lib/units';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -65,11 +66,6 @@ const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 function formatDuration(sec: number): string {
   const m = Math.round(sec / 60);
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m`.replace(' 0m', '') : `${m}m`;
-}
-
-function formatDistance(m: number | null): string | null {
-  if (!m || m === 0) return null;
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
 }
 
 function sessionDate(iso: string): string {
@@ -203,7 +199,7 @@ function SessionRow({ session, colour }: { session: ActivitySession; colour: str
   // are the stat. Timed sessions show distance/duration alongside when present.
   const parts = [
     session.steps ? `${session.steps.toLocaleString()} steps` : null,
-    formatDistance(session.distance_m),
+    session.distance_m ? formatDistance(session.distance_m, session.type) : null,
     session.duration_sec > 0 ? formatDuration(session.duration_sec) : null,
   ].filter((p): p is string => p != null);
   const detail = parts.length ? parts.join(' · ') : formatDuration(session.duration_sec);

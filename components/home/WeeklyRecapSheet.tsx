@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontFamily } from '@/constants/tokens';
 import type { RecapChallenge, RecapData } from '@/hooks/useWeeklyRecap';
+import { formatDistance } from '@/lib/units';
 
 // ─── Palette — Home's inks + the BODY tab's domain hues ──────────────────────
 // Gold stays POWR's alone (points); rose = heart, indigo = sleep, orange =
@@ -258,7 +259,7 @@ export function WeeklyRecapSheet({
                                                 {cat.category === 'walking' && data.steps > 0
                                                     ? `${data.steps.toLocaleString()} steps`
                                                     : cat.distanceKm != null && cat.distanceKm > 0
-                                                        ? `${cat.distanceKm} km`
+                                                        ? formatDistance(cat.distanceKm * 1000, cat.category)
                                                         : cat.totalMin != null && cat.totalMin > 0
                                                             ? `${fmtDuration(cat.totalMin)} total`
                                                             : cat.category === 'gym' ? 'check-ins' : 'sessions'}

@@ -13,11 +13,11 @@ import { type ActivityFeedItem } from '@/components/home/ActivityFeed';
 import { ACTIVITIES } from '@/constants/activities';
 import { useActivityRevision } from '@/hooks/useActivityRevision';
 import { formatRawActivityName } from '@/lib/rawActivityName';
+import { formatDistance } from '@/lib/units';
 
 function formatDetail(session: ActivitySession): string {
     if (session.distance_m && session.distance_m > 0) {
-        const km = session.distance_m / 1000;
-        return km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(session.distance_m)} m`;
+        return formatDistance(session.distance_m, session.type);
     }
     const mins = Math.round(session.duration_sec / 60);
     return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m`.replace(' 0m', '') : `${mins}m`;
@@ -63,7 +63,7 @@ type ActivityState = {
     refresh: () => void;
 };
 
-const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {}, pointsPerType: {} };
+const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {}, pointsPerType: {}, distancePerType: {} };
 const DEFAULT_DAILY: DailyMetrics = { perType: {}, stepsToday: 0 };
 
 export function useActivity(): ActivityState {

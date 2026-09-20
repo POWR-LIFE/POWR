@@ -41,6 +41,7 @@ jest.mock('@/lib/api/pointsBreakdown', () => ({
 import PointsBreakdownSheet from '@/components/progress/PointsBreakdownSheet';
 import type { ActivityType } from '@/constants/activities';
 import type { SessionExtras, SessionVitals } from '@/lib/api/pointsBreakdown';
+import { setRegionOverride } from '@/lib/units';
 
 /** Sleep stages and extras default to absent — most tests don't exercise them. */
 type PartialVitals = Partial<SessionVitals> & Pick<SessionVitals, 'source'>;
@@ -99,6 +100,10 @@ function paceBreakdown(distanceM: number | null, durationMin: number) {
 }
 
 beforeEach(() => jest.clearAllMocks());
+// Units follow the device region (lib/units); pin a km region so these don't
+// depend on the host machine's locale. The UK/miles case sets its own.
+beforeEach(() => setRegionOverride('FR'));
+afterAll(() => setRegionOverride(undefined));
 
 it('shows heart rate, calories and which device measured them', async () => {
     mockFetch.mockResolvedValue(breakdown({
@@ -218,6 +223,14 @@ describe('pace', () => {
         await waitFor(() => expect(screen.getByText('24.7 km/h')).toBeTruthy());
         expect(screen.getByText('SPEED')).toBeTruthy();
         expect(screen.queryByText('PACE')).toBeNull();
+    });
+
+    it('reads a ride in miles and mph for a UK reader', async () => {
+        setRegionOverride('GB');
+        mockFetch.mockResolvedValue(paceBreakdown(30000, 73));  // 24.7 km/h = 15.3 mph
+        renderSheet('cycling');
+        await waitFor(() => expect(screen.getByText('15.3 mph')).toBeTruthy());
+        expect(screen.getByText('18.6 mi')).toBeTruthy();
     });
 
     it('reads per 100m for a swim, the unit swimmers actually use', async () => {
