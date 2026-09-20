@@ -9,6 +9,7 @@
  */
 
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { distanceParts, type DistanceUnit } from '@/lib/units';
 
 export const WEEKLY_SESSION_TARGET = 3;
 /** Home shows at most this many rings; the picker allows this many picks. */
@@ -24,6 +25,38 @@ type WeeklyMetricsLike = {
 export function weeklyRingPct(type: ActivityType, metrics: WeeklyMetricsLike): number {
   if (type === 'walking') return Math.min(metrics.totalSteps / WEEKLY_STEPS_TARGET, 2);
   return Math.min((metrics.perType[type] ?? 0) / WEEKLY_SESSION_TARGET, 2);
+}
+
+/**
+ * Activities whose Progress radial leads with distance covered this week
+ * rather than a session count — "50.5 mi" says more about a ride than "1 / 5".
+ * All three arrive from wearables with a distance on outdoor efforts.
+ */
+const DISTANCE_RADIAL_TYPES: ReadonlySet<ActivityType> = new Set<ActivityType>([
+  'cycling', 'running', 'swimming',
+]);
+
+/** Whether an activity's headline figure is distance rather than a session count. */
+export function isDistanceLed(type: ActivityType | string): boolean {
+  return DISTANCE_RADIAL_TYPES.has(type as ActivityType);
+}
+
+/**
+ * Weekly distance for a distance-led radial, in the sport's unit for the
+ * reader's region (see lib/units), or null when the radial should fall back to
+ * its session count: the activity isn't distance-led, or none of this week's
+ * sessions carried a distance (indoor rides, treadmill runs and Whoop-sourced
+ * efforts arrive with 0 / null).
+ */
+export function weeklyDistanceLabel(
+  type: ActivityType,
+  distancePerType: Record<string, number> | undefined,
+  region?: string | null,
+): { value: string; unit: DistanceUnit } | null {
+  if (!DISTANCE_RADIAL_TYPES.has(type)) return null;
+  const metres = distancePerType?.[type] ?? 0;
+  if (metres < 100) return null;
+  return region === undefined ? distanceParts(metres, type) : distanceParts(metres, type, region);
 }
 
 /**

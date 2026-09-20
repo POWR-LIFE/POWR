@@ -25,6 +25,7 @@ import {
 import { sleepDayWindow } from '@/lib/api/activity';
 import { getGymDwellMinutes, getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
 import { rangeLabel, type LookbackPeriod } from '@/lib/progressLookback';
+import { distanceParts, formatDistance, paceParts, speedParts } from '@/lib/units';
 
 const GOLD = '#E8D200';
 const CARD_BG = '#141414';
@@ -577,7 +578,8 @@ function clockFromSeconds(totalSec: number): string {
  * 73 of 108 runs and 14 of 15 swims in the last 90 days can show one.
  *
  * Units follow what each sport actually uses: min/km for running and walking,
- * min/100m for swimming, km/h for cycling.
+ * min/100m for swimming, km/h for cycling — or their mile equivalents where
+ * the reader's region uses them for that sport (lib/units).
  */
 function paceTile(
     type: ActivityType,
@@ -593,13 +595,14 @@ function paceTile(
     const base = { key: 'pace', icon: 'speedometer-outline' as const };
 
     if (type === 'cycling') {
-        return { ...base, label: 'SPEED', value: kmh.toFixed(1), unit: 'km/h' };
+        return { ...base, label: 'SPEED', ...speedParts(kmh, type) };
     }
     if (type === 'swimming') {
         // Swimmers read per-100m, not per-km.
         return { ...base, label: 'PACE', value: clockFromSeconds(360 / kmh), unit: '/100m' };
     }
-    return { ...base, label: 'PACE', value: clockFromSeconds(3600 / kmh), unit: '/km' };
+    const pace = paceParts(kmh, type);
+    return { ...base, label: 'PACE', value: clockFromSeconds(pace.secondsPerUnit), unit: pace.unit };
 }
 
 /**
@@ -657,11 +660,7 @@ function sessionStats(
             key: 'distance',
             icon: 'navigate-outline',
             label: 'DISTANCE',
-            // Sub-kilometre efforts are real (pool lengths average ~830 m in
-            // prod), so they keep metres rather than rounding to "0.8 km".
-            ...(session.distanceM >= 1000
-                ? { value: (session.distanceM / 1000).toFixed(1), unit: 'km' }
-                : { value: `${Math.round(session.distanceM)}`, unit: 'm' }),
+            ...distanceParts(session.distanceM, type),
         }
         : null;
 
@@ -847,12 +846,6 @@ function formatDuration(mins: number): string {
     return `${mins}m`;
 }
 
-function formatDistance(metres: number): string {
-    // Sub-kilometre efforts are real (pool lengths average ~830 m in prod), so
-    // don't round them all to "0.8 km".
-    return metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres)} m`;
-}
-
 /**
  * What the session actually recorded, next to what it paid — the "8,156 steps"
  * or "7.1 km" that makes a +2 legible instead of arbitrary.
@@ -872,7 +865,7 @@ function sessionMetrics(
         ? `${session.steps.toLocaleString()} steps`
         : null;
     const distance = session.distanceM && session.distanceM > 0
-        ? formatDistance(session.distanceM)
+        ? formatDistance(session.distanceM, type)
         : null;
 
     const parts = type === 'walking'

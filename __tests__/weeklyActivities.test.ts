@@ -10,6 +10,7 @@ import {
   WEEKLY_SESSION_TARGET,
   WEEKLY_STEPS_TARGET,
   weeklyRingPct,
+  weeklyDistanceLabel,
 } from '@/lib/weeklyActivities';
 
 const PREFS: ActivityType[] = ['gym', 'running', 'walking'];
@@ -27,6 +28,40 @@ describe('weeklyRingPct', () => {
     expect(weeklyRingPct('gym', metrics({ gym: WEEKLY_SESSION_TARGET }))).toBe(1);
     expect(weeklyRingPct('gym', metrics({ gym: 100 }))).toBe(2);
     expect(weeklyRingPct('gym', metrics({}))).toBe(0);
+  });
+});
+
+describe('weeklyDistanceLabel', () => {
+  it('shows a UK ride week in miles (Mark: 81.3 km = 50.5 mi)', () => {
+    expect(weeklyDistanceLabel('cycling', { cycling: 81267 }, 'GB')).toEqual({ value: '50.5', unit: 'mi' });
+  });
+
+  it('shows the same ride in km outside the UK/US', () => {
+    expect(weeklyDistanceLabel('cycling', { cycling: 81267 }, 'ES')).toEqual({ value: '81.3', unit: 'km' });
+  });
+
+  it('drops the decimal from 100 so the radial number stays short', () => {
+    expect(weeklyDistanceLabel('cycling', { cycling: 425459 }, 'ES')).toEqual({ value: '425', unit: 'km' });
+  });
+
+  it('keeps UK runs in km and US runs in miles', () => {
+    expect(weeklyDistanceLabel('running', { running: 10000 }, 'GB')).toEqual({ value: '10.0', unit: 'km' });
+    expect(weeklyDistanceLabel('running', { running: 10000 }, 'US')).toEqual({ value: '6.2', unit: 'mi' });
+  });
+
+  it('shows swimming in metres everywhere', () => {
+    expect(weeklyDistanceLabel('swimming', { swimming: 3200 }, 'US')).toEqual({ value: '3,200', unit: 'm' });
+  });
+
+  it('falls back to sessions when no effort carried a distance (indoor / Whoop)', () => {
+    expect(weeklyDistanceLabel('cycling', { cycling: 0 }, 'GB')).toBeNull();
+    expect(weeklyDistanceLabel('cycling', {}, 'GB')).toBeNull();
+    expect(weeklyDistanceLabel('cycling', undefined, 'GB')).toBeNull();
+  });
+
+  it('leaves session-led activities alone even when they have distance', () => {
+    expect(weeklyDistanceLabel('gym', { gym: 5000 }, 'GB')).toBeNull();
+    expect(weeklyDistanceLabel('walking', { walking: 5000 }, 'GB')).toBeNull();
   });
 });
 
