@@ -1509,6 +1509,6 @@ Deno.serve(async (req: Request) => {
     return json(await processOne(supabase, target_user_id, type, rawPayload, null));
   } catch (err) {
     console.error('[send-push-notification]', err);
-    return json({ error: String(err) }, 500);
+    return json({ error: 'Internal server error' }, 500);
   }
 });
