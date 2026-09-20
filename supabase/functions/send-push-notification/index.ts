@@ -1400,7 +1400,13 @@ async function processBatch(supabase: any, targets: any[]): Promise<BatchResult[
       return { target_user_id, type, status: 'failed', reason: 'target_user_id and type are required' };
     }
     try {
-      const payload = t.payload && typeof t.payload === 'object' ? t.payload : {};
+      if (
+        t.payload !== undefined &&
+        (t.payload === null || typeof t.payload !== 'object' || Array.isArray(t.payload))
+      ) {
+        return { target_user_id, type, status: 'failed', reason: 'payload must be an object' };
+      }
+      const payload = t.payload ?? {};
       const outcome = await processOne(supabase, target_user_id, type as NotificationType, payload, configCache);
       return 'skipped' in outcome
         ? { target_user_id, type, status: 'skipped', reason: outcome.reason }
