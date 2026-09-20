@@ -42,6 +42,7 @@ import { shouldSendRegressionNotice, REGRESSION_GRACE_MS } from '../_shared/loca
 import { isGymRelevant, observedActivityTypes, relevantActivities, RELEVANCE_WINDOW_MS } from '../_shared/activityRelevance.ts';
 
 const CONCURRENCY = 10;
+const MAX_SEND_ATTEMPTS = 3;
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
 /** Human progress readout per rule shape — mirrors the client card's units. */
@@ -88,12 +89,18 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-  const queue = [...(candidates ?? [])];
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-    while (cursor < queue.length) {
-      const c = queue[cursor++];
-      if (!c) break;
+  // Supabase's own function-to-function fetch is itself rate-limited: a big
+  // enough candidate batch (e.g. everyone sharing a popular reminder slot)
+  // can trip it, and the Deno runtime throws RateLimitError with a
+  // retryAfterMs *before* the request goes out — no response, nothing to
+  // read a status code from. `rateLimitUntil` is shared across every worker
+  // so one hit backs the whole pool off at once instead of every in-flight
+  // fetch failing independently against the same window.
+  let rateLimitUntil = 0;
+  async function sendPush(targetUserId: string, type: string, payload: Record<string, unknown>): Promise<'sent' | 'skipped' | 'failed'> {
+    for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS; attempt++) {
+      const waitMs = rateLimitUntil - Date.now();
+      if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
       try {
         const res = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
           method: 'POST',
@@ -101,16 +108,30 @@ Deno.serve(async (req: Request) => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${serviceKey}`,
           },
-          body: JSON.stringify({ target_user_id: c.user_id, type: c.kind, payload: {} }),
+          body: JSON.stringify({ target_user_id: targetUserId, type, payload }),
         });
         const body = await res.json().catch(() => null);
-        if (body?.skipped) stats.skipped++;
-        else if (res.ok) stats.sent++;
-        else stats.failed++;
-      } catch (err) {
-        stats.failed++;
-        console.warn(`[dispatch-daily-nudges] ${c.kind} → ${c.user_id} failed:`, err);
+        if (body?.skipped) return 'skipped';
+        return res.ok ? 'sent' : 'failed';
+      } catch (err: any) {
+        if (err?.name === 'RateLimitError' && attempt < MAX_SEND_ATTEMPTS - 1) {
+          rateLimitUntil = Math.max(rateLimitUntil, Date.now() + Math.min(Number(err.retryAfterMs) || 5000, 60000));
+          continue;
+        }
+        console.warn(`[dispatch-daily-nudges] ${type} → ${targetUserId} failed:`, err);
+        return 'failed';
       }
+    }
+    return 'failed';
+  }
+
+  const queue = [...(candidates ?? [])];
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+    while (cursor < queue.length) {
+      const c = queue[cursor++];
+      if (!c) break;
+      stats[await sendPush(c.user_id, c.kind, {})]++;
     }
   });
   await Promise.all(workers);
@@ -215,23 +236,14 @@ Deno.serve(async (req: Request) => {
           if ((prior ?? []).length > 0) { stats.wk_skipped++; continue; }
         }
 
-        const res = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
-          body: JSON.stringify({
-            target_user_id: c.user_id,
-            type: c.kind,
-            payload: {
-              challenge_id: best.ch.id,
-              challenge_name: best.ch.title,
-              progress_text: progressText(best.ch.rule, best.ch.category, best.progress, best.target),
-              points: best.ch.points,
-            },
-          }),
+        const outcome = await sendPush(c.user_id, c.kind, {
+          challenge_id: best.ch.id,
+          challenge_name: best.ch.title,
+          progress_text: progressText(best.ch.rule, best.ch.category, best.progress, best.target),
+          points: best.ch.points,
         });
-        const body = await res.json().catch(() => null);
-        if (body?.skipped) stats.wk_skipped++;
-        else if (res.ok) stats.wk_sent++;
+        if (outcome === 'skipped') stats.wk_skipped++;
+        else if (outcome === 'sent') stats.wk_sent++;
         else stats.failed++;
       } catch (err) {
         stats.failed++;
@@ -340,21 +352,12 @@ Deno.serve(async (req: Request) => {
 
         stats.loc_candidates++;
         try {
-          const res = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
-            body: JSON.stringify({
-              target_user_id: userId,
-              type: 'location_permission_lost',
-              payload: {
-                level: reg.level,
-                gym_relevant: isGymRelevant(prof?.activity_preferences, gymRowsByUser.get(userId) ?? [], nowMs),
-              },
-            }),
+          const outcome = await sendPush(userId, 'location_permission_lost', {
+            level: reg.level,
+            gym_relevant: isGymRelevant(prof?.activity_preferences, gymRowsByUser.get(userId) ?? [], nowMs),
           });
-          const body = await res.json().catch(() => null);
-          if (body?.skipped) stats.loc_skipped++;
-          else if (res.ok) stats.loc_sent++;
+          if (outcome === 'skipped') stats.loc_skipped++;
+          else if (outcome === 'sent') stats.loc_sent++;
           else stats.failed++;
         } catch (err) {
           stats.failed++;
