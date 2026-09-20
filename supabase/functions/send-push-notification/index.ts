@@ -1043,7 +1043,10 @@ function loadNotifConfig(supabase: any, type: string, cache: ConfigCache | null)
       .eq('type', type)
       .maybeSingle(),
   ).then(({ data, error }: any) => {
-    if (error) cache?.delete(type);
+    if (error) {
+      cache?.delete(type);
+      throw error;
+    }
     return data ?? null;
   });
   cache?.set(type, pending);
