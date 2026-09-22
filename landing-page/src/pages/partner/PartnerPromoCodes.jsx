@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Ticket, Upload, FileText, Download, X, ChevronDown, Check, Search, CalendarClock, Edit2, AlertTriangle, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
+import { invokeFn } from '../../lib/invokeFn';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { ChangeMethodLink, GuideLink, StageStrip } from './integrationShared';
@@ -226,6 +227,14 @@ export default function PartnerPromoCodes() {
         else localStorage.removeItem(`powr_scheme_${selectedId}`);
     };
 
+    // Codes landing on a reward that isn't live yet is the moment POWR has to
+    // act (the approval email promises "we switch it on as soon as codes are
+    // in"). Fire-and-forget: a failure here must never block the upload.
+    const nudgeTeamIfInactive = (count) => {
+        if (!selectedReward || selectedReward.active) return;
+        invokeFn('manage-partner-api', { action: 'notify_codes_loaded', reward_id: selectedReward.id, count }).catch(() => {});
+    };
+
     const handleGenerate = async () => {
         if (!selectedReward) return;
         if (!generateCount || generateCount < 1) return;
@@ -233,6 +242,7 @@ export default function PartnerPromoCodes() {
         try {
             const result = await generateCodes({ rewardId: selectedReward.id, count: generateCount, scheme: parsedScheme || undefined, expiresAt: expiryInputToISO(batchExpiry) || undefined });
             toast.success(`${result.generated} codes generated${result.duplicatesSkipped ? ` · ${result.duplicatesSkipped} skipped (duplicates)` : ''}`);
+            if (result.generated > 0) nudgeTeamIfInactive(result.generated);
             await refreshCodeStats(selectedReward.id);
             await refreshCodePool(selectedReward.id, 0, codePoolStatus);
         } catch (err) {
@@ -253,6 +263,7 @@ export default function PartnerPromoCodes() {
             if (result.alreadyInPool) parts.push(`${result.alreadyInPool} already in pool`);
             if (result.rejected.length) parts.push(`${result.rejected.length} rejected`);
             toast.success(parts.join(' · '));
+            if (result.accepted > 0) nudgeTeamIfInactive(result.accepted);
             if (result.rejected.length) console.warn('Rejected codes:', result.rejected);
             setBulkCodesText('');
             await refreshCodeStats(selectedReward.id);
@@ -326,6 +337,7 @@ export default function PartnerPromoCodes() {
         try {
             const result = await uploadCodes({ rewardId: selectedReward.id, codes: [singleCode], scheme: parsedScheme || undefined, expiresAt: expiryInputToISO(batchExpiry) || undefined });
             if (result.accepted === 1) {
+                nudgeTeamIfInactive(1);
                 toast.success('Code added');
                 setSingleCode('');
                 await refreshCodeStats(selectedReward.id);

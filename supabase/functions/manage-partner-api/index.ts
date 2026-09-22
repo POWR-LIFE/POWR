@@ -16,10 +16,14 @@
 //   get_integration | set_integration { mint_url?, mint_enabled?, pool_low_threshold?, rotate_secret?, delivery_method? }
 //   resolve_delivery_method — chosen method, inferring + persisting one for
 //     brands that integrated before the chooser existed
+//   notify_codes_loaded { reward_id, count } — brand loaded codes for a reward
+//     that is still inactive: email the POWR team so someone switches it live
+//     (the approval email promises "we switch it on as soon as codes are in").
 
 import { createClient } from '@supabase/supabase-js';
 import { randomHex, sha256Hex, signedPost } from '../_shared/webhookSign.ts';
 import { testMintEndpoint } from '../_shared/mintTest.ts';
+import { sendEmail } from '../_shared/mailgun.ts';
 
 const MAX_KEYS = 5;
 const MAX_ENDPOINTS = 5;
@@ -470,6 +474,62 @@ Deno.serve(async (req) => {
       delivery_method: saved.delivery_method,
     });
     return json({ ok: true, integration: saved });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Team nudge: codes landed on an inactive reward
+  // ══════════════════════════════════════════════════════════════════════════
+
+  if (body.action === 'notify_codes_loaded') {
+    if (!body.reward_id) return json({ error: 'reward_id is required' }, 400);
+    const { data: reward } = await adminClient
+      .from('rewards')
+      .select('id, title, brand_name, active, integration_type')
+      .eq('id', body.reward_id)
+      .maybeSingle();
+    if (!reward || !sameBrand(reward.brand_name, brand)) return json({ error: 'Forbidden' }, 403);
+    if (reward.active) return json({ ok: true, notified: false, reason: 'already_live' });
+
+    // Only the FIRST batch on a reward nudges the team — a brand topping up an
+    // inactive reward twice in a row shouldn't produce two emails.
+    const { count: earlier } = await adminClient
+      .from('redemption_codes')
+      .select('id', { count: 'exact', head: true })
+      .eq('reward_id', reward.id)
+      .lt('created_at', new Date(Date.now() - 2 * 60_000).toISOString());
+    if ((earlier ?? 0) > 0) return json({ ok: true, notified: false, reason: 'not_first_batch' });
+
+    const { count: available } = await adminClient
+      .from('redemption_codes')
+      .select('id', { count: 'exact', head: true })
+      .eq('reward_id', reward.id)
+      .eq('status', 'available');
+
+    const to = Deno.env.get('TEAM_NOTIFY_EMAILS') ?? 'jamie@powr.life, sorine@powr.life';
+    const siteUrl = Deno.env.get('SITE_URL') ?? 'https://powr.life';
+    const vaultUrl = `${siteUrl}/admin/rewards`;
+    const n = available ?? Number(body.count) ?? 0;
+    const subject = `${reward.brand_name} loaded ${n} codes — switch "${reward.title}" live`;
+    const text = `${reward.brand_name} has loaded ${n} claimable code${n === 1 ? '' : 's'} for "${reward.title}".
+
+The reward is still INACTIVE. Open the Reward Vault, check the listing, and toggle it live so members can redeem:
+${vaultUrl}
+
+Loaded by: ${user.email ?? user.id}
+Reward id: ${reward.id}`;
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1A1A1A;max-width:560px">
+<p><strong>${reward.brand_name}</strong> has loaded <strong>${n}</strong> claimable code${n === 1 ? '' : 's'} for <strong>${reward.title}</strong>.</p>
+<p>The reward is still <strong>inactive</strong>. Open the Reward Vault, check the listing, and toggle it live so members can redeem.</p>
+<p><a href="${vaultUrl}" style="display:inline-block;padding:12px 22px;background:#E8D200;color:#080808;border-radius:100px;text-decoration:none;font-weight:700;letter-spacing:1px;text-transform:uppercase;font-size:12px">Open the Reward Vault</a></p>
+<p style="color:#777;font-size:12px">Loaded by ${user.email ?? user.id} · reward ${reward.id}</p>
+</div>`;
+    try {
+      await sendEmail({ to, subject, html, text, tag: 'team-codes-loaded' });
+    } catch (err) {
+      console.error('notify_codes_loaded: email failed', err);
+      return json({ ok: true, notified: false, reason: 'email_failed' });
+    }
+    return json({ ok: true, notified: true });
   }
 
   return json({ error: 'Unknown action' }, 400);
