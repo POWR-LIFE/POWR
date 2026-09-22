@@ -233,9 +233,11 @@ export default function RewardSubmissions() {
 
   async function ensurePortalAccess(brand, email) {
     try {
-      const { data: users } = await supabase.from('reward_brand_users').select('id').ilike('brand_name', brand).limit(1);
-      if (users?.length) return; // brand already has a login
-      const { data: open } = await supabase.from('reward_brand_invites').select('id, invite_token, email').ilike('brand_name', brand).eq('status', 'invited').limit(1);
+const { data: users, error: usersErr } = await supabase.from('reward_brand_users').select('id').ilike('brand_name', brand).limit(1);
+      if (usersErr) throw usersErr;
+      if (users?.length) return;
+      const { data: open, error: openErr } = await supabase.from('reward_brand_invites').select('id, invite_token, email').ilike('brand_name', brand).eq('status', 'invited').limit(1);
+      if (openErr) throw openErr;
       if (open?.length) {
         setPortalAccess({ brand, email: open[0].email, url: `${window.location.origin}/partner/setup/${open[0].invite_token}`, emailed: false, existing: true });
         return;
