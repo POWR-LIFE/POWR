@@ -11,10 +11,16 @@
 // AUTHENTICATED actions — admins act on any brand; a brand's own portal users
 // can also call these, server-forced to THEIR brand (so partners can manage
 // their own team from /partner/settings):
-//   create_invite { brand_name, email? }  → mints a tokenized setup link. With an
+//   create_invite { brand_name, email?, reward_title?, contact_name?,
+//                   delivery_method?, reuse_open_invite? }
+//                                         → mints a tokenized setup link. With an
 //                                            email, also sends the brand that link
-//                                            via Mailgun; without one it's copy-link
-//                                            only. The link is identical either way.
+//                                            via Mailgun (from hello@powr.life);
+//                                            without one it's copy-link only. With a
+//                                            reward_title the email is the "reward
+//                                            approved" variant; reuse_open_invite
+//                                            re-sends the brand's existing open link
+//                                            instead of minting another.
 //   revoke_invite { invite_id }           → revokes an unused setup link
 //   list          { brand_name }          → portal users + open setup invites for a brand
 //   remove        { user_id }             → removes portal access (keeps auth user);
@@ -205,11 +211,38 @@ Deno.serve(async (req) => {
       return json({ error: 'Enter a valid email address' }, 400);
     }
 
-    const token = crypto.randomUUID();
-    const { error: invErr } = await adminClient
-      .from('reward_brand_invites')
-      .insert({ invite_token: token, brand_name: brandName, created_by: user.id, email: email || null });
-    if (invErr) return json({ error: invErr.message }, 400);
+    // Optional context from the Submissions queue: with a reward_title the
+    // email becomes the "your reward is approved — here's your portal" variant.
+    const inviteContext = {
+      contactName: String(body.contact_name ?? '').trim() || null,
+      rewardTitle: String(body.reward_title ?? '').trim() || null,
+      deliveryMethod: body.delivery_method ?? null,
+    };
+
+    // Reuse an open invite for this brand when asked (the approval flow does),
+    // so re-approving or re-sending never litters the brand with dead links.
+    let token = null;
+    if (body.reuse_open_invite) {
+      const { data: open } = await adminClient
+        .from('reward_brand_invites')
+        .select('id, invite_token')
+        .ilike('brand_name', brandName)
+        .eq('status', 'invited')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (open?.length) {
+        token = open[0].invite_token;
+        if (email) await adminClient.from('reward_brand_invites').update({ email }).eq('id', open[0].id);
+      }
+    }
+    const reused = !!token;
+    if (!token) {
+      token = crypto.randomUUID();
+      const { error: invErr } = await adminClient
+        .from('reward_brand_invites')
+        .insert({ invite_token: token, brand_name: brandName, created_by: user.id, email: email || null });
+      if (invErr) return json({ error: invErr.message }, 400);
+    }
 
     const setupLink = `${siteUrl}/partner/setup/${token}`;
 
@@ -219,12 +252,12 @@ Deno.serve(async (req) => {
     let emailed = false;
     if (email) {
       try {
-        const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, logoUrl: await brandLogo(adminClient, brandName) });
-        await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO });
+        const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, logoUrl: await brandLogo(adminClient, brandName), ...inviteContext });
+        await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO, tag: inviteContext.rewardTitle ? 'partner-approved' : 'partner-invite' });
         emailed = true;
       } catch (err) {
         console.error('create_invite: failed to email setup link:', err);
-        return json({ ok: true, token, url: setupLink, emailed: false, email_error: 'Link created, but the email could not be sent — copy it below instead.' });
+        return json({ ok: true, token, url: setupLink, emailed: false, reused, email_error: 'Link created, but the email could not be sent — copy it below instead.' });
       }
     }
 
@@ -234,11 +267,11 @@ Deno.serve(async (req) => {
         action: emailed ? 'email_brand_setup_link' : 'create_brand_setup_link',
         target_type: 'reward_brand',
         target_id: null,
-        metadata: { brand_name: brandName, email: email || null, emailed },
+        metadata: { brand_name: brandName, email: email || null, emailed, reused, reward_title: inviteContext.rewardTitle },
       });
     }
 
-    return json({ ok: true, token, url: setupLink, emailed });
+    return json({ ok: true, token, url: setupLink, emailed, reused });
   }
 
   // ── revoke_invite ───────────────────────────────────────────────────────────

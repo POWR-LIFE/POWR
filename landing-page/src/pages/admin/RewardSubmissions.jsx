@@ -223,7 +223,7 @@ export default function RewardSubmissions() {
     // sat approved-but-unreachable). So on a brand's first approved reward,
     // mint a setup link and email it to the submission contact automatically.
     if (!isEdit && !selected.partner_id && selected.brand_name?.trim()) {
-      await ensurePortalAccess(selected.brand_name.trim(), selected.contact_email?.trim() || '');
+      await ensurePortalAccess(selected.brand_name.trim(), selected.contact_email?.trim() || '', selected);
     }
     setSaving(false);
     toast.success(isEdit ? 'Listing updated — changes are live' : 'Reward created in the Vault — complete the launch checklist there');
@@ -231,21 +231,25 @@ export default function RewardSubmissions() {
     fetchSubs();
   }
 
-  async function ensurePortalAccess(brand, email) {
+  async function ensurePortalAccess(brand, email, sub) {
     try {
-const { data: users, error: usersErr } = await supabase.from('reward_brand_users').select('id').ilike('brand_name', brand).limit(1);
+      const { data: users, error: usersErr } = await supabase.from('reward_brand_users').select('id').ilike('brand_name', brand).limit(1);
       if (usersErr) throw usersErr;
-      if (users?.length) return;
-      const { data: open, error: openErr } = await supabase.from('reward_brand_invites').select('id, invite_token, email').ilike('brand_name', brand).eq('status', 'invited').limit(1);
-      if (openErr) throw openErr;
-      if (open?.length) {
-        setPortalAccess({ brand, email: open[0].email, url: `${window.location.origin}/partner/setup/${open[0].invite_token}`, emailed: false, existing: true });
-        return;
-      }
-      const data = await invokeFn('manage-partner-user', { action: 'create_invite', brand_name: brand, email: email || undefined });
+      if (users?.length) return; // brand already has a login — they'll see the reward in their portal
+      // manage-partner-user reuses the brand's open setup link (if any) and, with
+      // an email, sends the branded "reward approved" email from hello@powr.life.
+      const data = await invokeFn('manage-partner-user', {
+        action: 'create_invite',
+        brand_name: brand,
+        email: email || undefined,
+        reward_title: sub?.title || undefined,
+        contact_name: sub?.contact_name || undefined,
+        delivery_method: sub?.delivery_method || undefined,
+        reuse_open_invite: true,
+      });
       if (!data?.ok) throw new Error(data?.error ?? 'Could not create portal setup link');
-      setPortalAccess({ brand, email, url: `${window.location.origin}/partner/setup/${data.token}`, emailed: !!data.emailed, error: data.email_error ?? null });
-      if (data.emailed) toast.success(`Portal setup link emailed to ${email}`);
+      setPortalAccess({ brand, email, url: `${window.location.origin}/partner/setup/${data.token}`, emailed: !!data.emailed, reused: !!data.reused, error: data.email_error ?? null });
+      if (data.emailed) toast.success(`Approval email with portal setup link sent to ${email}`);
     } catch (err) {
       setPortalAccess({ brand, email, url: null, emailed: false, error: err.message });
     }
@@ -414,9 +418,8 @@ const { data: users, error: usersErr } = await supabase.from('reward_brand_users
             <div>
               <div className="text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black mb-2">Partner portal · {portalAccess.brand}</div>
               <p className="text-sm text-[#555555] font-light">
-                {portalAccess.url && portalAccess.emailed && `Setup link emailed to ${portalAccess.email}. They pick their own password and land in the portal to load codes or connect Shopify.`}
-                {portalAccess.url && !portalAccess.emailed && portalAccess.existing && `An unused setup link already exists${portalAccess.email ? ` (sent to ${portalAccess.email})` : ''} — resend it if they haven't set up yet.`}
-                {portalAccess.url && !portalAccess.emailed && !portalAccess.existing && (portalAccess.error || 'No contact email on the submission — copy the setup link and send it to the brand.')}
+                {portalAccess.url && portalAccess.emailed && `"Reward approved" email with the portal setup link sent to ${portalAccess.email} from hello@powr.life${portalAccess.reused ? ' (their existing open link)' : ''}. They pick a password and land in the portal to load codes or connect Shopify.`}
+                {portalAccess.url && !portalAccess.emailed && (portalAccess.error || 'No contact email on the submission — copy the setup link and send it to the brand.')}
                 {!portalAccess.url && `Could not create a portal setup link: ${portalAccess.error}. Use Portal Access in the Reward Vault.`}
               </p>
             </div>
