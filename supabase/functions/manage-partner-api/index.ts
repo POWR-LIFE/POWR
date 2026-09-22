@@ -522,7 +522,8 @@ Deno.serve(async (req) => {
     const to = Deno.env.get('TEAM_NOTIFY_EMAILS') ?? 'jamie@powr.life, sorine@powr.life';
     const siteUrl = Deno.env.get('SITE_URL') ?? 'https://powr.life';
     const vaultUrl = `${siteUrl}/admin/rewards`;
-    const n = available ?? Number(body.count) ?? 0;
+    const fallbackCount = Number(body.count);
+    const n = available ?? (Number.isFinite(fallbackCount) ? fallbackCount : 0);
     const subject = `${reward.brand_name} loaded ${n} codes — switch "${reward.title}" live`;
     const text = `${reward.brand_name} has loaded ${n} claimable code${n === 1 ? '' : 's'} for "${reward.title}".
 
