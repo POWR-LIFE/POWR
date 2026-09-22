@@ -84,7 +84,7 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 24px;">
               <tr>
                 <td style="background-color:#ffffff;border-radius:16px;padding:14px 22px;">
-                  <img src="${logoUrl}" alt="${escapeHtml(brandName)}" height="56" style="display:block;height:56px;max-width:120px;width:auto;object-fit:contain;margin:0 auto;">
+                  <img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(brandName)}" height="56" style="display:block;height:56px;max-width:120px;width:auto;object-fit:contain;margin:0 auto;">
                 </td>
               </tr>
             </table>`
