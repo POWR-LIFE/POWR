@@ -15,6 +15,8 @@ export interface BrandInviteData {
   rewardTitle?: string | null;
   /** How the partner chose to deliver codes — shapes step 2 of the approved variant. */
   deliveryMethod?: "code_pool" | "shopify" | "api" | "affiliate" | "manual_fulfilment" | null;
+  /** Brand accent (rewards.brand_color, e.g. "#c6a13e") — tints the small pill dot. CTA stays POWR gold. */
+  brandColor?: string | null;
 }
 
 const GOLD = "#E8D200";
@@ -72,6 +74,21 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
     ? `${greeting}<strong style="font-weight:500;color:#bbbbbb;">${escapeHtml(rewardTitle)}</strong> is ready to go live on POWR.<br>Set up your ${escapeHtml(brandName)} portal to load codes and switch it on &mdash; it takes about a minute.`
     : `${greeting}You&#8217;ve been invited to manage ${escapeHtml(brandName)} rewards on POWR.<br>Set up your login below &mdash; it takes about a minute.`;
   const stepsHeading = approved ? "Three steps to live" : "In the portal you can";
+  const accent = /^#[0-9a-f]{6}$/i.test(data.brandColor ?? "") ? data.brandColor! : GOLD;
+  const logoUrl = (data.logoUrl ?? "").trim();
+  // The brand's own mark sits above the headline in a white tile, so dark and
+  // light logos both read on the black hero. Sized by height; portrait and
+  // landscape marks both fit inside the 120×56 box.
+  const logoTile = logoUrl && /^https:\/\//.test(logoUrl)
+    ? `
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 24px;">
+              <tr>
+                <td style="background-color:#ffffff;border-radius:16px;padding:14px 22px;">
+                  <img src="${logoUrl}" alt="${escapeHtml(brandName)}" height="56" style="display:block;height:56px;max-width:120px;width:auto;object-fit:contain;margin:0 auto;">
+                </td>
+              </tr>
+            </table>`
+    : "";
 
   const stepRows = steps.map((s, i) => `
               <tr>
@@ -107,13 +124,13 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
 
         <!-- HERO -->
         <tr>
-          <td style="background-color:#080808;padding:44px 40px 36px;text-align:center;border-bottom:1px solid #111111;">
+          <td style="background-color:#080808;padding:44px 40px 36px;text-align:center;border-bottom:1px solid #111111;">${logoTile}
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 28px;">
               <tr>
                 <td style="border:1px solid #2a2a2a;border-radius:100px;padding:6px 14px 6px 10px;">
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                     <tr>
-                      <td style="width:6px;height:6px;background-color:${GOLD};border-radius:50%;vertical-align:middle;font-size:0;line-height:0;">&nbsp;</td>
+                      <td style="width:6px;height:6px;background-color:${accent};border-radius:50%;vertical-align:middle;font-size:0;line-height:0;">&nbsp;</td>
                       <td style="padding-left:7px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:#888888;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;white-space:nowrap;">${pill}</td>
                     </tr>
                   </table>

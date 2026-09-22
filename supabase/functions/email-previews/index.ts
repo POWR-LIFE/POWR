@@ -124,6 +124,8 @@ function buildPreviews(): { id: string; email: { subject: string; html: string; 
         contactName: "Jamie Wright",
         rewardTitle: "20% off everything",
         deliveryMethod: "code_pool",
+        logoUrl: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-submissions/logos/1789985967117-km17c8.png",
+        brandColor: "#c6a13e",
         setupUrl: "https://powr.life/partner/setup/preview-token-only",
       }),
     },

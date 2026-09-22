@@ -48,14 +48,20 @@ const json = (body, status = 200) =>
 
 // Latest logo for a brand, from its rewards (brands have no table of their own)
 async function brandLogo(adminClient, brandName) {
+  return (await brandLook(adminClient, brandName)).logoUrl;
+}
+
+// Logo + accent colour from the brand's most recent reward listing — used to
+// put the brand's own mark on the setup / approval emails.
+async function brandLook(adminClient, brandName) {
   const { data } = await adminClient
     .from('rewards')
-    .select('image_url')
+    .select('image_url, brand_color')
     .ilike('brand_name', brandName)
     .not('image_url', 'is', null)
     .order('created_at', { ascending: false })
     .limit(1);
-  return data?.[0]?.image_url ?? null;
+  return { logoUrl: data?.[0]?.image_url ?? null, brandColor: data?.[0]?.brand_color ?? null };
 }
 
 Deno.serve(async (req) => {
@@ -252,7 +258,7 @@ Deno.serve(async (req) => {
     let emailed = false;
     if (email) {
       try {
-        const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, logoUrl: await brandLogo(adminClient, brandName), ...inviteContext });
+        const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, ...(await brandLook(adminClient, brandName)), ...inviteContext });
         await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO, tag: inviteContext.rewardTitle ? 'partner-approved' : 'partner-invite' });
         emailed = true;
       } catch (err) {
