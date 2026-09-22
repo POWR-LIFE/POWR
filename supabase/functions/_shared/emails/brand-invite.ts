@@ -24,6 +24,8 @@ const POWR_LOGO = "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/pu
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const oneLine = (s: string) =>
+  s.replace(/[\r\n]+/g, " ").replace(/[\x00-\x1F\x7F]/g, " ").replace(/\s+/g, " ").trim();
 
 interface Step { title: string; detail: string }
 
@@ -56,16 +58,18 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
   const { brandName, setupUrl } = data;
   const approved = !!data.rewardTitle?.trim();
   const rewardTitle = (data.rewardTitle ?? "").trim();
+  const safeBrandNameForHeader = oneLine(brandName);
+  const safeRewardTitleForHeader = oneLine(rewardTitle);
   const firstName = (data.contactName ?? "").trim().split(/\s+/)[0] ?? "";
   const greeting = firstName ? `Hi ${escapeHtml(firstName)}, ` : "";
   const steps = stepsFor(data);
 
   const subject = approved
-    ? `${rewardTitle} is approved — set up your ${brandName} portal on POWR`
-    : `You're invited to the ${brandName} rewards portal on POWR`;
+    ? `${safeRewardTitleForHeader} is approved — set up your ${safeBrandNameForHeader} portal on POWR`
+    : `You're invited to the ${safeBrandNameForHeader} rewards portal on POWR`;
   const preheader = approved
-    ? `${rewardTitle} is ready to go live. Set up your ${brandName} portal to load codes and switch it on.`
-    : `Set up your ${brandName} portal on POWR — pick your email and password, takes a minute.`;
+    ? `${safeRewardTitleForHeader} is ready to go live. Set up your ${safeBrandNameForHeader} portal to load codes and switch it on.`
+    : `Set up your ${safeBrandNameForHeader} portal on POWR — pick your email and password, takes a minute.`;
   const pill = approved ? "Reward approved" : "Rewards Partner";
   const heading = approved
     ? `Your reward is<br><em style="font-style:italic;color:${GOLD};">approved.</em>`
