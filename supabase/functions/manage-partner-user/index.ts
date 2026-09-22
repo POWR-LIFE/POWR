@@ -238,18 +238,22 @@ Deno.serve(async (req) => {
     // so re-approving or re-sending never litters the brand with dead links.
     let token = null;
     if (body.reuse_open_invite) {
-      const { data: open } = await adminClient
+      const { data: open, error: openErr } = await adminClient
         .from('reward_brand_invites')
         .select('id, invite_token, email')
         .eq('brand_name', brandName)
         .eq('status', 'invited')
         .order('created_at', { ascending: false })
         .limit(1);
+      if (openErr) return json({ error: openErr.message }, 400);
       if (open?.length) {
         const existingEmail = String(open[0].email ?? '').toLowerCase().trim();
         if (!email || !existingEmail || existingEmail === email) {
           token = open[0].invite_token;
-          if (email && !existingEmail) await adminClient.from('reward_brand_invites').update({ email }).eq('id', open[0].id);
+          if (email && !existingEmail) {
+            const { error: updEmailErr } = await adminClient.from('reward_brand_invites').update({ email }).eq('id', open[0].id);
+            if (updEmailErr) return json({ error: updEmailErr.message }, 400);
+          }
         }
       }
     }

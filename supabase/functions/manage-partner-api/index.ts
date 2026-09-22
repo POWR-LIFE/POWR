@@ -524,6 +524,14 @@ Deno.serve(async (req) => {
     const vaultUrl = `${siteUrl}/admin/rewards`;
     const fallbackCount = Number(body.count);
     const n = available ?? (Number.isFinite(fallbackCount) ? fallbackCount : 0);
+    if (n < 1) {
+      await adminClient
+        .from('rewards')
+        .update({ codes_loaded_notified_at: null })
+        .eq('id', reward.id)
+        .eq('codes_loaded_notified_at', claimStamp);
+      return json({ ok: true, notified: false, reason: 'no_codes_available' });
+    }
     const subject = `${reward.brand_name} loaded ${n} codes — switch "${reward.title}" live`;
     const text = `${reward.brand_name} has loaded ${n} claimable code${n === 1 ? '' : 's'} for "${reward.title}".
 

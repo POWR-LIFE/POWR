@@ -135,7 +135,7 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                     <tr>
                       <td style="width:6px;height:6px;background-color:${accent};border-radius:50%;vertical-align:middle;font-size:0;line-height:0;">&nbsp;</td>
-                      <td style="padding-left:7px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:#888888;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;white-space:nowrap;">${pill}</td>
+                      <td style="padding-left:7px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:#888888;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;white-space:nowrap;">${escapeHtml(pill)}</td>
                     </tr>
                   </table>
                 </td>
