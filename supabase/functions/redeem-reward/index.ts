@@ -122,9 +122,9 @@ Deno.serve(async (req) => {
         .maybeSingle();
       integration = data;
     }
-    if (!integration?.mint_enabled && !partner?.partner_code) {
-      return json({ error: 'PARTNER_MISCONFIGURED' }, 500);
-    }
+    // No mint source is NOT fatal here: the buffer pool below may still hold
+    // codes, and an empty pool should read as OUT_OF_STOCK (a supply problem
+    // the Vault surfaces) rather than a 500 that looks like an outage.
   }
 
   // Affiliate links and explicitly shared promo codes are reusable offers, so
@@ -365,6 +365,14 @@ Deno.serve(async (req) => {
     // JIT brand with no buffer stock: fail cleanly — no points were charged.
     if (!codeRow && integration?.mint_enabled) {
       return json({ error: 'REWARD_TEMPORARILY_UNAVAILABLE' }, 503);
+    }
+
+    // Nothing can mint (no integration, no linked partner code) and the buffer
+    // is empty: this is a supply gap, not an outage. OUT_OF_STOCK keeps the
+    // member copy honest ("temporarily unavailable") and no points are charged.
+    if (!codeRow && !partner?.partner_code) {
+      console.error('API_VALIDATED reward has no mint source', { reward_id: reward.id, brand: reward.brand_name });
+      return json({ error: 'OUT_OF_STOCK' }, 422);
     }
 
     // 3) Legacy POWR self-mint (pre-JIT behaviour, unchanged).

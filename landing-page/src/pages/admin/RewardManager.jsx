@@ -1,4 +1,13 @@
 import React, { useEffect, useState } from 'react';
+
+// The code-format examples shown across admin + partner UIs (POWR-BRAND-XXXXXX,
+// POWR-BRAND-A1B2C3). If one is pasted in as a shared promo code, members are
+// handed the literal placeholder — this happened for Healthspan on 2026-09-22.
+export const isPlaceholderCode = (code) => {
+    const c = String(code || '').trim().toUpperCase();
+    if (!c) return false;
+    return /(^|-)X{4,}($|-)/.test(c) || /(^|-)A1B2C3($|-)/.test(c) || /(^|-)BRAND($|-)/.test(c);
+};
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Video as VideoIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound, Building2, Link2, Palette, CalendarClock, Check, RefreshCw } from 'lucide-react';
@@ -167,6 +176,7 @@ export default function RewardManager() {
     // until the first load lands (or if it fails) — the supply column says so
     // rather than guessing.
     const [codeSupply, setCodeSupply] = useState(null);
+    const [brandIntegrations, setBrandIntegrations] = useState({}); // lower(brand_name) → { mint_enabled, delivery_method }
     const [bulkCodesText, setBulkCodesText] = useState('');
     const [uploadingCodes, setUploadingCodes] = useState(false);
     const [reconciliationText, setReconciliationText] = useState('');
@@ -247,6 +257,14 @@ export default function RewardManager() {
             // will actually hand out (available AND inside its batch expiry).
             try { setCodeSupply(await fetchRewardCodeSupply()); }
             catch { setCodeSupply(null); toast.error('Could not read code supply'); }
+            // Which brands can actually mint on demand (API JIT or Shopify).
+            // Drives the Auto readiness labels and launch guard.
+            try {
+                const { data: integ } = await supabase.from('reward_brand_integrations').select('brand_name, mint_enabled, delivery_method');
+                const map = {};
+                for (const row of integ || []) map[(row.brand_name || '').trim().toLowerCase()] = row;
+                setBrandIntegrations(map);
+            } catch { setBrandIntegrations({}); }
         }
         if (part.data) setPartners(part.data);
         setLoading(false);
@@ -294,6 +312,15 @@ export default function RewardManager() {
             return r.partner_id === filterPartner;
         });
 
+    // Can redeem-reward mint a code for this reward on demand? Mirrors its own
+    // check: the brand's integration (API JIT or Shopify — both set mint_enabled)
+    // or a linked gym partner code for the legacy self-mint.
+    const canMint = (reward) => {
+        if (reward.partner_id && (reward.partners?.partner_code || partners.find(p => p.id === reward.partner_id)?.partner_code)) return true;
+        const key = (reward.brand_name || '').trim().toLowerCase();
+        return !!(key && brandIntegrations[key]?.mint_enabled);
+    };
+
     // What actually caps this reward. redeem-reward never reads rewards.stock,
     // so a POOL reward's real supply is its claimable code pool — an affiliate
     // link or a shared promo_code short-circuits the pool entirely and is the
@@ -319,7 +346,13 @@ export default function RewardManager() {
         }
         // JIT brands mint per redemption; the pool is only an emergency buffer.
         if (reward.integration_type === 'API_VALIDATED') {
-            return { kind: 'mint', label: 'Minted on demand', buffer: codeSupply?.[reward.id]?.claimable ?? 0 };
+            const buffer = codeSupply?.[reward.id]?.claimable ?? 0;
+            if (!canMint(reward)) {
+                return buffer
+                    ? { kind: 'mint', label: `Buffer only · ${buffer} codes`, buffer, canMint: false }
+                    : { kind: 'mint', label: 'No integration · cannot mint', buffer, canMint: false };
+            }
+            return { kind: 'mint', label: 'Minted on demand', buffer, canMint: true };
         }
         if (reward.stock != null) return { kind: 'stock', label: `${reward.stock} units` };
         return { kind: 'unlimited', label: 'Unlimited supply' };
@@ -331,12 +364,15 @@ export default function RewardManager() {
             // Live but unclaimable — every code either gone or past its batch
             // expiry, so members get OUT_OF_STOCK.
             if (supply.kind === 'pool' && !supply.claimable) return { label: 'Live · no codes left', tone: 'text-red-500' };
+            // Auto with nothing to mint from — every redemption fails.
+            if (supply.kind === 'mint' && !supply.canMint && !supply.buffer) return { label: 'Live · cannot mint', tone: 'text-red-500' };
             return { label: 'Live', tone: 'text-[#10B981]' };
         }
         if (!reward.title?.trim() || !reward.description?.trim() || !reward.terms?.trim() || !Number(reward.powr_cost)) return { label: 'Needs listing details', tone: 'text-[#8a7600]' };
         if (reward.integration_type === 'AFFILIATE' && !reward.url?.trim()) return { label: 'Needs destination URL', tone: 'text-[#8a7600]' };
         if (supply.kind === 'unknown') return { label: 'Checking code supply', tone: 'text-[#999]' };
         if (supply.kind === 'pool' && !supply.claimable) return { label: 'Needs code supply', tone: 'text-red-500' };
+        if (supply.kind === 'mint' && !supply.canMint && !supply.buffer) return { label: 'Needs integration', tone: 'text-red-500' };
         return { label: 'Ready to launch', tone: 'text-[#10B981]' };
     };
 
@@ -675,12 +711,31 @@ export default function RewardManager() {
                 .eq('status', 'available');
             if (error || !count) return 'Add a shared code or at least one available code before taking this reward live';
         }
+        // Auto only works when something can mint: the brand's API/Shopify
+        // integration, a linked gym partner code, or (as a stop-gap) buffer codes.
+        // Without one every redemption fails, while the Vault still reads "Live".
+        if (reward.reward_kind === 'digital' && reward.integration_type === 'API_VALIDATED' && !canMint(reward)) {
+            if (!reward.id) return 'Auto needs the brand connected (API or Shopify) first — switch to Pool, or save and connect the brand';
+            const { count, error } = await supabase
+                .from('redemption_codes')
+                .select('id', { count: 'exact', head: true })
+                .eq('reward_id', reward.id)
+                .eq('status', 'available');
+            if (error || !count) return `${reward.brand_name || 'This brand'} has no API or Shopify integration yet, so Auto cannot mint codes — switch to Pool and load codes, or connect the brand in its portal first`;
+        }
         return null;
     };
 
     const handleSave = async (e) => {
         e.preventDefault();
         setSaving(true);
+        // The scheme example (POWR-BRAND-XXXXXX / -A1B2C3) is a format hint, not
+        // a code. Saved as the shared promo_code it is handed to members verbatim.
+        if (formData.integration_type === 'POOL' && isPlaceholderCode(formData.promo_code)) {
+            setSaving(false);
+            toast.error('That looks like the code format example, not a real code — enter the actual shared code or leave it blank and load a code pool');
+            return;
+        }
         if (formData.active) {
             const blocker = await getLaunchBlocker({ ...formData, id: editingReward?.id });
             if (blocker) {
@@ -1283,6 +1338,11 @@ export default function RewardManager() {
                                         );
                                     })}
                                 </div>
+                                {formData.integration_type === 'API_VALIDATED' && formData.reward_kind === 'digital' && !canMint(formData) && (
+                                    <p className="text-[9px] uppercase tracking-[0.2em] text-red-500 font-black mt-3 ml-1">
+                                        {formData.brand_name || 'This brand'} has no API or Shopify integration yet — Auto cannot mint codes until the brand connects one in its portal. Use Pool to load codes now.
+                                    </p>
+                                )}
                             </div>
 
                             {formData.integration_type === 'POOL' && (
