@@ -40,6 +40,9 @@ const json = (body, status = 200) =>
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+const escapeHtml = (s) =>
+  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 const sameBrand = (a, b) =>
   String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
 
@@ -502,11 +505,19 @@ Deno.serve(async (req) => {
     if (claimErr) return json({ error: claimErr.message }, 400);
     if (!claim?.length) return json({ ok: true, notified: false, reason: 'not_first_batch' });
 
-    const { count: available } = await adminClient
+    const { count: available, error: availableErr } = await adminClient
       .from('redemption_codes')
       .select('id', { count: 'exact', head: true })
       .eq('reward_id', reward.id)
       .eq('status', 'available');
+    if (availableErr) {
+      await adminClient
+        .from('rewards')
+        .update({ codes_loaded_notified_at: null })
+        .eq('id', reward.id)
+        .eq('codes_loaded_notified_at', claimStamp);
+      return json({ error: availableErr.message }, 400);
+    }
 
     const to = Deno.env.get('TEAM_NOTIFY_EMAILS') ?? 'jamie@powr.life, sorine@powr.life';
     const siteUrl = Deno.env.get('SITE_URL') ?? 'https://powr.life';
@@ -521,10 +532,10 @@ ${vaultUrl}
 Loaded by: ${user.email ?? user.id}
 Reward id: ${reward.id}`;
     const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1A1A1A;max-width:560px">
-<p><strong>${reward.brand_name}</strong> has loaded <strong>${n}</strong> claimable code${n === 1 ? '' : 's'} for <strong>${reward.title}</strong>.</p>
+<p><strong>${escapeHtml(reward.brand_name)}</strong> has loaded <strong>${n}</strong> claimable code${n === 1 ? '' : 's'} for <strong>${escapeHtml(reward.title)}</strong>.</p>
 <p>The reward is still <strong>inactive</strong>. Open the Reward Vault, check the listing, and toggle it live so members can redeem.</p>
 <p><a href="${vaultUrl}" style="display:inline-block;padding:12px 22px;background:#E8D200;color:#080808;border-radius:100px;text-decoration:none;font-weight:700;letter-spacing:1px;text-transform:uppercase;font-size:12px">Open the Reward Vault</a></p>
-<p style="color:#777;font-size:12px">Loaded by ${user.email ?? user.id} · reward ${reward.id}</p>
+<p style="color:#777;font-size:12px">Loaded by ${escapeHtml(user.email ?? user.id)} · reward ${escapeHtml(reward.id)}</p>
 </div>`;
     try {
       await sendEmail({ to, subject, html, text, tag: 'team-codes-loaded' });

@@ -233,7 +233,7 @@ export default function RewardSubmissions() {
 
   async function ensurePortalAccess(brand, email, sub) {
     try {
-      const { data: users, error: usersErr } = await supabase.from('reward_brand_users').select('id').ilike('brand_name', brand).limit(1);
+      const { data: users, error: usersErr } = await supabase.from('reward_brand_users').select('id').eq('brand_name', brand).limit(1);
       if (usersErr) throw usersErr;
       if (users?.length) return; // brand already has a login — they'll see the reward in their portal
       // manage-partner-user reuses the brand's open setup link (if any) and, with

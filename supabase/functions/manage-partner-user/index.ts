@@ -216,7 +216,13 @@ Deno.serve(async (req) => {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: 'Enter a valid email address' }, 400);
     }
-    if (!isAdmin && String(body.reward_title ?? '').trim()) {
+    const hasApprovalContext = !!(
+      String(body.reward_title ?? '').trim() ||
+      String(body.contact_name ?? '').trim() ||
+      body.delivery_method ||
+      body.reuse_open_invite
+    );
+    if (!isAdmin && hasApprovalContext) {
       return json({ error: 'Forbidden' }, 403);
     }
 
@@ -234,14 +240,17 @@ Deno.serve(async (req) => {
     if (body.reuse_open_invite) {
       const { data: open } = await adminClient
         .from('reward_brand_invites')
-        .select('id, invite_token')
+        .select('id, invite_token, email')
         .eq('brand_name', brandName)
         .eq('status', 'invited')
         .order('created_at', { ascending: false })
         .limit(1);
       if (open?.length) {
-        token = open[0].invite_token;
-        if (email) await adminClient.from('reward_brand_invites').update({ email }).eq('id', open[0].id);
+        const existingEmail = String(open[0].email ?? '').toLowerCase().trim();
+        if (!email || !existingEmail || existingEmail === email) {
+          token = open[0].invite_token;
+          if (email && !existingEmail) await adminClient.from('reward_brand_invites').update({ email }).eq('id', open[0].id);
+        }
       }
     }
     const reused = !!token;
