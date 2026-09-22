@@ -110,7 +110,7 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${approved ? "Your reward is approved" : "You're invited"} — POWR Rewards Portal</title>
+<title>POWR Rewards Portal</title>
 </head>
 <body style="margin:0;padding:0;background-color:#111111;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#111111;">${escapeHtml(preheader)}&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>
