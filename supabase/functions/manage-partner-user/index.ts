@@ -46,6 +46,9 @@ const json = (body, status = 200) =>
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+const escapeIlikePattern = (s) =>
+  String(s ?? '').replace(/([\\%_])/g, '\\$1');
+
 // Latest logo for a brand, from its rewards (brands have no table of their own)
 async function brandLogo(adminClient, brandName) {
   return (await brandLook(adminClient, brandName)).logoUrl;
@@ -57,7 +60,7 @@ async function brandLook(adminClient, brandName) {
   const { data } = await adminClient
     .from('rewards')
     .select('image_url, brand_color')
-    .ilike('brand_name', brandName)
+    .ilike('brand_name', escapeIlikePattern(brandName))
     .not('image_url', 'is', null)
     .order('created_at', { ascending: false })
     .limit(1);
@@ -216,6 +219,9 @@ Deno.serve(async (req) => {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: 'Enter a valid email address' }, 400);
     }
+    if (!isAdmin && String(body.reward_title ?? '').trim()) {
+      return json({ error: 'Forbidden' }, 403);
+    }
 
     // Optional context from the Submissions queue: with a reward_title the
     // email becomes the "your reward is approved — here's your portal" variant.
@@ -232,7 +238,7 @@ Deno.serve(async (req) => {
       const { data: open } = await adminClient
         .from('reward_brand_invites')
         .select('id, invite_token')
-        .ilike('brand_name', brandName)
+        .ilike('brand_name', escapeIlikePattern(brandName))
         .eq('status', 'invited')
         .order('created_at', { ascending: false })
         .limit(1);
@@ -347,12 +353,12 @@ Deno.serve(async (req) => {
       adminClient
         .from('reward_brand_users')
         .select('id, user_id, created_at')
-        .ilike('brand_name', brandName)
+        .ilike('brand_name', escapeIlikePattern(brandName))
         .order('created_at', { ascending: true }),
       adminClient
         .from('reward_brand_invites')
         .select('id, invite_token, created_at, email')
-        .ilike('brand_name', brandName)
+        .ilike('brand_name', escapeIlikePattern(brandName))
         .eq('status', 'invited')
         .order('created_at', { ascending: false }),
     ]);

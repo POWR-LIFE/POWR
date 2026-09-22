@@ -490,14 +490,17 @@ Deno.serve(async (req) => {
     if (!reward || !sameBrand(reward.brand_name, brand)) return json({ error: 'Forbidden' }, 403);
     if (reward.active) return json({ ok: true, notified: false, reason: 'already_live' });
 
-    // Only the FIRST batch on a reward nudges the team — a brand topping up an
-    // inactive reward twice in a row shouldn't produce two emails.
-    const { count: earlier } = await adminClient
-      .from('redemption_codes')
-      .select('id', { count: 'exact', head: true })
-      .eq('reward_id', reward.id)
-      .lt('created_at', new Date(Date.now() - 2 * 60_000).toISOString());
-    if ((earlier ?? 0) > 0) return json({ ok: true, notified: false, reason: 'not_first_batch' });
+    // Claim this reward's one-time "codes loaded" team nudge atomically.
+    const claimStamp = new Date().toISOString();
+    const { data: claim, error: claimErr } = await adminClient
+      .from('rewards')
+      .update({ codes_loaded_notified_at: claimStamp })
+      .eq('id', reward.id)
+      .eq('active', false)
+      .is('codes_loaded_notified_at', null)
+      .select('id');
+    if (claimErr) return json({ error: claimErr.message }, 400);
+    if (!claim?.length) return json({ ok: true, notified: false, reason: 'not_first_batch' });
 
     const { count: available } = await adminClient
       .from('redemption_codes')
@@ -526,6 +529,11 @@ Reward id: ${reward.id}`;
     try {
       await sendEmail({ to, subject, html, text, tag: 'team-codes-loaded' });
     } catch (err) {
+      await adminClient
+        .from('rewards')
+        .update({ codes_loaded_notified_at: null })
+        .eq('id', reward.id)
+        .eq('codes_loaded_notified_at', claimStamp);
       console.error('notify_codes_loaded: email failed', err);
       return json({ ok: true, notified: false, reason: 'email_failed' });
     }
