@@ -44,7 +44,7 @@ function stepsFor(data: BrandInviteData): Step[] {
           ? { title: "Confirm your link", detail: "Check the destination URL members are sent to" }
           : data.deliveryMethod === "manual_fulfilment"
             ? { title: "Confirm how you&#8217;ll fulfil", detail: "Tell us how each redemption reaches the member" }
-            : { title: "Load your codes", detail: "Paste or upload single-use codes in Promo Codes, or connect Shopify to mint them automatically" };
+            : { title: "Choose how codes are delivered", detail: "Three options in the Integration tab: upload a pool of single-use codes, connect your Shopify store so POWR mints a unique code per redemption, or connect your own system through our API" };
   return [
     { title: "Set up your login", detail: "Pick your email and password &mdash; about a minute" },
     supply,
