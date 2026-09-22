@@ -184,7 +184,7 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
 </body>
 </html>`;
 
-  const plain = (s: string) => s.replace(/&amp;/g, "&").replace(/&mdash;/g, "—").replace(/&#8217;/g, "’");
+  const plain = (s: string) => s.replace(/&mdash;/g, "—").replace(/&#8217;/g, "’").replace(/&amp;/g, "&");
   const textSteps = steps.map((s, i) => `${i + 1}. ${plain(s.title)} — ${plain(s.detail)}`).join("\n");
   const text = approved
     ? `${firstName ? `Hi ${firstName},\n\n` : ""}${rewardTitle} is approved and ready to go live on POWR.
