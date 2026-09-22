@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
+import { invokeFn } from '../../lib/invokeFn';
 import { useToast } from '../../lib/toast';
 import { Link } from 'react-router-dom';
 import { Inbox, Clock, Send, CheckCircle, Copy, Check, X, Plus, Award } from 'lucide-react';
@@ -51,6 +52,9 @@ export default function RewardSubmissions() {
   const [invPrefix, setInvPrefix] = useState('');
   const [creating, setCreating] = useState(false);
   const [createdLink, setCreatedLink] = useState(null);
+  // Result of the portal-access step that runs after approving a brand's first
+  // reward: { brand, email, url, emailed, error } — shown until dismissed.
+  const [portalAccess, setPortalAccess] = useState(null);
 
   const fetchSubs = useCallback(async () => {
     setLoading(true);
@@ -212,11 +216,39 @@ export default function RewardSubmissions() {
       reviewed_by: user?.id,
       reviewed_at: new Date().toISOString(),
     }).eq('id', selected.id);
+    if (updErr) { setSaving(false); toast.error(updErr.message); return; }
+
+    // A submission link creates the reward but NOT a portal login. Without one
+    // the brand can never load codes or see redemptions (Healthspan, 2026-09-22
+    // sat approved-but-unreachable). So on a brand's first approved reward,
+    // mint a setup link and email it to the submission contact automatically.
+    if (!isEdit && !selected.partner_id && selected.brand_name?.trim()) {
+      await ensurePortalAccess(selected.brand_name.trim(), selected.contact_email?.trim() || '');
+    }
     setSaving(false);
-    if (updErr) { toast.error(updErr.message); return; }
     toast.success(isEdit ? 'Listing updated — changes are live' : 'Reward created in the Vault — complete the launch checklist there');
     setSelected(null);
     fetchSubs();
+  }
+
+  async function ensurePortalAccess(brand, email) {
+    try {
+const { data: users, error: usersErr } = await supabase.from('reward_brand_users').select('id').ilike('brand_name', brand).limit(1);
+      if (usersErr) throw usersErr;
+      if (users?.length) return;
+      const { data: open, error: openErr } = await supabase.from('reward_brand_invites').select('id, invite_token, email').ilike('brand_name', brand).eq('status', 'invited').limit(1);
+      if (openErr) throw openErr;
+      if (open?.length) {
+        setPortalAccess({ brand, email: open[0].email, url: `${window.location.origin}/partner/setup/${open[0].invite_token}`, emailed: false, existing: true });
+        return;
+      }
+      const data = await invokeFn('manage-partner-user', { action: 'create_invite', brand_name: brand, email: email || undefined });
+      if (!data?.ok) throw new Error(data?.error ?? 'Could not create portal setup link');
+      setPortalAccess({ brand, email, url: `${window.location.origin}/partner/setup/${data.token}`, emailed: !!data.emailed, error: data.email_error ?? null });
+      if (data.emailed) toast.success(`Portal setup link emailed to ${email}`);
+    } catch (err) {
+      setPortalAccess({ brand, email, url: null, emailed: false, error: err.message });
+    }
   }
 
   async function handleReject() {
@@ -374,6 +406,33 @@ export default function RewardSubmissions() {
           </div>
         )}
       </div>
+
+      {/* ── Portal access result (after approving a brand's first reward) ── */}
+      {portalAccess && (
+        <div className="mb-10 p-8 bg-white border border-[#E6E6E1] rounded-3xl flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black mb-2">Partner portal · {portalAccess.brand}</div>
+              <p className="text-sm text-[#555555] font-light">
+                {portalAccess.url && portalAccess.emailed && `Setup link emailed to ${portalAccess.email}. They pick their own password and land in the portal to load codes or connect Shopify.`}
+                {portalAccess.url && !portalAccess.emailed && portalAccess.existing && `An unused setup link already exists${portalAccess.email ? ` (sent to ${portalAccess.email})` : ''} — resend it if they haven't set up yet.`}
+                {portalAccess.url && !portalAccess.emailed && !portalAccess.existing && (portalAccess.error || 'No contact email on the submission — copy the setup link and send it to the brand.')}
+                {!portalAccess.url && `Could not create a portal setup link: ${portalAccess.error}. Use Portal Access in the Reward Vault.`}
+              </p>
+            </div>
+            <button onClick={() => setPortalAccess(null)} className="w-10 h-10 rounded-full bg-[#EFEFEC] flex items-center justify-center text-[#999999] hover:text-[#1A1A1A] transition-colors shrink-0"><X size={16} /></button>
+          </div>
+          {portalAccess.url && (
+            <div className="flex gap-3">
+              <div className="flex-1 h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl flex items-center overflow-hidden">
+                <span className="text-[11px] text-[#888888] font-mono truncate">{portalAccess.url}</span>
+              </div>
+              <button onClick={() => { navigator.clipboard.writeText(portalAccess.url); toast.success('Setup link copied'); }}
+                className="h-14 px-8 rounded-2xl bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] hover:opacity-90 transition-opacity shrink-0">Copy</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Invite modal ── */}
       {inviteOpen && (
