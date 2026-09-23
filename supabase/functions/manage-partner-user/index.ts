@@ -226,8 +226,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Forbidden' }, 403);
     }
 
-    // Optional context from the Submissions queue: with a reward_title the
-    // email becomes the "your reward is approved — here's your portal" variant.
+    if (!isAdmin && String(body.reward_title ?? '').trim()) return json({ error: 'Forbidden' }, 403);
     const inviteContext = {
       contactName: String(body.contact_name ?? '').trim() || null,
       rewardTitle: String(body.reward_title ?? '').trim() || null,
