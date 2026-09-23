@@ -7,7 +7,7 @@
 //
 // POST { key: "powr-email-previews", only?: string[], to?: string }
 //   `only` filters by preview id: welcome | weekly | weekly_down | weekly_starter |
-//   invite | partner_welcome | partner_weekly | recovery | level_up
+//   invite | invite_approved | partner_welcome | partner_weekly | recovery | level_up
 //   `to` must be one of ALLOWED_RECIPIENTS (default: the first).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -113,6 +113,19 @@ function buildPreviews(): { id: string; email: { subject: string; html: string; 
       id: "invite",
       email: brandInviteEmail({
         brandName: "Forge Athletics",
+        setupUrl: "https://powr.life/partner/setup/preview-token-only",
+      }),
+    },
+    {
+      // The variant the Submissions queue sends when a brand's first reward is approved.
+      id: "invite_approved",
+      email: brandInviteEmail({
+        brandName: "Forge Athletics",
+        contactName: "Jamie Wright",
+        rewardTitle: "20% off everything",
+        deliveryMethod: "code_pool",
+        logoUrl: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-submissions/logos/1789985967117-km17c8.png",
+        brandColor: "#c6a13e",
         setupUrl: "https://powr.life/partner/setup/preview-token-only",
       }),
     },

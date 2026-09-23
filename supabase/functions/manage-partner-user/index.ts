@@ -11,10 +11,16 @@
 // AUTHENTICATED actions — admins act on any brand; a brand's own portal users
 // can also call these, server-forced to THEIR brand (so partners can manage
 // their own team from /partner/settings):
-//   create_invite { brand_name, email? }  → mints a tokenized setup link. With an
+//   create_invite { brand_name, email?, reward_title?, contact_name?,
+//                   delivery_method?, reuse_open_invite? }
+//                                         → mints a tokenized setup link. With an
 //                                            email, also sends the brand that link
-//                                            via Mailgun; without one it's copy-link
-//                                            only. The link is identical either way.
+//                                            via Mailgun (from hello@powr.life);
+//                                            without one it's copy-link only. With a
+//                                            reward_title the email is the "reward
+//                                            approved" variant; reuse_open_invite
+//                                            re-sends the brand's existing open link
+//                                            instead of minting another.
 //   revoke_invite { invite_id }           → revokes an unused setup link
 //   list          { brand_name }          → portal users + open setup invites for a brand
 //   remove        { user_id }             → removes portal access (keeps auth user);
@@ -40,16 +46,24 @@ const json = (body, status = 200) =>
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+const escapeIlikePattern = (value) => String(value ?? '').replace(/[\\%_]/g, '\\$&');
+
 // Latest logo for a brand, from its rewards (brands have no table of their own)
 async function brandLogo(adminClient, brandName) {
+  return (await brandLook(adminClient, brandName)).logoUrl;
+}
+
+// Logo + accent colour from the brand's most recent reward listing — used to
+// put the brand's own mark on the setup / approval emails.
+async function brandLook(adminClient, brandName) {
   const { data } = await adminClient
     .from('rewards')
-    .select('image_url')
-    .ilike('brand_name', brandName)
+    .select('image_url, brand_color')
+    .eq('brand_name', brandName)
     .not('image_url', 'is', null)
     .order('created_at', { ascending: false })
     .limit(1);
-  return data?.[0]?.image_url ?? null;
+  return { logoUrl: data?.[0]?.image_url ?? null, brandColor: data?.[0]?.brand_color ?? null };
 }
 
 Deno.serve(async (req) => {
@@ -204,12 +218,54 @@ Deno.serve(async (req) => {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: 'Enter a valid email address' }, 400);
     }
+    const hasApprovalContext = !!(
+      String(body.reward_title ?? '').trim() ||
+      String(body.contact_name ?? '').trim() ||
+      body.delivery_method ||
+      body.reuse_open_invite
+    );
+    if (!isAdmin && hasApprovalContext) {
+      return json({ error: 'Forbidden' }, 403);
+    }
 
-    const token = crypto.randomUUID();
-    const { error: invErr } = await adminClient
-      .from('reward_brand_invites')
-      .insert({ invite_token: token, brand_name: brandName, created_by: user.id, email: email || null });
-    if (invErr) return json({ error: invErr.message }, 400);
+    if (!isAdmin && String(body.reward_title ?? '').trim()) return json({ error: 'Forbidden' }, 403);
+    const inviteContext = {
+      contactName: String(body.contact_name ?? '').trim() || null,
+      rewardTitle: String(body.reward_title ?? '').trim() || null,
+      deliveryMethod: body.delivery_method ?? null,
+    };
+
+    // Reuse an open invite for this brand when asked (the approval flow does),
+    // so re-approving or re-sending never litters the brand with dead links.
+    let token = null;
+    if (body.reuse_open_invite) {
+      const { data: open, error: openErr } = await adminClient
+        .from('reward_brand_invites')
+        .select('id, invite_token, email')
+        .ilike('brand_name', escapeIlikePattern(brandName))
+        .eq('status', 'invited')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (openErr) return json({ error: openErr.message }, 400);
+      if (open?.length) {
+        const existingEmail = String(open[0].email ?? '').toLowerCase().trim();
+        if (!email || !existingEmail || existingEmail === email) {
+          token = open[0].invite_token;
+          if (email && !existingEmail) {
+            const { error: updEmailErr } = await adminClient.from('reward_brand_invites').update({ email }).eq('id', open[0].id);
+            if (updEmailErr) return json({ error: updEmailErr.message }, 400);
+          }
+        }
+      }
+    }
+    const reused = !!token;
+    if (!token) {
+      token = crypto.randomUUID();
+      const { error: invErr } = await adminClient
+        .from('reward_brand_invites')
+        .insert({ invite_token: token, brand_name: brandName, created_by: user.id, email: email || null });
+      if (invErr) return json({ error: invErr.message }, 400);
+    }
 
     const setupLink = `${siteUrl}/partner/setup/${token}`;
 
@@ -219,12 +275,12 @@ Deno.serve(async (req) => {
     let emailed = false;
     if (email) {
       try {
-        const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, logoUrl: await brandLogo(adminClient, brandName) });
-        await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO });
+        const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, ...(await brandLook(adminClient, brandName)), ...inviteContext });
+        await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO, tag: inviteContext.rewardTitle ? 'partner-approved' : 'partner-invite' });
         emailed = true;
       } catch (err) {
         console.error('create_invite: failed to email setup link:', err);
-        return json({ ok: true, token, url: setupLink, emailed: false, email_error: 'Link created, but the email could not be sent — copy it below instead.' });
+        return json({ ok: true, token, url: setupLink, emailed: false, reused, email_error: 'Link created, but the email could not be sent — copy it below instead.' });
       }
     }
 
@@ -234,11 +290,11 @@ Deno.serve(async (req) => {
         action: emailed ? 'email_brand_setup_link' : 'create_brand_setup_link',
         target_type: 'reward_brand',
         target_id: null,
-        metadata: { brand_name: brandName, email: email || null, emailed },
+        metadata: { brand_name: brandName, email: email || null, emailed, reused, reward_title: inviteContext.rewardTitle },
       });
     }
 
-    return json({ ok: true, token, url: setupLink, emailed });
+    return json({ ok: true, token, url: setupLink, emailed, reused });
   }
 
   // ── revoke_invite ───────────────────────────────────────────────────────────
@@ -308,12 +364,12 @@ Deno.serve(async (req) => {
       adminClient
         .from('reward_brand_users')
         .select('id, user_id, created_at')
-        .ilike('brand_name', brandName)
+        .eq('brand_name', brandName)
         .order('created_at', { ascending: true }),
       adminClient
         .from('reward_brand_invites')
         .select('id, invite_token, created_at, email')
-        .ilike('brand_name', brandName)
+        .eq('brand_name', brandName)
         .eq('status', 'invited')
         .order('created_at', { ascending: false }),
     ]);
