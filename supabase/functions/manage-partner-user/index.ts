@@ -46,6 +46,8 @@ const json = (body, status = 200) =>
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+const escapeIlikePattern = (value) => String(value ?? '').replace(/[\\%_]/g, '\\$&');
+
 // Latest logo for a brand, from its rewards (brands have no table of their own)
 async function brandLogo(adminClient, brandName) {
   return (await brandLook(adminClient, brandName)).logoUrl;
@@ -240,7 +242,7 @@ Deno.serve(async (req) => {
       const { data: open, error: openErr } = await adminClient
         .from('reward_brand_invites')
         .select('id, invite_token, email')
-        .eq('brand_name', brandName)
+        .ilike('brand_name', escapeIlikePattern(brandName))
         .eq('status', 'invited')
         .order('created_at', { ascending: false })
         .limit(1);
