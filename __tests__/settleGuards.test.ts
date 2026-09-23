@@ -3,7 +3,8 @@
  * a visit the device has disowned. Both read gym_visit_events; both are pure.
  */
 import {
-  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepWitnessesOutside,
+  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepCorroboratesPresence,
+  sweepWitnessesOutside,
 } from '@/supabase/functions/_shared/settleGuards';
 
 const T0 = '2026-09-07T11:19:08.078Z';   // started_at
@@ -129,5 +130,62 @@ describe('lastInsideWordIso', () => {
     expect(lastInsideWordIso({ started_at: T0 })).toBe(T0);
     expect(lastInsideWordIso({ started_at: T0, last_proven_at: T1, last_confirmed_at: null })).toBe(T1);
     expect(lastInsideWordIso({ started_at: T0, last_proven_at: T1, last_confirmed_at: T2 })).toBe(T2);
+  });
+});
+
+// Field 2026-09-22: visit 38cbbc7d, The Gym Group Cheltenham (radius 25), Android,
+// notifications denied, no push token. Rows are the device's own sweeps.
+describe('sweepCorroboratesPresence', () => {
+  const START = '2026-09-22T19:17:56.674Z';
+  const BOUND = 25 + 50;
+  const sweep = (
+    created_at: string, distance_m: number | null, acc_m: number | null = 4,
+    fix_age_s: number | null = 0, outcome = 'exit_check', trusted: boolean | null = true,
+  ) => ({ created_at, detail: { outcome, distance_m, acc_m, fix_age_s, trusted } });
+
+  it('corroborates the field case: sharp fixes metres from the pin, well after check-in', () => {
+    expect(sweepCorroboratesPresence([sweep('2026-09-22T20:06:49.494Z', 15, 16, 34)], START, BOUND)).toBe(true);
+    expect(sweepCorroboratesPresence([sweep('2026-09-22T20:22:11.913Z', 35, 4, 57)], START, BOUND)).toBe(true);
+  });
+
+  it('does not count the check-in moment itself — a drive-by has that too', () => {
+    // presence_pass at 19:21:33, fix 72 s old: 2.4 min after the start.
+    expect(sweepCorroboratesPresence([sweep('2026-09-22T19:21:33.393Z', 9, 5, 72, 'presence_pass')], START, BOUND)).toBe(false);
+  });
+
+  it('judges the FIX time: a stale cached fix logged late does not count', () => {
+    // Logged 12 min in, but the fix is 5 min old — taken 7 min in.
+    expect(sweepCorroboratesPresence([sweep('2026-09-22T19:29:56.674Z', 9, 5, 300)], START, BOUND)).toBe(false);
+  });
+
+  it('needs the whole error bar inside the exit bound', () => {
+    expect(sweepCorroboratesPresence([sweep('2026-09-22T20:00:00Z', 60, 15)], START, BOUND)).toBe(true);
+    expect(sweepCorroboratesPresence([sweep('2026-09-22T20:00:00Z', 60, 16)], START, BOUND)).toBe(false);
+  });
+
+  it('refuses coarse, untrusted and far fixes', () => {
+    const rows = [
+      sweep('2026-09-22T20:00:00Z', 10, 100),
+      sweep('2026-09-22T20:05:00Z', 10, 4, 0, 'exit_check', false),
+      sweep('2026-09-22T20:10:00Z', 423, 4, 0, 'handoff'),
+    ];
+    expect(sweepCorroboratesPresence(rows, START, BOUND)).toBe(false);
+  });
+
+  it('ignores rows it cannot read — the acquire_stale pass carries no distance', () => {
+    const rows = [
+      sweep('2026-09-22T19:36:22.470Z', null, null, null, 'presence_pass'),
+      sweep('2026-09-22T20:00:00Z', NaN), sweep('2026-09-22T20:00:00Z', -1),
+      sweep('2026-09-22T20:00:00Z', 10, 4, -5), sweep('not-a-date', 10),
+      { created_at: '2026-09-22T20:00:00Z', detail: null },
+    ];
+    expect(sweepCorroboratesPresence(rows, START, BOUND)).toBe(false);
+  });
+
+  it('fails closed (no settle) when the clock or the bound is unreadable', () => {
+    const rows = [sweep('2026-09-22T20:06:49Z', 15, 16, 34)];
+    expect(sweepCorroboratesPresence(rows, null, BOUND)).toBe(false);
+    expect(sweepCorroboratesPresence(rows, 'garbage', BOUND)).toBe(false);
+    expect(sweepCorroboratesPresence(rows, START, NaN)).toBe(false);
   });
 });

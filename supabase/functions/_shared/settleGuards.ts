@@ -146,6 +146,60 @@ export function sweepWitnessesOutside(
   return n;
 }
 
+/**
+ * The settle pays only a visit whose wake offer is exhausted (>= 2 nudges
+ * unanswered). A phone with no push token is never offered a wake, so its
+ * nudge_count stays 0 and — before this — the settle never selected it: a
+ * proven member who stayed was paid only if they opened the app. Field
+ * 2026-09-22, visit 38cbbc7d (Android, notifications denied, zero token rows): proven
+ * at 9 m on check-in, its own sweeps said 9–35 m from the gym for an hour, OS exit
+ * at 20:23 — and it closed unpaid as disowned_by_sweep.
+ *
+ * A token-less visit cannot be disowned by a wake answer either, so it carries
+ * no drive-by protection beyond the sweep witness. It is settled only when the
+ * device ALSO said, unprompted, that it was still inside: one sharp sweep fix,
+ * taken at least TOKENLESS_CORROBORATION_AFTER_MS past `afterIso`, whose whole
+ * accuracy circle sits inside the exit bound. A ride past a gym has no such fix.
+ */
+export const TOKENLESS_CORROBORATION_AFTER_MS = 10 * 60_000;
+
+export interface InsideSweepRow {
+  created_at: string;
+  detail: {
+    outcome?: string | null;
+    distance_m?: number | null;
+    acc_m?: number | null;
+    fix_age_s?: number | null;
+    trusted?: boolean | null;
+  } | null;
+}
+
+export function sweepCorroboratesPresence(
+  sweeps: InsideSweepRow[],
+  afterIso: string | null | undefined,
+  exitBoundM: number,
+): boolean {
+  const after = afterIso ? Date.parse(afterIso) : NaN;
+  if (!Number.isFinite(after) || !Number.isFinite(exitBoundM)) return false;
+  const floor = after + TOKENLESS_CORROBORATION_AFTER_MS;
+
+  for (const s of sweeps) {
+    const d = s.detail;
+    if (!d || (d.outcome !== 'presence_pass' && d.outcome !== 'exit_check')) continue;
+    if (d.trusted === false) continue;
+    const { distance_m, acc_m, fix_age_s } = d;
+    if (typeof distance_m !== 'number' || typeof acc_m !== 'number' || typeof fix_age_s !== 'number') continue;
+    if (!Number.isFinite(distance_m) || !Number.isFinite(acc_m) || !Number.isFinite(fix_age_s)) continue;
+    if (distance_m < 0 || acc_m < 0 || fix_age_s < 0) continue;
+    if (acc_m > SWEEP_WITNESS_MAX_ACC_M) continue;
+    const loggedAt = Date.parse(s.created_at);
+    if (!Number.isFinite(loggedAt)) continue;
+    if (loggedAt - fix_age_s * 1000 < floor) continue;
+    if (distance_m + acc_m <= exitBoundM) return true;
+  }
+  return false;
+}
+
 /** The latest moment the device said anything from INSIDE the visit. A loose
  *  `inside` confirm (last_confirmed_at) counts: it is weaker than a proof, but
  *  this guard closes visits, and a newer "inside" of any strength outranks an

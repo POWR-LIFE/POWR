@@ -29,8 +29,8 @@ import { staleVisitVerdict, sessionBelongsToVisit, SESSION_OWNERSHIP_MARGIN_MS }
 import { settleIsTerminal } from '../_shared/settleOutcome.ts';
 import { EXIT_SETTLE_LOOKBACK_MS, EXIT_SETTLE_RIGHT_OF_WAY_MS, exitSettleDue, exitSettleExhausted } from '../_shared/exitSettle.ts';
 import {
-  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepWitnessesOutside,
-  SWEEP_WITNESSES_REQUIRED,
+  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepCorroboratesPresence,
+  sweepWitnessesOutside, SWEEP_WITNESSES_REQUIRED,
 } from '../_shared/settleGuards.ts';
 import { MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
 
@@ -1324,7 +1324,7 @@ Deno.serve(async (req: Request) => {
     user_id: string; partner_id: string | null; region_id: string | null;
     started_at: string; last_proven_at?: string | null; last_confirmed_at?: string | null;
   };
-  const sweepWitnesses = async (v: WitnessVisit): Promise<number> => {
+  const venueRadiusM = async (v: WitnessVisit): Promise<number> => {
     let radiusM = DEFAULT_RADIUS_M;
     if (v.partner_id) {
       const { data: partner } = await admin.from('partners').select('locations').eq('id', v.partner_id).maybeSingle();
@@ -1337,6 +1337,10 @@ Deno.serve(async (req: Request) => {
       if (Number.isFinite(own) && own > 0) radiusM = own;
       else if (radii.length > 0) radiusM = Math.max(...radii);
     }
+    return radiusM;
+  };
+  const sweepWitnesses = async (v: WitnessVisit): Promise<number> => {
+    const radiusM = await venueRadiusM(v);
     const since = lastInsideWordIso(v);
     const { data: sweeps, error } = await admin
       .from('geofence_region_events')
@@ -1348,6 +1352,31 @@ Deno.serve(async (req: Request) => {
       .limit(50);
     if (error) { console.error('[gym-visit-beacon] sweep witness read failed', error); return 0; }
     return sweepWitnessesOutside(sweeps ?? [], since, radiusM + EXIT_HYSTERESIS_M);
+  };
+  const insideCorroborated = async (v: WitnessVisit, afterIso: string): Promise<boolean> => {
+    const radiusM = await venueRadiusM(v);
+    let q = admin
+      .from('geofence_region_events')
+      .select('created_at, detail')
+      .eq('user_id', v.user_id)
+      .eq('event', 'sweep')
+      .gt('created_at', afterIso)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (v.region_id) q = q.like('region_id', `${v.region_id.slice(0, 36)}%`);
+    const { data: sweeps, error } = await q;
+    if (error) { console.error('[gym-visit-beacon] inside corroboration read failed', error); return false; }
+    return sweepCorroboratesPresence(sweeps ?? [], afterIso, radiusM + EXIT_HYSTERESIS_M);
+  };
+  const tokenlessOnly = async <T extends { user_id: string }>(rows: T[]): Promise<T[]> => {
+    if (rows.length === 0) return [];
+    const { data: tokened, error } = await admin
+      .from('user_push_tokens')
+      .select('user_id')
+      .in('user_id', [...new Set(rows.map((r) => r.user_id))]);
+    if (error) { console.error('[gym-visit-beacon] token lookup failed', error); return []; }
+    const has = new Set((tokened ?? []).map((t: { user_id: string }) => t.user_id));
+    return rows.filter((r) => !has.has(r.user_id));
   };
 
   {
@@ -1454,6 +1483,24 @@ Deno.serve(async (req: Request) => {
       .limit(50);
     if (scErr) console.error('[gym-visit-beacon] settle claim scan failed', scErr);
 
+    // A token-less phone is never offered a wake, so its nudge_count never reaches
+    // the floor above. It settles on the device's own unprompted sweeps instead —
+    // see sweepCorroboratesPresence for why the extra guard.
+    const { data: lowNudgeClaims, error: tcErr } = await admin
+      .from('gym_visits')
+      .select('id, user_id, partner_id, region_id, started_at, last_proven_at, last_confirmed_at, nudge_count')
+      .eq('status', 'open')
+      .is('claimed_session_id', null)
+      .is('ended_at', null)
+      .lte('started_at', new Date(Date.now() - (dwellMin + SETTLE_GRACE_MIN) * 60_000).toISOString())
+      .lt('nudge_count', SETTLE_MIN_NUDGES)
+      .limit(50);
+    if (tcErr) console.error('[gym-visit-beacon] settle token-less claim scan failed', tcErr);
+    const claimCandidates = [
+      ...(settleClaims ?? []).map((v) => ({ ...v, tokenless: false })),
+      ...(await tokenlessOnly(lowNudgeClaims ?? [])).map((v) => ({ ...v, tokenless: true })),
+    ];
+
     // The device's own word outranks "no exit observed". A `confirmed_outside`
     // after the last proof is an exit the fence never logged (location-detected
     // exits write no `exit` region row) — and since the check-in proof stamp a
@@ -1474,10 +1521,11 @@ Deno.serve(async (req: Request) => {
       return hit;
     };
 
-    for (const v of settleClaims ?? []) {
+    for (const v of claimCandidates) {
       if (!v.last_proven_at) continue;             // check-in never proved an inside fix
       if (!(await noExitSince(v))) continue;       // user observably left — exit path owns it
       if (await contradicted(v)) continue;         // the device said "outside" since
+      if (v.tokenless && !(await insideCorroborated(v, v.started_at))) continue;
 
       const nowIso = new Date().toISOString();
       const durationSec = Math.max(0, Math.round((Date.now() - Date.parse(v.started_at)) / 1000));
@@ -1515,7 +1563,7 @@ Deno.serve(async (req: Request) => {
       await admin.from('gym_visit_events').insert({
         visit_id: v.id, user_id: v.user_id,
         event: respErr === null ? 'settled' : 'settle_failed',
-        detail: { stage: 'dwell', session_id: sess.id, nudges_unanswered: v.nudge_count, status, error: respErr, terminal },
+        detail: { stage: 'dwell', session_id: sess.id, nudges_unanswered: v.nudge_count, tokenless: v.tokenless, status, error: respErr, terminal },
       });
       if (terminal) await closeDeclinedVisit(v.id, 'dwell', respErr);
     }
@@ -1533,9 +1581,26 @@ Deno.serve(async (req: Request) => {
       .limit(50);
     if (suErr) console.error('[gym-visit-beacon] settle upgrade scan failed', suErr);
 
-    for (const v of settleUpgrades ?? []) {
+    const { data: lowNudgeUpgrades, error: tuErr } = await admin
+      .from('gym_visits')
+      .select('id, user_id, partner_id, region_id, started_at, claimed_at, claimed_session_id, nudge_count_upgrade, last_proven_at, last_confirmed_at')
+      .not('claimed_session_id', 'is', null)
+      .is('upgraded_at', null)
+      .is('ended_at', null)
+      .lte('started_at', new Date(Date.now() - (upgradeMin + SETTLE_GRACE_MIN) * 60_000).toISOString())
+      .lt('nudge_count_upgrade', SETTLE_MIN_NUDGES)
+      .limit(50);
+    if (tuErr) console.error('[gym-visit-beacon] settle token-less upgrade scan failed', tuErr);
+    const upgradeCandidates = [
+      ...(settleUpgrades ?? []).map((v) => ({ ...v, claimed_at: null as string | null, tokenless: false })),
+      ...(await tokenlessOnly(lowNudgeUpgrades ?? [])).map((v) => ({ ...v, tokenless: true })),
+    ];
+
+    for (const v of upgradeCandidates) {
       if (!(await noExitSince(v))) continue;
       if (await contradicted(v)) continue;
+      // Still inside after the claim — not merely at check-in.
+      if (v.tokenless && !(await insideCorroborated(v, v.claimed_at ?? v.started_at))) continue;
 
       // upgrade-gym-tier gates on the RECORDED length, and a device that never
       // answered post-claim left the session frozen at claim time. Extend to
@@ -1565,7 +1630,7 @@ Deno.serve(async (req: Request) => {
       await admin.from('gym_visit_events').insert({
         visit_id: v.id, user_id: v.user_id,
         event: respErr === null ? 'settled' : 'settle_failed',
-        detail: { stage: 'upgrade', session_id: v.claimed_session_id, nudges_unanswered: v.nudge_count_upgrade, status, error: respErr, terminal },
+        detail: { stage: 'upgrade', session_id: v.claimed_session_id, nudges_unanswered: v.nudge_count_upgrade, tokenless: v.tokenless, status, error: respErr, terminal },
       });
       if (terminal) await closeDeclinedVisit(v.id, 'upgrade', respErr);
     }
