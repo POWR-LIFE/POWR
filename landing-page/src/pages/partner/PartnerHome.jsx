@@ -100,6 +100,11 @@ export default function PartnerHome() {
                     ? await supabase.from('redemptions')
                         .select('id, redeemed_at, reward_id, powr_spent')
                         .in('reward_id', rewardIds)
+                        // A refunded claim never reached the brand (points went
+                        // back, no code was honoured), so it is not a claim
+                        // here — Healthspan's first overview read "took 1
+                        // claim" off a refunded test redemption.
+                        .neq('status', 'refunded')
                         .order('redeemed_at', { ascending: false })
                         .limit(1000)
                     : { data: [] };
@@ -187,10 +192,21 @@ export default function PartnerHome() {
             tone: 'bad',
             headline: 'Members can’t claim anything from you right now.',
             covers: ['paused'],
+            // An approved-but-inactive reward is almost always waiting on a
+            // code route, so point at that first — "get a reward live" sends
+            // the brand to a page where nothing they can do makes it live.
             support: claims.length
                 ? `Nothing of yours is live. Your rewards took ${plural(claims.length, 'claim', 'claims')} before they stopped.`
-                : 'Nothing of yours is live, so there is nothing for members to claim.',
-            action: { label: 'Get a reward live', to: '/partner/rewards' },
+                : !deliveryMethod
+                    ? 'Your reward is approved but has no way to deliver codes yet. Choose how codes reach members and load them — POWR switches the reward on once codes are in.'
+                    : !connected
+                        ? `${methodStatus?.line ?? `${method?.label} isn’t finished`}. Once codes have a route, POWR switches your reward on.`
+                        : 'Nothing of yours is live, so there is nothing for members to claim.',
+            action: !deliveryMethod
+                ? { label: 'Choose delivery method', to: integrationPathFor(null) }
+                : !connected
+                    ? { label: `Finish connecting ${method?.label ?? 'delivery'}`, to: integrationPathFor(deliveryMethod) }
+                    : { label: 'Get a reward live', to: '/partner/rewards' },
             facts: [
                 fact('Live rewards', '0', `${plural(rewards.length, 'reward', 'rewards')} paused or awaiting approval`),
                 claims.length
