@@ -73,8 +73,12 @@ function retryDelayMs(response: Response, errorText: string, attempt: number): n
   if (!Number.isNaN(at)) {
     return Math.min(Math.max(at - Date.now(), 0) + 1000 + jitter, MAX_WAIT_MS);
   }
-  const retryAfter = Number(response.headers.get("retry-after"));
-  if (retryAfter > 0) return Math.min(retryAfter * 1000 + jitter, MAX_WAIT_MS);
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const at = Number.isFinite(seconds) ? Date.now() + Math.max(seconds, 0) * 1000 : Date.parse(retryAfter);
+    if (!Number.isNaN(at)) return Math.min(Math.max(at - Date.now(), 0) + jitter, MAX_WAIT_MS);
+  }
   return Math.min(5000 * 2 ** (attempt - 1) + jitter, MAX_WAIT_MS);
 }
 
