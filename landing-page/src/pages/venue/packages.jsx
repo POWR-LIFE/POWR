@@ -54,7 +54,7 @@ export const PACKAGES = [
 ];
 
 // The first package that includes each gated part of the portal.
-export const FEATURE_PACKAGE = { events: 'clash_plus', insights: 'clash_plus', studio: 'pro' };
+export const FEATURE_PACKAGE = { events: 'clash_plus', insights: 'clash_plus', studio: 'pro', people: 'pro' };
 
 const LOCKS = {
     events: {
@@ -64,6 +64,10 @@ const LOCKS = {
     insights: {
         title: 'The Members dashboard comes with Clash+',
         body: 'Who’s training, when your gym is busiest and what your members do, week by week.',
+    },
+    people: {
+        title: 'Named member insights come with Clash Pro',
+        body: 'What each member who shares with you has been doing, and an early warning when someone goes quiet.',
     },
     studio: {
         title: 'Studio comes with Clash Pro',
@@ -91,7 +95,7 @@ export function packageLine(pkg) {
 }
 
 // Stand-in when gym_package can't be read: every page opens, no package shown.
-export const PACKAGE_UNKNOWN = { unknown: true, features: { boards: true, events: true, insights: true, studio: true } };
+export const PACKAGE_UNKNOWN = { unknown: true, features: { boards: true, events: true, insights: true, studio: true, people: true } };
 
 // The layout loads the gym's package once and shares it with every page.
 export const PackageContext = createContext({ pkg: null, refresh: () => {} });

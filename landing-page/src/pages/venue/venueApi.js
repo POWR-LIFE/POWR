@@ -55,3 +55,7 @@ export const sendStandingsNow = (eventId, dryRun) => rpc('gym_event_send_pulse',
 // ── Package (set by POWR; an owner can ask to switch) ───────────────────────
 export const fetchGymPackage = (partnerId) => rpc('gym_package', { p_partner_id: partnerId });
 export const requestGymPackage = (partnerId, pkg) => rpc('gym_request_package', { p_partner_id: partnerId, p_package: pkg });
+
+// ── Member insights: anonymous numbers (Clash+), named opted-in members (Pro) ─
+export const fetchMemberActivity = (partnerId, weeks = 12) => rpc('gym_member_activity', { p_partner_id: partnerId, p_weeks: weeks });
+export const fetchMemberPeople = (partnerId) => rpc('gym_member_people', { p_partner_id: partnerId });

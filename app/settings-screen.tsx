@@ -36,6 +36,7 @@ import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifica
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
 import { formatMemberId } from '@/shared/memberId';
+import { getGymSharing, setGymSharing, type GymSharing } from '@/lib/api/gymSharing';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -216,6 +217,28 @@ export default function SettingsScreen() {
   const [notifDailyNudge, setNotifDailyNudge] = useState(true);
   const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
+  // "Share with <gym>": the member's opt-in for their gym's portal to see
+  // their activity by name. Off unless switched on; only offered when their
+  // gym has a portal. Re-read on focus: picking a new gym elsewhere resets it.
+  const [gymSharing, setGymSharingState] = useState<GymSharing | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      getGymSharing().then((s) => { if (alive) setGymSharingState(s); });
+      return () => { alive = false; };
+    }, []),
+  );
+  const toggleGymSharing = async (on: boolean) => {
+    const before = gymSharing;
+    setGymSharingState((s) => (s ? { ...s, sharing: on } : s));
+    try {
+      setGymSharingState(await setGymSharing(on));
+    } catch (e: any) {
+      setGymSharingState(before);
+      Alert.alert('Couldn’t change that', e?.message ?? 'Try again in a moment.');
+    }
+  };
+  const showGymSharing = !!(gymSharing?.portal && gymSharing.gym_name);
   const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
   // Open-board opt-in lives on profiles (the board RPC filters on it), not in
   // user_metadata — a SQL-side filter can't read auth metadata.
@@ -788,8 +811,18 @@ export default function SettingsScreen() {
             sublabel="Friends can see your workouts"
             value={shareActivity}
             onValueChange={(v) => { setShareActivity(v); persistMeta('share_activity', v); }}
-            isLast
+            isLast={!showGymSharing}
           />
+          {showGymSharing && (
+            <RowToggle
+              icon="business-outline"
+              label={`Share with ${gymSharing!.gym_name}`}
+              sublabel="Your gym sees what you train, how often and when. Never your sleep, heart rate or where you are."
+              value={gymSharing!.sharing}
+              onValueChange={toggleGymSharing}
+              isLast
+            />
+          )}
         </View>
 
         {/* ── Admin ─────────────────────────────────────────── */}
