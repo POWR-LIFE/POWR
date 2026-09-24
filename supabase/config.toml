@@ -622,6 +622,13 @@ verify_jwt = false
 # function. Gym and session ids are hashed before they leave.
 verify_jwt = false
 
+[functions.manage-gym-staff]
+# Gym portal logins and invites (powr.life/venue). validate/redeem run from a
+# signed-out setup page with the invite token as the credential; everything
+# else verifies the caller's JWT in code and checks their gym role. Same model
+# as manage-creator-user.
+verify_jwt = false
+
 [functions.send-reengagement-email]
 # Invoked by pg_cron daily 09:00 UTC (no Supabase user JWT) — gated by the
 # x-resolve-token shared secret instead (verify_resolve_token RPC).
