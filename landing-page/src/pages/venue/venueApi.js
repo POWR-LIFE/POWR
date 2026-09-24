@@ -51,3 +51,7 @@ export const reinstateInGymEvent = (eventId, userId) => rpc('gym_event_reinstate
 export const fetchEventPushes = (eventId) => rpc('gym_event_push_status', { p_event_id: eventId });
 export const setEventPush = (eventId, patch) => rpc('gym_event_set_push', { p_event_id: eventId, p_patch: patch });
 export const sendStandingsNow = (eventId, dryRun) => rpc('gym_event_send_pulse', { p_event_id: eventId, p_dry_run: dryRun });
+
+// ── Package (set by POWR; an owner can ask to switch) ───────────────────────
+export const fetchGymPackage = (partnerId) => rpc('gym_package', { p_partner_id: partnerId });
+export const requestGymPackage = (partnerId, pkg) => rpc('gym_request_package', { p_partner_id: partnerId, p_package: pkg });

@@ -1,20 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Palette, Tv, Users, UserCog, LogOut, ChevronRight, Search, Eye, X, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Palette, Tv, Users, UserCog, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
+import { fetchGymPackage } from './venueApi';
+import { PackageContext, packageLine } from './packages';
 
 const NAV = [
     { label: 'Overview', short: 'Home',    path: '/venue',         icon: LayoutDashboard },
     { label: 'Events',   short: 'Events',  path: '/venue/events',  icon: CalendarDays    },
-    { label: 'Studio',   short: 'Studio',  path: '/venue/studio',  icon: Palette         },
+    { label: 'Studio',   short: 'Studio',  path: '/venue/studio',  icon: Palette,   feature: 'studio'   },
     { label: 'Screens',  short: 'Screens', path: '/venue/screens', icon: Tv              },
-    { label: 'Members',  short: 'Members', path: '/venue/members', icon: Users           },
+    { label: 'Members',  short: 'Members', path: '/venue/members', icon: Users,     feature: 'insights' },
     { label: 'Team',     short: 'Team',    path: '/venue/team',    icon: UserCog         },
 ];
 
-const PATH_LABELS = { venue: 'Overview', events: 'Events', screens: 'Screens', members: 'Members', team: 'Team' };
+const PATH_LABELS = { venue: 'Overview', events: 'Events', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Team', package: 'Package' };
 
 // An event's own pages keep the Events tab lit.
 const isActive = (path, current) => current === path || (path !== '/venue' && current.startsWith(`${path}/`));
@@ -170,6 +172,17 @@ export function VenueLayout({ children }) {
     const { user, gym, isAdmin, isActingGym, setActingGym } = useAuth();
     const [menuOpen, setMenuOpen] = useState(false);
 
+    // The gym's package: what's unlocked (the pages lock themselves from it)
+    // and the trial clock. Reloaded when the gym changes, or on request.
+    const [pkg, setPkg] = useState(null);
+    const partnerId = gym?.partner_id;
+    const refreshPkg = useCallback(() => {
+        if (!partnerId) return;
+        fetchGymPackage(partnerId).then(setPkg).catch(() => setPkg(null));
+    }, [partnerId]);
+    useEffect(() => { setPkg(null); refreshPkg(); }, [refreshPkg]);
+    const locked = (item) => item.feature && pkg && !pkg.features?.[item.feature];
+
     const segment = location.pathname.split('/')[2] || 'venue';
     const currentLabel = PATH_LABELS[segment] || segment;
 
@@ -212,6 +225,12 @@ export function VenueLayout({ children }) {
                                 <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mt-0.5">{roleLabel}</div>
                             </div>
                         </div>
+                        {pkg && (
+                            <Link to="/venue/package" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-[#E6E6E1] hover:border-[#E8D200]/50 transition-colors">
+                                <Package size={12} className="text-[#8a7600] shrink-0" />
+                                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-[#8a7600] truncate">{packageLine(pkg)}</span>
+                            </Link>
+                        )}
                         <GymSwitcher />
                     </div>
                 )}
@@ -234,6 +253,7 @@ export function VenueLayout({ children }) {
                             >
                                 <item.icon size={18} strokeWidth={active ? 3 : 2} className={active ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
                                 <span className="text-[11px] uppercase tracking-[0.2em] font-black">{item.label}</span>
+                                {locked(item) && <Lock size={11} className="ml-auto opacity-70" aria-label="Not in your package" />}
                             </Link>
                         );
                     })}
@@ -303,6 +323,13 @@ export function VenueLayout({ children }) {
                             </button>
                         </div>
                         <GymSwitcher className="mb-4" />
+                        {pkg && (
+                            <Link to="/venue/package" className="mb-4 flex items-center gap-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
+                                <Package size={14} className="text-[#8a7600] shrink-0" />
+                                <span className="flex-1 text-[11px] font-black uppercase tracking-[0.15em] text-[#8a7600] truncate">{packageLine(pkg)}</span>
+                                <ChevronRight size={14} className="text-[#BBBBBB]" />
+                            </Link>
+                        )}
                         {user?.email && (
                             <div className="mb-4 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                                 <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
@@ -350,7 +377,9 @@ export function VenueLayout({ children }) {
                     <div className="max-w-[1400px] px-5 sm:px-8 lg:px-16 pt-6 sm:pt-8 lg:pt-10 pb-28 lg:pb-24">
                         {/* Keyed on the gym: switching gyms remounts the page, so no
                             page can show one gym's data under another's name. */}
-                        <React.Fragment key={gym?.partner_id ?? 'none'}>{children}</React.Fragment>
+                        <PackageContext.Provider value={{ pkg, refresh: refreshPkg }}>
+                            <React.Fragment key={gym?.partner_id ?? 'none'}>{children}</React.Fragment>
+                        </PackageContext.Provider>
                     </div>
                 </div>
             </main>
@@ -368,7 +397,10 @@ export function VenueLayout({ children }) {
                                 style={{ color: active ? '#E8D200' : '#AAAAAA' }}
                             >
                                 {active && <span className="absolute top-0 h-[2px] w-8 rounded-full bg-[#E8D200] shadow-[0_0_12px_rgba(232,210,0,0.8)]" />}
-                                <item.icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+                                <span className="relative">
+                                    <item.icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+                                    {locked(item) && <Lock size={9} className="absolute -right-2 -top-1" aria-label="Not in your package" />}
+                                </span>
                                 <span className="text-[9px] uppercase tracking-[0.15em] font-black">{item.short}</span>
                             </Link>
                         );

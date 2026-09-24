@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Dumbbell, Search, Eye, Plus, ShieldCheck, PauseCircle, Power, CalendarCheck } from 'lucide-react';
+import { Dumbbell, Search, Eye, Plus, ShieldCheck, PauseCircle, Power, CalendarCheck, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import GymStaffPanel from '../../components/GymStaffPanel';
 import { GymLogo } from '../venue/VenueLayout';
+import { PACKAGES, PACKAGE_LABEL } from '../venue/packages';
 
 // ─── Gym Portals (/admin/gyms) ────────────────────────────────────────────────
 // Switch the gym portal (/venue) on per gym, send the first owner their
@@ -24,6 +25,116 @@ function Toggle({ on, onFlip, disabled }) {
         >
             <span className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : ''}`} />
         </button>
+    );
+}
+
+// Gym Clash packages. POWR sets them here and invoices outside the product;
+// an owner's "switch" request arrives as package_requested (and a Slack line).
+const DAY = 86400000;
+const trialState = (r) => {
+    if (!r.trial_ends_at) return { on: false, text: 'No trial' };
+    const end = new Date(r.trial_ends_at);
+    const on = end > new Date();
+    const date = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    return on
+        ? { on, text: `Free trial · ${Math.ceil((end - Date.now()) / DAY)} days left · ends ${date}` }
+        : { on, text: `Trial ended ${date}` };
+};
+
+function PackagePanel({ row, rows, saving, userId, onPatch }) {
+    const [note, setNote] = useState(row.package_note ?? '');
+    useEffect(() => { setNote(row.package_note ?? ''); }, [row.partner_id, row.package_note]);
+    const trial = trialState(row);
+    const foundingTaken = rows.filter((r) => r.package === 'founding').length;
+    const chip = (on) => `h-9 px-4 rounded-full border text-[10px] font-black uppercase tracking-[0.15em] transition-colors disabled:opacity-50 ${on ? 'bg-[#E8D200] border-[#E8D200] text-[#080808]' : 'bg-white border-[#E6E6E1] text-[#666] hover:border-[#E8D200]/50'}`;
+
+    const setPackage = (key) => onPatch({
+        package: key,
+        billing: key === 'clash' ? null : (row.billing ?? (key === 'founding' ? 'annual' : 'monthly')),
+        package_set_at: new Date().toISOString(),
+        package_set_by: userId,
+        package_requested: null,
+        package_requested_at: null,
+    }, 'gym_package_set', `${PACKAGE_LABEL[key]} set for ${row.partners?.name}`);
+
+    const setTrialEnd = (date, msg) => onPatch({ trial_ends_at: date.toISOString() }, 'gym_trial_changed', msg);
+
+    return (
+        <div className="bg-white border border-[#E6E6E1] rounded-3xl p-8">
+            <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
+                <div className="flex items-center gap-3">
+                    <Package size={14} className="text-[#8a7600]" />
+                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Package</span>
+                </div>
+                <span className={`text-[11px] font-bold ${trial.on ? 'text-[#0B7A57]' : 'text-[#999]'}`}>{trial.text}</span>
+            </div>
+
+            {row.package_requested && (
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4 mb-6 rounded-2xl bg-[#E8D200]/10 border border-[#E8D200]/40">
+                    <span className="text-[13px]">
+                        The gym asked for <b>{PACKAGE_LABEL[row.package_requested]}</b>
+                        {row.package_requested_at ? ` on ${new Date(row.package_requested_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}.
+                    </span>
+                    <button disabled={saving} onClick={() => setPackage(row.package_requested)} className="h-9 px-4 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-50">
+                        Set it
+                    </button>
+                </div>
+            )}
+
+            <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-2">On</div>
+            <div className="flex flex-wrap gap-2 mb-2">
+                {PACKAGES.map((p) => (
+                    <button key={p.key} disabled={saving} aria-pressed={row.package === p.key} onClick={() => row.package !== p.key && setPackage(p.key)} className={chip(row.package === p.key)}>
+                        {p.name}
+                    </button>
+                ))}
+            </div>
+            <div className="text-[11px] text-[#999] mb-6">
+                {PACKAGES.find((p) => p.key === row.package)?.price}{PACKAGES.find((p) => p.key === row.package)?.per ? ` ${PACKAGES.find((p) => p.key === row.package).per}` : ''}
+                {' · '}{foundingTaken} of 10 founding places taken
+                {trial.on ? ' · everything is unlocked until the trial ends' : ''}
+            </div>
+
+            {row.package !== 'clash' && (
+                <>
+                    <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-2">Billed</div>
+                    <div className="flex flex-wrap gap-2 mb-6">
+                        {[['monthly', 'Monthly'], ['annual', 'Yearly']].map(([k, l]) => (
+                            <button key={k} disabled={saving} aria-pressed={row.billing === k} onClick={() => row.billing !== k && onPatch({ billing: k }, 'gym_billing_set', `Billed ${l.toLowerCase()}`)} className={chip(row.billing === k)}>
+                                {l}
+                            </button>
+                        ))}
+                    </div>
+                </>
+            )}
+
+            <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-2">Trial</div>
+            <div className="flex flex-wrap gap-2 mb-6">
+                {trial.on && (
+                    <button disabled={saving} onClick={() => window.confirm('End the free trial now? The gym drops to its package straight away.') && setTrialEnd(new Date(), 'Trial ended')} className={chip(false)}>
+                        End now
+                    </button>
+                )}
+                <button disabled={saving} onClick={() => setTrialEnd(new Date(Math.max(Date.now(), new Date(row.trial_ends_at ?? 0).getTime()) + 30 * DAY), 'Trial extended by a month')} className={chip(false)}>
+                    + 1 month
+                </button>
+                <button disabled={saving} onClick={() => setTrialEnd(new Date(Date.now() + 91 * DAY), 'Trial restarted: 3 months')} className={chip(false)}>
+                    Restart 3 months
+                </button>
+            </div>
+
+            <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-2">Note (invoice, locked price…)</div>
+            <div className="flex gap-2">
+                <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300}
+                    placeholder="e.g. Founding Pro £1,995/yr locked · invoice INV-0012"
+                    className="flex-1 h-10 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm outline-none focus:border-[#E8D200]/40" />
+                {note !== (row.package_note ?? '') && (
+                    <button disabled={saving} onClick={() => onPatch({ package_note: note.trim() || null }, 'gym_package_note', 'Note saved')} className="h-10 px-5 rounded-full bg-[#1A1A1A] text-white text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-50">
+                        Save
+                    </button>
+                )}
+            </div>
+        </div>
     );
 }
 
@@ -281,7 +392,7 @@ export default function GymPortals() {
                                 <div className="flex-1 min-w-0">
                                     <div className="text-[13px] font-bold truncate">{gym.name}</div>
                                     <div className="text-[10px] text-[#AAAAAA] font-bold mt-0.5">
-                                        {c.owners} owner{c.owners === 1 ? '' : 's'} · {c.staff} team{r.trusted_at ? ' · trusted' : ''}
+                                        {PACKAGE_LABEL[r.package] ?? 'Clash'}{trialState(r).on ? ' · trial' : ''}{r.package_requested ? ` · wants ${PACKAGE_LABEL[r.package_requested]}` : ''} · {c.owners} owner{c.owners === 1 ? '' : 's'} · {c.staff} team{r.trusted_at ? ' · trusted' : ''}
                                     </div>
                                 </div>
                                 <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.2em]" style={{ color: st.color }}>
@@ -350,6 +461,9 @@ export default function GymPortals() {
                                     ))}
                                 </div>
                             </div>
+
+                            <PackagePanel row={selected} rows={rows} saving={saving} userId={user?.id}
+                                onPatch={(change, action, msg) => patch(selected, change, action, msg)} />
 
                             <GymStaffPanel key={selected.partner_id} partnerId={selected.partner_id} gymName={selected.partners?.name} adminView />
                         </>

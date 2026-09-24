@@ -7,7 +7,9 @@
 // pings.
 //
 // kinds: submitted (a gym's first events wait for review), published (a
-// trusted gym went straight out), cancelled, disqualified.
+// trusted gym went straight out), cancelled, disqualified — and one per gym,
+// not per event: package_request (an owner asked to switch package, via
+// _gym_notify; POWR sets it in /admin/gyms and invoices).
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
@@ -20,6 +22,10 @@ const fmtDay = (iso: string | null | undefined) => {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-GB", {
     weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London",
   });
+};
+
+const PACKAGE_LABEL: Record<string, string> = {
+  clash: "Clash (free)", clash_plus: "Clash+", pro: "Clash Pro", founding: "Founding Pro",
 };
 
 // Slack mrkdwn treats <, > and & as control characters.
@@ -60,6 +66,15 @@ serve(async (req) => {
       if (detail?.reason) context.push(`Reason: ${clean(detail.reason)}`);
       context.push("<https://powr.life/admin/audit|Audit log>");
       break;
+    case "package_request": {
+      const want = PACKAGE_LABEL[detail?.package] ?? clean(detail?.package);
+      const now = PACKAGE_LABEL[detail?.current] ?? clean(detail?.current);
+      const trial = fmtDay(detail?.trial_ends_at);
+      text = `:package: *${gymName}* would like *${want}*${who}`;
+      context.push(`Now on ${now}${trial && new Date(detail.trial_ends_at) > new Date() ? ` · free trial until ${trial}` : ""}`);
+      context.push("<https://powr.life/admin/gyms|Set it in Gym Portals>");
+      break;
+    }
     default:
       return new Response("skipped", { status: 200 });
   }

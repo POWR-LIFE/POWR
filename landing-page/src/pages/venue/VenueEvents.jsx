@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Users, ChevronRight, RotateCcw } from 'lucide-react';
+import { Plus, Users, ChevronRight, RotateCcw, Lock } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Page, Card, Micro, PageTitle, Spinner, Empty, BTN_GOLD } from '../../components/portal/ui';
 import { fetchGymEvents } from './venueApi';
 import { StatusPill, statusKey, scoringRange } from './eventUi';
+import { Locked, usePackage } from './packages';
 
 const GROUPS = [
     { key: 'on',       title: 'On now and coming up', keys: ['pending', 'scheduled', 'live', 'locked'] },
@@ -12,7 +13,7 @@ const GROUPS = [
     { key: 'finished', title: 'Finished',              keys: ['revealed', 'settled', 'cancelled', 'pulled'] },
 ];
 
-function EventRow({ ev }) {
+function EventRow({ ev, canRun }) {
     const k = statusKey(ev);
     const finished = ['revealed', 'settled'].includes(k);
     return (
@@ -35,7 +36,7 @@ function EventRow({ ev }) {
                 </Link>
                 <div className="flex flex-col items-end gap-2 shrink-0">
                     <ChevronRight size={16} className="text-[#CCCCCC]" />
-                    {finished && ev.managed_by === 'gym' && (
+                    {finished && canRun && ev.managed_by === 'gym' && (
                         <Link to={`/venue/events/new?from=${ev.id}`} className="inline-flex items-center gap-1.5 text-[9px] uppercase tracking-[0.2em] font-black mt-6">
                             <RotateCcw size={11} className="text-[#8a7600]" /><span className="text-[#8a7600]">Run again</span>
                         </Link>
@@ -48,6 +49,8 @@ function EventRow({ ev }) {
 
 export default function VenueEvents() {
     const { gym } = useAuth();
+    const { pkg } = usePackage();
+    const canRun = !!pkg?.features?.events;
     const [events, setEvents] = useState(null);
     const [error, setError] = useState(null);
 
@@ -62,9 +65,13 @@ export default function VenueEvents() {
     if (error) return <Empty title="Couldn't load your events">{error}</Empty>;
     if (!events) return <Spinner />;
 
-    const newBtn = (
+    const newBtn = canRun ? (
         <Link to="/venue/events/new" className={BTN_GOLD} style={{ color: '#080808' }}>
             <Plus size={14} /> New event
+        </Link>
+    ) : (
+        <Link to="/venue/package" className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black text-[#8a7600]">
+            <Lock size={12} /> New events come with Clash+
         </Link>
     );
 
@@ -72,7 +79,9 @@ export default function VenueEvents() {
         <Page>
             <PageTitle eyebrow="Events" title="Your events" sub={gym.name} right={events.length ? newBtn : null} />
 
-            {events.length === 0 ? (
+            {events.length === 0 && !canRun ? (
+                <Locked feature="events" />
+            ) : events.length === 0 ? (
                 <Card>
                     <Empty title="Run your first event" action={newBtn}>
                         Pick a format, add your prizes and publish. Your members see it in the POWR app, the leaderboard
@@ -86,7 +95,7 @@ export default function VenueEvents() {
                     <div key={g.key} className="space-y-3">
                         <Micro>{g.title}</Micro>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-                            {list.map(ev => <EventRow key={ev.id} ev={ev} />)}
+                            {list.map(ev => <EventRow key={ev.id} ev={ev} canRun={canRun} />)}
                         </div>
                     </div>
                 );

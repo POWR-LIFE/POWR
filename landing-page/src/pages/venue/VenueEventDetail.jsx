@@ -15,6 +15,7 @@ import { EventForm, toFields } from './VenueEventNew';
 import { boardName } from '../../../../shared/gymBoard.ts';
 import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
 import EventPushes from './EventPushes';
+import { usePackage } from './packages';
 
 // One event, run from a phone at the front desk as easily as from a laptop:
 // what happens next and the one button that does it, then the board, who's
@@ -48,6 +49,9 @@ export default function VenueEventDetail() {
     const { gym } = useAuth();
     const toast = useToast();
     const navigate = useNavigate();
+    const { pkg } = usePackage();
+    const canRun = !!pkg?.features?.events;
+    const canPost = !!pkg?.features?.studio;
 
     const [ev, setEv] = useState(null);
     const [trusted, setTrusted] = useState(false);
@@ -188,7 +192,8 @@ export default function VenueEventDetail() {
             title: 'Draft',
             body: `Only your team can see it, in the POWR app too, if you want to check how it looks. ${trusted ? 'Publishing puts it in front of your members straight away.' : 'Your first event gets a quick check from POWR before it goes out.'}`,
             actions: [
-                { label: trusted ? 'Publish' : 'Send to POWR', fn: publish, primary: true, busy: 'publish' },
+                ...(canRun ? [{ label: trusted ? 'Publish' : 'Send to POWR', fn: publish, primary: true, busy: 'publish' }]
+                    : [{ label: 'Publishing needs Clash+', fn: () => navigate('/venue/package'), primary: true, busy: 'none' }]),
                 { label: 'Delete draft', fn: remove, busy: 'delete' },
             ],
         },
@@ -200,7 +205,8 @@ export default function VenueEventDetail() {
         rejected: {
             title: 'POWR asked for a change',
             body: ev.review_note ? `“${ev.review_note}”` : 'Edit it and send it again.',
-            actions: [{ label: 'Send again', fn: publish, primary: true, busy: 'publish' }],
+            actions: canRun ? [{ label: 'Send again', fn: publish, primary: true, busy: 'publish' }]
+                : [{ label: 'Publishing needs Clash+', fn: () => navigate('/venue/package'), primary: true, busy: 'none' }],
         },
         scheduled: {
             title: 'Scheduled',
@@ -382,9 +388,11 @@ export default function VenueEventDetail() {
                         <div className="lg:col-span-2 space-y-6">
                             <CopyRow label="Event board for your TV" url={screenUrl} toast={toast} />
                             <CopyRow label="Page to share with members" url={promoUrl} toast={toast} />
-                            <Link to={`/venue/studio?event=${ev.id}`} className={`${BTN_GHOST} w-full sm:w-auto`}>
-                                <Palette size={13} /> Make a post for it
-                            </Link>
+                            {canPost && (
+                                <Link to={`/venue/studio?event=${ev.id}`} className={`${BTN_GHOST} w-full sm:w-auto`}>
+                                    <Palette size={13} /> Make a post for it
+                                </Link>
+                            )}
                             <p className="text-[11px] text-[#AAAAAA] leading-relaxed">
                                 The TV board counts down, shows the live standings, holds a sealed screen once the board seals, then plays the
                                 podium the moment you reveal. The share page and the QR open the event in the POWR app, or the app store for someone new.

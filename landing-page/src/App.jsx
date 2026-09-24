@@ -115,6 +115,8 @@ import VenueEvents from './pages/venue/VenueEvents';
 import VenueEventNew from './pages/venue/VenueEventNew';
 import VenueEventDetail from './pages/venue/VenueEventDetail';
 import VenueStudio from './pages/venue/VenueStudio';
+import VenuePackage from './pages/venue/VenuePackage';
+import { Gate } from './pages/venue/packages';
 import LandingV2 from './landing/LandingV2';
 import LandingV3 from './landing/v3/LandingV3';
 import PartnersPage from './landing/partners/PartnersPage';
@@ -1608,12 +1610,13 @@ export default function App() {
                     <Route path="/venue/setup/:token" element={<VenueSetup />} />
                     <Route path="/venue" element={<GymProtectedRoute><VenueLayout><VenueHome /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/events" element={<GymProtectedRoute><VenueLayout><VenueEvents /></VenueLayout></GymProtectedRoute>} />
-                    <Route path="/venue/events/new" element={<GymProtectedRoute><VenueLayout><VenueEventNew /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/events/new" element={<GymProtectedRoute><VenueLayout><Gate feature="events"><VenueEventNew /></Gate></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/events/:id" element={<GymProtectedRoute><VenueLayout><VenueEventDetail /></VenueLayout></GymProtectedRoute>} />
-                    <Route path="/venue/studio" element={<GymProtectedRoute><VenueLayout><VenueStudio /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/studio" element={<GymProtectedRoute><VenueLayout><Gate feature="studio"><VenueStudio /></Gate></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/screens" element={<GymProtectedRoute><VenueLayout><VenueScreens /></VenueLayout></GymProtectedRoute>} />
-                    <Route path="/venue/members" element={<GymProtectedRoute><VenueLayout><VenueMembers /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/members" element={<GymProtectedRoute><VenueLayout><Gate feature="insights"><VenueMembers /></Gate></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/team" element={<GymProtectedRoute><VenueLayout><VenueTeam /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/package" element={<GymProtectedRoute><VenueLayout><VenuePackage /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/partner/login" element={<PartnerLogin />} />
                     <Route path="/partner/setup/:token" element={<PartnerSetup />} />
                     <Route path="/partner" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalHome /></PartnerLayout></PartnerProtectedRoute>} />

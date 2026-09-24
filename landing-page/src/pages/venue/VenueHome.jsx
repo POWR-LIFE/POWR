@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Tv, Trophy, CalendarDays, ArrowRight } from 'lucide-react';
+import { Tv, Trophy, CalendarDays, ArrowRight, Package } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Page, Card, Micro, PageTitle, Spinner, Empty, fmtNum } from '../../components/portal/ui';
 import { fetchGymSummary, fetchGymInsights } from './venueApi';
 import { boardName, pctChange, weekLabel } from '../../../../shared/gymBoard.ts';
+import { usePackage, trialDaysLeft, fmtDate } from './packages';
 
 function Stat({ label, now, before, unit }) {
     const change = pctChange(now ?? 0, before ?? 0);
@@ -37,6 +38,8 @@ function Avatar({ row }) {
 
 export default function VenueHome() {
     const { gym } = useAuth();
+    const { pkg } = usePackage();
+    const canRun = !!pkg?.features?.events;
     const [summary, setSummary] = useState(null);
     const [top, setTop] = useState(null);
     const [error, setError] = useState(null);
@@ -63,6 +66,18 @@ export default function VenueHome() {
                 title={summary.gym?.name ?? gym.name}
                 sub={weekLabel(summary.week_start_at, summary.week_end_at, tz)}
             />
+
+            {pkg && (pkg.on_trial || pkg.package === 'clash') && (
+                <Link to="/venue/package" className="group flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4 bg-white border border-[#E8D200]/40 rounded-2xl hover:border-[#E8D200] transition-colors">
+                    <Package size={15} className="text-[#8a7600] shrink-0" />
+                    <span className="text-[13px] text-[#1A1A1A] flex-1 min-w-[200px]">
+                        {pkg.on_trial
+                            ? <><b>Free trial: {trialDaysLeft(pkg)} day{trialDaysLeft(pkg) === 1 ? '' : 's'} left.</b> Everything is switched on until {fmtDate(pkg.trial_ends_at)}.</>
+                            : <><b>You’re on Clash, the free package.</b> Your own challenges, the members dashboard and Studio come with Clash+ and Pro.</>}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-[0.25em] font-black text-[#8a7600] group-hover:underline">See packages</span>
+                </Link>
+            )}
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <Stat label="Athletes" now={summary.week?.athletes} before={summary.last_week?.athletes} />
@@ -143,13 +158,17 @@ export default function VenueHome() {
                             <p className="text-[13px] font-bold leading-relaxed">
                                 {events.live ? `${events.live} live` : ''}{events.live && events.upcoming ? ' · ' : ''}{events.upcoming ? `${events.upcoming} coming up` : ''}
                             </p>
-                        ) : (
+                        ) : canRun || !pkg ? (
                             <p className="text-sm text-[#888] font-light leading-relaxed">
                                 Nothing on at {summary.gym?.name ?? 'your gym'} right now. A month-long challenge is the easiest place to start.
                             </p>
+                        ) : (
+                            <p className="text-sm text-[#888] font-light leading-relaxed">
+                                Running your own challenges comes with Clash+: monthly challenges, weekend sprints and finale nights that run themselves.
+                            </p>
                         )}
-                        <Link to="/venue/events" className="inline-flex items-center gap-2 mt-5 text-[10px] uppercase tracking-[0.25em] font-black">
-                            <span className="text-[#8a7600]">{(events.live ?? 0) + (events.upcoming ?? 0) > 0 ? 'Your events' : 'Run an event'}</span>
+                        <Link to={(events.live ?? 0) + (events.upcoming ?? 0) > 0 || canRun || !pkg ? '/venue/events' : '/venue/package'} className="inline-flex items-center gap-2 mt-5 text-[10px] uppercase tracking-[0.25em] font-black">
+                            <span className="text-[#8a7600]">{(events.live ?? 0) + (events.upcoming ?? 0) > 0 ? 'Your events' : canRun || !pkg ? 'Run an event' : 'See packages'}</span>
                             <ArrowRight size={12} className="text-[#8a7600]" />
                         </Link>
                     </Card>
