@@ -14,6 +14,7 @@ import { StatusPill, statusKey, scoringRange, fmtDay, fmtDayTime, lastDay, isoDa
 import { EventForm, toFields } from './VenueEventNew';
 import { boardName } from '../../../../shared/gymBoard.ts';
 import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
+import EventPushes from './EventPushes';
 
 // One event, run from a phone at the front desk as easily as from a laptop:
 // what happens next and the one button that does it, then the board, who's
@@ -369,6 +370,10 @@ export default function VenueEventDetail() {
                     </div>
                 )}
             </Card>
+
+            {ev.managed_by === 'gym' && k !== 'cancelled' && k !== 'pulled' && (
+                <EventPushes ev={ev} gymName={gym.name} toast={toast} />
+            )}
 
             {ev.status !== 'draft' && k !== 'cancelled' && k !== 'pulled' && (
                 <Card className="p-6 sm:p-8">

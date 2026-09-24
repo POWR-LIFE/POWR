@@ -46,3 +46,8 @@ export const fetchGymEventRoster = (eventId) => rpc('gym_event_roster', { p_even
 export const disqualifyFromGymEvent = (eventId, userId, reason) =>
     rpc('gym_event_disqualify', { p_event_id: eventId, p_user_id: userId, p_reason: reason });
 export const reinstateInGymEvent = (eventId, userId) => rpc('gym_event_reinstate', { p_event_id: eventId, p_user_id: userId });
+
+// ── Event pushes (fixed POWR wording; the gym switches them on or off) ──────
+export const fetchEventPushes = (eventId) => rpc('gym_event_push_status', { p_event_id: eventId });
+export const setEventPush = (eventId, patch) => rpc('gym_event_set_push', { p_event_id: eventId, p_patch: patch });
+export const sendStandingsNow = (eventId, dryRun) => rpc('gym_event_send_pulse', { p_event_id: eventId, p_dry_run: dryRun });

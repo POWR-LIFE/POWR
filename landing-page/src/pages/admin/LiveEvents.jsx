@@ -26,6 +26,7 @@ import {
     BUCKETS as SCORE_BUCKETS, activeBuckets, bucketLabel, excludedSummary, ledgerRowTitle, reasonIsSwitch, reasonLabel,
     rowName, ruleChips, scoringCsv, scoringTotals, searchScoringRows,
 } from '../../../../shared/eventScoring.ts';
+import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -178,7 +179,8 @@ export default function LiveEvents() {
     const [bookingsBusy, setBookingsBusy] = useState(false);
     const [rosterBusy, setRosterBusy] = useState(null);  // 'add' | user_id of the roster edit in flight
     const [pulseSends, setPulseSends] = useState([]);    // live_event_pulse_sends, newest first
-    const [pulseBusy, setPulseBusy] = useState(null);    // 'rank' | 'gate' action in flight
+    const [pulseBusy, setPulseBusy] = useState(null);    // 'rank' | 'gate' | notify_* column in flight
+    const [pushStatus, setPushStatus] = useState(null);  // gym_event_push_status: one-off push reach + wording facts
     const [tab, setTab] = useState('active');
     const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
@@ -221,7 +223,7 @@ export default function LiveEvents() {
         // the new fetch is in flight; same-event refreshes keep what's there.
         if (selected.id !== lastOpsEventId.current) {
             lastOpsEventId.current = selected.id;
-            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null); setPulseSends([]);
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null); setPulseSends([]); setPushStatus(null);
         }
         fetchCounts(selected.id);
         fetchOps(selected.id);
@@ -230,6 +232,7 @@ export default function LiveEvents() {
         fetchBookings(selected.id);
         fetchDoor(selected.id);
         fetchPulseSends(selected.id);
+        fetchPushStatus(selected.id);
         if (selected.venue_partner_id) {
             supabase.from('partners').select('name').eq('id', selected.venue_partner_id).single()
                 .then(({ data }) => setVenueName(data?.name ?? null));
@@ -684,6 +687,25 @@ const setCheckin = async (ev, row, present) => {
         setPulseSends(data ?? []);
     };
 
+    // Admins pass gym_event_push_status's role check on any event.
+    const fetchPushStatus = async (eventId) => {
+        const { data } = await supabase.rpc('gym_event_push_status', { p_event_id: eventId });
+        setPushStatus(data ? { ...data, event_id: eventId } : null);
+    };
+
+    // One-off pushes (announcement / day one / finale night): fixed wording
+    // in supabase/functions/_shared/eventPushCopy.ts, switched per event.
+    // Instant writes like the pulse times; the dispatcher sends each once.
+    const setTemplatePush = async (ev, col, on) => {
+        setPulseBusy(col);
+        const { error } = await supabase.from('live_events').update({ [col]: on }).eq('id', ev.id);
+        setPulseBusy(null);
+        if (error) { toast.error(error.message); return; }
+        await logAction(user.id, 'live_event_template_push', 'live_event', ev.id, { [col]: on });
+        toast.success(`${TEMPLATE_PUSHES.find(t => t.col === col)?.title ?? 'Push'} ${on ? 'on' : 'off'}`);
+        fetchEvents();
+    };
+
     const setPulseTime = async (ev, kind, value) => {   // value 'HH:MM' | null
         const col = kind === 'rank' ? 'notify_rank_at' : 'notify_gate_at';
         setPulseBusy(kind);
@@ -942,8 +964,10 @@ const setCheckin = async (ev, row, present) => {
                         ev={selected}
                         sends={pulseSends}
                         busy={pulseBusy}
+                        pushStatus={pushStatus?.event_id === selected.id ? pushStatus : null}
                         onSetTime={(kind, value) => setPulseTime(selected, kind, value)}
                         onSendNow={(kind) => sendPulseNow(selected, kind)}
+                        onSetTemplatePush={(col, on) => setTemplatePush(selected, col, on)}
                     />
 
                     <RegistrationsPanel
@@ -1093,7 +1117,45 @@ function PulseRow({ title, desc, kind, value, lastSend, busy, onSetTime, onSendN
     );
 }
 
-function PulsePanel({ ev, sends, busy, onSetTime, onSendNow }) {
+const TEMPLATE_PUSHES = [
+    { col: 'notify_announce', kind: 'announce', type: 'event_announced',  title: 'Announcement', when: 'Once, 10am–8pm UK, at least 30 minutes after publishing.' },
+    { col: 'notify_kickoff',  kind: 'kickoff',  type: 'event_kickoff',    title: 'Day one',      when: 'Once, the morning scoring starts.' },
+    { col: 'notify_doors',    kind: 'doors',    type: 'event_doors_open', title: 'Finale night', when: 'Once, the morning of the night.' },
+];
+
+function TemplatePushRow({ t, on, reach, payload, lastSend, busy, onToggle, blocked }) {
+    const copy = payload ? eventPushCopy(t.type, payload) : null;
+    return (
+        <div className="flex items-start gap-4 py-4 first:pt-0 last:pb-0">
+            <button
+                type="button" role="switch" aria-checked={on} aria-label={t.title}
+                onClick={() => onToggle(t.col, !on)}
+                disabled={!!busy || !!blocked}
+                className={`shrink-0 h-9 w-16 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all disabled:opacity-40 ${on
+                    ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white'
+                    : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:border-[#D8D8D2]'}`}
+            >
+                {busy === t.col ? <LoaderCircle size={13} className="animate-spin mx-auto" /> : on ? 'On' : 'Off'}
+            </button>
+            <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-[#1A1A1A]">{t.title}</p>
+                <p className="text-[12px] text-[#888888] leading-relaxed mt-0.5">{blocked ?? `${reach} ${t.when}`}</p>
+                {copy && !blocked && (
+                    <p className="text-[12px] text-[#555555] leading-relaxed mt-1.5 bg-[#FAFAF8] border border-[#F0F0EC] rounded-xl px-3 py-2">
+                        <span className="font-bold text-[#1A1A1A]">{copy.title}</span> — {copy.body}
+                    </p>
+                )}
+                {lastSend && (
+                    <p className="text-[11px] text-[#999999] mt-1.5">
+                        Sent {fmtDT(lastSend.created_at)} · {lastSend.recipients} recipient{lastSend.recipients === 1 ? '' : 's'}
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function PulsePanel({ ev, sends, busy, pushStatus, onSetTime, onSendNow, onSetTemplatePush }) {
     const last = (kind) => (sends ?? []).find(s => s.kind === kind) ?? null;
     const rankInactive =
         ev.status !== 'live' ? 'Only sends while the event is live — nothing goes out right now.'
@@ -1153,6 +1215,32 @@ function PulsePanel({ ev, sends, busy, onSetTime, onSendNow }) {
                         </p>
                     </div>
                 )}
+                <div className="pt-5">
+                    <p className="text-[13px] font-bold text-[#1A1A1A]">One-off pushes</p>
+                    <p className="text-[12px] text-[#888888] leading-relaxed mt-0.5 mb-4">
+                        Fixed POWR wording (shown as it will read), each sent at most once. Gyms switch these on their own events from the portal.
+                    </p>
+                    {TEMPLATE_PUSHES.filter(t => t.kind !== 'doors' || ev.doors_open_at).map(t => {
+                        const a = pushStatus?.audience;
+                        const r = pushStatus?.registrants;
+                        const reach = !pushStatus ? ''
+                            : t.kind === 'announce'
+                                ? `${a.people} venue member${a.people === 1 ? '' : 's'} and recent visitors who haven't joined (${a.reachable} reachable).`
+                                : `${r.people} registrant${r.people === 1 ? '' : 's'} so far (${r.reachable} reachable).`;
+                        return (
+                            <TemplatePushRow
+                                key={t.col} t={t}
+                                on={!!ev[t.col]}
+                                reach={reach}
+                                payload={pushStatus?.payload}
+                                lastSend={(sends ?? []).find(s => s.kind === t.kind) ?? null}
+                                busy={busy}
+                                onToggle={onSetTemplatePush}
+                                blocked={t.kind === 'announce' && !ev.venue_partner_id ? 'Needs a venue — the announcement goes to its members and recent visitors.' : null}
+                            />
+                        );
+                    })}
+                </div>
             </div>
         </section>
     );

@@ -4,6 +4,7 @@ import { deliverVisiblePush } from '../_shared/visiblePush.ts';
 import { streakFromSessions } from '../_shared/streak.ts';
 import { nudgeBudgetGate } from '../_shared/nudgeBudget.ts';
 import { levelDef } from '../_shared/levels.ts';
+import { eventPushCopy } from '../_shared/eventPushCopy.ts';
 
 type NotificationType =
   | 'daily_reminder'
@@ -34,6 +35,12 @@ type NotificationType =
   // your rank today / how many signups you still owe the entry gate.
   | 'event_rank_daily'
   | 'event_gate_reminder'
+  // One-off event pushes (live_event_send_template), switched on per event by
+  // the gym portal or /admin/events: the announcement to the venue's people,
+  // the kickoff and the finale-night morning to registrants.
+  | 'event_announced'
+  | 'event_kickoff'
+  | 'event_doors_open'
   // One-shot setup notice when a user loses 'always' location (dispatch-daily-
   // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
   | 'location_permission_lost'
@@ -74,6 +81,9 @@ const FEED_EXCLUDED: Set<NotificationType> = new Set([
   // Yesterday's rank and an unmet gate are both stale the moment they change —
   // the board itself is the record. (event_results_revealed IS logged: final.)
   'event_rank_daily', 'event_gate_reminder',
+  // "It's on" and "tonight" mean nothing the day after. The announcement IS
+  // logged: the event it names stays joinable until it locks.
+  'event_kickoff', 'event_doors_open',
 ]);
 
 // Coarse bucket the client renders an icon/accent from.
@@ -94,6 +104,9 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'event_results_revealed':
     case 'event_rank_daily':
     case 'event_gate_reminder':
+    case 'event_announced':
+    case 'event_kickoff':
+    case 'event_doors_open':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -163,6 +176,9 @@ const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   // "You're #4 today" delivered tomorrow is a wrong number, not a late one.
   event_rank_daily:        6 * 60 * 60,
   event_gate_reminder:     12 * 60 * 60,
+  event_announced:         24 * 60 * 60,
+  event_kickoff:           12 * 60 * 60,
+  event_doors_open:        8 * 60 * 60,   // sent 09:00 for an evening night
 };
 
 // "on 16 Sep" for a vault maturity date. Falls back to a vaguer phrase rather
@@ -594,6 +610,22 @@ function buildMessage(
           title: `${eventName}: ${remaining} more ${unit}${remaining === 1 ? '' : 's'} to go 🎟️`,
           body: `${progress} Hitting ${required}${day ? ` by ${day}` : ''} ${stake}.`,
           data: { type, route: eventLeagueRoute(payload), event_id: payload.event_id, count, required },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'event_announced':
+      case 'event_kickoff':
+      case 'event_doors_open': {
+        // live_event_send_template — the one-offs a gym switches on per event.
+        // The words live in _shared/eventPushCopy.ts, which the gym portal's
+        // preview renders too, so the preview can never drift from the push.
+        const { title, body } = eventPushCopy(type, payload);
+        return {
+          title,
+          body,
+          data: { type, route: eventLeagueRoute(payload), event_id: payload.event_id },
           sound: 'default',
           channelId: 'powr_default_v2',
           priority: 'high',
@@ -1154,6 +1186,12 @@ async function processOne(
     // to `type` would 400 on every send — see the warning above.
     : type === 'event_rank_daily' ? null
     : type === 'event_gate_reminder' ? null
+    // Registrant one-offs: same reasoning as the pulses above.
+    : type === 'event_kickoff' ? null
+    : type === 'event_doors_open' ? null
+    // A gym's new event is an announcement to people who haven't opted in to
+    // it, so it honours the Announcements switch (20260626000001).
+    : type === 'event_announced' ? 'announcements'
     : type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
     : type === 'session_upgraded' ? 'session_completed'
     : type === 'vault_unlocked' ? 'points_milestone'
