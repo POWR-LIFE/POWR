@@ -16,6 +16,7 @@ import {
     MousePointerClick,
     Lock,
     Newspaper,
+    Palette,
     ScrollText,
     Settings,
     Shield,
@@ -77,6 +78,7 @@ import SessionReview from './pages/admin/SessionReview';
 import SupportTickets from './pages/admin/SupportTickets';
 import SystemConfig from './pages/admin/SystemConfig';
 import TeamLetters from './pages/admin/TeamLetters';
+import Studio from './pages/admin/Studio';
 import UserManager from './pages/admin/UserManager';
 import UserProfile from './pages/admin/UserProfile';
 import WeeklyChallenges from './pages/admin/WeeklyChallenges';
@@ -417,6 +419,7 @@ const PATH_LABELS = {
     'team-letters': 'Team Letters',
     notifications: 'Notifications',
     'streak-rescue': 'Streak Rescue',
+    studio: 'Studio',
     events: 'Live Events',
     liveops: 'Live Ops',
     'system-health': 'System Health',
@@ -1297,6 +1300,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Support',     path: '/admin/support',     icon: MessageSquare, badge: openTickets },
         { label: 'Broadcast',      path: '/admin/broadcast',      icon: Megaphone  },
         { label: 'Campaigns',      path: '/admin/campaigns',      icon: CalendarDays },
+        { label: 'Studio',         path: '/admin/studio',         icon: Palette      },
         { label: 'Team Letters',   path: '/admin/team-letters',   icon: Newspaper    },
         { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
         { label: 'Streak Rescue',  path: '/admin/streak-rescue',  icon: Flame        },
@@ -1407,8 +1411,12 @@ const AdminLayout = ({ children }) => {
                 </div>
             </aside>
 
-            {/* Main */}
-            <main className="flex-1 flex flex-col min-h-screen bg-[#F4F4F1] overflow-x-hidden min-w-0">
+            {/* Main — overflow-x-CLIP, not hidden, and no overflow on the inner
+                wrapper: either one makes an ancestor a scroll container that never
+                scrolls (the window does), which silently switches off every
+                position:sticky inside it — the header, and the pages' sticky
+                previews and rails. */}
+            <main className="flex-1 flex flex-col min-h-screen bg-[#F4F4F1] overflow-x-clip min-w-0">
                 <header className="h-14 border-b border-[#E6E6E1] flex-shrink-0 flex items-center justify-between px-8 bg-[#F4F4F1]/80 backdrop-blur-xl sticky top-0 z-50">
                     <div className="flex items-center gap-3">
                         <div className="h-1.5 w-1.5 rounded-full bg-[#E8D200] shadow-[0_0_8px_rgba(232,210,0,0.7)] animate-pulse"></div>
@@ -1420,7 +1428,7 @@ const AdminLayout = ({ children }) => {
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1">
                     <div className="max-w-[1600px] px-8 py-8">
                         {children}
                     </div>
@@ -1521,6 +1529,7 @@ export default function App() {
                     <Route path="/admin/broadcast" element={<ProtectedRoute><AdminLayout><Broadcast /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/campaigns" element={<ProtectedRoute><AdminLayout><Campaigns /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/team-letters" element={<ProtectedRoute><AdminLayout><TeamLetters /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/studio" element={<ProtectedRoute><AdminLayout><Studio /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/notifications" element={<ProtectedRoute><AdminLayout><NotificationManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/streak-rescue" element={<ProtectedRoute><AdminLayout><StreakRescue /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/events" element={<ProtectedRoute><AdminLayout><LiveEvents /></AdminLayout></ProtectedRoute>} />
