@@ -1,4 +1,4 @@
-import { ctaButton, emailShell, esc, FONT, GOLD, sectionLabel } from "./layout.ts";
+import { ctaButton, emailShell, esc, FONT, GOLD, optimizeImage, sectionLabel } from "./layout.ts";
 
 export interface WeeklySummaryTopActivity {
   /** Activity type key, e.g. "gym", "running". */
@@ -209,25 +209,6 @@ function formatDuration(sec: number): string {
   const h = Math.floor(mins / 60);
   const rem = mins % 60;
   return rem ? `${h}h ${rem}m` : `${h}h`;
-}
-
-// Reward images are user-uploaded and can be huge (multiple MB, 8000px wide),
-// which email clients (and Gmail's image proxy) refuse to load — and at native
-// aspect ratio they render as giant blocks. Route Supabase storage objects
-// through the on-the-fly image transform so we only ever send a small, fixed-
-// size version. Non-Supabase URLs are left untouched.
-function optimizeImage(
-  url: string,
-  opts: { width?: number; height?: number; resize?: "cover" | "contain" } = {},
-): string {
-  const marker = "/storage/v1/object/public/";
-  if (!url.includes(marker)) return url;
-  const base = url.split("?")[0].replace(marker, "/storage/v1/render/image/public/");
-  const { width = 600, height, resize } = opts;
-  let q = `?width=${width}&quality=75`;
-  if (height) q += `&height=${height}`;
-  if (resize) q += `&resize=${resize}`;
-  return `${base}${q}`;
 }
 
 // A "longest session" over these bounds is a tracking artefact (a gym visit whose

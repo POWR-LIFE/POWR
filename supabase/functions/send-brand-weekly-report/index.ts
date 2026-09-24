@@ -15,7 +15,7 @@
 //   { dry_run, only_email, deliver_to, week_start, limit, sample }
 //   - deliver_to redirects delivery and is honoured only alongside only_email,
 //     so a full run can never be re-routed to a single inbox by accident.
-//   - sample renders representative data to only_email (anon-key Bearer allowed).
+//   - sample renders representative data to only_email (still token-gated).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -25,7 +25,6 @@ import {
   type PartnerWeeklySummaryData,
 } from "../_shared/emails/partner-weekly-summary.ts";
 
-const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const REPLY_TO = "support@powr.life";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CONCURRENCY = 5;
@@ -111,14 +110,11 @@ Deno.serve(async (req: Request) => {
   const sample = body?.sample === true;
 
   const token = req.headers.get("x-resolve-token") ?? "";
-  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   let authed = false;
   if (token) {
     const { data: valid } = await admin.rpc("verify_resolve_token", { p_token: token });
     authed = valid === true;
   }
-  // Anon key is public — safe as a bypass for sample-only sends to an explicit address.
-  if (!authed && sample && ANON_KEY && bearer === ANON_KEY) authed = true;
   if (!authed) return new Response("forbidden", { status: 403 });
 
   const onlyEmail = typeof body?.only_email === "string" ? (body.only_email as string).toLowerCase() : null;

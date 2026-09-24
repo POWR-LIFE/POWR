@@ -27,6 +27,25 @@ export function esc(value: string | null | undefined): string {
     .replace(/'/g, "&#39;");
 }
 
+// Reward images are user-uploaded and can be huge (multiple MB, 8000px wide),
+// which email clients (and Gmail's image proxy) refuse to load — and at native
+// aspect ratio they render as giant blocks. Route Supabase storage objects
+// through the on-the-fly image transform so we only ever send a small, fixed-
+// size version. Non-Supabase URLs are left untouched.
+export function optimizeImage(
+  url: string,
+  opts: { width?: number; height?: number; resize?: "cover" | "contain" } = {},
+): string {
+  const marker = "/storage/v1/object/public/";
+  if (!url.includes(marker)) return url;
+  const base = url.split("?")[0].replace(marker, "/storage/v1/render/image/public/");
+  const { width = 600, height, resize } = opts;
+  let q = `?width=${width}&quality=75`;
+  if (height) q += `&height=${height}`;
+  if (resize) q += `&resize=${resize}`;
+  return `${base}${q}`;
+}
+
 /** Gold uppercase eyebrow used to title each section. */
 export function sectionLabel(text: string, color = "#8F8203"): string {
   return `<span style="display:block;font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:${color};font-family:${FONT};">${text}</span>`;
@@ -38,11 +57,14 @@ export function ctaButton(label: string, href: string, variant: "primary" | "gho
     ? `border-radius:24px;background-color:${GOLD};`
     : `border-radius:24px;border:1px solid #5d5514;`;
   const color = variant === "primary" ? "#080808" : GOLD;
+  // Partner-supplied checkout URLs land here: attribute-escape them and never
+  // emit a non-web scheme.
+  const safeHref = esc(/^https?:\/\//i.test(href) ? href : "https://powr.life");
   return `
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
               <tr>
                 <td style="${cell}">
-                  <a href="${href}" style="display:inline-block;padding:14px 32px;font-size:13px;font-weight:700;color:${color};font-family:${FONT};text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;">${label}</a>
+                  <a href="${safeHref}" style="display:inline-block;padding:14px 32px;font-size:13px;font-weight:700;color:${color};font-family:${FONT};text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;">${label}</a>
                 </td>
               </tr>
             </table>`;

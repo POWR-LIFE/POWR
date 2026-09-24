@@ -621,3 +621,13 @@ verify_jwt = false
 # Same credential as gym-board: the gym's display_token (?k=), checked in the
 # function. Gym and session ids are hashed before they leave.
 verify_jwt = false
+
+[functions.send-reengagement-email]
+# Invoked by pg_cron daily 09:00 UTC (no Supabase user JWT) — gated by the
+# x-resolve-token shared secret instead (verify_resolve_token RPC).
+verify_jwt = false
+
+[functions.send-redemption-receipt]
+# Invoked by the notify_redemption_receipt() DB trigger via pg_net (no Supabase
+# user JWT) — gated by the x-resolve-token shared secret instead.
+verify_jwt = false
