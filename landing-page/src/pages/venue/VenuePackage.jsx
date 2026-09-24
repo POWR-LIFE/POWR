@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
-import { Page, Card, Micro, PageTitle, Spinner, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
+import { Page, Card, Micro, PageTitle, Spinner, Empty, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
 import { requestGymPackage } from './venueApi';
 import { PACKAGES, PACKAGE_LABEL, usePackage, trialDaysLeft, fmtDate } from './packages';
 
@@ -16,6 +16,7 @@ export default function VenuePackage() {
     const [busy, setBusy] = useState(null);
 
     if (!pkg) return <Spinner />;
+    if (pkg.unknown) return <Empty title="Couldn’t load your package">Try again in a minute.</Empty>;
 
     const canAsk = gym?.role === 'owner' || gym?.role === 'admin';
     const days = trialDaysLeft(pkg);

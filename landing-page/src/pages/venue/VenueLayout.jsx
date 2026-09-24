@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
 import { fetchGymPackage } from './venueApi';
-import { PackageContext, packageLine } from './packages';
+import { PackageContext, PACKAGE_UNKNOWN, packageLine } from './packages';
 
 const NAV = [
     { label: 'Overview', short: 'Home',    path: '/venue',         icon: LayoutDashboard },
@@ -178,7 +178,9 @@ export function VenueLayout({ children }) {
     const partnerId = gym?.partner_id;
     const refreshPkg = useCallback(() => {
         if (!partnerId) return;
-        fetchGymPackage(partnerId).then(setPkg).catch(() => setPkg(null));
+        // If the package can't be read, the pages open rather than spin: the
+        // database still refuses anything the package doesn't include.
+        fetchGymPackage(partnerId).then(setPkg).catch(() => setPkg(PACKAGE_UNKNOWN));
     }, [partnerId]);
     useEffect(() => { setPkg(null); refreshPkg(); }, [refreshPkg]);
     const locked = (item) => item.feature && pkg && !pkg.features?.[item.feature];
@@ -225,7 +227,7 @@ export function VenueLayout({ children }) {
                                 <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mt-0.5">{roleLabel}</div>
                             </div>
                         </div>
-                        {pkg && (
+                        {pkg && !pkg.unknown && (
                             <Link to="/venue/package" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-[#E6E6E1] hover:border-[#E8D200]/50 transition-colors">
                                 <Package size={12} className="text-[#8a7600] shrink-0" />
                                 <span className="text-[10px] font-black uppercase tracking-[0.15em] text-[#8a7600] truncate">{packageLine(pkg)}</span>
@@ -323,7 +325,7 @@ export function VenueLayout({ children }) {
                             </button>
                         </div>
                         <GymSwitcher className="mb-4" />
-                        {pkg && (
+                        {pkg && !pkg.unknown && (
                             <Link to="/venue/package" className="mb-4 flex items-center gap-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                                 <Package size={14} className="text-[#8a7600] shrink-0" />
                                 <span className="flex-1 text-[11px] font-black uppercase tracking-[0.15em] text-[#8a7600] truncate">{packageLine(pkg)}</span>

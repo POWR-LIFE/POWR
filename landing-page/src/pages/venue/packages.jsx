@@ -90,6 +90,9 @@ export function packageLine(pkg) {
     return pkg.package === 'clash' ? 'Clash · free' : PACKAGE_LABEL[pkg.package];
 }
 
+// Stand-in when gym_package can't be read: every page opens, no package shown.
+export const PACKAGE_UNKNOWN = { unknown: true, features: { boards: true, events: true, insights: true, studio: true } };
+
 // The layout loads the gym's package once and shares it with every page.
 export const PackageContext = createContext({ pkg: null, refresh: () => {} });
 export const usePackage = () => useContext(PackageContext);
