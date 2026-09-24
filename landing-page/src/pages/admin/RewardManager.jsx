@@ -1581,7 +1581,7 @@ export default function RewardManager() {
 
                             {/* Live app preview — mirrors the form, identical to the partner portal */}
                             <div className="hidden xl:block">
-                                <div className="sticky top-8">
+                                <div className="sticky top-20">
                                     <div className="flex items-center gap-3 mb-6 justify-center">
                                         <div className="h-[1px] w-8 bg-[#E8D200]" />
                                         <span className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black">In-App Preview</span>

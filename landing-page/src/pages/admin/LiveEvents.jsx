@@ -3812,7 +3812,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
             <fieldset disabled={locked} className={locked ? 'opacity-60' : ''}>
                 <div className="flex gap-6 items-start flex-col lg:flex-row">
                     {/* Step rail */}
-                    <nav className="w-full lg:w-72 shrink-0 lg:sticky lg:top-6 flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
+                    <nav className="w-full lg:w-72 shrink-0 lg:sticky lg:top-20 flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
                         {steps.map((s, i) => {
                             const st = state[s.key];
                             const tone = STEP_TONE[st.status];
