@@ -30,7 +30,7 @@ export default function PrivacyPolicyScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.updated}>Last updated: 17 April 2026</Text>
+        <Text style={styles.updated}>Last updated: 24 September 2026</Text>
 
         <Section title="1. Who We Are">
           POWR ("we", "us", "our") operates the POWR mobile application and website at powr.life.
@@ -50,6 +50,7 @@ export default function PrivacyPolicyScreen() {
           • To provide and operate the POWR rewards platform, including tracking activity and awarding points.{'\n\n'}
           • To verify gym visits and workout sessions for reward eligibility.{'\n\n'}
           • To display relevant partner rewards and offers near your location.{'\n\n'}
+          • To give the gym you pick anonymous totals about its members’ activity, and your own activity only if you switch that on (see “Your gym” below).{'\n\n'}
           • To communicate with you about your account, rewards, and service updates.{'\n\n'}
           • To improve our services, fix bugs, and develop new features.{'\n\n'}
           • To prevent fraud and ensure the integrity of the rewards system.
@@ -58,13 +59,14 @@ export default function PrivacyPolicyScreen() {
         <Section title="4. Legal Basis for Processing">
           We process your personal data on the following legal bases under UK GDPR:{'\n\n'}
           • Contract: processing necessary to provide you with the POWR service you signed up for.{'\n\n'}
-          • Consent: for health data and location data, which you explicitly opt in to share.{'\n\n'}
+          • Consent: for health data and location data, which you explicitly opt in to share, and for sharing your activity with your gym if you switch that on.{'\n\n'}
           • Legitimate interest: for analytics, fraud prevention, and service improvement.
         </Section>
 
         <Section title="5. Data Sharing">
           We do not sell your personal data. We may share data with:{'\n\n'}
-          • Partner businesses: only the minimum information needed to fulfil a reward you choose to redeem. We never share your health data with partners.{'\n\n'}
+          • Reward partners: only the minimum information needed to fulfil a reward you choose to redeem. We never share your health data with reward partners.{'\n\n'}
+          • Your gym: if you pick a gym as your gym in the app and it uses POWR’s gym portal, it sees anonymous totals about its members’ activity (such as how many members ran this month or which days are busiest), never who did what, and only once at least five members have picked that gym. If you switch on “Share with [your gym]” (Settings, then Privacy), it also sees your name, POWR ID and your recent activity: what you did, when and how often, for example so staff notice if you stop training. It is off unless you turn it on, it stops if you pick another gym, and you can turn it off at any time. We never share your sleep, heart rate, steps or location with a gym. If you join an event a gym runs on POWR, that gym sees your name and POWR ID for the event, and gyms that show POWR leaderboards on screens show the names and points of members who train there.{'\n\n'}
           • Service providers: trusted third parties who help us operate our platform (e.g. hosting, analytics), bound by data processing agreements.{'\n\n'}
           • Legal obligations: where required by law or to protect our rights.
         </Section>
