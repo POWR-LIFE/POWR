@@ -60,7 +60,7 @@ export default {
     ],
     fill: {
         event: (ev) => ({
-            callout: `001\nLive event\n${twoLines(ev.name, 6).replace('\n', ' // ')}`,
+            callout: `001\nLive event\n${twoLines(ev.name, 6).replaceAll('\n', ' // ')}`,
             date: ev.dots,
             subRight: ev.city || 'Live',
             infoLeft: `POWR${ev.venue ? ` and ${ev.venue}` : ''}\npresent //\n“${ev.name}”`,
