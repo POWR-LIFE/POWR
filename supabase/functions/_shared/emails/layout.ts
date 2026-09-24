@@ -57,11 +57,14 @@ export function ctaButton(label: string, href: string, variant: "primary" | "gho
     ? `border-radius:24px;background-color:${GOLD};`
     : `border-radius:24px;border:1px solid #5d5514;`;
   const color = variant === "primary" ? "#080808" : GOLD;
+  // Partner-supplied checkout URLs land here: attribute-escape them and never
+  // emit a non-web scheme.
+  const safeHref = esc(/^https?:\/\//i.test(href) ? href : "https://powr.life");
   return `
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
               <tr>
                 <td style="${cell}">
-                  <a href="${href}" style="display:inline-block;padding:14px 32px;font-size:13px;font-weight:700;color:${color};font-family:${FONT};text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;">${label}</a>
+                  <a href="${safeHref}" style="display:inline-block;padding:14px 32px;font-size:13px;font-weight:700;color:${color};font-family:${FONT};text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;">${label}</a>
                 </td>
               </tr>
             </table>`;

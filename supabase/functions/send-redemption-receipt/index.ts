@@ -7,15 +7,14 @@
 //
 // Security: verify_jwt=false; gated by x-resolve-token (verify_resolve_token).
 // Sample mode for design QA: { sample: true, only_email, kind?: "code"|"link"|"all" }
-// with the anon key as Bearer renders against a live reward, touching nothing.
+// renders against a live reward, touching nothing. Token-gated like every other
+// call — fire it from SQL with the vault subselect (see docs/email-previews.md).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/mailgun.ts";
 import { redemptionReceiptEmail } from "../_shared/emails/redemption-receipt.ts";
 import { discountLabel } from "../_shared/reward-catalogue.ts";
-
-const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -32,13 +31,11 @@ Deno.serve(async (req: Request) => {
   const sample = body?.sample === true;
 
   const token = req.headers.get("x-resolve-token") ?? "";
-  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   let authed = false;
   if (token) {
     const { data: valid } = await admin.rpc("verify_resolve_token", { p_token: token });
     authed = valid === true;
   }
-  if (!authed && sample && ANON_KEY && bearer === ANON_KEY) authed = true;
   if (!authed) return new Response("forbidden", { status: 403 });
 
   if (sample) {

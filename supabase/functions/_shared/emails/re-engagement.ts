@@ -47,7 +47,7 @@ function brandValueText(r: WeeklyRewardTile): string {
 function rewardRow(r: WeeklyRewardTile, balance: number): string {
   const logoSrc = r.image ?? r.hero ?? null;
   const logo = logoSrc
-    ? `<img src="${optimizeImage(logoSrc, { width: 100, height: 100, resize: "contain" })}" alt="${esc(r.brand ?? "Reward")}" style="display:block;max-width:28px;max-height:28px;width:auto;height:auto;margin:0 auto;">`
+    ? `<img src="${esc(optimizeImage(logoSrc, { width: 100, height: 100, resize: "contain" }))}" alt="${esc(r.brand ?? "Reward")}" style="display:block;max-width:28px;max-height:28px;width:auto;height:auto;margin:0 auto;">`
     : `<span style="display:block;font-size:14px;font-weight:700;color:#666666;font-family:${FONT};">${esc((r.brand ?? "?").trim().charAt(0).toUpperCase())}</span>`;
   const ready = balance >= r.cost;
   const status = ready
@@ -82,8 +82,8 @@ function wayRow(done: boolean, title: string, sub: string, isLast: boolean): str
               <tr>
                 <td style="padding:14px 0;width:26px;vertical-align:middle;">${marker}</td>
                 <td style="padding:14px 0 14px 14px;vertical-align:middle;">
-                  <p style="margin:0;font-size:14px;font-weight:500;color:${done ? "#F2F2F2" : "#cccccc"};font-family:${FONT};">${title}</p>
-                  <p style="margin:2px 0 0;font-size:12px;font-weight:300;color:#888888;font-family:${FONT};">${sub}</p>
+                  <p style="margin:0;font-size:14px;font-weight:500;color:${done ? "#F2F2F2" : "#cccccc"};font-family:${FONT};">${esc(title)}</p>
+                  <p style="margin:2px 0 0;font-size:12px;font-weight:300;color:#888888;font-family:${FONT};">${esc(sub)}</p>
                 </td>
               </tr>
             </table>`;
@@ -99,10 +99,12 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
   const lapsed = data.variant === "lapsed";
 
   // ── Copy ───────────────────────────────────────────────────────────
+  // Plain text is the source; the HTML heading adds line breaks and emphasis.
   let subject: string;
   let preheader: string;
-  let heading: string;
-  let body: string;
+  let headingHtml: string;
+  let headingText: string;
+  let bodyText: string;
 
   if (lapsed) {
     const earned = data.lifetimeEarned.toLocaleString();
@@ -110,12 +112,14 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
       subject = canRedeem
         ? `${plainName}, your ${balance.toLocaleString()} POWR is ready to spend`
         : `${plainName}, your ${balance.toLocaleString()} POWR is still here`;
-      heading = `Still yours,&nbsp;${firstName}.`;
-      body = `You've earned ${earned} POWR so far &mdash; every bit of it still in your balance. Whenever you pick things back up, it keeps building from here.`;
+      headingText = `Still yours, ${plainName}.`;
+      headingHtml = `Still yours,&nbsp;${firstName}.`;
+      bodyText = `You've earned ${earned} POWR so far — every bit of it still in your balance. Whenever you pick things back up, it keeps building from here.`;
     } else {
       subject = `${plainName}, pick up where you left off`;
-      heading = `Pick up where<br class="br-d"> you left off.`;
-      body = `${data.daysAway} days since your last session. The ${earned} POWR you earned hasn't gone anywhere, and your next session counts the moment it's logged.`;
+      headingText = `Pick up where you left off.`;
+      headingHtml = `Pick up where<br class="br-d"> you left off.`;
+      bodyText = `${data.daysAway} days since your last session. The ${earned} POWR you earned hasn't gone anywhere, and your next session counts the moment it's logged.`;
     }
     preheader = canRedeem
       ? `Enough for ${brandValueText(ready[0])} right now.`
@@ -125,12 +129,14 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
   } else {
     if (data.stage === 1) {
       subject = `${plainName}, you already move. Let it count.`;
-      heading = `You already move.<br><em style="font-style:italic;color:${GOLD};">Let it count.</em>`;
-      body = `Nothing's been logged yet &mdash; so the gym visits, runs and walks you're already doing aren't earning. Your first session changes that.`;
+      headingText = `You already move. Let it count.`;
+      headingHtml = `You already move.<br><em style="font-style:italic;color:${GOLD};">Let it count.</em>`;
+      bodyText = `Nothing's been logged yet — so the gym visits, runs and walks you're already doing aren't earning. Your first session changes that.`;
     } else {
       subject = `${plainName}, your first rewards are a few sessions away`;
-      heading = `Your first reward<br class="br-d"> is closer than it looks.`;
-      body = `You joined POWR ${data.daysAway} days ago. One session gets your balance moving &mdash; from there, rewards come into reach fast.`;
+      headingText = `Your first reward is closer than it looks.`;
+      headingHtml = `Your first reward<br class="br-d"> is closer than it looks.`;
+      bodyText = `You joined POWR ${data.daysAway} days ago. One session gets your balance moving — from there, rewards come into reach fast.`;
     }
     preheader = featured
       ? `${balance.toLocaleString()} POWR already banked. ${brandValueText(featured)} is about ${sessionsAway(featured.cost, balance)} sessions away.`
@@ -141,8 +147,8 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
   const hero = `
         <tr>
           <td class="sec" style="background-color:#080808;padding:44px 40px 36px;text-align:center;border-bottom:1px solid #111111;">
-            <h1 class="hero-h1" style="margin:0;font-size:38px;font-weight:200;letter-spacing:0.5px;line-height:1.18;color:#F2F2F2;font-family:${FONT};">${heading}</h1>
-            <p style="margin:18px 0 0;font-size:15px;font-weight:300;color:#999999;line-height:1.7;font-family:${FONT};">${body}</p>
+            <h1 class="hero-h1" style="margin:0;font-size:38px;font-weight:200;letter-spacing:0.5px;line-height:1.18;color:#F2F2F2;font-family:${FONT};">${headingHtml}</h1>
+            <p style="margin:18px 0 0;font-size:15px;font-weight:300;color:#999999;line-height:1.7;font-family:${FONT};">${esc(bodyText)}</p>
           </td>
         </tr>`;
 
@@ -163,16 +169,17 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
           </td>
         </tr>`;
 
-  const ways = [
+  // Plain text; wayRow escapes for HTML.
+  const ways: { done: boolean; title: string; sub: string }[] = [
     {
       done: data.locationGranted,
       title: data.locationGranted ? "Gym visits count on their own" : "Turn on location",
-      sub: data.locationGranted ? "Walk in, train, walk out &mdash; the visit is logged for you." : "So your gym visits log themselves, no tapping start.",
+      sub: data.locationGranted ? "Walk in, train, walk out — the visit is logged for you." : "So your gym visits log themselves, no tapping start.",
     },
     {
       done: !!data.wearable,
-      title: data.wearable ? `Workouts sync from ${esc(data.wearable)}` : "Connect a wearable",
-      sub: data.wearable ? "Anything you record there lands in POWR." : "Apple Health, Whoop, Garmin, Oura &amp; more.",
+      title: data.wearable ? `Workouts sync from ${data.wearable}` : "Connect a wearable",
+      sub: data.wearable ? "Anything you record there lands in POWR." : "Apple Health, Whoop, Garmin, Oura & more.",
     },
   ];
   // Steps only reach POWR through a connected health source.
@@ -199,19 +206,17 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
   const html = emailShell({ title: "POWR", preheader, rows });
 
   // ── Plain text ─────────────────────────────────────────────────────
-  const strip = (s: string) =>
-    s.replace(/<br[^>]*>/g, " ").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&mdash;/g, "—").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
   const rewardLines = (canRedeem ? ready : featured ? [featured] : [])
     .map((r) => `  - ${brandValueText(r)}: ${r.cost.toLocaleString()} POWR${balance >= r.cost ? " (ready)" : ` (${(r.cost - balance).toLocaleString()} to go)`}`)
     .join("\n");
-  const text = `${strip(heading)}
+  const text = `${headingText}
 
-${strip(body)}
+${bodyText}
 
 Balance: ${balance.toLocaleString()} POWR
 ${rewardLines}
 
-${ways.map((w) => `  [${w.done ? "x" : " "}] ${strip(w.title)} — ${strip(w.sub)}`).join("\n")}
+${ways.map((w) => `  [${w.done ? "x" : " "}] ${w.title} — ${w.sub}`).join("\n")}
 
 Open POWR: https://powr.life/app
 

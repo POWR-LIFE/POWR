@@ -49,7 +49,7 @@ export function redemptionReceiptEmail(data: RedemptionReceiptData): { subject: 
   const logo = data.imageUrl
     ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 22px;background-color:#141414;border:1px solid #242424;border-radius:14px;">
               <tr><td width="72" height="72" align="center" valign="middle" style="width:72px;height:72px;text-align:center;">
-                <img src="${optimizeImage(data.imageUrl, { width: 160, height: 160, resize: "contain" })}" alt="${esc(brand ?? "Reward")}" style="display:block;max-width:48px;max-height:48px;width:auto;height:auto;margin:0 auto;">
+                <img src="${esc(optimizeImage(data.imageUrl, { width: 160, height: 160, resize: "contain" }))}" alt="${esc(brand ?? "Reward")}" style="display:block;max-width:48px;max-height:48px;width:auto;height:auto;margin:0 auto;">
               </td></tr>
             </table>`
     : "";
