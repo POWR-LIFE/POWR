@@ -236,8 +236,8 @@ begin
           ) x on x.wk = w.wk
       ),
 
-      -- Activities at least 3 members did (now or before); the rest summed.
       'active_prev_4w', (select prev from act),
+      -- Activities at least 3 members did (now or before); the rest summed.
       -- change_pct is per ACTIVE MEMBER (sessions each, now vs the 4 weeks
       -- before), so new members joining doesn't read as "running is up".
       'mix', (
@@ -299,7 +299,6 @@ begin
           ) x on x.m = mo.m
       ),
 
-      -- Their gym sessions over 8 weeks: how many were here.
       -- Their gym sessions over 8 weeks: here, at other gyms (never named),
       -- or with no gym attached (a wearable workout at home, or not checked in).
       'gym_sessions', jsonb_build_object(
