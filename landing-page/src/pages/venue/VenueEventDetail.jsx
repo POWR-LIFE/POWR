@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Copy, ExternalLink, Trophy, Users, Tv, Sparkles, Pencil } from 'lucide-react';
+import { ArrowLeft, Copy, ExternalLink, Trophy, Users, Tv, Sparkles, Pencil, Palette } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
 import { Page, Card, Micro, Spinner, Empty, BTN_GOLD, BTN_GHOST, INPUT, fmtNum } from '../../components/portal/ui';
@@ -382,6 +382,9 @@ export default function VenueEventDetail() {
                         <div className="lg:col-span-2 space-y-6">
                             <CopyRow label="Event board for your TV" url={screenUrl} toast={toast} />
                             <CopyRow label="Page to share with members" url={promoUrl} toast={toast} />
+                            <Link to={`/venue/studio?event=${ev.id}`} className={`${BTN_GHOST} w-full sm:w-auto`}>
+                                <Palette size={13} /> Make a post for it
+                            </Link>
                             <p className="text-[11px] text-[#AAAAAA] leading-relaxed">
                                 The TV board counts down, shows the live standings, holds a sealed screen once the board seals, then plays the
                                 podium the moment you reveal. The share page and the QR open the event in the POWR app, or the app store for someone new.
