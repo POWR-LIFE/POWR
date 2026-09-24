@@ -194,6 +194,14 @@ function formatSessionCompletedBody(
   return parts.length > 0 ? parts.join(' · ') : 'Your session counted.';
 }
 
+// Several events can run at once, so an event push opens THAT event's board:
+// the League tab reads ?event=<slug>. Payloads from before the DB started
+// sending event_slug (20260924160100) keep the bare tab.
+function eventLeagueRoute(payload: Record<string, unknown>): string {
+  const slug = String(payload.event_slug ?? '').trim();
+  return slug ? `/(tabs)/league?event=${encodeURIComponent(slug)}` : '/(tabs)/league';
+}
+
 // ---------------------------------------------------------------------------
 // Notification copy per type
 // ---------------------------------------------------------------------------
@@ -510,7 +518,7 @@ function buildMessage(
           body,
           data: {
             type,
-            route: '/(tabs)/league',
+            route: eventLeagueRoute(payload),
             event_id: payload.event_id,
             rank: Number.isFinite(rank) && rank > 0 ? rank : undefined,
           },
@@ -549,7 +557,7 @@ function buildMessage(
             : 'See where you stand on the leaderboard.',
           data: {
             type,
-            route: '/(tabs)/league',
+            route: eventLeagueRoute(payload),
             event_id: payload.event_id,
             rank: hasRank ? rank : undefined,
           },
@@ -585,7 +593,7 @@ function buildMessage(
         return {
           title: `${eventName}: ${remaining} more ${unit}${remaining === 1 ? '' : 's'} to go 🎟️`,
           body: `${progress} Hitting ${required}${day ? ` by ${day}` : ''} ${stake}.`,
-          data: { type, route: '/(tabs)/league', event_id: payload.event_id, count, required },
+          data: { type, route: eventLeagueRoute(payload), event_id: payload.event_id, count, required },
           sound: 'default',
           channelId: 'powr_default_v2',
           priority: 'high',

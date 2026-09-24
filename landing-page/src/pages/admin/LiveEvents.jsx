@@ -118,6 +118,9 @@ const editableFields = (ev) => ({
     doors_close_at: ev.doors_close_at,
     eligibility_cutoff_at: ev.eligibility_cutoff_at,
     scope: ev.scope,
+    audience_mode: ev.audience_mode ?? 'all',
+    audience_radius_km: ev.audience_radius_km ?? null,
+    audience_recent_days: ev.audience_recent_days ?? 60,
     board_size: ev.board_size,
     included_activities: ev.included_activities,
     count_manual: ev.count_manual,
@@ -3368,6 +3371,10 @@ const activitiesSummary = (list) => (list == null ? 'All types' : `${list.length
 // Status + rail summary for each step, from the form alone. "warn" is
 // reserved for things that quietly cost the app a row or a screen
 // (no event night, no prizes) — not for anything merely optional.
+const audienceSummary = (form) => form.audience_mode === 'venue'
+    ? `venue's people${form.audience_radius_km ? ` + ${form.audience_radius_km} km` : ''}`
+    : 'shown to everyone';
+
 const stepState = (form) => ({
     basics: form.name?.trim() && form.slug?.trim()
         ? { status: 'done', summary: `${form.name} · ${form.slug}` }
@@ -3379,7 +3386,7 @@ const stepState = (form) => ({
             : { status: 'done', summary: `${fmtDay(form.window_start_at)} → ${fmtLastDay(form.window_end_at)} · night ${fmtDay(form.doors_open_at)}` },
     who: {
         status: 'done',
-        summary: `${form.scope === 'opt_in' ? 'Opt-in' : 'Everyone'} · top ${form.board_size} · entry closes ${fmtDay(form.eligibility_cutoff_at ?? form.window_start_at)}`,
+        summary: `${form.scope === 'opt_in' ? 'Opt-in' : 'Everyone'} · ${audienceSummary(form)} · top ${form.board_size} · entry closes ${fmtDay(form.eligibility_cutoff_at ?? form.window_start_at)}`,
     },
     scoring: {
         status: 'done',
@@ -3442,7 +3449,11 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                             <VenuePicker
                                 venueId={form.venue_partner_id}
                                 venueName={venueName}
-                                onPick={(id, name) => { set({ venue_partner_id: id }); setVenueName(name); }}
+                                onPick={(id, name) => {
+                                    // A venue audience can't outlive its venue (DB check).
+                                    set(id ? { venue_partner_id: id } : { venue_partner_id: null, audience_mode: 'all', audience_radius_km: null });
+                                    setVenueName(name);
+                                }}
                             />
                         </Field>
                     </>
@@ -3541,6 +3552,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                 ['register', 'Joining opens the join sheet (dates, prizes, rules) and lands people on the League tab.'],
                 ['league', 'The leaderboard lists the top places up to Leaderboard size; the same number of final places are saved when you press Settle.'],
                 ['ticket', 'After the eligibility cutoff, joining stops — the ticket and invite progress of people already in stay where they are.'],
+                ['home', 'Venue’s people: only the venue’s members, recent visitors and (with Nearby on) people close by get the card. Anyone can still open it from its QR code or an invite link, and it stays for everyone who joins.'],
             ],
             sections: [
                 { fields: (
@@ -3548,7 +3560,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Who takes part" hint="Opt-in: people must join the event in the app to appear on the leaderboard. Global: every POWR member is on the leaderboard automatically.">
                             <div className="flex gap-2">
                                 {['opt_in', 'global'].map(s => (
-                                    <Chip key={s} active={form.scope === s} onClick={() => set({ scope: s })}>
+                                    <Chip key={s} active={form.scope === s} onClick={() => set(s === 'global' ? { scope: s, audience_mode: 'all', audience_radius_km: null } : { scope: s })}>
                                         {s === 'opt_in' ? 'Opt-in (must join)' : 'Global (everyone)'}
                                     </Chip>
                                 ))}
@@ -3565,6 +3577,50 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Leaderboard size" hint="How many people are shown on the leaderboard in the app, and how many final places are saved when the event is settled.">
                             <NumberInput value={form.board_size} onChange={v => set({ board_size: v })} min={3} max={500} />
                         </Field>
+                    </>
+                ) },
+                { title: 'Who sees it', blurb: 'Several events can run at once. A venue event only shows in the app for that venue’s people, so a gym’s challenge doesn’t fill everyone else’s home screen.', fields: (
+                    <>
+                        <Field label="Shown to" hint="Everyone: every member sees the event. Venue’s people: members who picked the venue as their gym and anyone who trained there recently. Needs a venue partner (Basics) and Opt-in.">
+                            <div className="flex flex-wrap gap-2">
+                                <Chip active={form.audience_mode !== 'venue'} onClick={() => set({ audience_mode: 'all', audience_radius_km: null })}>
+                                    Everyone
+                                </Chip>
+                                <Chip
+                                    active={form.audience_mode === 'venue'}
+                                    onClick={() => { if (form.venue_partner_id && form.scope === 'opt_in') set({ audience_mode: 'venue' }); }}
+                                >
+                                    Venue’s people
+                                </Chip>
+                            </div>
+                            {!(form.venue_partner_id && form.scope === 'opt_in') && (
+                                <p className="text-[11px] text-[#999999] leading-relaxed mt-2 max-w-md">
+                                    {!form.venue_partner_id ? 'Pick a venue partner under Basics first.' : 'Switch Who takes part to Opt-in first — a global board is every member.'}
+                                </p>
+                            )}
+                        </Field>
+                        {form.audience_mode === 'venue' && (
+                            <>
+                                <Field label="Recent visitors" hint="Anyone with a session at the venue within this many days sees the event.">
+                                    <div className="flex flex-wrap gap-2">
+                                        {[30, 60, 90].map(d => (
+                                            <Chip key={d} active={form.audience_recent_days === d} onClick={() => set({ audience_recent_days: d })}>
+                                                {d} days
+                                            </Chip>
+                                        ))}
+                                    </div>
+                                </Field>
+                                <Field label="Nearby" hint="Also show it to people within this distance of the venue: where their phone was last, or where they usually train. Gyms close together share people: at 2 km a Stars Gym event reaches ONE LDN’s members.">
+                                    <div className="flex flex-wrap gap-2">
+                                        {[null, 1, 2, 5, 10].map(km => (
+                                            <Chip key={km ?? 'off'} active={(form.audience_radius_km ?? null) === km} onClick={() => set({ audience_radius_km: km })}>
+                                                {km ? `${km} km` : 'Off'}
+                                            </Chip>
+                                        ))}
+                                    </div>
+                                </Field>
+                            </>
+                        )}
                     </>
                 ) },
             ],

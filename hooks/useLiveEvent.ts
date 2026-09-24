@@ -10,11 +10,10 @@ import {
     type InviteProgress,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
-import { designBoard, designEventBySlug, designEvents, isDesignEventId } from '@/lib/dev/multiEventDesign';
 
 /**
- * The current live event (or null when none is configured) plus the viewer's
- * invite progress. Event config changes server-side take effect on refetch —
+ * One live event (or null when none is configured) plus the viewer's invite
+ * progress toward it. Event config changes server-side take effect on refetch —
  * nothing about an event is baked into the app.
  *
  * `slug` (from a promo-page QR deep link) pins a specific event so someone
@@ -29,20 +28,19 @@ export function useLiveEvent(slug?: string, boardPreviewState?: BoardPreviewStat
         queryKey: ['liveEvent', slug ?? 'active'],
         queryFn: async () => {
             if (slug) {
-                // Dev-only design samples — null outside __DEV__.
-                const sample = designEventBySlug(slug);
-                if (sample) return sample;
                 const pinned = await fetchLiveEventBySlug(slug);
                 if (pinned) return pinned;
             }
-            return (await fetchActiveLiveEvent()) ?? designEvents(null)[0] ?? null;
+            return fetchActiveLiveEvent();
         },
         staleTime: 60_000,
     });
 
+    // Per event: with several running, invite progress is toward the one on
+    // screen. The ['liveEventInvites'] prefix still invalidates every entry.
     const inviteQuery = useQuery<InviteProgress | null>({
-        queryKey: ['liveEventInvites'],
-        queryFn: fetchInviteProgress,
+        queryKey: ['liveEventInvites', eventQuery.data?.id ?? null],
+        queryFn: () => fetchInviteProgress(eventQuery.data?.id),
         staleTime: 60_000,
         enabled: !!eventQuery.data,
     });
@@ -55,10 +53,7 @@ export function useLiveEvent(slug?: string, boardPreviewState?: BoardPreviewStat
     // payload, and Home's board entry (which passes no state) keeps its own.
     const boardQuery = useQuery<EventLeaderboard | null>({
         queryKey: ['liveEventBoard', eventQuery.data?.id, boardPreviewState ?? null],
-        queryFn: () =>
-            isDesignEventId(eventQuery.data!.id)
-                ? designBoard(eventQuery.data!.id)
-                : fetchEventLeaderboard(eventQuery.data!.id, boardPreviewState),
+        queryFn: () => fetchEventLeaderboard(eventQuery.data!.id, boardPreviewState),
         // Scheduled events have no board — except in preview, where the admin
         // can force the board into any state for the design walkthrough, so
         // previewers always ask and let the server decide the shape.
