@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Dumbbell, Search, Eye, Plus, ShieldCheck, PauseCircle, Power } from 'lucide-react';
+import { Dumbbell, Search, Eye, Plus, ShieldCheck, PauseCircle, Power, CalendarCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
@@ -44,6 +44,35 @@ export default function GymPortals() {
     const [search, setSearch] = useState('');
     const [results, setResults] = useState([]);
     const [saving, setSaving] = useState(false);
+    const [pending, setPending] = useState([]);
+    const [trustOnApprove, setTrustOnApprove] = useState(true);
+
+    // Gym-run events waiting for their first-event check.
+    const loadPending = async () => {
+        const { data } = await supabase
+            .from('live_events')
+            .select('id, name, slug, template_key, window_start_at, window_end_at, doors_open_at, prizes, rules, promo_headline, submitted_at, attendance_bonus_points, audience_radius_km, partners:venue_partner_id(name)')
+            .eq('review_status', 'pending')
+            .order('submitted_at', { ascending: true });
+        setPending(data ?? []);
+    };
+
+    const review = async (ev, decision) => {
+        let note = null;
+        if (decision === 'reject') {
+            note = window.prompt(`What should ${ev.partners?.name ?? 'the gym'} change? They see this in their portal.`);
+            if (note == null) return;
+        }
+        setSaving(true);
+        const { error } = await supabase.rpc('admin_review_gym_event', {
+            p_event_id: ev.id, p_decision: decision, p_note: note, p_trust: trustOnApprove,
+        });
+        setSaving(false);
+        if (error) { toast.error(error.message); return; }
+        toast.success(decision === 'approve' ? `${ev.name} is live in the app${trustOnApprove ? ' — and the gym is trusted from now on' : ''}` : 'Sent back with your note');
+        loadPending();
+        load();
+    };
 
     const load = async () => {
         const [{ data: settings, error }, { data: staff }] = await Promise.all([
@@ -64,7 +93,7 @@ export default function GymPortals() {
         setLoading(false);
     };
 
-    useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { load(); loadPending(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         const q = search.trim();
@@ -136,6 +165,56 @@ export default function GymPortals() {
                     </p>
                 </div>
             </div>
+
+            {pending.length > 0 && (
+                <div className="bg-white border border-[#E8D200]/40 rounded-3xl p-8 mb-10">
+                    <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                        <div className="flex items-center gap-3">
+                            <CalendarCheck size={14} className="text-[#8a7600]" />
+                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Events waiting for your OK · {pending.length}</span>
+                        </div>
+                        <label className="flex items-center gap-3 text-[11px] text-[#666]">
+                            <Toggle on={trustOnApprove} onFlip={() => setTrustOnApprove(t => !t)} disabled={saving} />
+                            Trust the gym when I approve (its next events publish without review)
+                        </label>
+                    </div>
+                    <div className="space-y-4">
+                        {pending.map(ev => (
+                            <div key={ev.id} className="p-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                        <div className="text-[10px] uppercase tracking-[0.3em] text-[#8a7600] font-black">{ev.partners?.name} · {ev.template_key}</div>
+                                        <div className="text-lg font-bold mt-1">{ev.name}</div>
+                                        <div className="text-[12px] text-[#888] mt-1">
+                                            {new Date(ev.window_start_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                            {' → '}
+                                            {new Date(new Date(ev.window_end_at).getTime() - 60000).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                            {ev.doors_open_at ? ` · finale ${new Date(ev.doors_open_at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}
+                                            {ev.attendance_bonus_points ? ` · +${ev.attendance_bonus_points} POWR for attending` : ''}
+                                            {ev.audience_radius_km ? ` · shown within ${ev.audience_radius_km} km` : ''}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 shrink-0">
+                                        <button disabled={saving} onClick={() => review(ev, 'reject')} className="h-10 px-5 rounded-full border border-[#E6E6E1] bg-white text-[10px] font-black uppercase tracking-[0.2em] text-[#666] disabled:opacity-50">Send back</button>
+                                        <button disabled={saving} onClick={() => review(ev, 'approve')} className="h-10 px-5 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-50">Approve</button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-[12px]">
+                                    <div>
+                                        <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-1">Prizes</div>
+                                        {(ev.prizes ?? []).map(p => <div key={p.rank}>{p.rank}. {p.label}</div>)}
+                                    </div>
+                                    <div>
+                                        <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mb-1">Rules</div>
+                                        {(ev.rules ?? []).map((r, i) => <div key={i} className="text-[#666]">· {r}</div>)}
+                                        {ev.promo_headline && <div className="mt-2 italic text-[#666]">“{ev.promo_headline}”</div>}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Switch a gym on */}
             <div className="bg-white border border-[#E6E6E1] rounded-3xl p-8 mb-10">

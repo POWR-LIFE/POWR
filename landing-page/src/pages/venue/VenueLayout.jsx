@@ -1,18 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Tv, Users, UserCog, LogOut, ChevronRight, Search, Eye, X, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Tv, Users, UserCog, LogOut, ChevronRight, Search, Eye, X, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
 
 const NAV = [
     { label: 'Overview', short: 'Home',    path: '/venue',         icon: LayoutDashboard },
+    { label: 'Events',   short: 'Events',  path: '/venue/events',  icon: CalendarDays    },
     { label: 'Screens',  short: 'Screens', path: '/venue/screens', icon: Tv              },
     { label: 'Members',  short: 'Members', path: '/venue/members', icon: Users           },
     { label: 'Team',     short: 'Team',    path: '/venue/team',    icon: UserCog         },
 ];
 
-const PATH_LABELS = { venue: 'Overview', screens: 'Screens', members: 'Members', team: 'Team' };
+const PATH_LABELS = { venue: 'Overview', events: 'Events', screens: 'Screens', members: 'Members', team: 'Team' };
+
+// An event's own pages keep the Events tab lit.
+const isActive = (path, current) => current === path || (path !== '/venue' && current.startsWith(`${path}/`));
 
 const ROLE_LABEL = { owner: 'Owner', staff: 'Team', admin: 'POWR admin' };
 
@@ -217,7 +221,7 @@ export function VenueLayout({ children }) {
                         <div className="h-[2px] w-10 bg-[#E8D200]/70" />
                     </div>
                     {NAV.map(item => {
-                        const active = location.pathname === item.path;
+                        const active = isActive(item.path, location.pathname);
                         return (
                             <Link
                                 key={item.path}
@@ -352,9 +356,9 @@ export function VenueLayout({ children }) {
 
             {/* ── Mobile bottom tabs ──────────────────────────────────────── */}
             <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-[#E6E6E1] pb-[env(safe-area-inset-bottom)]">
-                <div className="grid grid-cols-4 h-16">
+                <div className="grid grid-cols-5 h-16">
                     {NAV.map(item => {
-                        const active = location.pathname === item.path;
+                        const active = isActive(item.path, location.pathname);
                         return (
                             <Link
                                 key={item.path}

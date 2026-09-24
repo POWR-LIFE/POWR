@@ -768,6 +768,16 @@ const setCheckin = async (ev, row, present) => {
         await setStatus(ev, 'revealed', { revealed_at: new Date().toISOString() });
     };
 
+    // Gym-run events: POWR can take one down at any point. The gym sees the reason.
+    const pullEvent = async (ev) => {
+        const reason = window.prompt(`Pull ${ev.name}? It disappears from the app, and the gym sees your reason in its portal.`);
+        if (!reason) return;
+        const { error } = await supabase.rpc('admin_pull_event', { p_event_id: ev.id, p_reason: reason });
+        if (error) { toast.error(error.message); return; }
+        toast.success('Event pulled');
+        fetchEvents();
+    };
+
     const regenerateToken = async (ev) => {
         if (!window.confirm('Regenerate the display token? Any previously shared big-screen link stops working immediately.')) return;
         const token = newToken();
@@ -882,6 +892,11 @@ const setCheckin = async (ev, row, present) => {
                                                 <EyeOff size={11} /> Hidden
                                             </span>
                                         )}
+                                        {ev.managed_by === 'gym' && (
+                                            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-[#8B5CF6]">
+                                                Gym-run{ev.review_status === 'pending' ? ' · waiting for review' : ev.review_status === 'pulled' ? ' · pulled' : ''}
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="text-[12px] text-[#888888] mt-0.5">
                                         Scoring {fmtDT(ev.window_start_at)} → {fmtDT(ev.window_end_at)} · {ev.scope === 'opt_in' ? 'Opt-in' : 'Global'}
@@ -913,6 +928,7 @@ const setCheckin = async (ev, row, present) => {
                         onReveal={() => revealEvent(selected)}
                         onMarkSettled={() => setStatus(selected, 'settled', {}, 'Wrap up? The event moves to its final settled state.')}
                         onArchive={() => setStatus(selected, 'archived', {}, 'Archive this event? It disappears from the app entirely.')}
+                        onPull={() => pullEvent(selected)}
                         onCopyUrl={() => copyDisplayUrl(selected)}
                         onCopyPromoUrl={() => copyPromoUrl(selected)}
                         onRegenToken={() => regenerateToken(selected)}
@@ -2323,10 +2339,11 @@ function PreviewBlock({ ev, acting, onSetPreview, onSetBoardState }) {
 function LifecyclePanel({
     ev, counts, acting,
     onSchedule, onUnschedule, onGoLive, onLock, onToggleHidden,
-    onSettle, onReveal, onMarkSettled, onArchive,
+    onSettle, onReveal, onMarkSettled, onArchive, onPull,
     onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate, onSetPreview, onSetBoardState,
     onSetAutoLifecycle,
 }) {
+    const gymRun = ev.managed_by === 'gym';
     const meta = STATUS_META[ev.status];
     const pastLock = ev.lock_at && new Date(ev.lock_at) <= new Date();
     // What the clock will do next, if anything. Only the two automatic
@@ -2368,6 +2385,12 @@ function LifecyclePanel({
                         {counts.participants} participant{counts.participants === 1 ? '' : 's'} · {counts.results} saved final place{counts.results === 1 ? '' : 's'}
                         {pastLock && ev.status === 'live' ? ' · past the leaderboard hide time (the board is already hidden in the app)' : ''}
                     </p>
+                    {gymRun && (
+                        <p className="text-[12px] text-[#8B5CF6] leading-snug mt-1">
+                            Run by the gym from its portal ({ev.template_key}). It settles and reveals itself; the gym can reveal it early.
+                            Points and scoring stay inside the template, so edits that change them are refused. Pull it if it has to come down.
+                        </p>
+                    )}
                 </div>
                 <div className="flex-1 h-[1.5px] rounded-full" style={{ background: `linear-gradient(90deg, ${meta.color}40, transparent)` }} />
             </div>
@@ -2413,10 +2436,12 @@ function LifecyclePanel({
                                 tone={ev.hidden ? 'neutral' : 'danger'}
                                 onClick={onToggleHidden}
                             />
-                            <Btn icon={Archive} label="Archive" onClick={onArchive} />
+                            {gymRun
+                                ? <Btn icon={Archive} label="Pull" tone="danger" onClick={onPull} />
+                                : <Btn icon={Archive} label="Archive" onClick={onArchive} />}
                         </>
                     )}
-                    <Btn icon={Copy} label="Duplicate" onClick={onDuplicate} />
+                    {!gymRun && <Btn icon={Copy} label="Duplicate" onClick={onDuplicate} />}
                 </div>
 
                 {/* Automatic lifecycle — the clock keeps the published dates;

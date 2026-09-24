@@ -18,3 +18,31 @@ export const setupGymScreens = (partnerId, slug) => rpc('gym_board_setup', { p_p
 export const updateGymScreens = (partnerId, patch) => rpc('gym_board_update', { p_partner_id: partnerId, p_patch: patch });
 
 export const staffApi = (action, body = {}) => invokeFn('manage-gym-staff', { action, ...body });
+
+// ── Events (gym-run, from templates) ────────────────────────────────────────
+export const fetchEventTemplates = async () => {
+    const { data, error } = await supabase.from('event_templates').select('*').eq('active', true).order('sort_order');
+    if (error) throw new Error(error.message);
+    return data ?? [];
+};
+export const fetchPointPresets = async () => {
+    const { data, error } = await supabase.from('event_point_presets').select('*').eq('active', true).order('sort_order');
+    if (error) throw new Error(error.message);
+    return data ?? [];
+};
+export const fetchGymEvents = (partnerId) => rpc('gym_list_events', { p_partner_id: partnerId });
+export const fetchGymEvent = (eventId) => rpc('gym_event_detail', { p_event_id: eventId });
+export const createGymEvent = (partnerId, templateKey, fields) =>
+    rpc('gym_create_event', { p_partner_id: partnerId, p_template_key: templateKey, p_fields: fields });
+export const updateGymEvent = (eventId, fields) => rpc('gym_update_event', { p_event_id: eventId, p_fields: fields });
+export const publishGymEvent = (eventId) => rpc('gym_publish_event', { p_event_id: eventId });
+export const withdrawGymEvent = (eventId) => rpc('gym_withdraw_event', { p_event_id: eventId });
+export const deleteGymEvent = (eventId) => rpc('gym_delete_event', { p_event_id: eventId });
+export const cancelGymEvent = (eventId) => rpc('gym_cancel_event', { p_event_id: eventId });
+export const revealGymEvent = (eventId) => rpc('gym_reveal_event', { p_event_id: eventId });
+export const scheduleGymReveal = (eventId, at) => rpc('gym_set_reveal_at', { p_event_id: eventId, p_reveal_at: at });
+export const fetchGymEventBoard = (eventId) => rpc('gym_event_board', { p_event_id: eventId });
+export const fetchGymEventRoster = (eventId) => rpc('gym_event_roster', { p_event_id: eventId });
+export const disqualifyFromGymEvent = (eventId, userId, reason) =>
+    rpc('gym_event_disqualify', { p_event_id: eventId, p_user_id: userId, p_reason: reason });
+export const reinstateInGymEvent = (eventId, userId) => rpc('gym_event_reinstate', { p_event_id: eventId, p_user_id: userId });

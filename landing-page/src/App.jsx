@@ -111,6 +111,9 @@ import VenueHome from './pages/venue/VenueHome';
 import VenueScreens from './pages/venue/VenueScreens';
 import VenueMembers from './pages/venue/VenueMembers';
 import VenueTeam from './pages/venue/VenueTeam';
+import VenueEvents from './pages/venue/VenueEvents';
+import VenueEventNew from './pages/venue/VenueEventNew';
+import VenueEventDetail from './pages/venue/VenueEventDetail';
 import LandingV2 from './landing/LandingV2';
 import LandingV3 from './landing/v3/LandingV3';
 import PartnersPage from './landing/partners/PartnersPage';
@@ -1326,6 +1329,7 @@ const AdminLayout = ({ children }) => {
     const [pendingAthletes, setPendingAthletes] = useState(0);
     const [pendingSubmissions, setPendingSubmissions] = useState(0);
     const [pendingGymRequests, setPendingGymRequests] = useState(0);
+    const [pendingGymEvents, setPendingGymEvents] = useState(0);
     const [pendingSlotRequests, setPendingSlotRequests] = useState(0);
     const [pendingPlacements, setPendingPlacements] = useState(0);
     const [pendingCreatorRequests, setPendingCreatorRequests] = useState(0);
@@ -1354,6 +1358,12 @@ const AdminLayout = ({ children }) => {
             .select('id', { count: 'exact', head: true })
             .eq('status', 'pending')
             .then(({ count }) => setPendingGymRequests(count ?? 0));
+        // Gym-run events waiting for POWR's first-event check.
+        supabase
+            .from('live_events')
+            .select('id', { count: 'exact', head: true })
+            .eq('review_status', 'pending')
+            .then(({ count }) => setPendingGymEvents(count ?? 0));
         supabase
             .from('featured_slot_requests')
             .select('id', { count: 'exact', head: true })
@@ -1384,7 +1394,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Overview',    path: '/admin',                    icon: LayoutDashboard },
         { label: 'Partners',    path: '/admin/partners',           icon: Activity        },
         { label: 'Gym Requests',path: '/admin/gym-requests',       icon: Building2,      badge: pendingGymRequests },
-        { label: 'Gym Portals', path: '/admin/gyms',               icon: Dumbbell        },
+        { label: 'Gym Portals', path: '/admin/gyms',               icon: Dumbbell,       badge: pendingGymEvents },
         { label: 'Rewards',     path: '/admin/rewards',            icon: Award           },
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,          badge: pendingSubmissions },
         { label: 'Featured',    path: '/admin/featured',           icon: Star,           badge: pendingSlotRequests },
@@ -1596,6 +1606,9 @@ export default function App() {
                     <Route path="/venue/login" element={<VenueLogin />} />
                     <Route path="/venue/setup/:token" element={<VenueSetup />} />
                     <Route path="/venue" element={<GymProtectedRoute><VenueLayout><VenueHome /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/events" element={<GymProtectedRoute><VenueLayout><VenueEvents /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/events/new" element={<GymProtectedRoute><VenueLayout><VenueEventNew /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/events/:id" element={<GymProtectedRoute><VenueLayout><VenueEventDetail /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/screens" element={<GymProtectedRoute><VenueLayout><VenueScreens /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/members" element={<GymProtectedRoute><VenueLayout><VenueMembers /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/team" element={<GymProtectedRoute><VenueLayout><VenueTeam /></VenueLayout></GymProtectedRoute>} />

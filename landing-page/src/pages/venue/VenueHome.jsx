@@ -145,13 +145,13 @@ export default function VenueHome() {
                             </p>
                         ) : (
                             <p className="text-sm text-[#888] font-light leading-relaxed">
-                                No events at {summary.gym?.name ?? 'your gym'} right now. Want to run one? Get in touch and we’ll set it up with you.
+                                Nothing on at {summary.gym?.name ?? 'your gym'} right now. A month-long challenge is the easiest place to start.
                             </p>
                         )}
-                        <a href="mailto:support@powr.life?subject=An%20event%20at%20our%20gym" className="inline-flex items-center gap-2 mt-5 text-[10px] uppercase tracking-[0.25em] font-black">
-                            <span className="text-[#8a7600]">Talk to POWR</span>
+                        <Link to="/venue/events" className="inline-flex items-center gap-2 mt-5 text-[10px] uppercase tracking-[0.25em] font-black">
+                            <span className="text-[#8a7600]">{(events.live ?? 0) + (events.upcoming ?? 0) > 0 ? 'Your events' : 'Run an event'}</span>
                             <ArrowRight size={12} className="text-[#8a7600]" />
-                        </a>
+                        </Link>
                     </Card>
 
                     <Card className="p-6 sm:p-8">
