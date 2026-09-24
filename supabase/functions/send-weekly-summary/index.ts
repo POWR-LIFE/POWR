@@ -388,6 +388,10 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  // The cron only sees "request queued", so this line is the one place a
+  // partial send shows up.
+  console.log(`send-weekly-summary: ${weekLabel} sent=${sent} failed=${failed} recipients=${recipients.length}`);
+
   return new Response(JSON.stringify({ ok: true, week: weekLabel, sent, failed }), {
     status: 200,
     headers: { "Content-Type": "application/json" },

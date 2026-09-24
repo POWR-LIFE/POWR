@@ -97,7 +97,18 @@ Deno.serve(async (req: Request) => {
   }
 
   // Mark as sent so we never double-send on a retry of onboarding completion.
-  await userClient.auth.updateUser({ data: { welcome_email_sent: true } });
+  // Must go through the admin API: userClient only carries the caller's JWT as
+  // a header, has no session, so its auth.updateUser() errored and the flag was
+  // never written for anyone.
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { auth: { persistSession: false } },
+  );
+  const { error: flagError } = await admin.auth.admin.updateUserById(user.id, {
+    user_metadata: { ...user.user_metadata, welcome_email_sent: true },
+  });
+  if (flagError) console.error("send-welcome-email: failed to set welcome_email_sent:", flagError);
 
   return new Response(JSON.stringify({ ok: true, sent_to: user.email }), {
     status: 200,

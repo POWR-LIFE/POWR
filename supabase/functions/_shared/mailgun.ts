@@ -38,16 +38,46 @@ export async function sendEmail(opts: SendEmailOptions): Promise<void> {
 
   const credentials = btoa(`api:${MAILGUN_API_KEY}`);
 
-  const response = await fetch(`${MAILGUN_BASE_URL}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-    },
-    body,
-  });
+  for (let attempt = 1; ; attempt++) {
+    const response = await fetch(`${MAILGUN_BASE_URL}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+      },
+      body,
+    });
+    if (response.ok) return;
 
-  if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Mailgun API error (${response.status}): ${errorText}`);
+    // 420 = the domain's rolling recipient limit (26 per ~30 s on the current
+    // plan), 429 = generic rate limit. Both clear on their own, so wait out the
+    // window instead of dropping the email — the Monday weekly lost 10-13
+    // recipients a week to this before retries existed.
+    const rateLimited = response.status === 420 || response.status === 429;
+    if (!rateLimited || attempt >= MAX_ATTEMPTS) {
+      throw new Error(`Mailgun API error (${response.status}): ${errorText}`);
+    }
+    await sleep(retryDelayMs(response, errorText, attempt));
   }
+}
+
+const MAX_ATTEMPTS = 5;
+const MAX_WAIT_MS = 65_000;
+
+/** Mailgun's 420 body says "try again after Mon, 21 Sep 2026 08:00:36 UTC";
+ *  honour that (plus a little slack), else Retry-After, else back off. */
+function retryDelayMs(response: Response, errorText: string, attempt: number): number {
+  const jitter = Math.floor(Math.random() * 1500);
+  const after = errorText.match(/try again after ([^"}]+?UTC)/i)?.[1];
+  const at = after ? Date.parse(after) : NaN;
+  if (!Number.isNaN(at)) {
+    return Math.min(Math.max(at - Date.now(), 0) + 1000 + jitter, MAX_WAIT_MS);
+  }
+  const retryAfter = Number(response.headers.get("retry-after"));
+  if (retryAfter > 0) return Math.min(retryAfter * 1000 + jitter, MAX_WAIT_MS);
+  return Math.min(5000 * 2 ** (attempt - 1) + jitter, MAX_WAIT_MS);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
