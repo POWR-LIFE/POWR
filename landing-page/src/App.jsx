@@ -16,6 +16,7 @@ import {
     MousePointerClick,
     Lock,
     Newspaper,
+    Palette,
     ScrollText,
     Settings,
     Shield,
@@ -77,6 +78,7 @@ import SessionReview from './pages/admin/SessionReview';
 import SupportTickets from './pages/admin/SupportTickets';
 import SystemConfig from './pages/admin/SystemConfig';
 import TeamLetters from './pages/admin/TeamLetters';
+import Studio from './pages/admin/Studio';
 import UserManager from './pages/admin/UserManager';
 import UserProfile from './pages/admin/UserProfile';
 import WeeklyChallenges from './pages/admin/WeeklyChallenges';
@@ -417,6 +419,7 @@ const PATH_LABELS = {
     'team-letters': 'Team Letters',
     notifications: 'Notifications',
     'streak-rescue': 'Streak Rescue',
+    studio: 'Studio',
     events: 'Live Events',
     liveops: 'Live Ops',
     'system-health': 'System Health',
@@ -1297,6 +1300,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Support',     path: '/admin/support',     icon: MessageSquare, badge: openTickets },
         { label: 'Broadcast',      path: '/admin/broadcast',      icon: Megaphone  },
         { label: 'Campaigns',      path: '/admin/campaigns',      icon: CalendarDays },
+        { label: 'Studio',         path: '/admin/studio',         icon: Palette      },
         { label: 'Team Letters',   path: '/admin/team-letters',   icon: Newspaper    },
         { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
         { label: 'Streak Rescue',  path: '/admin/streak-rescue',  icon: Flame        },
@@ -1525,6 +1529,7 @@ export default function App() {
                     <Route path="/admin/broadcast" element={<ProtectedRoute><AdminLayout><Broadcast /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/campaigns" element={<ProtectedRoute><AdminLayout><Campaigns /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/team-letters" element={<ProtectedRoute><AdminLayout><TeamLetters /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/studio" element={<ProtectedRoute><AdminLayout><Studio /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/notifications" element={<ProtectedRoute><AdminLayout><NotificationManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/streak-rescue" element={<ProtectedRoute><AdminLayout><StreakRescue /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/events" element={<ProtectedRoute><AdminLayout><LiveEvents /></AdminLayout></ProtectedRoute>} />

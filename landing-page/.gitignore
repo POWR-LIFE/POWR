@@ -1,2 +1,5 @@
 .vercel
 .env*.local
+
+# Studio test photos (Unsplash) — local only, never deployed
+public/studio-samples/
