@@ -5,6 +5,7 @@ import {
     Building2,
     CalendarDays,
     ChevronLeft, ChevronRight,
+    Dumbbell,
     Flame,
     Gift,
     Inbox,
@@ -88,6 +89,7 @@ import VaultManager from './pages/admin/VaultManager';
 import LiveEvents from './pages/admin/LiveEvents';
 import LiveOps from './pages/admin/LiveOps';
 import SystemHealth from './pages/admin/SystemHealth';
+import GymPortals from './pages/admin/GymPortals';
 import { judgeAll, needsAttentionCount } from '../../shared/systemHealth.ts';
 import AthleteSignup from './pages/AthleteSignup';
 import { CreatorLayout } from './pages/creator/CreatorLayout';
@@ -102,6 +104,13 @@ import { CreatorShell } from './pages/creator/CreatorShell';
 import { INPUT as CREATOR_INPUT, LABEL as CREATOR_LABEL, BTN_GOLD as CREATOR_BTN } from './pages/creator/ui';
 import { readHandoffTicket, completeHandoff, arrivedViaApp, markArrivedViaApp } from './pages/creator/portalAuth';
 import AffiliateTermsPage, { AffiliateTermsGate } from './pages/creator/AffiliateTerms';
+import { VenueLayout } from './pages/venue/VenueLayout';
+import VenueLogin from './pages/venue/VenueLogin';
+import VenueSetup from './pages/venue/VenueSetup';
+import VenueHome from './pages/venue/VenueHome';
+import VenueScreens from './pages/venue/VenueScreens';
+import VenueMembers from './pages/venue/VenueMembers';
+import VenueTeam from './pages/venue/VenueTeam';
 import LandingV2 from './landing/LandingV2';
 import LandingV3 from './landing/v3/LandingV3';
 import PartnersPage from './landing/partners/PartnersPage';
@@ -122,6 +131,19 @@ export const AuthContext = createContext({ user: null, isAdmin: false, isPartner
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
 const ACTING_CREATOR_KEY = 'powr_acting_creator';
+// Gym portal: which of the user's gyms is open, and (admins) which gym is
+// being previewed.
+const ACTIVE_GYM_KEY = 'powr_active_gym';
+const ACTING_GYM_KEY = 'powr_acting_gym';
+
+const fetchGymPreview = async (partnerId) => {
+    const { data } = await supabase
+        .from('partners')
+        .select('id, name, logo_url, logo_bg')
+        .eq('id', partnerId)
+        .maybeSingle();
+    return data ? { partner_id: data.id, name: data.name, logo_url: data.logo_url, logo_bg: data.logo_bg, role: 'admin', active: true } : null;
+};
 
 // Creators, unlike brands, are a real table — identity is a straight select.
 const fetchCreatorById = async (id) => {
@@ -156,6 +178,11 @@ export const AuthProvider = ({ children }) => {
     const [creatorData, setCreatorData] = useState(null);
     const [actingCreator, setActingCreatorState] = useState(null);
     const [actingPartner, setActingPartnerState] = useState(null);
+    // Gym portal: every gym this user is on the team of (gym_my_memberships),
+    // the one they have open, and an admin's preview pick.
+    const [gymMemberships, setGymMemberships] = useState([]);
+    const [activeGymId, setActiveGymId] = useState(() => localStorage.getItem(ACTIVE_GYM_KEY));
+    const [actingGym, setActingGymState] = useState(null);
     const [placementsEnabled, setPlacementsEnabled] = useState(false);
     // Master switch from System Config. Admins see the portal regardless.
     const [creatorProgramEnabled, setCreatorProgramEnabled] = useState(false);
@@ -190,6 +217,40 @@ export const AuthProvider = ({ children }) => {
             setActingCreatorState(c);
         }
     };
+
+    const setActiveGym = (partnerId) => {
+        if (partnerId) localStorage.setItem(ACTIVE_GYM_KEY, partnerId);
+        else localStorage.removeItem(ACTIVE_GYM_KEY);
+        setActiveGymId(partnerId ?? null);
+    };
+
+    // Admin-only: preview the gym portal as any gym
+    const setActingGym = async (partnerId) => {
+        if (!partnerId) {
+            localStorage.removeItem(ACTING_GYM_KEY);
+            setActingGymState(null);
+            return;
+        }
+        const preview = await fetchGymPreview(partnerId);
+        if (preview) {
+            localStorage.setItem(ACTING_GYM_KEY, partnerId);
+            setActingGymState(preview);
+        }
+    };
+
+    // Through the RPC, not the table: whether a gym's portal is on (and not
+    // suspended) lives in admin-only gym_portal_settings.
+    const checkGym = async () => {
+        try {
+            const { data, error } = await supabase.rpc('gym_my_memberships');
+            if (error) return [];
+            return Array.isArray(data) ? data : [];
+        } catch {
+            return [];
+        }
+    };
+
+    const refreshGymMemberships = async () => setGymMemberships(await checkGym());
 
     const checkCreator = async (userId) => {
         try {
@@ -282,12 +343,13 @@ export const AuthProvider = ({ children }) => {
                 if (session.user.id === lastUserId) return;
                 lastUserId = session.user.id;
                 setUser(session.user);
-                const [adminStatus, partnerResult, creatorResult, flagOn, creatorOn] = await Promise.all([
+                const [adminStatus, partnerResult, creatorResult, flagOn, creatorOn, gyms] = await Promise.all([
                     checkAdmin(session.user.id),
                     checkPartner(session.user.id),
                     checkCreator(session.user.id),
                     fetchPlacementsFlag(),
                     fetchCreatorFlag(),
+                    checkGym(),
                 ]);
                 // Restore admin preview selection (admins with no brand link)
                 let restoredActing = null;
@@ -300,6 +362,11 @@ export const AuthProvider = ({ children }) => {
                     const storedCreator = localStorage.getItem(ACTING_CREATOR_KEY);
                     if (storedCreator) restoredCreator = await fetchCreatorById(storedCreator);
                 }
+                let restoredGym = null;
+                if (adminStatus) {
+                    const storedGym = localStorage.getItem(ACTING_GYM_KEY);
+                    if (storedGym) restoredGym = await fetchGymPreview(storedGym);
+                }
                 if (mounted) {
                     setIsAdmin(adminStatus);
                     setIsPartner(!!partnerResult);
@@ -308,6 +375,8 @@ export const AuthProvider = ({ children }) => {
                     setCreatorData(creatorResult);
                     setActingCreatorState(restoredCreator);
                     setActingPartnerState(restoredActing);
+                    setGymMemberships(gyms);
+                    setActingGymState(restoredGym);
                     setPlacementsEnabled(flagOn);
                     setCreatorProgramEnabled(creatorOn);
                     // Which user the role lookups above belong to — a route can tell
@@ -326,6 +395,8 @@ export const AuthProvider = ({ children }) => {
                 setCreatorData(null);
                 setActingCreatorState(null);
                 setActingPartnerState(null);
+                setGymMemberships([]);
+                setActingGymState(null);
                 setPlacementsEnabled(false);
                 setCreatorProgramEnabled(false);
                 if (mounted) setLoading(false);
@@ -358,9 +429,22 @@ export const AuthProvider = ({ children }) => {
         return () => { cancelled = true; };
     }, [effectiveBrandName]);
 
+    // The gym the portal is showing: an admin's preview pick first, else the
+    // gym the user last opened, else their first gym whose portal is on.
+    const liveGyms = gymMemberships.filter(m => m.active);
+    const ownGym = liveGyms.find(m => m.partner_id === activeGymId) ?? liveGyms[0] ?? null;
+    const gym = (isAdmin && actingGym) ? actingGym : ownGym;
+
     return (
         <AuthContext.Provider value={{
             user, isAdmin, isPartner,
+            gymMemberships,
+            isGymStaff: liveGyms.length > 0,
+            gym,
+            isActingGym: !!gym && gym === actingGym,
+            setActiveGym,
+            setActingGym,
+            refreshGymMemberships,
             partnerData: partnerData ?? actingPartner,
             isActingPartner: !partnerData && !!actingPartner,
             setActingPartner,
@@ -400,6 +484,7 @@ const PATH_LABELS = {
     rewards: 'Rewards',
     'reward-submissions': 'Submissions',
     'gym-requests': 'Gym Requests',
+    gyms: 'Gym Portals',
     placements: 'Placements',
     challenges: 'Challenges',
     users: 'Users',
@@ -812,6 +897,27 @@ const CreatorProtectedRoute = ({ children }) => {
     // The one hard gate: a real affiliate (not an admin previewing) must have
     // accepted the programme terms before the portal — and their link — opens.
     if (creatorData && !isActingCreator && !creatorData.terms_accepted_at) return <AffiliateTermsGate />;
+    return children;
+};
+
+// --- Gym Protected Route ---
+// Staff of a gym whose portal is on, or admins (they preview as any gym).
+// Waits for roles to resolve for THIS user, like the affiliate route, so a
+// fresh sign-in isn't bounced to the login page mid-lookup.
+const GymProtectedRoute = ({ children }) => {
+    const { user, isGymStaff, isAdmin, loading, rolesFor } = useAuth();
+    const location = useLocation();
+
+    if (loading || (!!user && rolesFor !== user.id)) return (
+        <div className="min-h-screen bg-[#F4F4F1] flex items-center justify-center fixed inset-0 z-[100]">
+            <div className="flex flex-col items-center gap-4">
+                <div className="w-8 h-8 border-2 border-[#E8D200] border-t-transparent rounded-full animate-spin" />
+                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">Loading portal...</p>
+            </div>
+        </div>
+    );
+
+    if (!user || (!isGymStaff && !isAdmin)) return <Navigate to="/venue/login" state={{ from: location }} replace />;
     return children;
 };
 
@@ -1278,6 +1384,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Overview',    path: '/admin',                    icon: LayoutDashboard },
         { label: 'Partners',    path: '/admin/partners',           icon: Activity        },
         { label: 'Gym Requests',path: '/admin/gym-requests',       icon: Building2,      badge: pendingGymRequests },
+        { label: 'Gym Portals', path: '/admin/gyms',               icon: Dumbbell        },
         { label: 'Rewards',     path: '/admin/rewards',            icon: Award           },
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,          badge: pendingSubmissions },
         { label: 'Featured',    path: '/admin/featured',           icon: Star,           badge: pendingSlotRequests },
@@ -1484,6 +1591,14 @@ export default function App() {
                     <Route path="/affiliate/settings" element={<CreatorProtectedRoute><CreatorLayout><CreatorSettings /></CreatorLayout></CreatorProtectedRoute>} />
                     <Route path="/creator" element={<LegacyCreatorRedirect />} />
                     <Route path="/creator/*" element={<LegacyCreatorRedirect />} />
+                    {/* The gym portal. /gym/:slug is the gym's big screen, so the
+                        people who run it get /venue. */}
+                    <Route path="/venue/login" element={<VenueLogin />} />
+                    <Route path="/venue/setup/:token" element={<VenueSetup />} />
+                    <Route path="/venue" element={<GymProtectedRoute><VenueLayout><VenueHome /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/screens" element={<GymProtectedRoute><VenueLayout><VenueScreens /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/members" element={<GymProtectedRoute><VenueLayout><VenueMembers /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/team" element={<GymProtectedRoute><VenueLayout><VenueTeam /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/partner/login" element={<PartnerLogin />} />
                     <Route path="/partner/setup/:token" element={<PartnerSetup />} />
                     <Route path="/partner" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalHome /></PartnerLayout></PartnerProtectedRoute>} />
@@ -1508,6 +1623,7 @@ export default function App() {
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/gym-requests" element={<ProtectedRoute><AdminLayout><GymRequests /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/gyms" element={<ProtectedRoute><AdminLayout><GymPortals /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/rewards" element={<ProtectedRoute><AdminLayout><RewardManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/reward-submissions" element={<ProtectedRoute><AdminLayout><RewardSubmissions /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/featured" element={<ProtectedRoute><AdminLayout><FeaturedSchedule /></AdminLayout></ProtectedRoute>} />
