@@ -170,8 +170,8 @@ export default function GymLeague() {
 
     const stale = league && lastOkAt > 0 && now - lastOkAt > STALE_MS;
 
-    if (!token) return <Shell><CenterNote big="This link is missing its key" small="Copy the full league URL from the admin — it ends in ?k=…" /></Shell>;
-    if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Ask the POWR team for a fresh display URL." /></Shell>;
+    if (!token) return <Shell><CenterNote big="This link is missing its key" small="Open it from the Screens page of your gym portal, or the admin: that link carries the key" /></Shell>;
+    if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Make a new link from the Screens page of your gym portal, or ask the POWR team" /></Shell>;
     if (!league) return <Shell><CenterNote big="POWR" small="Connecting…" pulse /></Shell>;
 
     return (

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../App';
-import { Micro, Spinner, Empty } from '../../components/portal/ui';
+import { Micro, Spinner, Empty, BTN_GHOST } from '../../components/portal/ui';
 import StudioEditor from '../../studio/StudioEditor';
 import { gymStudioData } from '../../studio/gymData';
 import { cityOf } from '../../studio/data';
@@ -43,7 +43,7 @@ export default function VenueStudio() {
 
     const venue = useMemo(() => ({ name, city: cityOf(summary?.gym?.address) }), [name, summary]);
 
-    if (error) return <Empty title="Couldn’t open the Studio">{error}</Empty>;
+    if (error) return <Empty title="Couldn’t open the Studio" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
     if (!data) return <Spinner />;
 
     return (

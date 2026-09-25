@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, Palette, Tv, Users, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
 import { fetchGymPackage } from './venueApi';
-import { PackageContext, PACKAGE_UNKNOWN, packageLine } from './packages';
+import { PackageContext, PACKAGE_UNKNOWN, packageLine, trialDaysLeft } from './packages';
 
 const NAV = [
     { label: 'Overview', short: 'Home',    path: '/venue',         icon: LayoutDashboard },
@@ -188,7 +188,9 @@ export function VenueLayout({ children }) {
     const segment = location.pathname.split('/')[2] || 'venue';
     const currentLabel = PATH_LABELS[segment] || segment;
 
-    useEffect(() => { setMenuOpen(false); window.scrollTo(0, 0); }, [location.pathname]);
+    // On desktop the content pane scrolls, not the window, so reset both.
+    const paneRef = useRef(null);
+    useEffect(() => { setMenuOpen(false); window.scrollTo(0, 0); paneRef.current?.scrollTo?.(0, 0); }, [location.pathname]);
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
@@ -286,7 +288,7 @@ export function VenueLayout({ children }) {
                         <span className="text-[10px] uppercase tracking-[0.3em] font-black text-[#8a7600] truncate">{currentLabel}</span>
                     </div>
                     {gym ? (
-                        <button onClick={() => setMenuOpen(o => !o)} aria-label="Account" className="shrink-0">
+                        <button onClick={() => setMenuOpen(o => !o)} aria-label="Account, package and sign out" className="shrink-0">
                             <GymLogo gym={gym} size="w-9 h-9" />
                         </button>
                     ) : <div className="w-9" />}
@@ -301,6 +303,12 @@ export function VenueLayout({ children }) {
                             Switch
                         </button>
                     </div>
+                )}
+                {!isActingGym && pkg && !pkg.unknown && pkg.on_trial && trialDaysLeft(pkg) <= 14 && (
+                    <Link to="/venue/package" className="mx-5 mb-3 flex items-center gap-2 px-3 py-2 bg-[#FFFBE0] border border-[#E8D200]/40 rounded-full">
+                        <Package size={12} className="text-[#8a7600] shrink-0" />
+                        <span className="text-[9px] uppercase tracking-[0.15em] font-black text-[#8a7600] truncate">{packageLine(pkg)} · see what changes</span>
+                    </Link>
                 )}
             </header>
 
@@ -378,7 +386,7 @@ export function VenueLayout({ children }) {
                 {/* The overview fits one tall desktop window with no scrolling
                     (style.css .venue-fill-*: flex all the way down, only at
                     lg and 800px+ tall); every other page flows and scrolls. */}
-                <div className={`flex-1 lg:overflow-y-auto ${location.pathname === '/venue' ? 'venue-fill-scroll' : ''}`}>
+                <div ref={paneRef} className={`flex-1 lg:overflow-y-auto ${location.pathname === '/venue' ? 'venue-fill-scroll' : ''}`}>
                     <div className={`max-w-[1400px] px-5 sm:px-8 lg:px-16 pt-6 sm:pt-8 lg:pt-10 pb-28 lg:pb-24 ${location.pathname === '/venue' ? 'venue-fill-wrap' : ''}`}>
                         {/* Keyed on the gym: switching gyms remounts the page, so no
                             page can show one gym's data under another's name. */}

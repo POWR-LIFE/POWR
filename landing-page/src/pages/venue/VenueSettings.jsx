@@ -96,7 +96,7 @@ export default function VenueSettings() {
         document.getElementById('team')?.scrollIntoView({ block: 'start' });
     }, [profile, location.hash]);
 
-    const canEdit = !!profile?.can_edit;
+    const canEdit = !!profile?.can_edit && !isActingGym;
     const dirty = useMemo(() => profile && TEXT_FIELDS.some((k) => (form[k] ?? '') !== (profile[k] ?? '')), [form, profile]);
     const hoursDirty = useMemo(() => profile && JSON.stringify(hoursFrom(profile.opening_hours)) !== JSON.stringify(hours), [hours, profile]);
 
@@ -132,7 +132,7 @@ export default function VenueSettings() {
     return (
         <Page>
             <PageTitle eyebrow="Settings" title="Your gym" sub={profile.name} />
-            {!canEdit && <p className="text-[12px] text-[#888] mt-4">Only an owner can change these details. You can see them, and the team.</p>}
+            {!canEdit && <p className="text-[12px] text-[#888] mt-4">{isActingGym ? 'Preview only: change a gym’s details from the admin pages.' : 'Only an owner can change these details. You can see them, and the team.'}</p>}
             {error && <div className="mt-4 text-red-600 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}
 
             <div className="mt-8 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">

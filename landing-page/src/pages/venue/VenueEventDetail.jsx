@@ -87,10 +87,12 @@ const TABS = { board: 'Board', people: 'People', details: 'Details', promote: 'P
 
 export default function VenueEventDetail() {
     const { id } = useParams();
-    const { gym } = useAuth();
+    const { gym, isActingGym } = useAuth();
     const toast = useToast();
     const navigate = useNavigate();
     const [params, setParams] = useSearchParams();
+    // An admin previewing a gym looks; changes go through the admin pages.
+    const previewOnly = () => { if (!isActingGym) return false; toast.error('Preview only. Change a gym’s event from the admin pages.'); return true; };
     const { pkg } = usePackage();
     const canRun = !!pkg?.features?.events;
     const canPost = !!pkg?.features?.studio;
@@ -162,6 +164,7 @@ export default function VenueEventDetail() {
     const over = ['revealed', 'settled', 'archived'].includes(ev.status);
 
     const act = async (label, fn, ok, after) => {
+        if (previewOnly()) return;
         setBusy(label);
         try {
             const next = await fn();
@@ -192,6 +195,7 @@ export default function VenueEventDetail() {
     const saveRevealAt = () => act('reveal_at', () => scheduleGymReveal(ev.id, fromLocalInput(revealAt)), revealAt ? 'Reveal scheduled' : 'Scheduled reveal cleared');
 
     const disqualify = async (row, reason) => {
+        if (previewOnly()) return;
         setBusy(`dq:${row.user_id}`);
         try {
             setRoster(await disqualifyFromGymEvent(ev.id, row.user_id, reason));
@@ -205,6 +209,7 @@ export default function VenueEventDetail() {
         }
     };
     const reinstate = async (row) => {
+        if (previewOnly()) return;
         setBusy(`dq:${row.user_id}`);
         try {
             setRoster(await reinstateInGymEvent(ev.id, row.user_id));
@@ -235,6 +240,7 @@ export default function VenueEventDetail() {
     };
 
     const handPrize = async (p, handed) => {
+        if (previewOnly()) return;
         setBusy(`prize:${p.rank}`);
         try {
             const prizes = await setPrizeHanded(ev.id, p.rank, handed);

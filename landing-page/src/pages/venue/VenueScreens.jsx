@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Copy, ExternalLink, Maximize2, MonitorPlay, Pause, Play, RefreshCw, Tv, CalendarClock } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
-import { Page, Card, Micro, PageTitle, Spinner, Empty, BTN_GOLD, INPUT, LABEL } from '../../components/portal/ui';
+import { Page, Card, Micro, PageTitle, Spinner, Empty, BTN_GOLD, INPUT, LABEL, BTN_GHOST } from '../../components/portal/ui';
 import { fetchGymSummary, setupGymScreens, updateGymScreens } from './venueApi';
 import { boardUrl, gymSlug, VIEWINGS, VIEWING_LABEL } from '../../../../shared/gymBoard.ts';
 import { LEAGUE_RADII, leagueUrl } from '../../../../shared/gymLeague.ts';
@@ -147,7 +147,7 @@ function ScreenRow({ eyebrow, title, blurb, live, src, sampleSrc, shortLink, cop
 }
 
 export default function VenueScreens() {
-    const { gym } = useAuth();
+    const { gym, isActingGym } = useAuth();
     const toast = useToast();
     const [summary, setSummary] = useState(null);
     const [error, setError] = useState(null);
@@ -162,13 +162,15 @@ export default function VenueScreens() {
         return () => { alive = false; };
     }, [gym.partner_id]);
 
-    if (error) return <Empty title="Couldn't load your screens">{error}</Empty>;
+    if (error) return <Empty title="Couldn’t load your screens" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
     if (!summary) return <Spinner />;
 
     const board = summary.board;
     const canOwn = summary.role === 'owner' || summary.role === 'admin';
     const gymName = summary.gym?.name ?? gym.name;
 
+    // An admin previewing a gym looks; changes go through the admin pages.
+    const previewOnly = () => { if (!isActingGym) return false; toast.error('Preview only. Change a gym’s screens from the admin pages.'); return true; };
     const run = async (fn, ok) => {
         setActing(true);
         try {
@@ -181,7 +183,7 @@ export default function VenueScreens() {
             setActing(false);
         }
     };
-    const update = (patch, ok) => run(() => updateGymScreens(gym.partner_id, patch), ok);
+    const update = (patch, ok) => { if (previewOnly()) return; run(() => updateGymScreens(gym.partner_id, patch), ok); };
     const copy = async (text) => {
         try { await navigator.clipboard.writeText(text); toast.success('Link copied'); } catch { toast.error('Copy failed'); }
     };
@@ -214,7 +216,7 @@ export default function VenueScreens() {
                                     </div>
                                     <p className="text-[11px] text-[#AAAAAA] mt-2">Lower-case letters, numbers and dashes. It’s part of the link you’ll open on the TV, so pick it once.</p>
                                 </div>
-                                <button disabled={acting} onClick={() => run(() => setupGymScreens(gym.partner_id, gymSlug(slugDraft)), 'Screens switched on')} className={BTN_GOLD}>
+                                <button disabled={acting} onClick={() => { if (previewOnly()) return; run(() => setupGymScreens(gym.partner_id, gymSlug(slugDraft)), 'Screens switched on'); }} className={BTN_GOLD}>
                                     <Tv size={14} /> {acting ? 'Switching on…' : 'Switch on the screens'}
                                 </button>
                             </div>

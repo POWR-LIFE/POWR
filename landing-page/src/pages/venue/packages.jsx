@@ -14,31 +14,31 @@ export const PACKAGES = [
     {
         key: 'clash', name: 'Clash', line: 'Get on the board.', price: 'Free', per: '', note: 'Always',
         items: [
-            'Your gym on the POWR area leaderboard',
+            'Your gym in the Gym League: the gyms near you, every week',
             'Gym vs gym, scored per active member so size doesn’t win',
             'Member leaderboard inside your gym',
             'Your live ranking',
         ],
     },
     {
-        key: 'clash_plus', name: 'Clash+', line: 'Compete and reward. Prizes on us.', price: '£129', per: '/ month', note: 'Cancel anytime',
+        key: 'clash_plus', name: 'Clash+', line: 'Compete and reward.', price: '£129', per: '/ month', note: 'Cancel anytime',
         items: [
             'Everything in Clash',
             'Run your own in-gym challenges, monthly or whenever you want',
-            'Prizes supplied by POWR brand partners',
-            'Monthly data dashboard: activity, engagement trends, event turnout',
+            'Prizes from POWR brand partners · coming this season',
+            'Members dashboard: what they do, where they train, who’s gone quiet',
         ],
     },
     {
         key: 'pro', name: 'Clash Pro', line: 'Events, content and data. The full engine.', price: '£349', per: '/ month', note: 'or £4,188 / year', tag: 'Most complete',
         items: [
             'Everything in Clash+',
-            '4 POWR Clash Nights a year, one per quarter. We bring the DJ, photographer and partner prizes',
-            'Content portal: event footage turned into branded reels, TikToks and carousels, ready to post',
+            '4 POWR Clash Nights a year, one per quarter. We bring the DJ, photographer and partner prizes · dates booked with us',
+            'Studio and event kits: your photos and clips turned into branded posts, reels and carousels, at every size',
             'Upload your own footage from classes and PT sessions, and make content in minutes',
             'Full member insights (opted-in members), including early warning when members go quiet',
-            'Bring-a-friend guest leads from every event',
-            'Quarterly insights report: 3 trends, 3 actions, with a matched brand partner',
+            'Bring-a-friend guest leads from every event · coming this season',
+            'Quarterly insights report: 3 trends, 3 actions, with a matched brand partner · coming this season',
         ],
     },
     {
@@ -47,7 +47,7 @@ export const PACKAGES = [
             'Everything in Clash Pro',
             'All 4 Clash Night dates booked at signing',
             'Price locked on renewal',
-            'Founding gym status on the POWR leaderboard',
+            'Founding gym status on the POWR leaderboard · coming this season',
             'Prefer monthly? £249 / month',
         ],
     },
@@ -77,7 +77,7 @@ const LOCKS = {
 
 export function trialDaysLeft(pkg) {
     if (!pkg?.on_trial || !pkg.trial_ends_at) return 0;
-    return Math.max(1, Math.ceil((new Date(pkg.trial_ends_at).getTime() - Date.now()) / 86400000));
+    return Math.max(0, Math.ceil((new Date(pkg.trial_ends_at).getTime() - Date.now()) / 86400000));
 }
 
 export const fmtDate = (iso) => (iso
@@ -89,6 +89,7 @@ export function packageLine(pkg) {
     if (!pkg) return '';
     if (pkg.on_trial) {
         const n = trialDaysLeft(pkg);
+        if (n === 0) return 'Trial ended · on Clash';
         return `Trial · ${n} day${n === 1 ? '' : 's'} left`;
     }
     return pkg.package === 'clash' ? 'Clash · free' : PACKAGE_LABEL[pkg.package];

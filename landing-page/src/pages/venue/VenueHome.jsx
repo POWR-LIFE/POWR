@@ -102,7 +102,7 @@ function Pulse({ summary, tz }) {
                         <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">sessions</span>
                     </div>
                     <div className="mt-2 text-[12px] font-bold text-[#666]">
-                        {plural(wk.athletes ?? 0, 'athlete')}
+                        {people(wk.athletes ?? 0)}
                         {change
                             ? <> · <span className={change.pct > 0 ? 'text-[#0B7A57]' : change.pct < 0 ? 'text-[#B45309]' : 'text-[#AAAAAA]'}>{change.pct === 0 ? 'same as last week' : `${change.label} vs last week`}</span></>
                             : (wk.sessions ?? 0) > 0 && !(lw.sessions > 0) ? <> · <span className="text-[#AAAAAA]">nothing to compare yet</span></> : null}
@@ -112,7 +112,7 @@ function Pulse({ summary, tz }) {
             </div>
             <WeekStrip days={summary.days} tz={tz} />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] font-bold text-[#AAAAAA] shrink-0">
-                <span>{today ? `Today: ${plural(today.sessions, 'session')} · ${plural(today.athletes, 'athlete')}` : 'Sessions checked in at the gym'}</span>
+                <span>{today ? `Today: ${plural(today.sessions, 'session')} · ${people(today.athletes)}` : 'Sessions checked in at the gym'}</span>
                 {summary.days && (
                     <span className="inline-flex items-center gap-3">
                         <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] bg-[#1A1A1A]" />This week</span>
@@ -128,6 +128,8 @@ function Pulse({ summary, tz }) {
 
 const TONE_ORDER = { gold: 0, amber: 1, green: 2, plain: 3, muted: 4 };
 const TONE_DOT = { gold: 'bg-[#E8D200]', amber: 'bg-amber-400', green: 'bg-emerald-500', plain: 'bg-[#1A1A1A]', muted: 'bg-[#CCCCCC]' };
+
+const people = (n) => `${fmtNum(n)} ${n === 1 ? 'person' : 'people'}`;
 
 /** What needs doing or is worth knowing, from the events, the package and the screens. */
 function agendaFor({ events, pkg, summary }) {
@@ -239,7 +241,7 @@ function League({ summary, data, error }) {
         body = (
             <div className="flex-1 min-h-0 flex flex-col justify-center">
                 <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">Join the Gym League</div>
-                <p className="text-[13px] text-[#888] leading-relaxed mt-2">Put your screens up and your gym goes on the area board: gym against gym, every week.</p>
+                <p className="text-[13px] text-[#888] leading-relaxed mt-2">Put your screens up and your gym goes in the Gym League: gym against gym, every week.</p>
             </div>
         );
     } else if (error) {
@@ -301,7 +303,7 @@ function Members({ summary, activity, insightsAllowed, gymName }) {
                         {quiet > 0 ? `${quiet} gone quiet in the last 2 weeks` : 'Nobody’s gone quiet'}
                     </div>
                 ) : insightsAllowed === false ? (
-                    <div className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-bold text-[#AAAAAA]"><Lock size={11} />Who’s gone quiet comes with Clash+</div>
+                    <div className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-bold text-[#AAAAAA]"><Lock size={11} />Clash Pro names who’s gone quiet</div>
                 ) : null}
             </div>
         </Card>
@@ -358,7 +360,7 @@ export default function VenueHome() {
         return () => { alive = false; };
     }, [gym.partner_id, insightsAllowed]);
 
-    if (error) return <Empty title="Couldn't load your gym">{error}</Empty>;
+    if (error) return <Empty title="Couldn’t load your gym" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
     if (!summary) return <Spinner />;
 
     const tz = summary.board?.tz ?? 'Europe/London';

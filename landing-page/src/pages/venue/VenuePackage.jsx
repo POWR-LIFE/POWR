@@ -10,7 +10,7 @@ import { PACKAGES, PACKAGE_LABEL, usePackage, trialDaysLeft, fmtDate } from './p
 // POWR gets a Slack line. What a package unlocks is decided server-side.
 
 export default function VenuePackage() {
-    const { gym } = useAuth();
+    const { gym, isActingGym } = useAuth();
     const toast = useToast();
     const { pkg, refresh } = usePackage();
     const [busy, setBusy] = useState(null);
@@ -21,10 +21,12 @@ export default function VenuePackage() {
     const canAsk = gym?.role === 'owner' || gym?.role === 'admin';
     const days = trialDaysLeft(pkg);
     const current = PACKAGE_LABEL[pkg.package];
-    const foundingLeft = Math.max(0, (pkg.founding_limit ?? 10) - (pkg.founding_taken ?? 0));
+    const foundingLimit = pkg.founding_limit ?? 10;
+    const foundingLeft = Math.max(0, foundingLimit - (pkg.founding_taken ?? 0));
     const shown = PACKAGES.filter((p) => p.key !== 'founding' || pkg.on_trial || pkg.package === 'founding');
 
     const ask = async (p) => {
+        if (isActingGym) { toast.error('Preview only. Set a gym’s package from the admin pages.'); return; }
         if (!window.confirm(`Ask POWR to switch ${gym.name} to ${p.name}? We’ll get in touch to set it up and invoice you. Nothing is charged here.`)) return;
         setBusy(p.key);
         try {
@@ -45,15 +47,21 @@ export default function VenuePackage() {
             <Card className="p-6 sm:p-10" glow={pkg.on_trial}>
                 {pkg.on_trial ? (
                     <>
-                        <Micro gold>Free trial</Micro>
+                        <Micro gold>{days === 0 ? 'Trial ended' : 'Free trial'}</Micro>
                         <div className="mt-3 flex items-baseline gap-3 flex-wrap">
                             <span className="text-5xl sm:text-6xl font-extralight tracking-tighter text-[#1A1A1A]">{days}</span>
                             <span className="text-[11px] uppercase tracking-[0.3em] font-black text-[#BBBBBB]">day{days === 1 ? '' : 's'} left</span>
                         </div>
                         <p className="text-[14px] text-[#777] leading-relaxed mt-4 max-w-2xl">
-                            Everything is switched on until {fmtDate(pkg.trial_ends_at)}. After that {gym.name} runs
-                            on {current}{pkg.package === 'clash' ? ', the free package,' : ''} unless you choose another.
+                            {days === 0
+                                ? `Your trial ended on ${fmtDate(pkg.trial_ends_at)}. ${gym.name} now runs on ${current}${pkg.package === 'clash' ? ', the free package' : ''}.`
+                                : `Everything is switched on until ${fmtDate(pkg.trial_ends_at)}. After that ${gym.name} runs on ${current}${pkg.package === 'clash' ? ', the free package,' : ''} unless you choose another.`}
                         </p>
+                        {pkg.package === 'clash' && (
+                            <p className="text-[12px] text-[#888] leading-relaxed mt-3 max-w-2xl">
+                                <b className="text-[#1A1A1A]">What stays:</b> your leaderboard and Gym League screens, the join poster, your team. <b className="text-[#1A1A1A]">What switches off:</b> your own events, the members dashboard, the Studio and event kits, unless you choose Clash+ or Clash Pro.
+                            </p>
+                        )}
                     </>
                 ) : (
                     <>
@@ -61,7 +69,7 @@ export default function VenuePackage() {
                         <div className="mt-3 text-4xl sm:text-5xl font-light tracking-tighter text-[#1A1A1A]">{current}</div>
                         <p className="text-[14px] text-[#777] leading-relaxed mt-3">
                             {pkg.package === 'clash'
-                                ? 'The free package: your gym on the area leaderboard, its own board and screens.'
+                                ? 'The free package: your gym in the Gym League, its own leaderboard and screens.'
                                 : `${pkg.billing === 'annual' ? 'Billed yearly' : pkg.billing === 'monthly' ? 'Billed monthly' : 'Set up by POWR'}.`}
                         </p>
                     </>
@@ -97,7 +105,7 @@ export default function VenuePackage() {
                             <div className="text-[11px] text-[#AAAAAA] mt-1">{p.note}</div>
                             {p.key === 'founding' && pkg.package !== 'founding' && (
                                 <div className="text-[11px] font-bold text-[#8a7600] mt-2">
-                                    {foundingGone ? 'All 10 places have gone' : `${foundingLeft} of 10 places left · only during your trial`}
+                                    {foundingGone ? `All ${foundingLimit} places have gone` : `${foundingLeft} of ${foundingLimit} places left · only during your trial`}
                                 </div>
                             )}
                             <ul className="mt-5 pt-5 border-t border-[#F0F0EC] space-y-2.5 flex-1">

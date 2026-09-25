@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Users, ChevronRight, RotateCcw, Lock } from 'lucide-react';
 import { useAuth } from '../../App';
-import { Page, Card, Micro, PageTitle, Spinner, Empty, BTN_GOLD } from '../../components/portal/ui';
+import { Page, Card, Micro, PageTitle, Spinner, Empty, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
 import { fetchGymEvents } from './venueApi';
 import { StatusPill, statusKey, scoringRange } from './eventUi';
 import { Locked, usePackage } from './packages';
@@ -62,7 +62,7 @@ export default function VenueEvents() {
         return () => { alive = false; };
     }, [gym.partner_id]);
 
-    if (error) return <Empty title="Couldn't load your events">{error}</Empty>;
+    if (error) return <Empty title="Couldn’t load your events" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
     if (!events) return <Spinner />;
 
     const newBtn = canRun ? (

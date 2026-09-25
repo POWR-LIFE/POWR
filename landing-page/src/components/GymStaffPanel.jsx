@@ -237,7 +237,7 @@ export default function GymStaffPanel({ partnerId, gymName, adminView = false, s
                                             type="button"
                                             onClick={() => remove(m)}
                                             disabled={busy === m.user_id}
-                                            className="sm:opacity-0 sm:group-hover:opacity-100 h-8 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-red-500/60 hover:text-red-500 border border-transparent hover:border-red-500/20 rounded-full transition-all shrink-0"
+                                            className="h-8 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-red-500/60 hover:text-red-500 border border-transparent hover:border-red-500/20 rounded-full transition-all shrink-0"
                                         >
                                             {busy === m.user_id ? '…' : 'Remove'}
                                         </button>

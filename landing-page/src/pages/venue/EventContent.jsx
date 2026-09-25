@@ -256,7 +256,7 @@ export default function EventContent({ ev, venue, canPost }) {
         return (
             <Card className="p-6 sm:p-8">
                 <div className="flex items-center gap-3 mb-3"><Lock size={13} className="text-[#8a7600]" /><Micro gold>Clash Pro</Micro></div>
-                <div className="text-2xl font-light tracking-tight">Posts, made for you</div>
+                <div className="text-2xl font-light tracking-tight">Posts, made in a click</div>
                 <p className="text-[13px] text-[#777] leading-relaxed mt-2 max-w-2xl">
                     Clash Pro turns your photos and clips into every post you need before and after an event, at every size, in one download.
                 </p>

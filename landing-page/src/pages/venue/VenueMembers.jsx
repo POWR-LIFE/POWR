@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, Compass, Dumbbell, Sparkles, Trophy } from 'lucide-react';
 import { useAuth } from '../../App';
-import { Page, Card, Micro, PageTitle, Spinner, Empty, fmtNum } from '../../components/portal/ui';
+import { Page, Card, Micro, PageTitle, Spinner, Empty, fmtNum, BTN_GHOST } from '../../components/portal/ui';
 import { fetchGymInsights, fetchMemberActivity } from './venueApi';
 import { BarRow, Columns, INK, Stacked } from './charts';
 import MemberPeople from './MemberPeople';
@@ -81,7 +81,7 @@ export default function VenueMembers() {
         return () => { alive = false; };
     }, [gym.partner_id]);
 
-    if (error) return <Empty title="Couldn't load your members">{error}</Empty>;
+    if (error) return <Empty title="Couldn’t load your members" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
     if (!venue) return <Spinner />;
 
     const tz = venue.tz ?? 'Europe/London';
@@ -235,7 +235,7 @@ export default function VenueMembers() {
             <MemberPeople gym={gym} />
 
             <p className="text-[11px] text-[#AAAAAA] leading-relaxed max-w-3xl">
-                Anonymous numbers for the members who chose {gym.name} as their gym: what they do anywhere, not just here. Never their sleep, heart rate,
+                Numbers in the round for the members who chose {gym.name} as their gym: what they do anywhere, not just here. Never their sleep, heart rate,
                 steps or where they are. Activities fewer than 3 members did are left out.
             </p>
         </Page>

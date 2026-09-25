@@ -47,6 +47,7 @@ export function Columns({ data, label, unit, height = 160, tickEvery = 1, ghostL
                             type="button"
                             className="relative flex-1 h-full flex items-end justify-center outline-none group"
                             onMouseEnter={() => setHover(i)}
+                            onClick={() => setHover((h) => (h === i ? null : i))}
                             onFocus={() => setHover(i)}
                             onBlur={() => setHover(null)}
                             aria-label={`${d.tip}: ${fmtNum(d.value)}${unit ? ` ${unit}` : ''}${d.ghost != null ? `, ${ghostLabel ?? 'total'} ${fmtNum(d.ghost)}` : ''}`}
