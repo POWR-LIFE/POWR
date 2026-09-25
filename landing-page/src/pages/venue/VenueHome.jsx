@@ -151,6 +151,11 @@ function agendaFor({ events, pkg, summary }) {
     }
     if (!summary.board) add('screens', 'Put your leaderboard on the gym TV', '/venue/screens', 'plain');
     else if (summary.board.enabled === false) add('paused', 'Your leaderboard screen is paused', '/venue/screens', 'muted');
+    // Getting started: the poster that gets members on POWR, and a first event.
+    let posterMade = false;
+    try { posterMade = !!localStorage.getItem(`powr_join_poster_${summary.gym?.id ?? ''}`); } catch { /* fine */ }
+    if (!posterMade && (summary.members ?? 0) < 25) add('poster', 'Print the join poster · it puts members on your board', '/venue/poster', 'plain');
+    if (mine.length === 0 && pkg?.features?.events) add('first', 'Run your first event', '/venue/events/new', 'plain');
     return items.sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone]).slice(0, 4);
 }
 

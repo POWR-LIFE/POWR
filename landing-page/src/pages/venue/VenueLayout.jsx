@@ -16,7 +16,7 @@ const NAV = [
     { label: 'Settings', short: 'Settings', path: '/venue/settings', icon: Settings2      },
 ];
 
-const PATH_LABELS = { venue: 'Overview', events: 'Events', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Settings', settings: 'Settings', package: 'Package' };
+const PATH_LABELS = { venue: 'Overview', events: 'Events', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Settings', settings: 'Settings', package: 'Package', poster: 'Members' };
 
 // An event's own pages keep the Events tab lit.
 const isActive = (path, current) => current === path || (path !== '/venue' && current.startsWith(`${path}/`));

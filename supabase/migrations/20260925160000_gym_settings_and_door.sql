@@ -45,6 +45,8 @@ begin
     'logo_bg',       p.logo_bg,
     'image_url',     p.image1_url,
     'opening_hours', p.opening_hours,
+    'lat',           nullif(p.locations->0->>'lat', '')::double precision,
+    'lng',           nullif(p.locations->0->>'lng', '')::double precision,
     'can_edit',      v_role in ('owner', 'admin')
   );
 end;

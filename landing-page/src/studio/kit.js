@@ -264,7 +264,7 @@ export async function renderThumb(job, media, scale = 0.2) {
  * abort with `signal`. Pass `mediaCache` (a Map) to reuse assets already
  * loaded for previews; it is left as it was. Resolves with { blob, names }.
  */
-export async function buildKit({ phase, facts, jobs, onProgress, signal, mediaCache }) {
+export async function buildKit({ phase, facts, jobs, onProgress, signal, mediaCache, captions, readme }) {
     await prepareStudio();
     const loaded = mediaCache ?? new Map();
     const files = [];
@@ -301,8 +301,8 @@ export async function buildKit({ phase, facts, jobs, onProgress, signal, mediaCa
         await new Promise((r) => setTimeout(r, 0));
     }
     if (!mediaCache) for (const m of loaded.values()) releaseMedia(m);
-    files.push({ name: 'captions.txt', data: captionsFor(phase, facts) });
-    files.push({ name: 'README.txt', data: readmeFor(phase, facts, jobs) });
+    files.push({ name: 'captions.txt', data: captions ?? captionsFor(phase, facts) });
+    files.push({ name: 'README.txt', data: readme ?? readmeFor(phase, facts, jobs) });
     return { blob: await zipFiles(files), names: files.map((f) => f.name) };
 }
 

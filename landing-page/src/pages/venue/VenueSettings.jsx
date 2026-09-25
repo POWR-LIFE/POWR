@@ -204,6 +204,7 @@ export default function VenueSettings() {
                         <div className="flex flex-wrap gap-3 mt-5">
                             <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`${profile.name} · gym portal`)}`} className={BTN_GOLD}>Email {SUPPORT_EMAIL}</a>
                             <Link to="/venue/screens" className={BTN_GHOST}>Putting the board on a TV</Link>
+                            <Link to="/venue/poster" className={BTN_GHOST}>The join poster</Link>
                         </div>
                     </Card>
                 </div>
