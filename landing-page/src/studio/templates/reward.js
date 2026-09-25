@@ -6,7 +6,7 @@
  * counter card for the partner's shop. Works on charcoal or over a photo.
  */
 import { TYPE } from '../fonts';
-import { fitBlock, drawBlock, drawText, splitLines, blockBox, textWidth, capHeight } from '../text';
+import { fitBlock, drawBlock, drawText, splitLines, blockBox, textWidth, capHeight, wrapLines } from '../text';
 import { drawContained, tinted, inkLuma } from '../assets';
 import { dot } from '../shapes';
 import { drawQR } from '../qr';
@@ -100,22 +100,6 @@ function detail(e, key, tag, x, y, tagPx, px, spec) {
 
 const hasQR = (e) => String(e.fields.qr ?? '').trim() !== '';
 
-// Banners have room for longer lines than the post's: join the offer's lines
-// and wrap it again to `maxW`, at most `max` lines (… if it runs over).
-function rewrap(ctx, text, spec, px, maxW, max) {
-    const words = String(text ?? '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
-    const lines = [];
-    for (const w of words) {
-        const last = lines[lines.length - 1];
-        if (last !== undefined && textWidth(ctx, `${last} ${w}`, spec, px) <= maxW) lines[lines.length - 1] = `${last} ${w}`;
-        else lines.push(w);
-    }
-    if (lines.length <= max) return lines;
-    const kept = lines.slice(0, max);
-    kept[max - 1] = `${kept[max - 1].replace(/[\s,.;:–—-]+$/, '')}…`;
-    return kept;
-}
-
 // ── Banners: offer left, the stub to the right of an upright tear ───────────
 function side(e) {
     const { ctx, W, H, safe, shape, tu } = e;
@@ -138,7 +122,8 @@ function side(e) {
     const colW = perfX - x0 - (strip ? 70 : 90) * tu;
     const offPx = (strip ? 18 : 25) * tu;
     const offLead = 1.3;
-    const offLines = rewrap(ctx, e.fields.offer, TYPE.brandR, offPx, colW * (strip ? 1 : 0.8), strip ? 2 : 3);
+    // Banners have room for longer lines than the post's: the offer re-wraps to this width.
+    const offLines = wrapLines(ctx, e.fields.offer, TYPE.brandR, offPx, colW * (strip ? 1 : 0.8), strip ? 2 : 3);
     const hasOffer = offLines.length > 0;
     const offGap = (strip ? 18 : 40) * tu;
     const offH = hasOffer ? offGap + offPx * 0.75 + (offLines.length - 1) * offPx * offLead : 0;
