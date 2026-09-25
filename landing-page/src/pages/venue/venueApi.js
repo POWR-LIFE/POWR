@@ -71,3 +71,12 @@ export const requestGymPackage = (partnerId, pkg) => rpc('gym_request_package', 
 // ── Member insights: anonymous numbers (Clash+), named opted-in members (Pro) ─
 export const fetchMemberActivity = (partnerId, weeks = 12) => rpc('gym_member_activity', { p_partner_id: partnerId, p_weeks: weeks });
 export const fetchMemberPeople = (partnerId) => rpc('gym_member_people', { p_partner_id: partnerId });
+
+// ── Settings: the gym's own details ──────────────────────────────────────────
+export const fetchGymProfile = (partnerId) => rpc('gym_profile', { p_partner_id: partnerId });
+export const updateGymProfile = (partnerId, patch) => rpc('gym_update_profile', { p_partner_id: partnerId, p_patch: patch });
+
+// ── The door on a finale night, and prizes handed over ───────────────────────
+export const fetchEventDoor = (eventId) => rpc('gym_event_door', { p_event_id: eventId });
+export const checkinAtDoor = (eventId, userId) => rpc('gym_event_checkin', { p_event_id: eventId, p_user_id: userId });
+export const setPrizeHanded = (eventId, rank, handed) => rpc('gym_event_prize_handed', { p_event_id: eventId, p_rank: rank, p_handed: handed });

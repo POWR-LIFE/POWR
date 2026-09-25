@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Palette, Tv, Users, UserCog, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Palette, Tv, Users, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
@@ -13,10 +13,10 @@ const NAV = [
     { label: 'Studio',   short: 'Studio',  path: '/venue/studio',  icon: Palette,   feature: 'studio'   },
     { label: 'Screens',  short: 'Screens', path: '/venue/screens', icon: Tv              },
     { label: 'Members',  short: 'Members', path: '/venue/members', icon: Users,     feature: 'insights' },
-    { label: 'Team',     short: 'Team',    path: '/venue/team',    icon: UserCog         },
+    { label: 'Settings', short: 'Settings', path: '/venue/settings', icon: Settings2      },
 ];
 
-const PATH_LABELS = { venue: 'Overview', events: 'Events', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Team', package: 'Package' };
+const PATH_LABELS = { venue: 'Overview', events: 'Events', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Settings', settings: 'Settings', package: 'Package' };
 
 // An event's own pages keep the Events tab lit.
 const isActive = (path, current) => current === path || (path !== '/venue' && current.startsWith(`${path}/`));

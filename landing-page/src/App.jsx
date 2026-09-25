@@ -110,7 +110,7 @@ import VenueSetup from './pages/venue/VenueSetup';
 import VenueHome from './pages/venue/VenueHome';
 import VenueScreens from './pages/venue/VenueScreens';
 import VenueMembers from './pages/venue/VenueMembers';
-import VenueTeam from './pages/venue/VenueTeam';
+import VenueSettings from './pages/venue/VenueSettings';
 import VenueEvents from './pages/venue/VenueEvents';
 import VenueEventBuilder from './pages/venue/VenueEventBuilder';
 import VenueEventDetail from './pages/venue/VenueEventDetail';
@@ -1616,7 +1616,8 @@ export default function App() {
                     <Route path="/venue/studio" element={<GymProtectedRoute><VenueLayout><Gate feature="studio"><VenueStudio /></Gate></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/screens" element={<GymProtectedRoute><VenueLayout><VenueScreens /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/members" element={<GymProtectedRoute><VenueLayout><Gate feature="insights"><VenueMembers /></Gate></VenueLayout></GymProtectedRoute>} />
-                    <Route path="/venue/team" element={<GymProtectedRoute><VenueLayout><VenueTeam /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/settings" element={<GymProtectedRoute><VenueLayout><VenueSettings /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/team" element={<Navigate to="/venue/settings#team" replace />} />
                     <Route path="/venue/package" element={<GymProtectedRoute><VenueLayout><VenuePackage /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/partner/login" element={<PartnerLogin />} />
                     <Route path="/partner/setup/:token" element={<PartnerSetup />} />
