@@ -30,7 +30,37 @@ const FOLDER = {
     post: '01 Post 4x5', story: '02 Story 9x16', square: '03 Square 1x1', landscape: '04 Landscape 16x9',
     print: '05 Print', video: '06 Video',
 };
-const STYLE = { colourway: 'powr', headlineFont: '' };
+
+// ── Looks ───────────────────────────────────────────────────────────────
+// The Studio's grade turns every photo black-and-white film by default
+// (look.mono is 1 unless told otherwise). The kit lets the gym choose, and
+// "Mixed" changes the treatment post by post so a feed isn't one photo
+// repeated. The colourway decides the type's accent colour.
+
+export const LOOKS = [
+    { id: 'mixed',  label: 'Mixed',  blurb: 'film and colour, post by post' },
+    { id: 'film',   label: 'Film',   blurb: 'black and white, the house look' },
+    { id: 'colour', label: 'Colour', blurb: 'your photos as shot' },
+];
+export const ACCENTS = [
+    { id: 'powr',   label: 'POWR gold',      blurb: 'white type, gold for the key word' },
+    { id: 'gold',   label: 'Gold headlines', blurb: 'the whole headline in gold' },
+    { id: 'signal', label: 'Red',            blurb: 'a red accent' },
+    { id: 'mono',   label: 'No colour',      blurb: 'ink and white only' },
+    { id: 'vary',   label: 'Vary',           blurb: 'POWR gold and gold headlines, alternating' },
+];
+// What "Mixed" cycles through: house film, warm colour, gold duotone, cool colour.
+const TREATMENTS = [{}, { mono: 0, tint: 'warm' }, { tint: 'gold' }, { mono: 0, tint: 'cool' }];
+// The poster with the QR and the final standings always get the house look.
+const FLAGSHIP = new Set(['ticket', 'results']);
+
+/** The look and colourway for the n-th post of a kit. */
+export function treatmentFor({ look = 'mixed', accent = 'powr' }, n, template) {
+    const flagship = FLAGSHIP.has(template);
+    const lk = look === 'film' ? {} : look === 'colour' ? { mono: 0 } : flagship ? {} : TREATMENTS[n % TREATMENTS.length];
+    const colourway = accent === 'vary' ? (flagship ? 'powr' : n % 2 ? 'gold' : 'powr') : accent;
+    return { look: lk, style: { colourway, headlineFont: '' } };
+}
 
 // The templates' starting words name ONE LDN, London as their sample venue.
 function forVenue(value, facts) {
@@ -91,7 +121,8 @@ const WORDS = {
  * The posts a kit makes. `assets`: [{ id, file, kind: 'image' | 'video', name }]
  * in the order they were dropped; `leadId` picks the one the lead posts use
  * (the first photo by default). Returns [{ id, label, template, format, kind,
- * folder, file, fields, asset }].
+ * folder, file, stem, fields, asset, look, style }]. Every size of one post
+ * shares a stem, a look and a style.
  */
 export function planKit({ phase, facts, assets = [], leadId = null, options = {} }) {
     const { print = true, clips = true, landscape = true } = options;
@@ -100,26 +131,27 @@ export function planKit({ phase, facts, assets = [], leadId = null, options = {}
     const lead = assets.find((a) => a.id === leadId) ?? photos[0] ?? videos[0] ?? null;
     const stills = STILL_FORMATS.filter((f) => landscape || f !== 'landscape');
     const jobs = [];
-    let n = 0;
-    const add = (template, fields, asset, kind, format, file, label) => {
+    let n = 0;      // numbers the lead posts' files
+    let posts = 0;  // counts every post, for the treatment cycle
+    const add = (template, fields, asset, kind, format, file, label, stem, tr) => {
         const folder = kind === 'mp4' ? FOLDER.video : kind === 'pdf' ? FOLDER.print : FOLDER[format];
-        jobs.push({ id: `${folder}/${file}`, label, template, format, kind, folder, file, fields, asset });
+        jobs.push({ id: `${folder}/${file}`, label, template, format, kind, folder, file, stem, fields, asset, look: tr.look, style: tr.style });
     };
-    const lean = (template, fields, asset, label) => {
-        n++;
-        const stem = `${String(n).padStart(2, '0')}-${template}`;
-        for (const f of stills) add(template, fields, asset, 'png', f, `${stem}.png`, label);
+    const post = (template, fields, asset, label, stem) => {
+        const tr = treatmentFor(options, posts++, template);
+        for (const f of stills) add(template, fields, asset, 'png', f, `${stem}.png`, label, stem, tr);
+        return tr;
     };
+    const lean = (template, fields, asset, label) => post(template, fields, asset, label, `${String(++n).padStart(2, '0')}-${template}`);
     const set = (template, fields, list, stem, label) => {
-        list.forEach((asset, i) => {
-            const file = `${stem}-${String(i + 1).padStart(2, '0')}`;
-            for (const f of stills) add(template, fields, asset, 'png', f, `${file}.png`, `${label} ${i + 1}`);
-        });
+        list.forEach((asset, i) => post(template, fields, asset, `${label} ${i + 1}`, `${stem}-${String(i + 1).padStart(2, '0')}`));
     };
     const clipJobs = (template, fields, label) => {
         if (!clips) return;
+        const tr = treatmentFor(options, 0, template);
         videos.slice(0, MAX_CLIPS).forEach((asset, i) => {
-            for (const f of CLIP_FORMATS) add(template, fields, asset, 'mp4', f, `${template}-${String(i + 1).padStart(2, '0')}-${f}.mp4`, `${label} clip ${i + 1}`);
+            const stem = `${template}-${String(i + 1).padStart(2, '0')}`;
+            for (const f of CLIP_FORMATS) add(template, fields, asset, 'mp4', f, `${stem}-${f}.mp4`, `${label} clip ${i + 1}`, stem, tr);
         });
     };
 
@@ -128,7 +160,7 @@ export function planKit({ phase, facts, assets = [], leadId = null, options = {}
         lean('club', wordsFor('club', facts), lead, 'Club');
         lean('spec', wordsFor('spec', facts), lead, 'Spec');
         if (facts.days >= 14) lean('countdown', wordsFor('countdown', facts, WORDS.countdown(facts)), lead, 'Countdown');
-        if (print) add('ticket', wordsFor('ticket', facts), lead, 'pdf', 'a4', 'ticket-a4-poster.pdf', 'A4 poster');
+        if (print) add('ticket', wordsFor('ticket', facts), lead, 'pdf', 'a4', 'ticket-a4-poster.pdf', 'A4 poster', 'ticket-a4-poster', treatmentFor(options, 0, 'ticket'));
         set('editorial', wordsFor('editorial', facts, WORDS.teaser(facts)), photos.filter((p) => p !== lead), 'teaser', 'Teaser');
         clipJobs('ticket', wordsFor('ticket', facts), 'Ticket');
     } else {
@@ -140,6 +172,9 @@ export function planKit({ phase, facts, assets = [], leadId = null, options = {}
     }
     return jobs;
 }
+
+/** One job per post (its Post size), in kit order: what a preview strip shows. */
+export const postsOf = (jobs) => jobs.filter((j) => j.kind === 'png' && j.format === 'post');
 
 /** Ready-to-paste words for the posts, one block per kind. */
 export function captionsFor(phase, facts) {
@@ -191,18 +226,47 @@ const seekTo = (v, t) => new Promise((res) => {
     v.currentTime = t;
 });
 
+/** A loaded asset, from `cache` (a Map by asset id) when it's there. */
+export async function mediaFor(asset, cache) {
+    if (!asset) return null;
+    if (!cache.has(asset.id)) cache.set(asset.id, await loadMedia(asset.file));
+    return cache.get(asset.id);
+}
+
+/** Let go of a loaded asset (an ImageBitmap or a video element). */
+export function releaseMedia(m) {
+    if (!m) return;
+    if (m.kind === 'video') { m.source.pause?.(); if (m.url?.startsWith('blob:')) URL.revokeObjectURL(m.url); }
+    else m.source?.close?.();
+}
+
+// A clip's still comes from a frame a little way in, past any fade-up.
+const settle = async (media) => { if (media?.kind === 'video') await seekTo(media.source, Math.min(1, media.duration * 0.25)); };
+
+const renderOpts = (job, media) => ({
+    template: templateById(job.template), format: job.format, media, fields: job.fields, style: job.style, look: job.look,
+    focal: { x: 0.5, y: 0.42 }, zoom: 1, assets: {}, cache: {},
+});
+
+/** A small JPEG data URL of one job, for a preview strip. */
+export async function renderThumb(job, media, scale = 0.2) {
+    await prepareStudio();
+    await settle(media);
+    const c = document.createElement('canvas');
+    renderPost(c, { ...renderOpts(job, media), scale });
+    const url = c.toDataURL('image/jpeg', 0.82);
+    c.width = 0;
+    return url;
+}
+
 /**
  * Render every job and pack the ZIP. `onProgress(fraction, job)` as it goes;
- * abort with `signal`. Resolves with { blob, names }.
+ * abort with `signal`. Pass `mediaCache` (a Map) to reuse assets already
+ * loaded for previews; it is left as it was. Resolves with { blob, names }.
  */
-export async function buildKit({ phase, facts, jobs, onProgress, signal }) {
+export async function buildKit({ phase, facts, jobs, onProgress, signal, mediaCache }) {
     await prepareStudio();
-    const loaded = new Map();
-    const mediaFor = async (asset) => {
-        if (!asset) return null;
-        if (!loaded.has(asset.id)) loaded.set(asset.id, await loadMedia(asset.file));
-        return loaded.get(asset.id);
-    };
+    const loaded = mediaCache ?? new Map();
     const files = [];
     // A clip is hundreds of renders where a still is one, so it weighs more in the bar.
     const weightOf = (job) => (job.kind === 'mp4' ? 40 : 1);
@@ -212,9 +276,8 @@ export async function buildKit({ phase, facts, jobs, onProgress, signal }) {
     for (const job of jobs) {
         if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
         tick(0, job);
-        const template = templateById(job.template);
-        const media = await mediaFor(job.asset);
-        const base = { template, format: job.format, media, fields: job.fields, style: STYLE, look: {}, focal: { x: 0.5, y: 0.42 }, zoom: 1, assets: {}, cache: {} };
+        const media = await mediaFor(job.asset, loaded);
+        const base = renderOpts(job, media);
         if (job.kind === 'mp4') {
             const blob = await exportVideo({
                 ...base, start: 0, end: Math.min(media.duration, CLIP_SECONDS), keepAudio: false, signal,
@@ -222,8 +285,7 @@ export async function buildKit({ phase, facts, jobs, onProgress, signal }) {
             });
             files.push({ name: `${job.folder}/${job.file}`, data: blob });
         } else {
-            // A clip's still comes from a frame a little way in, past any fade-up.
-            if (media?.kind === 'video') await seekTo(media.source, Math.min(1, media.duration * 0.25));
+            await settle(media);
             const c = document.createElement('canvas');
             const bleed = job.kind === 'pdf' ? Math.round((BLEED_MM / 25.4) * 300) : 0;
             renderPost(c, { ...base, scale: 1, bleed });
@@ -238,10 +300,7 @@ export async function buildKit({ phase, facts, jobs, onProgress, signal }) {
         tick(0, job);
         await new Promise((r) => setTimeout(r, 0));
     }
-    for (const m of loaded.values()) {
-        if (m?.kind === 'video') { m.source.pause?.(); if (m.url?.startsWith('blob:')) URL.revokeObjectURL(m.url); }
-        else m?.source?.close?.();
-    }
+    if (!mediaCache) for (const m of loaded.values()) releaseMedia(m);
     files.push({ name: 'captions.txt', data: captionsFor(phase, facts) });
     files.push({ name: 'README.txt', data: readmeFor(phase, facts, jobs) });
     return { blob: await zipFiles(files), names: files.map((f) => f.name) };

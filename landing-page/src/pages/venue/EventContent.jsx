@@ -4,7 +4,7 @@ import { Download, Film, Lock, Palette, Star, Upload, X } from 'lucide-react';
 import { Card, Micro, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
 import { eventFacts, fetchImage } from '../../studio/data';
 import { gymStudioData } from '../../studio/gymData';
-import { planKit, buildKit, assetFrom, CLIP_SECONDS, MAX_CLIPS } from '../../studio/kit';
+import { planKit, buildKit, assetFrom, postsOf, renderThumb, mediaFor, releaseMedia, LOOKS, ACCENTS, CLIP_SECONDS, MAX_CLIPS } from '../../studio/kit';
 import { statusKey } from './eventUi';
 
 // The Studio, attached to an event: a "before" kit (announce it) and an
@@ -44,6 +44,20 @@ function Thumb({ asset, lead, onLead, onRemove }) {
     );
 }
 
+function Chips({ label, items, value, onChange }) {
+    return (
+        <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label={label}>
+            <span className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black w-14">{label}</span>
+            {items.map((it) => (
+                <button key={it.id} type="button" role="radio" aria-checked={value === it.id} aria-label={`${label}: ${it.label}`} title={it.blurb} onClick={() => onChange(it.id)}
+                    className={`h-8 px-3.5 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border transition-all ${value === it.id ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white' : 'bg-white border-[#E6E6E1] text-[#888] hover:border-[#1A1A1A]/30 hover:text-[#1A1A1A]'}`}>
+                    {it.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 export default function EventContent({ ev, venue, canPost }) {
     const k = statusKey(ev);
     // Promotion runs until the board seals; from then on it's the wrap-up.
@@ -53,7 +67,9 @@ export default function EventContent({ ev, venue, canPost }) {
     const [leadId, setLeadId] = useState(null);
     const [promo, setPromo] = useState(null);       // the event's own promo picture, as an asset
     const [standings, setStandings] = useState(null);
-    const [options, setOptions] = useState({ print: true, clips: true, landscape: true });
+    const [options, setOptions] = useState({ print: true, clips: true, landscape: true, look: 'mixed', accent: 'vary' });
+    const [thumbs, setThumbs] = useState({});          // stem → data URL, the preview strip
+    const cacheRef = useRef(new Map());                 // loaded assets, by id; shared with the build
     const [busy, setBusy] = useState(null);         // { fraction, label }
     const [made, setMade] = useState(null);         // { blob, names, name }
     const [error, setError] = useState(null);
@@ -88,7 +104,6 @@ export default function EventContent({ ev, venue, canPost }) {
     const stills = jobs.filter((j) => j.kind === 'png');
     const clips = jobs.filter((j) => j.kind === 'mp4');
     const pdfs = jobs.filter((j) => j.kind === 'pdf');
-    const posts = new Set(stills.map((j) => j.file)).size;
     const videos = all.filter((a) => a.kind === 'video');
 
     const take = (files) => {
@@ -98,7 +113,33 @@ export default function EventContent({ ev, venue, canPost }) {
         setMade(null);
         setError(null);
     };
-    const remove = (id) => { setAssets((prev) => prev.filter((a) => a.id !== id)); if (leadId === id) setLeadId(null); setMade(null); };
+    const remove = (id) => {
+        setAssets((prev) => prev.filter((a) => a.id !== id));
+        if (leadId === id) setLeadId(null);
+        setMade(null);
+        releaseMedia(cacheRef.current.get(id)); cacheRef.current.delete(id);
+    };
+    useEffect(() => { const cache = cacheRef.current; return () => { for (const m of cache.values()) releaseMedia(m); cache.clear(); }; }, []);
+
+    // The preview strip: one small render per post, redone when anything changes.
+    const posts = useMemo(() => postsOf(jobs), [jobs]);
+    useEffect(() => {
+        if (!posts.length) { setThumbs({}); return undefined; }
+        let alive = true;
+        const t = setTimeout(async () => {
+            const next = {};
+            for (const job of posts) {
+                if (!alive) return;
+                try {
+                    const media = await mediaFor(job.asset, cacheRef.current);
+                    if (!alive) return;
+                    next[job.stem] = await renderThumb(job, media, 0.2);
+                } catch { next[job.stem] = null; }
+                if (alive) setThumbs({ ...next });
+            }
+        }, 250);
+        return () => { alive = false; clearTimeout(t); };
+    }, [posts]);
 
     const make = async () => {
         const ac = new AbortController();
@@ -108,7 +149,7 @@ export default function EventContent({ ev, venue, canPost }) {
         setMade(null);
         try {
             const { blob, names } = await buildKit({
-                phase, facts: { ...facts, standings: standings ?? [] }, jobs, signal: ac.signal,
+                phase, facts: { ...facts, standings: standings ?? [] }, jobs, signal: ac.signal, mediaCache: cacheRef.current,
                 onProgress: (fraction, job) => setBusy({ fraction, label: job?.label ?? '' }),
             });
             const name = `POWR - ${ev.name} - ${phase}.zip`;
@@ -200,12 +241,33 @@ export default function EventContent({ ev, venue, canPost }) {
                 )}
             </div>
 
+            {/* The look */}
+            <div className="mt-5 flex flex-col gap-2.5">
+                <Chips label="Look" items={LOOKS} value={options.look} onChange={(look) => { setOptions((o) => ({ ...o, look })); setMade(null); }} />
+                <Chips label="Accent" items={ACCENTS} value={options.accent} onChange={(accent) => { setOptions((o) => ({ ...o, accent })); setMade(null); }} />
+                <p className="text-[11px] text-[#AAAAAA]">{LOOKS.find((l) => l.id === options.look)?.blurb}; {ACCENTS.find((a) => a.id === options.accent)?.blurb}.{options.look === 'mixed' ? ' The Ticket and the Results keep the house look.' : ''}</p>
+            </div>
+
+            {/* The posts, small */}
+            {posts.length > 0 && (
+                <div className="mt-5 flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }} aria-label="Preview of the posts">
+                    {posts.map((job) => (
+                        <figure key={job.stem} className="shrink-0 w-24 m-0">
+                            <div className="w-24 h-30 rounded-lg overflow-hidden bg-[#111]" style={{ height: 120 }}>
+                                {thumbs[job.stem] ? <img src={thumbs[job.stem]} alt="" data-thumb className="w-full h-full object-cover" /> : <div className="w-full h-full animate-pulse bg-[#1A1A1A]" />}
+                            </div>
+                            <figcaption className="mt-1.5 text-[9px] uppercase tracking-[0.15em] font-black text-[#888] truncate">{job.label}</figcaption>
+                        </figure>
+                    ))}
+                </div>
+            )}
+
             {/* What the kit makes */}
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-6 items-start">
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-6 items-start">
                 <div>
                     <Micro className="mb-2">This kit makes</Micro>
                     <div className="text-[13px] text-[#1A1A1A] leading-relaxed">
-                        <b>{posts}</b> post{posts === 1 ? '' : 's'} at {new Set(stills.map((j) => j.format)).size} size{new Set(stills.map((j) => j.format)).size === 1 ? '' : 's'}
+                        <b>{posts.length}</b> post{posts.length === 1 ? '' : 's'} at {new Set(stills.map((j) => j.format)).size} size{new Set(stills.map((j) => j.format)).size === 1 ? '' : 's'}
                         {pdfs.length ? `, ${pdfs.length} print PDF` : ''}
                         {clips.length ? `, ${clips.length} video${clips.length === 1 ? '' : 's'}` : ''}
                         <span className="text-[#888]"> · {stills.length + pdfs.length + clips.length} files in one ZIP, a folder per size, captions included.</span>
