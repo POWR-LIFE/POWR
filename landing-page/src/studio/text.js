@@ -209,3 +209,22 @@ export const blockBox = (boxes) => boxes.reduce((acc, b) => unionBox(acc, b), nu
 export function textWidth(ctx, text, spec, px, tracking = 0) {
     return Math.max(0, ...splitLines(text).map((l) => lineMetrics(ctx, parseLine(l), spec, px, tracking).advance));
 }
+
+/**
+ * Running text broken into lines no wider than `maxW` (explicit line breaks
+ * count as spaces). At most `max` lines; the last gets an ellipsis if the
+ * text runs over. Returns the lines.
+ */
+export function wrapLines(ctx, text, spec, px, maxW, max = Infinity, tracking = 0) {
+    const words = String(text ?? '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+    const lines = [];
+    for (const w of words) {
+        const last = lines[lines.length - 1];
+        if (last !== undefined && textWidth(ctx, `${last} ${w}`, spec, px, tracking) <= maxW) lines[lines.length - 1] = `${last} ${w}`;
+        else lines.push(w);
+    }
+    if (lines.length <= max) return lines;
+    const kept = lines.slice(0, max);
+    kept[max - 1] = `${kept[max - 1].replace(/[\s,.;:–—-]+$/, '')}…`;
+    return kept;
+}
