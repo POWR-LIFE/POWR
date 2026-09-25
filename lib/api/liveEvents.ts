@@ -91,6 +91,10 @@ export type LiveEvent = {
      *  nearby (plus anyone who opens it by link). Absent on pre-20260924
      *  payloads, which were all everyone-events. */
     audience_mode?: 'all' | 'venue';
+    /** Who runs it: POWR (the admin editor), or the venue itself from its gym
+     *  portal. A gym's event has a booking link only if the gym adds one, so
+     *  nothing promises one is coming. Absent on pre-20260925 payloads. */
+    managed_by?: 'powr' | 'gym';
     window_start_at: string;
     window_end_at: string;
     lock_at: string | null;
@@ -122,7 +126,8 @@ export type LiveEvent = {
     rules?: string[];
     /** The venue's external booking page (third-party system). Null/absent
      *  hides every booking surface; the admin sets it when bookings open. May
-     *  contain {email}/{name} placeholders — see lib/eventBookingLink.ts. */
+     *  contain {email}/{name} placeholders — see lib/eventBookingLink.ts (a
+     *  gym's own link never carries {email}: the server refuses it). */
     booking_url?: string | null;
     venue: LiveEventVenue | null;
     /** True when this is a draft served only to the admin-listed preview

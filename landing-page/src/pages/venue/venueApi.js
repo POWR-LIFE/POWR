@@ -35,6 +35,9 @@ export const fetchGymEvent = (eventId) => rpc('gym_event_detail', { p_event_id: 
 export const createGymEvent = (partnerId, templateKey, fields) =>
     rpc('gym_create_event', { p_partner_id: partnerId, p_template_key: templateKey, p_fields: fields });
 export const updateGymEvent = (eventId, fields) => rpc('gym_update_event', { p_event_id: eventId, p_fields: fields });
+// The builder's live preview: the dates and house rules the server would set. Saves nothing.
+export const previewGymEvent = (partnerId, templateKey, fields) =>
+    rpc('gym_preview_event', { p_partner_id: partnerId, p_template_key: templateKey, p_fields: fields });
 export const publishGymEvent = (eventId) => rpc('gym_publish_event', { p_event_id: eventId });
 export const withdrawGymEvent = (eventId) => rpc('gym_withdraw_event', { p_event_id: eventId });
 export const deleteGymEvent = (eventId) => rpc('gym_delete_event', { p_event_id: eventId });

@@ -112,7 +112,7 @@ import VenueScreens from './pages/venue/VenueScreens';
 import VenueMembers from './pages/venue/VenueMembers';
 import VenueTeam from './pages/venue/VenueTeam';
 import VenueEvents from './pages/venue/VenueEvents';
-import VenueEventNew from './pages/venue/VenueEventNew';
+import VenueEventBuilder from './pages/venue/VenueEventBuilder';
 import VenueEventDetail from './pages/venue/VenueEventDetail';
 import VenueStudio from './pages/venue/VenueStudio';
 import VenuePackage from './pages/venue/VenuePackage';
@@ -1610,8 +1610,9 @@ export default function App() {
                     <Route path="/venue/setup/:token" element={<VenueSetup />} />
                     <Route path="/venue" element={<GymProtectedRoute><VenueLayout><VenueHome /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/events" element={<GymProtectedRoute><VenueLayout><VenueEvents /></VenueLayout></GymProtectedRoute>} />
-                    <Route path="/venue/events/new" element={<GymProtectedRoute><VenueLayout><Gate feature="events"><VenueEventNew /></Gate></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/events/new" element={<GymProtectedRoute><VenueLayout><Gate feature="events"><VenueEventBuilder /></Gate></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/events/:id" element={<GymProtectedRoute><VenueLayout><VenueEventDetail /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/events/:id/edit" element={<GymProtectedRoute><VenueLayout><VenueEventBuilder /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/studio" element={<GymProtectedRoute><VenueLayout><Gate feature="studio"><VenueStudio /></Gate></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/screens" element={<GymProtectedRoute><VenueLayout><VenueScreens /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/members" element={<GymProtectedRoute><VenueLayout><Gate feature="insights"><VenueMembers /></Gate></VenueLayout></GymProtectedRoute>} />

@@ -66,6 +66,40 @@ export const scoringRange = (ev) => `${fmtDay(ev.window_start_at)} → ${lastDay
 
 export const withGym = (text, gymName) => String(text ?? '').replaceAll('{gym}', gymName || 'your gym');
 
+/** What a gym can make count, in the order the builder shows them (the
+ *  server's _gym_event_fields accepts exactly these; sleep never counts). */
+// [key, chip label, word in a sentence]
+export const ACTIVITIES = [
+    ['gym', 'Gym', 'gym sessions'], ['running', 'Running', 'running'], ['cycling', 'Cycling', 'cycling'],
+    ['swimming', 'Swimming', 'swimming'], ['hiit', 'HIIT', 'HIIT'], ['yoga', 'Yoga', 'yoga'],
+    ['sports', 'Sports', 'sports'], ['dance', 'Dance', 'dance'], ['walking', 'Walking and steps', 'walking'],
+];
+const ACTIVITY_LABEL = Object.fromEntries(ACTIVITIES.map(([k, label]) => [k, label]));
+
+/** "gym sessions, running and walking" */
+export function activityList(keys) {
+    const words = ACTIVITIES.filter(([k]) => keys?.includes(k)).map(([, , word]) => word);
+    if (words.length <= 1) return words[0] ?? '';
+    return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
+
+/** One line for what an event counts, from its row (or the builder's fields). */
+export function whatCounts({ count_venue_only, included_activities }, gymName) {
+    if (count_venue_only) return `Only sessions at ${gymName || 'your gym'}`;
+    if (included_activities?.length) {
+        const list = activityList(included_activities);
+        return `Only ${list}${included_activities.includes('walking') ? ' (daily steps count as walking)' : ''}`;
+    }
+    return 'Every verified workout, anywhere';
+}
+export const activityLabel = (key) => ACTIVITY_LABEL[key] ?? key;
+
+/** "3 days" / "4 weeks" */
+export const lengthLabel = (days) => (days >= 14 && days % 7 === 0 ? `${days / 7} weeks` : `${days} day${days === 1 ? '' : 's'}`);
+
+/** Promo media can be a picture or a short video; the file name says which. */
+export const isVideo = (url) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url ?? '');
+
 /** "2026-10-02" in UK time, for date inputs. */
 export const isoDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 

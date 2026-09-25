@@ -6,13 +6,14 @@ import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
 import { Page, Card, Micro, Spinner, Empty, BTN_GOLD, BTN_GHOST, INPUT, fmtNum } from '../../components/portal/ui';
 import {
-    cancelGymEvent, deleteGymEvent, disqualifyFromGymEvent, fetchEventTemplates, fetchGymEvent, fetchGymEventBoard,
-    fetchGymEventRoster, fetchGymSummary, fetchPointPresets, publishGymEvent, reinstateInGymEvent, revealGymEvent,
-    scheduleGymReveal, updateGymEvent, withdrawGymEvent,
+    cancelGymEvent, deleteGymEvent, disqualifyFromGymEvent, fetchGymEvent, fetchGymEventBoard,
+    fetchGymEventRoster, fetchGymSummary, publishGymEvent, reinstateInGymEvent, revealGymEvent,
+    scheduleGymReveal, withdrawGymEvent,
 } from './venueApi';
-import { StatusPill, statusKey, scoringRange, fmtDay, fmtDayTime, lastDay, isoDay, toLocalInput, fromLocalInput } from './eventUi';
-import { EventForm, toFields } from './VenueEventNew';
+import { StatusPill, statusKey, scoringRange, fmtDay, fmtDayTime, lastDay, toLocalInput, fromLocalInput, whatCounts } from './eventUi';
 import { boardName } from '../../../../shared/gymBoard.ts';
+import { storageImage } from '../../lib/storage';
+import { ukTime } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
 import EventPushes from './EventPushes';
 import { usePackage } from './packages';
@@ -59,7 +60,6 @@ export default function VenueEventDetail() {
     const [roster, setRoster] = useState(null);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(null);
-    const [edit, setEdit] = useState(null);       // { tpl, presets, value } while editing
     const [revealAt, setRevealAt] = useState('');
 
     const loadSide = useCallback(async (e) => {
@@ -157,33 +157,6 @@ export default function VenueEventDetail() {
         } finally {
             setBusy(null);
         }
-    };
-
-    const startEdit = async () => {
-        try {
-            const [templates, presets] = await Promise.all([fetchEventTemplates(), fetchPointPresets()]);
-            const tpl = templates.find(t => t.key === ev.template_key);
-            if (!tpl) throw new Error('This event type is no longer offered — contact POWR to change it');
-            setEdit({
-                tpl, presets,
-                value: {
-                    name: ev.name,
-                    start_date: isoDay(new Date(ev.window_start_at)),
-                    prizes: (ev.prizes ?? []).map(p => p.label),
-                    extraRules: (ev.rules ?? []).slice(ev.template?.rule_count ?? 0),
-                    promo_headline: ev.promo_headline ?? '',
-                    points_preset_key: ev.points_preset_key,
-                    audience_radius_km: ev.audience_radius_km ?? null,
-                },
-            });
-        } catch (err) {
-            toast.error(err.message);
-        }
-    };
-    const saveEdit = () => {
-        const all = toFields(edit.value);
-        const fields = early ? all : { name: all.name, promo_headline: all.promo_headline };
-        act('save', () => updateGymEvent(ev.id, fields), 'Saved', () => setEdit(null));
     };
 
     // ── What happens next ─────────────────────────────────────────────────
@@ -335,46 +308,48 @@ export default function VenueEventDetail() {
             <Card className="p-6 sm:p-8">
                 <div className="flex items-center justify-between gap-3 mb-6">
                     <div className="flex items-center gap-3"><Sparkles size={15} className="text-[#8a7600]" /><Micro>Details</Micro></div>
-                    {canEdit && !edit && (
-                        <button type="button" onClick={startEdit} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black text-[#8a7600]">
-                            <Pencil size={12} /> {ev.status === 'live' ? 'Edit name or headline' : 'Edit'}
-                        </button>
+                    {canEdit && (
+                        <Link to={`/venue/events/${ev.id}/edit`} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black">
+                            <Pencil size={12} className="text-[#8a7600]" /><span className="text-[#8a7600]">{early ? 'Edit' : 'Edit words and pictures'}</span>
+                        </Link>
                     )}
                 </div>
-                {edit ? (
-                    <>
-                        <EventForm
-                            tpl={edit.tpl} presets={edit.presets} gymName={gym.name}
-                            value={edit.value} onChange={v => setEdit(e => ({ ...e, value: v }))}
-                            locked={early ? [] : ['start_date', 'prizes', 'rules', 'points_preset_key', 'audience_radius_km']}
-                        />
-                        <div className="flex flex-wrap gap-3 mt-8">
-                            <button type="button" onClick={saveEdit} disabled={!!busy} className={BTN_GOLD}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
-                            <button type="button" onClick={() => setEdit(null)} className={BTN_GHOST}>Cancel</button>
-                        </div>
-                    </>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-4 text-[13px]">
-                            <div><Micro className="mb-1">Scoring</Micro>{scoringRange(ev)}</div>
-                            {ev.doors_open_at && <div><Micro className="mb-1">Finale night</Micro>{fmtDayTime(ev.doors_open_at)}</div>}
-                            <div><Micro className="mb-1">Board seals</Micro>{fmtDayTime(ev.lock_at)}</div>
-                            {ev.attendance_bonus_points > 0 && <div><Micro className="mb-1">Finale bonus</Micro>+{ev.attendance_bonus_points} POWR for everyone who comes{ev.attendance_paid_at ? ' · paid' : ''}</div>}
-                            <div><Micro className="mb-1">Shown to</Micro>Your members and recent visitors{ev.audience_radius_km ? `, plus anyone within ${ev.audience_radius_km} km` : ''}</div>
-                            {ev.promo_headline && <div><Micro className="mb-1">Headline</Micro>{ev.promo_headline}</div>}
-                        </div>
-                        <div className="space-y-6 text-[13px]">
-                            <div>
-                                <Micro className="mb-2">Prizes</Micro>
-                                <ol className="space-y-1">{(ev.prizes ?? []).map(p => <li key={p.rank}><span className="font-black text-[#BBBBBB] mr-2">{p.rank}</span>{p.label}</li>)}</ol>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-4 text-[13px]">
+                        <div><Micro className="mb-1">Scoring</Micro>{scoringRange(ev)}</div>
+                        {ev.doors_open_at && <div><Micro className="mb-1">Finale night</Micro>{fmtDay(ev.doors_open_at)}, {ukTime(ev.doors_open_at)}{ev.doors_close_at ? `–${ukTime(ev.doors_close_at)}` : ''}</div>}
+                        <div><Micro className="mb-1">Board seals</Micro>{fmtDayTime(ev.lock_at)}</div>
+                        <div><Micro className="mb-1">What counts</Micro>{whatCounts(ev, gym.name)}{ev.board_size ? ` · top ${ev.board_size} on the board` : ''}</div>
+                        {ev.attendance_bonus_points > 0 && <div><Micro className="mb-1">Finale bonus</Micro>+{ev.attendance_bonus_points} POWR for everyone who comes{ev.attendance_paid_at ? ' · paid' : ''}</div>}
+                        <div><Micro className="mb-1">Shown to</Micro>Your members and recent visitors{ev.audience_radius_km ? `, plus anyone within ${ev.audience_radius_km} km` : ''}</div>
+                        {ev.promo_headline && <div><Micro className="mb-1">Headline</Micro>{ev.promo_headline}</div>}
+                        {ev.booking_url && <div className="min-w-0"><Micro className="mb-1">Booking link</Micro><span className="block truncate">{ev.booking_url}</span></div>}
+                        {(ev.logo_url || ev.promo_media_url) && (
+                            <div className="flex items-center gap-3 pt-1">
+                                {ev.logo_url && <span className="inline-flex items-center px-3 py-2 rounded-xl bg-[#141414]"><img src={storageImage(ev.logo_url, 200)} alt="Event logo" className="h-7 w-20 object-contain" /></span>}
+                                {ev.promo_media_url && !/\.(mp4|webm|mov|m4v)(\?|$)/i.test(ev.promo_media_url) && <img src={storageImage(ev.promo_media_url, 240)} alt="" className="h-12 aspect-video rounded-xl object-cover border border-[#E6E6E1]" />}
                             </div>
-                            <div>
-                                <Micro className="mb-2">Rules</Micro>
-                                <ul className="space-y-1 text-[#666]">{(ev.rules ?? []).map((r, i) => <li key={i}>· {r}</li>)}</ul>
-                            </div>
+                        )}
+                    </div>
+                    <div className="space-y-6 text-[13px]">
+                        <div>
+                            <Micro className="mb-2">Prizes</Micro>
+                            <ol className="space-y-1.5">
+                                {(ev.prizes ?? []).map(p => (
+                                    <li key={p.rank} className="flex items-center gap-3">
+                                        <span className="w-4 font-black text-[#BBBBBB]">{p.rank}</span>
+                                        {p.image_url && <img src={storageImage(p.image_url, 80)} alt="" className="w-7 h-7 rounded-lg object-cover" />}
+                                        <span>{p.label}</span>
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
+                        <div>
+                            <Micro className="mb-2">Rules</Micro>
+                            <ul className="space-y-1 text-[#666]">{(ev.rules ?? []).map((r, i) => <li key={i}>· {r}</li>)}</ul>
                         </div>
                     </div>
-                )}
+                </div>
             </Card>
 
             {ev.managed_by === 'gym' && k !== 'cancelled' && k !== 'pulled' && (

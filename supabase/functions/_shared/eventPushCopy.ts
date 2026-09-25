@@ -29,6 +29,28 @@ export function ukTime(iso: unknown): string {
   return `${hour}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
 }
 
+// What a pick of activities reads as in a push, in the order the gym
+// portal lists them. Walking brings daily steps with it (the event rules
+// say so); a push only has room for "walks".
+const ACTIVITY_NOUNS: [string, string][] = [
+  ['gym', 'gym sessions'], ['running', 'runs'], ['cycling', 'rides'], ['swimming', 'swims'],
+  ['hiit', 'HIIT workouts'], ['yoga', 'yoga sessions'], ['sports', 'sports sessions'],
+  ['dance', 'dance sessions'], ['walking', 'walks'],
+];
+
+// "Every session at X counts" / "Runs and rides count" / "Every verified
+// workout counts", without the full stop. activities is the event's
+// included_activities (null = everything); venue_only comes first, and the
+// gym portal never pairs it with a pick.
+export function countsLine(payload: Record<string, unknown>, gym: string): string {
+  if (payload.venue_only === true && gym) return `Every session at ${gym} counts`;
+  const picked = Array.isArray(payload.activities) ? (payload.activities as unknown[]).map(String) : [];
+  const words = ACTIVITY_NOUNS.filter(([key]) => picked.includes(key)).map(([, noun]) => noun);
+  if (!words.length) return 'Every verified workout counts';
+  const list = words.length === 1 ? words[0] : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+  return `${list[0].toUpperCase()}${list.slice(1)} count`;
+}
+
 export function eventPushCopy(
   type: EventPushType,
   payload: Record<string, unknown>,
@@ -45,9 +67,7 @@ export function eventPushCopy(
       const prize = String(payload.prize ?? '').trim();
       const starts = new Date(String(payload.starts_at ?? '')).getTime();
       const when = Number.isFinite(starts) && starts > now ? `Starts ${ukDay(payload.starts_at)}.` : 'On now.';
-      const counts = payload.venue_only === true && gym
-        ? `Every session at ${gym} counts.`
-        : 'Every verified workout counts.';
+      const counts = `${countsLine(payload, gym)}.`;
       const named = gym && !name.toLowerCase().includes(gym.toLowerCase());
       return {
         title: named ? `New at ${gym}: ${name}` : `New: ${name}`,
@@ -61,9 +81,7 @@ export function eventPushCopy(
       const name = eventName || 'The event';
       const ends = new Date(String(payload.ends_at ?? '')).getTime();
       const lastDay = Number.isFinite(ends) ? ukDay(new Date(ends - 60_000).toISOString()) : '';
-      const counts = payload.venue_only === true && gym
-        ? `Every session at ${gym} counts`
-        : 'Every verified workout counts';
+      const counts = countsLine(payload, gym);
       return {
         title: `${name}: it's on 🏁`,
         body: `${counts}${lastDay ? ` until ${lastDay}` : ''}. The board is open.`,

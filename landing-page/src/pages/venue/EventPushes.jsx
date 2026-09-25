@@ -10,11 +10,11 @@ import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushC
 // the real push with, from the same facts (gym_event_push_status.payload).
 // The gym only chooses which go out and when the daily standings land.
 
-const HOURS = Array.from({ length: 15 }, (_, i) => 7 + i);   // 7am–9pm, as gym_event_set_push allows
+export const STANDINGS_HOURS = Array.from({ length: 15 }, (_, i) => 7 + i);   // 7am–9pm, as gym_event_set_push allows
 const hourLabel = (h) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? 'am' : 'pm'}`;
 const people = (n) => `${fmtNum(n)} ${n === 1 ? 'person' : 'people'}`;
 
-function Switch({ on, disabled, onChange, label }) {
+export function Switch({ on, disabled, onChange, label }) {
     return (
         <button
             type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled}
@@ -28,7 +28,7 @@ function Switch({ on, disabled, onChange, label }) {
     );
 }
 
-function Preview({ type, payload, off }) {
+export function Preview({ type, payload, off }) {
     const { title, body } = eventPushCopy(type, payload ?? {});
     return (
         <div className={`mt-3 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] px-4 py-3 max-w-md transition-opacity ${off ? 'opacity-40' : ''}`}>
@@ -178,7 +178,7 @@ export default function EventPushes({ ev, gymName, toast }) {
                             className="h-11 pl-4 pr-8 shrink-0 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[12px] font-bold text-[#1A1A1A] disabled:opacity-40 focus:outline-none focus:border-[#E8D200]/60"
                         >
                             <option value="">Off</option>
-                            {HOURS.map(h => {
+                            {STANDINGS_HOURS.map(h => {
                                 const v = `${String(h).padStart(2, '0')}:00`;
                                 return <option key={h} value={v}>{hourLabel(h)}</option>;
                             })}
