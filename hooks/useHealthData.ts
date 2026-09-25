@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { classifyProvenance, type HealthDataProvenance } from '@/lib/health/dataSource';
 
@@ -542,10 +543,76 @@ export async function androidRequestPermissions(): Promise<boolean> {
         } catch (e) {
             console.warn('[HealthData] Distance permission unavailable on this binary:', e);
         }
+        // Background access is its own grant (see androidRequestBackgroundRead)
+        // and only worth asking once the data grants exist.
+        if (granted.length > 0) {
+            await androidRequestBackgroundRead();
+            await AsyncStorage.setItem(HC_BG_READ_ASKED_KEY, '1').catch(() => {});
+        }
         return granted.length > 0;
     } catch (e) {
         console.warn('[HealthData] androidRequestPermissions failed:', e);
         return false;
+    }
+}
+
+const HC_BG_READ_ASKED_KEY = '@powr/hc_bg_read_asked';
+
+/** Health Connect gates every read made outside the foreground behind its own
+ *  "background access" grant — not a data type, a WHEN. Without it the wake-path
+ *  step reads (walking sync, the evening step nudge) return 0 while the
+ *  permission screen looks complete. `READ_HEALTH_DATA_IN_BACKGROUND` has been
+ *  declared in the manifest since the 1.5.x build but was never requested until
+ *  2026-09-25. Own try/catch: a binary without the declaration, or a Health
+ *  Connect build without the feature, throws here and must not take the data
+ *  grants down with it. */
+export async function androidRequestBackgroundRead(): Promise<boolean> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { initialize, requestPermission } = require('react-native-health-connect');
+        await initialize();
+        const granted: Array<{ recordType: string }> = await requestPermission([
+            { accessType: 'read', recordType: 'BackgroundAccessPermission' },
+        ]);
+        const ok = granted.some(p => p.recordType === 'BackgroundAccessPermission');
+        console.log('[HealthData] Background read permission:', ok ? 'granted' : 'not granted');
+        return ok;
+    } catch (e) {
+        console.warn('[HealthData] Background read permission unavailable on this binary:', e);
+        return false;
+    }
+}
+
+export async function androidBackgroundReadGranted(): Promise<boolean> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { initialize, getGrantedPermissions } = require('react-native-health-connect');
+        await initialize();
+        const granted: Array<{ recordType: string }> = await getGrantedPermissions();
+        return granted.some(p => p.recordType === 'BackgroundAccessPermission');
+    } catch {
+        return false;
+    }
+}
+
+/** One-time top-up for devices that connected Health Connect before the
+ *  background grant was requested. Runs from the foreground walking load once
+ *  steps are readable; asks once (stamped), never again — a declined system
+ *  dialog is the user's answer, and Settings › Health Connect remains the way
+ *  back. Not connected at all = nothing to top up; the connect flow asks. */
+export async function androidEnsureBackgroundRead(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    try {
+        if (await AsyncStorage.getItem(HC_BG_READ_ASKED_KEY)) return;
+        if (!(await androidCheckAlreadyGranted())) return;
+        if (await androidBackgroundReadGranted()) {
+            await AsyncStorage.setItem(HC_BG_READ_ASKED_KEY, '1');
+            return;
+        }
+        await AsyncStorage.setItem(HC_BG_READ_ASKED_KEY, '1');
+        await androidRequestBackgroundRead();
+    } catch (e) {
+        console.warn('[HealthData] androidEnsureBackgroundRead failed:', e);
     }
 }
 

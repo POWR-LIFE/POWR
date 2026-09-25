@@ -1,6 +1,7 @@
 import { getAppVersion } from '@/lib/device';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import type { NotificationType } from '@/lib/notifications';
+import { cacheStepGoalPref } from '@/lib/stepGoalPrefCache';
 
 // ---------------------------------------------------------------------------
 // Push token registration
@@ -142,7 +143,7 @@ export async function getNotificationPreferences(
   if (error) throw error;
   if (!data) return DEFAULT_PREFERENCES;
 
-  return {
+  const prefs: NotificationPreferences = {
     daily_reminder: data.daily_reminder ?? true,
     streak_at_risk: data.streak_at_risk ?? true,
     weekly_challenge_expiry: data.weekly_challenge_expiry ?? true,
@@ -171,6 +172,8 @@ export async function getNotificationPreferences(
     challenge_ended: data.challenge_ended ?? true,
     challenge_open_posted: data.challenge_open_posted ?? true,
   };
+  cacheStepGoalPref(prefs.step_goal_nudge);
+  return prefs;
 }
 
 export async function updateNotificationPreferences(
@@ -183,6 +186,7 @@ export async function updateNotificationPreferences(
   );
 
   if (error) throw error;
+  if (typeof prefs.step_goal_nudge === 'boolean') cacheStepGoalPref(prefs.step_goal_nudge);
 }
 
 // ---------------------------------------------------------------------------

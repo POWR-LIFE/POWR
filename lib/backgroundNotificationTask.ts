@@ -323,6 +323,16 @@ defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
           const { syncWalkingFromWake } = await import('@/lib/health/walkingSync');
           await syncWalkingFromWake();
         } catch { /* steps are never worth a wake */ }
+
+        // The walkers' evening "X steps to go" nudge rides the same wake, after
+        // the sync it depends on. It lived on BackgroundFetch alone from
+        // 2026-07-23 to 2026-09-25 and never fired for anyone — same dead
+        // scheduler as the walking sync above. Idempotent per local day and
+        // throttled inside; own try/catch; cannot reject.
+        try {
+          const { runStepGoalCheckFromWake } = await import('@/lib/stepGoalNotifyTask');
+          await runStepGoalCheckFromWake();
+        } catch { /* a nudge is never worth a wake */ }
       })
       .catch(() => { /* self-heal is best-effort by definition */ });
 
