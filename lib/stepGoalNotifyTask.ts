@@ -10,9 +10,12 @@
 //     token is spent) + the shared one-local-nudge-per-day budget + its own
 //     once-per-day stamp + one health read per 20 minutes
 //
-// For walking-only users this is their streak_at_risk equivalent; gym users
-// in the same evening get the server streak push instead — the shared budget
-// means they never get both.
+// For walking-only users this is their streak_at_risk equivalent. The server's
+// nudge budget cannot see a local notification, so the two pools are NOT one:
+// this nudge defers on its own when it can see the user is tonight's
+// streak_at_risk candidate (a live streak, nothing logged today — the server
+// push wins the day's slot, as the dispatcher's design says). When the server
+// is unreadable it fires; a rare second nudge beats a muted walker.
 //
 // HOW IT ACTUALLY RUNS (2026-09-25). Three entry points, one gate:
 //   1. The beacon's fence_refresh wake (lib/backgroundNotificationTask.ts),
@@ -26,10 +29,11 @@
 //      fresh, a lock-screen nudge lands a moment later.
 //   3. The BackgroundFetch task below, kept registered as a free extra chance.
 //
-// NO AUTH CLIENT ON THIS PATH. The preference and today's banked points are
-// read over raw fetch with the persisted token (lib/backgroundRest); the
+// NO AUTH-CLIENT CALLS ON THIS PATH. The preference and today's banked points
+// are read over raw fetch with the persisted token (lib/backgroundRest); the
 // supabase client's auth lock is the headless freeze class
-// (lib/backgroundRest.ts header). When the token is spent — most evenings —
+// (lib/backgroundRest.ts header). Loading the client module is fine — the
+// headless entry already does — entering its lock with a call is not. When the token is spent — most evenings —
 // the nudge still fires: the preference comes from the AsyncStorage mirror and
 // the promised points fall back to the tier ladder itself
 // (tier(next) − tier(now)), which can only under-promise.
@@ -67,23 +71,70 @@ function todayMidnightIso(): string {
   return d.toISOString();
 }
 
-/** Server preference when the token allows, the mirror otherwise. No row = on. */
-async function stepGoalPrefEnabled(auth: BackgroundAuth | null): Promise<boolean> {
+interface StepGoalPrefs {
+  stepGoal: boolean;
+  /** null = unknown (server unreadable); the defer below then does not apply. */
+  streakAtRisk: boolean | null;
+}
+
+/** Server preferences when the token allows, the mirror otherwise. No row = on. */
+async function readPrefs(auth: BackgroundAuth | null): Promise<StepGoalPrefs> {
   if (auth) {
     try {
-      const { data } = await bgSelect<{ step_goal_nudge: boolean | null }>(
+      const { data } = await bgSelect<{ step_goal_nudge: boolean | null; streak_at_risk: boolean | null }>(
         'notification_preferences',
-        `select=step_goal_nudge&user_id=eq.${auth.userId}&limit=1`,
+        `select=step_goal_nudge,streak_at_risk&user_id=eq.${auth.userId}&limit=1`,
         auth,
       );
       if (data) {
-        const enabled = data[0]?.step_goal_nudge !== false;
-        cacheStepGoalPref(enabled);
-        return enabled;
+        const stepGoal = data[0]?.step_goal_nudge !== false;
+        cacheStepGoalPref(stepGoal);
+        return { stepGoal, streakAtRisk: data[0]?.streak_at_risk !== false };
       }
     } catch { /* fall through to the mirror */ }
   }
-  return readCachedStepGoalPref();
+  return { stepGoal: await readCachedStepGoalPref(), streakAtRisk: null };
+}
+
+function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Is this user tonight's streak_at_risk candidate — non-manual activity on
+ *  each of the last `min_streak` local days ending yesterday, nothing yet
+ *  today? Mirrors nudge_dispatch_candidates + send-push's min-streak floor
+ *  (sessions only; a rescue bridge day inside the window is the one known
+ *  divergence, and it errs towards firing). Unreadable = not a candidate. */
+async function isStreakAtRiskCandidateTonight(auth: BackgroundAuth): Promise<boolean> {
+  try {
+    let minStreak = 3;
+    const { data: cfg } = await bgSelect<{ value: string | null }>(
+      'system_config', 'select=value&key=eq.streak_at_risk_min_streak&limit=1', auth,
+    );
+    const parsed = Number.parseInt(String(cfg?.[0]?.value ?? ''), 10);
+    if (Number.isFinite(parsed) && parsed > 0) minStreak = parsed;
+
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - minStreak);
+    const { data: sessions } = await bgSelect<{ started_at: string }>(
+      'activity_sessions',
+      `select=started_at&user_id=eq.${auth.userId}&verification=neq.manual`
+        + `&started_at=gte.${encodeURIComponent(since.toISOString())}&limit=500`,
+      auth,
+    );
+    if (!sessions) return false;
+    const days = new Set(sessions.map(s => localDayKey(new Date(s.started_at))));
+    const cursor = new Date();
+    if (days.has(localDayKey(cursor))) return false;     // logged today — no streak push tonight
+    for (let i = 1; i <= minStreak; i++) {
+      cursor.setDate(cursor.getDate() - 1);
+      if (!days.has(localDayKey(cursor))) return false;  // streak too short for the push
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Today's walking points already awarded, scoped by the session's started_at
@@ -133,7 +184,8 @@ export async function runStepGoalCheck(): Promise<boolean> {
   // skip the nudge — that gate alone muted every phone pocketed for an hour.
   const auth = await readBackgroundAuth();
 
-  if (!(await stepGoalPrefEnabled(auth))) return false;
+  const prefs = await readPrefs(auth);
+  if (!prefs.stepGoal) return false;
 
   let steps = 0;
   try {
@@ -147,6 +199,10 @@ export async function runStepGoalCheck(): Promise<boolean> {
   if (!next) return false; // already at the top tier
   const stepsToNext = next - steps;
   if (stepsToNext <= 0 || stepsToNext > MAX_STEPS_TO_NEXT) return false;
+
+  // Tonight's streak_at_risk push wins the day's one nudge slot when it can
+  // fire (header). Only decidable with a live token; otherwise fire.
+  if (auth && prefs.streakAtRisk !== false && await isStreakAtRiskCandidateTonight(auth)) return false;
 
   // Nothing to promise if today's walking points are already capped. With the
   // server unreadable, assume the current tier is banked: the promise becomes

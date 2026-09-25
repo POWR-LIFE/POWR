@@ -67,24 +67,36 @@ beforeEach(() => {
 });
 
 describe('background wake → evening step nudge', () => {
-  it('runs the step-goal check on every fence_refresh wake, after the walking sync', async () => {
+  it('runs the step-goal check on every fence_refresh wake, BEFORE the walking sync', async () => {
     await capturedTask(fenceRefresh());
 
     expect(mockStepGoal).toHaveBeenCalledTimes(1);
     const walkIdx = callOrder.indexOf('walk');
     const stepIdx = callOrder.indexOf('stepgoal');
     expect(walkIdx).toBeGreaterThanOrEqual(0);
-    expect(stepIdx).toBeGreaterThan(walkIdx);
+    // The sync still goes through the auth client and can hang; the check
+    // needs nothing from it, so it must never sit behind it.
+    expect(stepIdx).toBeLessThan(walkIdx);
   });
 
-  it('sits LAST — after re-arm, reconcile and the missed-check-in sweep', async () => {
+  it('sits after every self-heal step — re-arm, reconcile, the missed-check-in sweep', async () => {
     await capturedTask(fenceRefresh());
 
     const stepIdx = callOrder.indexOf('stepgoal');
-    for (const step of ['rearm', 'reconcile', 'sweep', 'walk']) {
+    for (const step of ['rearm', 'reconcile', 'sweep']) {
       expect(callOrder.indexOf(step)).toBeGreaterThanOrEqual(0);
       expect(stepIdx).toBeGreaterThan(callOrder.indexOf(step));
     }
+  });
+
+  it('a hanging walking sync cannot mute the nudge', async () => {
+    mockWalk.mockImplementationOnce(() => new Promise<void>(() => { /* never settles */ }));
+
+    const run = capturedTask(fenceRefresh());
+    // Give the chain a tick to reach the sync; the step check must already be done.
+    await new Promise(r => setTimeout(r, 20));
+    expect(mockStepGoal).toHaveBeenCalledTimes(1);
+    void run;
   });
 
   it('a failing step check never costs the wake its presence check', async () => {

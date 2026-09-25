@@ -60,12 +60,32 @@ function atLocal(hour: number, minute = 0) {
   });
 }
 
-function serverPrefs(enabled: boolean | null, banked: number[] = []) {
-  mockSelect.mockImplementation(async (table: string) => {
+/** Non-manual sessions at local noon on each of the given days-ago. */
+function sessionsOnDaysAgo(daysAgo: number[]): { started_at: string }[] {
+  return daysAgo.map(n => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    d.setHours(12, 0, 0, 0);
+    return { started_at: d.toISOString() };
+  });
+}
+
+function serverPrefs(
+  enabled: boolean | null,
+  banked: number[] = [],
+  opts: { streakDaysAgo?: number[]; streakPref?: boolean; minStreak?: string } = {},
+) {
+  mockSelect.mockImplementation(async (table: string, query: string) => {
     if (table === 'notification_preferences') {
-      return { data: enabled === null ? [] : [{ step_goal_nudge: enabled }], error: null };
+      return {
+        data: enabled === null ? [] : [{ step_goal_nudge: enabled, streak_at_risk: opts.streakPref ?? true }],
+        error: null,
+      };
     }
-    if (table === 'activity_sessions') {
+    if (table === 'system_config') {
+      return { data: [{ value: opts.minStreak ?? '3' }], error: null };
+    }
+    if (table === 'activity_sessions' && query.includes('type=eq.walking')) {
       return {
         data: banked.length
           ? [{ point_transactions: banked.map(amount => ({ amount, type: 'earn' })) }]
@@ -73,7 +93,10 @@ function serverPrefs(enabled: boolean | null, banked: number[] = []) {
         error: null,
       };
     }
-    return { data: null, error: { message: `unexpected table ${table}` } };
+    if (table === 'activity_sessions' && query.includes('verification=neq.manual')) {
+      return { data: sessionsOnDaysAgo(opts.streakDaysAgo ?? []), error: null };
+    }
+    return { data: null, error: { message: `unexpected query ${table}?${query}` } };
   });
 }
 
@@ -144,12 +167,59 @@ describe('runStepGoalCheck — the walkers\' evening nudge', () => {
     expect(await AsyncStorage.getItem(STEP_GOAL_PREF_CACHE_KEY)).toBe('0');
   });
 
-  it('never goes through the supabase client', () => {
-    // A static guarantee: the module's import graph has no lib/supabase edge.
-    // (lib/api/activity is mocked above precisely because it has one.)
+  it('never CALLS the supabase client (loading the module is fine; entering its lock is not)', () => {
+    // A static guarantee on this file's own reads: no direct supabase import
+    // and none of the client-backed helpers. Transitive module LOADS remain —
+    // lib/api/activity and lib/backgroundRest both import the client — and
+    // that is acceptable: the headless entry loads it anyway, and the freeze
+    // class is a getSession()/query CALL, which the reads above never make.
     const src = require('fs').readFileSync(require.resolve('@/lib/stepGoalNotifyTask'), 'utf8');
     expect(src).not.toMatch(/from '@\/lib\/supabase'/);
-    expect(src).not.toMatch(/getNotificationPreferences|fetchTodayWalkingPoints/);
+    expect(src).not.toMatch(/getNotificationPreferences|fetchTodayWalkingPoints|getSessionUser|supabase\./);
+  });
+
+  // The server's nudge budget cannot see a local notification. When the phone
+  // can see that tonight's streak_at_risk push will fire, it yields the slot.
+  describe('yielding to tonight\'s streak_at_risk push', () => {
+    it('defers when the user has a qualifying streak and nothing logged today', async () => {
+      mockSteps.mockResolvedValue(5000);
+      serverPrefs(true, [], { streakDaysAgo: [1, 2, 3] });
+
+      await expect(runStepGoalCheck()).resolves.toBe(false);
+
+      expect(mockNotify).not.toHaveBeenCalled();
+      expect(await AsyncStorage.getItem(STEP_GOAL_FIRED_DAY_KEY)).toBeNull();
+    });
+
+    it('fires when something was already logged today (no streak push tonight)', async () => {
+      mockSteps.mockResolvedValue(5000);
+      serverPrefs(true, [], { streakDaysAgo: [0, 1, 2, 3] });
+      await expect(runStepGoalCheck()).resolves.toBe(true);
+    });
+
+    it('fires when the streak is below the min-streak floor', async () => {
+      mockSteps.mockResolvedValue(5000);
+      serverPrefs(true, [], { streakDaysAgo: [1, 2] });
+      await expect(runStepGoalCheck()).resolves.toBe(true);
+    });
+
+    it('honours the admin min-streak knob', async () => {
+      mockSteps.mockResolvedValue(5000);
+      serverPrefs(true, [], { streakDaysAgo: [1, 2], minStreak: '2' });
+      await expect(runStepGoalCheck()).resolves.toBe(false);
+    });
+
+    it('fires when the user has the streak push switched off', async () => {
+      mockSteps.mockResolvedValue(5000);
+      serverPrefs(true, [], { streakDaysAgo: [1, 2, 3], streakPref: false });
+      await expect(runStepGoalCheck()).resolves.toBe(true);
+    });
+
+    it('cannot decide on a spent token, so it fires', async () => {
+      mockAuth.mockResolvedValue(null);
+      mockSteps.mockResolvedValue(5000);
+      await expect(runStepGoalCheck()).resolves.toBe(true);
+    });
   });
 
   it('does nothing outside the 17:00–20:59 local window', async () => {

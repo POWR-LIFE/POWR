@@ -44,10 +44,13 @@ export function useWalkingProgress(): WalkingProgressState {
                 // hide the count we already read, so it can't abort the load.
                 await syncWalkingNow().catch((e) =>
                     console.warn('[WalkingProgress] sync failed:', e));
-                // Steps are readable in the foreground; make sure they are in
-                // the background too (Health Connect's separate permission —
-                // asks once, then never again).
-                if (Platform.OS === 'android') androidEnsureBackgroundRead().catch(() => {});
+            }
+            // A connected Health Connect device must also be readable in the
+            // background (its separate grant — asks once, then never again).
+            // Outside the positive-step branch: zero steps so far today is a
+            // normal state for a connected phone, not a reason to wait.
+            if (Platform.OS === 'android' && health.isAvailable) {
+                androidEnsureBackgroundRead().catch(() => {});
             }
 
             // The day's synced session is both the points source and the step
