@@ -15,6 +15,15 @@ async function rpc(name, args) {
 export const fetchGymSummary = (partnerId) => rpc('gym_portal_summary', { p_partner_id: partnerId });
 export const fetchGymInsights = (partnerId, weeks = 8) => rpc('gym_insights', { p_partner_id: partnerId, p_weeks: weeks });
 export const setupGymScreens = (partnerId, slug) => rpc('gym_board_setup', { p_partner_id: partnerId, p_slug: slug });
+// The Gym League as the big screen sees it, from the same function and the
+// same credential (the board's display token), so the overview's standing is
+// the standing on the wall.
+export const fetchGymLeague = async (slug, token) => {
+    const base = import.meta.env.EXPO_PUBLIC_SUPABASE_URL;
+    const res = await fetch(`${base}/functions/v1/gym-league?slug=${encodeURIComponent(slug)}&k=${encodeURIComponent(token)}`);
+    if (!res.ok) throw new Error(`League unavailable (${res.status})`);
+    return res.json();
+};
 export const updateGymScreens = (partnerId, patch) => rpc('gym_board_update', { p_partner_id: partnerId, p_patch: patch });
 
 export const staffApi = (action, body = {}) => invokeFn('manage-gym-staff', { action, ...body });

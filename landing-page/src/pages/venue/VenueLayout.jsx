@@ -375,8 +375,11 @@ export function VenueLayout({ children }) {
                     )}
                 </header>
 
-                <div className="flex-1 lg:overflow-y-auto">
-                    <div className="max-w-[1400px] px-5 sm:px-8 lg:px-16 pt-6 sm:pt-8 lg:pt-10 pb-28 lg:pb-24">
+                {/* The overview fits one tall desktop window with no scrolling
+                    (style.css .venue-fill-*: flex all the way down, only at
+                    lg and 800px+ tall); every other page flows and scrolls. */}
+                <div className={`flex-1 lg:overflow-y-auto ${location.pathname === '/venue' ? 'venue-fill-scroll' : ''}`}>
+                    <div className={`max-w-[1400px] px-5 sm:px-8 lg:px-16 pt-6 sm:pt-8 lg:pt-10 pb-28 lg:pb-24 ${location.pathname === '/venue' ? 'venue-fill-wrap' : ''}`}>
                         {/* Keyed on the gym: switching gyms remounts the page, so no
                             page can show one gym's data under another's name. */}
                         <PackageContext.Provider value={{ pkg, refresh: refreshPkg }}>

@@ -3134,3 +3134,15 @@ img {
 @media (prefers-reduced-motion: reduce) {
     .creator-rise { animation: none; }
 }
+
+/* Gym portal overview (VenueLayout + VenueHome): on a desktop window at
+   least 880px tall the page fills the viewport instead of scrolling. Flex
+   all the way down rather than percentage heights, and unlayered on purpose:
+   it must beat the lg:pb-24 utility on the same wrapper. Shorter windows and
+   phones get the ordinary flowing page. */
+@media (min-width: 1024px) and (min-height: 880px) {
+  .venue-fill-scroll { display: flex; flex-direction: column; }
+  .venue-fill-wrap   { flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; padding-bottom: 2rem; }
+  .venue-fill-page   { flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; }
+  .venue-fill-grid   { flex: 1 1 0%; min-height: 0; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+}
