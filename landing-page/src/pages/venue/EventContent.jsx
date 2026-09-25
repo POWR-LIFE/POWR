@@ -166,6 +166,9 @@ export default function EventContent({ ev, venue, canPost }) {
                 </div>
             </div>
             <p className="text-[12px] text-[#888] leading-relaxed max-w-2xl">{current.blurb}</p>
+            {ev.status === 'draft' && (
+                <p className="text-[11px] font-bold text-[#B45309] mt-2">Draft: nothing goes out, and the join QR and links only work once you publish. Make the kit again after publishing, before you post it.</p>
+            )}
 
             {/* Drop zone + what's in it */}
             <div

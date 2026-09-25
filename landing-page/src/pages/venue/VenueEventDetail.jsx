@@ -355,7 +355,7 @@ export default function VenueEventDetail() {
                 </div>
             </Card>
 
-            {ev.managed_by === 'gym' && ev.status !== 'draft' && k !== 'cancelled' && k !== 'pulled' && (
+            {ev.managed_by === 'gym' && k !== 'cancelled' && k !== 'pulled' && (
                 <EventPushes ev={ev} gymName={gym.name} toast={toast} />
             )}
 
