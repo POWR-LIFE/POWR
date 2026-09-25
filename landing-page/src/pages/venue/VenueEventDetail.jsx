@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Copy, ExternalLink, Trophy, Users, Tv, Sparkles, Pencil, Palette } from 'lucide-react';
+import { ArrowLeft, Copy, ExternalLink, Trophy, Users, Tv, Sparkles, Pencil } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
 import { Page, Card, Micro, Spinner, Empty, BTN_GOLD, BTN_GHOST, INPUT, fmtNum } from '../../components/portal/ui';
@@ -16,6 +16,7 @@ import { storageImage } from '../../lib/storage';
 import { ukTime } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
 import EventPushes from './EventPushes';
+import EventContent from './EventContent';
 import { usePackage } from './packages';
 
 // One event, run from a phone at the front desk as easily as from a laptop:
@@ -56,6 +57,7 @@ export default function VenueEventDetail() {
 
     const [ev, setEv] = useState(null);
     const [trusted, setTrusted] = useState(false);
+    const [address, setAddress] = useState('');
     const [board, setBoard] = useState(null);
     const [roster, setRoster] = useState(null);
     const [error, setError] = useState(null);
@@ -74,6 +76,7 @@ export default function VenueEventDetail() {
             const [e, s] = await Promise.all([fetchGymEvent(id), fetchGymSummary(gym.partner_id)]);
             setEv(e);
             setTrusted(!!s?.portal?.trusted);
+            setAddress(s?.gym?.address ?? '');
             setRevealAt(toLocalInput(e.reveal_at));
             loadSide(e);
         } catch (err) {
@@ -352,8 +355,12 @@ export default function VenueEventDetail() {
                 </div>
             </Card>
 
-            {ev.managed_by === 'gym' && k !== 'cancelled' && k !== 'pulled' && (
+            {ev.managed_by === 'gym' && ev.status !== 'draft' && k !== 'cancelled' && k !== 'pulled' && (
                 <EventPushes ev={ev} gymName={gym.name} toast={toast} />
+            )}
+
+            {ev.managed_by === 'gym' && k !== 'cancelled' && k !== 'pulled' && (
+                <EventContent ev={ev} venue={{ name: gym.name, address }} canPost={canPost} />
             )}
 
             {ev.status !== 'draft' && k !== 'cancelled' && k !== 'pulled' && (
@@ -363,11 +370,6 @@ export default function VenueEventDetail() {
                         <div className="lg:col-span-2 space-y-6">
                             <CopyRow label="Event board for your TV" url={screenUrl} toast={toast} />
                             <CopyRow label="Page to share with members" url={promoUrl} toast={toast} />
-                            {canPost && (
-                                <Link to={`/venue/studio?event=${ev.id}`} className={`${BTN_GHOST} w-full sm:w-auto`}>
-                                    <Palette size={13} /> Make a post for it
-                                </Link>
-                            )}
                             <p className="text-[11px] text-[#AAAAAA] leading-relaxed">
                                 The TV board counts down, shows the live standings, holds a sealed screen once the board seals, then plays the
                                 podium the moment you reveal. The share page and the QR open the event in the POWR app, or the app store for someone new.
