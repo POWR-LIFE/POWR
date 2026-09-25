@@ -308,6 +308,19 @@ defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
           );
         }
 
+        // The walkers' evening "X steps to go" nudge rides this wake too, AFTER
+        // the self-heal steps and BEFORE the walking sync below: the check
+        // needs nothing from the sync (health store + raw-fetch reads only),
+        // while the sync still goes through the auth client and can hang —
+        // sequencing behind it would let that hang mute the nudge. It lived on
+        // BackgroundFetch alone from 2026-07-23 to 2026-09-25 and never fired
+        // for anyone — same dead scheduler. Idempotent per local day and
+        // throttled inside; own try/catch; cannot reject.
+        try {
+          const { runStepGoalCheckFromWake } = await import('@/lib/stepGoalNotifyTask');
+          await runStepGoalCheckFromWake();
+        } catch { /* a nudge is never worth a wake */ }
+
         // LAST, AND ONLY EVER LAST. Steps ride this wake because BackgroundFetch
         // has never delivered a single row — proven 2026-08-08 by an apps-closed
         // field test and three weeks of history in which every walking row was
