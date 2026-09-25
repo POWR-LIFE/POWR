@@ -80,3 +80,6 @@ export const updateGymProfile = (partnerId, patch) => rpc('gym_update_profile', 
 export const fetchEventDoor = (eventId) => rpc('gym_event_door', { p_event_id: eventId });
 export const checkinAtDoor = (eventId, userId) => rpc('gym_event_checkin', { p_event_id: eventId, p_user_id: userId });
 export const setPrizeHanded = (eventId, rank, handed) => rpc('gym_event_prize_handed', { p_event_id: eventId, p_rank: rank, p_handed: handed });
+
+// ── The quiet-member nudge (Clash Pro): a dry run counts, then the send ──
+export const nudgeQuietMembers = (partnerId, dryRun = true) => rpc('gym_nudge_quiet', { p_partner_id: partnerId, p_dry_run: dryRun });

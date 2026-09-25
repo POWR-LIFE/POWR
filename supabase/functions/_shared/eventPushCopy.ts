@@ -7,7 +7,7 @@
 // The payload is _live_event_template_payload's jsonb (the portal gets the
 // same object from gym_event_push_status). Pure: no imports, no I/O.
 
-export type EventPushType = 'event_announced' | 'event_kickoff' | 'event_doors_open';
+export type EventPushType = 'event_announced' | 'event_kickoff' | 'event_doors_open' | 'gym_quiet_nudge';
 
 // "Wed 1 Oct" on the UK clock, or '' when missing.
 export function ukDay(iso: unknown): string {
@@ -85,6 +85,17 @@ export function eventPushCopy(
       return {
         title: `${name}: it's on 🏁`,
         body: `${counts}${lastDay ? ` until ${lastDay}` : ''}. The board is open.`,
+      };
+    }
+    case 'gym_quiet_nudge': {
+      // A gym's members who share their activity with it and have gone
+      // quiet, on the gym's press (gym_nudge_quiet). POWR's words, never
+      // the gym's. `weeks` is since their last session, when known.
+      const weeks = Math.max(0, Math.round(Number(payload.weeks ?? 0)));
+      const since = weeks >= 2 ? `It’s been ${weeks} weeks.` : 'It’s been a while.';
+      return {
+        title: gym ? `${gym}: your spot’s still here` : 'Your spot’s still here',
+        body: `${since} One check-in and you’re back on the board.`,
       };
     }
     case 'event_doors_open': {

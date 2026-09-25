@@ -67,3 +67,22 @@ describe('eventPushCopy', () => {
         expect(body).toBe('Doors open 6pm at ONE LDN. Check in with POWR when you arrive for +25 POWR.');
     });
 });
+
+describe('gym_quiet_nudge', () => {
+    // A gym reaching out to a member who has gone quiet, on the gym's press.
+    it('names the gym and how long it has been', () => {
+        expect(eventPushCopy('gym_quiet_nudge', { gym_name: 'ONE LDN', weeks: 3 })).toEqual({
+            title: 'ONE LDN: your spot’s still here',
+            body: 'It’s been 3 weeks. One check-in and you’re back on the board.',
+        });
+    });
+
+    it('says a while when the gap is unknown or under two weeks', () => {
+        expect(eventPushCopy('gym_quiet_nudge', { gym_name: 'ONE LDN' }).body).toBe('It’s been a while. One check-in and you’re back on the board.');
+        expect(eventPushCopy('gym_quiet_nudge', { gym_name: 'ONE LDN', weeks: 1 }).body).toBe('It’s been a while. One check-in and you’re back on the board.');
+    });
+
+    it('stands without a gym name', () => {
+        expect(eventPushCopy('gym_quiet_nudge', {}).title).toBe('Your spot’s still here');
+    });
+});

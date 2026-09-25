@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Lock } from 'lucide-react';
-import { Card, Micro, Spinner, BTN_GHOST, fmtNum } from '../../components/portal/ui';
-import { fetchMemberPeople } from './venueApi';
+import { Lock, Send } from 'lucide-react';
+import { Card, Micro, Spinner, BTN_GHOST, BTN_GOLD, fmtNum } from '../../components/portal/ui';
+import { useToast } from '../../lib/toast';
+import { fetchMemberPeople, nudgeQuietMembers } from './venueApi';
+import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 import { usePackage } from './packages';
 import { boardName, activityMeta } from '../../../../shared/gymBoard.ts';
 import { formatMemberId } from '../../../../shared/memberId.ts';
@@ -32,6 +34,61 @@ function Avatar({ row }) {
     return row.avatar_url
         ? <img src={row.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border border-[#E6E6E1] shrink-0" />
         : <div className="w-10 h-10 rounded-full bg-[#E8D200]/10 border border-[#E8D200]/25 flex items-center justify-center text-[12px] font-black text-[#8a7600] uppercase shrink-0">{name?.[0] ?? '?'}</div>;
+}
+
+/**
+ * Reach out to everyone who has gone quiet: one push in POWR's words, on
+ * the gym's press. A dry run says how many it would reach and how many
+ * were nudged in the last fortnight (they wait).
+ */
+function NudgeQuiet({ gym, quiet }) {
+    const toast = useToast();
+    const [plan, setPlan] = useState(null);     // { recipients, cooling }
+    const [busy, setBusy] = useState(false);
+    const [sent, setSent] = useState(null);     // recipients, after a send
+    useEffect(() => {
+        let alive = true;
+        nudgeQuietMembers(gym.partner_id, true).then((r) => { if (alive) setPlan(r); }).catch(() => { if (alive) setPlan({ recipients: 0, cooling: 0, unavailable: true }); });
+        return () => { alive = false; };
+    }, [gym.partner_id, quiet]);
+    const preview = eventPushCopy('gym_quiet_nudge', { gym_name: gym.name, weeks: 3 });
+    const send = async () => {
+        if (!plan?.recipients) return;
+        if (!window.confirm(`Send this to ${plan.recipients} member${plan.recipients === 1 ? '' : 's'} who’ve gone quiet? Each gets it once, and not again for a fortnight.`)) return;
+        setBusy(true);
+        try {
+            const r = await nudgeQuietMembers(gym.partner_id, false);
+            setSent(r.recipients);
+            setPlan({ recipients: 0, cooling: (plan.cooling ?? 0) + r.recipients });
+            toast.success(`Sent to ${r.recipients}`);
+        } catch (e) { toast.error(e.message); }
+        finally { setBusy(false); }
+    };
+    return (
+        <div className="rounded-2xl border border-[#E6E6E1] bg-[#FAFAF8] p-5 mb-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <Micro gold>Reach out</Micro>
+                    <div className="text-[13px] text-[#1A1A1A] mt-2">One push, in POWR’s words, to everyone who’s gone quiet. It opens your gym in the app.</div>
+                    <div className="mt-3 max-w-md rounded-xl bg-white border border-[#E6E6E1] px-4 py-3">
+                        <div className="text-[9px] uppercase tracking-[0.25em] font-black text-[#BBBBBB]">POWR · now</div>
+                        <div className="text-[12px] font-bold text-[#1A1A1A] mt-1">{preview.title}</div>
+                        <div className="text-[12px] text-[#666]">{preview.body}</div>
+                    </div>
+                    <p className="text-[11px] text-[#AAAAAA] mt-2">
+                        {plan == null ? 'Counting…'
+                            : plan.unavailable ? 'Not available right now.'
+                            : `${plan.recipients} would get it now${plan.cooling ? ` · ${plan.cooling} had one in the last fortnight and wait` : ''}. Members who turned announcements off don’t get it.`}
+                    </p>
+                </div>
+                <div className="shrink-0">
+                    {sent != null && !plan?.recipients
+                        ? <span className="text-[11px] font-bold text-[#0B7A57]">Sent to {sent}. Again tomorrow at the earliest.</span>
+                        : <button type="button" onClick={send} disabled={busy || !plan?.recipients} className={`${BTN_GOLD} h-11 px-6`}><Send size={13} /> {busy ? 'Sending…' : `Send to ${plan?.recipients ?? 0}`}</button>}
+                </div>
+            </div>
+        </div>
+    );
 }
 
 export default function MemberPeople({ gym }) {
@@ -97,6 +154,8 @@ export default function MemberPeople({ gym }) {
                 Members switch this on in the POWR app (Settings, then Privacy, then Share with {gym.name}) and can switch it off any
                 time. You see what they do and when, never their sleep, heart rate or where they are.
             </p>
+
+            {count('quiet') > 0 && <NudgeQuiet gym={gym} quiet={count('quiet')} />}
 
             {people.length === 0 ? (
                 <p className="text-sm text-[#888] font-light">

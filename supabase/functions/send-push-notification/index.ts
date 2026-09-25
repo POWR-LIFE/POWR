@@ -41,6 +41,9 @@ type NotificationType =
   | 'event_announced'
   | 'event_kickoff'
   | 'event_doors_open'
+  // A gym's "your spot's still here" to members who share activity with it
+  // and have gone quiet (gym_nudge_quiet, Clash Pro, on the gym's press).
+  | 'gym_quiet_nudge'
   // One-shot setup notice when a user loses 'always' location (dispatch-daily-
   // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
   | 'location_permission_lost'
@@ -107,6 +110,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'event_announced':
     case 'event_kickoff':
     case 'event_doors_open':
+    case 'gym_quiet_nudge':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -170,6 +174,7 @@ const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   challenge_within_reach:  6 * 60 * 60,  // "you're close tonight" is stale by morning
   daily_reminder:          6 * 60 * 60,
   inactivity_nudge:        12 * 60 * 60,
+  gym_quiet_nudge:         24 * 60 * 60,  // a day late is still a nudge; a week late is noise
   // Someone has probably taken it by tomorrow; a stale "new on the board" is
   // worse than none, because tapping it lands on a challenge that's gone.
   challenge_open_posted:   12 * 60 * 60,
@@ -610,6 +615,26 @@ function buildMessage(
           title: `${eventName}: ${remaining} more ${unit}${remaining === 1 ? '' : 's'} to go 🎟️`,
           body: `${progress} Hitting ${required}${day ? ` by ${day}` : ''} ${stake}.`,
           data: { type, route: eventLeagueRoute(payload), event_id: payload.event_id, count, required },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'gym_quiet_nudge': {
+        // gym_nudge_quiet — the gym pressed Send on its Members page. Tapping
+        // opens the gym's card in Discover (a check-in is the ask), which
+        // needs the venue id and where it is; the tab alone otherwise.
+        const { title, body } = eventPushCopy(type, payload);
+        const venue = String(payload.partner_id ?? '').trim();
+        const lat = Number(payload.lat);
+        const lng = Number(payload.lng);
+        const route = venue && Number.isFinite(lat) && Number.isFinite(lng)
+          ? `/(tabs)/discover?venue=${encodeURIComponent(venue)}&lat=${lat}&lng=${lng}`
+          : '/(tabs)/discover';
+        return {
+          title,
+          body,
+          data: { type, route, partner_id: venue },
           sound: 'default',
           channelId: 'powr_default_v2',
           priority: 'high',
@@ -1192,6 +1217,8 @@ async function processOne(
     // A gym's new event is an announcement to people who haven't opted in to
     // it, so it honours the Announcements switch (20260626000001).
     : type === 'event_announced' ? 'announcements'
+    // A gym reaching out to someone who has drifted is an announcement too.
+    : type === 'gym_quiet_nudge' ? 'announcements'
     : type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
     : type === 'session_upgraded' ? 'session_completed'
     : type === 'vault_unlocked' ? 'points_milestone'
