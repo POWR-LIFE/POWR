@@ -1,14 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Copy, ExternalLink, Trophy, Users, Tv, Sparkles, Pencil } from 'lucide-react';
+import { ArrowLeft, Copy, ExternalLink, Trophy, Users, Tv, Sparkles, Pencil, Printer, X } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
 import { Page, Card, Micro, Spinner, Empty, BTN_GOLD, BTN_GHOST, INPUT, fmtNum } from '../../components/portal/ui';
 import {
     cancelGymEvent, deleteGymEvent, disqualifyFromGymEvent, fetchGymEvent, fetchGymEventBoard,
     fetchGymEventRoster, fetchGymSummary, publishGymEvent, reinstateInGymEvent, revealGymEvent,
-    scheduleGymReveal, withdrawGymEvent,
+    scheduleGymReveal, setPrizeHanded, withdrawGymEvent,
 } from './venueApi';
 import { StatusPill, statusKey, scoringRange, fmtDay, fmtDayTime, lastDay, toLocalInput, fromLocalInput, whatCounts } from './eventUi';
 import { boardName } from '../../../../shared/gymBoard.ts';
@@ -17,11 +18,13 @@ import { ukTime } from '../../../../supabase/functions/_shared/eventPushCopy.ts'
 import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
 import EventPushes from './EventPushes';
 import EventContent from './EventContent';
+import EventDoor, { doorApplies } from './EventDoor';
 import { usePackage } from './packages';
 
-// One event, run from a phone at the front desk as easily as from a laptop:
-// what happens next and the one button that does it, then the board, who's
-// in, the details, and the links for the screen and for members.
+// One event, run from a phone at the front desk as easily as from a laptop.
+// A header says where it stands and holds the one button that moves it on;
+// tabs hold the rest: the board, the people (and the door on a finale
+// night), the details, and everything that promotes it.
 
 function Avatar({ row }) {
     const name = boardName(row);
@@ -46,11 +49,48 @@ function CopyRow({ label, url, toast }) {
     );
 }
 
+/** Removing someone is serious: a reason, said plainly, and what it does. */
+function RemoveDialog({ row, eventName, busy, onCancel, onConfirm }) {
+    const [reason, setReason] = useState('');
+    const ok = reason.trim().length >= 3 && reason.trim().length <= 200;
+    useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onCancel]);
+    return createPortal(
+        <div className="fixed inset-0 z-[1000] bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={onCancel} role="dialog" aria-modal="true" aria-label={`Remove ${boardName(row)}`}>
+            <div className="w-full max-w-md bg-white rounded-[2rem] p-6 sm:p-8" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <Micro gold>Remove from the event</Micro>
+                        <div className="text-2xl font-light tracking-tight mt-2">{boardName(row)}</div>
+                    </div>
+                    <button type="button" onClick={onCancel} aria-label="Close" className="w-9 h-9 rounded-full bg-[#F4F4F1] flex items-center justify-center text-[#666]"><X size={14} /></button>
+                </div>
+                <p className="text-[13px] text-[#777] leading-relaxed mt-3">
+                    They drop off the board of {eventName} and their points in it no longer count. Their POWR account isn’t touched, and you can put them back. POWR sees the reason.
+                </p>
+                <label className="block text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mt-5 mb-2">Why</label>
+                <textarea className={`${INPUT} h-auto py-3 min-h-[88px] resize-y`} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200} placeholder="e.g. Logged sessions they didn’t do" autoFocus />
+                <div className="flex flex-wrap justify-end gap-3 mt-5">
+                    <button type="button" onClick={onCancel} className={BTN_GHOST}>Keep them in</button>
+                    <button type="button" disabled={!ok || busy} onClick={() => onConfirm(reason.trim())} className={`${BTN_GOLD} bg-red-500 text-white hover:shadow-none`}>{busy ? 'Removing…' : 'Remove'}</button>
+                </div>
+            </div>
+        </div>,
+        document.body,
+    );
+}
+
+const TABS = { board: 'Board', people: 'People', details: 'Details', promote: 'Promote' };
+
 export default function VenueEventDetail() {
     const { id } = useParams();
     const { gym } = useAuth();
     const toast = useToast();
     const navigate = useNavigate();
+    const [params, setParams] = useSearchParams();
     const { pkg } = usePackage();
     const canRun = !!pkg?.features?.events;
     const canPost = !!pkg?.features?.studio;
@@ -63,6 +103,7 @@ export default function VenueEventDetail() {
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(null);
     const [revealAt, setRevealAt] = useState('');
+    const [removing, setRemoving] = useState(null);   // roster row in the dialog
 
     const loadSide = useCallback(async (e) => {
         if (e.status === 'draft') { setBoard(null); setRoster(null); return; }
@@ -72,6 +113,7 @@ export default function VenueEventDetail() {
     }, []);
 
     const load = useCallback(async () => {
+        setError(null);
         try {
             const [e, s] = await Promise.all([fetchGymEvent(id), fetchGymSummary(gym.partner_id)]);
             setEv(e);
@@ -93,10 +135,23 @@ export default function VenueEventDetail() {
         return () => clearInterval(t);
     }, [ev, loadSide]);
 
-    if (error) return <Empty title="Couldn't load this event">{error}</Empty>;
+    const k = ev ? statusKey(ev) : null;
+    const isDraft = ev?.status === 'draft';
+    const powrRun = ev?.managed_by === 'powr';
+    const tabs = useMemo(() => {
+        if (!ev) return [];
+        if (isDraft) return ['details', 'promote'];
+        return ['board', 'people', 'details', 'promote'];
+    }, [ev, isDraft]);
+    // Where the page opens: the board once there is one, the door on a finale
+    // night, the details for a draft.
+    const defaultTab = !ev ? 'details' : isDraft ? 'details' : doorApplies(ev) ? 'people' : ['scheduled', 'pending', 'rejected'].includes(k) ? 'promote' : 'board';
+    const tab = tabs.includes(params.get('tab')) ? params.get('tab') : defaultTab;
+    const setTab = (t) => setParams(t === defaultTab ? {} : { tab: t }, { replace: true });
+
+    if (error) return <Empty title="Couldn’t load this event" action={<button type="button" onClick={load} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
     if (!ev) return <Spinner />;
 
-    const k = statusKey(ev);
     const editable = ev.editable && !['revealed', 'settled', 'cancelled', 'pulled'].includes(k);
     const early = ev.status === 'draft' || (ev.status === 'scheduled' && new Date(ev.window_start_at) > new Date());
     const canEdit = editable && (early || ev.status === 'live');
@@ -104,6 +159,7 @@ export default function VenueEventDetail() {
     const screenUrl = `${origin}/live/${ev.slug}?k=${ev.display_token}`;
     const promoUrl = `https://powr.life/promo/${ev.slug}`;
     const registerUrl = eventRegisterUrl(ev.slug);
+    const over = ['revealed', 'settled', 'archived'].includes(ev.status);
 
     const act = async (label, fn, ok, after) => {
         setBusy(label);
@@ -135,12 +191,11 @@ export default function VenueEventDetail() {
     };
     const saveRevealAt = () => act('reveal_at', () => scheduleGymReveal(ev.id, fromLocalInput(revealAt)), revealAt ? 'Reveal scheduled' : 'Scheduled reveal cleared');
 
-    const disqualify = async (row) => {
-        const reason = window.prompt(`Remove ${boardName(row)} from ${ev.name}? Say why — POWR sees the reason.`);
-        if (reason == null) return;
+    const disqualify = async (row, reason) => {
         setBusy(`dq:${row.user_id}`);
         try {
             setRoster(await disqualifyFromGymEvent(ev.id, row.user_id, reason));
+            setRemoving(null);
             toast.success('Removed from the event');
             loadSide(ev);
         } catch (err) {
@@ -155,6 +210,35 @@ export default function VenueEventDetail() {
             setRoster(await reinstateInGymEvent(ev.id, row.user_id));
             toast.success('Back in the event');
             loadSide(ev);
+        } catch (err) {
+            toast.error(err.message);
+        } finally {
+            setBusy(null);
+        }
+    };
+    // An A4 sheet for the front desk: the QR big, the event, the gym, what to do.
+    const printQr = () => {
+        const svg = document.querySelector('#event-qr svg')?.outerHTML;
+        if (!svg) return;
+        const w = window.open('', '_blank', 'noopener,width=800,height=1000');
+        if (!w) { toast.error('Allow pop-ups to print'); return; }
+        const esc = (t) => String(t ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(ev.name)} · join</title>
+<style>@page{size:A4;margin:18mm}body{margin:0;font-family:Outfit,system-ui,sans-serif;color:#111;text-align:center}
+.k{font-size:11px;letter-spacing:.35em;text-transform:uppercase;font-weight:900;color:#8a7600}h1{font-size:44px;font-weight:300;letter-spacing:-.03em;margin:14px 0 6px}
+.g{font-size:14px;letter-spacing:.2em;text-transform:uppercase;font-weight:900;color:#888;margin-bottom:34px}svg{width:118mm;height:118mm}
+.l{font-size:22px;font-weight:300;margin-top:34px}.s{font-size:12px;color:#888;margin-top:10px}</style></head>
+<body><div class="k">Live event</div><h1>${esc(ev.name)}</h1><div class="g">${esc(gym.name)}</div>${svg}
+<div class="l">Scan to join in the POWR app</div><div class="s">${esc(scoringRange(ev))}${ev.prizes?.[0]?.label ? ` · ${esc(ev.prizes[0].label)} for 1st` : ''}</div>
+<script>window.onload=function(){setTimeout(function(){window.print()},150)}</script></body></html>`);
+        w.document.close();
+    };
+
+    const handPrize = async (p, handed) => {
+        setBusy(`prize:${p.rank}`);
+        try {
+            const prizes = await setPrizeHanded(ev.id, p.rank, handed);
+            setEv((e) => ({ ...e, prizes }));
         } catch (err) {
             toast.error(err.message);
         } finally {
@@ -201,15 +285,26 @@ export default function VenueEventDetail() {
         },
         revealed: {
             title: 'Winners revealed',
-            body: `Revealed ${fmtDayTime(ev.revealed_at)}. Winners show their POWR ID at the front desk to collect their prize.`,
-            actions: [],
+            body: `Revealed ${fmtDayTime(ev.revealed_at)}. Winners show their POWR ID at the front desk to collect their prize; tick each one off under Details.`,
+            actions: [{ label: 'Run it again', fn: () => navigate(`/venue/events/new?from=${ev.id}`), busy: 'none' }],
         },
-        settled: { title: 'Finished', body: 'Thanks for running it. Run it again any time from your events.', actions: [] },
+        settled: { title: 'Finished', body: 'Thanks for running it. The same set-up is one click away.', actions: [{ label: 'Run it again', fn: () => navigate(`/venue/events/new?from=${ev.id}`), primary: true, busy: 'none' }] },
         cancelled: { title: 'Cancelled', body: 'It no longer shows in the app.', actions: [] },
-        pulled: { title: 'Pulled by POWR', body: ev.review_note ? `“${ev.review_note}” Get in touch if you have questions.` : 'Get in touch if you have questions.', actions: [] },
+        pulled: { title: 'Pulled by POWR', body: ev.review_note ? `“${ev.review_note}” Get in touch if you have questions.` : 'Get in touch if you have questions.', actions: [{ label: 'Email POWR', fn: () => { window.location.href = `mailto:support@powr.life?subject=${encodeURIComponent(`${ev.name} was pulled`)}`; }, busy: 'none' }] },
     }[k];
 
     const sealed = ['live', 'locked'].includes(ev.status);
+    const leader = board?.rows?.[0];
+    const prizesHanded = (ev.prizes ?? []).filter((p) => p.handed_at).length;
+
+    // The numbers a glance wants, by state.
+    const facts = [];
+    if (!isDraft) facts.push([String(ev.participants ?? 0), 'in']);
+    if (leader && !ev.status.startsWith('locked')) facts.push([boardName(leader), sealed && ev.status === 'locked' ? 'leads, sealed' : over ? 'won' : 'leads']);
+    if (ev.status === 'live') facts.push([lastDay(ev.window_end_at), 'last day']);
+    if (ev.status === 'scheduled') facts.push([fmtDay(ev.window_start_at), 'starts']);
+    if (ev.doors_open_at && !over) facts.push([`${fmtDay(ev.doors_open_at)} ${ukTime(ev.doors_open_at)}`, 'finale']);
+    if ((ev.prizes ?? []).length) facts.push([over ? `${prizesHanded} of ${ev.prizes.length}` : String(ev.prizes.length), over ? 'prizes handed over' : 'prizes']);
 
     return (
         <Page>
@@ -221,13 +316,30 @@ export default function VenueEventDetail() {
                 <div className="flex flex-wrap items-center gap-2 mb-4">
                     <StatusPill ev={ev} />
                     {ev.template?.name && <span className="text-[10px] uppercase tracking-[0.25em] font-black text-[#BBBBBB]">{ev.template.name}</span>}
-                    {ev.managed_by === 'powr' && <span className="text-[10px] uppercase tracking-[0.25em] font-black text-[#BBBBBB]">Run by POWR</span>}
+                    {powrRun && <span className="text-[10px] uppercase tracking-[0.25em] font-black text-[#BBBBBB]">Run by POWR</span>}
                 </div>
                 <h1 className="text-4xl sm:text-5xl font-light tracking-tighter leading-[0.95]">{ev.name}</h1>
                 <p className="text-[11px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mt-3">{scoringRange(ev)}</p>
+                {facts.length > 0 && (
+                    <div className="flex flex-wrap gap-x-8 gap-y-3 mt-6">
+                        {facts.map(([v, l]) => (
+                            <div key={l}>
+                                <div className="text-xl font-light tracking-tight text-[#1A1A1A] truncate max-w-[14rem]">{v}</div>
+                                <div className="text-[9px] uppercase tracking-[0.25em] font-black text-[#AAAAAA] mt-0.5">{l}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
-            {next && ev.managed_by === 'gym' && (
+            {powrRun && (
+                <Card className="p-6 sm:p-8">
+                    <Micro gold>Run by POWR at your gym</Micro>
+                    <p className="text-[13px] text-[#777] leading-relaxed mt-3 max-w-2xl">POWR wrote it, sends the notifications and reveals the results. You can see who’s in, follow the board, and put it on your TV.</p>
+                </Card>
+            )}
+
+            {next && !powrRun && (
                 <Card className="p-6 sm:p-8" glow={k === 'locked' || k === 'draft'}>
                     <Micro gold>What happens next</Micro>
                     <div className="text-2xl font-light tracking-tight mt-3">{next.title}</div>
@@ -256,131 +368,158 @@ export default function VenueEventDetail() {
                 </Card>
             )}
 
-            {board && (
-                <Card className="p-6 sm:p-8">
-                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-6">
-                        <div className="flex items-center gap-3"><Trophy size={15} className="text-[#8a7600]" /><Micro>{board.frozen ? 'Final results' : 'Leaderboard'}</Micro></div>
-                        {sealed && ev.status === 'locked' && <span className="text-[10px] font-bold text-violet-700">Only your team sees this until you reveal</span>}
-                    </div>
-                    {board.rows.length === 0 ? (
-                        <p className="text-sm text-[#888] font-light">Nobody’s scored yet.</p>
-                    ) : (
-                        <div className="divide-y divide-[#F0F0EC]">
-                            {board.rows.map(row => (
-                                <div key={row.user_id} className="flex items-center gap-4 py-3">
-                                    <span className="w-6 text-[13px] font-black text-[#BBBBBB] tabular-nums">{row.rank}</span>
-                                    <Avatar row={row} />
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-[13px] font-bold truncate">{boardName(row)}</div>
-                                        {row.prize && <div className="text-[10px] font-bold text-[#8a7600] truncate">{row.prize}</div>}
-                                    </div>
-                                    <span className="text-lg font-light tabular-nums text-[#8a7600]">{fmtNum(row.points)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </Card>
-            )}
+            {/* Tabs */}
+            <div className="flex gap-1 border-b border-[#E6E6E1] -mx-1 overflow-x-auto" role="tablist" aria-label="Parts of this event" style={{ scrollbarWidth: 'none' }}>
+                {tabs.map((t) => (
+                    <button key={t} type="button" role="tab" aria-selected={tab === t} aria-label={`Tab: ${TABS[t]}`} onClick={() => setTab(t)}
+                        className={`px-4 py-3 text-[10px] font-black uppercase tracking-[0.25em] border-b-2 -mb-px transition-colors whitespace-nowrap ${tab === t ? 'border-[#E8D200] text-[#1A1A1A]' : 'border-transparent text-[#AAAAAA] hover:text-[#1A1A1A]'}`}>
+                        {TABS[t]}{t === 'people' && doorApplies(ev) ? ' · door' : ''}
+                    </button>
+                ))}
+            </div>
 
-            {roster && (
-                <Card className="p-6 sm:p-8">
-                    <div className="flex items-center gap-3 mb-6"><Users size={15} className="text-[#8a7600]" /><Micro>Who’s in · {ev.participants}</Micro></div>
-                    {roster.length === 0 ? (
-                        <p className="text-sm text-[#888] font-light">Nobody’s joined yet. Share the link below with your members.</p>
-                    ) : (
-                        <div className="divide-y divide-[#F0F0EC]">
-                            {roster.map(row => (
-                                <div key={row.user_id} className={`flex items-center gap-4 py-3 ${row.disqualified ? 'opacity-50' : ''}`}>
-                                    <Avatar row={row} />
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-[13px] font-bold truncate">{boardName(row)}{row.disqualified ? ' · removed' : ''}</div>
-                                        <div className="text-[10px] font-bold text-[#AAAAAA]">POWR ID {row.member_id ?? '—'} · joined {fmtDay(row.joined_at)}</div>
-                                    </div>
-                                    {editable && (
-                                        row.disqualified
-                                            ? <button type="button" disabled={!!busy} onClick={() => reinstate(row)} className="text-[9px] uppercase tracking-[0.2em] font-black text-[#8a7600]">Put back</button>
-                                            : <button type="button" disabled={!!busy} onClick={() => disqualify(row)} className="text-[9px] uppercase tracking-[0.2em] font-black text-red-500/60 hover:text-red-500">Remove</button>
-                                    )}
-                                </div>
-                            ))}
+            {tab === 'board' && (
+                board ? (
+                    <Card className="p-6 sm:p-8">
+                        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-6">
+                            <div className="flex items-center gap-3"><Trophy size={15} className="text-[#8a7600]" /><Micro>{board.frozen ? 'Final results' : 'Leaderboard'}</Micro></div>
+                            {sealed && ev.status === 'locked' && <span className="text-[10px] font-bold text-violet-700">Only your team sees this until you reveal</span>}
                         </div>
-                    )}
-                </Card>
-            )}
-
-            <Card className="p-6 sm:p-8">
-                <div className="flex items-center justify-between gap-3 mb-6">
-                    <div className="flex items-center gap-3"><Sparkles size={15} className="text-[#8a7600]" /><Micro>Details</Micro></div>
-                    {canEdit && (
-                        <Link to={`/venue/events/${ev.id}/edit`} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black">
-                            <Pencil size={12} className="text-[#8a7600]" /><span className="text-[#8a7600]">{early ? 'Edit' : 'Edit words and pictures'}</span>
-                        </Link>
-                    )}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-4 text-[13px]">
-                        <div><Micro className="mb-1">Scoring</Micro>{scoringRange(ev)}</div>
-                        {ev.doors_open_at && <div><Micro className="mb-1">Finale night</Micro>{fmtDay(ev.doors_open_at)}, {ukTime(ev.doors_open_at)}{ev.doors_close_at ? `–${ukTime(ev.doors_close_at)}` : ''}</div>}
-                        <div><Micro className="mb-1">Board seals</Micro>{fmtDayTime(ev.lock_at)}</div>
-                        <div><Micro className="mb-1">What counts</Micro>{whatCounts(ev, gym.name)}{ev.board_size ? ` · top ${ev.board_size} on the board` : ''}</div>
-                        {ev.attendance_bonus_points > 0 && <div><Micro className="mb-1">Finale bonus</Micro>+{ev.attendance_bonus_points} POWR for everyone who comes{ev.attendance_paid_at ? ' · paid' : ''}</div>}
-                        <div><Micro className="mb-1">Shown to</Micro>Your members and recent visitors{ev.audience_radius_km ? `, plus anyone within ${ev.audience_radius_km} km` : ''}</div>
-                        {ev.promo_headline && <div><Micro className="mb-1">Headline</Micro>{ev.promo_headline}</div>}
-                        {ev.booking_url && <div className="min-w-0"><Micro className="mb-1">Booking link</Micro><span className="block truncate">{ev.booking_url}</span></div>}
-                        {(ev.logo_url || ev.promo_media_url) && (
-                            <div className="flex items-center gap-3 pt-1">
-                                {ev.logo_url && <span className="inline-flex items-center px-3 py-2 rounded-xl bg-[#141414]"><img src={storageImage(ev.logo_url, 200)} alt="Event logo" className="h-7 w-20 object-contain" /></span>}
-                                {ev.promo_media_url && !/\.(mp4|webm|mov|m4v)(\?|$)/i.test(ev.promo_media_url) && <img src={storageImage(ev.promo_media_url, 240)} alt="" className="h-12 aspect-video rounded-xl object-cover border border-[#E6E6E1]" />}
+                        {board.rows.length === 0 ? (
+                            <p className="text-sm text-[#888] font-light">Nobody’s scored yet.</p>
+                        ) : (
+                            <div className="divide-y divide-[#F0F0EC]">
+                                {board.rows.map(row => (
+                                    <div key={row.user_id} className="flex items-center gap-4 py-3">
+                                        <span className="w-6 text-[13px] font-black text-[#BBBBBB] tabular-nums">{row.rank}</span>
+                                        <Avatar row={row} />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-[13px] font-bold truncate">{boardName(row)}</div>
+                                            {row.prize && <div className="text-[10px] font-bold text-[#8a7600] truncate">{row.prize}</div>}
+                                        </div>
+                                        <span className="text-lg font-light tabular-nums text-[#8a7600]">{fmtNum(row.points)}</span>
+                                    </div>
+                                ))}
                             </div>
                         )}
-                    </div>
-                    <div className="space-y-6 text-[13px]">
-                        <div>
-                            <Micro className="mb-2">Prizes</Micro>
-                            <ol className="space-y-1.5">
-                                {(ev.prizes ?? []).map(p => (
-                                    <li key={p.rank} className="flex items-center gap-3">
-                                        <span className="w-4 font-black text-[#BBBBBB]">{p.rank}</span>
-                                        {p.image_url && <img src={storageImage(p.image_url, 80)} alt="" className="w-7 h-7 rounded-lg object-cover" />}
-                                        <span>{p.label}</span>
-                                    </li>
-                                ))}
-                            </ol>
-                        </div>
-                        <div>
-                            <Micro className="mb-2">Rules</Micro>
-                            <ul className="space-y-1 text-[#666]">{(ev.rules ?? []).map((r, i) => <li key={i}>· {r}</li>)}</ul>
-                        </div>
-                    </div>
-                </div>
-            </Card>
-
-            {ev.managed_by === 'gym' && k !== 'cancelled' && k !== 'pulled' && (
-                <EventPushes ev={ev} gymName={gym.name} toast={toast} />
+                    </Card>
+                ) : <Card className="p-6 sm:p-8"><p className="text-sm text-[#888] font-light">The board appears once the event is published.</p></Card>
             )}
 
-            {ev.managed_by === 'gym' && k !== 'cancelled' && k !== 'pulled' && (
-                <EventContent ev={ev} venue={{ name: gym.name, address }} canPost={canPost} />
+            {tab === 'people' && (
+                <>
+                    {doorApplies(ev) && <EventDoor ev={ev} toast={toast} />}
+                    {roster && (
+                        <Card className="p-6 sm:p-8">
+                            <div className="flex items-center gap-3 mb-6"><Users size={15} className="text-[#8a7600]" /><Micro>Who’s in · {ev.participants}</Micro></div>
+                            {roster.length === 0 ? (
+                                <p className="text-sm text-[#888] font-light">Nobody’s joined yet. Share the link under Promote with your members.</p>
+                            ) : (
+                                <div className="divide-y divide-[#F0F0EC]">
+                                    {roster.map(row => (
+                                        <div key={row.user_id} className={`flex items-center gap-4 py-3 ${row.disqualified ? 'opacity-50' : ''}`}>
+                                            <Avatar row={row} />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-[13px] font-bold truncate">{boardName(row)}{row.disqualified ? ' · removed' : ''}</div>
+                                                <div className="text-[10px] font-bold text-[#AAAAAA]">POWR ID {row.member_id ?? '—'} · joined {fmtDay(row.joined_at)}</div>
+                                            </div>
+                                            {editable && !powrRun && (
+                                                row.disqualified
+                                                    ? <button type="button" disabled={!!busy} onClick={() => reinstate(row)} className="text-[9px] uppercase tracking-[0.2em] font-black text-[#8a7600]">Put back</button>
+                                                    : <button type="button" disabled={!!busy} onClick={() => setRemoving(row)} className="text-[9px] uppercase tracking-[0.2em] font-black text-red-500/60 hover:text-red-500">Remove</button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </Card>
+                    )}
+                </>
             )}
 
-            {ev.status !== 'draft' && k !== 'cancelled' && k !== 'pulled' && (
+            {tab === 'details' && (
                 <Card className="p-6 sm:p-8">
-                    <div className="flex items-center gap-3 mb-6"><Tv size={15} className="text-[#8a7600]" /><Micro>Screen and sharing</Micro></div>
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div className="lg:col-span-2 space-y-6">
-                            <CopyRow label="Event board for your TV" url={screenUrl} toast={toast} />
-                            <CopyRow label="Page to share with members" url={promoUrl} toast={toast} />
-                            <p className="text-[11px] text-[#AAAAAA] leading-relaxed">
-                                The TV board counts down, shows the live standings, holds a sealed screen once the board seals, then plays the
-                                podium the moment you reveal. The share page and the QR open the event in the POWR app, or the app store for someone new.
-                            </p>
+                    <div className="flex items-center justify-between gap-3 mb-6">
+                        <div className="flex items-center gap-3"><Sparkles size={15} className="text-[#8a7600]" /><Micro>Details</Micro></div>
+                        {canEdit && !powrRun && (
+                            <Link to={`/venue/events/${ev.id}/edit`} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black">
+                                <Pencil size={12} className="text-[#8a7600]" /><span className="text-[#8a7600]">{early ? 'Edit' : 'Edit words and pictures'}</span>
+                            </Link>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-4 text-[13px]">
+                            <div><Micro className="mb-1">Scoring</Micro>{scoringRange(ev)}</div>
+                            {ev.doors_open_at && <div><Micro className="mb-1">Finale night</Micro>{fmtDay(ev.doors_open_at)}, {ukTime(ev.doors_open_at)}{ev.doors_close_at ? `–${ukTime(ev.doors_close_at)}` : ''} <span className="text-[#AAAAAA]">· UK time</span></div>}
+                            <div><Micro className="mb-1">Board seals</Micro>{fmtDayTime(ev.lock_at)}</div>
+                            <div><Micro className="mb-1">What counts</Micro>{whatCounts(ev, gym.name)}{ev.board_size ? ` · top ${ev.board_size} on the board` : ''}</div>
+                            {ev.attendance_bonus_points > 0 && <div><Micro className="mb-1">Finale bonus</Micro>+{ev.attendance_bonus_points} POWR for everyone who comes{ev.attendance_paid_at ? ' · paid' : ''}</div>}
+                            <div><Micro className="mb-1">Shown to</Micro>Your members and recent visitors{ev.audience_radius_km ? `, plus anyone within ${ev.audience_radius_km} km` : ''}</div>
+                            {ev.promo_headline && <div><Micro className="mb-1">Headline</Micro>{ev.promo_headline}</div>}
+                            {ev.booking_url && <div className="min-w-0"><Micro className="mb-1">Booking link</Micro><span className="block truncate">{ev.booking_url}</span></div>}
+                            {(ev.logo_url || ev.promo_media_url) && (
+                                <div className="flex items-center gap-3 pt-1">
+                                    {ev.logo_url && <span className="inline-flex items-center px-3 py-2 rounded-xl bg-[#141414]"><img src={storageImage(ev.logo_url, 200)} alt="Event logo" className="h-7 w-20 object-contain" /></span>}
+                                    {ev.promo_media_url && !/\.(mp4|webm|mov|m4v)(\?|$)/i.test(ev.promo_media_url) && <img src={storageImage(ev.promo_media_url, 240)} alt="" className="h-12 aspect-video rounded-xl object-cover border border-[#E6E6E1]" />}
+                                </div>
+                            )}
                         </div>
-                        <div className="flex flex-col items-center gap-3">
-                            <div className="p-4 bg-white border border-[#E6E6E1] rounded-2xl"><QRCodeSVG value={registerUrl} size={148} level="M" /></div>
-                            <span className="text-[10px] text-[#AAAAAA] text-center">Scan to join · print it for the front desk</span>
+                        <div className="space-y-6 text-[13px]">
+                            <div>
+                                <Micro className="mb-2">Prizes{over && !powrRun ? ' · tick each one when it’s handed over' : ''}</Micro>
+                                <ol className="space-y-2">
+                                    {(ev.prizes ?? []).map(p => (
+                                        <li key={p.rank} className="flex items-center gap-3">
+                                            {over && !powrRun
+                                                ? <input type="checkbox" checked={!!p.handed_at} disabled={busy === `prize:${p.rank}`} onChange={(e) => handPrize(p, e.target.checked)} className="accent-[#E8D200] w-4 h-4" aria-label={`Prize ${p.rank} handed over`} />
+                                                : <span className="w-4 font-black text-[#BBBBBB]">{p.rank}</span>}
+                                            {p.image_url && <img src={storageImage(p.image_url, 80)} alt="" className="w-7 h-7 rounded-lg object-cover" />}
+                                            <span className={p.handed_at ? 'line-through text-[#AAAAAA]' : ''}>{over ? `${p.rank}. ` : ''}{p.label}</span>
+                                            {p.handed_at && <span className="text-[10px] font-bold text-[#0B7A57]">handed over {fmtDay(p.handed_at)}</span>}
+                                        </li>
+                                    ))}
+                                </ol>
+                            </div>
+                            <div>
+                                <Micro className="mb-2">Rules</Micro>
+                                <ul className="space-y-1 text-[#666]">{(ev.rules ?? []).map((r, i) => <li key={i}>· {r}</li>)}</ul>
+                            </div>
                         </div>
                     </div>
                 </Card>
+            )}
+
+            {tab === 'promote' && (
+                <>
+                    {!powrRun && k !== 'cancelled' && k !== 'pulled' && <EventPushes ev={ev} gymName={gym.name} toast={toast} />}
+                    {!powrRun && k !== 'cancelled' && k !== 'pulled' && <EventContent ev={ev} venue={{ name: gym.name, address }} canPost={canPost} />}
+                    {!isDraft && k !== 'cancelled' && k !== 'pulled' && (
+                        <Card className="p-6 sm:p-8">
+                            <div className="flex items-center gap-3 mb-6"><Tv size={15} className="text-[#8a7600]" /><Micro>Screen and sharing</Micro></div>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <div className="lg:col-span-2 space-y-6">
+                                    <CopyRow label="Event board for your TV" url={screenUrl} toast={toast} />
+                                    <CopyRow label="Page to share with members" url={promoUrl} toast={toast} />
+                                    <p className="text-[11px] text-[#AAAAAA] leading-relaxed">
+                                        The TV board counts down, shows the live standings, holds a sealed screen once the board seals, then plays the
+                                        podium the moment you reveal. The share page and the QR open the event in the POWR app, or the app store for someone new.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col items-center gap-3">
+                                    <div id="event-qr" className="p-4 bg-white border border-[#E6E6E1] rounded-2xl"><QRCodeSVG value={registerUrl} size={148} level="M" /></div>
+                                    <button type="button" onClick={printQr} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black text-[#8a7600]">
+                                        <Printer size={12} /> Print it for the front desk
+                                    </button>
+                                </div>
+                            </div>
+                        </Card>
+                    )}
+                    {isDraft && <p className="text-[12px] text-[#AAAAAA]">The TV board, the share page and the join QR appear here once the event is published.</p>}
+                </>
+            )}
+
+            {removing && (
+                <RemoveDialog row={removing} eventName={ev.name} busy={busy === `dq:${removing.user_id}`} onCancel={() => setRemoving(null)} onConfirm={(reason) => disqualify(removing, reason)} />
             )}
 
             {/* On a phone at the front desk, Reveal is always in reach. */}
