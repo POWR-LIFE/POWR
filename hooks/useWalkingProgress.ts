@@ -3,7 +3,8 @@ import { AppState, Platform } from 'react-native';
 
 import { getTodayHealthWalkingSession, stepTierPoints, nextStepThreshold } from '@/lib/api/activity';
 import { getStepsToday, syncWalkingNow, backfillWalkingDays } from '@/lib/health/walkingSync';
-import { useHealthData } from './useHealthData';
+import { runStepGoalCheck } from '@/lib/stepGoalNotifyTask';
+import { androidEnsureBackgroundRead, useHealthData } from './useHealthData';
 
 export type WalkingProgressState = {
     isAvailable: boolean;
@@ -44,6 +45,13 @@ export function useWalkingProgress(): WalkingProgressState {
                 await syncWalkingNow().catch((e) =>
                     console.warn('[WalkingProgress] sync failed:', e));
             }
+            // A connected Health Connect device must also be readable in the
+            // background (its separate grant — asks once, then never again).
+            // Outside the positive-step branch: zero steps so far today is a
+            // normal state for a connected phone, not a reason to wait.
+            if (Platform.OS === 'android' && health.isAvailable) {
+                androidEnsureBackgroundRead().catch(() => {});
+            }
 
             // The day's synced session is both the points source and the step
             // FALLBACK: a wearable top-up (Terra) or an earlier sync can hold
@@ -77,6 +85,10 @@ export function useWalkingProgress(): WalkingProgressState {
             if (appState.current.match(/inactive|background/) && next === 'active') {
                 load();
             }
+            // Leaving the app inside the evening window: the count was just
+            // on screen, so the "X steps to go" nudge lands with a fresh
+            // number. Gated + once-per-day inside; best-effort here.
+            if (next === 'background') runStepGoalCheck().catch(() => {});
             appState.current = next;
         });
         return () => sub.remove();
