@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Copy, ExternalLink, Trophy, Users, Tv, Sparkles, Pencil, Printer, X } from 'lucide-react';
+import { ArrowLeft, Copy, Download, ExternalLink, Trophy, Users, Tv, Search, Sparkles, Pencil, Printer, X } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
 import { Page, Card, Micro, Spinner, Empty, BTN_GOLD, BTN_GHOST, INPUT, fmtNum } from '../../components/portal/ui';
@@ -106,6 +106,8 @@ export default function VenueEventDetail() {
     const [busy, setBusy] = useState(null);
     const [revealAt, setRevealAt] = useState('');
     const [removing, setRemoving] = useState(null);   // roster row in the dialog
+    const [q, setQ] = useState('');                    // People: find someone
+    const [who, setWho] = useState('all');             // People: all | members | guests | removed
 
     const loadSide = useCallback(async (e) => {
         if (e.status === 'draft') { setBoard(null); setRoster(null); return; }
@@ -150,6 +152,20 @@ export default function VenueEventDetail() {
     const defaultTab = !ev ? 'details' : isDraft ? 'details' : doorApplies(ev) ? 'people' : ['scheduled', 'pending', 'rejected'].includes(k) ? 'promote' : 'board';
     const tab = tabs.includes(params.get('tab')) ? params.get('tab') : defaultTab;
     const setTab = (t) => setParams(t === defaultTab ? {} : { tab: t }, { replace: true });
+
+    // People, narrowed. A guest joined without having picked this gym in the app.
+    const guests = (roster ?? []).filter((r) => r.guest && !r.disqualified).length;
+    const removedCount = (roster ?? []).filter((r) => r.disqualified).length;
+    const shown = useMemo(() => {
+        const needle = q.trim().toLowerCase();
+        return (roster ?? []).filter((r) => {
+            if (who === 'members' && (r.guest || r.disqualified)) return false;
+            if (who === 'guests' && (!r.guest || r.disqualified)) return false;
+            if (who === 'removed' && !r.disqualified) return false;
+            if (!needle) return true;
+            return [boardName(r), r.username, r.member_id].some((s) => String(s ?? '').toLowerCase().includes(needle));
+        });
+    }, [roster, q, who]);
 
     if (error) return <Empty title="Couldn’t load this event" action={<button type="button" onClick={load} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
     if (!ev) return <Spinner />;
@@ -252,6 +268,19 @@ export default function VenueEventDetail() {
         }
     };
 
+    // The roster as a spreadsheet: what the page shows, nothing more.
+    const exportPeople = () => {
+        const head = ['Name', 'Username', 'POWR ID', 'Joined', 'Member or guest', 'Removed'];
+        const rows = (roster ?? []).map((r) => [boardName(r), r.username ?? '', r.member_id ?? '', String(r.joined_at ?? '').slice(0, 10), r.guest ? 'Guest' : 'Member', r.disqualified ? 'Yes' : '']);
+        const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const csv = [head, ...rows].map((row) => row.map(cell).join(',')).join('\r\n');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }));
+        a.download = `POWR - ${ev.name} - people.csv`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+    };
+
     // ── What happens next ─────────────────────────────────────────────────
     const next = {
         draft: {
@@ -306,6 +335,7 @@ export default function VenueEventDetail() {
     // The numbers a glance wants, by state.
     const facts = [];
     if (!isDraft) facts.push([String(ev.participants ?? 0), 'in']);
+    if (!isDraft && guests > 0) facts.push([String(guests), guests === 1 ? 'guest' : 'guests']);
     if (leader && !ev.status.startsWith('locked')) facts.push([boardName(leader), sealed && ev.status === 'locked' ? 'leads, sealed' : over ? 'won' : 'leads']);
     if (ev.status === 'live') facts.push([lastDay(ev.window_end_at), 'last day']);
     if (ev.status === 'scheduled') facts.push([fmtDay(ev.window_start_at), 'starts']);
@@ -417,26 +447,58 @@ export default function VenueEventDetail() {
                     {doorApplies(ev) && <EventDoor ev={ev} toast={toast} />}
                     {roster && (
                         <Card className="p-6 sm:p-8">
-                            <div className="flex items-center gap-3 mb-6"><Users size={15} className="text-[#8a7600]" /><Micro>Who’s in · {ev.participants}</Micro></div>
+                            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 mb-6">
+                                <div className="flex items-center gap-3"><Users size={15} className="text-[#8a7600]" /><Micro>Who’s in · {ev.participants}</Micro></div>
+                                {roster.length > 0 && (
+                                    <button type="button" onClick={exportPeople} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black text-[#8a7600]"><Download size={12} /> Export</button>
+                                )}
+                            </div>
                             {roster.length === 0 ? (
                                 <p className="text-sm text-[#888] font-light">Nobody’s joined yet. Share the link under Promote with your members.</p>
                             ) : (
-                                <div className="divide-y divide-[#F0F0EC]">
-                                    {roster.map(row => (
-                                        <div key={row.user_id} className={`flex items-center gap-4 py-3 ${row.disqualified ? 'opacity-50' : ''}`}>
-                                            <Avatar row={row} />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-[13px] font-bold truncate">{boardName(row)}{row.disqualified ? ' · removed' : ''}</div>
-                                                <div className="text-[10px] font-bold text-[#AAAAAA]">POWR ID {row.member_id ?? '—'} · joined {fmtDay(row.joined_at)}</div>
-                                            </div>
-                                            {editable && !powrRun && (
-                                                row.disqualified
-                                                    ? <button type="button" disabled={!!busy} onClick={() => reinstate(row)} className="text-[9px] uppercase tracking-[0.2em] font-black text-[#8a7600]">Put back</button>
-                                                    : <button type="button" disabled={!!busy} onClick={() => setRemoving(row)} className="text-[9px] uppercase tracking-[0.2em] font-black text-red-500/60 hover:text-red-500">Remove</button>
+                                <>
+                                    {(roster.length > 5 || guests > 0 || removedCount > 0) && (
+                                        <div className="flex flex-wrap items-center gap-3 mb-5">
+                                            {roster.length > 5 && (
+                                                <div className="relative">
+                                                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#BBBBBB]" />
+                                                    <input className={`${INPUT} h-10 pl-9 w-56`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find someone" aria-label="Find someone" />
+                                                </div>
+                                            )}
+                                            {(guests > 0 || removedCount > 0) && (
+                                                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Show">
+                                                    {[['all', 'Everyone'], ['members', 'Members'], ...(guests > 0 ? [['guests', `Guests · ${guests}`]] : []), ...(removedCount > 0 ? [['removed', 'Removed']] : [])].map(([k, label]) => (
+                                                        <button key={k} type="button" role="radio" aria-checked={who === k} onClick={() => setWho(k)}
+                                                            className={`h-9 px-4 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border transition-all ${who === k ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white' : 'bg-white border-[#E6E6E1] text-[#888] hover:text-[#1A1A1A]'}`}>
+                                                            {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             )}
                                         </div>
-                                    ))}
-                                </div>
+                                    )}
+                                    {guests > 0 && <p className="text-[11px] text-[#AAAAAA] mb-4">A guest joined without having picked {gym.name} as their gym in the app: worth a word at the front desk.</p>}
+                                    {shown.length === 0 && <p className="text-sm text-[#888] font-light">Nobody matches.</p>}
+                                    <div className="divide-y divide-[#F0F0EC]">
+                                        {shown.map(row => (
+                                            <div key={row.user_id} className={`flex items-center gap-4 py-3 ${row.disqualified ? 'opacity-50' : ''}`}>
+                                                <Avatar row={row} />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-[13px] font-bold truncate">
+                                                        {boardName(row)}{row.disqualified ? ' · removed' : ''}
+                                                        {row.guest && !row.disqualified && <span className="ml-2 inline-flex items-center h-5 px-2 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[8px] font-black uppercase tracking-[0.2em] text-[#888] align-middle">Guest</span>}
+                                                    </div>
+                                                    <div className="text-[10px] font-bold text-[#AAAAAA]">POWR ID {row.member_id ?? '—'} · joined {fmtDay(row.joined_at)}</div>
+                                                </div>
+                                                {editable && !powrRun && (
+                                                    row.disqualified
+                                                        ? <button type="button" disabled={!!busy} onClick={() => reinstate(row)} className="text-[9px] uppercase tracking-[0.2em] font-black text-[#8a7600]">Put back</button>
+                                                        : <button type="button" disabled={!!busy} onClick={() => setRemoving(row)} className="text-[9px] uppercase tracking-[0.2em] font-black text-red-500/60 hover:text-red-500">Remove</button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
                             )}
                         </Card>
                     )}

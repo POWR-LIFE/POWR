@@ -12,3 +12,5 @@ export { brandInviteEmail, type BrandInviteData } from "./emails/brand-invite.ts
 export { partnerWelcomeEmail, type PartnerWelcomeData } from "./emails/partner-welcome.ts";
 export { partnerWeeklySummaryEmail, type PartnerWeeklySummaryData } from "./emails/partner-weekly-summary.ts";
 export { levelUpEmail, type LevelUpData } from "./emails/level-up.ts";
+export { gymWeeklyRecapEmail, type GymWeeklyRecapData } from "./emails/gym-weekly-recap.ts";
+export { gymEventEmail, type GymEventMailData } from "./emails/gym-event-mail.ts";

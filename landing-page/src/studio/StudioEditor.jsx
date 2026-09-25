@@ -809,9 +809,13 @@ export default function StudioEditor({
 
     return (
         <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)] items-start">
+            {/* On a phone the post comes first and the controls follow, so a
+                template or a photo shows what it did without a scroll back up;
+                the intro stays on top. On a laptop it is controls | preview. */}
+            {intro && <div className="lg:hidden">{intro}</div>}
             {/* ── Controls ─────────────────────────────────────────────── */}
-            <div className="space-y-4 min-w-0">
-                {intro}
+            <div className="space-y-4 min-w-0 order-3 lg:order-none">
+                {intro && <div className="hidden lg:block">{intro}</div>}
                 <div className={CARD}>
                     <span className={LABEL}>Template</span>
                     {cats.map((cat) => (
@@ -1129,7 +1133,7 @@ export default function StudioEditor({
                 below keeps the whole panel on screen, including at the very
                 bottom of the page, where the layout's bottom spacer would
                 otherwise push a taller panel up under the header. */}
-            <div className={`lg:sticky ${stickyClass} min-w-0`}>
+            <div className={`lg:sticky ${stickyClass} min-w-0 order-2 lg:order-none`}>
                 <div className="rounded-2xl bg-[#141413] p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div className="inline-flex rounded-xl bg-white/5 p-1">

@@ -37,7 +37,7 @@ export const PACKAGES = [
             'Studio and event kits: your photos and clips turned into branded posts, reels and carousels, at every size',
             'Upload your own footage from classes and PT sessions, and make content in minutes',
             'Full member insights (opted-in members), including early warning when members go quiet',
-            'Bring-a-friend guest leads from every event · coming this season',
+            'Guest leads from every event: who joined without being a member, named for the front desk, with export',
             'Quarterly insights report: 3 trends, 3 actions, with a matched brand partner · coming this season',
         ],
     },

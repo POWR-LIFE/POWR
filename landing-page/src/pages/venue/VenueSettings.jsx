@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Building2, Clock, Image as ImageIcon, LifeBuoy, Package, Trash2, Upload } from 'lucide-react';
+import { Building2, Clock, Image as ImageIcon, LifeBuoy, Mail, Package, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Page, PageTitle, Card, Micro, Spinner, Empty, INPUT, LABEL, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
 import GymStaffPanel from '../../components/GymStaffPanel';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
-import { fetchGymProfile, updateGymProfile } from './venueApi';
+import { fetchGymProfile, setRecapEmail, updateGymProfile } from './venueApi';
 import { PackageContext, packageLine } from './packages';
 
 // Settings: the gym's own details (what the app, the boards and every post
@@ -122,6 +122,18 @@ export default function VenueSettings() {
     };
     const saveHours = () => apply('hours', { opening_hours: hours });
     const setDay = (k, next) => setHours((h) => ({ ...h, [k]: next }));
+    // The Monday recap is each person's own choice, so staff can set it too.
+    const setRecap = async (on) => {
+        setSaving('recap');
+        setError(null);
+        try {
+            const v = await setRecapEmail(gym.partner_id, on);
+            setProfile((p) => ({ ...p, recap_email: v }));
+            setSaved('recap');
+            setTimeout(() => setSaved((s) => (s === 'recap' ? null : s)), 2500);
+        } catch (e) { setError(e.message || 'That didn’t save.'); }
+        finally { setSaving(null); }
+    };
 
     if (loadError) return <Page><Empty title="Couldn’t load your settings" action={<button type="button" onClick={load} className={BTN_GHOST}>Try again</button>}>{loadError}</Empty></Page>;
     if (!profile) return <Page><Spinner /></Page>;
@@ -243,6 +255,21 @@ export default function VenueSettings() {
                         <p className="text-[12px] text-[#888] leading-relaxed mt-2">What’s switched on, what each package includes, and how to change it.</p>
                         <Link to="/venue/package" className={`${BTN_GHOST} mt-5`}>See packages</Link>
                     </Card>
+
+                    {/* Email: the Monday recap, each person's own switch */}
+                    {profile.recap_email != null && (
+                        <Card className="p-6 sm:p-8">
+                            <div className="flex items-center gap-3 mb-4"><Mail size={15} className="text-[#8a7600]" /><Micro>Email</Micro></div>
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <input type="checkbox" className="accent-[#E8D200] w-4 h-4 mt-0.5 shrink-0" checked={!!profile.recap_email} disabled={busy('recap')} onChange={(e) => setRecap(e.target.checked)} />
+                                <span>
+                                    <span className="block text-[13px] font-bold text-[#1A1A1A]">Your gym’s week, every Monday</span>
+                                    <span className="block text-[12px] text-[#888] leading-relaxed mt-1">Sessions, athletes, new faces, the top of the board and your events, in one email. Each of the team chooses for themselves.</span>
+                                </span>
+                            </label>
+                            {saved === 'recap' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">Saved.</p>}
+                        </Card>
+                    )}
                 </div>
             </div>
         </Page>

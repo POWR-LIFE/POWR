@@ -75,6 +75,8 @@ export const fetchMemberPeople = (partnerId) => rpc('gym_member_people', { p_par
 // ── Settings: the gym's own details ──────────────────────────────────────────
 export const fetchGymProfile = (partnerId) => rpc('gym_profile', { p_partner_id: partnerId });
 export const updateGymProfile = (partnerId, patch) => rpc('gym_update_profile', { p_partner_id: partnerId, p_patch: patch });
+/** The caller's own Monday recap switch (each of the team chooses). */
+export const setRecapEmail = (partnerId, on) => rpc('gym_set_recap_email', { p_partner_id: partnerId, p_on: on });
 
 // ── The door on a finale night, and prizes handed over ───────────────────────
 export const fetchEventDoor = (eventId) => rpc('gym_event_door', { p_event_id: eventId });
