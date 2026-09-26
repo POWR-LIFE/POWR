@@ -25,7 +25,7 @@ export const PACKAGES = [
         items: [
             'Everything in Clash',
             'Run your own in-gym challenges, monthly or whenever you want',
-            'Prizes from POWR brand partners · coming this season',
+            'Prizes from POWR brand partners: up to 3 per event, the winner’s code in their Wallet at the reveal',
             'Members dashboard: what they do, where they train, who’s gone quiet',
         ],
     },
@@ -47,7 +47,7 @@ export const PACKAGES = [
             'Everything in Clash Pro',
             'All 4 Clash Night dates booked at signing',
             'Price locked on renewal',
-            'Founding gym status on the POWR leaderboard · coming this season',
+            'Founding gym status on the POWR leaderboard',
             'Prefer monthly? £249 / month',
         ],
     },
