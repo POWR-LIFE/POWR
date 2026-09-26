@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Download, Images, Lock } from 'lucide-react';
 import { Card, Micro } from '../../components/portal/ui';
 import { useToast } from '../../lib/toast';
-import { fetchGymProfile } from './venueApi';
 import { eventFacts, fetchImage, shortName } from '../../studio/data';
 import { gymStudioData } from '../../studio/gymData';
 import { FORMATS } from '../../studio/formats';
@@ -12,6 +11,7 @@ import { buildWeekKit, planWeekKit, weekSeed, WEEK_LOOKS } from '../../studio/we
 import { PACKAGE_LABEL } from './packages';
 import { statusKey } from './eventUi';
 import PostLightbox from './PostLightbox';
+import { markDone, endOfDay } from './doneStore';
 
 // The week's posts: seven, one for each day, drawn in the browser from the
 // gym's own numbers and photo (studio/weekKit.js decides what each day says).
@@ -58,10 +58,16 @@ function dayIndexIn(tz) {
     return Math.max(0, ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(d));
 }
 
-export default function WeekPosts({ gym, name, summary, insights, standing, events, pkg, tz }) {
+/**
+ * `profile` (gym_profile, loaded by the Overview) says where the gym is, for
+ * the join QR. `onToday({ label, free })` tells the Overview's moves what
+ * today's post is, as soon as the numbers allow (it needs no photo); the
+ * "Post it" move links back here with ?post=today, which opens it.
+ */
+export default function WeekPosts({ gym, name, summary, insights, standing, events, pkg, tz, profile, onToday }) {
     const toast = useToast();
     const canDownload = !!pkg?.features?.studio;
-    const [where, setWhere] = useState(null);          // { address, lat, lng }: the join QR opens the gym's card
+    const [params, setParams] = useSearchParams();
     const [photo, setPhoto] = useState(undefined);     // the gym's picture as an asset; null when there's none; undefined while loading
     const [eventPhoto, setEventPhoto] = useState(null);
     const [results, setResults] = useState(null);      // a recently revealed event's facts, with its standings
@@ -81,13 +87,10 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
     const abortRef = useRef(null);
     const scroller = useRef(null);
 
-    useEffect(() => {
-        let alive = true;
-        fetchGymProfile(gym.partner_id)
-            .then((p) => { if (alive) setWhere({ address: p?.address ?? '', lat: p?.lat ?? null, lng: p?.lng ?? null }); })
-            .catch(() => { if (alive) setWhere({ address: summary.gym?.address ?? '', lat: null, lng: null }); });
-        return () => { alive = false; };
-    }, [gym.partner_id]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Where the gym is: the join QR opens its card in the app.
+    const where = useMemo(() => (profile
+        ? { address: profile.address ?? summary.gym?.address ?? '', lat: profile.lat ?? null, lng: profile.lng ?? null }
+        : null), [profile, summary.gym?.address]);
 
     // The gym's own picture, from its POWR listing (our storage, so the canvas can export it).
     const photoUrl = summary.gym?.image_url || null;
@@ -133,13 +136,14 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
         return () => { alive = false; };
     }, [eventPhotoUrl]);
 
-    const week = useMemo(() => {
-        if (!where || photo === undefined || !summary.week_start_at) return null;
+    // The week's facts; the photo joins them once it has loaded.
+    const base = useMemo(() => {
+        if (!summary.week_start_at) return null;
         const weeks = insights?.weeks ?? [];
         const start = summary.week_start_at;
+        const at = where ?? { address: summary.gym?.address ?? '', lat: null, lng: null };
         return {
-            gym: { partner_id: gym.partner_id, name, address: where.address, lat: where.lat, lng: where.lng },
-            photo, eventPhoto,
+            gym: { partner_id: gym.partner_id, name, address: at.address, lat: at.lat, lng: at.lng },
             seed: weekSeed(start),
             label: weekDates(start, tz),
             lastLabel: weekDates(new Date(Date.parse(start) - 7 * DAY).toISOString(), tz),
@@ -153,11 +157,43 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
             next: next ? eventFacts({ ...next, partners: place }) : null,
             results,
         };
-    }, [where, photo, eventPhoto, insights, gym.partner_id, name, summary, tz, standing, next, place, results]);
+    }, [where, insights, gym.partner_id, name, summary, tz, standing, next, place, results]);
+    const week = useMemo(() => (base && where && photo !== undefined ? { ...base, photo, eventPhoto } : null), [base, where, photo, eventPhoto]);
 
     const jobs = useMemo(() => (week ? planWeekKit(week, { look }) : []), [week, look]);
     const posts = useMemo(() => postsOf(jobs), [jobs]);
     const today = dayIndexIn(tz);
+
+    // Tell the Overview what today's post is (its name needs the numbers, not the photo).
+    const told = useRef(undefined);
+    useEffect(() => {
+        if (!onToday) return;
+        let t = null;
+        if (base) {
+            if (insights == null) return;   // the board decides Wednesday's and Thursday's posts
+            const j = planWeekKit(base, { look }).find((x) => x.format === 'post' && x.day === today);
+            t = j ? { label: j.label, free: !!j.free } : null;
+        }
+        const k = JSON.stringify(t);
+        if (told.current === k) return;
+        told.current = k;
+        onToday(t);
+    }, [base, insights, look, today, onToday]);
+
+    // "Post it" on the Overview's moves: ?post=today opens today's post.
+    const wantToday = params.get('post') === 'today';
+    useEffect(() => {
+        if (!wantToday || !posts.length) return;
+        const i = posts.findIndex((p) => p.day === today);
+        setBigFormat('post');
+        setOpen(i >= 0 ? i : 0);
+        scroller.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        const rest = new URLSearchParams(params);
+        rest.delete('post');
+        setParams(rest, { replace: true });
+    }, [wantToday, posts.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const postedToday = () => markDone(gym.partner_id, 'post:today', endOfDay(tz));
     const allowed = useCallback((job) => canDownload || !!job.free, [canDownload]);
 
     // Small renders, one at a time; a post whose words and picture haven't
@@ -208,6 +244,7 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
         try {
             const m = await mediaFor(job.asset, media.current);
             save(await renderStill(job, m), `${name} - ${job.dayLabel} - ${job.label} - ${FORMATS[job.format].label}.${job.kind}`);
+            if (job.day === today) postedToday();
         } catch (e) { toast.error(e.message || 'That post couldn’t be made.'); }
     };
     const downloadAll = async () => {
@@ -217,6 +254,7 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
         try {
             const { blob, names } = await buildWeekKit({ week, jobs, signal: ac.signal, mediaCache: media.current, onProgress: (fraction) => setBusy({ fraction }) });
             save(blob, `POWR - ${name} - ${week.label}.zip`);
+            postedToday();
             toast.success(`Seven posts, ${names.length} files`);
         } catch (e) {
             if (!ac.signal.aborted) toast.error(e.message || 'The posts couldn’t be made.');

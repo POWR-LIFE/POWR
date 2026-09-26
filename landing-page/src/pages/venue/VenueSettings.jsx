@@ -90,10 +90,11 @@ export default function VenueSettings() {
     };
     useEffect(() => { setProfile(null); load(); }, [gym.partner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // #team from the old Team page lands on the team card.
+    // A #section in the link lands on that card: #team (the old Team page),
+    // #photo and #recap (the Overview's suggestions).
     useEffect(() => {
-        if (!profile || location.hash !== '#team') return;
-        document.getElementById('team')?.scrollIntoView({ block: 'start' });
+        if (!profile || !location.hash) return;
+        document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' });
     }, [profile, location.hash]);
 
     const canEdit = !!profile?.can_edit && !isActingGym;
@@ -242,11 +243,13 @@ export default function VenueSettings() {
                     </Card>
 
                     {/* Photo */}
+                    <div id="photo" className="scroll-mt-6">
                     <Card className="p-6 sm:p-8">
                         <div className="flex items-center gap-3 mb-6"><ImageIcon size={15} className="text-[#8a7600]" /><Micro>Photo</Micro></div>
                         <ImageSlot label="Your gym" hint="The big picture on your gym’s page in the app. Landscape, the floor or the front, people in it if you can." url={profile.image_url} prefix={prefix} canEdit={canEdit} onChange={(url) => apply('photo', { image_url: url })} wide />
                         {saved === 'photo' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">Saved.</p>}
                     </Card>
+                    </div>
 
                     {/* Package */}
                     <Card className="p-6 sm:p-8">
@@ -258,6 +261,7 @@ export default function VenueSettings() {
 
                     {/* Email: the Monday recap, each person's own switch */}
                     {profile.recap_email != null && (
+                        <div id="recap" className="scroll-mt-6">
                         <Card className="p-6 sm:p-8">
                             <div className="flex items-center gap-3 mb-4"><Mail size={15} className="text-[#8a7600]" /><Micro>Email</Micro></div>
                             <label className="flex items-start gap-3 cursor-pointer">
@@ -269,6 +273,7 @@ export default function VenueSettings() {
                             </label>
                             {saved === 'recap' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">Saved.</p>}
                         </Card>
+                        </div>
                     )}
                 </div>
             </div>

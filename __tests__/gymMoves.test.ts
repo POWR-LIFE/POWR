@@ -55,9 +55,11 @@ describe('gymMoves', () => {
   });
 
   it('only counts the gym’s own events for reveals and drafts, but shows POWR nights that are live', () => {
-    expect(keys({
+    const k = keys({
       events: [ev({ id: 'p', state: 'locked', managed_by: 'powr' }), ev({ id: 'q', state: 'live', managed_by: 'powr', participants: 30 })],
-    })).toEqual(['live:q']);
+    });
+    expect(k[0]).toBe('live:q');
+    expect(k).not.toContain('reveal:p');
   });
 
   it('asks for prizes to be handed over for a week after the reveal', () => {
@@ -88,9 +90,9 @@ describe('gymMoves', () => {
     const [first] = gymMoves({ ...base, events: past });
     expect(first).toMatchObject({ key: 'again', action: { label: 'Run it again', to: '/venue/events/new?from=recent' } });
     expect(first.detail).toContain('August Clash');
-    expect(keys({ events: [] })).toEqual(['first']);
+    expect(keys({ events: [] })[0]).toBe('first');
     // Not while the events are unknown.
-    expect(keys({ events: null })).toEqual([]);
+    expect(keys({ events: null })).not.toContain('first');
   });
 
   it('turns quiet members into a nudge on Pro, and names the package otherwise', () => {
@@ -159,5 +161,79 @@ describe('gymMoves', () => {
     const toBuilder = moves.filter((m) => m.action.to === '/venue/events/new');
     expect(toBuilder.map((m) => m.key)).toEqual(['weekday']);
     expect(new Set(moves.map((m) => m.action.to)).size).toBe(moves.length);
+  });
+
+  describe('never goes quiet', () => {
+    const calm: MovesInput = {
+      ...base, features: PRO, board: { enabled: true }, events: [ev({ id: 's', state: 'scheduled', window_start_at: new Date(NOW + 10 * DAY).toISOString() })],
+      members: 60, posterMade: true, hasPhoto: true, recapOn: true, todayPost: { label: 'The board', free: false },
+    };
+
+    it('fills three with everyday moves when nothing else needs doing', () => {
+      for (const features of [PRO, PLUS, CLASH]) {
+        expect(gymMoves({ ...calm, features, events: [] })).toHaveLength(3);
+        expect(gymMoves({ ...calm, features })).toHaveLength(3);
+        // Every day of the week, and with the day's post put off.
+        for (let day = 0; day < 7; day++) {
+          const done = { 'post:today': new Date(NOW + 2 * DAY).toISOString() };
+          expect(gymMoves({ ...calm, features, nowMs: NOW + day * DAY, done })).toHaveLength(3);
+        }
+      }
+    });
+
+    it('keeps a free gym to one package move among its three', () => {
+      const league = { rank: 1, count: 3, radiusKm: 10, rival: { name: 'Iron Works' }, ahead: true, gap: 20 };
+      const moves = gymMoves({ ...calm, features: CLASH, league, todayPost: null });
+      expect(moves).toHaveLength(3);
+      expect(moves.filter((m) => m.action.to === '/venue/package')).toHaveLength(1);
+    });
+
+    it('offers today’s post: to post on Pro, to see when the package can’t download it', () => {
+      const pro = gymMoves({ ...calm, todayPost: { label: 'The board', free: false } });
+      expect(pro.find((m) => m.key === 'post:today')).toMatchObject({ title: 'Today’s post: The board', action: { label: 'Post it', to: '/venue?post=today' }, snooze: 'day' });
+      const plus = gymMoves({ ...calm, features: PLUS, todayPost: { label: 'The board', free: false } });
+      expect(plus.find((m) => m.key === 'post:today')?.action.label).toBe('See it');
+      const joinDay = gymMoves({ ...calm, features: PLUS, todayPost: { label: 'Join us', free: true } });
+      expect(joinDay.find((m) => m.key === 'post:today')?.action.label).toBe('Post it');
+    });
+
+    it('lets an everyday move be put off, and the next one steps up', () => {
+      const before = gymMoves({ ...calm, todayPost: { label: 'The board', free: false } });
+      expect(before.map((m) => m.key)).toContain('post:today');
+      const later = new Date(NOW + DAY).toISOString();
+      const after = gymMoves({ ...calm, todayPost: { label: 'The board', free: false }, done: { 'post:today': later } });
+      expect(after.map((m) => m.key)).not.toContain('post:today');
+      expect(after).toHaveLength(3);
+      // Once the time's up it's back.
+      expect(gymMoves({ ...calm, todayPost: { label: 'The board', free: false }, done: { 'post:today': new Date(NOW - 1).toISOString() } })
+        .map((m) => m.key)).toContain('post:today');
+    });
+
+    it('never puts off an alert', () => {
+      const locked = [ev({ id: 'b', state: 'locked' })];
+      const moves = gymMoves({ ...calm, events: locked, done: { 'reveal:b': new Date(NOW + DAY).toISOString() } });
+      expect(moves[0].key).toBe('reveal:b');
+      expect(moves[0].snooze).toBeUndefined();
+    });
+
+    it('turns the everyday moves over from one day to the next', () => {
+      const today = gymMoves({ ...calm }).map((m) => m.key);
+      const tomorrow = gymMoves({ ...calm, nowMs: NOW + DAY }).map((m) => m.key);
+      expect(today).not.toEqual(tomorrow);
+    });
+
+    it('asks for a photo and the recap only when they’re missing', () => {
+      const all = (i: Partial<MovesInput>) => [0, 1, 2, 3, 4, 5, 6].flatMap((d) => gymMoves({ ...calm, ...i, nowMs: NOW + d * DAY }).map((m) => m.key));
+      expect(all({})).not.toContain('photo');
+      expect(all({})).not.toContain('recap');
+      expect(all({ hasPhoto: false })).toContain('photo');
+      expect(all({ recapOn: false })).toContain('recap');
+    });
+
+    it('only suggests next month’s challenge when nothing is booked in the next 30 days', () => {
+      const week = (i: Partial<MovesInput>) => [0, 1, 2, 3, 4, 5, 6].flatMap((d) => gymMoves({ ...calm, ...i, nowMs: NOW + d * DAY }).map((m) => m.key));
+      expect(week({})).not.toContain('plan-next');
+      expect(week({ events: [ev({ id: 'd', state: 'draft' })] })).toContain('plan-next');
+    });
   });
 });

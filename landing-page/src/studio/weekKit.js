@@ -288,6 +288,7 @@ export function weekTreatment(look, day, seed, template) {
 export function planWeekKit(week, { look = 'mixed' } = {}) {
     const w = { ...week, board: (week.board ?? []).filter((r) => r.points > 0) };
     const seed = week.seed ?? 0;
+    const tags = `#POWR #${tagOf(week.gym.name) || 'gym'}`;
     const jobs = [];
     SLOTS.forEach((slot, day) => {
         const p = slot(w, seed + day);
@@ -302,6 +303,8 @@ export function planWeekKit(week, { look = 'mixed' } = {}) {
                 fields: p.fields, asset: p.asset === undefined ? (week.photo ?? null) : p.asset,
                 look: tr.look, grade: tr.grade, style: tr.style, free: !!p.free,
                 day, dayLabel: week.days?.[day] ?? DAY_NAMES[day].slice(0, 3), caption: p.caption,
+                // What to paste with it: the caption and the tags (the join caption carries its own).
+                share: p.template === 'ticket' && p.free ? p.caption : `${p.caption}\n\n${tags}`,
             });
         }
     });
@@ -310,12 +313,9 @@ export function planWeekKit(week, { look = 'mixed' } = {}) {
 
 /** The words to paste, one block per day. */
 export function weekCaptions(week, jobs) {
-    const tags = `#POWR #${tagOf(week.gym.name) || 'gym'}`;
-    const posts = jobs.filter((j) => j.format === 'post');
-    return posts.map((j) => {
+    return jobs.filter((j) => j.format === 'post').map((j) => {
         const h = `${DAY_NAMES[j.day]} · ${j.label}`;
-        const body = j.template === 'ticket' && j.free ? j.caption : `${j.caption}\n\n${tags}`;
-        return `${h}\n${'─'.repeat(Math.min(60, h.length + 8))}\n${wrapParagraphs(body, 90)}\n`;
+        return `${h}\n${'─'.repeat(Math.min(60, h.length + 8))}\n${wrapParagraphs(j.share, 90)}\n`;
     }).join('\n');
 }
 

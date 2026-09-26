@@ -3,6 +3,11 @@
 // at a glance, the one thing to do about it, and the button that does it (or
 // names the package that unlocks it).
 //
+// The card is never empty: after what the numbers call for come the everyday
+// moves (today's post, the join link, next month's challenge, the discounts,
+// the Members page, the Studio, a missing photo or recap), a different order
+// each day. Those can be put off ("Not now", `done`) and the next one steps up.
+//
 // Pure: the portal passes what it has already loaded (the summary, its
 // events, the league standing, the members' activity, the weekly numbers,
 // the package) and renders what comes back. Under jest
@@ -11,7 +16,7 @@
 import { memberInsights, ACTIVITY_NOUN, type MemberActivity } from './memberInsights';
 import { sessionsToClose } from './gymLeague';
 
-export type MoveKind = 'event' | 'members' | 'league' | 'growth' | 'programme' | 'screens' | 'package';
+export type MoveKind = 'event' | 'members' | 'league' | 'growth' | 'programme' | 'screens' | 'package' | 'content' | 'setup' | 'tools';
 
 export type MoveAction = {
   label: string;
@@ -30,6 +35,8 @@ export type Move = {
   action: MoveAction;
   /** The quiet-member nudge, sent from the card itself (Clash Pro). */
   nudge?: boolean;
+  /** An everyday move the gym can put off: until tomorrow, or for a week. */
+  snooze?: 'day' | 'week';
   priority: number;
 };
 
@@ -76,6 +83,16 @@ export type MovesInput = {
   /** Sessions at the gym by weekday, Monday first, last 28 days (gym_insights.days). */
   weekdays?: number[] | null;
   posterMade?: boolean;
+  /** Today's post from the week's seven: its name, and whether it downloads on this package. */
+  todayPost?: { label: string; free: boolean } | null;
+  /** The gym has a photo on its POWR listing (false: it hasn't; undefined: unknown). */
+  hasPhoto?: boolean;
+  /** The Monday recap email for whoever is looking: on, off, or unknown (null). */
+  recapOn?: boolean | null;
+  /** Last week's sessions at the gym. */
+  lastWeekSessions?: number | null;
+  /** Moves put off on this device: key → until (ISO). */
+  done?: Record<string, string>;
   fmtDay: (iso: string) => string;
   lastDay: (iso: string) => string;
 };
@@ -84,11 +101,18 @@ const num = (n: number) => n.toLocaleString('en-GB');
 const plural = (n: number, one: string, many: string) => `${num(n)} ${n === 1 ? one : many}`;
 const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 const DAY_MS = 86_400_000;
+const ordinal = (n: number) => {
+  const t = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${t[(v - 20) % 10] || t[v] || t[0]}`;
+};
 // "Running" → "running", "Gym training" → "gym training", "HIIT" stays.
 const lower = (s: string) => (s === s.toUpperCase() ? s : s.charAt(0).toLowerCase() + s.slice(1));
 const PACKAGES = '/venue/package';
 const BOARD_POST = '/venue/studio?board=week';
 const NEW_EVENT = '/venue/events/new';
+/** The Overview itself, with today's post open (WeekPosts reads ?post=today). */
+export const TODAY_POST = '/venue?post=today';
 
 function eventMoves(i: MovesInput): Move[] {
   if (!i.events) return [];
@@ -329,16 +353,115 @@ function packageMoves(i: MovesInput): Move[] {
   }];
 }
 
+// Nothing on the calendar in the next 30 days: a draft or a live event doesn't count as next month.
+function nothingAhead(i: MovesInput): boolean {
+  if (!i.events) return false;
+  return !i.events.some((e) => e.state === 'scheduled' && e.window_start_at
+    && new Date(e.window_start_at).getTime() - i.nowMs < 30 * DAY_MS);
+}
+
+function everydayMoves(i: MovesInput): Move[] {
+  const f = i.features ?? {};
+  const g = i.gymName;
+  const out: Move[] = [];
+
+  // Today's post, from the week's seven: something to do every single day.
+  if (i.todayPost) {
+    const can = !!f.studio || i.todayPost.free;
+    out.push({
+      key: 'post:today', kind: 'content', priority: 23, snooze: 'day',
+      title: `Today’s post: ${i.todayPost.label}`,
+      detail: can ? 'Ready to go. Download it and copy the caption.' : 'Ready to see. Downloading it comes with Clash Pro.',
+      action: { label: can ? 'Post it' : 'See it', to: TODAY_POST },
+    });
+  }
+
+  // The rest take turns: each only when it's useful, a different order each day.
+  const pool: Array<Omit<Move, 'priority'>> = [];
+  pool.push({
+    key: 'join-link', kind: 'growth', snooze: 'week',
+    title: 'Send members your join link',
+    detail: `Members who pick ${g} in the app land on your board. Drop the link in your WhatsApp group or newsletter.`,
+    action: { label: 'Get the link', to: '/venue/poster' },
+  });
+  if (i.hasPhoto === false) {
+    pool.push({
+      key: 'photo', kind: 'setup', snooze: 'week',
+      title: 'Add your gym’s photo',
+      detail: 'It goes behind every post, and on your gym’s page in the app.',
+      action: { label: 'Add it', to: '/venue/settings#photo' },
+    });
+  }
+  if (i.recapOn === false) {
+    pool.push({
+      key: 'recap', kind: 'setup', snooze: 'week',
+      title: 'Get the Monday recap',
+      detail: 'Last week’s numbers, the top of your board and what’s coming, by email every Monday.',
+      action: { label: 'Switch it on', to: '/venue/settings#recap' },
+    });
+  }
+  if (f.events && nothingAhead(i)) {
+    pool.push({
+      key: 'plan-next', kind: 'event', snooze: 'week',
+      title: 'Plan next month’s challenge',
+      detail: 'Something on the calendar keeps members coming back. Pick a format and it runs itself.',
+      action: { label: 'Plan it', to: NEW_EVENT },
+    });
+  }
+  if (f.events) {
+    pool.push({
+      key: 'discounts', kind: 'tools', snooze: 'week',
+      title: 'Prizes at the members’ price',
+      detail: 'Your partner discounts cover prizes and kit. One code when you need it.',
+      action: { label: 'Discounts', to: '/venue/partners' },
+    });
+  }
+  if (f.insights) {
+    pool.push({
+      key: 'members', kind: 'tools', snooze: 'week',
+      title: i.lastWeekSessions ? `Last week: ${plural(i.lastWeekSessions, 'session', 'sessions')} here` : 'See who’s training',
+      detail: 'Who trains, when you’re busiest and what your members do, week by week.',
+      action: { label: 'Members', to: '/venue/members' },
+    });
+  }
+  if (f.studio) {
+    pool.push({
+      key: 'studio', kind: 'tools', snooze: 'week',
+      title: 'Turn today’s class into a post',
+      detail: 'Drop in a photo or a clip and the Studio makes it at every size.',
+      action: { label: 'Studio', to: '/venue/studio' },
+    });
+  }
+  const l = i.league;
+  if (l && l.rival && l.count >= 2) {
+    pool.push({
+      key: 'league-screen', kind: 'league', snooze: 'week',
+      title: `${ordinal(l.rank)} of ${l.count} in the Gym League`,
+      detail: 'Keep the league on your gym TV, so members see the race while they train.',
+      action: { label: 'Screens', to: '/venue/screens' },
+    });
+  }
+  const d = Math.floor(i.nowMs / DAY_MS);
+  pool.forEach((m, k) => out.push({ ...m, priority: 9 - (((k - d) % pool.length) + pool.length) % pool.length * 0.5 }));
+  return out;
+}
+
 /**
- * Up to `limit` moves, most useful first. At most two about events (unless
- * more are waiting on the gym) and one of any other kind, and never two
- * buttons to the same place, so three moves are three different things.
+ * Exactly `limit` moves whenever there are that many to give, most useful
+ * first. At most two about events (unless more are waiting on the gym) and
+ * one of any other kind, and never two buttons to the same place, so three
+ * moves are three different things. Everyday moves the gym has put off
+ * (`done`) step aside until their time is up.
  */
 export function gymMoves(i: MovesInput, limit = 3): Move[] {
+  const away = (m: Move) => {
+    const until = m.snooze ? i.done?.[m.key] : undefined;
+    return !!until && Date.parse(until) > i.nowMs;
+  };
   const all = [
     ...eventMoves(i), ...memberMoves(i), ...leagueMoves(i), ...growthMoves(i),
-    ...programmeMoves(i), ...screenMoves(i), ...packageMoves(i),
-  ].sort((a, b) => b.priority - a.priority);
+    ...programmeMoves(i), ...screenMoves(i), ...packageMoves(i), ...everydayMoves(i),
+  ].filter((m) => !away(m)).sort((a, b) => b.priority - a.priority);
   const out: Move[] = [];
   const perKind: Partial<Record<MoveKind, number>> = {};
   const places = new Set<string>();

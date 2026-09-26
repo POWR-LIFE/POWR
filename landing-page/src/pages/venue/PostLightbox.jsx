@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, Download, Lock, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Copy, Download, Lock, X } from 'lucide-react';
 import { FORMATS } from '../../studio/formats';
 import { mediaFor, renderThumb, isStill, ACCENTS } from '../../studio/kit';
 
@@ -22,6 +22,11 @@ export default function PostLightbox({ posts, jobs, index, setIndex, format, set
     const job = jobs.find((j) => j.stem === post.stem && isStill(j) && j.format === format) ?? jobs.find((j) => j.stem === post.stem && isStill(j));
     const [src, setSrc] = useState(null);
     const [saving, setSaving] = useState(false);
+    const [copied, setCopied] = useState(false);
+    useEffect(() => { setCopied(false); }, [post.stem]);
+    const copy = async () => {
+        try { await navigator.clipboard.writeText(post.share); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { /* the browser said no */ }
+    };
     // Redrawn when what's on the post changes, not when a refresh hands over an equal job.
     const jobKey = JSON.stringify([job.template, job.format, job.fields, job.look, job.style, job.asset?.id ?? null]);
     useEffect(() => {
@@ -84,6 +89,12 @@ export default function PostLightbox({ posts, jobs, index, setIndex, format, set
                             </button>
                         ))}
                     </div>
+                    {post.share && (
+                        <button type="button" onClick={copy}
+                            className="inline-flex items-center gap-2 h-9 px-4 rounded-full bg-white/10 text-white text-[10px] font-black uppercase tracking-[0.15em] hover:bg-white/20">
+                            {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? 'Copied' : 'Copy caption'}
+                        </button>
+                    )}
                     {onDownload && (isLocked ? (
                         <span className="inline-flex items-center gap-2 h-9 px-4 rounded-full bg-white/10 text-[10px] font-black uppercase tracking-[0.15em] text-[#E8D200]"><Lock size={11} />{lockLabel}</span>
                     ) : (
