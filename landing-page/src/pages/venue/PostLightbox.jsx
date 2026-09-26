@@ -73,7 +73,7 @@ export default function PostLightbox({ posts, jobs, index, setIndex, format, set
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-white">
                     <div className="text-center sm:text-left">
-                        <div className="text-[10px] font-black uppercase tracking-[0.25em]">{post.label} <span className="text-white/40">· {index + 1} of {posts.length}</span></div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.25em]">{post.dayLabel ? `${post.dayLabel} · ` : ''}{post.label} <span className="text-white/40">· {index + 1} of {posts.length}</span></div>
                         <div className="text-[11px] text-white/60 mt-0.5">{lookName(job.look)} · {accentName(job.style)}</div>
                     </div>
                     <div className="inline-flex rounded-full bg-white/10 p-0.5" role="radiogroup" aria-label="Size">

@@ -8,17 +8,17 @@ import { eventFacts, fetchImage, shortName } from '../../studio/data';
 import { gymStudioData } from '../../studio/gymData';
 import { FORMATS } from '../../studio/formats';
 import { assetFrom, mediaFor, postsOf, releaseMedia, renderStill, renderThumb } from '../../studio/kit';
-import { buildWeekKit, planWeekKit } from '../../studio/weekKit';
+import { buildWeekKit, planWeekKit, weekSeed, WEEK_LOOKS } from '../../studio/weekKit';
 import { PACKAGE_LABEL } from './packages';
 import { statusKey } from './eventUi';
 import PostLightbox from './PostLightbox';
 
-// The week's posts, ready to go: drawn in the browser from the gym's own
-// numbers and photo (studio/weekKit.js decides which the week can carry and
-// what they say). Tap one to see it at every size; download one, or all of
-// them in one ZIP with the captions. Every package sees them; downloading is
-// Clash Pro (it's the Studio), except the join poster, which is on every
-// package because it puts members on the board.
+// The week's posts: seven, one for each day, drawn in the browser from the
+// gym's own numbers and photo (studio/weekKit.js decides what each day says).
+// A new set every Monday. Tap one to see it at every size; download one, or
+// all seven in one ZIP with the captions. Every package sees them;
+// downloading is Clash Pro (it's the Studio), except the join poster, which
+// is on every package because it puts members on the board.
 
 const DAY = 86_400_000;
 const THUMB_SCALE = 0.3;     // 324×405 for a post: sharp at 168px wide on a 2× screen
@@ -37,17 +37,19 @@ function save(blob, name) {
 // A post's look on screen changes only when one of these does.
 const keyOf = (job) => JSON.stringify([job.template, job.fields, job.look, job.style, job.asset?.id ?? null]);
 
+// Noon on day `i` of the week that starts at `startIso`: clear of any clock change.
+const dayOf = (startIso, i) => new Date(Date.parse(startIso) + i * DAY + 12 * 3_600_000);
+const fmt = (d, tz, o) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, ...o }).format(d).replace('Sept', 'Sep');
+
 /** "21–27 Sep", or "29 Sep – 5 Oct" across a month. */
 function weekDates(startIso, tz) {
     if (!startIso) return 'this week';
-    const f = (d, o) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, ...o }).format(d);
-    const month = (d) => f(d, { month: 'short' }).replace('Sept', 'Sep');
-    // Monday to Sunday: six days on from the start, whatever the clock change does to the end.
-    const a = new Date(startIso);
-    const b = new Date(a.getTime() + 6 * DAY + 12 * 3_600_000);
+    const a = dayOf(startIso, 0);
+    const b = dayOf(startIso, 6);
+    const month = (d) => fmt(d, tz, { month: 'short' });
     return month(a) === month(b)
-        ? `${f(a, { day: 'numeric' })}–${f(b, { day: 'numeric' })} ${month(b)}`
-        : `${f(a, { day: 'numeric' })} ${month(a)} – ${f(b, { day: 'numeric' })} ${month(b)}`;
+        ? `${fmt(a, tz, { day: 'numeric' })}–${fmt(b, tz, { day: 'numeric' })} ${month(b)}`
+        : `${fmt(a, tz, { day: 'numeric' })} ${month(a)} – ${fmt(b, tz, { day: 'numeric' })} ${month(b)}`;
 }
 
 /** 0 = Monday, in the gym's time. */
@@ -68,6 +70,12 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
     const [bigFormat, setBigFormat] = useState('post');
     const [busy, setBusy] = useState(null);            // { fraction } while the ZIP is made
     const [edges, setEdges] = useState({ left: false, right: false });
+    // Mixed, Colour or Film: remembered per gym on this device.
+    const lookKey = `powr_week_look_${gym.partner_id}`;
+    const [look, setLookState] = useState(() => {
+        try { return WEEK_LOOKS.some((l) => l.id === localStorage.getItem(lookKey)) ? localStorage.getItem(lookKey) : 'mixed'; } catch { return 'mixed'; }
+    });
+    const setLook = (id) => { setLookState(id); try { localStorage.setItem(lookKey, id); } catch { /* fine */ } };
     const media = useRef(new Map());                   // loaded pictures, by asset id; shared with the ZIP
     const drawn = useRef(new Map());                   // keyOf(job) → thumbnail, across refreshes
     const abortRef = useRef(null);
@@ -126,16 +134,19 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
     }, [eventPhotoUrl]);
 
     const week = useMemo(() => {
-        if (!where || photo === undefined) return null;
+        if (!where || photo === undefined || !summary.week_start_at) return null;
         const weeks = insights?.weeks ?? [];
+        const start = summary.week_start_at;
         return {
             gym: { partner_id: gym.partner_id, name, address: where.address, lat: where.lat, lng: where.lng },
             photo, eventPhoto,
-            label: weekDates(summary.week_start_at, tz),
-            dayIndex: dayIndexIn(tz),
-            now: { sessions: summary.week?.sessions ?? 0, athletes: summary.week?.athletes ?? 0, newFaces: summary.new_faces ?? 0 },
+            seed: weekSeed(start),
+            label: weekDates(start, tz),
+            lastLabel: weekDates(new Date(Date.parse(start) - 7 * DAY).toISOString(), tz),
+            days: Array.from({ length: 7 }, (_, i) => fmt(dayOf(start, i), tz, { weekday: 'short', day: 'numeric' })),
+            code: fmt(dayOf(start, 0), tz, { year: 'numeric', month: '2-digit', day: '2-digit' }).split('/').reverse().join('') + '0001',
             last: { sessions: summary.last_week?.sessions ?? 0, athletes: summary.last_week?.athletes ?? 0, newFaces: weeks.length >= 2 ? (weeks[weeks.length - 2].new_athletes ?? 0) : 0 },
-            top: (insights?.top ?? []).map((r) => ({ name: shortName(r.display_name || r.username), points: r.points ?? 0 })),
+            board: (insights?.top ?? []).map((r) => ({ name: shortName(r.display_name || r.username), points: r.points ?? 0 })),
             league: standing?.host && standing.local.length >= 2 && standing.rival
                 ? { rank: standing.rank, count: standing.local.length, radiusKm: standing.radius, rival: { name: standing.rival.name }, ahead: standing.ahead, gap: standing.gap }
                 : null,
@@ -144,8 +155,9 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
         };
     }, [where, photo, eventPhoto, insights, gym.partner_id, name, summary, tz, standing, next, place, results]);
 
-    const jobs = useMemo(() => (week ? planWeekKit(week) : []), [week]);
+    const jobs = useMemo(() => (week ? planWeekKit(week, { look }) : []), [week, look]);
     const posts = useMemo(() => postsOf(jobs), [jobs]);
+    const today = dayIndexIn(tz);
     const allowed = useCallback((job) => canDownload || !!job.free, [canDownload]);
 
     // Small renders, one at a time; a post whose words and picture haven't
@@ -180,12 +192,22 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
         window.addEventListener('resize', measure);
         return () => window.removeEventListener('resize', measure);
     }, [measure, posts.length]);
+    // Open on today's post (the one before it just showing, so the row reads as a week).
+    const opened = useRef(false);
+    useEffect(() => {
+        const el = scroller.current;
+        if (opened.current || !el || !posts.length) return;
+        opened.current = true;
+        const card = el.children[today];
+        if (card && today > 0) el.scrollLeft = Math.max(0, card.offsetLeft - el.offsetLeft - card.offsetWidth * 0.5);
+        measure();
+    }, [posts.length, today, measure]);
     const slide = (dir) => scroller.current?.scrollBy({ left: dir * scroller.current.clientWidth * 0.8, behavior: 'smooth' });
 
     const downloadOne = async (job) => {
         try {
             const m = await mediaFor(job.asset, media.current);
-            save(await renderStill(job, m), `${name} - ${job.label} - ${FORMATS[job.format].label}.${job.kind}`);
+            save(await renderStill(job, m), `${name} - ${job.dayLabel} - ${job.label} - ${FORMATS[job.format].label}.${job.kind}`);
         } catch (e) { toast.error(e.message || 'That post couldn’t be made.'); }
     };
     const downloadAll = async () => {
@@ -195,7 +217,7 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
         try {
             const { blob, names } = await buildWeekKit({ week, jobs, signal: ac.signal, mediaCache: media.current, onProgress: (fraction) => setBusy({ fraction }) });
             save(blob, `POWR - ${name} - ${week.label}.zip`);
-            toast.success(`${posts.length} posts, ${names.length} files`);
+            toast.success(`Seven posts, ${names.length} files`);
         } catch (e) {
             if (!ac.signal.aborted) toast.error(e.message || 'The posts couldn’t be made.');
         } finally {
@@ -205,14 +227,14 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
     };
 
     const sub = !week ? 'Making this week’s posts…'
-        : canDownload ? `Made from your week${photo ? ', over your gym’s photo' : ''}. Tap one to see it big; Download all gets every post at three sizes, with the captions.`
-        : `Made from your week. Downloading them comes with ${PACKAGE_LABEL.pro}; the join poster is free.`;
+        : canDownload ? `One for each day, made from your week${photo ? ' over your gym’s photo' : ''}. A new set every Monday. Download all gets the seven at three sizes, with the captions.`
+        : `One for each day, made from your week. A new set every Monday. Downloading them comes with ${PACKAGE_LABEL.pro}; the join poster is free.`;
 
     return (
         <Card className="p-6">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-x-6 gap-y-3 mb-4">
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2.5"><Images size={14} className="text-[#8a7600]" /><Micro>Posts for this week</Micro></div>
+                    <div className="flex items-center gap-2.5"><Images size={14} className="text-[#8a7600]" /><Micro>Posts for this week{week ? ` · ${week.label}` : ''}</Micro></div>
                     <p className="text-[12px] text-[#888] leading-snug mt-1.5">
                         {sub}
                         {week && !photo && (
@@ -220,7 +242,15 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
                         )}
                     </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <div className="inline-flex rounded-full bg-[#F4F4F1] border border-[#E6E6E1] p-0.5 mr-1" role="radiogroup" aria-label="Look">
+                        {WEEK_LOOKS.map((l) => (
+                            <button key={l.id} type="button" role="radio" aria-checked={look === l.id} aria-label={`Look: ${l.label}`} title={l.blurb} onClick={() => setLook(l.id)}
+                                className={`h-8 px-3 rounded-full text-[9px] font-black uppercase tracking-[0.15em] transition-all ${look === l.id ? 'bg-[#1A1A1A] text-white' : 'text-[#888] hover:text-[#1A1A1A]'}`}>
+                                {l.label}
+                            </button>
+                        ))}
+                    </div>
                     <div className={`${edges.left || edges.right ? 'hidden sm:flex' : 'hidden'} items-center gap-1.5 mr-1`}>
                         <button type="button" onClick={() => slide(-1)} disabled={!edges.left} aria-label="Earlier posts"
                             className="w-9 h-9 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#1A1A1A] disabled:opacity-30 hover:border-[#E8D200]/50"><ChevronLeft size={15} /></button>
@@ -253,14 +283,18 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
                     ? Array.from({ length: 5 }, (_, i) => <div key={i} className="shrink-0 w-[150px] sm:w-[168px] aspect-[4/5] rounded-xl bg-[#1A1A1A] animate-pulse" />)
                     : posts.map((job, i) => {
                         const src = thumbs[keyOf(job)];
+                        const isToday = job.day === today;
                         return (
                             <figure key={job.stem} className="shrink-0 w-[150px] sm:w-[168px] m-0 snap-start">
-                                <button type="button" onClick={() => { setBigFormat('post'); setOpen(i); }} aria-label={`See ${job.label} large`}
-                                    className="block w-full aspect-[4/5] rounded-xl overflow-hidden bg-[#111] border-2 border-transparent hover:border-[#E8D200] focus-visible:border-[#E8D200] outline-none transition-colors">
+                                <button type="button" onClick={() => { setBigFormat('post'); setOpen(i); }} aria-label={`See ${job.dayLabel}’s post, ${job.label}, large`}
+                                    className={`block w-full aspect-[4/5] rounded-xl overflow-hidden bg-[#111] border-2 outline-none transition-colors hover:border-[#E8D200] focus-visible:border-[#E8D200] ${isToday ? 'border-[#E8D200]' : 'border-transparent'}`}>
                                     {src ? <img src={src} alt="" data-thumb className="w-full h-full object-cover" /> : src === null ? <div className="w-full h-full flex items-center justify-center text-[10px] text-white/50">Couldn’t draw this one</div> : <div className="w-full h-full animate-pulse bg-[#1A1A1A]" />}
                                 </button>
                                 <figcaption className="mt-2 flex items-center justify-between gap-2">
-                                    <span className="min-w-0 truncate text-[10px] uppercase tracking-[0.15em] font-black text-[#1A1A1A]">{job.label}</span>
+                                    <span className="min-w-0">
+                                        <span className={`block text-[9px] uppercase tracking-[0.2em] font-black ${isToday ? 'text-[#8a7600]' : 'text-[#AAAAAA]'}`}>{job.dayLabel}{isToday ? ' · Today' : ''}</span>
+                                        <span className="block truncate text-[10px] uppercase tracking-[0.15em] font-black text-[#1A1A1A] mt-0.5">{job.label}</span>
+                                    </span>
                                     {allowed(job) ? (
                                         <button type="button" onClick={() => downloadOne(job)} aria-label={`Download ${job.label}`} title="Download the Post size"
                                             className="w-7 h-7 shrink-0 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center hover:border-[#E8D200]/60">
