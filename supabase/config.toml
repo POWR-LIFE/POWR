@@ -627,6 +627,11 @@ verify_jwt = false
 # x-resolve-token shared secret instead (verify_resolve_token RPC).
 verify_jwt = false
 
+[functions.send-partner-setup-reminder]
+# Invoked by pg_cron daily 09:30 UTC (no Supabase user JWT) — gated by the
+# x-resolve-token shared secret instead (verify_resolve_token RPC).
+verify_jwt = false
+
 [functions.send-redemption-receipt]
 # Invoked by the notify_redemption_receipt() DB trigger via pg_net (no Supabase
 # user JWT) — gated by the x-resolve-token shared secret instead.
