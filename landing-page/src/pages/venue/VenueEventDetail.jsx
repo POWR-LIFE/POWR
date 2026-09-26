@@ -601,11 +601,12 @@ export default function VenueEventDetail() {
                         </Card>
                     )}
                     {isDraft && <p className="text-[12px] text-[#AAAAAA]">The TV board, the share page and the join QR appear here once the event is published.</p>}
-                    {k !== 'cancelled' && k !== 'pulled' && (
+                    {/* Home carries the card until the board seals (showsOnHome in the app). */}
+                    {['draft', 'pending', 'rejected', 'scheduled', 'live'].includes(k) && (
                         <Card className="p-6 sm:p-8">
                             <div className="flex items-center gap-3 mb-6"><Smartphone size={15} className="text-[#8a7600]" /><Micro>In the app</Micro></div>
                             <EventAppPreview
-                                event={{ ...ev, status: ev.status === 'live' ? 'live' : 'scheduled', rules: ev.rules ?? [], prizes: ev.prizes ?? [] }}
+                                event={{ ...ev, rules: ev.rules ?? [], prizes: ev.prizes ?? [] }}
                                 venue={{ name: gym.name, logo_url: gym.logo_url ?? null, logo_bg: gym.logo_bg ?? null }}
                                 pageTheme="light"
                             />

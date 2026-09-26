@@ -50,6 +50,9 @@ function affordState(balance, pts) {
 // Exact Ionicons glyphs — same font (@expo/vector-icons Ionicons.ttf) and
 // codepoints the app renders. Font file lives at landing-page/public/Ionicons.ttf.
 export const ION = {
+  // Codepoints from @expo/vector-icons' Ionicons glyph map.
+  'home': '\uf382',
+  'bag-outline': '\uf161',
   'home-outline': '',
   'bar-chart-outline': '',
   'trophy-outline': '',

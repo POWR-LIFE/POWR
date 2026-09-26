@@ -1,0 +1,14 @@
+{
+  "note": "Written by landing-page/scripts/capture-app-home.cjs. The real Home, with the live event card cut out at `card`.",
+  "image": "/app-preview/home-event-backdrop.webp",
+  "width": 390,
+  "height": 760,
+  "status_h": 50,
+  "card": {
+    "x": 10,
+    "y": 332,
+    "w": 370,
+    "h": 220
+  },
+  "captured_at": "2026-09-26"
+}
