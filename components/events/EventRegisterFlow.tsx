@@ -428,7 +428,9 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                             <Ionicons name="open-outline" size={14} color="#0a0a0a" />
                                         </View>
                                     </Pressable>
-                                ) : event.venue?.name ? (
+                                ) : event.venue?.name && event.managed_by !== 'gym' ? (
+                                    // POWR adds the venue's booking link when bookings open; a
+                                    // gym's own event has one only if the gym added it.
                                     <Text style={styles.bookingSoon}>
                                         Your booking link with {event.venue.name} lands here soon.
                                     </Text>

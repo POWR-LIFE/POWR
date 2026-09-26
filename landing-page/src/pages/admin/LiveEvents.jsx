@@ -26,6 +26,7 @@ import {
     BUCKETS as SCORE_BUCKETS, activeBuckets, bucketLabel, excludedSummary, ledgerRowTitle, reasonIsSwitch, reasonLabel,
     rowName, ruleChips, scoringCsv, scoringTotals, searchScoringRows,
 } from '../../../../shared/eventScoring.ts';
+import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -118,6 +119,9 @@ const editableFields = (ev) => ({
     doors_close_at: ev.doors_close_at,
     eligibility_cutoff_at: ev.eligibility_cutoff_at,
     scope: ev.scope,
+    audience_mode: ev.audience_mode ?? 'all',
+    audience_radius_km: ev.audience_radius_km ?? null,
+    audience_recent_days: ev.audience_recent_days ?? 60,
     board_size: ev.board_size,
     included_activities: ev.included_activities,
     count_manual: ev.count_manual,
@@ -175,7 +179,8 @@ export default function LiveEvents() {
     const [bookingsBusy, setBookingsBusy] = useState(false);
     const [rosterBusy, setRosterBusy] = useState(null);  // 'add' | user_id of the roster edit in flight
     const [pulseSends, setPulseSends] = useState([]);    // live_event_pulse_sends, newest first
-    const [pulseBusy, setPulseBusy] = useState(null);    // 'rank' | 'gate' action in flight
+    const [pulseBusy, setPulseBusy] = useState(null);    // 'rank' | 'gate' | notify_* column in flight
+    const [pushStatus, setPushStatus] = useState(null);  // gym_event_push_status: one-off push reach + wording facts
     const [tab, setTab] = useState('active');
     const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
@@ -218,7 +223,7 @@ export default function LiveEvents() {
         // the new fetch is in flight; same-event refreshes keep what's there.
         if (selected.id !== lastOpsEventId.current) {
             lastOpsEventId.current = selected.id;
-            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null); setPulseSends([]);
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setScoring(null); setLedgers({}); setRegistrations(null); setBookings(null); setDoor(null); setPulseSends([]); setPushStatus(null);
         }
         fetchCounts(selected.id);
         fetchOps(selected.id);
@@ -227,6 +232,7 @@ export default function LiveEvents() {
         fetchBookings(selected.id);
         fetchDoor(selected.id);
         fetchPulseSends(selected.id);
+        fetchPushStatus(selected.id);
         if (selected.venue_partner_id) {
             supabase.from('partners').select('name').eq('id', selected.venue_partner_id).single()
                 .then(({ data }) => setVenueName(data?.name ?? null));
@@ -681,6 +687,25 @@ const setCheckin = async (ev, row, present) => {
         setPulseSends(data ?? []);
     };
 
+    // Admins pass gym_event_push_status's role check on any event.
+    const fetchPushStatus = async (eventId) => {
+        const { data } = await supabase.rpc('gym_event_push_status', { p_event_id: eventId });
+        setPushStatus(data ? { ...data, event_id: eventId } : null);
+    };
+
+    // One-off pushes (announcement / day one / finale night): fixed wording
+    // in supabase/functions/_shared/eventPushCopy.ts, switched per event.
+    // Instant writes like the pulse times; the dispatcher sends each once.
+    const setTemplatePush = async (ev, col, on) => {
+        setPulseBusy(col);
+        const { error } = await supabase.from('live_events').update({ [col]: on }).eq('id', ev.id);
+        setPulseBusy(null);
+        if (error) { toast.error(error.message); return; }
+        await logAction(user.id, 'live_event_template_push', 'live_event', ev.id, { [col]: on });
+        toast.success(`${TEMPLATE_PUSHES.find(t => t.col === col)?.title ?? 'Push'} ${on ? 'on' : 'off'}`);
+        fetchEvents();
+    };
+
     const setPulseTime = async (ev, kind, value) => {   // value 'HH:MM' | null
         const col = kind === 'rank' ? 'notify_rank_at' : 'notify_gate_at';
         setPulseBusy(kind);
@@ -763,6 +788,16 @@ const setCheckin = async (ev, row, present) => {
         if (counts.results === 0) { toast.error('Press Settle first — there are no saved results to reveal yet'); return; }
         if (!window.confirm(`Reveal to everyone? The app winners card and the venue screen flip the moment you confirm. ${counts.results} frozen results will show.`)) return;
         await setStatus(ev, 'revealed', { revealed_at: new Date().toISOString() });
+    };
+
+    // Gym-run events: POWR can take one down at any point. The gym sees the reason.
+    const pullEvent = async (ev) => {
+        const reason = window.prompt(`Pull ${ev.name}? It disappears from the app, and the gym sees your reason in its portal.`);
+        if (!reason) return;
+        const { error } = await supabase.rpc('admin_pull_event', { p_event_id: ev.id, p_reason: reason });
+        if (error) { toast.error(error.message); return; }
+        toast.success('Event pulled');
+        fetchEvents();
     };
 
     const regenerateToken = async (ev) => {
@@ -879,6 +914,11 @@ const setCheckin = async (ev, row, present) => {
                                                 <EyeOff size={11} /> Hidden
                                             </span>
                                         )}
+                                        {ev.managed_by === 'gym' && (
+                                            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-[#8B5CF6]">
+                                                Gym-run{ev.review_status === 'pending' ? ' · waiting for review' : ev.review_status === 'pulled' ? ' · pulled' : ''}
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="text-[12px] text-[#888888] mt-0.5">
                                         Scoring {fmtDT(ev.window_start_at)} → {fmtDT(ev.window_end_at)} · {ev.scope === 'opt_in' ? 'Opt-in' : 'Global'}
@@ -910,6 +950,7 @@ const setCheckin = async (ev, row, present) => {
                         onReveal={() => revealEvent(selected)}
                         onMarkSettled={() => setStatus(selected, 'settled', {}, 'Wrap up? The event moves to its final settled state.')}
                         onArchive={() => setStatus(selected, 'archived', {}, 'Archive this event? It disappears from the app entirely.')}
+                        onPull={() => pullEvent(selected)}
                         onCopyUrl={() => copyDisplayUrl(selected)}
                         onCopyPromoUrl={() => copyPromoUrl(selected)}
                         onRegenToken={() => regenerateToken(selected)}
@@ -923,8 +964,10 @@ const setCheckin = async (ev, row, present) => {
                         ev={selected}
                         sends={pulseSends}
                         busy={pulseBusy}
+                        pushStatus={pushStatus?.event_id === selected.id ? pushStatus : null}
                         onSetTime={(kind, value) => setPulseTime(selected, kind, value)}
                         onSendNow={(kind) => sendPulseNow(selected, kind)}
+                        onSetTemplatePush={(col, on) => setTemplatePush(selected, col, on)}
                     />
 
                     <RegistrationsPanel
@@ -1074,7 +1117,45 @@ function PulseRow({ title, desc, kind, value, lastSend, busy, onSetTime, onSendN
     );
 }
 
-function PulsePanel({ ev, sends, busy, onSetTime, onSendNow }) {
+const TEMPLATE_PUSHES = [
+    { col: 'notify_announce', kind: 'announce', type: 'event_announced',  title: 'Announcement', when: 'Once, 10am–8pm UK, at least 30 minutes after publishing.' },
+    { col: 'notify_kickoff',  kind: 'kickoff',  type: 'event_kickoff',    title: 'Day one',      when: 'Once, the morning scoring starts.' },
+    { col: 'notify_doors',    kind: 'doors',    type: 'event_doors_open', title: 'Finale night', when: 'Once, the morning of the night.' },
+];
+
+function TemplatePushRow({ t, on, reach, payload, lastSend, busy, onToggle, blocked }) {
+    const copy = payload ? eventPushCopy(t.type, payload) : null;
+    return (
+        <div className="flex items-start gap-4 py-4 first:pt-0 last:pb-0">
+            <button
+                type="button" role="switch" aria-checked={on} aria-label={t.title}
+                onClick={() => onToggle(t.col, !on)}
+                disabled={!!busy || !!blocked}
+                className={`shrink-0 h-9 w-16 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all disabled:opacity-40 ${on
+                    ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white'
+                    : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:border-[#D8D8D2]'}`}
+            >
+                {busy === t.col ? <LoaderCircle size={13} className="animate-spin mx-auto" /> : on ? 'On' : 'Off'}
+            </button>
+            <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-[#1A1A1A]">{t.title}</p>
+                <p className="text-[12px] text-[#888888] leading-relaxed mt-0.5">{blocked ?? `${reach} ${t.when}`}</p>
+                {copy && !blocked && (
+                    <p className="text-[12px] text-[#555555] leading-relaxed mt-1.5 bg-[#FAFAF8] border border-[#F0F0EC] rounded-xl px-3 py-2">
+                        <span className="font-bold text-[#1A1A1A]">{copy.title}</span> — {copy.body}
+                    </p>
+                )}
+                {lastSend && (
+                    <p className="text-[11px] text-[#999999] mt-1.5">
+                        Sent {fmtDT(lastSend.created_at)} · {lastSend.recipients} recipient{lastSend.recipients === 1 ? '' : 's'}
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function PulsePanel({ ev, sends, busy, pushStatus, onSetTime, onSendNow, onSetTemplatePush }) {
     const last = (kind) => (sends ?? []).find(s => s.kind === kind) ?? null;
     const rankInactive =
         ev.status !== 'live' ? 'Only sends while the event is live — nothing goes out right now.'
@@ -1134,6 +1215,32 @@ function PulsePanel({ ev, sends, busy, onSetTime, onSendNow }) {
                         </p>
                     </div>
                 )}
+                <div className="pt-5">
+                    <p className="text-[13px] font-bold text-[#1A1A1A]">One-off pushes</p>
+                    <p className="text-[12px] text-[#888888] leading-relaxed mt-0.5 mb-4">
+                        Fixed POWR wording (shown as it will read), each sent at most once. Gyms switch these on their own events from the portal.
+                    </p>
+                    {TEMPLATE_PUSHES.filter(t => t.kind !== 'doors' || ev.doors_open_at).map(t => {
+                        const a = pushStatus?.audience;
+                        const r = pushStatus?.registrants;
+                        const reach = !pushStatus ? ''
+                            : t.kind === 'announce'
+                                ? `${a.people} venue member${a.people === 1 ? '' : 's'} and recent visitors who haven't joined (${a.reachable} reachable).`
+                                : `${r.people} registrant${r.people === 1 ? '' : 's'} so far (${r.reachable} reachable).`;
+                        return (
+                            <TemplatePushRow
+                                key={t.col} t={t}
+                                on={!!ev[t.col]}
+                                reach={reach}
+                                payload={pushStatus?.payload}
+                                lastSend={(sends ?? []).find(s => s.kind === t.kind) ?? null}
+                                busy={busy}
+                                onToggle={onSetTemplatePush}
+                                blocked={t.kind === 'announce' && !ev.venue_partner_id ? 'Needs a venue — the announcement goes to its members and recent visitors.' : null}
+                            />
+                        );
+                    })}
+                </div>
             </div>
         </section>
     );
@@ -2320,10 +2427,11 @@ function PreviewBlock({ ev, acting, onSetPreview, onSetBoardState }) {
 function LifecyclePanel({
     ev, counts, acting,
     onSchedule, onUnschedule, onGoLive, onLock, onToggleHidden,
-    onSettle, onReveal, onMarkSettled, onArchive,
+    onSettle, onReveal, onMarkSettled, onArchive, onPull,
     onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate, onSetPreview, onSetBoardState,
     onSetAutoLifecycle,
 }) {
+    const gymRun = ev.managed_by === 'gym';
     const meta = STATUS_META[ev.status];
     const pastLock = ev.lock_at && new Date(ev.lock_at) <= new Date();
     // What the clock will do next, if anything. Only the two automatic
@@ -2365,6 +2473,12 @@ function LifecyclePanel({
                         {counts.participants} participant{counts.participants === 1 ? '' : 's'} · {counts.results} saved final place{counts.results === 1 ? '' : 's'}
                         {pastLock && ev.status === 'live' ? ' · past the leaderboard hide time (the board is already hidden in the app)' : ''}
                     </p>
+                    {gymRun && (
+                        <p className="text-[12px] text-[#8B5CF6] leading-snug mt-1">
+                            Run by the gym from its portal ({ev.template_key}). It settles and reveals itself; the gym can reveal it early.
+                            Points and scoring stay inside the template, so edits that change them are refused. Pull it if it has to come down.
+                        </p>
+                    )}
                 </div>
                 <div className="flex-1 h-[1.5px] rounded-full" style={{ background: `linear-gradient(90deg, ${meta.color}40, transparent)` }} />
             </div>
@@ -2410,10 +2524,12 @@ function LifecyclePanel({
                                 tone={ev.hidden ? 'neutral' : 'danger'}
                                 onClick={onToggleHidden}
                             />
-                            <Btn icon={Archive} label="Archive" onClick={onArchive} />
+                            {gymRun
+                                ? <Btn icon={Archive} label="Pull" tone="danger" onClick={onPull} />
+                                : <Btn icon={Archive} label="Archive" onClick={onArchive} />}
                         </>
                     )}
-                    <Btn icon={Copy} label="Duplicate" onClick={onDuplicate} />
+                    {!gymRun && <Btn icon={Copy} label="Duplicate" onClick={onDuplicate} />}
                 </div>
 
                 {/* Automatic lifecycle — the clock keeps the published dates;
@@ -3368,6 +3484,10 @@ const activitiesSummary = (list) => (list == null ? 'All types' : `${list.length
 // Status + rail summary for each step, from the form alone. "warn" is
 // reserved for things that quietly cost the app a row or a screen
 // (no event night, no prizes) — not for anything merely optional.
+const audienceSummary = (form) => form.audience_mode === 'venue'
+    ? `venue's people${form.audience_radius_km ? ` + ${form.audience_radius_km} km` : ''}`
+    : 'shown to everyone';
+
 const stepState = (form) => ({
     basics: form.name?.trim() && form.slug?.trim()
         ? { status: 'done', summary: `${form.name} · ${form.slug}` }
@@ -3379,7 +3499,7 @@ const stepState = (form) => ({
             : { status: 'done', summary: `${fmtDay(form.window_start_at)} → ${fmtLastDay(form.window_end_at)} · night ${fmtDay(form.doors_open_at)}` },
     who: {
         status: 'done',
-        summary: `${form.scope === 'opt_in' ? 'Opt-in' : 'Everyone'} · top ${form.board_size} · entry closes ${fmtDay(form.eligibility_cutoff_at ?? form.window_start_at)}`,
+        summary: `${form.scope === 'opt_in' ? 'Opt-in' : 'Everyone'} · ${audienceSummary(form)} · top ${form.board_size} · entry closes ${fmtDay(form.eligibility_cutoff_at ?? form.window_start_at)}`,
     },
     scoring: {
         status: 'done',
@@ -3442,7 +3562,11 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                             <VenuePicker
                                 venueId={form.venue_partner_id}
                                 venueName={venueName}
-                                onPick={(id, name) => { set({ venue_partner_id: id }); setVenueName(name); }}
+                                onPick={(id, name) => {
+                                    // A venue audience can't outlive its venue (DB check).
+                                    set(id ? { venue_partner_id: id } : { venue_partner_id: null, audience_mode: 'all', audience_radius_km: null });
+                                    setVenueName(name);
+                                }}
                             />
                         </Field>
                     </>
@@ -3541,6 +3665,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                 ['register', 'Joining opens the join sheet (dates, prizes, rules) and lands people on the League tab.'],
                 ['league', 'The leaderboard lists the top places up to Leaderboard size; the same number of final places are saved when you press Settle.'],
                 ['ticket', 'After the eligibility cutoff, joining stops — the ticket and invite progress of people already in stay where they are.'],
+                ['home', 'Venue’s people: only the venue’s members, recent visitors and (with Nearby on) people close by get the card. Anyone can still open it from its QR code or an invite link, and it stays for everyone who joins.'],
             ],
             sections: [
                 { fields: (
@@ -3548,7 +3673,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Who takes part" hint="Opt-in: people must join the event in the app to appear on the leaderboard. Global: every POWR member is on the leaderboard automatically.">
                             <div className="flex gap-2">
                                 {['opt_in', 'global'].map(s => (
-                                    <Chip key={s} active={form.scope === s} onClick={() => set({ scope: s })}>
+                                    <Chip key={s} active={form.scope === s} onClick={() => set(s === 'global' ? { scope: s, audience_mode: 'all', audience_radius_km: null } : { scope: s })}>
                                         {s === 'opt_in' ? 'Opt-in (must join)' : 'Global (everyone)'}
                                     </Chip>
                                 ))}
@@ -3565,6 +3690,50 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Leaderboard size" hint="How many people are shown on the leaderboard in the app, and how many final places are saved when the event is settled.">
                             <NumberInput value={form.board_size} onChange={v => set({ board_size: v })} min={3} max={500} />
                         </Field>
+                    </>
+                ) },
+                { title: 'Who sees it', blurb: 'Several events can run at once. A venue event only shows in the app for that venue’s people, so a gym’s challenge doesn’t fill everyone else’s home screen.', fields: (
+                    <>
+                        <Field label="Shown to" hint="Everyone: every member sees the event. Venue’s people: members who picked the venue as their gym and anyone who trained there recently. Needs a venue partner (Basics) and Opt-in.">
+                            <div className="flex flex-wrap gap-2">
+                                <Chip active={form.audience_mode !== 'venue'} onClick={() => set({ audience_mode: 'all', audience_radius_km: null })}>
+                                    Everyone
+                                </Chip>
+                                <Chip
+                                    active={form.audience_mode === 'venue'}
+                                    onClick={() => { if (form.venue_partner_id && form.scope === 'opt_in') set({ audience_mode: 'venue' }); }}
+                                >
+                                    Venue’s people
+                                </Chip>
+                            </div>
+                            {!(form.venue_partner_id && form.scope === 'opt_in') && (
+                                <p className="text-[11px] text-[#999999] leading-relaxed mt-2 max-w-md">
+                                    {!form.venue_partner_id ? 'Pick a venue partner under Basics first.' : 'Switch Who takes part to Opt-in first — a global board is every member.'}
+                                </p>
+                            )}
+                        </Field>
+                        {form.audience_mode === 'venue' && (
+                            <>
+                                <Field label="Recent visitors" hint="Anyone with a session at the venue within this many days sees the event.">
+                                    <div className="flex flex-wrap gap-2">
+                                        {[30, 60, 90].map(d => (
+                                            <Chip key={d} active={form.audience_recent_days === d} onClick={() => set({ audience_recent_days: d })}>
+                                                {d} days
+                                            </Chip>
+                                        ))}
+                                    </div>
+                                </Field>
+                                <Field label="Nearby" hint="Also show it to people within this distance of the venue: where their phone was last, or where they usually train. Gyms close together share people: at 2 km a Stars Gym event reaches ONE LDN’s members.">
+                                    <div className="flex flex-wrap gap-2">
+                                        {[null, 1, 2, 5, 10].map(km => (
+                                            <Chip key={km ?? 'off'} active={(form.audience_radius_km ?? null) === km} onClick={() => set({ audience_radius_km: km })}>
+                                                {km ? `${km} km` : 'Off'}
+                                            </Chip>
+                                        ))}
+                                    </div>
+                                </Field>
+                            </>
+                        )}
                     </>
                 ) },
             ],

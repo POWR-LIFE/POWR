@@ -9,7 +9,16 @@ import { TINTS } from './grade';
 import { loadMedia } from './media';
 import { loadAsset } from './assets';
 import { exportVideo, EXPORT_FPS, MAX_CLIP_SECONDS } from './video';
-import { listEvents, listRewards, eventStandings, fetchImage } from './data';
+import { adminStudioData } from './data';
+
+// The data fills: what each is called, and the data-source call that lists
+// it. A kind shows only when the template takes it AND the source has it
+// (the gym portal's source has events and the gym board, no rewards).
+const FILL = {
+    event:  { list: 'listEvents',  title: 'Fill from an event',       pick: 'Pick an event…', what: 'name, date, venue, the join QR and the standings' },
+    reward: { list: 'listRewards', title: 'Fill from a reward',       pick: 'Pick a reward…', what: 'the offer, points, logo and brand colour' },
+    board:  { list: 'listBoards',  title: 'Fill from your gym board', pick: 'Pick a week…',   what: 'the top five, as your gym’s screen shows them' },
+};
 
 /**
  * The Studio editor: pick a template, drop in a photo, change the words.
@@ -72,15 +81,39 @@ function downloadBlob(blob, name) {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-export default function StudioEditor({ intro = null }) {
+// The templates' starting words use ONE LDN, London as their sample venue.
+// In a gym's portal the gym sees its own name (and town) there instead.
+function forVenue(value, venue) {
+    if (!venue?.name || typeof value !== 'string') return value;
+    const v = value.replaceAll('ONE LDN', venue.name);
+    if (venue.city) return v.replaceAll('London', venue.city);
+    return v.replaceAll(',\nLondon', '').replaceAll(', London', '').replaceAll('\nLondon', '').replaceAll('London', '');
+}
+
+/**
+ * data        where fills come from (admin by default; gymData.js for a gym)
+ * categories  which template groups to offer (the gym portal leaves out Partners)
+ * stickyClass the preview's sticky offset under the host layout's header
+ * canvasInset extra px the host layout takes from the preview's height
+ * start       open on a template, filled from one item: { templateId, fill: { kind, id } }
+ * venue       { name, city }: the host gym, swapped into the sample venue
+ * showRefs    show each template's "After …" reference (admin only: they name other brands)
+ */
+export default function StudioEditor({
+    intro = null, data = adminStudioData, categories = CATEGORIES,
+    stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, showRefs = true,
+}) {
+    const startingFields = (t) => Object.fromEntries(Object.entries(fieldDefaults(t)).map(([k, v]) => [k, forVenue(v, venue)]));
+    const available = useMemo(() => TEMPLATES.filter((t) => categories.includes(t.category)), [categories]);
+    const cats = useMemo(() => CATEGORIES.filter((c) => available.some((t) => t.category === c)), [available]);
     const [ready, setReady] = useState(false);
     const [error, setError] = useState(null);
-    const [templateId, setTemplateId] = useState(TEMPLATES[0].id);
+    const [templateId, setTemplateId] = useState(() => start?.templateId ?? available[0].id);
     const [format, setFormat] = useState('post');
     const [media, setMedia] = useState(null);
     const [focal, setFocal] = useState({ x: 0.5, y: 0.42 });
     const [zoom, setZoom] = useState(1);
-    const [fields, setFields] = useState(() => Object.fromEntries(TEMPLATES.map((t) => [t.id, fieldDefaults(t)])));
+    const [fields, setFields] = useState(() => Object.fromEntries(TEMPLATES.map((t) => [t.id, startingFields(t)])));
     const [looks, setLooks] = useState({});
     const [assets, setAssets] = useState({}); // { [templateId]: { [fieldKey]: { image, name, preview } } }
     const [style, setStyle] = useState({ colourway: 'powr', headlineFont: '' });
@@ -274,7 +307,7 @@ export default function StudioEditor({ intro = null }) {
         let raf = 0;
         let i = 0;
         const next = () => {
-            const tpl = TEMPLATES[i++];
+            const tpl = available[i++];
             if (!tpl) return;
             const c = thumbRefs.current[tpl.id];
             if (c) {
@@ -287,7 +320,7 @@ export default function StudioEditor({ intro = null }) {
         };
         const t = setTimeout(() => { raf = requestAnimationFrame(next); }, 450);
         return () => { clearTimeout(t); cancelAnimationFrame(raf); };
-    }, [ready, media, focal, zoom, style, fields, looks, assets, frameKey]);
+    }, [ready, available, media, focal, zoom, style, fields, looks, assets, frameKey]);
 
     const takeFile = useCallback(async (file) => {
         if (!file) return;
@@ -619,16 +652,26 @@ export default function StudioEditor({ intro = null }) {
     };
 
     // ── Fill from data ─────────────────────────────────────────────────
-    const fillKinds = Object.keys(template.fill ?? {});
+    const fillKinds = Object.keys(template.fill ?? {}).filter((k) => FILL[k] && typeof data[FILL[k].list] === 'function');
     useEffect(() => {
         for (const kind of fillKinds) {
             if (dataLists[kind] !== undefined) continue;
             setDataLists((d) => ({ ...d, [kind]: 'loading' }));
-            (kind === 'event' ? listEvents() : listRewards())
+            data[FILL[kind].list]()
                 .then((list) => setDataLists((d) => ({ ...d, [kind]: list })))
                 .catch((e) => setDataLists((d) => ({ ...d, [kind]: { error: e.message } })));
         }
     }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Opened from an event page: fill from that event once its list is in.
+    const startApplied = useRef(false);
+    useEffect(() => {
+        const want = start?.fill;
+        const list = want ? dataLists[want.kind] : null;
+        if (!want || startApplied.current || !Array.isArray(list)) return;
+        startApplied.current = true;
+        if (list.some((x) => x.id === want.id)) fillFrom(want.kind, want.id);
+    }, [dataLists]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Picking an event (or reward) fills every template that takes one, on
     // this slide — so switching template shows the same event throughout.
@@ -640,14 +683,17 @@ export default function StudioEditor({ intro = null }) {
         const notes = [];
         try {
             let facts = item;
-            if (kind === 'event' && item.board !== 'none') {
+            // A gym can see its own sealed board, but a post must not beat the reveal.
+            const sealedHeld = kind === 'event' && item.board === 'sealed' && !data.sealedStandings;
+            if (kind === 'event' && item.board !== 'none' && !sealedHeld) {
                 try {
-                    facts = { ...item, standings: await eventStandings(item.id) };
+                    facts = { ...item, standings: await data.eventStandings(item.id) };
                 } catch (e) {
                     notes.push({ warn: true, text: e.message });
                 }
             }
-            const filled = TEMPLATES.filter((t) => t.fill?.[kind]);
+            const noRows = kind === 'event' && !facts.standings?.length;
+            const filled = available.filter((t) => t.fill?.[kind] && !(noRows && t.needsStandings && data.fillOnlyWithStandings));
             setFields((f) => {
                 const next = { ...f };
                 for (const t of filled) next[t.id] = { ...f[t.id], ...t.fill[kind](facts) };
@@ -655,17 +701,24 @@ export default function StudioEditor({ intro = null }) {
             });
             if (kind === 'event') {
                 const n = facts.standings?.length ?? 0;
-                if (item.board === 'none') notes.push({ text: 'No standings yet — Results keeps its own rows until the board opens.' });
+                const held = data.fillOnlyWithStandings ? ', so Results isn’t filled yet' : ' — Results keeps its own rows until the board opens';
+                if (item.board === 'none') notes.push({ text: `No standings yet${held}.` });
+                else if (sealedHeld) notes.push({ text: 'The board is sealed until the winners are revealed. Results fills in after the reveal.' });
                 else if (item.board === 'sealed') notes.push({ warn: true, text: `The board is sealed until the reveal — hold a Results post until then. (Top ${n} filled in.)` });
                 else if (n) notes.push({ text: `${item.board === 'live' ? 'Live' : 'Final'} top ${n} filled into Results, as of ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.` });
                 if (item.hidden) notes.push({ warn: true, text: 'This event is hidden in the app — its QR leads to a page people can’t see yet.' });
                 if (item.status === 'draft') notes.push({ warn: true, text: 'Still a draft — the dates and venue may change.' });
+            } else if (kind === 'board') {
+                const n = item.standings?.length ?? 0;
+                notes.push(n
+                    ? { text: `Top ${n} filled into Results, as of ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.` }
+                    : { text: 'Nobody’s earned at the gym yet this week — Results keeps its own rows.' });
             } else {
                 if (item.accent) setStyle((st) => ({ ...st, accent: item.accent }));
                 if (!item.active) notes.push({ warn: true, text: 'This reward is switched off — it isn’t in the app right now.' });
                 if (item.logoUrl) {
                     try {
-                        const a = await assetWithPreview(await fetchImage(item.logoUrl, `${item.brand} logo`));
+                        const a = await assetWithPreview(await data.fetchImage(item.logoUrl, `${item.brand} logo`));
                         setAssets((prev) => {
                             const next = { ...prev };
                             for (const t of filled) {
@@ -678,7 +731,7 @@ export default function StudioEditor({ intro = null }) {
                     }
                 }
             }
-            setFillNote({ kind, filled: filled.map((t) => t.name), name: kind === 'event' ? item.name : item.label.split(' · ')[0], notes });
+            setFillNote({ kind, filled: filled.map((t) => t.name), name: kind === 'reward' ? item.label.split(' · ')[0] : item.name, notes });
         } finally {
             setFilling(false);
         }
@@ -691,7 +744,8 @@ export default function StudioEditor({ intro = null }) {
 
     // A starting point swaps in a template's words (and, for partners, their colour).
     const applyPreset = (p) => {
-        setFields((f) => ({ ...f, [templateId]: { ...f[templateId], ...p.fields } }));
+        const words = Object.fromEntries(Object.entries(p.fields ?? {}).map(([k, v]) => [k, forVenue(v, venue)]));
+        setFields((f) => ({ ...f, [templateId]: { ...f[templateId], ...words } }));
         if (p.look) setLooks((l) => ({ ...l, [templateId]: { ...(l[templateId] ?? {}), ...p.look } }));
         if (p.style) setStyle((st) => ({ ...st, ...p.style }));
     };
@@ -699,7 +753,7 @@ export default function StudioEditor({ intro = null }) {
     const setField = (key, value) => setFields((f) => ({ ...f, [templateId]: { ...f[templateId], [key]: value } }));
     const setLook = (key, value) => setLooks((l) => ({ ...l, [templateId]: { ...(l[templateId] ?? {}), [key]: value } }));
     const resetTemplate = () => {
-        setFields((f) => ({ ...f, [templateId]: fieldDefaults(template) }));
+        setFields((f) => ({ ...f, [templateId]: startingFields(template) }));
         setLooks((l) => ({ ...l, [templateId]: {} }));
     };
 
@@ -755,16 +809,20 @@ export default function StudioEditor({ intro = null }) {
 
     return (
         <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)] items-start">
+            {/* On a phone the post comes first and the controls follow, so a
+                template or a photo shows what it did without a scroll back up;
+                the intro stays on top. On a laptop it is controls | preview. */}
+            {intro && <div className="lg:hidden">{intro}</div>}
             {/* ── Controls ─────────────────────────────────────────────── */}
-            <div className="space-y-4 min-w-0">
-                {intro}
+            <div className="space-y-4 min-w-0 order-3 lg:order-none">
+                {intro && <div className="hidden lg:block">{intro}</div>}
                 <div className={CARD}>
                     <span className={LABEL}>Template</span>
-                    {CATEGORIES.map((cat) => (
+                    {cats.map((cat) => (
                     <div key={cat} className="mb-3 last:mb-0">
                     <div className="mb-1.5 text-[11px] font-medium text-[#999]">{cat}</div>
                     <div className="grid grid-cols-3 gap-2.5">
-                        {TEMPLATES.filter((t) => t.category === cat).map((t) => (
+                        {available.filter((t) => t.category === cat).map((t) => (
                             <button
                                 key={t.id}
                                 type="button"
@@ -778,7 +836,7 @@ export default function StudioEditor({ intro = null }) {
                                 />
                                 <div className="px-1 pt-1.5 pb-0.5">
                                     <div className="text-[13px] font-semibold text-[#111]">{t.name}</div>
-                                    <div className="text-[11px] leading-tight text-[#888]">After {t.refs}</div>
+                                    {showRefs && <div className="text-[11px] leading-tight text-[#888]">After {t.refs}</div>}
                                 </div>
                             </button>
                         ))}
@@ -885,17 +943,17 @@ export default function StudioEditor({ intro = null }) {
                     const items = Array.isArray(list) ? list : [];
                     const item = items.find((x) => x.id === picks[kind]);
                     const note = fillNote?.kind === kind ? fillNote : null;
-                    const users = TEMPLATES.filter((t) => t.fill?.[kind]).map((t) => t.name);
+                    const users = available.filter((t) => t.fill?.[kind]).map((t) => t.name);
                     return (
                         <div key={kind} className={CARD}>
-                            <span className={LABEL}>{kind === 'event' ? 'Fill from an event' : 'Fill from a reward'}</span>
+                            <span className={LABEL}>{FILL[kind].title}</span>
                             <div className="flex items-center gap-2">
                                 <select value={picks[kind] ?? ''} disabled={!Array.isArray(list) || filling}
                                     onChange={(e) => fillFrom(kind, e.target.value)} className={INPUT}>
                                     <option value="">
                                         {list === 'loading' || list === undefined ? 'Loading…'
                                             : list?.error ? 'Couldn’t load — see below'
-                                            : items.length ? (kind === 'event' ? 'Pick an event…' : 'Pick a reward…') : 'None yet'}
+                                            : items.length ? FILL[kind].pick : 'None yet'}
                                     </option>
                                     {items.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
                                 </select>
@@ -919,7 +977,7 @@ export default function StudioEditor({ intro = null }) {
                                 </div>
                             ) : (
                                 <p className="mt-2 text-[11px] text-[#999]">
-                                    Fills {users.join(', ').replace(/, ([^,]*)$/, ' and $1')} in one go — {kind === 'event' ? 'name, date, venue, the join QR and the standings' : 'the offer, points, logo and brand colour'}.
+                                    Fills {users.join(', ').replace(/, ([^,]*)$/, ' and $1')} in one go — {FILL[kind].what}.
                                 </p>
                             )}
                             {kind === 'reward' && item?.heroUrl && (
@@ -1075,7 +1133,7 @@ export default function StudioEditor({ intro = null }) {
                 below keeps the whole panel on screen, including at the very
                 bottom of the page, where the layout's bottom spacer would
                 otherwise push a taller panel up under the header. */}
-            <div className="lg:sticky lg:top-20 min-w-0">
+            <div className={`lg:sticky ${stickyClass} min-w-0 order-2 lg:order-none`}>
                 <div className="rounded-2xl bg-[#141413] p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div className="inline-flex rounded-xl bg-white/5 p-1">
@@ -1172,7 +1230,7 @@ export default function StudioEditor({ intro = null }) {
                             // As tall as the panel allows, but never wider than it — so a
                             // 4:1 cover fits the width and a 9:16 story fits the height.
                             // The carousel strip takes another ~84 px.
-                            width: `min(100%, calc(clamp(${isVideo ? 300 : 320}px, calc(100vh - ${(isVideo ? 370 : 325) + (carousel ? 84 : 0)}px), 900px) * ${F.w / F.h}))`,
+                            width: `min(100%, calc(clamp(${isVideo ? 300 : 320}px, calc(100vh - ${(isVideo ? 370 : 325) + (carousel ? 84 : 0) + canvasInset}px), 900px) * ${F.w / F.h}))`,
                         }}
                         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                         onDragLeave={() => setDragOver(false)}

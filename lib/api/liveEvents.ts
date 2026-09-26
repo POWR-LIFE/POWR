@@ -1,11 +1,12 @@
-import { designJoin } from '@/lib/dev/multiEventDesign';
 import { supabase } from '@/lib/supabase';
 
 /**
  * Live events (points weeks) — see context/LIVE_EVENTS_PLAN.md.
  *
- * The app never hardcodes an event: get_active_live_event() returns the one
- * current event (or null), fully configured server-side. Scores only ever
+ * The app never hardcodes an event: get_active_live_events() returns every
+ * event the viewer can see right now (several can run at once, and a venue
+ * event only reaches that venue's people), each fully configured
+ * server-side. Scores only ever
  * arrive through get_event_leaderboard, which enforces the locked-board blur
  * on the server — when `is_locked` is true there is nothing score-shaped in
  * the payload, by design. Don't try to fill the gap client-side.
@@ -86,6 +87,14 @@ export type LiveEvent = {
     logo_only: boolean;
     status: 'scheduled' | 'live' | 'locked' | 'revealed' | 'settled';
     scope: 'global' | 'opt_in';
+    /** 'venue' = shown only to the venue's members, recent visitors and people
+     *  nearby (plus anyone who opens it by link). Absent on pre-20260924
+     *  payloads, which were all everyone-events. */
+    audience_mode?: 'all' | 'venue';
+    /** Who runs it: POWR (the admin editor), or the venue itself from its gym
+     *  portal. A gym's event has a booking link only if the gym adds one, so
+     *  nothing promises one is coming. Absent on pre-20260925 payloads. */
+    managed_by?: 'powr' | 'gym';
     window_start_at: string;
     window_end_at: string;
     lock_at: string | null;
@@ -117,7 +126,8 @@ export type LiveEvent = {
     rules?: string[];
     /** The venue's external booking page (third-party system). Null/absent
      *  hides every booking surface; the admin sets it when bookings open. May
-     *  contain {email}/{name} placeholders — see lib/eventBookingLink.ts. */
+     *  contain {email}/{name} placeholders — see lib/eventBookingLink.ts (a
+     *  gym's own link never carries {email}: the server refuses it). */
     booking_url?: string | null;
     venue: LiveEventVenue | null;
     /** True when this is a draft served only to the admin-listed preview
@@ -237,10 +247,30 @@ export async function fetchEventLeaderboard(
     return (data as EventLeaderboard | null) ?? null;
 }
 
+/** The first of the viewer's events (the server's single pick). */
 export async function fetchActiveLiveEvent(): Promise<LiveEvent | null> {
     const { data, error } = await supabase.rpc('get_active_live_event');
     if (error) return null;
     return (data as LiveEvent | null) ?? null;
+}
+
+/** Every event the viewer can see, in the server's order: ones they're in,
+ *  then live, upcoming, finished. `near` (rounded last known position) only
+ *  lets a venue event with a radius reach someone nearby — the server uses it
+ *  in the query and never stores it. A server without the list RPC gets the
+ *  single pick instead. */
+export async function fetchActiveLiveEvents(
+    near?: { lat: number; lng: number } | null,
+): Promise<LiveEvent[]> {
+    const { data, error } = await supabase.rpc('get_active_live_events', {
+        p_lat: near?.lat ?? null,
+        p_lng: near?.lng ?? null,
+    });
+    if (error) {
+        const single = await fetchActiveLiveEvent();
+        return single ? [single] : [];
+    }
+    return Array.isArray(data) ? (data as LiveEvent[]) : [];
 }
 
 /** A specific event by slug (promo-page QR deep link). Draft/archived → null. */
@@ -250,9 +280,14 @@ export async function fetchLiveEventBySlug(slug: string): Promise<LiveEvent | nu
     return (data as LiveEvent | null) ?? null;
 }
 
-export async function fetchInviteProgress(): Promise<InviteProgress | null> {
-    const { data, error } = await supabase.rpc('get_my_invite_progress');
-    if (error) return null;
+/** Invite progress toward `eventId` (the event on screen). Without one the
+ *  server picks the viewer's own event. A server that predates p_event_id
+ *  rejects the argument, so that retries without it. */
+export async function fetchInviteProgress(eventId?: string | null): Promise<InviteProgress | null> {
+    const { data, error } = eventId
+        ? await supabase.rpc('get_my_invite_progress', { p_event_id: eventId })
+        : await supabase.rpc('get_my_invite_progress');
+    if (error) return eventId ? fetchInviteProgress(null) : null;
     return (data as InviteProgress | null) ?? null;
 }
 
@@ -270,9 +305,6 @@ export async function resetLiveEventPreview(eventId: string): Promise<LiveEventV
  *  humans ("Your account was created after the eligibility cutoff") and the
  *  register flow surfaces them verbatim instead of a generic shrug. */
 export async function joinLiveEvent(eventId: string): Promise<LiveEventViewer | null> {
-    // Dev-only design samples — always null outside __DEV__.
-    const sample = designJoin(eventId);
-    if (sample) return sample;
     const { data, error } = await supabase.rpc('join_live_event', { p_event_id: eventId });
     if (error) throw error;
     return (data as LiveEventViewer | null) ?? null;

@@ -1,11 +1,12 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
-import { fetchActiveLiveEvent, type LiveEvent } from '@/lib/api/liveEvents';
+import { useLiveEvents } from '@/hooks/useLiveEvents';
+import type { LiveEvent } from '@/lib/api/liveEvents';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -19,10 +20,12 @@ import { supabase } from '@/lib/supabase';
  *   1. invalidates every live-event query, so whichever screen is showing
  *      (header, board, ticket, Home card) re-renders with the new state on
  *      its next render rather than its next 60s poll;
- *   2. on the REVEAL specifically, takes the app to the League tab with a
- *      success haptic — the whole room is staring at a sealed board when
+ *   2. on the REVEAL specifically, takes the app to THAT event's board with
+ *      a success haptic — the whole room is staring at a sealed board when
  *      the admin presses the button, and the ask is that the phones turn
- *      over by themselves, not after a close-and-reopen.
+ *      over by themselves, not after a close-and-reopen. Only for events
+ *      the viewer is on the board of: with several events running, someone
+ *      else's reveal must not pull an unrelated phone away.
  *
  * The 60s board poll in useLiveEvent stays as the fallback for a socket
  * that never connected; focusManager (lib/queryClient) covers a phone that
@@ -96,54 +99,63 @@ function ensureChannel(slug: string) {
 export function useLiveEventSignals() {
     const queryClient = useQueryClient();
 
-    // Same lean query and key as Home — shares the cache, adds no poll.
-    const { data: event } = useQuery<LiveEvent | null>({
-        queryKey: ['liveEvent', 'active'],
-        queryFn: fetchActiveLiveEvent,
-        staleTime: 60_000,
-    });
-    const slug = event?.slug ?? null;
+    // The same list Home and League read — shares the cache, adds no poll.
+    const { events } = useLiveEvents();
+    const slugsKey = events.map(e => e.slug).join('|');
 
-    // What "already revealed" means for THIS runtime, so a reveal that
-    // happened before the app opened never yanks the user to League, and a
-    // Re-settle → Reveal (new revealed_at) does exactly once.
-    const knownRevealedAt = useRef<string | null>(null);
+    // Per event, what "already revealed" means for THIS runtime, so a reveal
+    // that happened before the app opened never yanks the user to League, and
+    // a Re-settle → Reveal (new revealed_at) does exactly once. Plus which
+    // boards the viewer is on (joined, or a global event everyone is in).
+    const knownRevealedAt = useRef(new Map<string, string | null>());
+    const onBoard = useRef(new Set<string>());
     useEffect(() => {
-        if (event) knownRevealedAt.current = event.revealed_at ?? null;
-    }, [event?.id, event?.revealed_at]); // eslint-disable-line react-hooks/exhaustive-deps
+        onBoard.current = new Set(
+            events.filter(e => e.viewer.joined || e.scope === 'global').map(e => e.slug),
+        );
+        for (const e of events) knownRevealedAt.current.set(e.slug, e.revealed_at ?? null);
+    }, [events]);
 
     useEffect(() => {
-        if (!slug) return undefined;
-        ensureChannel(slug);
+        if (!slugsKey) return undefined;
+        const detach: (() => void)[] = [];
 
-        const handler: Handler = signal => {
-            void queryClient.invalidateQueries({ queryKey: ['liveEvent'] });
-            void queryClient.invalidateQueries({ queryKey: ['liveEventBoard'] });
-            void queryClient.invalidateQueries({ queryKey: ['liveEventInvites'] });
+        for (const slug of slugsKey.split('|')) {
+            ensureChannel(slug);
 
-            const isReveal =
-                signal.status === 'revealed' &&
-                !!signal.revealed_at &&
-                signal.revealed_at !== knownRevealedAt.current;
-            if (!isReveal) return;
-            knownRevealedAt.current = signal.revealed_at;
+            const handler: Handler = signal => {
+                void queryClient.invalidateQueries({ queryKey: ['liveEvent'] });
+                void queryClient.invalidateQueries({ queryKey: ['liveEventBoard'] });
+                void queryClient.invalidateQueries({ queryKey: ['liveEventInvites'] });
 
-            // Only steer a phone that is actually being looked at. A
-            // backgrounded app gets the fresh state from the focus refetch
-            // the moment it comes back.
-            if (AppState.currentState !== 'active') return;
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            router.navigate('/(tabs)/league');
-        };
+                const isReveal =
+                    signal.status === 'revealed' &&
+                    !!signal.revealed_at &&
+                    signal.revealed_at !== knownRevealedAt.current.get(slug);
+                if (!isReveal) return;
+                knownRevealedAt.current.set(slug, signal.revealed_at);
 
-        let set = handlers.get(slug);
-        if (!set) {
-            set = new Set();
-            handlers.set(slug, set);
+                // Only steer a phone that is actually being looked at, by
+                // someone on this board. Everyone else gets the fresh state
+                // from the invalidation above.
+                if (!onBoard.current.has(slug)) return;
+                if (AppState.currentState !== 'active') return;
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                router.navigate({ pathname: '/(tabs)/league', params: { event: slug } });
+            };
+
+            let set = handlers.get(slug);
+            if (!set) {
+                set = new Set();
+                handlers.set(slug, set);
+            }
+            set.add(handler);
+            const own = set;
+            detach.push(() => {
+                own.delete(handler);
+            });
         }
-        set.add(handler);
-        return () => {
-            set!.delete(handler);
-        };
-    }, [slug, queryClient]);
+
+        return () => detach.forEach(d => d());
+    }, [slugsKey, queryClient]);
 }

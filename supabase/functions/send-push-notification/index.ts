@@ -4,6 +4,7 @@ import { deliverVisiblePush } from '../_shared/visiblePush.ts';
 import { streakFromSessions } from '../_shared/streak.ts';
 import { nudgeBudgetGate } from '../_shared/nudgeBudget.ts';
 import { levelDef } from '../_shared/levels.ts';
+import { eventPushCopy } from '../_shared/eventPushCopy.ts';
 
 type NotificationType =
   | 'daily_reminder'
@@ -34,6 +35,15 @@ type NotificationType =
   // your rank today / how many signups you still owe the entry gate.
   | 'event_rank_daily'
   | 'event_gate_reminder'
+  // One-off event pushes (live_event_send_template), switched on per event by
+  // the gym portal or /admin/events: the announcement to the venue's people,
+  // the kickoff and the finale-night morning to registrants.
+  | 'event_announced'
+  | 'event_kickoff'
+  | 'event_doors_open'
+  // A gym's "your spot's still here" to members who share activity with it
+  // and have gone quiet (gym_nudge_quiet, Clash Pro, on the gym's press).
+  | 'gym_quiet_nudge'
   // One-shot setup notice when a user loses 'always' location (dispatch-daily-
   // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
   | 'location_permission_lost'
@@ -74,6 +84,9 @@ const FEED_EXCLUDED: Set<NotificationType> = new Set([
   // Yesterday's rank and an unmet gate are both stale the moment they change —
   // the board itself is the record. (event_results_revealed IS logged: final.)
   'event_rank_daily', 'event_gate_reminder',
+  // "It's on" and "tonight" mean nothing the day after. The announcement IS
+  // logged: the event it names stays joinable until it locks.
+  'event_kickoff', 'event_doors_open',
 ]);
 
 // Coarse bucket the client renders an icon/accent from.
@@ -94,6 +107,10 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'event_results_revealed':
     case 'event_rank_daily':
     case 'event_gate_reminder':
+    case 'event_announced':
+    case 'event_kickoff':
+    case 'event_doors_open':
+    case 'gym_quiet_nudge':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -157,12 +174,16 @@ const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   challenge_within_reach:  6 * 60 * 60,  // "you're close tonight" is stale by morning
   daily_reminder:          6 * 60 * 60,
   inactivity_nudge:        12 * 60 * 60,
+  gym_quiet_nudge:         24 * 60 * 60,  // a day late is still a nudge; a week late is noise
   // Someone has probably taken it by tomorrow; a stale "new on the board" is
   // worse than none, because tapping it lands on a challenge that's gone.
   challenge_open_posted:   12 * 60 * 60,
   // "You're #4 today" delivered tomorrow is a wrong number, not a late one.
   event_rank_daily:        6 * 60 * 60,
   event_gate_reminder:     12 * 60 * 60,
+  event_announced:         24 * 60 * 60,
+  event_kickoff:           12 * 60 * 60,
+  event_doors_open:        8 * 60 * 60,   // sent 09:00 for an evening night
 };
 
 // "on 16 Sep" for a vault maturity date. Falls back to a vaguer phrase rather
@@ -192,6 +213,14 @@ function formatSessionCompletedBody(
   if (streak > 0) parts.push(`Day ${streak} streak`);
 
   return parts.length > 0 ? parts.join(' · ') : 'Your session counted.';
+}
+
+// Several events can run at once, so an event push opens THAT event's board:
+// the League tab reads ?event=<slug>. Payloads from before the DB started
+// sending event_slug (20260924160100) keep the bare tab.
+function eventLeagueRoute(payload: Record<string, unknown>): string {
+  const slug = String(payload.event_slug ?? '').trim();
+  return slug ? `/(tabs)/league?event=${encodeURIComponent(slug)}` : '/(tabs)/league';
 }
 
 // ---------------------------------------------------------------------------
@@ -502,15 +531,20 @@ function buildMessage(
         const eventName = String(payload.event_name ?? 'The event').trim() || 'The event';
         const rank = Math.round(Number(payload.rank));
         const prize = String(payload.prize_label ?? '').trim();
+        // The gym's optional partner code went out just before this push
+        // (_live_event_issue_partner_codes): it's already in their Wallet, so
+        // say whose it is.
+        const partnerBrand = String(payload.partner_brand ?? '').trim();
+        const partnerLine = partnerBrand ? ` A thank-you code from ${partnerBrand} is in your Wallet.` : '';
         const body = Number.isFinite(rank) && rank > 0
-          ? `You finished #${rank}${prize ? ` — ${prize}` : ''}. See the final board.`
-          : 'The final leaderboard is up — see where everyone finished.';
+          ? `You finished #${rank}${prize ? ` — ${prize}` : ''}.${partnerLine} See the final board.`
+          : `The final leaderboard is up — see where everyone finished.${partnerLine}`;
         return {
           title: `${eventName}: the results are in 🏆`,
           body,
           data: {
             type,
-            route: '/(tabs)/league',
+            route: eventLeagueRoute(payload),
             event_id: payload.event_id,
             rank: Number.isFinite(rank) && rank > 0 ? rank : undefined,
           },
@@ -549,7 +583,7 @@ function buildMessage(
             : 'See where you stand on the leaderboard.',
           data: {
             type,
-            route: '/(tabs)/league',
+            route: eventLeagueRoute(payload),
             event_id: payload.event_id,
             rank: hasRank ? rank : undefined,
           },
@@ -585,7 +619,43 @@ function buildMessage(
         return {
           title: `${eventName}: ${remaining} more ${unit}${remaining === 1 ? '' : 's'} to go 🎟️`,
           body: `${progress} Hitting ${required}${day ? ` by ${day}` : ''} ${stake}.`,
-          data: { type, route: '/(tabs)/league', event_id: payload.event_id, count, required },
+          data: { type, route: eventLeagueRoute(payload), event_id: payload.event_id, count, required },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'gym_quiet_nudge': {
+        // gym_nudge_quiet — the gym pressed Send on its Members page. Tapping
+        // opens the gym's card in Discover (a check-in is the ask), which
+        // needs the venue id and where it is; the tab alone otherwise.
+        const { title, body } = eventPushCopy(type, payload);
+        const venue = String(payload.partner_id ?? '').trim();
+        const lat = Number(payload.lat);
+        const lng = Number(payload.lng);
+        const route = venue && Number.isFinite(lat) && Number.isFinite(lng)
+          ? `/(tabs)/discover?venue=${encodeURIComponent(venue)}&lat=${lat}&lng=${lng}`
+          : '/(tabs)/discover';
+        return {
+          title,
+          body,
+          data: { type, route, partner_id: venue },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'event_announced':
+      case 'event_kickoff':
+      case 'event_doors_open': {
+        // live_event_send_template — the one-offs a gym switches on per event.
+        // The words live in _shared/eventPushCopy.ts, which the gym portal's
+        // preview renders too, so the preview can never drift from the push.
+        const { title, body } = eventPushCopy(type, payload);
+        return {
+          title,
+          body,
+          data: { type, route: eventLeagueRoute(payload), event_id: payload.event_id },
           sound: 'default',
           channelId: 'powr_default_v2',
           priority: 'high',
@@ -1146,6 +1216,14 @@ async function processOne(
     // to `type` would 400 on every send — see the warning above.
     : type === 'event_rank_daily' ? null
     : type === 'event_gate_reminder' ? null
+    // Registrant one-offs: same reasoning as the pulses above.
+    : type === 'event_kickoff' ? null
+    : type === 'event_doors_open' ? null
+    // A gym's new event is an announcement to people who haven't opted in to
+    // it, so it honours the Announcements switch (20260626000001).
+    : type === 'event_announced' ? 'announcements'
+    // A gym reaching out to someone who has drifted is an announcement too.
+    : type === 'gym_quiet_nudge' ? 'announcements'
     : type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
     : type === 'session_upgraded' ? 'session_completed'
     : type === 'vault_unlocked' ? 'points_milestone'

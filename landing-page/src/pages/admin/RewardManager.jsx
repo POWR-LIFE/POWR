@@ -1547,6 +1547,15 @@ export default function RewardManager() {
                                     User must re-earn enough POWR to claim again (subject to this cap)
                                 </p>
                             </div>
+
+                            {/* Gyms: every active reward is a partner discount in the gym portal
+                                (20260926150000). Said here so nobody looks for a switch. */}
+                            <div className="mb-8 flex items-start gap-3 rounded-3xl border border-dashed border-[#E6E6E1] bg-[#FAFAF8] px-6 py-5">
+                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#8a7600] font-black shrink-0 pt-0.5">Gyms</span>
+                                <span className="text-[12px] text-[#888] leading-relaxed">
+                                    Gyms on Clash+ and up see this reward as a partner discount, and can take one code a week to buy prizes and kit (affiliate links as the link). A gym can also send everyone who took part in its event a code when the winners are revealed, from the pool as normal, with no points spent. Event codes need codes in the pool or a shared promo code.
+                                </span>
+                            </div>
                             </div>
                             {/* end Pricing step */}
 

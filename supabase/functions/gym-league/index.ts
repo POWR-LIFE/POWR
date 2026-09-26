@@ -108,6 +108,13 @@ Deno.serve(async (req: Request) => {
   const feedRows = (payload.feed ?? []) as FeedRow[];
   const scope = board.partner_id;
 
+  // Founding Pro gyms carry a badge on every league screen.
+  const { data: foundingRows } = await admin
+    .from("gym_portal_settings")
+    .select("partner_id")
+    .eq("package", "founding");
+  const founding = new Set((foundingRows ?? []).map((r: { partner_id: string }) => r.partner_id));
+
   const gymKeys = new Map<string, string>();
   for (const g of gyms) gymKeys.set(g.id, await displayKey(scope, g.id));
   const names = await namesById([...new Set(feedRows.map((f) => f.user_id))]);
@@ -125,6 +132,7 @@ Deno.serve(async (req: Request) => {
     athletes_week: g.athletes_week,
     days: g.days,
     in_now: g.in_now,
+    founding: founding.has(g.id),
   }));
 
   // Only sessions at gyms the screen knows about; a session at a gym with
