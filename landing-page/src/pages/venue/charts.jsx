@@ -95,12 +95,15 @@ export function Columns({ data, label, unit, height = 160, tickEvery = 1, ghostL
                 </div>
             )}
 
-            <table className="sr-only">
-                <caption>{label}</caption>
-                <tbody>
-                    {data.map(d => <tr key={d.key}><th scope="row">{d.tip}</th><td>{d.value}</td>{d.ghost != null && <td>{d.ghost}</td>}</tr>)}
-                </tbody>
-            </table>
+            {/* On a wrapper: a table ignores height:1px and would stretch its card. */}
+            <div className="sr-only">
+                <table>
+                    <caption>{label}</caption>
+                    <tbody>
+                        {data.map(d => <tr key={d.key}><th scope="row">{d.tip}</th><td>{d.value}</td>{d.ghost != null && <td>{d.ghost}</td>}</tr>)}
+                    </tbody>
+                </table>
+            </div>
         </figure>
     );
 }
@@ -127,7 +130,7 @@ export function Stacked({ label, segments }) {
                     </li>
                 ))}
             </ul>
-            <table className="sr-only"><caption>{label}</caption><tbody>{segments.map(s => <tr key={s.key}><th scope="row">{s.label}</th><td>{s.value ?? 0}</td></tr>)}</tbody></table>
+            <div className="sr-only"><table><caption>{label}</caption><tbody>{segments.map(s => <tr key={s.key}><th scope="row">{s.label}</th><td>{s.value ?? 0}</td></tr>)}</tbody></table></div>
         </figure>
     );
 }

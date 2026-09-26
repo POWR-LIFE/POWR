@@ -29,9 +29,13 @@ export default function VenueStudio() {
     }, [gym.partner_id]);
 
     // "Make a post" on an event page opens here with ?event=<id>: the Ticket
-    // template, filled from that event.
+    // template, filled from that event. The Overview's moves open ?board=week:
+    // Results, filled from this week's board.
     const eventId = params.get('event');
-    const start = useMemo(() => (eventId ? { templateId: 'ticket', fill: { kind: 'event', id: eventId } } : null), [eventId]);
+    const boardWeek = params.get('board') === 'week';
+    const start = useMemo(() => (eventId ? { templateId: 'ticket', fill: { kind: 'event', id: eventId } }
+        : boardWeek ? { templateId: 'results', fill: { kind: 'board', id: 'week' } }
+        : null), [eventId, boardWeek]);
 
     const name = summary?.gym?.name ?? gym.name;
     const data = useMemo(() => (summary ? gymStudioData({

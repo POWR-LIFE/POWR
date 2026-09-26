@@ -3144,5 +3144,5 @@ img {
   .venue-fill-scroll { display: flex; flex-direction: column; }
   .venue-fill-wrap   { flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; padding-bottom: 2rem; }
   .venue-fill-page   { flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; }
-  .venue-fill-grid   { flex: 1 1 0%; min-height: 0; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  .venue-fill-grid   { flex: 1 1 0%; min-height: 0; grid-template-rows: minmax(0, 1.15fr) minmax(0, 0.85fr); }
 }
