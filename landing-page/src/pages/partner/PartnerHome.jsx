@@ -458,8 +458,14 @@ export default function PartnerHome() {
     const stripStart = new Date(startOfToday.getTime() - (SERIES_DAYS - 1) * DAY)
         .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
-    const previewReward = liveRewards.length
-        ? liveRewards[Math.min(previewIdx, liveRewards.length - 1)]
+    // The phone shows what members see. An approved reward that is merely
+    // paused (waiting on a code route) is still real and already looks the
+    // way it will in the app — show it, and say what it is waiting on, rather
+    // than an empty dashed box that reads as "nothing exists".
+    const previewRewards = liveRewards.length ? liveRewards : rewards;
+    const previewIsLive = liveRewards.length > 0;
+    const previewReward = previewRewards.length
+        ? previewRewards[Math.min(previewIdx, previewRewards.length - 1)]
         : null;
     const previewClaims = previewReward ? claimsFor(previewReward.id) : 0;
 
@@ -625,18 +631,38 @@ export default function PartnerHome() {
                         <>
                             <RewardAppPreview key={previewReward.id} pageTheme="light"
                                 {...previewFromReward(previewReward, partnerData?.name)} />
-                            {liveRewards.length > 1 && (
+                            {previewRewards.length > 1 && (
                                 <div className="flex items-center justify-center gap-2 mt-5">
-                                    {liveRewards.map((r, i) => (
+                                    {previewRewards.map((r, i) => (
                                         <button key={r.id} type="button" onClick={() => setPreviewIdx(i)} title={r.title}
                                             aria-label={`Preview ${r.title}`}
                                             className={`h-2 rounded-full transition-all ${
-                                                i === Math.min(previewIdx, liveRewards.length - 1)
+                                                i === Math.min(previewIdx, previewRewards.length - 1)
                                                     ? 'w-6 bg-[#8a7600]' : 'w-2 bg-[#D5D5D0] hover:bg-[#BBBBBB]'
                                             }`} />
                                     ))}
                                 </div>
                             )}
+                            {!previewIsLive ? (
+                                // Approved, paused. The verdict's pill above is the
+                                // page's ONE yellow CTA — this is a plain text link to
+                                // the same place, so the phone points at the fix too.
+                                <div className="mt-4 text-center">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B] shadow-[0_0_10px_rgba(245,158,11,0.6)]" />
+                                        <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#8a7600]">Needs finishing</span>
+                                    </div>
+                                    <p className="text-[10.5px] text-[#999] leading-relaxed mt-2">
+                                        Approved and ready to look like this — members will see it once codes can reach them.
+                                    </p>
+                                    {verdict.action && (
+                                        <Link to={verdict.action.to}
+                                            className="inline-flex items-center gap-1 mt-3 text-[10.5px] font-bold text-[#8a7600] underline decoration-[#E3D26A] underline-offset-4 hover:decoration-[#8a7600]">
+                                            {verdict.action.label} <ChevronRight size={12} />
+                                        </Link>
+                                    )}
+                                </div>
+                            ) : (
                             <div className="mt-4 text-center">
                                 <div className="flex items-center justify-center gap-2">
                                     <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.6)]" />
@@ -656,6 +682,7 @@ export default function PartnerHome() {
                                                 : `${previewClaims} of your ${claims.length} claims came from this one.`}
                                 </p>
                             </div>
+                            )}
                         </>
                     ) : (
                         <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl px-8 py-14 text-center">
