@@ -1,5 +1,6 @@
 /**
- * Dev harness — see studio-lab.html. `?ui` mounts the editor without admin
+ * Dev harness — see studio-lab.html. `?ui` mounts the editor (`?pack` the
+ * pack builder) without admin
  * auth; `window.__studio.render(spec)` returns a PNG data URL for one post,
  * using the local test photos in public/studio-samples/ (gitignored).
  */
@@ -7,6 +8,7 @@ import '../../style.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import StudioEditor from './StudioEditor';
+import PackBuilder from './PackBuilder';
 import { prepareStudio, renderPost } from './render';
 import { templateById } from './templates';
 import { loadMedia } from './media';
@@ -52,6 +54,14 @@ window.__studio = {
         return { url, ms, size: blob.size };
     },
 };
+
+if (new URLSearchParams(window.location.search).has('pack')) {
+    ReactDOM.createRoot(document.getElementById('root')).render(
+        <div className="max-w-[1600px] px-8 py-8">
+            <PackBuilder partnerId={new URLSearchParams(window.location.search).get('partner')} />
+        </div>,
+    );
+}
 
 if (new URLSearchParams(window.location.search).has('ui')) {
     ReactDOM.createRoot(document.getElementById('root')).render(
