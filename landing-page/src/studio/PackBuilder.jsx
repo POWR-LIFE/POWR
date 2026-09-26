@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Archive, Check, Download, FolderOpen, Images, Loader2, Pencil, RefreshCw, RotateCcw, Shuffle, Star, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
 import { prepareStudio, COLOURWAYS } from './render';
 import { templateById } from './templates';
-import { listEvents, eventStandings } from './data';
+import { adminStudioData } from './data';
 import { zipFiles } from './zip';
 import { LIMITS, collect, droppedItems, pickedItems, leftOutNote } from './pack/ingest';
 import { analyseAll, markDuplicates, quality, weakness } from './pack/analyse';
@@ -66,7 +66,13 @@ function Preview({ plan, post, item, ready, className = '' }) {
     return <canvas ref={ref} className={`block w-full rounded-lg bg-[#1d1d1b] ${className}`} style={{ aspectRatio: '4 / 5' }} />;
 }
 
-export default function PackBuilder({ intro = null }) {
+/**
+ * data       where events and standings come from (admin by default; the gym
+ *            portal passes gymStudioData, only that gym's events)
+ * partnerId  saves and lists this gym's packs instead of POWR's
+ * stickyClass where the pack column sticks (the gym portal's header differs)
+ */
+export default function PackBuilder({ intro = null, data = adminStudioData, partnerId = null, stickyClass = 'lg:top-20' }) {
     const [ready, setReady] = useState(false);
     const [error, setError] = useState(null);
     // The event
@@ -99,8 +105,8 @@ export default function PackBuilder({ intro = null }) {
 
     useEffect(() => {
         prepareStudio().then(() => setReady(true)).catch((e) => setError(e.message));
-        listEvents().then(setEvents).catch((e) => { setEvents([]); setError(e.message); });
-    }, []);
+        data.listEvents().then(setEvents).catch((e) => { setEvents([]); setError(e.message); });
+    }, [data]);
 
     const event = useMemo(() => (events ?? []).find((ev) => ev.id === eventId) ?? null, [events, eventId]);
     const facts = useMemo(() => (event ? { ...event, standings: standings ?? [] } : null), [event, standings]);
@@ -135,7 +141,7 @@ export default function PackBuilder({ intro = null }) {
         setPhase(nextPhase);
         let rows = [];
         if (ev && ev.board !== 'none') {
-            rows = await eventStandings(ev.id).catch(() => []);
+            rows = await data.eventStandings(ev.id).catch(() => []);
             setStandings(rows);
         }
         replan({ phase: nextPhase, facts: ev ? { ...ev, standings: rows } : null });
@@ -278,8 +284,8 @@ export default function PackBuilder({ intro = null }) {
     // ── Saved packs ────────────────────────────────────────────────────
     const refreshSaved = useCallback(() => {
         setSavedError(null);
-        listPacks({ eventId: eventId || null }).then(setSaved).catch((e) => { setSaved([]); setSavedError(e.message); });
-    }, [eventId]);
+        listPacks({ eventId: eventId || null, partnerId }).then(setSaved).catch((e) => { setSaved([]); setSavedError(e.message); });
+    }, [eventId, partnerId]);
     useEffect(() => { refreshSaved(); }, [refreshSaved]);
 
     const downloadSaved = async (pack) => {
@@ -315,7 +321,7 @@ export default function PackBuilder({ intro = null }) {
             // Standings, in case the pack is replanned.
             const ev = (events ?? []).find((x) => x.id === full.live_event_id);
             setStandings(null);
-            if (ev && ev.board !== 'none') eventStandings(ev.id).then(setStandings).catch(() => {});
+            if (ev && ev.board !== 'none') data.eventStandings(ev.id).then(setStandings).catch(() => {});
             setPhase(full.phase);
             setOptions({ ...DEFAULT_OPTIONS, ...full.plan.options });
             setLeadId(full.plan.leadId ?? null);
@@ -361,7 +367,7 @@ export default function PackBuilder({ intro = null }) {
             const zip = await zipFiles(files.filter((f) => f.role === 'output').map((f) => ({ name: f.name, data: f.blob })));
             downloadBlob(zip, `powr-${slug(title)}.zip`);
             setBuilding({ stage: 'Saving to the event', done: 0, total: 1 });
-            const { id, skipped } = await savePack({ plan, title, media, files, signal: ac.signal, onProgress: (p) => setBuilding({ stage: event ? 'Saving to the event' : 'Saving', ...p }) });
+            const { id, skipped } = await savePack({ plan, title, media, files, partnerId, signal: ac.signal, onProgress: (p) => setBuilding({ stage: event ? 'Saving to the event' : 'Saving', ...p }) });
             setResult({
                 ok: true,
                 id,
@@ -565,7 +571,7 @@ export default function PackBuilder({ intro = null }) {
             </div>
 
             {/* ── The pack ─────────────────────────────────────────────── */}
-            <div className="lg:sticky lg:top-20 min-w-0">
+            <div className={`lg:sticky ${stickyClass} min-w-0`}>
                 <div className="relative rounded-2xl bg-[#141413] p-4 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <div>

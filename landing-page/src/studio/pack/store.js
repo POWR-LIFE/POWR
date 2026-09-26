@@ -58,14 +58,15 @@ async function inParallel(items, n, fn) {
  * Resolves with { id, skipped } — clips too big to keep are listed (their
  * posts are saved). Leaves the pack marked 'failed' if it can't finish.
  */
-export async function savePack({ plan, title, media, files, onProgress, signal }) {
+export async function savePack({ plan, title, media, files, partnerId = null, onProgress, signal }) {
     const { data: pack, error } = await supabase
         .from('studio_packs')
-        .insert({ live_event_id: plan.eventId, title, phase: plan.phase, plan: stripped(plan), status: 'saving' })
+        .insert({ live_event_id: plan.eventId, partner_id: partnerId, title, phase: plan.phase, plan: stripped(plan), status: 'saving' })
         .select('id')
         .single();
     if (error) throw new Error(`Couldn’t start saving the pack — ${error.message}`);
-    const base = `packs/${pack.id}`;
+    // A gym's packs live under its own folder; its staff can reach nothing else.
+    const base = partnerId ? `gyms/${partnerId}/packs/${pack.id}` : `packs/${pack.id}`;
     const skipped = [];
     const rows = [];
     let bytes = 0;
@@ -121,13 +122,17 @@ export async function savePack({ plan, title, media, files, onProgress, signal }
 // The plan without what can't or needn't be stored (thumbnails are canvases).
 const stripped = (plan) => JSON.parse(JSON.stringify(plan));
 
-/** Saved packs, newest first — one event's, or all of them — each with a few previews. */
-export async function listPacks({ eventId = null, limit = 40 } = {}) {
+/**
+ * Saved packs, newest first — one event's, or all of them — each with a few
+ * previews. `partnerId` is a gym's packs; without it, POWR's own.
+ */
+export async function listPacks({ eventId = null, partnerId = null, limit = 40 } = {}) {
     let q = supabase
         .from('studio_packs')
         .select('id, title, phase, status, created_at, source_count, output_count, bytes, live_event_id, live_events:live_event_id (name)')
         .order('created_at', { ascending: false })
         .limit(limit);
+    q = partnerId ? q.eq('partner_id', partnerId) : q.is('partner_id', null);
     if (eventId) q = q.eq('live_event_id', eventId);
     const { data, error } = await q;
     if (error) throw new Error(`Couldn’t load saved packs — ${error.message}`);
