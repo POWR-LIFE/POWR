@@ -8,9 +8,10 @@ import { Card, Micro, Spinner, Empty, fmtNum, BTN_GHOST } from '../../components
 import { useToast } from '../../lib/toast';
 import { fetchGymEvents, fetchGymInsights, fetchGymLeague, fetchGymProfile, fetchGymSummary, fetchMemberActivity, nudgeQuietMembers } from './venueApi';
 import { Columns } from './charts';
-import { boardName, ordinal, pctChange, weekLabel, weekdayFull } from '../../../../shared/gymBoard.ts';
+import { boardName, ordinal, pctChange, weekLabel } from '../../../../shared/gymBoard.ts';
 import { localGyms, rankGyms, ranksAtDayStart, rivalOf, sessionsToClose } from '../../../../shared/gymLeague.ts';
 import { gymMoves } from '../../../../shared/gymMoves.ts';
+import { weekStory, hourName } from '../../../../shared/gymWeek.ts';
 import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 import { usePackage, trialDaysLeft, PACKAGE_LABEL } from './packages';
 import { statusKey, fmtDay, lastDay } from './eventUi';
@@ -80,7 +81,7 @@ function WeekStrip({ days, tz }) {
     const max = Math.max(1, ...week.map(d => d.sessions), ...last.map(d => d.sessions));
     const pct = (n) => `${Math.round((n / max) * 100)}%`;
     return (
-        <div className="flex-1 min-h-[88px] flex items-end gap-2 sm:gap-3 mt-3 pt-5" role="img" aria-label="Sessions each day this week, with last week behind">
+        <div className="flex-1 min-h-[80px] flex items-end gap-2 sm:gap-3 mt-4 pt-5" role="img" aria-label="Sessions each day this week, with last week behind">
             {week.map((d, i) => {
                 const isToday = d.day === today;
                 const future = d.day > today;
@@ -103,36 +104,52 @@ function WeekStrip({ days, tz }) {
     );
 }
 
+const TONE_INK = { up: 'text-[#0B7A57]', down: 'text-[#B45309]', even: 'text-[#1A1A1A]', new: 'text-[#1A1A1A]' };
+
 /**
- * This week so far against last week up to the same day. Mid-week, the
- * whole of last week is the wrong yardstick: on a Tuesday every gym is
- * "down 70%".
+ * The week as a bullet: sessions so far (solid), where the week is heading
+ * (dashed), and ticks for a usual week and the best of the last eight. The
+ * key underneath carries the numbers, so nothing is colour alone.
  */
-function paceOf(summary, tz) {
-    const days = summary.days;
-    if (!days || days.length < 14) return null;
-    const i = days.slice(7).findIndex(d => d.day === isoDayIn(tz));
-    if (i < 0) return null;
-    const now = sum(days.slice(7, 8 + i), 'sessions');
-    const then = sum(days.slice(0, i + 1), 'sessions');
-    return { now, then, diff: now - then, day: weekdayFull(i + 1) };
+function PaceBar({ story }) {
+    const { soFar, projected, usual, best } = story;
+    const heading = projected != null && projected > soFar && story.dayIndex < 6 ? projected : null;
+    if (!usual && !best && heading == null) return null;
+    const max = Math.max(1, soFar, heading ?? 0, usual ?? 0, best ?? 0) * 1.06;
+    const pct = (n) => `${Math.min(100, (n / max) * 100)}%`;
+    const said = [`${fmtNum(soFar)} sessions so far`, heading != null && `heading for about ${fmtNum(heading)}`, usual && `a usual week is ${fmtNum(usual)}`, best && `the best of the last ${story.bestOf} weeks was ${fmtNum(best)}`].filter(Boolean).join(', ');
+    return (
+        <figure className="m-0 mt-4 shrink-0" aria-label={said}>
+            <div className="relative h-3">
+                <div className="absolute inset-0 rounded-full bg-[#F4F4F1]" />
+                {heading != null && <div className="absolute inset-y-0 left-0 rounded-full border-2 border-dashed border-[#E8D200] bg-[#E8D200]/15" style={{ width: pct(heading) }} />}
+                <div className="absolute inset-y-0 left-0 rounded-full bg-[#E8D200]" style={{ width: pct(soFar) }} />
+                {usual ? <span className="absolute -top-1 -bottom-1 w-[2px] -ml-px rounded-full bg-[#1A1A1A]" style={{ left: pct(usual) }} title={`A usual week: ${fmtNum(usual)}`} /> : null}
+                {best && best !== usual ? <span className="absolute -top-1 -bottom-1 w-[2px] -ml-px rounded-full bg-[#8a7600]" style={{ left: pct(best) }} title={`Best in ${story.bestOf} weeks: ${fmtNum(best)}`} /> : null}
+            </div>
+            <figcaption className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-bold text-[#888]">
+                <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] bg-[#E8D200]" />{fmtNum(soFar)} so far</span>
+                {heading != null && <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] border-2 border-dashed border-[#E8D200]" />about {fmtNum(heading)} by Sunday</span>}
+                {usual ? <span className="inline-flex items-center gap-1.5"><i className="w-[2px] h-3 rounded-full bg-[#1A1A1A]" />usual {fmtNum(usual)}</span> : null}
+                {best && best !== usual ? <span className="inline-flex items-center gap-1.5"><i className="w-[2px] h-3 rounded-full bg-[#8a7600]" />best {fmtNum(best)}</span> : null}
+            </figcaption>
+        </figure>
+    );
 }
 
-function Pulse({ summary, tz }) {
+/**
+ * Is this a good week, where is it heading, and is there still time to do
+ * something about it (shared/gymWeek.ts reads it): the sentence, the pace
+ * against a usual week and the best, the days, who's in, and the rush.
+ */
+function Pulse({ summary, insights, tz }) {
     const wk = summary.week ?? {};
-    const lw = summary.last_week ?? {};
-    const pace = paceOf(summary, tz);
-    const change = pace ? null : pctChange(wk.sessions ?? 0, lw.sessions ?? 0);
-    const today = summary.days ? summary.days.slice(7).find(d => d.day === isoDayIn(tz)) : null;
-    let versus = null;
-    if (pace && (pace.now > 0 || pace.then > 0)) {
-        const n = Math.abs(pace.diff);
-        versus = pace.diff === 0
-            ? <span className="text-[#888]">on last week’s pace</span>
-            : <span className={pace.diff > 0 ? 'text-[#0B7A57]' : 'text-[#B45309]'} title={`${fmtNum(pace.now)} by ${pace.day}, against ${fmtNum(pace.then)} by ${pace.day} last week`}>{fmtNum(n)} {pace.diff > 0 ? 'ahead of' : 'behind'} last week’s pace</span>;
-    } else if (change) {
-        versus = <span className={change.pct > 0 ? 'text-[#0B7A57]' : change.pct < 0 ? 'text-[#B45309]' : 'text-[#AAAAAA]'}>{change.pct === 0 ? 'same as last week' : `${change.label} vs last week`}</span>;
-    }
+    const todayIso = isoDayIn(tz);
+    const story = weekStory({
+        days: summary.days, todayIso, soFar: wk.sessions ?? 0, lastWeek: summary.last_week?.sessions ?? 0,
+        weeks: insights?.weeks ?? null, weekdays: insights?.days ?? null, hours: insights?.hours ?? null,
+    });
+    const today = summary.days ? summary.days.slice(7).find(d => d.day === todayIso) : null;
     return (
         <Card glow className="flex-1 p-6 flex flex-col min-h-0">
             <div className="flex flex-wrap items-start justify-between gap-3 shrink-0">
@@ -140,17 +157,19 @@ function Pulse({ summary, tz }) {
                     <Micro gold>This week</Micro>
                     <div className="mt-2 flex items-baseline gap-3">
                         <span className="text-5xl lg:text-6xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{fmtNum(wk.sessions)}</span>
-                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">sessions</span>
-                    </div>
-                    <div className="mt-2 text-[12px] font-bold text-[#666]">
-                        {people(wk.athletes ?? 0)}{versus && <> · {versus}</>}
+                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">sessions · {people(wk.athletes ?? 0)}</span>
                     </div>
                 </div>
                 {summary.now != null && <NowPill n={summary.now} />}
             </div>
+            <p className={`mt-3 text-[15px] font-bold leading-snug shrink-0 ${TONE_INK[story.tone]}`}>{story.headline}</p>
+            <PaceBar story={story} />
             <WeekStrip days={summary.days} tz={tz} />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] font-bold text-[#AAAAAA] shrink-0">
-                <span>{today ? `Today: ${plural(today.sessions, 'session')} · ${people(today.athletes)}` : 'Sessions checked in at the gym'}</span>
+                <span>
+                    {today ? `Today: ${plural(today.sessions, 'session')} · ${people(today.athletes)}` : 'Sessions checked in at the gym'}
+                    {story.rush && <> · <span className="text-[#666]">busiest {hourName(story.rush.from)}–{hourName(story.rush.to)}</span></>}
+                </span>
                 {summary.days && (
                     <span className="inline-flex items-center gap-3">
                         <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] bg-[#1A1A1A]" />This week</span>
@@ -607,7 +626,7 @@ export default function VenueHome() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:gap-5 lg:grid-cols-12">
-                <div className="creator-rise lg:col-span-6 flex flex-col min-h-0" style={{ animationDelay: '60ms' }}><Pulse summary={summary} tz={tz} /></div>
+                <div className="creator-rise lg:col-span-6 flex flex-col min-h-0" style={{ animationDelay: '60ms' }}><Pulse summary={summary} insights={insights} tz={tz} /></div>
                 <div className="creator-rise lg:col-span-6 flex flex-col min-h-0" style={{ animationDelay: '120ms' }}><Moves moves={moves} gym={{ ...gym, name }} quiet={quiet} onLater={later} /></div>
                 <div className="creator-rise lg:col-span-12 min-w-0" style={{ animationDelay: '180ms' }}>
                     <WeekPosts gym={gym} name={name} summary={summary} insights={insights} standing={standing} events={events} pkg={pkg} tz={tz} profile={profile} onToday={setTodayPost} />
