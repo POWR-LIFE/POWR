@@ -965,7 +965,7 @@ export default function VenueEventBuilder() {
                                 </p>
                             ) : isAdmin ? (
                                 <p className="text-[12px] text-[#666] leading-relaxed mt-1.5">
-                                    None on offer yet. Tick “Offer as an event prize” on a reward in the admin Rewards page and it shows here, for every gym.{' '}
+                                    None on offer: no active reward has codes to give right now. Add codes to a reward in the admin Rewards page and it shows here, for every gym.{' '}
                                     <Link to="/admin/rewards" className="font-bold text-[#8a7600] underline underline-offset-2">Open Rewards</Link>
                                 </p>
                             ) : (
