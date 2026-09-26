@@ -154,14 +154,10 @@ describe('gymMoves', () => {
   });
 
   it('never sends two buttons to the same place', () => {
-    const moves = gymMoves({
-      ...base,
-      features: PRO,
-      league: { rank: 1, count: 3, radiusKm: 10, rival: { name: 'Iron Works' }, ahead: true, gap: 90 },
-      leader: { name: 'Aisha K', points: 240 },
-      onBoard: 6,
-    });
-    const to = moves.map((m) => m.action.to);
-    expect(to.filter((t) => t === '/venue/studio?board=week')).toHaveLength(1);
+    // A first event and a quiet Tuesday both want the event builder: one move, the stronger.
+    const moves = gymMoves({ ...base, events: [], weekdays: [14, 3, 12, 16, 11, 9, 8] });
+    const toBuilder = moves.filter((m) => m.action.to === '/venue/events/new');
+    expect(toBuilder.map((m) => m.key)).toEqual(['weekday']);
+    expect(new Set(moves.map((m) => m.action.to)).size).toBe(moves.length);
   });
 });

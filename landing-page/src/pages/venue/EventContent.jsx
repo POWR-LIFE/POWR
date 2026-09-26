@@ -1,13 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Download, Film, Lock, Palette, Star, Upload, X } from 'lucide-react';
-import { FORMATS } from '../../studio/formats';
+import { Download, Film, Lock, Palette, Star, Upload, X } from 'lucide-react';
 import { Card, Micro, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
 import { eventFacts, fetchImage } from '../../studio/data';
 import { gymStudioData } from '../../studio/gymData';
 import { planKit, buildKit, assetFrom, postsOf, renderThumb, mediaFor, releaseMedia, LOOKS, ACCENTS, CLIP_SECONDS, MAX_CLIPS } from '../../studio/kit';
 import { statusKey } from './eventUi';
+import PostLightbox from './PostLightbox';
 
 // The Studio, attached to an event: a "before" kit (announce it) and an
 // "after" kit (the results and a thank-you), made from the photos and clips
@@ -57,78 +56,6 @@ function Chips({ label, items, value, onChange }) {
                 </button>
             ))}
         </div>
-    );
-}
-
-const lookName = (look = {}) => (look.tint === 'gold' ? 'Gold duotone' : look.mono === 0 ? `Colour${look.tint === 'warm' ? ', warm' : look.tint === 'cool' ? ', cool' : ''}` : 'Film');
-const accentName = (style = {}) => ACCENTS.find((a) => a.id === style.colourway)?.label ?? 'POWR gold';
-
-// One post, large: the size chips re-render it at that size; arrows step
-// through the kit; Esc, the X or the backdrop close it.
-function Lightbox({ posts, jobs, index, setIndex, format, setFormat, onClose, cache }) {
-    const post = posts[index];
-    const sizes = useMemo(() => [...new Set(jobs.filter((j) => j.stem === post.stem && j.kind === 'png').map((j) => j.format))], [jobs, post.stem]);
-    const job = jobs.find((j) => j.stem === post.stem && j.kind === 'png' && j.format === format) ?? jobs.find((j) => j.stem === post.stem && j.kind === 'png');
-    const [src, setSrc] = useState(null);
-    useEffect(() => {
-        let alive = true;
-        setSrc(null);
-        (async () => {
-            try {
-                const media = await mediaFor(job.asset, cache);
-                const url = await renderThumb(job, media, 0.6);
-                if (alive) setSrc(url);
-            } catch { if (alive) setSrc(''); }
-        })();
-        return () => { alive = false; };
-    }, [job, cache]);
-    const prev = useCallback(() => setIndex((i) => (i - 1 + posts.length) % posts.length), [setIndex, posts.length]);
-    const next = useCallback(() => setIndex((i) => (i + 1) % posts.length), [setIndex, posts.length]);
-    useEffect(() => {
-        const onKey = (e) => { if (e.key === 'Escape') onClose(); else if (e.key === 'ArrowLeft') prev(); else if (e.key === 'ArrowRight') next(); };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [onClose, prev, next]);
-    const F = FORMATS[job.format];
-    const [vp, setVp] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
-    useEffect(() => {
-        const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight });
-        window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
-    }, []);
-    // The largest box of the post's shape that fits, leaving room for the caption.
-    const k = Math.min(Math.min(vp.w * 0.92, 900) / F.w, (vp.h - 150) / F.h);
-    const box = { width: Math.round(F.w * k), height: Math.round(F.h * k) };
-    return createPortal(
-        <div className="fixed inset-0 z-[1000] bg-black/85 flex flex-col items-center justify-center p-4 sm:p-8" onClick={onClose} role="dialog" aria-modal="true" aria-label={`${post.label}, large`}>
-            <button type="button" onClick={onClose} aria-label="Close" className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"><X size={16} /></button>
-            {posts.length > 1 && (
-                <>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); prev(); }} aria-label="Previous post" className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"><ChevronLeft size={18} /></button>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); next(); }} aria-label="Next post" className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"><ChevronRight size={18} /></button>
-                </>
-            )}
-            <div className="flex flex-col items-center gap-4 max-w-full" onClick={(e) => e.stopPropagation()}>
-                <div className="rounded-xl overflow-hidden bg-[#111] shadow-2xl" style={box}>
-                    {src ? <img src={src} alt="" data-big className="w-full h-full object-contain" /> : src === '' ? <div className="w-full h-full flex items-center justify-center text-white/60 text-xs">Couldn’t render this one.</div> : <div className="w-full h-full animate-pulse bg-[#1A1A1A]" />}
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-white">
-                    <div className="text-center sm:text-left">
-                        <div className="text-[10px] font-black uppercase tracking-[0.25em]">{post.label} <span className="text-white/40">· {index + 1} of {posts.length}</span></div>
-                        <div className="text-[11px] text-white/60 mt-0.5">{lookName(job.look)} · {accentName(job.style)}</div>
-                    </div>
-                    <div className="inline-flex rounded-full bg-white/10 p-0.5" role="radiogroup" aria-label="Size">
-                        {sizes.map((f) => (
-                            <button key={f} type="button" role="radio" aria-checked={format === f} aria-label={`Size: ${FORMATS[f].label}`} onClick={() => setFormat(f)}
-                                className={`h-8 px-3.5 rounded-full text-[10px] font-black uppercase tracking-[0.15em] transition-all ${format === f ? 'bg-white text-[#080808]' : 'text-white/70 hover:text-white'}`}>
-                                {FORMATS[f].label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>,
-        document.body,
     );
 }
 
@@ -387,7 +314,7 @@ export default function EventContent({ ev, venue, canPost }) {
             </div>
 
             {open !== null && posts[open] && (
-                <Lightbox posts={posts} jobs={jobs} index={open} setIndex={setOpen} format={bigFormat} setFormat={setBigFormat} onClose={() => setOpen(null)} cache={cacheRef.current} />
+                <PostLightbox posts={posts} jobs={jobs} index={open} setIndex={setOpen} format={bigFormat} setFormat={setBigFormat} onClose={() => setOpen(null)} cache={cacheRef.current} />
             )}
 
             {error && <div className="mt-4 text-red-600 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-    ArrowRight, CalendarDays, Flag, Lock, Megaphone, Package, Palette, Send, Sparkles, TrendingUp, Tv, UserPlus, Users,
+    ArrowRight, CalendarDays, Flag, Lock, Megaphone, Package, Send, Sparkles, TrendingUp, Tv, UserPlus, Users,
 } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Card, Micro, Spinner, Empty, fmtNum, BTN_GHOST } from '../../components/portal/ui';
@@ -14,12 +14,14 @@ import { gymMoves } from '../../../../shared/gymMoves.ts';
 import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 import { usePackage, trialDaysLeft, PACKAGE_LABEL } from './packages';
 import { statusKey, fmtDay, lastDay } from './eventUi';
+import WeekPosts from './WeekPosts';
 
-// The page a gym opens most, so it fits one screen (VenueLayout's fill mode on
-// a tall desktop window; a phone stacks it) and every card earns its place:
+// The page a gym opens most. Every card earns its place:
 //   This week    how busy, against the same point last week, and right now
 //   Worth doing  up to three moves from the gym's own numbers, each with the
 //                button that does it (shared/gymMoves.ts picks them)
+//   Posts        this week's posts, made from those numbers and the gym's
+//                photo, to look through and download (WeekPosts.jsx)
 //   Your people  who's leading, new faces, who's gone quiet, how many picked the gym
 //   Gym League   where the gym stands against the gyms nearby, and today's move
 //   8 weeks      whether it's growing: sessions a week, first-timers
@@ -161,7 +163,7 @@ function Pulse({ summary, tz }) {
 
 // ── Worth doing: the moves ─────────────────────────────────────────────────
 
-const KIND_ICON = { event: CalendarDays, members: Users, league: Flag, growth: UserPlus, programme: Sparkles, screens: Tv, package: Package, content: Palette };
+const KIND_ICON = { event: CalendarDays, members: Users, league: Flag, growth: UserPlus, programme: Sparkles, screens: Tv, package: Package };
 const LOCK_LABEL = { clash_plus: 'Clash+', pro: PACKAGE_LABEL.pro };
 const PILL = 'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full text-[10px] font-black uppercase tracking-[0.12em] whitespace-nowrap transition-all disabled:opacity-50';
 const PILL_GOLD = `${PILL} bg-[#E8D200] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(232,210,0,0.25)]`;
@@ -535,7 +537,6 @@ export default function VenueHome() {
         if (!summary || !pkg || insights == null || !activityDone || !leagueSettled) return null;
         let posterMade = false;
         try { posterMade = !!localStorage.getItem(`powr_join_poster_${summary.gym?.id ?? ''}`); } catch { /* fine */ }
-        const leader = top?.[0];
         return gymMoves({
             nowMs: Date.now(),
             gymName: name,
@@ -549,13 +550,11 @@ export default function VenueHome() {
                 : null,
             activity: activity && !activity.locked ? activity : null,
             weekdays: Array.isArray(insights.days) ? insights.days : null,
-            leader: leader ? { name: boardName(leader), points: leader.points ?? 0 } : null,
-            onBoard: top?.length ?? 0,
             posterMade,
             fmtDay,
             lastDay,
         });
-    }, [summary, pkg, insights, activityDone, leagueSettled, activity, events, standing, top, name]);
+    }, [summary, pkg, insights, activityDone, leagueSettled, activity, events, standing, name]);
 
     if (error) return <Empty title="Couldn’t load your gym" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
     if (!summary) return <Spinner />;
@@ -564,8 +563,8 @@ export default function VenueHome() {
     const quiet = activity && !activity.too_few ? (activity.quiet ?? 0) : 0;
 
     return (
-        <div className="venue-fill-page">
-            <div className="creator-rise flex flex-wrap items-end justify-between gap-x-6 gap-y-2 mb-5 lg:mb-6 shrink-0">
+        <div>
+            <div className="creator-rise flex flex-wrap items-end justify-between gap-x-6 gap-y-2 mb-5 lg:mb-6">
                 <div className="min-w-0">
                     <Micro gold>Overview</Micro>
                     <h1 className="text-3xl sm:text-4xl font-light tracking-tighter text-[#1A1A1A] leading-none mt-2 truncate">{name}</h1>
@@ -581,12 +580,15 @@ export default function VenueHome() {
                 </div>
             </div>
 
-            <div className="venue-fill-grid grid grid-cols-1 gap-4 lg:gap-5 lg:grid-cols-12">
+            <div className="grid grid-cols-1 gap-4 lg:gap-5 lg:grid-cols-12">
                 <div className="creator-rise lg:col-span-6 flex flex-col min-h-0" style={{ animationDelay: '60ms' }}><Pulse summary={summary} tz={tz} /></div>
                 <div className="creator-rise lg:col-span-6 flex flex-col min-h-0" style={{ animationDelay: '120ms' }}><Moves moves={moves} gym={{ ...gym, name }} quiet={quiet} /></div>
-                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '180ms' }}><People top={top} failed={!!insights?.failed} summary={summary} activity={activity} /></div>
-                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '240ms' }}><League board={board} standing={standing} error={leagueError} founding={pkg?.package === 'founding'} /></div>
-                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '300ms' }}><Trend insights={insights} tz={tz} gymName={name} locked={insightsAllowed === false || !!insights?.locked} /></div>
+                <div className="creator-rise lg:col-span-12 min-w-0" style={{ animationDelay: '180ms' }}>
+                    <WeekPosts gym={gym} name={name} summary={summary} insights={insights} standing={standing} events={events} pkg={pkg} tz={tz} />
+                </div>
+                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '240ms' }}><People top={top} failed={!!insights?.failed} summary={summary} activity={activity} /></div>
+                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '300ms' }}><League board={board} standing={standing} error={leagueError} founding={pkg?.package === 'founding'} /></div>
+                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '360ms' }}><Trend insights={insights} tz={tz} gymName={name} locked={insightsAllowed === false || !!insights?.locked} /></div>
             </div>
         </div>
     );

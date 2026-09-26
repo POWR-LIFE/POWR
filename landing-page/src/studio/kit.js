@@ -18,7 +18,7 @@ import { loadMedia, isVideoInput } from './media';
 import { exportVideo } from './video';
 import { pdfFromCanvas } from './pdf';
 import { zipFiles } from './zip';
-import { twoLines, thousands, wrap } from './words';
+import { twoLines, thousands, wrapParagraphs } from './words';
 
 export const STILL_FORMATS = ['post', 'story', 'square', 'landscape'];
 export const CLIP_FORMATS = ['story', 'post'];
@@ -70,7 +70,8 @@ function forVenue(value, facts) {
     return v.replaceAll(',\nLondon', '').replaceAll(', London', '').replaceAll('\nLondon', '').replaceAll('London', '');
 }
 
-function wordsFor(templateId, facts, extra = {}) {
+/** A template's words for an event: its defaults at this venue, the event's fill, then `extra`. */
+export function wordsFor(templateId, facts, extra = {}) {
     const t = templateById(templateId);
     const base = Object.fromEntries(Object.entries(fieldDefaults(t)).map(([k, v]) => [k, forVenue(v, facts)]));
     const filled = t.fill?.event ? t.fill.event(facts) : {};
@@ -173,8 +174,12 @@ export function planKit({ phase, facts, assets = [], leadId = null, options = {}
     return jobs;
 }
 
+/** A still: a PNG, or a JPEG where a photo makes PNGs heavy (the week's posts). */
+export const isStill = (job) => job.kind === 'png' || job.kind === 'jpg';
+const stillType = (job) => (job.kind === 'jpg' ? ['image/jpeg', 0.9] : ['image/png']);
+
 /** One job per post (its Post size), in kit order: what a preview strip shows. */
-export const postsOf = (jobs) => jobs.filter((j) => j.kind === 'png' && j.format === 'post');
+export const postsOf = (jobs) => jobs.filter((j) => isStill(j) && j.format === 'post');
 
 /** Ready-to-paste words for the posts, one block per kind. */
 export function captionsFor(phase, facts) {
@@ -194,7 +199,7 @@ export function captionsFor(phase, facts) {
         }
         blocks.push(['Thank you and the recap', `That’s a wrap on ${facts.name}. Thanks to everyone who came to ${facts.venue} and put the work in. The next one is already in the POWR app.\n\n${tags}`]);
     }
-    return blocks.map(([h, body]) => `${h}\n${'─'.repeat(Math.min(60, h.length + 8))}\n${wrap(body, 90, 40)}\n`).join('\n');
+    return blocks.map(([h, body]) => `${h}\n${'─'.repeat(Math.min(60, h.length + 8))}\n${wrapParagraphs(body, 90)}\n`).join('\n');
 }
 
 function readmeFor(phase, facts, jobs) {
@@ -259,6 +264,17 @@ export async function renderThumb(job, media, scale = 0.2) {
     return url;
 }
 
+/** One job at full size, as a PNG blob. */
+export async function renderStill(job, media) {
+    await prepareStudio();
+    await settle(media);
+    const c = document.createElement('canvas');
+    renderPost(c, { ...renderOpts(job, media), scale: 1 });
+    const blob = await new Promise((res) => c.toBlob(res, ...stillType(job)));
+    c.width = 0;
+    return blob;
+}
+
 /**
  * Render every job and pack the ZIP. `onProgress(fraction, job)` as it goes;
  * abort with `signal`. Pass `mediaCache` (a Map) to reuse assets already
@@ -292,7 +308,7 @@ export async function buildKit({ phase, facts, jobs, onProgress, signal, mediaCa
             const F = FORMATS[job.format];
             const blob = job.kind === 'pdf'
                 ? await pdfFromCanvas(c, { wMm: F.print.wMm, hMm: F.print.hMm, bleedMm: BLEED_MM })
-                : await new Promise((res) => c.toBlob(res, 'image/png'));
+                : await new Promise((res) => c.toBlob(res, ...stillType(job)));
             files.push({ name: `${job.folder}/${job.file}`, data: blob });
             c.width = 0;
         }

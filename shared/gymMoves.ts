@@ -11,7 +11,7 @@
 import { memberInsights, ACTIVITY_NOUN, type MemberActivity } from './memberInsights';
 import { sessionsToClose } from './gymLeague';
 
-export type MoveKind = 'event' | 'members' | 'league' | 'growth' | 'programme' | 'screens' | 'package' | 'content';
+export type MoveKind = 'event' | 'members' | 'league' | 'growth' | 'programme' | 'screens' | 'package';
 
 export type MoveAction = {
   label: string;
@@ -75,9 +75,6 @@ export type MovesInput = {
   activity?: MemberActivity | null;
   /** Sessions at the gym by weekday, Monday first, last 28 days (gym_insights.days). */
   weekdays?: number[] | null;
-  /** This week's board leader, and how many are on it. */
-  leader?: { name: string; points: number } | null;
-  onBoard?: number;
   posterMade?: boolean;
   fmtDay: (iso: string) => string;
   lastDay: (iso: string) => string;
@@ -332,16 +329,6 @@ function packageMoves(i: MovesInput): Move[] {
   }];
 }
 
-function contentMoves(i: MovesInput): Move[] {
-  if (!i.features?.studio || !i.leader || (i.onBoard ?? 0) < 3) return [];
-  return [{
-    key: 'post', kind: 'content', priority: 20,
-    title: `${i.leader.name} leads this week with ${num(i.leader.points)} POWR`,
-    detail: 'This week’s board is ready to post. Add a photo and download it.',
-    action: { label: 'Make the post', to: BOARD_POST },
-  }];
-}
-
 /**
  * Up to `limit` moves, most useful first. At most two about events (unless
  * more are waiting on the gym) and one of any other kind, and never two
@@ -350,7 +337,7 @@ function contentMoves(i: MovesInput): Move[] {
 export function gymMoves(i: MovesInput, limit = 3): Move[] {
   const all = [
     ...eventMoves(i), ...memberMoves(i), ...leagueMoves(i), ...growthMoves(i),
-    ...programmeMoves(i), ...screenMoves(i), ...packageMoves(i), ...contentMoves(i),
+    ...programmeMoves(i), ...screenMoves(i), ...packageMoves(i),
   ].sort((a, b) => b.priority - a.priority);
   const out: Move[] = [];
   const perKind: Partial<Record<MoveKind, number>> = {};
