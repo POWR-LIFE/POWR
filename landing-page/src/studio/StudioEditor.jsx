@@ -1047,7 +1047,11 @@ export default function StudioEditor({ intro = null }) {
                             </div>
                         ))}
                         <label className="flex items-center gap-2 text-sm text-[#333] self-end pb-2">
-                            <input type="checkbox" checked={eff.mono >= 0.5} onChange={(e) => setLook('mono', e.target.checked ? 1 : 0)} className="accent-[#E8D200]" />
+                            <input type="checkbox" checked={eff.mono >= 0.5} onChange={(e) => setLooks((l) => {
+                                // Colour also turns the template's duotone off, or it would paint the photo back to two tones.
+                                const { tintAmount, ...rest } = l[templateId] ?? {};
+                                return { ...l, [templateId]: e.target.checked ? { ...rest, mono: 1 } : { ...rest, mono: 0, tintAmount: 0 } };
+                            })} className="accent-[#E8D200]" />
                             Black &amp; white
                         </label>
                     </div>
