@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-    ArrowRight, CalendarDays, Flag, Lock, Megaphone, Package, Send, Sparkles, TrendingUp, Tv, UserPlus, Users,
+    ArrowRight, CalendarDays, Flag, Flame, Lock, Megaphone, Package, Send, Sparkles, TrendingUp, Trophy, Tv, UserPlus, Users, Zap,
 } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Card, Micro, Spinner, Empty, fmtNum, BTN_GHOST } from '../../components/portal/ui';
 import { useToast } from '../../lib/toast';
-import { fetchGymEvents, fetchGymInsights, fetchGymLeague, fetchGymProfile, fetchGymSummary, fetchMemberActivity, nudgeQuietMembers } from './venueApi';
+import { fetchGymBoard, fetchGymEvents, fetchGymInsights, fetchGymLeague, fetchGymProfile, fetchGymSummary, fetchMemberActivity, nudgeQuietMembers } from './venueApi';
 import { Columns } from './charts';
 import { boardName, ordinal, pctChange, weekLabel } from '../../../../shared/gymBoard.ts';
-import { localGyms, rankGyms, ranksAtDayStart, rivalOf, sessionsToClose } from '../../../../shared/gymLeague.ts';
+import { localGyms, rankByEffort, rankGyms, ranksAtDayStart, rivalOf, sessionsToClose } from '../../../../shared/gymLeague.ts';
 import { gymMoves } from '../../../../shared/gymMoves.ts';
 import { weekStory, hourName } from '../../../../shared/gymWeek.ts';
 import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
@@ -24,9 +24,11 @@ import { markDone, useDone, endOfDay } from './doneStore';
 //                button that does it (shared/gymMoves.ts picks them)
 //   Posts        this week's posts, made from those numbers and the gym's
 //                photo, to look through and download (WeekPosts.jsx)
-//   Your people  who's leading, new faces, who's gone quiet, how many picked the gym
-//   Gym League   where the gym stands against the gyms nearby, and today's move
-//   8 weeks      whether it's growing: sessions a week, first-timers
+//   Your people  who's worth a word this week, by name: the leader, the most
+//                improved, the session of the week, the longest streak, the new faces
+//   Gym League   the race: the table of gyms nearby, the gap, who's in, per member
+//   Since        what POWR has recorded at the gym since it joined, and the
+//                last 8 weeks (Clash+): is it growing
 // Charts, rosters and settings are a click away. The live numbers refresh
 // quietly while the page is open; the slower ones every few minutes.
 
@@ -298,50 +300,76 @@ function Moves({ moves, gym, quiet, onLater }) {
 
 // ── Your people ────────────────────────────────────────────────────────────
 
-function PeopleRow({ n, label, note, tone }) {
-    const colour = tone === 'green' && n > 0 ? 'text-[#0B7A57]' : tone === 'amber' && n > 0 ? 'text-[#B45309]' : 'text-[#1A1A1A]';
+/** "Leo P." / "Leo P. and Priya S." / "Leo P. and 2 more" */
+function namesOf(rows) {
+    const n = rows.map(boardName);
+    return n.length <= 2 ? n.join(' and ') : `${n[0]} and ${n.length - 1} more`;
+}
+
+function Shoutout({ icon: Icon, row, what, note }) {
     return (
-        <li className="flex items-baseline gap-3 py-2 first:pt-0 last:pb-0 min-w-0">
-            <span className={`w-12 shrink-0 text-3xl font-extralight tracking-tighter tabular-nums leading-none ${colour}`}>{fmtNum(n)}</span>
-            <span className="min-w-0 truncate text-[12px]">
-                <span className="font-bold text-[#1A1A1A]">{label}</span>
-                <span className="text-[#AAAAAA]"> · {note}</span>
-            </span>
+        <li className="flex items-center gap-3 py-2 first:pt-0 last:pb-0 min-w-0">
+            <Avatar row={row} size="w-8 h-8" />
+            <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-bold text-[#1A1A1A] truncate">{boardName(row)}</div>
+                <div className="text-[11px] text-[#888] truncate">
+                    <Icon size={11} className="inline -mt-0.5 mr-1 text-[#8a7600]" /><span className="font-bold text-[#666]">{what}</span>{note && <> · {note}</>}
+                </div>
+            </div>
         </li>
     );
 }
 
-function People({ top, failed, summary, activity }) {
-    const rows = top ?? [];
-    const leader = rows[0];
+/**
+ * Who's worth a word this week, by name: the leader, the most improved, the
+ * session of the week, the longest streak and the new faces, straight from
+ * the gym's own big-screen feed (so only names the wall already shows;
+ * members who hide from leaderboards never appear). Without screens, the
+ * board's leader from the insights stands in. The counts sit underneath.
+ */
+function People({ wall, top, failed, summary, activity }) {
+    const spot = wall?.spotlight ?? null;
+    const leader = wall?.standings?.[0] ?? top?.[0] ?? null;
+    const shouts = [];
+    if (leader && (leader.points ?? 0) > 0) shouts.push({ key: 'lead', icon: Trophy, row: leader, what: 'Leads the board', note: `${fmtNum(leader.points)} POWR` });
+    if (spot?.improved) shouts.push({ key: 'improved', icon: TrendingUp, row: spot.improved, what: 'Most improved', note: `+${fmtNum(spot.improved.gain)} on last week` });
+    if (spot?.session) {
+        shouts.push({ key: 'session', icon: Zap, row: spot.session, what: 'Session of the week', note: `${fmtNum(spot.session.points)} POWR in ${spot.session.minutes} min` });
+    }
+    const longest = wall?.community_stats?.streaks?.longest;
+    if (longest && (longest.streak ?? 0) >= 3) shouts.push({ key: 'streak', icon: Flame, row: longest, what: 'Longest streak', note: `${longest.streak} days` });
+    const fresh = spot?.new_members ?? [];
     const quiet = activity && !activity.too_few ? (activity.quiet ?? 0) : null;
+    const counts = [
+        `${fmtNum(summary.members ?? 0)} member${summary.members === 1 ? '' : 's'}`,
+        quiet != null && `${fmtNum(quiet)} gone quiet`,
+        summary.new_faces ? `${fmtNum(summary.new_faces)} new face${summary.new_faces === 1 ? '' : 's'}` : null,
+    ].filter(Boolean).join(' · ');
     return (
         <Card className="flex-1 p-6 flex flex-col min-h-0">
             <Head icon={Users} to="/venue/members" linkLabel="Members">Your people</Head>
-            {top === null ? <Spinner className="py-6" /> : (
+            {top === null && !wall ? <Spinner className="py-6" /> : shouts.length === 0 && fresh.length === 0 ? (
+                <div className="flex-1 min-h-0 flex flex-col justify-center">
+                    <div className="text-xl font-light tracking-tight text-[#1A1A1A]">{failed ? 'The board isn’t loading' : 'Nobody on the board yet'}</div>
+                    <p className="text-[13px] text-[#888] leading-relaxed mt-1.5">{failed ? 'Try again in a minute.' : 'The leader, the most improved and the new faces show up here as members check in.'}</p>
+                </div>
+            ) : (
                 <>
-                    <div className="flex items-center gap-3 shrink-0">
-                        {leader ? (
-                            <div className="flex -space-x-2 shrink-0">
-                                {rows.slice(0, 4).map((r) => <Avatar key={r.rank} row={r} size="w-9 h-9" ring="ring-2 ring-white" />)}
-                            </div>
-                        ) : (
-                            <div className="w-9 h-9 rounded-full bg-[#F4F4F1] border border-dashed border-[#D8D8D2] shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                            <div className="text-[13px] font-bold text-[#1A1A1A] truncate">{leader ? `${boardName(leader)} leads` : failed ? 'The board isn’t loading' : 'Nobody on the board yet'}</div>
-                            <div className="text-[11px] font-bold text-[#AAAAAA] truncate">
-                                {leader ? `${fmtNum(leader.points)} POWR · ${rows.length >= 10 ? '10+' : fmtNum(rows.length)} on the board` : failed ? 'Try again in a minute.' : 'It fills as members check in.'}
-                            </div>
-                        </div>
-                    </div>
-                    <ul className="flex-1 min-h-0 flex flex-col justify-end mt-4 divide-y divide-[#F0F0EC]">
-                        <PeopleRow n={summary.new_faces ?? 0} label={summary.new_faces === 1 ? 'new face' : 'new faces'} note="first session here this week" tone="green" />
-                        {quiet != null && <PeopleRow n={quiet} label="gone quiet" note="nothing in 2 weeks" tone="amber" />}
-                        <PeopleRow n={summary.members ?? 0} label={summary.members === 1 ? 'member' : 'members'} note="picked your gym in the app" />
+                    <ul className="divide-y divide-[#F0F0EC]">
+                        {shouts.slice(0, 4).map(({ key, ...x }) => <Shoutout key={key} {...x} />)}
                     </ul>
+                    {fresh.length > 0 && (
+                        <div className="mt-3 flex items-center gap-2.5 min-w-0">
+                            <div className="flex -space-x-2 shrink-0">{fresh.slice(0, 4).map((r) => <Avatar key={r.key ?? boardName(r)} row={r} size="w-7 h-7" ring="ring-2 ring-white" />)}</div>
+                            <span className="min-w-0 truncate text-[11px] text-[#666]"><span className="font-bold text-[#0B7A57]">New this week:</span> {namesOf(fresh)}</span>
+                        </div>
+                    )}
+                    {shouts.length + (fresh.length ? 1 : 0) < 3 && (
+                        <p className="mt-3 text-[11px] text-[#AAAAAA] leading-relaxed">The most improved, the session of the week and new faces show up here as more members train.</p>
+                    )}
                 </>
             )}
+            <div className="mt-auto pt-3 border-t border-[#F0F0EC] text-[11px] font-bold text-[#AAAAAA] truncate" style={{ marginTop: 'auto' }}>{counts}</div>
         </Card>
     );
 }
@@ -356,13 +384,21 @@ function standingOf(data) {
     const rank = local.findIndex(g => g.key === data.host_key) + 1;
     const { rival, ahead } = rivalOf(local, data.host_key);
     const was = ranksAtDayStart(local)[data.host_key];
+    const effort = rankByEffort(local).ranked;
+    const effortRank = effort.findIndex(r => r.gym.key === data.host_key) + 1;
     return {
         host, local, rank, rival, ahead, radius: data.radius_km,
         gap: rival && host ? Math.abs(host.points_week - rival.points_week) : 0,
         moved: was && rank ? was - rank : 0,
+        effortRank, effortOf: effort.length,
     };
 }
 
+/**
+ * The race, as the league screen runs it: the table of gyms nearby with
+ * the gym among them, the gap to the one above (or the lead), who's in
+ * each right now, and the per-member table, where size doesn't win.
+ */
 function League({ board, standing, error, founding }) {
     let body;
     if (!board) {
@@ -384,11 +420,14 @@ function League({ board, standing, error, founding }) {
             </div>
         );
     } else {
-        const { host, local, rank, rival, ahead, gap, moved } = standing;
+        const { host, local, rank, rival, ahead, gap, moved, effortRank, effortOf } = standing;
+        // The top four, and the gym itself underneath when it's lower down.
+        const shown = local.slice(0, 4).map((g, i) => ({ g, r: i + 1 }));
+        if (rank > 4) shown.push({ g: host, r: rank });
         body = (
-            <div className="flex-1 min-h-0 flex flex-col justify-center">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span className="text-5xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{ordinal(rank)}</span>
+            <>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 shrink-0">
+                    <span className="text-4xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{ordinal(rank)}</span>
                     <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">of {local.length} within {standing.radius} km</span>
                     {moved !== 0 && (
                         <span className={`inline-flex items-center h-5 px-2 rounded-full text-[9px] font-black uppercase tracking-[0.15em] ${moved > 0 ? 'bg-emerald-50 text-[#0B7A57]' : 'bg-amber-50 text-[#B45309]'}`}>
@@ -396,15 +435,37 @@ function League({ board, standing, error, founding }) {
                         </span>
                     )}
                 </div>
-                <div className="mt-2 text-[12px] font-bold text-[#666]">{fmtNum(host.points_week)} POWR this week{founding && <span className="ml-2 inline-flex items-center h-5 px-2 rounded-full bg-[#E8D200]/15 border border-[#E8D200]/50 text-[8px] font-black uppercase tracking-[0.2em] text-[#8a7600] align-middle">Founding gym</span>}</div>
-                {rival && (
-                    <div className={`mt-1 text-[12px] font-bold ${ahead ? 'text-[#0B7A57]' : 'text-[#B45309]'}`}>
-                        {ahead
-                            ? (gap > 0 ? `Leading ${rival.name} by ${fmtNum(gap)}` : `Level with ${rival.name}`)
-                            : (gap > 0 ? `${fmtNum(gap)} behind ${rival.name} · about ${plural(sessionsToClose(gap), 'session')}` : `Level with ${rival.name}`)}
+                <ol className="mt-3 space-y-1 shrink-0" aria-label="The Gym League near you this week">
+                    {shown.map(({ g, r }) => {
+                        const me = g.key === host.key;
+                        return (
+                            <li key={g.key} className={`flex items-center gap-2.5 h-8 px-2.5 rounded-lg ${me ? 'bg-[#FBF8E1] border border-[#E8D200]/50' : ''}`}>
+                                <span className={`w-4 text-[11px] font-black tabular-nums ${r === 1 ? 'text-[#8a7600]' : 'text-[#AAAAAA]'}`}>{r}</span>
+                                <span className={`flex-1 min-w-0 truncate text-[12px] ${me ? 'font-black text-[#1A1A1A]' : 'font-bold text-[#666]'}`}>
+                                    {g.name}{me && founding ? <span className="ml-1.5 text-[8px] font-black uppercase tracking-[0.2em] text-[#8a7600]">Founding</span> : null}
+                                </span>
+                                {g.in_now > 0 && <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-[#0B7A57]"><i className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{g.in_now} in</span>}
+                                <span className="w-14 shrink-0 text-right text-[12px] font-bold tabular-nums text-[#1A1A1A]">{fmtNum(g.points_week)}</span>
+                            </li>
+                        );
+                    })}
+                </ol>
+                <div className="mt-auto pt-3 space-y-0.5 shrink-0">
+                    {rival && (
+                        <div className={`text-[12px] font-bold ${ahead ? 'text-[#0B7A57]' : 'text-[#B45309]'}`}>
+                            {ahead
+                                ? (gap > 0 ? `Leading ${rival.name} by ${fmtNum(gap)}` : `Level with ${rival.name}`)
+                                : (gap > 0 ? `${fmtNum(gap)} behind ${rival.name} · about ${plural(sessionsToClose(gap), 'session')}` : `Level with ${rival.name}`)}
+                        </div>
+                    )}
+                    <div className="text-[11px] text-[#888]">
+                        {effortRank > 0 && effortOf >= 2
+                            ? <>Per member: <span className="font-bold text-[#1A1A1A]">{ordinal(effortRank)} of {effortOf}</span>, where size doesn’t win · </>
+                            : null}
+                        Resets Monday
                     </div>
-                )}
-            </div>
+                </div>
+            </>
         );
     }
     return (
@@ -415,44 +476,28 @@ function League({ board, standing, error, founding }) {
     );
 }
 
-// ── The last 8 weeks ───────────────────────────────────────────────────────
+// ── Since joining, and the last 8 weeks ────────────────────────────────────
 
-const GHOST_BARS = [38, 52, 46, 61, 57, 70, 66, 30];
-
-function Trend({ insights, tz, gymName, locked }) {
-    if (locked) {
-        return (
-            <Card className="flex-1 p-6 flex flex-col min-h-0">
-                <Head icon={TrendingUp}>Last 8 weeks</Head>
-                <div className="flex-1 min-h-0 flex flex-col justify-center">
-                    <div className="flex items-end gap-1.5 h-12" aria-hidden>
-                        {GHOST_BARS.map((h, i) => <i key={i} className="flex-1 rounded-t-[3px] bg-[#EFEFEB]" style={{ height: `${h}%` }} />)}
-                    </div>
-                    <p className="text-[13px] text-[#888] leading-relaxed mt-4">Whether {gymName} is growing week on week, and who’s gone quiet, come with Clash+.</p>
-                    <Link to="/venue/package" className="mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] font-black">
-                        <Lock size={11} className="text-[#8a7600]" /><span className="text-[#8a7600]">See packages</span>
-                    </Link>
-                </div>
-            </Card>
-        );
-    }
-    if (insights == null || insights.failed) {
-        return (
-            <Card className="flex-1 p-6 flex flex-col min-h-0">
-                <Head icon={TrendingUp}>Last 8 weeks</Head>
-                {insights == null ? <Spinner className="py-6" /> : <p className="text-[13px] text-[#888] font-light">The weekly numbers aren’t loading right now. Try again in a minute.</p>}
-            </Card>
-        );
-    }
-    const weeks = insights.weeks ?? [];
-    const done = weeks.slice(0, -1);
+/**
+ * What POWR has recorded at the gym since it joined (the wall's all-time
+ * block: sessions, people, hours, POWR earned, members who hide from
+ * leaderboards left out), with the last 8 weeks underneath on Clash+:
+ * whether it's growing, and the first-timers.
+ */
+function Since({ wall, insights, tz, gymName, locked }) {
+    const all = wall?.community_stats?.all_time;
+    const since = all?.since && (all.sessions ?? 0) > 0
+        ? new Intl.DateTimeFormat('en-GB', { timeZone: tz, month: 'long', year: 'numeric' }).format(new Date(all.since))
+        : null;
+    const weeks = !locked && insights && !insights.failed ? (insights.weeks ?? []) : null;
+    const done = weeks ? weeks.slice(0, -1) : [];
     const last4 = done.slice(-4);
     const prev4 = done.slice(-8, -4);
     const now4 = sum(last4, 'sessions');
     const change = prev4.length === 4 ? pctChange(now4, sum(prev4, 'sessions')) : null;
     const firsts = sum(last4, 'new_athletes');
     const fmtWeek = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, day: 'numeric', month: 'short' }).format(new Date(iso)).replace('Sept', 'Sep');
-    const shown = weeks.slice(-8);
+    const shown = weeks ? weeks.slice(-8) : [];
     const cols = shown.map((w, i) => ({
         key: w.week_start,
         tick: i === shown.length - 1 ? 'Now' : fmtWeek(w.week_start),
@@ -460,31 +505,50 @@ function Trend({ insights, tz, gymName, locked }) {
         value: w.sessions ?? 0,
         partial: i === shown.length - 1,
     }));
-    const empty = weeks.every(w => !w.sessions);
+    const hasWeeks = weeks && weeks.some((w) => w.sessions);
+    const loading = !locked && insights == null && !wall;
     return (
         <Card className="flex-1 p-6 flex flex-col min-h-0">
-            <Head icon={TrendingUp} to="/venue/members" linkLabel="More">Last 8 weeks</Head>
-            {empty ? (
-                <div className="flex-1 min-h-0 flex flex-col justify-center">
-                    <p className="text-[13px] text-[#888] font-light leading-relaxed">Once members check in at {gymName}, each week shows up here.</p>
-                </div>
-            ) : (
+            <Head icon={TrendingUp} to={locked ? null : '/venue/members'} linkLabel="More">{since ? `Since ${since}` : 'Last 8 weeks'}</Head>
+            {loading ? <Spinner className="py-6" /> : (
                 <>
-                    <div className="shrink-0">
-                        <div className="flex items-baseline gap-2">
-                            <span className="text-4xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{fmtNum(now4)}</span>
-                            <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">sessions in 4 weeks</span>
+                    {since ? (
+                        <div className="shrink-0">
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-4xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{fmtNum(all.sessions)}</span>
+                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">sessions here</span>
+                            </div>
+                            <div className="mt-1.5 text-[12px] font-bold text-[#666]">
+                                {people(all.members ?? 0)} · {fmtNum(Math.round((all.minutes ?? 0) / 60))} hours · {fmtNum(all.points ?? 0)} POWR earned
+                            </div>
                         </div>
-                        <div className="mt-1.5 text-[12px] font-bold text-[#666]">
-                            {change
-                                ? <span className={change.pct > 0 ? 'text-[#0B7A57]' : change.pct < 0 ? 'text-[#B45309]' : 'text-[#888]'}>{change.pct === 0 ? 'Level with' : change.label} {change.pct === 0 ? 'the 4 weeks before' : 'on the 4 weeks before'}</span>
-                                : <span className="text-[#AAAAAA]">Nothing to compare yet</span>}
-                            {' · '}{plural(firsts, 'first-timer')}
+                    ) : hasWeeks ? (
+                        <div className="shrink-0">
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-4xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{fmtNum(now4)}</span>
+                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">sessions in 4 weeks</span>
+                            </div>
                         </div>
-                    </div>
-                    <div className="flex-1 min-h-0 flex flex-col justify-end pt-7">
-                        <Columns data={cols} label="Sessions here each week" height={64} tickEvery={2} />
-                    </div>
+                    ) : (
+                        <p className="text-[13px] text-[#888] font-light leading-relaxed">Once members check in at {gymName}, their sessions add up here.</p>
+                    )}
+                    {hasWeeks ? (
+                        <div className="flex-1 min-h-0 flex flex-col justify-end">
+                            <div className="mt-3 text-[11px] font-bold text-[#666]">
+                                {change
+                                    ? <span className={change.pct > 0 ? 'text-[#0B7A57]' : change.pct < 0 ? 'text-[#B45309]' : 'text-[#888]'}>{change.pct === 0 ? 'Level with the 4 weeks before' : `${change.label} on the 4 weeks before`}</span>
+                                    : <span className="text-[#AAAAAA]">Nothing to compare yet</span>}
+                                {' · '}{plural(firsts, 'first-timer')} in 4 weeks
+                            </div>
+                            <div className="pt-6">
+                                <Columns data={cols} label="Sessions here each week" height={56} tickEvery={2} />
+                            </div>
+                        </div>
+                    ) : locked ? (
+                        <p className="mt-auto pt-4 text-[11px] text-[#AAAAAA] leading-relaxed">
+                            Week-by-week growth comes with Clash+. <Link to="/venue/package" className="font-bold"><span className="text-[#8a7600]">See packages</span></Link>
+                        </p>
+                    ) : null}
                 </>
             )}
         </Card>
@@ -504,6 +568,7 @@ export default function VenueHome() {
     const [events, setEvents] = useState(null);
     const [league, setLeague] = useState(null);
     const [leagueError, setLeagueError] = useState(false);
+    const [wall, setWall] = useState(null);               // the gym's big-screen feed: spotlight, streaks, all-time
     const [activity, setActivity] = useState(null);
     const [activityDone, setActivityDone] = useState(false);
     const [profile, setProfile] = useState(null);         // gym_profile: where it is (the join QR), the recap switch
@@ -538,6 +603,8 @@ export default function VenueHome() {
                 fetchGymLeague(s.board.slug, s.board.display_token)
                     .then(d => { setLeague(d); setLeagueError(false); })
                     .catch(() => setLeagueError(true));
+                // The wall's own feed changes slowly: with the insights, every few minutes.
+                if (slow) fetchGymBoard(s.board.slug, s.board.display_token).then(setWall).catch(() => {});
             }
         } catch (err) {
             if (first) setError(err.message);
@@ -631,9 +698,9 @@ export default function VenueHome() {
                 <div className="creator-rise lg:col-span-12 min-w-0" style={{ animationDelay: '180ms' }}>
                     <WeekPosts gym={gym} name={name} summary={summary} insights={insights} standing={standing} events={events} pkg={pkg} tz={tz} profile={profile} onToday={setTodayPost} />
                 </div>
-                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '240ms' }}><People top={top} failed={!!insights?.failed} summary={summary} activity={activity} /></div>
+                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '240ms' }}><People wall={wall} top={top} failed={!!insights?.failed} summary={summary} activity={activity} /></div>
                 <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '300ms' }}><League board={board} standing={standing} error={leagueError} founding={pkg?.package === 'founding'} /></div>
-                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '360ms' }}><Trend insights={insights} tz={tz} gymName={name} locked={insightsAllowed === false || !!insights?.locked} /></div>
+                <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '360ms' }}><Since wall={wall} insights={insights} tz={tz} gymName={name} locked={insightsAllowed === false || !!insights?.locked} /></div>
             </div>
         </div>
     );

@@ -24,6 +24,16 @@ export const fetchGymLeague = async (slug, token) => {
     if (!res.ok) throw new Error(`League unavailable (${res.status})`);
     return res.json();
 };
+// The gym's own big-screen feed (same function, same token as the wall):
+// this week's standings, the spotlight (biggest session, most improved, new
+// faces), the community block (streaks, all-time totals) and beyond-the-gym.
+// Names are only ever what the wall shows; hidden members never appear.
+export const fetchGymBoard = async (slug, token) => {
+    const base = import.meta.env.EXPO_PUBLIC_SUPABASE_URL;
+    const res = await fetch(`${base}/functions/v1/gym-board?slug=${encodeURIComponent(slug)}&k=${encodeURIComponent(token)}`);
+    if (!res.ok) throw new Error(`Board unavailable (${res.status})`);
+    return res.json();
+};
 export const updateGymScreens = (partnerId, patch) => rpc('gym_board_update', { p_partner_id: partnerId, p_patch: patch });
 
 export const staffApi = (action, body = {}) => invokeFn('manage-gym-staff', { action, ...body });
