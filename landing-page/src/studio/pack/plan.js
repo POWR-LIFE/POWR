@@ -141,15 +141,20 @@ const RECIPES = {
 };
 
 // House film, warm colour, film again, cool colour.
-const MIXED = [{}, { mono: 0, tint: 'warm' }, {}, { mono: 0, tint: 'cool' }];
-// The QR poster and the standings always keep the house look.
+// A template's duotone tint (warm, cool) repaints the whole photo in two
+// tones, so a colour look must turn it down (tintAmount) or the colour is lost.
+// Colour: the photos as shot. Mixed: house film, then colour with a light
+// warm or cool cast, alternating.
+const COLOUR = { mono: 0, tintAmount: 0 };
+const MIXED = [{}, { mono: -0.1, tint: 'warm', tintAmount: 0.3 }, {}, { mono: -0.1, tint: 'cool', tintAmount: 0.3 }];
+// In a mixed pack the QR poster and the standings keep the house look.
 const FLAGSHIP = new Set(['ticket', 'results']);
 
 /** The look for the n-th post of a pack. */
 export function lookFor(options, n, templateId) {
-    if (options.look === 'film' || FLAGSHIP.has(templateId)) return {};
-    if (options.look === 'colour') return { mono: 0 };
-    return MIXED[n % MIXED.length];
+    if (options.look === 'film') return {};
+    if (options.look === 'colour') return COLOUR;
+    return FLAGSHIP.has(templateId) ? {} : MIXED[n % MIXED.length];
 }
 
 /** A template's words: its defaults, what the event fills in, then the post's own. */
