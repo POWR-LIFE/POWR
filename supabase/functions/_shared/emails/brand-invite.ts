@@ -17,6 +17,15 @@ export interface BrandInviteData {
   deliveryMethod?: "code_pool" | "shopify" | "api" | "affiliate" | "manual_fulfilment" | null;
   /** Brand accent (rewards.brand_color, e.g. "#c6a13e") — tints the small pill dot. CTA stays POWR gold. */
   brandColor?: string | null;
+  /**
+   * Set by the 5-day setup sweep (send-partner-setup-reminder). "invite" = the
+   * setup link was never used, so `setupUrl` is that same still-valid link.
+   * "delivery" = the login exists but no code route is chosen or stocked, so
+   * `setupUrl` is the portal sign-in and the steps start from there.
+   */
+  reminder?: "invite" | "delivery" | null;
+  /** Days since the invite (or the login) — only used for wording. */
+  daysSince?: number | null;
 }
 
 const GOLD = "#E8D200";
@@ -30,6 +39,13 @@ const oneLine = (s: string) =>
 interface Step { title: string; detail: string }
 
 function stepsFor(data: BrandInviteData): Step[] {
+  if (data.reminder === "delivery") {
+    return [
+      { title: "Sign in to your portal", detail: "Same email and password you set up" },
+      { title: "Choose how codes are delivered", detail: "Three options in the Integration tab: upload a pool of single-use codes, connect your Shopify store so POWR mints a unique code per redemption, or connect your own system through our API" },
+      { title: "Go live", detail: "We switch the reward on as soon as codes are in place, and you can watch redemptions come in" },
+    ];
+  }
   if (!data.rewardTitle) {
     return [
       { title: "Create &amp; manage your rewards", detail: "Submit new offers and edit your listings" },
@@ -64,20 +80,65 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
   const greeting = firstName ? `Hi ${escapeHtml(firstName)}, ` : "";
   const steps = stepsFor(data);
 
-  const subject = approved
-    ? `${safeRewardTitleForHeader} is approved — set up your ${safeBrandNameForHeader} portal on POWR`
-    : `You're invited to the ${safeBrandNameForHeader} rewards portal on POWR`;
-  const preheader = approved
-    ? `${safeRewardTitleForHeader} is ready to go live. Set up your ${safeBrandNameForHeader} portal to load codes and switch it on.`
-    : `Set up your ${safeBrandNameForHeader} portal on POWR — pick your email and password, takes a minute.`;
-  const pill = approved ? "Reward approved" : "Rewards Partner";
-  const heading = approved
-    ? `Your reward is<br><em style="font-style:italic;color:${GOLD};">approved.</em>`
-    : `Welcome to the<br><em style="font-style:italic;color:${GOLD};">${escapeHtml(brandName)} portal.</em>`;
-  const intro = approved
-    ? `${greeting}<strong style="font-weight:500;color:#bbbbbb;">${escapeHtml(rewardTitle)}</strong> is ready to go live on POWR.<br>Set up your ${escapeHtml(brandName)} portal to load codes and switch it on &mdash; it takes about a minute.`
-    : `${greeting}You&#8217;ve been invited to manage ${escapeHtml(brandName)} rewards on POWR.<br>Set up your login below &mdash; it takes about a minute.`;
-  const stepsHeading = approved ? "Three steps to live" : "In the portal you can";
+  const reminder = data.reminder ?? null;
+  const days = Math.max(1, Math.round(data.daysSince ?? 5));
+  const ago = `${days} ${days === 1 ? "day" : "days"} ago`;
+  const rewardOrListing = rewardTitle ? escapeHtml(rewardTitle) : "your listing";
+  // Reminder intros read "Hi Cara, we sent…" with a name and "We sent…" without.
+  const lead = (s: string) => greeting ? `${greeting}${s}` : s.charAt(0).toUpperCase() + s.slice(1);
+
+  let subject: string;
+  let preheader: string;
+  let pill: string;
+  let heading: string;
+  let intro: string;
+  let stepsHeading: string;
+  let cta: string;
+  let footerNote: string;
+
+  if (reminder === "invite") {
+    subject = approved
+      ? `Still waiting: ${safeRewardTitleForHeader} can go live once you set up your ${safeBrandNameForHeader} portal`
+      : `Still waiting: set up your ${safeBrandNameForHeader} portal on POWR`;
+    preheader = `Your setup link from ${ago} still works. It takes about a minute.`;
+    pill = "Reminder";
+    heading = `Your portal is<br><em style="font-style:italic;color:${GOLD};">still waiting.</em>`;
+    intro = approved
+      ? lead(`we sent your setup link ${ago} and <strong style="font-weight:500;color:#bbbbbb;">${escapeHtml(rewardTitle)}</strong> is approved and ready &mdash; but it can&#8217;t go live until your ${escapeHtml(brandName)} portal exists.<br>The link below still works, and it takes about a minute.`)
+      : lead(`we sent your invite to manage ${escapeHtml(brandName)} rewards on POWR ${ago} and it hasn&#8217;t been used yet.<br>The link below still works, and it takes about a minute.`);
+    stepsHeading = approved ? "Three steps to live" : "In the portal you can";
+    cta = "Finish setting up";
+    footerNote = "You&#8217;re getting this because your setup link hasn&#8217;t been used. Not the right person? Reply and we&#8217;ll redirect it.";
+  } else if (reminder === "delivery") {
+    subject = rewardTitle
+      ? `${safeRewardTitleForHeader} can’t go live yet — choose how codes are delivered`
+      : `Your ${safeBrandNameForHeader} reward can’t go live yet — choose how codes are delivered`;
+    preheader = `Your login is set up. One choice in the Integration tab and POWR switches ${rewardTitle ? safeRewardTitleForHeader : "your reward"} on.`;
+    pill = "One step from live";
+    heading = `One step from<br><em style="font-style:italic;color:${GOLD};">live.</em>`;
+    intro = lead(`your ${escapeHtml(brandName)} portal is set up, but <strong style="font-weight:500;color:#bbbbbb;">${rewardOrListing}</strong> still has no way to deliver codes, so members can&#8217;t claim it.<br>Choose a route in the Integration tab and we switch it on as soon as codes are in place.`);
+    stepsHeading = "What&#8217;s left";
+    cta = "Choose delivery method";
+    footerNote = `You&#8217;re getting this because ${rewardOrListing} is approved but not yet live. Need a hand? Reply to this email.`;
+  } else {
+    subject = approved
+      ? `${safeRewardTitleForHeader} is approved — set up your ${safeBrandNameForHeader} portal on POWR`
+      : `You're invited to the ${safeBrandNameForHeader} rewards portal on POWR`;
+    preheader = approved
+      ? `${safeRewardTitleForHeader} is ready to go live. Set up your ${safeBrandNameForHeader} portal to load codes and switch it on.`
+      : `Set up your ${safeBrandNameForHeader} portal on POWR — pick your email and password, takes a minute.`;
+    pill = approved ? "Reward approved" : "Rewards Partner";
+    heading = approved
+      ? `Your reward is<br><em style="font-style:italic;color:${GOLD};">approved.</em>`
+      : `Welcome to the<br><em style="font-style:italic;color:${GOLD};">${escapeHtml(brandName)} portal.</em>`;
+    intro = approved
+      ? `${greeting}<strong style="font-weight:500;color:#bbbbbb;">${escapeHtml(rewardTitle)}</strong> is ready to go live on POWR.<br>Set up your ${escapeHtml(brandName)} portal to load codes and switch it on &mdash; it takes about a minute.`
+      : `${greeting}You&#8217;ve been invited to manage ${escapeHtml(brandName)} rewards on POWR.<br>Set up your login below &mdash; it takes about a minute.`;
+    stepsHeading = approved ? "Three steps to live" : "In the portal you can";
+    cta = "Set up your portal";
+    footerNote = `This invite link is single-use and tied to your brand.<br>
+              ${approved ? "Questions about your listing? Reply to this email." : "Didn&#8217;t expect this? Reply to this email and we&#8217;ll sort it."}`;
+  }
   const accent = /^#[0-9a-f]{6}$/i.test(data.brandColor ?? "") ? data.brandColor! : GOLD;
   const logoUrl = (data.logoUrl ?? "").trim();
   // The brand's own mark sits above the headline in a white tile, so dark and
@@ -152,7 +213,7 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
               <tr>
                 <td style="border-radius:100px;background-color:${GOLD};">
-                  <a href="${setupUrl}" target="_blank" style="display:inline-block;padding:16px 40px;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#080808;text-decoration:none;font-family:Arial,Helvetica,sans-serif;">Set up your portal</a>
+                  <a href="${setupUrl}" target="_blank" style="display:inline-block;padding:16px 40px;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#080808;text-decoration:none;font-family:Arial,Helvetica,sans-serif;">${cta}</a>
                 </td>
               </tr>
             </table>
@@ -175,8 +236,7 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
           <td style="background-color:#050505;padding:32px 40px;text-align:center;">
             <img src="${POWR_LOGO}" alt="POWR" height="16" style="height:16px;width:auto;display:block;margin:0 auto 16px;opacity:0.15;">
             <p style="margin:0;font-size:11px;font-weight:300;color:#282828;line-height:2;font-family:Arial,Helvetica,sans-serif;">
-              This invite link is single-use and tied to your brand.<br>
-              ${approved ? "Questions about your listing? Reply to this email." : "Didn&#8217;t expect this? Reply to this email and we&#8217;ll sort it."}
+              ${footerNote}
             </p>
           </td>
         </tr>
@@ -190,7 +250,34 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
 
   const plain = (s: string) => s.replace(/&mdash;/g, "—").replace(/&#8217;/g, "’").replace(/&amp;/g, "&");
   const textSteps = steps.map((s, i) => `${i + 1}. ${plain(s.title)} — ${plain(s.detail)}`).join("\n");
-  const text = approved
+  const plainFooter = plain(footerNote.replace(/<br>\s*/g, " ").replace(/\s+/g, " ").trim());
+  const text = reminder === "invite"
+    ? `${firstName ? `Hi ${firstName},\n\n` : ""}We sent your ${brandName} portal setup link ${ago} and it hasn't been used yet.${rewardTitle ? ` ${rewardTitle} is approved and ready, but it can't go live until your portal exists.` : ""}
+
+The link still works, and it takes about a minute:
+${setupUrl}
+
+${plain(stepsHeading).toUpperCase()}
+${textSteps}
+
+${plainFooter}
+
+— POWR
+https://powr.life`
+    : reminder === "delivery"
+    ? `${firstName ? `Hi ${firstName},\n\n` : ""}Your ${brandName} portal is set up, but ${rewardTitle || "your listing"} still has no way to deliver codes, so members can't claim it.
+
+Choose a route in the Integration tab and we switch it on as soon as codes are in place:
+${setupUrl}
+
+WHAT'S LEFT
+${textSteps}
+
+${plainFooter}
+
+— POWR
+https://powr.life`
+    : approved
     ? `${firstName ? `Hi ${firstName},\n\n` : ""}${rewardTitle} is approved and ready to go live on POWR.
 
 Set up your ${brandName} portal to load codes and switch it on — it takes about a minute:

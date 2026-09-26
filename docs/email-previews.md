@@ -1,7 +1,8 @@
 # Sending email previews
 
 Every server-sent email function (`send-weekly-summary`, `send-level-up-email`,
-`send-brand-weekly-report`, `send-reengagement-email`, `send-redemption-receipt`)
+`send-brand-weekly-report`, `send-reengagement-email`, `send-partner-setup-reminder`,
+`send-redemption-receipt`)
 has a `sample: true` mode that renders representative data to one address and
 touches nothing. It is gated by the same `x-resolve-token` as the real sends.
 The anon key never authorises a send: it is public, so accepting it would make
@@ -35,6 +36,7 @@ Per-function sample options:
 | `send-level-up-email` | `{"sample":true,"only_email":…}` |
 | `send-brand-weekly-report` | `{"sample":true,"only_email":…}` |
 | `send-reengagement-email` | `{"sample":true,"only_email":…,"variant":"lapsed"\|"never_started","stage":1\|2}` (both omitted = all four); `{"dry_run":true}` lists who is due without sending |
+| `send-partner-setup-reminder` | `{"sample":true,"only_email":…,"stage":"invite"\|"delivery"}` (omitted = both); `{"dry_run":true}` lists the brands due without sending |
 | `send-redemption-receipt` | `{"sample":true,"only_email":…,"kind":"code"\|"link"}` (omitted = both) |
 
 The `email-previews` function is the other route: it has its own key and a
