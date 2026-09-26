@@ -484,7 +484,7 @@ export default function VenueEventBuilder() {
     const { id } = useParams();
     const [params] = useSearchParams();
     const fromId = id ? null : params.get('from');
-    const { gym } = useAuth();
+    const { gym, isAdmin } = useAuth();
     const toast = useToast();
     const navigate = useNavigate();
     const { pkg } = usePackage();
@@ -494,6 +494,7 @@ export default function VenueEventBuilder() {
     const [templates, setTemplates] = useState(null);
     const [presets, setPresets] = useState([]);
     const [catalogue, setCatalogue] = useState([]);   // POWR partner prizes on offer
+    const [catalogueError, setCatalogueError] = useState(false);
     const [picking, setPicking] = useState(null);     // prize slot choosing a partner prize
     const [showPhone, setShowPhone] = useState(false); // the app preview, below xl
     const [trusted, setTrusted] = useState(false);
@@ -518,13 +519,14 @@ export default function VenueEventBuilder() {
             fetchGymSummary(gym.partner_id).catch(() => null),
             source ? fetchGymEvent(source).catch(err => { if (id) throw err; return null; }) : null,
             source ? fetchEventPushes(source).catch(() => null) : null,
-            fetchPrizeCatalogue(gym.partner_id).catch(() => []),
+            fetchPrizeCatalogue(gym.partner_id).catch(() => null),
         ])
             .then(([t, p, summary, ev, pushes, prizes]) => {
                 if (!alive) return;
                 setTemplates(t);
                 setPresets(p);
                 setCatalogue(Array.isArray(prizes) ? prizes : []);
+                setCatalogueError(prizes === null);
                 setTrusted(!!summary?.portal?.trusted);
                 if (ev) {
                     const tpl = t.find(x => x.key === ev.template_key);
@@ -619,6 +621,12 @@ export default function VenueEventBuilder() {
 
     const set = (patch) => setV(x => ({ ...x, ...patch }));
     const setPrize = (i, patch) => setV(x => ({ ...x, prizes: x.prizes.map((p, j) => (j === i ? { ...p, ...patch } : p)) }));
+    const reloadCatalogue = () => {
+        setCatalogueError(false);
+        fetchPrizeCatalogue(gym.partner_id)
+            .then(p => setCatalogue(Array.isArray(p) ? p : []))
+            .catch(() => setCatalogueError(true));
+    };
     const onBusy = (d) => setUploading(n => n + d);
     const prefix = `gym-events/${gym.partner_id}`;
     const lockAt = started ? ev.lock_at : preview?.lock_at;
@@ -944,6 +952,29 @@ export default function VenueEventBuilder() {
                     <button type="button" onClick={() => set({ prizes: [...v.prizes, { label: '', image_url: null, reward_id: null }] })} className={`${BTN_GHOST} h-10 px-5`}>
                         <Plus size={13} /> Add a prize
                     </button>
+                )}
+                {can('prizes') && catalogue.length === 0 && (
+                    <div className="flex items-start gap-3 p-4 rounded-2xl border border-dashed border-[#E6E6E1] bg-[#FAFAF8]">
+                        <Gift size={15} className="text-[#8a7600] mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                            <div className="text-[9px] uppercase tracking-[0.25em] font-black text-[#8a7600]">POWR partner prizes</div>
+                            {catalogueError ? (
+                                <p className="text-[12px] text-[#666] leading-relaxed mt-1.5">
+                                    They couldn’t load just now.{' '}
+                                    <button type="button" onClick={reloadCatalogue} className="font-bold text-[#8a7600] underline underline-offset-2">Try again</button>
+                                </p>
+                            ) : isAdmin ? (
+                                <p className="text-[12px] text-[#666] leading-relaxed mt-1.5">
+                                    None on offer yet. Tick “Offer as an event prize” on a reward in the admin Rewards page and it shows here, for every gym.{' '}
+                                    <Link to="/admin/rewards" className="font-bold text-[#8a7600] underline underline-offset-2">Open Rewards</Link>
+                                </p>
+                            ) : (
+                                <p className="text-[12px] text-[#666] leading-relaxed mt-1.5">
+                                    Prizes from POWR’s brand partners show here when brands offer them. None on offer right now, so these ones are yours to give.
+                                </p>
+                            )}
+                        </div>
+                    </div>
                 )}
                 <p className="text-[11px] text-[#AAAAAA] leading-relaxed">
                     Photos show with the prizes in the app, on the share page and on your screen.
