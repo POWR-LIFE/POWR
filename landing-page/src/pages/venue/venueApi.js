@@ -45,8 +45,6 @@ export const createGymEvent = (partnerId, templateKey, fields) =>
     rpc('gym_create_event', { p_partner_id: partnerId, p_template_key: templateKey, p_fields: fields });
 export const updateGymEvent = (eventId, fields) => rpc('gym_update_event', { p_event_id: eventId, p_fields: fields });
 // The builder's live preview: the dates and house rules the server would set. Saves nothing.
-// POWR partner rewards a gym can give as prizes; the winner's code is issued at the reveal.
-export const fetchPrizeCatalogue = (partnerId) => rpc('gym_prize_catalogue', { p_partner_id: partnerId });
 export const previewGymEvent = (partnerId, templateKey, fields) =>
     rpc('gym_preview_event', { p_partner_id: partnerId, p_template_key: templateKey, p_fields: fields });
 export const publishGymEvent = (eventId) => rpc('gym_publish_event', { p_event_id: eventId });
@@ -65,6 +63,14 @@ export const reinstateInGymEvent = (eventId, userId) => rpc('gym_event_reinstate
 export const fetchEventPushes = (eventId) => rpc('gym_event_push_status', { p_event_id: eventId });
 export const setEventPush = (eventId, patch) => rpc('gym_event_set_push', { p_event_id: eventId, p_patch: patch });
 export const sendStandingsNow = (eventId, dryRun) => rpc('gym_event_send_pulse', { p_event_id: eventId, p_dry_run: dryRun });
+
+// ── Partner discounts (Clash+): the discounts POWR members get from brand
+// partners, for the gym to buy prizes and kit. One code per brand when it's
+// needed, the same one back for a week. The builder's "partner code for
+// everyone" picks its brand from the same list (event_ok).
+export const fetchPartnerDiscounts = (partnerId) => rpc('gym_partner_discounts', { p_partner_id: partnerId });
+export const claimPartnerCode = (partnerId, rewardId) =>
+    rpc('gym_claim_partner_code', { p_partner_id: partnerId, p_reward_id: rewardId });
 
 // ── Package (set by POWR; an owner can ask to switch) ───────────────────────
 export const fetchGymPackage = (partnerId) => rpc('gym_package', { p_partner_id: partnerId });

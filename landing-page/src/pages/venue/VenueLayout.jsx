@@ -1,22 +1,26 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, Palette, Tv, Users, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
 import { fetchGymPackage } from './venueApi';
 import { PackageContext, PACKAGE_UNKNOWN, packageLine, trialDaysLeft } from './packages';
 
+// mobile: false keeps an item out of the six phone tabs; the account sheet links it instead.
 const NAV = [
     { label: 'Overview', short: 'Home',    path: '/venue',         icon: LayoutDashboard },
     { label: 'Events',   short: 'Events',  path: '/venue/events',  icon: CalendarDays    },
+    { label: 'Discounts', short: 'Discounts', path: '/venue/partners', icon: BadgePercent, feature: 'events', mobile: false },
     { label: 'Studio',   short: 'Studio',  path: '/venue/studio',  icon: Palette,   feature: 'studio'   },
     { label: 'Screens',  short: 'Screens', path: '/venue/screens', icon: Tv              },
     { label: 'Members',  short: 'Members', path: '/venue/members', icon: Users,     feature: 'insights' },
     { label: 'Settings', short: 'Settings', path: '/venue/settings', icon: Settings2      },
 ];
+const PHONE_TABS = NAV.filter(item => item.mobile !== false);
+const SHEET_LINKS = NAV.filter(item => item.mobile === false);
 
-const PATH_LABELS = { venue: 'Overview', events: 'Events', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Settings', settings: 'Settings', package: 'Package', poster: 'Members' };
+const PATH_LABELS = { venue: 'Overview', events: 'Events', partners: 'Discounts', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Settings', settings: 'Settings', package: 'Package', poster: 'Members' };
 
 // An event's own pages keep the Events tab lit.
 const isActive = (path, current) => current === path || (path !== '/venue' && current.startsWith(`${path}/`));
@@ -340,6 +344,13 @@ export function VenueLayout({ children }) {
                                 <ChevronRight size={14} className="text-[#BBBBBB]" />
                             </Link>
                         )}
+                        {SHEET_LINKS.map(item => (
+                            <Link key={item.path} to={item.path} className="mb-4 flex items-center gap-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
+                                <item.icon size={14} className="text-[#8a7600] shrink-0" />
+                                <span className="flex-1 text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] truncate">{item.label}</span>
+                                {locked(item) ? <Lock size={12} className="text-[#BBBBBB]" aria-label="Not in your package" /> : <ChevronRight size={14} className="text-[#BBBBBB]" />}
+                            </Link>
+                        ))}
                         {user?.email && (
                             <div className="mb-4 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                                 <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
@@ -400,7 +411,7 @@ export function VenueLayout({ children }) {
             {/* ── Mobile bottom tabs ──────────────────────────────────────── */}
             <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-[#E6E6E1] pb-[env(safe-area-inset-bottom)]">
                 <div className="grid grid-cols-6 h-16">
-                    {NAV.map(item => {
+                    {PHONE_TABS.map(item => {
                         const active = isActive(item.path, location.pathname);
                         return (
                             <Link

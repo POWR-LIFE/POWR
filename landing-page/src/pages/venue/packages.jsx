@@ -25,7 +25,8 @@ export const PACKAGES = [
         items: [
             'Everything in Clash',
             'Run your own in-gym challenges, monthly or whenever you want',
-            'Prizes from POWR brand partners: up to 3 per event, the winner’s code in their Wallet at the reveal',
+            'Partner discounts: buy prizes and kit at the POWR members’ price, one code when you need it',
+            'If you like, everyone who takes part in your event gets a partner brand’s code in their Wallet',
             'Members dashboard: what they do, where they train, who’s gone quiet',
         ],
     },
@@ -73,6 +74,11 @@ const LOCKS = {
         title: 'Studio comes with Clash Pro',
         body: 'Turn your photos and clips into posts, reels and posters in minutes, filled from your events and your board.',
     },
+    // Unlocked with 'events' (Clash+), in its own words.
+    discounts: {
+        title: 'Partner discounts come with Clash+',
+        body: 'The discounts POWR members get from our brand partners, for buying prizes and kit for your gym. One code when you need it.',
+    },
 };
 
 export function trialDaysLeft(pkg) {
@@ -103,9 +109,9 @@ export const PackageContext = createContext({ pkg: null, refresh: () => {} });
 export const usePackage = () => useContext(PackageContext);
 
 /** What a gym sees in place of a part its package doesn't include. */
-export function Locked({ feature }) {
+export function Locked({ feature, lock: lockKey }) {
     const { pkg } = usePackage();
-    const lock = LOCKS[feature];
+    const lock = LOCKS[lockKey ?? feature];
     const want = PACKAGES.find((p) => p.key === FEATURE_PACKAGE[feature]);
     return (
         <Card className="p-8 sm:p-12" glow>
@@ -125,9 +131,9 @@ export function Locked({ feature }) {
     );
 }
 
-/** Route wrapper: the page if the package includes it, else the lock panel. */
-export function Gate({ feature, children }) {
+/** Route wrapper: the page if the package includes it, else the lock panel (`lock` picks other words for it). */
+export function Gate({ feature, lock, children }) {
     const { pkg } = usePackage();
     if (!pkg) return <Spinner />;
-    return pkg.features?.[feature] ? children : <Locked feature={feature} />;
+    return pkg.features?.[feature] ? children : <Locked feature={feature} lock={lock} />;
 }

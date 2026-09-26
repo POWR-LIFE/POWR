@@ -117,6 +117,7 @@ import VenueEventBuilder from './pages/venue/VenueEventBuilder';
 import VenueEventDetail from './pages/venue/VenueEventDetail';
 import VenueStudio from './pages/venue/VenueStudio';
 import VenuePackage from './pages/venue/VenuePackage';
+import VenuePartners from './pages/venue/VenuePartners';
 import { Gate } from './pages/venue/packages';
 import LandingV2 from './landing/LandingV2';
 import LandingV3 from './landing/v3/LandingV3';
@@ -1621,6 +1622,7 @@ export default function App() {
                     <Route path="/venue/poster" element={<GymProtectedRoute><VenueLayout><VenuePoster /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/team" element={<Navigate to="/venue/settings#team" replace />} />
                     <Route path="/venue/package" element={<GymProtectedRoute><VenueLayout><VenuePackage /></VenueLayout></GymProtectedRoute>} />
+                    <Route path="/venue/partners" element={<GymProtectedRoute><VenueLayout><Gate feature="events" lock="discounts"><VenuePartners /></Gate></VenueLayout></GymProtectedRoute>} />
                     <Route path="/partner/login" element={<PartnerLogin />} />
                     <Route path="/partner/setup/:token" element={<PartnerSetup />} />
                     <Route path="/partner" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalHome /></PartnerLayout></PartnerProtectedRoute>} />

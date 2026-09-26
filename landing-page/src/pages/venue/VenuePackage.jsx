@@ -59,7 +59,7 @@ export default function VenuePackage() {
                         </p>
                         {pkg.package === 'clash' && (
                             <p className="text-[12px] text-[#888] leading-relaxed mt-3 max-w-2xl">
-                                <b className="text-[#1A1A1A]">What stays:</b> your leaderboard and Gym League screens, the join poster, your team. <b className="text-[#1A1A1A]">What switches off:</b> your own events, the members dashboard, the Studio and event kits, unless you choose Clash+ or Clash Pro.
+                                <b className="text-[#1A1A1A]">What stays:</b> your leaderboard and Gym League screens, the join poster, your team. <b className="text-[#1A1A1A]">What switches off:</b> your own events, partner discounts, the members dashboard, the Studio and event kits, unless you choose Clash+ or Clash Pro.
                             </p>
                         )}
                     </>

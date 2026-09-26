@@ -144,7 +144,7 @@ function agendaFor({ events, pkg, summary }) {
     of(mine, 'draft').forEach(e => add(e.id, `${e.name} is still a draft`, `/venue/events/${e.id}`, 'plain'));
     of(all, 'scheduled').forEach(e => add(e.id, `${e.name} starts ${fmtDay(e.window_start_at)} · ${fmtNum(e.participants ?? 0)} joined`, `/venue/events/${e.id}`, 'plain'));
     mine.filter(e => statusKey(e) === 'revealed' && e.revealed_at && Date.now() - new Date(e.revealed_at).getTime() < 7 * 86_400_000
-        && !(Array.isArray(e.prizes) && e.prizes.length > 0 && e.prizes.every(p => p.handed_at || p.issued)))
+        && !(Array.isArray(e.prizes) && e.prizes.length > 0 && e.prizes.every(p => p.handed_at)))
         .forEach(e => add(e.id, `Winners of ${e.name} are out · hand over the prizes`, `/venue/events/${e.id}`, 'plain'));
     of(mine, 'pending').forEach(e => add(e.id, `${e.name} is with POWR for a quick check`, `/venue/events/${e.id}`, 'muted'));
     if (pkg?.on_trial) {

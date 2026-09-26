@@ -21,6 +21,7 @@ import EventContent from './EventContent';
 import EventDoor, { doorApplies } from './EventDoor';
 import EventAppPreview from '../../components/EventAppPreview';
 import { usePackage } from './packages';
+import { BrandTile } from './VenuePartners';
 
 // One event, run from a phone at the front desk as easily as from a laptop.
 // A header says where it stands and holds the one button that moves it on;
@@ -321,7 +322,7 @@ export default function VenueEventDetail() {
         },
         revealed: {
             title: 'Winners revealed',
-            body: `Revealed ${fmtDayTime(ev.revealed_at)}. Winners show their POWR ID at the front desk to collect their prize; tick each one off under Details.`,
+            body: `Revealed ${fmtDayTime(ev.revealed_at)}. Winners show their POWR ID at the front desk to collect their prize; tick each one off under Details.${ev.partner_reward && ev.partner_codes_issued ? ` ${fmtNum(ev.partner_codes_issued)} ${ev.partner_codes_issued === 1 ? 'person has' : 'people have'} a ${ev.partner_reward.brand_name ?? 'partner'} code in their Wallet.` : ''}`,
             actions: [{ label: 'Run it again', fn: () => navigate(`/venue/events/new?from=${ev.id}`), busy: 'none' }],
         },
         settled: { title: 'Finished', body: 'Thanks for running it. The same set-up is one click away.', actions: [{ label: 'Run it again', fn: () => navigate(`/venue/events/new?from=${ev.id}`), primary: true, busy: 'none' }] },
@@ -331,8 +332,7 @@ export default function VenueEventDetail() {
 
     const sealed = ['live', 'locked'].includes(ev.status);
     const leader = board?.rows?.[0];
-    // A partner prize is handed over the moment its code is issued.
-    const prizesHanded = (ev.prizes ?? []).filter((p) => p.handed_at || p.issued).length;
+    const prizesHanded = (ev.prizes ?? []).filter((p) => p.handed_at).length;
 
     // The numbers a glance wants, by state.
     const facts = [];
@@ -539,26 +539,33 @@ export default function VenueEventDetail() {
                                 <Micro className="mb-2">Prizes{over && !powrRun ? ' · tick each one when it’s handed over' : ''}</Micro>
                                 <ol className="space-y-2">
                                     {(ev.prizes ?? []).map(p => (
-                                        <li key={p.rank} className="flex items-start gap-3">
-                                            {over && !powrRun && !p.reward_id
-                                                ? <input type="checkbox" checked={!!p.handed_at} disabled={busy === `prize:${p.rank}`} onChange={(e) => handPrize(p, e.target.checked)} className="accent-[#E8D200] w-4 h-4 mt-0.5" aria-label={`Prize ${p.rank} handed over`} />
+                                        <li key={p.rank} className="flex items-center gap-3">
+                                            {over && !powrRun
+                                                ? <input type="checkbox" checked={!!p.handed_at} disabled={busy === `prize:${p.rank}`} onChange={(e) => handPrize(p, e.target.checked)} className="accent-[#E8D200] w-4 h-4" aria-label={`Prize ${p.rank} handed over`} />
                                                 : <span className="w-4 font-black text-[#BBBBBB]">{p.rank}</span>}
                                             {p.image_url && <img src={storageImage(p.image_url, 80)} alt="" className="w-7 h-7 rounded-lg object-cover" />}
-                                            <span className="min-w-0">
-                                                <span className={p.handed_at ? 'line-through text-[#AAAAAA]' : ''}>{over ? `${p.rank}. ` : ''}{p.label}</span>
-                                                {p.handed_at && <span className="ml-2 text-[10px] font-bold text-[#0B7A57]">handed over {fmtDay(p.handed_at)}</span>}
-                                                {p.reward && <span className="block text-[10px] font-bold text-[#8a7600]">POWR partner prize · {p.reward.brand_name}</span>}
-                                                {p.issued && (
-                                                    <span className="block text-[10px] font-bold text-[#0B7A57]">
-                                                        In {p.issued.name ?? 'the winner'}’s Wallet since {fmtDay(p.issued.issued_at)} · code <code className="font-mono text-[11px] text-[#1A1A1A]">{p.issued.code}</code>
-                                                    </span>
-                                                )}
-                                                {p.reward_id && over && !p.issued && <span className="block text-[10px] font-bold text-[#B45309]">No code was left for this prize. Email support@powr.life and we’ll sort it.</span>}
-                                            </span>
+                                            <span className={p.handed_at ? 'line-through text-[#AAAAAA]' : ''}>{over ? `${p.rank}. ` : ''}{p.label}</span>
+                                            {p.handed_at && <span className="text-[10px] font-bold text-[#0B7A57]">handed over {fmtDay(p.handed_at)}</span>}
                                         </li>
                                     ))}
                                 </ol>
                             </div>
+                            {ev.partner_reward && (
+                                <div>
+                                    <Micro className="mb-2">Partner code for everyone</Micro>
+                                    <div className="flex items-center gap-3">
+                                        <BrandTile d={{ image_url: ev.partner_reward.image_url, brand_name: ev.partner_reward.brand_name }} className="w-9 h-9 rounded-xl" />
+                                        <div className="min-w-0">
+                                            <div className="font-bold text-[#1A1A1A]">{ev.partner_reward.label}</div>
+                                            <div className="text-[12px] text-[#888]">
+                                                {ev.revealed_at
+                                                    ? `In ${fmtNum(ev.partner_codes_issued ?? 0)} ${ev.partner_codes_issued === 1 ? 'Wallet' : 'Wallets'} since the reveal`
+                                                    : `For everyone who scores, in their Wallet when you reveal the winners${ev.partner_reward.available != null ? ` · ${fmtNum(ev.partner_reward.available)} codes left` : ''}`}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             <div>
                                 <Micro className="mb-2">Rules</Micro>
                                 <ul className="space-y-1 text-[#666]">{(ev.rules ?? []).map((r, i) => <li key={i}>· {r}</li>)}</ul>

@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Calendar, Check, Gift, Lock, Moon, Plus, Smartphone, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Calendar, Check, Lock, Moon, Plus, Smartphone, Upload, X } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
-import { Page, Card, Micro, PageTitle, Spinner, Empty, INPUT, LABEL, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
+import { Page, Card, Micro, PageTitle, Spinner, Empty, INPUT, LABEL, BTN_GOLD, BTN_GHOST, fmtNum } from '../../components/portal/ui';
 import {
-    createGymEvent, fetchEventPushes, fetchEventTemplates, fetchGymEvent, fetchGymSummary, fetchPointPresets, fetchPrizeCatalogue,
+    createGymEvent, fetchEventPushes, fetchEventTemplates, fetchGymEvent, fetchGymSummary, fetchPartnerDiscounts, fetchPointPresets,
     previewGymEvent, publishGymEvent, scheduleGymReveal, setEventPush, updateGymEvent,
 } from './venueApi';
+import { BrandTile } from './VenuePartners';
 import {
     ACTIVITIES, fmtDay, fmtDayTime, fromLocalInput, isVideo, isoDay, lastDay, lengthLabel, statusKey, toLocalInput, whatCounts, withGym,
 } from './eventUi';
@@ -38,8 +39,9 @@ const STEPS = [
 ];
 
 // Once an event has started only its words and pictures can change
-// (gym_update_event); notifications and the reveal time stay open too.
-const LIVE_EDITABLE = ['name', 'promo_headline', 'promo_media_url', 'booking_url', 'logo'];
+// (gym_update_event), and the partner code, which goes out at the reveal;
+// notifications and the reveal time stay open too.
+const LIVE_EDITABLE = ['name', 'promo_headline', 'promo_media_url', 'booking_url', 'logo', 'partner_code'];
 
 const ACTIVITY_KEYS = ACTIVITIES.map(([k]) => k);
 const draftKey = (partnerId) => `powr_event_builder:${partnerId}`;
@@ -59,7 +61,11 @@ function blankValue(tpl) {
         board_size: tpl.board_size,
         points_preset_key: tpl.default_preset,
         own_rules: [],
-        prizes: [{ label: '', image_url: null, reward_id: null }],
+        prizes: [{ label: '', image_url: null }],
+        // Optional: a partner brand's code for everyone who took part, at the reveal.
+        partner_on: false,
+        partner_reward_id: null,
+        partner_had: false,
         logo_url: null,
         logo_only: false,
         promo_headline: '',
@@ -86,6 +92,8 @@ function switchFormat(prev, tpl) {
         start_date: prev.start_date,
         own_rules: prev.own_rules,
         prizes: prev.prizes,
+        partner_on: prev.partner_on,
+        partner_reward_id: prev.partner_reward_id,
         logo_url: prev.logo_url,
         logo_only: prev.logo_only,
         promo_headline: prev.promo_headline,
@@ -112,7 +120,10 @@ function fromEvent(ev, tpl, pushes, editing) {
         board_size: offered(tpl.board_choices, ev.board_size, base.board_size),
         points_preset_key: offered(tpl.allowed_presets, ev.points_preset_key, base.points_preset_key),
         own_rules: ev.own_rules ?? [],
-        prizes: ev.prizes?.length ? ev.prizes.map(p => ({ label: p.label ?? '', image_url: p.image_url ?? null, reward_id: p.reward_id ?? null })) : base.prizes,
+        prizes: ev.prizes?.length ? ev.prizes.map(p => ({ label: p.label ?? '', image_url: p.image_url ?? null })) : base.prizes,
+        partner_on: !!ev.partner_reward_id,
+        partner_reward_id: ev.partner_reward_id ?? null,
+        partner_had: editing && !!ev.partner_reward_id,
         logo_url: ev.logo_url ?? null,
         logo_only: !!ev.logo_only,
         promo_headline: ev.promo_headline ?? '',
@@ -135,12 +146,9 @@ function toFields(v, tpl) {
         included_activities: v.scoring === 'pick' ? ACTIVITY_KEYS.filter(k => v.activities.includes(k)) : null,
         points_preset_key: v.points_preset_key,
         rules: v.own_rules.map(r => r.trim()).filter(Boolean),
-        // A partner prize is its reward; the server names and pictures it.
         prizes: v.prizes
-            .filter(p => p.reward_id || p.label.trim())
-            .map(p => (p.reward_id
-                ? { label: p.label.trim(), image_url: p.image_url ?? null, reward_id: p.reward_id }
-                : p.image_url ? { label: p.label.trim(), image_url: p.image_url } : p.label.trim())),
+            .filter(p => p.label.trim())
+            .map(p => (p.image_url ? { label: p.label.trim(), image_url: p.image_url } : p.label.trim())),
         promo_headline: v.promo_headline.trim(),
         promo_media_url: v.promo_media_url ?? null,
         booking_url: v.booking_url.trim(),
@@ -148,6 +156,8 @@ function toFields(v, tpl) {
         logo_only: !!(v.logo_url && v.logo_only),
         audience_radius_km: v.audience_radius_km ?? null,
     };
+    // Only sent once the gym has used it: switched on now, or on before and switched off.
+    if (v.partner_on || v.partner_had) f.partner_reward_id = v.partner_on ? v.partner_reward_id : null;
     if (tpl.day_choices?.length) f.duration_days = v.duration_days;
     if (tpl.board_choices?.length) f.board_size = v.board_size;
     if (tpl.night_start_hour != null && tpl.night_hour_choices?.length) {
@@ -218,11 +228,16 @@ function checkStep(key, v, tpl, ctx) {
         if (v.scoring === 'pick' && !v.activities.length) return 'Pick at least one activity';
         return null;
     case 'prizes': {
-        const named = v.prizes.filter(p => p.reward_id || p.label.trim());
+        const named = v.prizes.filter(p => p.label.trim());
         if (!named.length) return 'Add at least one prize';
-        if (named.some(p => !p.reward_id && p.label.trim().length < 2)) return 'Give each prize a name of 2 characters or more';
-        if (v.prizes.some(p => !p.reward_id && !p.label.trim() && p.image_url)) return 'Give each prize photo a name';
-        if (v.prizes.filter(p => p.reward_id).length > 3) return 'Up to 3 partner prizes per event';
+        if (named.some(p => p.label.trim().length < 2)) return 'Give each prize a name of 2 characters or more';
+        if (v.prizes.some(p => !p.label.trim() && p.image_url)) return 'Give each prize photo a name';
+        if (v.partner_on) {
+            if (!v.partner_reward_id) return 'Pick the partner brand, or switch the partner code off';
+            // A brand already saved on the event stays, even if its codes have since run low.
+            const pick = ctx.partners?.find(d => d.reward_id === v.partner_reward_id);
+            if (ctx.partners && !pick?.event_ok && v.partner_reward_id !== ctx.savedPartner) return 'That brand has no codes to give right now. Pick another';
+        }
         return null;
     }
     case 'promote': {
@@ -404,64 +419,6 @@ function Rules({ rules, muted }) {
     );
 }
 
-/** A POWR partner prize in a slot: the reward's own words and picture. */
-function PartnerPrize({ ordinal: ord, prize, reward, disabled, onChange, onOwn, onRemove }) {
-    const img = reward?.image_url ?? prize.image_url;
-    return (
-        <div className="flex items-start gap-3">
-            <span className="w-10 text-[12px] font-black text-[#8a7600] shrink-0 pt-3">{ord}</span>
-            <div className="flex-1 min-w-0 p-3 sm:p-4 rounded-2xl bg-[#FFFBE0] border border-[#E8D200]/50">
-                <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl overflow-hidden bg-white border border-[#E6E6E1] shrink-0 flex items-center justify-center">
-                        {img ? <img src={storageImage(img, 160)} alt="" className="w-full h-full object-cover" /> : <Gift size={16} className="text-[#8a7600]" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <div className="text-[9px] uppercase tracking-[0.25em] font-black text-[#8a7600]">POWR partner prize</div>
-                        <div className="text-[14px] font-bold text-[#1A1A1A] mt-0.5 leading-snug line-clamp-2">{prize.label || reward?.label}</div>
-                    </div>
-                </div>
-                {reward?.offer && <div className="text-[12px] text-[#666] mt-2.5 line-clamp-2">{reward.offer}</div>}
-                <div className="text-[11px] text-[#888] mt-1.5 leading-relaxed">
-                    {reward ? (reward.available == null ? 'A code for the winner, in their Wallet at the reveal.' : `${reward.available} codes left · the winner’s lands in their Wallet at the reveal.`) : 'The winner’s code lands in their Wallet at the reveal.'}
-                </div>
-                {!disabled && (
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3">
-                        <button type="button" onClick={onChange} className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600]">Change</button>
-                        <button type="button" onClick={onOwn} className="text-[10px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] hover:text-[#1A1A1A]">Use my own prize</button>
-                    </div>
-                )}
-            </div>
-            {onRemove && <RemoveButton label={`Remove ${ord} prize`} disabled={disabled} onClick={onRemove} />}
-        </div>
-    );
-}
-
-/** The catalogue: rewards brands have offered as event prizes. */
-function PrizePicker({ catalogue, current, onPick, onClose }) {
-    return (
-        <div className="mt-4 rounded-2xl border border-[#E6E6E1] bg-[#FAFAF8] p-3 sm:p-4" role="listbox" aria-label="POWR partner prizes">
-            <div className="flex items-center justify-between gap-3 mb-3">
-                <Micro>Pick a partner prize</Micro>
-                <button type="button" onClick={onClose} className="text-[10px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] hover:text-[#1A1A1A]">Close</button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {catalogue.map(r => (
-                    <button key={r.id} type="button" role="option" aria-selected={r.id === current} onClick={() => onPick(r)}
-                        className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${r.id === current ? 'border-[#E8D200] bg-[#FFFBE0]' : 'border-[#E6E6E1] bg-white hover:border-[#CFCFC8]'}`}>
-                        <div className="w-11 h-11 rounded-lg overflow-hidden bg-[#F4F4F1] shrink-0 flex items-center justify-center">
-                            {r.image_url ? <img src={storageImage(r.image_url, 120)} alt="" className="w-full h-full object-cover" /> : <Gift size={15} className="text-[#8a7600]" />}
-                        </div>
-                        <div className="min-w-0">
-                            <div className="text-[13px] font-bold text-[#1A1A1A] truncate">{r.label}</div>
-                            <div className="text-[11px] text-[#888] truncate">{r.title}{r.available != null ? ` · ${r.available} left` : ''}</div>
-                        </div>
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
-}
-
 function ReviewRow({ label, onEdit, children }) {
     return (
         <div className="py-5 first:pt-0 last:pb-0 flex gap-4">
@@ -493,9 +450,8 @@ export default function VenueEventBuilder() {
 
     const [templates, setTemplates] = useState(null);
     const [presets, setPresets] = useState([]);
-    const [catalogue, setCatalogue] = useState([]);   // POWR partner prizes on offer
-    const [catalogueError, setCatalogueError] = useState(false);
-    const [picking, setPicking] = useState(null);     // prize slot choosing a partner prize
+    const [partners, setPartners] = useState(null);   // partner discounts; null until loaded (or if they fail)
+    const [partnersError, setPartnersError] = useState(false);
     const [showPhone, setShowPhone] = useState(false); // the app preview, below xl
     const [trusted, setTrusted] = useState(false);
     const [orig, setOrig] = useState(null);           // editing: { ev, value, pushes }
@@ -519,14 +475,14 @@ export default function VenueEventBuilder() {
             fetchGymSummary(gym.partner_id).catch(() => null),
             source ? fetchGymEvent(source).catch(err => { if (id) throw err; return null; }) : null,
             source ? fetchEventPushes(source).catch(() => null) : null,
-            fetchPrizeCatalogue(gym.partner_id).catch(() => null),
+            fetchPartnerDiscounts(gym.partner_id).catch(() => null),
         ])
-            .then(([t, p, summary, ev, pushes, prizes]) => {
+            .then(([t, p, summary, ev, pushes, discounts]) => {
                 if (!alive) return;
                 setTemplates(t);
                 setPresets(p);
-                setCatalogue(Array.isArray(prizes) ? prizes : []);
-                setCatalogueError(prizes === null);
+                setPartners(Array.isArray(discounts) ? discounts : null);
+                setPartnersError(!Array.isArray(discounts));
                 setTrusted(!!summary?.portal?.trusted);
                 if (ev) {
                     const tpl = t.find(x => x.key === ev.template_key);
@@ -578,7 +534,7 @@ export default function VenueEventBuilder() {
         status: ev?.status === 'live' ? 'live' : 'scheduled',
         window_start_at: preview?.window_start_at ?? ev?.window_start_at ?? null,
         window_end_at: preview?.window_end_at ?? ev?.window_end_at ?? null,
-        prizes: v.prizes.filter(p => p.reward_id || p.label.trim()).map((p, i) => ({ rank: i + 1, label: p.label.trim() || 'Prize', image_url: p.image_url ?? null })),
+        prizes: v.prizes.filter(p => p.label.trim()).map((p, i) => ({ rank: i + 1, label: p.label.trim(), image_url: p.image_url ?? null })),
         rules: preview?.rules ?? ev?.rules ?? [],
     } : null), [v, tpl, preview, ev]);
     const previewVenue = useMemo(() => ({ name: gym.name, logo_url: gym.logo_url ?? null, logo_bg: gym.logo_bg ?? null }), [gym]);
@@ -621,16 +577,17 @@ export default function VenueEventBuilder() {
 
     const set = (patch) => setV(x => ({ ...x, ...patch }));
     const setPrize = (i, patch) => setV(x => ({ ...x, prizes: x.prizes.map((p, j) => (j === i ? { ...p, ...patch } : p)) }));
-    const reloadCatalogue = () => {
-        setCatalogueError(false);
-        fetchPrizeCatalogue(gym.partner_id)
-            .then(p => setCatalogue(Array.isArray(p) ? p : []))
-            .catch(() => setCatalogueError(true));
+    const reloadPartners = () => {
+        setPartnersError(false);
+        fetchPartnerDiscounts(gym.partner_id)
+            .then(d => setPartners(Array.isArray(d) ? d : []))
+            .catch(() => setPartnersError(true));
     };
     const onBusy = (d) => setUploading(n => n + d);
     const prefix = `gym-events/${gym.partner_id}`;
     const lockAt = started ? ev.lock_at : preview?.lock_at;
-    const problems = STEPS.map(s => checkStep(s.key, v, tpl, { datesLocked: started, lockAt }));
+    const savedPartner = ev?.partner_reward_id ?? null;
+    const problems = STEPS.map(s => checkStep(s.key, v, tpl, { datesLocked: started, lockAt, partners, savedPartner }));
     const firstProblem = problems.findIndex(Boolean);
     const reachable = (i) => !!id || firstProblem === -1 || i <= firstProblem;
     const go = (i) => {
@@ -719,7 +676,7 @@ export default function VenueEventBuilder() {
     const lockedNote = started && (
         <div className="flex items-start gap-3 mb-8 p-4 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] text-[12px] text-[#666] leading-relaxed">
             <Lock size={14} className="text-[#8a7600] mt-0.5 shrink-0" />
-            It’s under way, so only the name, headline, logo, picture and booking link can change, plus the notifications and when the winners are revealed.
+            It’s under way, so only the name, headline, logo, picture and booking link can change, plus the partner code, the notifications and when the winners are revealed.
         </div>
     );
 
@@ -888,98 +845,117 @@ export default function VenueEventBuilder() {
         </>
     );
 
-    const partnerCount = v ? v.prizes.filter(p => p.reward_id).length : 0;
+    // The optional partner code: brands with a code to give (and the one saved, whatever its stock).
+    const eventBrands = (partners ?? []).filter(d => d.event_ok || d.reward_id === savedPartner);
+    const partnerPick = (partners ?? []).find(d => d.reward_id === v?.partner_reward_id)
+        ?? (v?.partner_reward_id && v.partner_reward_id === savedPartner && ev?.partner_reward
+            ? { ...ev.partner_reward, reward_id: savedPartner } : null);
     const prizesStep = v && tpl && (
         <>
-            <StepHead title="Prizes" sub="1st place first. Your own prizes you hand over at the front desk; a POWR partner prize reaches the winner as a code in their Wallet the moment you reveal." />
+            <StepHead title="Prizes" sub="1st place first. You give these out: winners show their POWR ID at the front desk." />
             {lockedNote}
             <div className="space-y-4">
                 {v.prizes.map((p, i) => (
                     <div key={i} className="p-4 sm:p-5 rounded-2xl border border-[#E6E6E1] bg-white">
-                        {p.reward_id ? (
-                            <PartnerPrize
-                                ordinal={ordinal(i + 1)}
-                                prize={p}
-                                reward={catalogue.find(r => r.id === p.reward_id)}
-                                disabled={!can('prizes')}
-                                onChange={() => setPicking(i)}
-                                onOwn={() => { setPrize(i, { reward_id: null, label: '', image_url: null }); setPicking(null); }}
-                                onRemove={v.prizes.length > 1 ? () => set({ prizes: v.prizes.filter((_, j) => j !== i) }) : null}
-                            />
-                        ) : (
-                            <>
-                                <div className="flex items-center gap-3">
-                                    <span className="w-10 text-[12px] font-black text-[#8a7600] shrink-0">{ordinal(i + 1)}</span>
-                                    <input className={INPUT} aria-label={`${ordinal(i + 1)} prize`} value={p.label} maxLength={60} disabled={!can('prizes')}
-                                        placeholder={['A free month', 'A PT session', 'Gym merch'][i] ?? 'Prize'}
-                                        onChange={e => setPrize(i, { label: e.target.value })} />
-                                    {v.prizes.length > 1 && (
-                                        <RemoveButton label={`Remove ${ordinal(i + 1)} prize`} disabled={!can('prizes')}
-                                            onClick={() => set({ prizes: v.prizes.filter((_, j) => j !== i) })} />
-                                    )}
-                                </div>
-                                <div className="flex flex-wrap items-center gap-3 mt-3 pl-[52px]">
-                                    {p.image_url ? (
-                                        <>
-                                            <img src={storageImage(p.image_url, 160)} alt="" className="w-14 h-14 rounded-xl object-cover border border-[#E6E6E1]" />
-                                            <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
-                                                onUploaded={url => setPrize(i, { image_url: url })}>Change</UploadButton>
-                                            <RemoveButton label="Remove photo" disabled={!can('prizes')} onClick={() => setPrize(i, { image_url: null })} />
-                                        </>
-                                    ) : (
-                                        <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
-                                            onUploaded={url => setPrize(i, { image_url: url })}>Add a photo</UploadButton>
-                                    )}
-                                    {catalogue.length > 0 && can('prizes') && partnerCount < 3 && picking !== i && (
-                                        <button type="button" onClick={() => setPicking(i)} className="inline-flex items-center gap-2 h-10 text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600]">
-                                            <Gift size={13} /> Or a POWR partner prize
-                                        </button>
-                                    )}
-                                </div>
-                            </>
-                        )}
-                        {picking === i && (
-                            <PrizePicker
-                                catalogue={catalogue}
-                                current={p.reward_id}
-                                onPick={r => { setPrize(i, { reward_id: r.id, label: r.label, image_url: r.image_url ?? null }); setPicking(null); }}
-                                onClose={() => setPicking(null)}
-                            />
-                        )}
-                    </div>
-                ))}
-                {can('prizes') && v.prizes.length < 5 && (
-                    <button type="button" onClick={() => set({ prizes: [...v.prizes, { label: '', image_url: null, reward_id: null }] })} className={`${BTN_GHOST} h-10 px-5`}>
-                        <Plus size={13} /> Add a prize
-                    </button>
-                )}
-                {can('prizes') && catalogue.length === 0 && (
-                    <div className="flex items-start gap-3 p-4 rounded-2xl border border-dashed border-[#E6E6E1] bg-[#FAFAF8]">
-                        <Gift size={15} className="text-[#8a7600] mt-0.5 shrink-0" />
-                        <div className="min-w-0">
-                            <div className="text-[9px] uppercase tracking-[0.25em] font-black text-[#8a7600]">POWR partner prizes</div>
-                            {catalogueError ? (
-                                <p className="text-[12px] text-[#666] leading-relaxed mt-1.5">
-                                    They couldn’t load just now.{' '}
-                                    <button type="button" onClick={reloadCatalogue} className="font-bold text-[#8a7600] underline underline-offset-2">Try again</button>
-                                </p>
-                            ) : isAdmin ? (
-                                <p className="text-[12px] text-[#666] leading-relaxed mt-1.5">
-                                    None on offer: no active reward has codes to give right now. Add codes to a reward in the admin Rewards page and it shows here, for every gym.{' '}
-                                    <Link to="/admin/rewards" className="font-bold text-[#8a7600] underline underline-offset-2">Open Rewards</Link>
-                                </p>
+                        <div className="flex items-center gap-3">
+                            <span className="w-10 text-[12px] font-black text-[#8a7600] shrink-0">{ordinal(i + 1)}</span>
+                            <input className={INPUT} aria-label={`${ordinal(i + 1)} prize`} value={p.label} maxLength={60} disabled={!can('prizes')}
+                                placeholder={['A free month', 'A PT session', 'Gym merch'][i] ?? 'Prize'}
+                                onChange={e => setPrize(i, { label: e.target.value })} />
+                            {v.prizes.length > 1 && (
+                                <RemoveButton label={`Remove ${ordinal(i + 1)} prize`} disabled={!can('prizes')}
+                                    onClick={() => set({ prizes: v.prizes.filter((_, j) => j !== i) })} />
+                            )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-3 pl-[52px]">
+                            {p.image_url ? (
+                                <>
+                                    <img src={storageImage(p.image_url, 160)} alt="" className="w-14 h-14 rounded-xl object-cover border border-[#E6E6E1]" />
+                                    <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
+                                        onUploaded={url => setPrize(i, { image_url: url })}>Change</UploadButton>
+                                    <RemoveButton label="Remove photo" disabled={!can('prizes')} onClick={() => setPrize(i, { image_url: null })} />
+                                </>
                             ) : (
-                                <p className="text-[12px] text-[#666] leading-relaxed mt-1.5">
-                                    Prizes from POWR’s brand partners show here when brands offer them. None on offer right now, so these ones are yours to give.
-                                </p>
+                                <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
+                                    onUploaded={url => setPrize(i, { image_url: url })}>Add a photo</UploadButton>
                             )}
                         </div>
                     </div>
+                ))}
+                {can('prizes') && v.prizes.length < 5 && (
+                    <button type="button" onClick={() => set({ prizes: [...v.prizes, { label: '', image_url: null }] })} className={`${BTN_GHOST} h-10 px-5`}>
+                        <Plus size={13} /> Add a prize
+                    </button>
                 )}
                 <p className="text-[11px] text-[#AAAAAA] leading-relaxed">
-                    Photos show with the prizes in the app, on the share page and on your screen.
-                    {catalogue.length > 0 && ' Up to 3 partner prizes per event, on us: the brand supplies the code, POWR settles with them.'}
+                    Photos show with the prizes in the app, on the share page and on your screen. Buying prizes?{' '}
+                    <Link to="/venue/partners" target="_blank" rel="noopener" className="font-bold underline underline-offset-2">
+                        <span className="text-[#8a7600]">Your partner discounts</span>
+                    </Link>{' '}
+                    get you the price POWR members pay.
                 </p>
+            </div>
+
+            {/* Optional, and off unless the gym switches it on. */}
+            <div className="mt-10 pt-8 border-t border-[#F0F0EC]">
+                <div className="flex items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                        <Micro gold>Optional</Micro>
+                        <div className="text-[16px] font-bold text-[#1A1A1A] mt-2 leading-snug">A partner code for everyone who takes part</div>
+                        <p className="text-[12px] text-[#777] leading-relaxed mt-1.5 max-w-xl">
+                            When you reveal the winners, everyone who scored gets a discount code from the POWR partner you pick. It lands in their Wallet in the app.
+                        </p>
+                    </div>
+                    <Switch label="A partner code for everyone who takes part" on={v.partner_on} disabled={!can('partner_code')}
+                        onChange={on => set({ partner_on: on })} />
+                </div>
+                {v.partner_on && (
+                    <div className="mt-5">
+                        {partners === null ? (
+                            partnersError ? (
+                                <p className="text-[12px] text-[#666] leading-relaxed">
+                                    The partner brands couldn’t load just now.{' '}
+                                    <button type="button" onClick={reloadPartners} className="font-bold text-[#8a7600] underline underline-offset-2">Try again</button>
+                                </p>
+                            ) : <Spinner className="py-6" />
+                        ) : eventBrands.length === 0 ? (
+                            <p className="text-[12px] text-[#666] leading-relaxed">
+                                No partner has codes to give right now.
+                                {isAdmin && (
+                                    <> Add codes to a reward in the admin Rewards page and it shows here.{' '}
+                                        <Link to="/admin/rewards" className="font-bold underline underline-offset-2"><span className="text-[#8a7600]">Open Rewards</span></Link>
+                                    </>
+                                )}
+                            </p>
+                        ) : (
+                            <>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Partner brand">
+                                    {eventBrands.map(d => {
+                                        const on = d.reward_id === v.partner_reward_id;
+                                        return (
+                                            <button key={d.reward_id} type="button" role="radio" aria-checked={on} disabled={!can('partner_code')}
+                                                onClick={() => set({ partner_reward_id: d.reward_id })}
+                                                className={`flex items-center gap-3 p-3 rounded-2xl border text-left transition-all disabled:opacity-50 ${on ? 'border-[#E8D200] bg-[#E8D200]/[0.06]' : 'border-[#E6E6E1] bg-white hover:border-[#E8D200]/50'}`}>
+                                                <BrandTile d={d} className="w-11 h-11 rounded-xl" />
+                                                <span className="flex-1 min-w-0">
+                                                    <span className="block text-[13px] font-bold text-[#1A1A1A] truncate">{d.label}</span>
+                                                    <span className="block text-[11px] text-[#888] truncate">
+                                                        {d.kind === 'shared' ? 'One code for everyone' : d.available ? `${fmtNum(d.available)} codes left` : 'No codes left right now'}
+                                                    </span>
+                                                </span>
+                                                {on && <Check size={15} className="text-[#8a7600] shrink-0" />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <p className="text-[11px] text-[#AAAAAA] leading-relaxed mt-3">
+                                    One each, for everyone still in the event with points. If the codes run short, the top of the board get theirs first.
+                                    Say so in your headline, so members know it’s coming.
+                                </p>
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
         </>
     );
@@ -1108,6 +1084,9 @@ export default function VenueEventBuilder() {
                                 </li>
                             ))}
                         </ol>
+                        {v.partner_on && partnerPick && (
+                            <div className="mt-2 text-[#888]">Plus a {partnerPick.label} code for everyone who scores, in their Wallet at the reveal</div>
+                        )}
                     </ReviewRow>
                     <ReviewRow label="Promote" onEdit={() => go(4)}>
                         <div>{v.audience_radius_km ? `Your members, recent visitors and anyone within ${v.audience_radius_km} km` : 'Your members and recent visitors'}</div>
