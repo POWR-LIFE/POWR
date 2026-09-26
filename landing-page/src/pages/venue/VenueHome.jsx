@@ -144,7 +144,7 @@ function agendaFor({ events, pkg, summary }) {
     of(mine, 'draft').forEach(e => add(e.id, `${e.name} is still a draft`, `/venue/events/${e.id}`, 'plain'));
     of(all, 'scheduled').forEach(e => add(e.id, `${e.name} starts ${fmtDay(e.window_start_at)} · ${fmtNum(e.participants ?? 0)} joined`, `/venue/events/${e.id}`, 'plain'));
     mine.filter(e => statusKey(e) === 'revealed' && e.revealed_at && Date.now() - new Date(e.revealed_at).getTime() < 7 * 86_400_000
-        && !(Array.isArray(e.prizes) && e.prizes.length > 0 && e.prizes.every(p => p.handed_at)))
+        && !(Array.isArray(e.prizes) && e.prizes.length > 0 && e.prizes.every(p => p.handed_at || p.issued)))
         .forEach(e => add(e.id, `Winners of ${e.name} are out · hand over the prizes`, `/venue/events/${e.id}`, 'plain'));
     of(mine, 'pending').forEach(e => add(e.id, `${e.name} is with POWR for a quick check`, `/venue/events/${e.id}`, 'muted'));
     if (pkg?.on_trial) {
@@ -228,6 +228,8 @@ function TopThisWeek({ top, gymName }) {
 
 function League({ summary, data, error }) {
     const board = summary.board;
+    const { pkg } = usePackage();
+    const founding = pkg?.package === 'founding';
     const standing = useMemo(() => {
         if (!data?.gyms) return null;
         const host = data.gyms.find(g => g.key === data.host_key) ?? null;
@@ -264,7 +266,7 @@ function League({ summary, data, error }) {
                     <span className="text-5xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{ordinal(rank)}</span>
                     <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">of {local.length} within {standing.radius} km</span>
                 </div>
-                <div className="mt-2 text-[12px] font-bold text-[#666]">{fmtNum(host.points_week)} POWR this week</div>
+                <div className="mt-2 text-[12px] font-bold text-[#666]">{fmtNum(host.points_week)} POWR this week{founding && <span className="ml-2 inline-flex items-center h-5 px-2 rounded-full bg-[#E8D200]/15 border border-[#E8D200]/50 text-[8px] font-black uppercase tracking-[0.2em] text-[#8a7600] align-middle">Founding gym</span>}</div>
                 {rival && (
                     <div className={`mt-1 text-[12px] font-bold ${ahead ? 'text-[#0B7A57]' : 'text-[#B45309]'}`}>
                         {ahead

@@ -531,8 +531,11 @@ function buildMessage(
         const eventName = String(payload.event_name ?? 'The event').trim() || 'The event';
         const rank = Math.round(Number(payload.rank));
         const prize = String(payload.prize_label ?? '').trim();
+        // A partner prize was issued at the reveal (_live_event_issue_prizes):
+        // the code is already in their Wallet, so say so.
+        const inWallet = payload.prize_in_wallet === true;
         const body = Number.isFinite(rank) && rank > 0
-          ? `You finished #${rank}${prize ? ` — ${prize}` : ''}. See the final board.`
+          ? `You finished #${rank}${prize ? ` — ${prize}` : ''}.${inWallet ? ' Your prize is in your Wallet.' : ''} See the final board.`
           : 'The final leaderboard is up — see where everyone finished.';
         return {
           title: `${eventName}: the results are in 🏆`,

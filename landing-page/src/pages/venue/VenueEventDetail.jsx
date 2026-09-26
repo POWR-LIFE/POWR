@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Copy, Download, ExternalLink, Trophy, Users, Tv, Search, Sparkles, Pencil, Printer, X } from 'lucide-react';
+import { ArrowLeft, Copy, Download, ExternalLink, Trophy, Users, Tv, Search, Smartphone, Sparkles, Pencil, Printer, X } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
 import { Page, Card, Micro, Spinner, Empty, BTN_GOLD, BTN_GHOST, INPUT, fmtNum } from '../../components/portal/ui';
@@ -19,6 +19,7 @@ import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
 import EventPushes from './EventPushes';
 import EventContent from './EventContent';
 import EventDoor, { doorApplies } from './EventDoor';
+import EventAppPreview from '../../components/EventAppPreview';
 import { usePackage } from './packages';
 
 // One event, run from a phone at the front desk as easily as from a laptop.
@@ -330,7 +331,8 @@ export default function VenueEventDetail() {
 
     const sealed = ['live', 'locked'].includes(ev.status);
     const leader = board?.rows?.[0];
-    const prizesHanded = (ev.prizes ?? []).filter((p) => p.handed_at).length;
+    // A partner prize is handed over the moment its code is issued.
+    const prizesHanded = (ev.prizes ?? []).filter((p) => p.handed_at || p.issued).length;
 
     // The numbers a glance wants, by state.
     const facts = [];
@@ -537,13 +539,22 @@ export default function VenueEventDetail() {
                                 <Micro className="mb-2">Prizes{over && !powrRun ? ' · tick each one when it’s handed over' : ''}</Micro>
                                 <ol className="space-y-2">
                                     {(ev.prizes ?? []).map(p => (
-                                        <li key={p.rank} className="flex items-center gap-3">
-                                            {over && !powrRun
-                                                ? <input type="checkbox" checked={!!p.handed_at} disabled={busy === `prize:${p.rank}`} onChange={(e) => handPrize(p, e.target.checked)} className="accent-[#E8D200] w-4 h-4" aria-label={`Prize ${p.rank} handed over`} />
+                                        <li key={p.rank} className="flex items-start gap-3">
+                                            {over && !powrRun && !p.reward_id
+                                                ? <input type="checkbox" checked={!!p.handed_at} disabled={busy === `prize:${p.rank}`} onChange={(e) => handPrize(p, e.target.checked)} className="accent-[#E8D200] w-4 h-4 mt-0.5" aria-label={`Prize ${p.rank} handed over`} />
                                                 : <span className="w-4 font-black text-[#BBBBBB]">{p.rank}</span>}
                                             {p.image_url && <img src={storageImage(p.image_url, 80)} alt="" className="w-7 h-7 rounded-lg object-cover" />}
-                                            <span className={p.handed_at ? 'line-through text-[#AAAAAA]' : ''}>{over ? `${p.rank}. ` : ''}{p.label}</span>
-                                            {p.handed_at && <span className="text-[10px] font-bold text-[#0B7A57]">handed over {fmtDay(p.handed_at)}</span>}
+                                            <span className="min-w-0">
+                                                <span className={p.handed_at ? 'line-through text-[#AAAAAA]' : ''}>{over ? `${p.rank}. ` : ''}{p.label}</span>
+                                                {p.handed_at && <span className="ml-2 text-[10px] font-bold text-[#0B7A57]">handed over {fmtDay(p.handed_at)}</span>}
+                                                {p.reward && <span className="block text-[10px] font-bold text-[#8a7600]">POWR partner prize · {p.reward.brand_name}</span>}
+                                                {p.issued && (
+                                                    <span className="block text-[10px] font-bold text-[#0B7A57]">
+                                                        In {p.issued.name ?? 'the winner'}’s Wallet since {fmtDay(p.issued.issued_at)} · code <code className="font-mono text-[11px] text-[#1A1A1A]">{p.issued.code}</code>
+                                                    </span>
+                                                )}
+                                                {p.reward_id && over && !p.issued && <span className="block text-[10px] font-bold text-[#B45309]">No code was left for this prize. Email support@powr.life and we’ll sort it.</span>}
+                                            </span>
                                         </li>
                                     ))}
                                 </ol>
@@ -583,6 +594,16 @@ export default function VenueEventDetail() {
                         </Card>
                     )}
                     {isDraft && <p className="text-[12px] text-[#AAAAAA]">The TV board, the share page and the join QR appear here once the event is published.</p>}
+                    {k !== 'cancelled' && k !== 'pulled' && (
+                        <Card className="p-6 sm:p-8">
+                            <div className="flex items-center gap-3 mb-6"><Smartphone size={15} className="text-[#8a7600]" /><Micro>In the app</Micro></div>
+                            <EventAppPreview
+                                event={{ ...ev, status: ev.status === 'live' ? 'live' : 'scheduled', rules: ev.rules ?? [], prizes: ev.prizes ?? [] }}
+                                venue={{ name: gym.name, logo_url: gym.logo_url ?? null, logo_bg: gym.logo_bg ?? null }}
+                                pageTheme="light"
+                            />
+                        </Card>
+                    )}
                 </>
             )}
 

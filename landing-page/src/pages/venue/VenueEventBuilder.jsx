@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Calendar, Check, Lock, Moon, Plus, Trophy, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Calendar, Check, Gift, Lock, Moon, Plus, Smartphone, Upload, X } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
 import { Page, Card, Micro, PageTitle, Spinner, Empty, INPUT, LABEL, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
 import {
-    createGymEvent, fetchEventPushes, fetchEventTemplates, fetchGymEvent, fetchGymSummary, fetchPointPresets,
+    createGymEvent, fetchEventPushes, fetchEventTemplates, fetchGymEvent, fetchGymSummary, fetchPointPresets, fetchPrizeCatalogue,
     previewGymEvent, publishGymEvent, scheduleGymReveal, setEventPush, updateGymEvent,
 } from './venueApi';
 import {
@@ -16,6 +16,7 @@ import { usePackage } from './packages';
 import { hourLabel, ordinal } from '../../../../shared/gymBoard.ts';
 import { ukTime } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
+import EventAppPreview from '../../components/EventAppPreview';
 
 // Building an event one step at a time: the format, when it runs, what
 // counts, the prizes, how it's promoted, then a check before it's saved. The
@@ -58,7 +59,7 @@ function blankValue(tpl) {
         board_size: tpl.board_size,
         points_preset_key: tpl.default_preset,
         own_rules: [],
-        prizes: [{ label: '', image_url: null }],
+        prizes: [{ label: '', image_url: null, reward_id: null }],
         logo_url: null,
         logo_only: false,
         promo_headline: '',
@@ -111,7 +112,7 @@ function fromEvent(ev, tpl, pushes, editing) {
         board_size: offered(tpl.board_choices, ev.board_size, base.board_size),
         points_preset_key: offered(tpl.allowed_presets, ev.points_preset_key, base.points_preset_key),
         own_rules: ev.own_rules ?? [],
-        prizes: ev.prizes?.length ? ev.prizes.map(p => ({ label: p.label ?? '', image_url: p.image_url ?? null })) : base.prizes,
+        prizes: ev.prizes?.length ? ev.prizes.map(p => ({ label: p.label ?? '', image_url: p.image_url ?? null, reward_id: p.reward_id ?? null })) : base.prizes,
         logo_url: ev.logo_url ?? null,
         logo_only: !!ev.logo_only,
         promo_headline: ev.promo_headline ?? '',
@@ -134,9 +135,12 @@ function toFields(v, tpl) {
         included_activities: v.scoring === 'pick' ? ACTIVITY_KEYS.filter(k => v.activities.includes(k)) : null,
         points_preset_key: v.points_preset_key,
         rules: v.own_rules.map(r => r.trim()).filter(Boolean),
+        // A partner prize is its reward; the server names and pictures it.
         prizes: v.prizes
-            .filter(p => p.label.trim())
-            .map(p => (p.image_url ? { label: p.label.trim(), image_url: p.image_url } : p.label.trim())),
+            .filter(p => p.reward_id || p.label.trim())
+            .map(p => (p.reward_id
+                ? { label: p.label.trim(), image_url: p.image_url ?? null, reward_id: p.reward_id }
+                : p.image_url ? { label: p.label.trim(), image_url: p.image_url } : p.label.trim())),
         promo_headline: v.promo_headline.trim(),
         promo_media_url: v.promo_media_url ?? null,
         booking_url: v.booking_url.trim(),
@@ -214,10 +218,11 @@ function checkStep(key, v, tpl, ctx) {
         if (v.scoring === 'pick' && !v.activities.length) return 'Pick at least one activity';
         return null;
     case 'prizes': {
-        const named = v.prizes.filter(p => p.label.trim());
+        const named = v.prizes.filter(p => p.reward_id || p.label.trim());
         if (!named.length) return 'Add at least one prize';
-        if (named.some(p => p.label.trim().length < 2)) return 'Give each prize a name of 2 characters or more';
-        if (v.prizes.some(p => !p.label.trim() && p.image_url)) return 'Give each prize photo a name';
+        if (named.some(p => !p.reward_id && p.label.trim().length < 2)) return 'Give each prize a name of 2 characters or more';
+        if (v.prizes.some(p => !p.reward_id && !p.label.trim() && p.image_url)) return 'Give each prize photo a name';
+        if (v.prizes.filter(p => p.reward_id).length > 3) return 'Up to 3 partner prizes per event';
         return null;
     }
     case 'promote': {
@@ -399,41 +404,60 @@ function Rules({ rules, muted }) {
     );
 }
 
-/** Roughly the event's card in the app, to check the pieces fit together. */
-function CardPreview({ v, tpl, gymName, preview }) {
-    const media = v.promo_media_url;
-    const prize = v.prizes.find(p => p.label.trim());
-    const logoOnly = !!(v.logo_url && v.logo_only);
-    const headline = v.promo_headline.trim();
+/** A POWR partner prize in a slot: the reward's own words and picture. */
+function PartnerPrize({ ordinal: ord, prize, reward, disabled, onChange, onOwn, onRemove }) {
+    const img = reward?.image_url ?? prize.image_url;
     return (
-        <div className="rounded-[28px] bg-[#0d0d0d] p-3">
-            <div className="rounded-[20px] bg-[#262626] border border-white/[0.08] overflow-hidden text-white">
-                {media && (isVideo(media)
-                    ? <video src={media} muted autoPlay loop playsInline className="w-full aspect-video object-cover" />
-                    : <img src={storageImage(media, 640)} alt="" className="w-full aspect-video object-cover" />)}
-                <div className="p-5">
-                    <div className="text-[9px] uppercase tracking-[0.25em] font-medium text-white/40 truncate">{gymName} · {tpl.name}</div>
-                    {v.logo_url && (
-                        <img src={storageImage(v.logo_url, 320)} alt="" className={`${logoOnly ? 'h-10' : 'h-7'} mt-3 max-w-[70%] object-contain object-left`} />
-                    )}
-                    {!logoOnly && <div className="text-[22px] font-extralight tracking-tight leading-tight mt-2 break-words">{v.name.trim() || 'Your event'}</div>}
-                    {headline && <div className="text-[12px] text-white/50 font-light mt-1.5">{headline}</div>}
-                    <div className="mt-4 space-y-1.5 text-[11px] font-light text-white/60">
-                        {preview?.window_start_at && <div>{fmtDay(preview.window_start_at)} → {lastDay(preview.window_end_at)}</div>}
-                        {preview?.doors_open_at && (
-                            <div className="text-white flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#facc15]" />Finale night {fmtDay(preview.doors_open_at)}, {ukTime(preview.doors_open_at)}
-                            </div>
-                        )}
+        <div className="flex items-start gap-3">
+            <span className="w-10 text-[12px] font-black text-[#8a7600] shrink-0 pt-3">{ord}</span>
+            <div className="flex-1 min-w-0 p-3 sm:p-4 rounded-2xl bg-[#FFFBE0] border border-[#E8D200]/50">
+                <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl overflow-hidden bg-white border border-[#E6E6E1] shrink-0 flex items-center justify-center">
+                        {img ? <img src={storageImage(img, 160)} alt="" className="w-full h-full object-cover" /> : <Gift size={16} className="text-[#8a7600]" />}
                     </div>
-                    {prize && (
-                        <div className="mt-4 inline-flex items-center gap-2 max-w-full h-7 px-3 rounded-full bg-[#facc15]/10 border border-[#facc15]/25 text-[10px] font-medium uppercase tracking-[0.12em] text-[#facc15]">
-                            <Trophy size={11} className="shrink-0" /><span className="truncate">1st · {prize.label.trim()}</span>
-                        </div>
-                    )}
+                    <div className="flex-1 min-w-0">
+                        <div className="text-[9px] uppercase tracking-[0.25em] font-black text-[#8a7600]">POWR partner prize</div>
+                        <div className="text-[14px] font-bold text-[#1A1A1A] mt-0.5 leading-snug line-clamp-2">{prize.label || reward?.label}</div>
+                    </div>
                 </div>
+                {reward?.offer && <div className="text-[12px] text-[#666] mt-2.5 line-clamp-2">{reward.offer}</div>}
+                <div className="text-[11px] text-[#888] mt-1.5 leading-relaxed">
+                    {reward ? (reward.available == null ? 'A code for the winner, in their Wallet at the reveal.' : `${reward.available} codes left · the winner’s lands in their Wallet at the reveal.`) : 'The winner’s code lands in their Wallet at the reveal.'}
+                </div>
+                {!disabled && (
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3">
+                        <button type="button" onClick={onChange} className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600]">Change</button>
+                        <button type="button" onClick={onOwn} className="text-[10px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] hover:text-[#1A1A1A]">Use my own prize</button>
+                    </div>
+                )}
             </div>
-            <p className="text-[10px] text-white/30 text-center mt-3 mb-1">A rough preview of the event card in the app</p>
+            {onRemove && <RemoveButton label={`Remove ${ord} prize`} disabled={disabled} onClick={onRemove} />}
+        </div>
+    );
+}
+
+/** The catalogue: rewards brands have offered as event prizes. */
+function PrizePicker({ catalogue, current, onPick, onClose }) {
+    return (
+        <div className="mt-4 rounded-2xl border border-[#E6E6E1] bg-[#FAFAF8] p-3 sm:p-4" role="listbox" aria-label="POWR partner prizes">
+            <div className="flex items-center justify-between gap-3 mb-3">
+                <Micro>Pick a partner prize</Micro>
+                <button type="button" onClick={onClose} className="text-[10px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] hover:text-[#1A1A1A]">Close</button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {catalogue.map(r => (
+                    <button key={r.id} type="button" role="option" aria-selected={r.id === current} onClick={() => onPick(r)}
+                        className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${r.id === current ? 'border-[#E8D200] bg-[#FFFBE0]' : 'border-[#E6E6E1] bg-white hover:border-[#CFCFC8]'}`}>
+                        <div className="w-11 h-11 rounded-lg overflow-hidden bg-[#F4F4F1] shrink-0 flex items-center justify-center">
+                            {r.image_url ? <img src={storageImage(r.image_url, 120)} alt="" className="w-full h-full object-cover" /> : <Gift size={15} className="text-[#8a7600]" />}
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[13px] font-bold text-[#1A1A1A] truncate">{r.label}</div>
+                            <div className="text-[11px] text-[#888] truncate">{r.title}{r.available != null ? ` · ${r.available} left` : ''}</div>
+                        </div>
+                    </button>
+                ))}
+            </div>
         </div>
     );
 }
@@ -469,6 +493,9 @@ export default function VenueEventBuilder() {
 
     const [templates, setTemplates] = useState(null);
     const [presets, setPresets] = useState([]);
+    const [catalogue, setCatalogue] = useState([]);   // POWR partner prizes on offer
+    const [picking, setPicking] = useState(null);     // prize slot choosing a partner prize
+    const [showPhone, setShowPhone] = useState(false); // the app preview, below xl
     const [trusted, setTrusted] = useState(false);
     const [orig, setOrig] = useState(null);           // editing: { ev, value, pushes }
     const [tplKey, setTplKey] = useState(null);
@@ -491,11 +518,13 @@ export default function VenueEventBuilder() {
             fetchGymSummary(gym.partner_id).catch(() => null),
             source ? fetchGymEvent(source).catch(err => { if (id) throw err; return null; }) : null,
             source ? fetchEventPushes(source).catch(() => null) : null,
+            fetchPrizeCatalogue(gym.partner_id).catch(() => []),
         ])
-            .then(([t, p, summary, ev, pushes]) => {
+            .then(([t, p, summary, ev, pushes, prizes]) => {
                 if (!alive) return;
                 setTemplates(t);
                 setPresets(p);
+                setCatalogue(Array.isArray(prizes) ? prizes : []);
                 setTrusted(!!summary?.portal?.trusted);
                 if (ev) {
                     const tpl = t.find(x => x.key === ev.template_key);
@@ -536,6 +565,21 @@ export default function VenueEventBuilder() {
     const started = !!ev && !(ev.status === 'draft' || (ev.status === 'scheduled' && new Date(ev.window_start_at) > new Date()));
     const can = (field) => !started || LIVE_EDITABLE.includes(field);
     const finale = tpl?.night_start_hour != null;
+    // What the app will show, drawn from the builder as it stands.
+    const previewEvent = useMemo(() => (v && tpl ? {
+        name: v.name.trim() || tpl.name,
+        promo_headline: v.promo_headline.trim(),
+        promo_media_url: v.promo_media_url,
+        logo_url: v.logo_url,
+        logo_only: !!(v.logo_url && v.logo_only),
+        // A started event keeps its own dates and rules; a new one takes the server's preview.
+        status: ev?.status === 'live' ? 'live' : 'scheduled',
+        window_start_at: preview?.window_start_at ?? ev?.window_start_at ?? null,
+        window_end_at: preview?.window_end_at ?? ev?.window_end_at ?? null,
+        prizes: v.prizes.filter(p => p.reward_id || p.label.trim()).map((p, i) => ({ rank: i + 1, label: p.label.trim() || 'Prize', image_url: p.image_url ?? null })),
+        rules: preview?.rules ?? ev?.rules ?? [],
+    } : null), [v, tpl, preview, ev]);
+    const previewVenue = useMemo(() => ({ name: gym.name, logo_url: gym.logo_url ?? null, logo_bg: gym.logo_bg ?? null }), [gym]);
 
     // Keep an unfinished new event across a reload of this tab.
     useEffect(() => {
@@ -836,44 +880,75 @@ export default function VenueEventBuilder() {
         </>
     );
 
+    const partnerCount = v ? v.prizes.filter(p => p.reward_id).length : 0;
     const prizesStep = v && tpl && (
         <>
-            <StepHead title="Prizes" sub="1st place first. You give these out: winners show their POWR ID at the front desk." />
+            <StepHead title="Prizes" sub="1st place first. Your own prizes you hand over at the front desk; a POWR partner prize reaches the winner as a code in their Wallet the moment you reveal." />
             {lockedNote}
             <div className="space-y-4">
                 {v.prizes.map((p, i) => (
                     <div key={i} className="p-4 sm:p-5 rounded-2xl border border-[#E6E6E1] bg-white">
-                        <div className="flex items-center gap-3">
-                            <span className="w-10 text-[12px] font-black text-[#8a7600] shrink-0">{ordinal(i + 1)}</span>
-                            <input className={INPUT} aria-label={`${ordinal(i + 1)} prize`} value={p.label} maxLength={60} disabled={!can('prizes')}
-                                placeholder={['A free month', 'A PT session', 'Gym merch'][i] ?? 'Prize'}
-                                onChange={e => setPrize(i, { label: e.target.value })} />
-                            {v.prizes.length > 1 && (
-                                <RemoveButton label={`Remove ${ordinal(i + 1)} prize`} disabled={!can('prizes')}
-                                    onClick={() => set({ prizes: v.prizes.filter((_, j) => j !== i) })} />
-                            )}
-                        </div>
-                        <div className="flex items-center gap-3 mt-3 pl-[52px]">
-                            {p.image_url ? (
-                                <>
-                                    <img src={storageImage(p.image_url, 160)} alt="" className="w-14 h-14 rounded-xl object-cover border border-[#E6E6E1]" />
-                                    <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
-                                        onUploaded={url => setPrize(i, { image_url: url })}>Change</UploadButton>
-                                    <RemoveButton label="Remove photo" disabled={!can('prizes')} onClick={() => setPrize(i, { image_url: null })} />
-                                </>
-                            ) : (
-                                <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
-                                    onUploaded={url => setPrize(i, { image_url: url })}>Add a photo</UploadButton>
-                            )}
-                        </div>
+                        {p.reward_id ? (
+                            <PartnerPrize
+                                ordinal={ordinal(i + 1)}
+                                prize={p}
+                                reward={catalogue.find(r => r.id === p.reward_id)}
+                                disabled={!can('prizes')}
+                                onChange={() => setPicking(i)}
+                                onOwn={() => { setPrize(i, { reward_id: null, label: '', image_url: null }); setPicking(null); }}
+                                onRemove={v.prizes.length > 1 ? () => set({ prizes: v.prizes.filter((_, j) => j !== i) }) : null}
+                            />
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-3">
+                                    <span className="w-10 text-[12px] font-black text-[#8a7600] shrink-0">{ordinal(i + 1)}</span>
+                                    <input className={INPUT} aria-label={`${ordinal(i + 1)} prize`} value={p.label} maxLength={60} disabled={!can('prizes')}
+                                        placeholder={['A free month', 'A PT session', 'Gym merch'][i] ?? 'Prize'}
+                                        onChange={e => setPrize(i, { label: e.target.value })} />
+                                    {v.prizes.length > 1 && (
+                                        <RemoveButton label={`Remove ${ordinal(i + 1)} prize`} disabled={!can('prizes')}
+                                            onClick={() => set({ prizes: v.prizes.filter((_, j) => j !== i) })} />
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-3 mt-3 pl-[52px]">
+                                    {p.image_url ? (
+                                        <>
+                                            <img src={storageImage(p.image_url, 160)} alt="" className="w-14 h-14 rounded-xl object-cover border border-[#E6E6E1]" />
+                                            <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
+                                                onUploaded={url => setPrize(i, { image_url: url })}>Change</UploadButton>
+                                            <RemoveButton label="Remove photo" disabled={!can('prizes')} onClick={() => setPrize(i, { image_url: null })} />
+                                        </>
+                                    ) : (
+                                        <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
+                                            onUploaded={url => setPrize(i, { image_url: url })}>Add a photo</UploadButton>
+                                    )}
+                                    {catalogue.length > 0 && can('prizes') && partnerCount < 3 && picking !== i && (
+                                        <button type="button" onClick={() => setPicking(i)} className="inline-flex items-center gap-2 h-10 text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600]">
+                                            <Gift size={13} /> Or a POWR partner prize
+                                        </button>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                        {picking === i && (
+                            <PrizePicker
+                                catalogue={catalogue}
+                                current={p.reward_id}
+                                onPick={r => { setPrize(i, { reward_id: r.id, label: r.label, image_url: r.image_url ?? null }); setPicking(null); }}
+                                onClose={() => setPicking(null)}
+                            />
+                        )}
                     </div>
                 ))}
                 {can('prizes') && v.prizes.length < 5 && (
-                    <button type="button" onClick={() => set({ prizes: [...v.prizes, { label: '', image_url: null }] })} className={`${BTN_GHOST} h-10 px-5`}>
+                    <button type="button" onClick={() => set({ prizes: [...v.prizes, { label: '', image_url: null, reward_id: null }] })} className={`${BTN_GHOST} h-10 px-5`}>
                         <Plus size={13} /> Add a prize
                     </button>
                 )}
-                <p className="text-[11px] text-[#AAAAAA] leading-relaxed">Photos show with the prizes in the app, on the share page and on your screen.</p>
+                <p className="text-[11px] text-[#AAAAAA] leading-relaxed">
+                    Photos show with the prizes in the app, on the share page and on your screen.
+                    {catalogue.length > 0 && ' Up to 3 partner prizes per event, on us: the brand supplies the code, POWR settles with them.'}
+                </p>
             </div>
         </>
     );
@@ -1015,7 +1090,7 @@ export default function VenueEventBuilder() {
                         <Rules rules={preview?.rules ?? []} />
                     </ReviewRow>
                 </div>
-                <CardPreview v={v} tpl={tpl} gymName={gym.name} preview={preview} />
+                <div className="xl:hidden"><EventAppPreview event={previewEvent} venue={previewVenue} pageTheme="light" /></div>
             </div>
         </>
     );
@@ -1041,10 +1116,18 @@ export default function VenueEventBuilder() {
                     ) : null}
                 />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-[210px_minmax(0,1fr)] gap-6 lg:gap-10 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-[210px_minmax(0,1fr)] xl:grid-cols-[180px_minmax(0,1fr)_280px] 2xl:grid-cols-[210px_minmax(0,1fr)_320px] gap-6 lg:gap-8 items-start">
                 <StepRail current={step} problems={problems} reachable={reachable} onJump={go} formatLocked={!!id} />
                 <div className="min-w-0 space-y-5">
                     <Card className="p-6 sm:p-10">{body}</Card>
+                    {previewEvent && step > 0 && cur !== 'review' && (
+                        <div className="xl:hidden">
+                            <button type="button" onClick={() => setShowPhone(s => !s)} aria-expanded={showPhone} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black text-[#8a7600]">
+                                <Smartphone size={13} /> {showPhone ? 'Hide the app preview' : 'See it in the app'}
+                            </button>
+                            {showPhone && <div className="mt-5"><EventAppPreview event={previewEvent} venue={previewVenue} pageTheme="light" /></div>}
+                        </div>
+                    )}
 
                     {error && <div className="text-red-600 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}
 
@@ -1090,6 +1173,11 @@ export default function VenueEventBuilder() {
                         </p>
                     )}
                 </div>
+                {previewEvent && step > 0 && (
+                    <div className="hidden xl:block xl:sticky xl:top-6">
+                        <EventAppPreview event={previewEvent} venue={previewVenue} pageTheme="light" width={280} />
+                    </div>
+                )}
             </div>
         </Page>
     );

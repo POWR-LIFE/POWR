@@ -151,6 +151,7 @@ const EMPTY_FORM = {
     url: '',
     partner_blurb: '',
     max_redemptions_per_user: null,
+    event_prize: false,
 };
 
 export default function RewardManager() {
@@ -425,6 +426,7 @@ export default function RewardManager() {
             url: reward.url || '',
             partner_blurb: reward.partner_blurb || '',
             max_redemptions_per_user: reward.max_redemptions_per_user ?? null,
+            event_prize: !!reward.event_prize,
         });
         setBulkCodesText('');
         setReconciliationText('');
@@ -1546,6 +1548,23 @@ export default function RewardManager() {
                                 <p className="mt-3 text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black">
                                     User must re-earn enough POWR to claim again (subject to this cap)
                                 </p>
+                            </div>
+
+                            {/* Gym events: the reward as a prize. Pool codes or a shared promo
+                                code only; the winner's code is issued at the reveal, at no cost
+                                to the member, up to three partner prizes per event. */}
+                            <div className="mb-8">
+                                <label className="flex items-start gap-4 cursor-pointer">
+                                    <input type="checkbox" className="accent-[#E8D200] w-5 h-5 mt-0.5 shrink-0" checked={!!formData.event_prize}
+                                        onChange={e => setFormData({ ...formData, event_prize: e.target.checked })}
+                                        disabled={formData.integration_type === 'AFFILIATE'} />
+                                    <span>
+                                        <span className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">Offer as an event prize</span>
+                                        <span className="block mt-2 text-[12px] text-[#888] leading-relaxed">
+                                            Gyms can pick this reward as a prize for their events. The winner gets a code in their Wallet at the reveal, no points spent, and the brand's usual receipt and webhooks fire. Needs a code pool with stock or a shared promo code; an affiliate link can't be a prize.
+                                        </span>
+                                    </span>
+                                </label>
                             </div>
                             </div>
                             {/* end Pricing step */}

@@ -45,6 +45,8 @@ export const createGymEvent = (partnerId, templateKey, fields) =>
     rpc('gym_create_event', { p_partner_id: partnerId, p_template_key: templateKey, p_fields: fields });
 export const updateGymEvent = (eventId, fields) => rpc('gym_update_event', { p_event_id: eventId, p_fields: fields });
 // The builder's live preview: the dates and house rules the server would set. Saves nothing.
+// POWR partner rewards a gym can give as prizes; the winner's code is issued at the reveal.
+export const fetchPrizeCatalogue = (partnerId) => rpc('gym_prize_catalogue', { p_partner_id: partnerId });
 export const previewGymEvent = (partnerId, templateKey, fields) =>
     rpc('gym_preview_event', { p_partner_id: partnerId, p_template_key: templateKey, p_fields: fields });
 export const publishGymEvent = (eventId) => rpc('gym_publish_event', { p_event_id: eventId });
