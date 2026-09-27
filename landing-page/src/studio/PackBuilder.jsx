@@ -6,7 +6,7 @@ import { listEvents, eventStandings } from './data';
 import { zipFiles } from './zip';
 import { LIMITS, collect, droppedItems, pickedItems, leftOutNote } from './pack/ingest';
 import { analyseAll, markDuplicates, quality, weakness } from './pack/analyse';
-import { PHASES, phaseFor, planPack, wordsFor, rankPhotos, fit, lookFor, nextTemplate, FORMAT_CHOICES, LOOK_CHOICES, DEFAULT_OPTIONS } from './pack/plan';
+import { PHASES, phaseFor, planPack, wordsFor, rankPhotos, fit, withLooks, nextTemplate, FORMAT_CHOICES, LOOK_CHOICES, DEFAULT_OPTIONS } from './pack/plan';
 import { buildPack, renderPreview, describePlan } from './pack/build';
 import { savePack, listPacks, packZip, reopenPack, deletePack } from './pack/store';
 
@@ -121,8 +121,18 @@ export default function PackBuilder({ intro = null }) {
         setEdited(false);
     }, [phase, facts, media, leadId, options, edited]);
 
+    // Mixed looks follow the photos, so any change of photo, template or order re-deals them.
     const updatePlan = (fn) => {
-        setPlan((p) => (p ? fn(p) : p));
+        setPlan((p) => {
+            if (!p) return p;
+            const n = fn(p);
+            const of = (id) => byId.get(id)?.analysis ?? null;
+            return {
+                ...n,
+                posts: withLooks(n.options, n.posts, of),
+                carousel: n.carousel ? { ...n.carousel, slides: withLooks(n.options, n.carousel.slides, of) } : n.carousel,
+            };
+        });
         setEdited(true);
     };
 
@@ -229,12 +239,12 @@ export default function PackBuilder({ intro = null }) {
             setPlan((p) => {
                 if (!p) return p;
                 const o = { ...p.options, [key]: value };
-                const relook = (list, tid) => list.map((x, i) => ({ ...x, look: lookFor(o, i, tid ?? x.templateId) }));
+                const relook = (list) => withLooks(o, list, (id) => byId.get(id)?.analysis ?? null);
                 return {
                     ...p,
                     options: o,
                     posts: key === 'look' ? relook(p.posts) : p.posts,
-                    carousel: p.carousel && key === 'look' ? { ...p.carousel, look: lookFor(o, 0, 'frame') } : p.carousel,
+                    carousel: p.carousel && key === 'look' ? { ...p.carousel, slides: relook(p.carousel.slides) } : p.carousel,
                     reels: key === 'look' ? relook(p.reels) : p.reels,
                 };
             });
@@ -272,7 +282,7 @@ export default function PackBuilder({ intro = null }) {
     }));
 
     const selectedPost = plan && selected
-        ? plan.posts.find((p) => p.id === selected) ?? plan.carousel?.slides.map((s) => ({ ...s, look: plan.carousel.look })).find((s) => s.id === selected) ?? null
+        ? plan.posts.find((p) => p.id === selected) ?? plan.carousel?.slides.map((s) => ({ ...s, look: s.look ?? plan.carousel.look })).find((s) => s.id === selected) ?? null
         : null;
 
     // ── Saved packs ────────────────────────────────────────────────────
@@ -621,7 +631,7 @@ export default function PackBuilder({ intro = null }) {
                                         {plan.carousel.slides.map((s) => (
                                             <div key={s.id} className={`w-24 flex-none rounded-lg p-1 ${selected === s.id ? 'bg-[#E8D200]/20 ring-1 ring-[#E8D200]' : 'bg-white/5'}`}>
                                                 <button type="button" onClick={() => setSelected(selected === s.id ? null : s.id)} className="block w-full" aria-label="Edit slide">
-                                                    <Preview plan={plan} post={{ ...s, look: plan.carousel.look }} item={byId.get(s.mediaId)} ready={ready} />
+                                                    <Preview plan={plan} post={{ ...s, look: s.look ?? plan.carousel.look }} item={byId.get(s.mediaId)} ready={ready} />
                                                 </button>
                                                 <button type="button" onClick={() => removeSlide(s.id)} className="mt-1 w-full rounded text-[10px] text-white/50 hover:text-white">Remove</button>
                                             </div>

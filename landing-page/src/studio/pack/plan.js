@@ -37,7 +37,7 @@ export const FORMAT_CHOICES = [
 
 export const LOOK_CHOICES = [
     { id: 'film', label: 'Film', blurb: 'black and white, the house look' },
-    { id: 'mixed', label: 'Mixed', blurb: 'film and colour, post by post' },
+    { id: 'mixed', label: 'Mixed', blurb: 'colour where the photo has colour, film elsewhere' },
     { id: 'colour', label: 'Colour', blurb: 'the photos as shot' },
 ];
 
@@ -145,16 +145,42 @@ const RECIPES = {
 // tones, so a colour look must turn it down (tintAmount) or the colour is lost.
 // Colour: the photos as shot. Mixed: house film, then colour with a light
 // warm or cool cast, alternating.
+const FILM = {};
 const COLOUR = { mono: 0, tintAmount: 0 };
 const MIXED = [{}, { mono: -0.1, tint: 'warm', tintAmount: 0.3 }, {}, { mono: -0.1, tint: 'cool', tintAmount: 0.3 }];
 // In a mixed pack the QR poster and the standings keep the house look.
 const FLAGSHIP = new Set(['ticket', 'results']);
+// Below this a photo is black and white already — colour would show nothing.
+const COLOURFUL = 0.035;
+const CASTS = [MIXED[1], MIXED[3]];
 
-/** The look for the n-th post of a pack. */
+/** The look for one post when every post gets the same (Film, Colour). */
 export function lookFor(options, n, templateId) {
-    if (options.look === 'film') return {};
+    if (options.look === 'film') return FILM;
     if (options.look === 'colour') return COLOUR;
-    return FLAGSHIP.has(templateId) ? {} : MIXED[n % MIXED.length];
+    return FLAGSHIP.has(templateId) ? FILM : MIXED[n % MIXED.length];
+}
+
+/**
+ * Looks for a list of posts. Mixed goes by the photos, not the order: a
+ * photo that's black and white already gets the film look, and the colourful
+ * ones alternate colour (warm, then cool) and film, colour first — so the
+ * colour lands where there's colour to show.
+ */
+export function withLooks(options, list, analysisOf) {
+    let k = 0;
+    const lookOf = (x, i) => {
+        if (options.look !== 'mixed') return options.look === 'colour' ? COLOUR : FILM;
+        const a = analysisOf(x.mediaId);
+        if (FLAGSHIP.has(x.templateId) || !a || (a.chroma ?? 0) < COLOURFUL) return FILM;
+        const j = k++;
+        return j % 2 === 0 ? CASTS[(j / 2) % 2] : FILM;
+    };
+    // Unchanged posts keep their object, so their previews don't redraw.
+    return list.map((x, i) => {
+        const look = lookOf(x, i);
+        return x.look === look ? x : { ...x, look };
+    });
 }
 
 /** A template's words: its defaults, what the event fills in, then the post's own. */
@@ -281,6 +307,14 @@ export function planPack({ phase, facts, media, options = DEFAULT_OPTIONS, leadI
     const reelTemplate = phase === 'before' ? 'club' : phase === 'during' ? 'editorial' : 'bleed';
     const reelWords = posts.find((p) => p.templateId === reelTemplate)?.fields ?? wordsFor(reelTemplate, f);
     const reels = clips.map((c, i) => ({ id: `r${i + 1}`, templateId: reelTemplate, mediaId: c.id, fields: { ...reelWords }, look: lookFor(o, i, reelTemplate) }));
+
+    // Looks go by the photos each post ended up with.
+    const analysisOf = (id) => media.find((m) => m.id === id)?.analysis ?? null;
+    const looked = withLooks(o, posts, analysisOf);
+    posts.splice(0, posts.length, ...looked);
+    if (carousel) carousel = { ...carousel, slides: withLooks(o, carousel.slides, analysisOf) };
+    const reelsLooked = withLooks(o, reels, analysisOf);
+    reels.splice(0, reels.length, ...reelsLooked);
 
     return {
         version: 1,
