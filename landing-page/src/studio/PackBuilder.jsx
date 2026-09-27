@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, Check, Download, FolderOpen, Images, Loader2, Pencil, RefreshCw, RotateCcw, Shuffle, Star, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
+import { Archive, Check, Download, FolderOpen, Images, Loader2, Pencil, Play, RefreshCw, RotateCcw, Shuffle, Star, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
 import { prepareStudio, COLOURWAYS } from './render';
 import { templateById } from './templates';
 import { adminStudioData } from './data';
 import { zipFiles } from './zip';
 import { LIMITS, collect, droppedItems, pickedItems, leftOutNote } from './pack/ingest';
 import { analyseAll, markDuplicates, quality, weakness } from './pack/analyse';
-import { PHASES, phaseFor, planPack, wordsFor, rankPhotos, fit, withLooks, nextTemplate, FORMAT_CHOICES, LOOK_CHOICES, DEFAULT_OPTIONS } from './pack/plan';
+import { PHASES, phaseFor, planPack, wordsFor, rankPhotos, fit, withLooks, nextTemplate, FORMAT_CHOICES, LOOK_CHOICES, DEFAULT_OPTIONS, REEL_SECONDS } from './pack/plan';
 import { buildPack, renderPreview, describePlan } from './pack/build';
 import { savePack, listPacks, packZip, reopenPack, deletePack } from './pack/store';
 
@@ -55,15 +55,15 @@ function queuePreview(task) {
     requestAnimationFrame(step);
 }
 
-function Preview({ plan, post, item, ready, className = '' }) {
+function Preview({ plan, post, item, ready, className = '', format = 'post' }) {
     const ref = useRef(null);
     useEffect(() => {
         if (!ready || !ref.current) return undefined;
         let live = true;
-        queuePreview(() => { if (live && ref.current) renderPreview(ref.current, plan, post, item, 'post', 0.25); });
+        queuePreview(() => { if (live && ref.current) renderPreview(ref.current, plan, post, item, format, 0.25); });
         return () => { live = false; };
-    }, [ready, plan.options.colourway, post, item]); // eslint-disable-line react-hooks/exhaustive-deps
-    return <canvas ref={ref} className={`block w-full rounded-lg bg-[#1d1d1b] ${className}`} style={{ aspectRatio: '4 / 5' }} />;
+    }, [ready, plan.options.colourway, post, item, format]); // eslint-disable-line react-hooks/exhaustive-deps
+    return <canvas ref={ref} className={`block w-full rounded-lg bg-[#1d1d1b] ${className}`} style={{ aspectRatio: format === 'story' ? '9 / 16' : '4 / 5' }} />;
 }
 
 /**
@@ -285,10 +285,13 @@ export default function PackBuilder({ intro = null, data = adminStudioData, part
         ...p,
         posts: p.posts.map((x) => (x.id === id ? { ...x, fields: { ...x.fields, [key]: value } } : x)),
         carousel: p.carousel ? { ...p.carousel, slides: p.carousel.slides.map((s) => (s.id === id ? { ...s, fields: { ...s.fields, [key]: value } } : s)) } : null,
+        reels: p.reels.map((r) => (r.id === id ? { ...r, fields: { ...r.fields, [key]: value } } : r)),
     }));
 
     const selectedPost = plan && selected
-        ? plan.posts.find((p) => p.id === selected) ?? plan.carousel?.slides.map((s) => ({ ...s, look: s.look ?? plan.carousel.look })).find((s) => s.id === selected) ?? null
+        ? plan.posts.find((p) => p.id === selected)
+            ?? plan.carousel?.slides.map((s) => ({ ...s, look: s.look ?? plan.carousel.look })).find((s) => s.id === selected)
+            ?? plan.reels.find((r) => r.id === selected) ?? null
         : null;
 
     // ── Saved packs ────────────────────────────────────────────────────
@@ -657,12 +660,19 @@ export default function PackBuilder({ intro = null, data = adminStudioData, part
                             {plan.reels.length > 0 && (
                                 <div className="mt-4">
                                     <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/50">Reels · Story 9:16</div>
-                                    <div className="flex flex-wrap gap-2">
+                                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                                         {plan.reels.map((r) => (
-                                            <div key={r.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 text-xs text-white/75">
-                                                {byId.get(r.mediaId)?.thumbUrl && <img src={byId.get(r.mediaId).thumbUrl} alt="" className="h-8 w-6 rounded object-cover" />}
-                                                {templateById(r.templateId).name} over {byId.get(r.mediaId)?.path.split('/').pop()}
-                                                <button type="button" onClick={() => removeReel(r.id)} aria-label="Leave this reel out" className="text-white/50 hover:text-white"><X size={12} /></button>
+                                            <div key={r.id} className={`rounded-xl p-1.5 ${selected === r.id ? 'bg-[#E8D200]/20 ring-1 ring-[#E8D200]' : 'bg-white/5'}`}>
+                                                <button type="button" onClick={() => setSelected(selected === r.id ? null : r.id)} className="relative block w-full" aria-label={`Edit reel ${templateById(r.templateId).name}`}>
+                                                    <Preview plan={plan} post={r} item={byId.get(r.mediaId)} ready={ready} format="story" />
+                                                    <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+                                                        <Play size={9} className="fill-white" /> {Math.round(Math.min(REEL_SECONDS, byId.get(r.mediaId)?.analysis?.duration ?? REEL_SECONDS))} s
+                                                    </span>
+                                                </button>
+                                                <div className="mt-1.5 flex items-center justify-between gap-1 px-0.5">
+                                                    <span className="truncate text-[11px] text-white/70" title={byId.get(r.mediaId)?.path}>Reel · {templateById(r.templateId).name}</span>
+                                                    <button type="button" onClick={() => removeReel(r.id)} title="Leave this reel out" aria-label="Leave this reel out" className="rounded p-1 text-white/60 hover:bg-white/10 hover:text-white"><X size={12} /></button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -678,7 +688,7 @@ export default function PackBuilder({ intro = null, data = adminStudioData, part
                                 <button type="button" onClick={() => setSelected(null)} aria-label="Close" className="text-[#888] hover:text-[#111]"><X size={14} /></button>
                             </div>
                             <div className="grid gap-4 sm:grid-cols-[180px_minmax(0,1fr)]">
-                                <Preview plan={plan} post={selectedPost} item={byId.get(selectedPost.mediaId)} ready={ready} />
+                                <Preview plan={plan} post={selectedPost} item={byId.get(selectedPost.mediaId)} ready={ready} format={plan.reels.some((r) => r.id === selectedPost.id) ? 'story' : 'post'} />
                                 <div className="space-y-2.5">
                                     {templateById(selectedPost.templateId).fields.filter((f) => f.type !== 'image').map((f) => (
                                         <div key={f.key}>
