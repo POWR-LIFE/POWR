@@ -138,7 +138,7 @@ function read(src) {
     }
     const clamp = (v) => Math.min(0.8, Math.max(0.2, v));
     const subject = sw ? { x: clamp(sx / sw), y: clamp(sy / sw) } : { x: 0.5, y: 0.45 };
-    return { stats, calm, subject, chroma, hash: dhash(src) };
+    return { stats, calm, subject, chroma, hash: dhash(src), palette: palette(src) };
 }
 
 // 64-bit difference hash of a 9×8 grey copy, as 16 hex digits.
@@ -154,6 +154,51 @@ function dhash(src) {
         hex += byte.toString(16).padStart(2, '0');
     }
     return hex;
+}
+
+// The photo's colours: the average of each cell of a 4×4 grid. The hash
+// is greyscale (shape and light), so this is what tells a gold logo from a
+// chrome one of the same shape.
+function palette(src) {
+    // Averaged over the visible pixels only: a logo on transparency must be
+    // compared by the logo's colours, not washed out by the empty background.
+    const n = 32;
+    const { ctx } = scratch('probe-palette', n, n);
+    ctx.clearRect(0, 0, n, n);
+    ctx.drawImage(src, 0, 0, n, n);
+    const d = ctx.getImageData(0, 0, n, n).data;
+    const out = [];
+    for (let cy = 0; cy < 4; cy++) {
+        for (let cx = 0; cx < 4; cx++) {
+            let r = 0;
+            let g = 0;
+            let b = 0;
+            let k = 0;
+            for (let y = cy * 8; y < cy * 8 + 8; y++) {
+                for (let x = cx * 8; x < cx * 8 + 8; x++) {
+                    const i = (y * n + x) * 4;
+                    if (d[i + 3] < 128) continue;
+                    r += d[i]; g += d[i + 1]; b += d[i + 2]; k++;
+                }
+            }
+            out.push(k ? [r / k, g / k, b / k] : null);
+        }
+    }
+    return out;
+}
+
+/** Average difference between two palettes, per colour channel (0–255). */
+export function paletteDistance(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    let s = 0;
+    let n = 0;
+    for (let i = 0; i < a.length; i++) {
+        if (!a[i] && !b[i]) continue;
+        if (!a[i] || !b[i]) { s += 255; n++; continue; } // something in one, nothing in the other
+        s += (Math.abs(a[i][0] - b[i][0]) + Math.abs(a[i][1] - b[i][1]) + Math.abs(a[i][2] - b[i][2])) / 3;
+        n++;
+    }
+    return n ? s / n : 0;
 }
 
 /** Bits that differ between two hashes (0–64). */
@@ -192,15 +237,17 @@ export function weakness(a) {
 
 /**
  * Group near-identical shots (bursts): each group keeps its best photo as the
- * pick; the rest are marked with the pick they duplicate.
+ * pick; the rest are marked with the pick they duplicate. Same shape AND the
+ * same colours — the same logo in gold and in chrome is two photos.
  */
-export function markDuplicates(items, threshold = 10) {
+export function markDuplicates(items, threshold = 10, colourThreshold = 18) {
     const photos = items.filter((m) => m.kind === 'photo' && m.analysis?.ok);
     const parent = new Map(photos.map((m) => [m.id, m.id]));
     const find = (id) => (parent.get(id) === id ? id : find(parent.get(id)));
     for (let i = 0; i < photos.length; i++) {
         for (let j = i + 1; j < photos.length; j++) {
-            if (hashDistance(photos[i].analysis.hash, photos[j].analysis.hash) <= threshold) {
+            if (hashDistance(photos[i].analysis.hash, photos[j].analysis.hash) <= threshold
+                && paletteDistance(photos[i].analysis.palette, photos[j].analysis.palette) <= colourThreshold) {
                 parent.set(find(photos[j].id), find(photos[i].id));
             }
         }
