@@ -329,7 +329,16 @@ export default function PackBuilder({ intro = null }) {
             setPhase(full.phase);
             setOptions({ ...DEFAULT_OPTIONS, ...full.plan.options });
             setLeadId(full.plan.leadId ?? null);
-            setPlan(full.plan);
+            // Looks are dealt again from the photos as read now: a pack saved
+            // before looks followed the photos gets them right when reopened.
+            const of = (id) => out.find((m) => m.id === id)?.analysis ?? null;
+            const o = { ...DEFAULT_OPTIONS, ...full.plan.options };
+            setPlan({
+                ...full.plan,
+                posts: withLooks(o, full.plan.posts, of),
+                carousel: full.plan.carousel ? { ...full.plan.carousel, slides: withLooks(o, full.plan.carousel.slides, of) } : null,
+                reels: withLooks(o, full.plan.reels ?? [], of),
+            });
             setSelected(null);
             setEdited(false);
             setResult({ ok: true, note: `Opened “${full.title}”. Change anything and make it again — it saves as a new pack; this one stays as it was.` });
