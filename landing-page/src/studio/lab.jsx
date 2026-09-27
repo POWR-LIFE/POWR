@@ -14,10 +14,11 @@ import { templateById } from './templates';
 import { loadMedia } from './media';
 import { loadAsset } from './assets';
 import { exportVideo } from './video';
+import { compileBlueprint } from './blueprint/compile';
 
 const photos = new Map();
 const photo = (name) => {
-    if (!photos.has(name)) photos.set(name, loadMedia(`/studio-samples/${name}`));
+    if (!photos.has(name)) photos.set(name, loadMedia(name.startsWith('/') ? name : `/studio-samples/${name}`));
     return photos.get(name);
 };
 
@@ -25,14 +26,14 @@ window.__studio = {
     async ready() {
         return prepareStudio();
     },
-    async render({ template, format = 'post', photo: name, fields, style, look, focal, zoom, scale = 1, assets: assetUrls = {} }) {
+    async render({ blueprint, template, format = 'post', photo: name, fields, style, look, focal, zoom, scale = 1, assets: assetUrls = {} }) {
         await prepareStudio();
         const media = name ? await photo(name) : null;
         const assets = {};
         for (const [k, url] of Object.entries(assetUrls)) assets[k] = await loadAsset(await (await fetch(url)).blob());
         const canvas = document.createElement('canvas');
         const t0 = performance.now();
-        const info = renderPost(canvas, { template: templateById(template), format, media, fields, style, look, focal, zoom, scale, assets });
+        const info = renderPost(canvas, { template: blueprint ? compileBlueprint(blueprint) : templateById(template), format, media, fields, style, look, focal, zoom, scale, assets });
         const ms = performance.now() - t0;
         return { url: canvas.toDataURL('image/png'), ms, sharp: info.photo?.stats?.sharp, motion: info.photo?.motion };
     },

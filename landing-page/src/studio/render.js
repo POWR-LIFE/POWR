@@ -24,6 +24,19 @@ export const COLOURWAYS = [
 
 let grader = null;
 
+/**
+ * A duotone in any colour (a look's `tintHex`): highlights go to the colour,
+ * shadows to a near-black of the same hue — one saturated colour owns the
+ * frame. Used by blueprint templates that follow a colour trend.
+ */
+export function hexTint(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex ?? ''));
+    if (!m) return TINTS.none;
+    const n = parseInt(m[1], 16);
+    const c = [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+    return { shadow: c.map((v) => v * 0.07), high: c, amount: 1 };
+}
+
 /** Fonts + logo. Must resolve before the first render. */
 export async function prepareStudio() {
     const [fonts] = await Promise.all([ensureFonts(), ensureLogo()]);
@@ -119,7 +132,7 @@ export function renderPost(canvas, opts) {
         const motion = (L.motion ?? 0) * (L.motionAuto === false ? 1 : motionBudget(stats.sharp));
         const fx = (focal.x * media.width - crop.sx) / crop.sw;
         const fy = (focal.y * media.height - crop.sy) / crop.sh;
-        const tint = TINTS[L.tint] ?? TINTS.none;
+        const tint = L.tintHex ? hexTint(L.tintHex) : TINTS[L.tint] ?? TINTS.none;
         const angle = ((L.angle ?? 0) * Math.PI) / 180;
         return {
             motion, fx, fy,

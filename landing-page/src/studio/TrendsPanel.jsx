@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowRight, Camera, ExternalLink, Loader2, TriangleAlert } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowRight, Camera, Eye, EyeOff, ExternalLink, Loader2, Sparkles, TriangleAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { templateById } from './templates';
+import { prepareStudio, renderPost } from './render';
+import { loadMedia } from './media';
+import { compileBlueprint } from './blueprint/compile';
 
 /**
  * Trends — the week's trend drop: what the big fitness and wellness brands'
@@ -9,7 +12,69 @@ import { templateById } from './templates';
  * each week by the "Studio trend drop" routine into studio_trend_drops
  * (admin-only: it names other brands and links their campaigns). "Try it"
  * opens the editor on the trend's template with its words and look.
+ *
+ * The routine also publishes one new template a week (a blueprint, in
+ * studio_templates) — it goes straight into the editor's "Trending" group;
+ * here it's previewed, and can be hidden.
  */
+
+// POWR's own footage (the hero clip), so previews never lean on a brand's photo.
+let previewMedia = null;
+const previewPhoto = () => (previewMedia ??= loadMedia('/studio/preview.jpg'));
+
+const PREVIEW_FOCAL = { x: 0.8, y: 0.45 };
+
+function Preview({ blueprint, format, focal = PREVIEW_FOCAL }) {
+    const ref = useRef(null);
+    useEffect(() => {
+        let live = true;
+        (async () => {
+            await prepareStudio();
+            const media = await previewPhoto().catch(() => null);
+            const template = compileBlueprint(blueprint);
+            if (!live || !ref.current || !template) return;
+            const off = document.createElement('canvas');
+            renderPost(off, { template, format, media, focal, scale: format === 'landscape' ? 0.3 : 0.36 });
+            const c = ref.current;
+            c.width = off.width;
+            c.height = off.height;
+            c.getContext('2d').drawImage(off, 0, 0);
+        })();
+        return () => { live = false; };
+    }, [blueprint, format, focal]);
+    return <canvas ref={ref} className="block h-full w-auto rounded-lg bg-[#111]" />;
+}
+
+function TemplateOfWeek({ row, onTry, onStatus }) {
+    const bp = row.blueprint;
+    const hidden = row.status === 'hidden';
+    return (
+        <article className={`rounded-2xl border bg-white p-5 ${hidden ? 'border-dashed border-[#DDD] opacity-70' : 'border-[#E8D200]'}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#8A6A00]"><Sparkles size={13} /> Template of the week</div>
+                    <h4 className="mt-1 text-xl font-bold text-[#111]">{bp.name}</h4>
+                    <p className="mt-1 max-w-xl text-sm text-[#555]">{bp.blurb}{bp.trend ? ` From the “${bp.trend}” trend.` : ''}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => onStatus?.(row.id, hidden ? 'live' : 'hidden')}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#E6E6E1] px-3 py-1.5 text-sm text-[#555] hover:border-[#CFCFC8] hover:text-[#111]">
+                        {hidden ? <><Eye size={14} /> Show in Studio</> : <><EyeOff size={14} /> Hide from Studio</>}
+                    </button>
+                    {!hidden && <TryIt onTry={onTry} templateId={bp.id} />}
+                </div>
+            </div>
+            <div className="mt-4 flex h-[250px] gap-3 overflow-x-auto">
+                <Preview blueprint={bp} format="post" />
+                <Preview blueprint={bp} format="story" />
+                <Preview blueprint={bp} format="landscape" />
+            </div>
+            <p className="mt-3 text-xs text-[#999]">
+                {hidden ? 'Hidden: it leaves the picker the next time the Studio opens.' : 'Live in the Studio’s Trending group. Made and checked by the weekly routine.'}
+            </p>
+        </article>
+    );
+}
 const FIT = {
     template: { label: 'Template', cls: 'bg-[#111] text-white' },
     look: { label: 'Look', cls: 'bg-[#FFF6BF] text-[#6B5A00]' },
@@ -58,7 +123,7 @@ function TryIt({ onTry, templateId, fields, look, children = 'Try it' }) {
     );
 }
 
-export default function TrendsPanel({ intro = null, onTry }) {
+export default function TrendsPanel({ intro = null, onTry, published = null, onStatus }) {
     const [drops, setDrops] = useState(null);
     const [error, setError] = useState(null);
     const [week, setWeek] = useState(null);
@@ -82,6 +147,7 @@ export default function TrendsPanel({ intro = null, onTry }) {
     }, []);
 
     const drop = drops?.find((d) => d.week_start === week);
+    const weekTemplates = (published ?? []).filter((r) => r.week_start === week);
 
     return (
         <div className="max-w-[1180px] space-y-6">
@@ -107,6 +173,8 @@ export default function TrendsPanel({ intro = null, onTry }) {
                         {drop.summary && <p className="mt-2 max-w-3xl text-sm text-white/75">{drop.summary}</p>}
                         <p className="mt-3 text-xs text-white/45">Take the look, never the copy: no brand’s words, marks, patterns or people. POWR stays dark.</p>
                     </section>
+
+                    {weekTemplates.map((row) => <TemplateOfWeek key={row.id} row={row} onTry={onTry} onStatus={onStatus} />)}
 
                     <section>
                         <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#777]">Trends</h3>

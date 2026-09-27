@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
-import { Palette } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Loader2, Palette } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { registerTemplates } from '../../studio/templates';
+import { compileBlueprint } from '../../studio/blueprint/compile';
 import StudioEditor from '../../studio/StudioEditor';
 import PackBuilder from '../../studio/PackBuilder';
 import TrendsPanel from '../../studio/TrendsPanel';
@@ -24,6 +27,26 @@ export default function Studio() {
     });
     const [opened, setOpened] = useState(() => new Set([mode]));
     const [apply, setApply] = useState(null);
+    // Blueprint templates the weekly trend routine published: loaded before
+    // the editor mounts, so they sit in its "Trending" group from the start.
+    const [published, setPublished] = useState(null);
+
+    const loadPublished = useCallback(async () => {
+        const { data, error } = await supabase
+            .from('studio_templates')
+            .select('id, name, trend, week_start, blueprint, status, created_at')
+            .order('week_start', { ascending: false })
+            .limit(60);
+        const rows = error ? [] : data ?? [];
+        registerTemplates(rows.filter((r) => r.status === 'live').map((r) => compileBlueprint(r.blueprint, { week: r.week_start })));
+        setPublished(rows);
+    }, []);
+    useEffect(() => { loadPublished(); }, [loadPublished]);
+
+    const setStatus = async (id, status) => {
+        await supabase.from('studio_templates').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+        setPublished((rows) => rows.map((r) => (r.id === id ? { ...r, status } : r)));
+    };
 
     const choose = (id) => {
         setMode(id);
@@ -55,11 +78,15 @@ export default function Studio() {
 
     return (
         <>
-            {opened.has('post') && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor intro={intro} apply={apply} /></div>}
+            {opened.has('post') && published === null && mode === 'post' && (
+                <div className="flex items-center gap-2 text-sm text-[#777]"><Loader2 size={16} className="animate-spin" /> Loading the Studio…</div>
+            )}
+            {opened.has('post') && published !== null && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor intro={intro} apply={apply} /></div>}
             {opened.has('pack') && <div className={mode === 'pack' ? '' : 'hidden'}><PackBuilder intro={intro} /></div>}
             {opened.has('trends') && (
                 <div className={mode === 'trends' ? '' : 'hidden'}>
-                    <TrendsPanel intro={intro} onTry={(a) => { setApply({ ...a }); choose('post'); window.scrollTo(0, 0); }} />
+                    <TrendsPanel intro={intro} published={published} onStatus={setStatus}
+                        onTry={(a) => { setApply({ ...a }); choose('post'); window.scrollTo(0, 0); }} />
                 </div>
             )}
         </>
