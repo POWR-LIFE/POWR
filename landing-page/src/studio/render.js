@@ -133,7 +133,9 @@ export function renderPost(canvas, opts) {
                 uFade: L.fade ?? 0,
                 uShadow: tint.shadow,
                 uHigh: tint.high,
-                uTint: tint.amount,
+                // A look may ask for less than the whole duotone: a colour grade
+                // with a warm or cool cast keeps the photo's own colour.
+                uTint: L.tintAmount ?? tint.amount,
                 uMotion: motion * 120 * u,
                 uDir: [Math.cos(angle), Math.sin(angle)],
                 uFocal: [fx, fy],

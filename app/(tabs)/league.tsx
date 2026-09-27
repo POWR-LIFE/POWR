@@ -112,13 +112,15 @@ export default function LeagueScreen() {
   // Several events can be on at once; the tab shows ONE at a time. A slug the
   // user picked in the switcher wins, then the deep-link/Home pin, then the
   // most relevant event in the list. A fresh pin (another Home card tapped)
-  // clears the pick so the tab follows the tap.
+  // clears the pick so the tab follows the tap. Always pin the list's first
+  // event: the list can hold an event the no-position single pick wouldn't
+  // return (a venue event reaching this phone by its location).
   const { events: liveEvents } = useLiveEvents();
   const paramSlug = typeof eventSlug === 'string' ? eventSlug : undefined;
   const [pickedSlug, setPickedSlug] = useState<string | undefined>(undefined);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   useEffect(() => { setPickedSlug(undefined); }, [paramSlug]);
-  const shownSlug = pickedSlug ?? paramSlug ?? (liveEvents.length > 1 ? liveEvents[0].slug : undefined);
+  const shownSlug = pickedSlug ?? paramSlug ?? liveEvents[0]?.slug;
 
   const { event: activeEvent, invites, board: eventBoard } = useLiveEvent(shownSlug, boardPreview);
   const [registerOpen, setRegisterOpen] = useState(false);

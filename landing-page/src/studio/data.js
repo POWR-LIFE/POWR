@@ -5,6 +5,10 @@
  *
  * Rewards are selected column by column — never `*` — so a promo code can't
  * reach a design by accident.
+ *
+ * The editor takes its data as a source object (`adminStudioData` below; the
+ * gym portal's is gymData.js), so the same editor serves a gym with only
+ * that gym's own events and board.
  */
 import { supabase } from '../lib/supabase';
 import { eventRegisterUrl } from '../lib/eventRegisterUrl';
@@ -70,7 +74,7 @@ export function shortName(name) {
     return words.length === 1 ? first : `${first} ${words[words.length - 1][0].toUpperCase()}.`;
 }
 
-function eventFacts(row) {
+export function eventFacts(row) {
     const start = new Date(row.window_start_at);
     const end = new Date(new Date(row.window_end_at).getTime() - 1); // the window's last moment, not the next day
     // The night itself: doors if set, else a window that fits in an evening.
@@ -186,3 +190,13 @@ export async function fetchImage(url, name) {
     const blob = await r.blob();
     return new File([blob], name, { type: blob.type });
 }
+
+/** The admin's data source for the editor: every event, every reward. */
+export const adminStudioData = {
+    listEvents,
+    eventStandings,
+    listRewards,
+    fetchImage,
+    // Admins may fill a sealed board (the editor warns them to hold the post).
+    sealedStandings: true,
+};

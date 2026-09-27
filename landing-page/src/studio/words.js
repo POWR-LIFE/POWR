@@ -40,6 +40,10 @@ export function wrap(text, width = 30, max = 3) {
     return lines.join('\n');
 }
 
+/** Wrap each line of a caption on its own, so a list and the blank lines around it survive. */
+export const wrapParagraphs = (text, width = 90) =>
+    String(text ?? '').split('\n').map((line) => (line.trim() ? wrap(line, width, 40) : '')).join('\n');
+
 /** 1240 → "1,240". */
 export const thousands = (n) => Number(n ?? 0).toLocaleString('en-GB');
 

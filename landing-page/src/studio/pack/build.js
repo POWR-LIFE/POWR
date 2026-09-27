@@ -33,7 +33,7 @@ export function jobsOf(plan) {
     });
     const slides = plan.carousel?.slides ?? [];
     slides.forEach((s, i) => {
-        const post = { ...s, look: plan.carousel.look };
+        const post = { ...s, look: s.look ?? plan.carousel.look };
         jobs.push({ kind: 'still', post, format: 'post', name: `${FOLDER.carousel}/${pad(i + 1)}-of-${pad(slides.length)}.jpg` });
         jobs.push({ kind: 'thumb', post, format: 'post', name: `thumbs/${s.id}.jpg` });
     });

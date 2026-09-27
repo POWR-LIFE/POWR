@@ -140,7 +140,7 @@ export default function LiveBoard() {
 
     const stale = board && lastOkAt > 0 && now - lastOkAt > STALE_MS;
 
-    if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Ask the POWR team for a fresh display URL." /></Shell>;
+    if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Make a new link from the Screens page of your gym portal, or ask the POWR team" /></Shell>;
     if (!board) return <Shell><CenterNote big="POWR" small="Connecting…" pulse /></Shell>;
 
     const shown = preview ? applyPreview(board, preview) : board;

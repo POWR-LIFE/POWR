@@ -170,8 +170,8 @@ export default function GymLeague() {
 
     const stale = league && lastOkAt > 0 && now - lastOkAt > STALE_MS;
 
-    if (!token) return <Shell><CenterNote big="This link is missing its key" small="Copy the full league URL from the admin — it ends in ?k=…" /></Shell>;
-    if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Ask the POWR team for a fresh display URL." /></Shell>;
+    if (!token) return <Shell><CenterNote big="This link is missing its key" small="Open it from the Screens page of your gym portal, or the admin: that link carries the key" /></Shell>;
+    if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Make a new link from the Screens page of your gym portal, or ask the POWR team" /></Shell>;
     if (!league) return <Shell><CenterNote big="POWR" small="Connecting…" pulse /></Shell>;
 
     return (
@@ -326,7 +326,7 @@ function RaceScene({ scope, ranked, host, hits }) {
                             <div className="gl-mono">{monogram(g.name)}</div>
                             <div className="gl-name">
                                 <b>{g.name}</b>
-                                <small>{meta} · {g.sessions_week} sessions{rawPerAthlete(g) != null ? ` · ${Math.round(rawPerAthlete(g))} pts/athlete` : ''}{g.in_now ? <> · <span className="in">{g.in_now} in now</span></> : null}<Momentum g={g} /></small>
+                                <small>{g.founding && <span className="gl-founding">Founding gym</span>}{meta} · {g.sessions_week} sessions{rawPerAthlete(g) != null ? ` · ${Math.round(rawPerAthlete(g))} pts/athlete` : ''}{g.in_now ? <> · <span className="in">{g.in_now} in now</span></> : null}<Momentum g={g} /></small>
                             </div>
                             <div className="gl-bar">
                                 {hit && hit.points > 0 && (
@@ -377,7 +377,7 @@ function EffortScene({ effort, host, hits }) {
                             <div className="gl-mono">{monogram(g.name)}</div>
                             <div className="gl-name">
                                 <b>{g.name}</b>
-                                <small>{place ? `${place} · ` : ''}{g.athletes_week} athletes · {fmt(g.points_week)} pts<Momentum g={g} /></small>
+                                <small>{g.founding && <span className="gl-founding">Founding gym</span>}{place ? `${place} · ` : ''}{g.athletes_week} athletes · {fmt(g.points_week)} pts<Momentum g={g} /></small>
                             </div>
                             <div className="gl-bar"><div className="gl-fill" style={{ width: `${Math.max(2, (perAthlete / leader) * 100)}%` }}><i /></div></div>
                             <div className="gl-pts"><span className="plus">{hit ? `+${hit.points}` : ''}</span><RollNum value={Math.round(perAthlete)} /><span className="unit">per athlete</span></div>
@@ -742,6 +742,7 @@ const CSS = `
 .gl-pts .unit { display: block; font-size: 0.6rem; font-weight: 500; color: var(--ink-3); letter-spacing: 0.12em; text-transform: uppercase; margin-top: -0.1rem; }
 .gl-mom { display: inline-block; margin-left: 0.5rem; padding: 0 0.4rem; border-radius: 999px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em; border: 1px solid var(--line); color: var(--ink-2); vertical-align: 0.05rem; }
 .gl-mom.up { color: var(--up); border-color: rgba(74,222,128,0.35); } .gl-mom.down { color: var(--down); border-color: rgba(248,113,113,0.35); }
+.gl-founding { display: inline-block; margin-right: 0.5rem; padding: 0.05rem 0.45rem; border-radius: 999px; font-size: 0.55rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #E8D200; border: 1px solid rgba(232,210,0,0.45); vertical-align: 0.15rem; }
 .gl-more { margin-top: 0.4rem; padding: 0.6rem 0.9rem; font-size: 0.85rem; color: var(--ink-3); border-top: 1px solid var(--line); display: flex; justify-content: space-between; }
 .gl-more b { color: var(--ink-2); font-weight: 500; }
 .gl-duel { flex: 1; display: grid; grid-template-columns: 1fr 13rem 1fr; grid-template-rows: auto auto; gap: 1.2rem 2rem; align-content: center; align-items: center; padding: 0 1.5rem; min-height: 0; }

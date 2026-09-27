@@ -26,6 +26,7 @@ export type Reason =
   | 'manual_off'
   | 'walking_off'
   | 'activity_not_included'
+  | 'not_at_venue'
   | 'streak_off'
   | 'challenges_off'
   | 'bonuses_off'
@@ -151,6 +152,7 @@ const REASON_LABEL: Record<Reason, string> = {
   manual_off:             'Manual sessions are off',
   walking_off:            'Walking is off',
   activity_not_included:  'Activity not in the event',
+  not_at_venue:           'Not at the venue',
   streak_off:             'Streak bonuses are off',
   challenges_off:         'Challenge payouts are off',
   bonuses_off:            'Bonuses are off',
@@ -170,7 +172,7 @@ export function reasonLabel(reason: string | null | undefined): string {
 export function reasonIsSwitch(reason: string | null | undefined): boolean {
   return reason === 'manual_off' || reason === 'walking_off' || reason === 'streak_off'
     || reason === 'challenges_off' || reason === 'bonuses_off' || reason === 'adjustments_off'
-    || reason === 'referrals_off' || reason === 'activity_not_included';
+    || reason === 'referrals_off' || reason === 'activity_not_included' || reason === 'not_at_venue';
 }
 
 export interface RuleChip {

@@ -58,7 +58,7 @@ window.__studio = {
 if (new URLSearchParams(window.location.search).has('pack')) {
     ReactDOM.createRoot(document.getElementById('root')).render(
         <div className="max-w-[1600px] px-8 py-8">
-            <PackBuilder />
+            <PackBuilder partnerId={new URLSearchParams(window.location.search).get('partner')} />
         </div>,
     );
 }

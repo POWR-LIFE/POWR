@@ -22,6 +22,8 @@ export type LeagueGym = {
   athletes_week: number;
   days: number[];
   in_now: number;
+  /** A founding gym: on Founding Pro, badged on every league screen. */
+  founding?: boolean;
 };
 
 export type LeagueFeedItem = {

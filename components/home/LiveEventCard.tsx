@@ -12,7 +12,6 @@ import {
     type EventLeaderboard,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
-import { designBoard, isDesignEventId } from '@/lib/dev/multiEventDesign';
 import { eventStatusChip, isVideoUrl, scoringLine } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
@@ -134,8 +133,7 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
     // two can drift. Home never forces a state — it always reads the real one.
     const { data: board } = useQuery<EventLeaderboard | null>({
         queryKey: ['liveEventBoard', event.id, null],
-        queryFn: () =>
-            isDesignEventId(event.id) ? designBoard(event.id) : fetchEventLeaderboard(event.id, null),
+        queryFn: () => fetchEventLeaderboard(event.id, null),
         enabled: event.viewer.joined && event.status === 'live' && !event.is_locked,
         staleTime: 60_000,
     });

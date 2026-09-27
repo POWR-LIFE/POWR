@@ -83,6 +83,10 @@ export default {
         { key: 'footer', label: 'Footer', value: 'Every move counts · powr.life' },
     ],
     // The words an event gives it — the standings only once there are some.
+    // A source that sets fillOnlyWithStandings (the gym portal) fills Results
+    // from an event only when it has public standings, so a gym never gets
+    // "The results are in." over rows that aren't that event's.
+    needsStandings: true,
     fill: {
         event: (ev) => ({
             title: twoLines(ev.name, 8),
@@ -90,11 +94,19 @@ export default {
             line: ev.board === 'live' ? 'All to play for.' : 'The results are in.',
             ...(ev.standings?.length ? { rows: ev.standings.map((r) => `${r.name} — ${thousands(r.points)}`).join('\n') } : {}),
         }),
+        // A gym's weekly board (gym portal): points earned at the gym this
+        // week, as its big-screen wall shows them.
+        board: (b) => ({
+            eyebrow: `This week · ${b.gym}`,
+            title: 'Gym\nfloor top 5',
+            line: b.week ? `Week of ${b.week}.` : 'Points earned here this week.',
+            ...(b.standings?.length ? { rows: b.standings.map((r) => `${r.name} — ${thousands(r.points)}`).join('\n') } : {}),
+        }),
     },
     presets: [
         { name: 'Final', fields: { eyebrow: 'Live event · Final standings', line: 'The results are in.' } },
         { name: 'Halfway', fields: { eyebrow: 'Live event · Halfway', line: 'All to play for.' } },
-        { name: 'Weekly', fields: { eyebrow: 'This week · ONE LDN', title: 'Gym\nfloor top 5', line: 'Five check-ins a week will do it.' } },
+        { name: 'Weekly', fields: { eyebrow: 'This week · Gym floor', title: 'Gym\nfloor top 5', line: 'Five check-ins a week will do it.' } },
     ],
     look: {
         mono: 1, target: 0.22, auto: 0.85, contrast: 0.45, crush: 0.15, fade: 0,

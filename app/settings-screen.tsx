@@ -36,6 +36,8 @@ import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifica
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
 import { formatMemberId } from '@/shared/memberId';
+import { getGymSharing, setGymSharing, type GymSharing } from '@/lib/api/gymSharing';
+import { fetchProfile, updateLeaderboardVisibility } from '@/lib/api/user';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -216,6 +218,48 @@ export default function SettingsScreen() {
   const [notifDailyNudge, setNotifDailyNudge] = useState(true);
   const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
+  // "Share with <gym>": the member's opt-in for their gym's portal to see
+  // their activity by name. Off unless switched on; only offered when their
+  // gym has a portal. Re-read on focus: picking a new gym elsewhere resets it.
+  const [gymSharing, setGymSharingState] = useState<GymSharing | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      getGymSharing().then((s) => { if (alive) setGymSharingState(s); });
+      return () => { alive = false; };
+    }, []),
+  );
+  const toggleGymSharing = async (on: boolean) => {
+    const before = gymSharing;
+    setGymSharingState((s) => (s ? { ...s, sharing: on } : s));
+    try {
+      setGymSharingState(await setGymSharing(on));
+    } catch (e: any) {
+      setGymSharingState(before);
+      Alert.alert('Couldn’t change that', e?.message ?? 'Try again in a moment.');
+    }
+  };
+  const showGymSharing = !!(gymSharing?.portal && gymSharing.gym_name);
+  // "Show me on gym boards": profiles.show_on_leaderboard. Every gym board
+  // and screen, the Gym League and a gym portal's top ten join on it, so off
+  // means no gym shows this member by name. Read on focus; null until known.
+  const [showOnBoards, setShowOnBoards] = useState<boolean | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      fetchProfile().then((p) => { if (alive && p) setShowOnBoards(p.show_on_leaderboard !== false); });
+      return () => { alive = false; };
+    }, []),
+  );
+  const toggleShowOnBoards = async (on: boolean) => {
+    const before = showOnBoards;
+    setShowOnBoards(on);
+    const { error } = await updateLeaderboardVisibility(on);
+    if (error) {
+      setShowOnBoards(before);
+      Alert.alert('Couldn’t change that', error);
+    }
+  };
   const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
   // Open-board opt-in lives on profiles (the board RPC filters on it), not in
   // user_metadata — a SQL-side filter can't read auth metadata.
@@ -788,8 +832,28 @@ export default function SettingsScreen() {
             sublabel="Friends can see your workouts"
             value={shareActivity}
             onValueChange={(v) => { setShareActivity(v); persistMeta('share_activity', v); }}
-            isLast
+            isLast={showOnBoards === null && !showGymSharing}
           />
+          {showOnBoards !== null && (
+            <RowToggle
+              icon="tv-outline"
+              label="Show me on gym boards"
+              sublabel="Your name and points on the leaderboard at gyms you train at: the app, their screens and the Gym League. Off, you still earn."
+              value={showOnBoards}
+              onValueChange={toggleShowOnBoards}
+              isLast={!showGymSharing}
+            />
+          )}
+          {showGymSharing && (
+            <RowToggle
+              icon="business-outline"
+              label={`Share with ${gymSharing!.gym_name}`}
+              sublabel="Your gym sees what you train, how often and when. Never your sleep, heart rate or where you are."
+              value={gymSharing!.sharing}
+              onValueChange={toggleGymSharing}
+              isLast
+            />
+          )}
         </View>
 
         {/* ── Admin ─────────────────────────────────────────── */}
