@@ -85,7 +85,7 @@ export function renderPost(canvas, opts) {
     if (layers) {
         layers.under = sized(layers.under, W, H);
         layers.over = sized(layers.over, W, H);
-        layers.photo = null;
+        layers.photos = [];
         Object.assign(layers, { W, H, u });
         const under = layers.under.getContext('2d');
         const over = layers.over.getContext('2d');
@@ -204,9 +204,15 @@ export function renderPost(canvas, opts) {
         caps: (s) => (lk.caps === false ? String(s ?? '') : String(s ?? '').toUpperCase()),
         hasMedia: !!media,
 
-        /** Grade the photo into `rect`; returns the focal point in canvas px. */
-        photo(rect, overrides = {}) {
+        /**
+         * Grade the photo into `rect`; returns the focal point in canvas px.
+         * `view.zoom` crops tighter around the focal point (a detail panel);
+         * `view.main: false` draws the photo again without making it the one
+         * the editor clicks on to move the focal point.
+         */
+        photo(rect, overrides = {}, view = {}) {
             const L = { ...lk, ...overrides };
+            const main = view.main !== false;
             const w = Math.max(1, Math.round(rect.w));
             const h = Math.max(1, Math.round(rect.h));
             if (!media) {
@@ -215,10 +221,10 @@ export function renderPost(canvas, opts) {
                 g.addColorStop(1, '#121211');
                 ctx.fillStyle = g;
                 ctx.fillRect(rect.x, rect.y, w, h);
-                info.photo = { rect, crop: null };
+                if (main) info.photo = { rect, crop: null };
                 return { x: rect.x + w * 0.5, y: rect.y + h * 0.42 };
             }
-            const crop = coverCrop(media.width, media.height, w, h, focal, zoom);
+            const crop = coverCrop(media.width, media.height, w, h, focal, zoom * (view.zoom ?? 1));
             const r = { x: rect.x, y: rect.y, w, h };
 
             if (layers && media.stats) {
@@ -230,12 +236,18 @@ export function renderPost(canvas, opts) {
                     uCrop: [crop.sx / media.width, crop.sy / media.height, crop.sw / media.width, crop.sh / media.height],
                     uAA: crop.sw / w > 1.4 ? 1 : 0,
                 };
-                layers.photoCanvas = sized(layers.photoCanvas, w, h);
-                blit(layers.photoCanvas.getContext('2d'), grader.grade(media.source, w, h, { ...uniforms, uSeed: seed }), 0, 0);
-                layers.photo = { rect: r, uniforms };
-                placed = { rect: r, crop, uniforms: g.uniforms, now: layers.photoCanvas };
+                // Every photo on the frame plays; the template draws them all
+                // before its type, so they sit between the under and over layers.
+                const i = layers.photos.length;
+                layers.canvases ??= [];
+                const pc = (layers.canvases[i] = sized(layers.canvases[i], w, h));
+                blit(pc.getContext('2d'), grader.grade(media.source, w, h, { ...uniforms, uSeed: seed }), 0, 0);
+                layers.photos.push({ rect: r, uniforms, canvas: pc });
                 toOver();
-                info.photo = { rect: r, crop, size: { w: media.width, h: media.height }, stats: media.stats, motion: g.motion };
+                if (main) {
+                    placed = { rect: r, crop, uniforms: g.uniforms, now: pc };
+                    info.photo = { rect: r, crop, size: { w: media.width, h: media.height }, stats: media.stats, motion: g.motion };
+                }
                 return { x: rect.x + g.fx * w, y: rect.y + g.fy * h };
             }
 
@@ -249,12 +261,12 @@ export function renderPost(canvas, opts) {
             const g = gradeFor(L, stats, crop, w, h);
             const graded = grader.grade(s.canvas, w, h, { ...g.uniforms, uSeed: seed });
             blit(ctx, graded, rect.x, rect.y, w, h);
-            if (media.samples) {
+            if (main && media.samples) {
                 const now = scratch('probe-photo-now', Math.max(24, Math.round(w / 4)), Math.max(24, Math.round(h / 4)));
                 blit(now.ctx, graded, 0, 0, now.canvas.width, now.canvas.height);
                 placed = { rect: r, crop, uniforms: g.uniforms, now: now.canvas };
             }
-            info.photo = { rect: r, crop, size: { w: media.width, h: media.height }, stats, motion: g.motion };
+            if (main) info.photo = { rect: r, crop, size: { w: media.width, h: media.height }, stats, motion: g.motion };
             return { x: rect.x + g.fx * w, y: rect.y + g.fy * h };
         },
 
@@ -266,9 +278,8 @@ export function renderPost(canvas, opts) {
             if (layers) {
                 p.ctx.clearRect(0, 0, pw, ph);
                 p.ctx.drawImage(layers.under, 0, 0, pw, ph);
-                if (layers.photo) {
-                    const r = layers.photo.rect;
-                    p.ctx.drawImage(layers.photoCanvas, (r.x / W) * pw, (r.y / H) * ph, (r.w / W) * pw, (r.h / H) * ph);
+                for (const { rect: r, canvas: pc } of layers.photos) {
+                    p.ctx.drawImage(pc, (r.x / W) * pw, (r.y / H) * ph, (r.w / W) * pw, (r.h / H) * ph);
                 }
                 p.ctx.drawImage(layers.over, 0, 0, pw, ph);
             } else {
@@ -361,8 +372,7 @@ export function compositeLayers(canvas, layers, source, { seed = 1, print = true
     if (canvas.height !== H) canvas.height = H;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(layers.under, 0, 0);
-    if (layers.photo) {
-        const { rect, uniforms } = layers.photo;
+    for (const { rect, uniforms } of layers.photos) {
         blit(ctx, grader.grade(source, rect.w, rect.h, { ...uniforms, uSeed: seed }), rect.x, rect.y);
     }
     ctx.drawImage(layers.over, 0, 0);

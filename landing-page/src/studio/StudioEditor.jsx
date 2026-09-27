@@ -98,10 +98,12 @@ function forVenue(value, venue) {
  * start       open on a template, filled from one item: { templateId, fill: { kind, id } }
  * venue       { name, city }: the host gym, swapped into the sample venue
  * showRefs    show each template's "After …" reference (admin only: they name other brands)
+ * apply       a new object switches to its template and lays its words and look
+ *             over the current ones: { templateId, fields, look } (Trends → Try it)
  */
 export default function StudioEditor({
     intro = null, data = adminStudioData, categories = CATEGORIES,
-    stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, showRefs = true,
+    stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, showRefs = true, apply = null,
 }) {
     const startingFields = (t) => Object.fromEntries(Object.entries(fieldDefaults(t)).map(([k, v]) => [k, forVenue(v, venue)]));
     const available = useMemo(() => TEMPLATES.filter((t) => categories.includes(t.category)), [categories]);
@@ -749,6 +751,14 @@ export default function StudioEditor({
         if (p.look) setLooks((l) => ({ ...l, [templateId]: { ...(l[templateId] ?? {}), ...p.look } }));
         if (p.style) setStyle((st) => ({ ...st, ...p.style }));
     };
+
+    useEffect(() => {
+        if (!apply || !available.some((t) => t.id === apply.templateId)) return;
+        const id = apply.templateId;
+        setTemplateId(id);
+        if (apply.fields) setFields((f) => ({ ...f, [id]: { ...f[id], ...apply.fields } }));
+        if (apply.look) setLooks((l) => ({ ...l, [id]: { ...(l[id] ?? {}), ...apply.look } }));
+    }, [apply, available]);
 
     const setField = (key, value) => setFields((f) => ({ ...f, [templateId]: { ...f[templateId], [key]: value } }));
     const setLook = (key, value) => setLooks((l) => ({ ...l, [templateId]: { ...(l[templateId] ?? {}), [key]: value } }));
