@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { MessageSquare, Search, ChevronDown, ChevronUp, Send, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
@@ -27,6 +28,20 @@ const CATEGORY_LABELS = {
     partner_rewards: 'Rewards & Codes',
     partner_account: 'Account & Team',
     partner_other:   'Partner / Other',
+    // gym_* come from the gym portal: automatic requests (they resolve
+    // themselves when you act in Gym Portals) and Settings → Ask POWR.
+    gym_package:      'Gym · Package change',
+    gym_clash_night:  'Gym · Clash Night request',
+    gym_clash_cancel: 'Gym · Clash Night called off',
+    gym_event_review: 'Gym · Event to review',
+    gym_help:         'Gym · Question',
+};
+
+// Gym tickets that are acted on in Gym Portals, not by replying.
+const GYM_ACTION = {
+    gym_package:      'Set the package',
+    gym_clash_night:  'Confirm or decline',
+    gym_event_review: 'Review the event',
 };
 
 const STATUS_CONFIG = {
@@ -45,6 +60,7 @@ export default function SupportTickets() {
     const [expanded, setExpanded]   = useState(null);
     const [replyText, setReplyText] = useState({});
     const [saving, setSaving]       = useState(null);
+    const [gymOnly, setGymOnly]     = useState(false);
 
     const counts = {
         all:         tickets.length,
@@ -100,12 +116,14 @@ export default function SupportTickets() {
 
     const filtered = tickets
         .filter(t => filterStatus === 'all' || t.status === filterStatus)
+        .filter(t => !gymOnly || t.category?.startsWith('gym_'))
         .filter(t => !search ||
             t.email.toLowerCase().includes(search.toLowerCase()) ||
             t.subject.toLowerCase().includes(search.toLowerCase()) ||
             t.message.toLowerCase().includes(search.toLowerCase()) ||
             (t.brand_name ?? '').toLowerCase().includes(search.toLowerCase())
         );
+    const gymWaiting = tickets.filter(t => t.category?.startsWith('gym_') && ['open', 'in_progress'].includes(t.status)).length;
 
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -147,6 +165,14 @@ export default function SupportTickets() {
                     </button>
                 ))}
             </div>
+
+            <button
+                onClick={() => setGymOnly(g => !g)}
+                aria-pressed={gymOnly}
+                className={`mb-6 inline-flex items-center gap-3 h-11 px-5 rounded-full border text-[10px] font-black uppercase tracking-[0.25em] transition-all ${gymOnly ? 'bg-[#E8D200] border-[#E8D200] text-[#080808]' : 'bg-white border-[#E6E6E1] text-[#666666] hover:border-[#E8D200]/50'}`}
+            >
+                Gym portal only{gymWaiting ? ` · ${gymWaiting} open` : ''}
+            </button>
 
             {/* Search */}
             <div className="relative mb-10">
@@ -192,6 +218,16 @@ export default function SupportTickets() {
                                                     Brand Request
                                                 </span>
                                             )}
+                                            {ticket.category?.startsWith('gym_') && (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest bg-[#E8D200]/15 border-[#E8D200]/50 text-[#8a7600]">
+                                                    Gym{ticket.brand_name ? ` · ${ticket.brand_name}` : ''}
+                                                </span>
+                                            )}
+                                            {GYM_ACTION[ticket.category] && ['open', 'in_progress'].includes(ticket.status) && (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest bg-[#ef4444]/10 border-[#ef4444]/30 text-[#ef4444]">
+                                                    Needs action
+                                                </span>
+                                            )}
                                             {ticket.category?.startsWith('partner_') && (
                                                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest bg-[#0EA5E9]/10 border-[#0EA5E9]/30 text-[#0EA5E9]">
                                                     Partner{ticket.brand_name ? ` · ${ticket.brand_name}` : ''}
@@ -223,6 +259,19 @@ export default function SupportTickets() {
                                             <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-3">User Message</div>
                                             <p className="text-sm text-[#666666] leading-relaxed whitespace-pre-wrap">{ticket.message}</p>
                                         </div>
+
+                                        {ticket.gym_partner_id && (
+                                            <div className="flex flex-wrap items-center gap-3 p-4 rounded-2xl bg-[#E8D200]/10 border border-[#E8D200]/40">
+                                                <span className="text-[12px] text-[#333333] flex-1 min-w-[200px]">
+                                                    {GYM_ACTION[ticket.category]
+                                                        ? 'Act on this in Gym Portals. The ticket resolves itself when you do.'
+                                                        : 'From the gym portal. Your reply shows on the gym’s Settings page.'}
+                                                </span>
+                                                <Link to={`/admin/gyms?gym=${ticket.gym_partner_id}`} className="h-10 px-5 inline-flex items-center rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">
+                                                    {GYM_ACTION[ticket.category] ?? 'Open the gym'}
+                                                </Link>
+                                            </div>
+                                        )}
 
                                         {/* Existing reply */}
                                         {ticket.admin_reply && (

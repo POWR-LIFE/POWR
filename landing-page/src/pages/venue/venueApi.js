@@ -109,3 +109,8 @@ export const fetchClashNights = (partnerId) => rpc('gym_clash_nights', { p_partn
 export const bookClashNight = (partnerId, { date, startTime, backupDate, notes }) =>
     rpc('gym_book_clash_night', { p_partner_id: partnerId, p_date: date, p_start_time: startTime, p_backup_date: backupDate || null, p_notes: notes || null });
 export const cancelClashNight = (id) => rpc('gym_cancel_clash_night', { p_id: id });
+
+// ── Help: the team writes to POWR (a support ticket); answers come back here ─
+export const fetchGymTickets = (partnerId) => rpc('gym_tickets', { p_partner_id: partnerId });
+export const submitGymTicket = (partnerId, { topic, subject, message }) =>
+    rpc('gym_submit_ticket', { p_partner_id: partnerId, p_topic: topic, p_subject: subject, p_message: message });

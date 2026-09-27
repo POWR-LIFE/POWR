@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Dumbbell, Search, Eye, Plus, ShieldCheck, PauseCircle, Power, CalendarCheck, Package, PartyPopper } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
@@ -204,7 +204,9 @@ export default function GymPortals() {
     const [rows, setRows] = useState([]);
     const [staffCounts, setStaffCounts] = useState({});
     const [loading, setLoading] = useState(true);
-    const [selectedId, setSelectedId] = useState(null);
+    // ?gym=<partner id> opens that gym (Support tickets link here).
+    const [params] = useSearchParams();
+    const [selectedId, setSelectedId] = useState(() => params.get('gym'));
     const [search, setSearch] = useState('');
     const [results, setResults] = useState([]);
     const [saving, setSaving] = useState(false);
