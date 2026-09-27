@@ -85,7 +85,16 @@ function read(src) {
     ctx.drawImage(src, 0, 0, w, h);
     const d = ctx.getImageData(0, 0, w, h).data;
     const L = new Float32Array(w * h);
-    for (let i = 0; i < L.length; i++) L[i] = 0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2];
+    let chromaSum = 0;
+    for (let i = 0; i < L.length; i++) {
+        const r = d[i * 4];
+        const g = d[i * 4 + 1];
+        const b = d[i * 4 + 2];
+        L[i] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        chromaSum += Math.max(r, g, b) - Math.min(r, g, b);
+    }
+    // How much colour the photo has (0 = black and white already).
+    const chroma = chromaSum / L.length / 255;
     // Edge energy: where there's detail (people, kit, text) and where it's quiet.
     const E = new Float32Array(w * h);
     let total = 0;
@@ -129,7 +138,7 @@ function read(src) {
     }
     const clamp = (v) => Math.min(0.8, Math.max(0.2, v));
     const subject = sw ? { x: clamp(sx / sw), y: clamp(sy / sw) } : { x: 0.5, y: 0.45 };
-    return { stats, calm, subject, hash: dhash(src) };
+    return { stats, calm, subject, chroma, hash: dhash(src) };
 }
 
 // 64-bit difference hash of a 9×8 grey copy, as 16 hex digits.
