@@ -212,7 +212,7 @@ export function rankPhotos(media) {
     return media
         .filter((m) => (m.kind === 'photo' || m.kind === 'clip') && m.analysis?.ok && !m.excluded)
         .map((m) => ({ ...m, q: quality(m.analysis) * (m.kind === 'clip' ? 0.8 : 1), weak: weakness(m.analysis) }))
-        .sort((a, b) => b.q - a.q);
+.sort((a, b) => (a.kind === 'photo' ? 0 : 1) - (b.kind === 'photo' ? 0 : 1) || b.q - a.q);
 }
 
 /** How well a photo suits a template (higher is better). */
