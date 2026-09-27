@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Dumbbell, Search, Eye, Plus, ShieldCheck, PauseCircle, Power, CalendarCheck, Package } from 'lucide-react';
+import { Dumbbell, Search, Eye, Plus, ShieldCheck, PauseCircle, Power, CalendarCheck, Package, PartyPopper } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
@@ -138,6 +138,59 @@ function PackagePanel({ row, rows, saving, userId, onPatch }) {
     );
 }
 
+// Clash Nights (Clash Pro / Founding Pro): gyms ask for a date in their
+// portal (gym_book_clash_night: 28 days' notice, one a quarter); POWR
+// confirms or declines here. Upcoming confirmed nights stay listed so a
+// clash on the same date is visible before confirming another.
+const nightDay = (s) => {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+};
+
+function ClashNightsPanel({ nights, saving, onDecide }) {
+    const requested = nights.filter((n) => n.status === 'requested');
+    const confirmed = nights.filter((n) => n.status === 'confirmed');
+    if (nights.length === 0) return null;
+    const sameNight = (n) => confirmed.filter((c) => c.id !== n.id && c.night_date === n.night_date).map((c) => c.partners?.name);
+    return (
+        <div className={`bg-white border rounded-3xl p-8 mb-10 ${requested.length ? 'border-[#E8D200]/40' : 'border-[#E6E6E1]'}`}>
+            <div className="flex items-center gap-3 mb-6">
+                <PartyPopper size={14} className="text-[#8a7600]" />
+                <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">
+                    Clash Nights{requested.length ? ` · ${requested.length} waiting for your OK` : ''} · {confirmed.length} confirmed ahead
+                </span>
+            </div>
+            <div className="space-y-3">
+                {[...requested, ...confirmed].map((n) => {
+                    const clash = sameNight(n);
+                    return (
+                        <div key={n.id} className="p-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl flex flex-wrap items-start justify-between gap-4">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-[#8a7600] font-black">
+                                    {n.partners?.name} · {PACKAGE_LABEL[n.gym_package] ?? ''} · {n.status === 'confirmed' ? 'confirmed' : 'asked'} {new Date(n.status === 'confirmed' ? n.decided_at : n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                </div>
+                                <div className="text-lg font-bold mt-1">{nightDay(n.night_date)} · {n.start_time.slice(0, 5)}</div>
+                                {n.backup_date && <div className="text-[12px] text-[#888]">Backup {nightDay(n.backup_date)}</div>}
+                                {n.notes && <div className="text-[12px] text-[#666] mt-1 italic">“{n.notes}”</div>}
+                                {n.admin_note && <div className="text-[12px] text-[#666] mt-1">Your note: {n.admin_note}</div>}
+                                {clash.length > 0 && <div className="text-[12px] font-bold text-[#ef4444] mt-2">Also confirmed that night: {clash.join(', ')}</div>}
+                            </div>
+                            <div className="flex gap-2 shrink-0">
+                                <button disabled={saving} onClick={() => onDecide(n, 'declined')} className="h-10 px-5 rounded-full border border-[#E6E6E1] bg-white text-[10px] font-black uppercase tracking-[0.2em] text-[#666] disabled:opacity-50">
+                                    {n.status === 'confirmed' ? 'Cancel it' : 'Decline'}
+                                </button>
+                                {n.status === 'requested' && (
+                                    <button disabled={saving} onClick={() => onDecide(n, 'confirmed')} className="h-10 px-5 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-50">Confirm</button>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 function statusOf(g) {
     if (g.suspended_at) return { label: 'Suspended', color: '#ef4444' };
     if (!g.enabled) return { label: 'Off', color: '#AAAAAA' };
@@ -157,6 +210,36 @@ export default function GymPortals() {
     const [saving, setSaving] = useState(false);
     const [pending, setPending] = useState([]);
     const [trustOnApprove, setTrustOnApprove] = useState(true);
+    const [nights, setNights] = useState([]);
+
+    // Clash Night requests, and confirmed nights still to come.
+    const loadNights = async () => {
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+        const { data } = await supabase
+            .from('gym_clash_nights')
+            .select('*, partners(name)')
+            .in('status', ['requested', 'confirmed'])
+            .gte('night_date', today)
+            .order('night_date', { ascending: true });
+        setNights(data ?? []);
+    };
+
+    const decideNight = async (n, decision) => {
+        const verb = decision === 'confirmed' ? 'Confirm' : n.status === 'confirmed' ? 'Cancel' : 'Decline';
+        const note = window.prompt(
+            decision === 'confirmed'
+                ? `Confirm ${n.partners?.name}'s Clash Night on ${nightDay(n.night_date)}? Add a note they'll see (optional).`
+                : `${verb} ${n.partners?.name}'s night on ${nightDay(n.night_date)}? Tell them why, or offer another date. They see this in their portal.`,
+            '',
+        );
+        if (note == null) return;
+        setSaving(true);
+        const { error } = await supabase.rpc('admin_decide_clash_night', { p_id: n.id, p_decision: decision, p_note: note });
+        setSaving(false);
+        if (error) { toast.error(error.message); return; }
+        toast.success(decision === 'confirmed' ? 'Confirmed. The gym sees it in their portal.' : 'Done. That quarter is free for them to book again.');
+        loadNights();
+    };
 
     // Gym-run events waiting for their first-event check.
     const loadPending = async () => {
@@ -204,7 +287,7 @@ export default function GymPortals() {
         setLoading(false);
     };
 
-    useEffect(() => { load(); loadPending(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { load(); loadPending(); loadNights(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         const q = search.trim();
@@ -326,6 +409,9 @@ export default function GymPortals() {
                     </div>
                 </div>
             )}
+
+            <ClashNightsPanel nights={nights.map((n) => ({ ...n, gym_package: rows.find((r) => r.partner_id === n.partner_id)?.package }))}
+                saving={saving} onDecide={decideNight} />
 
             {/* Switch a gym on */}
             <div className="bg-white border border-[#E6E6E1] rounded-3xl p-8 mb-10">

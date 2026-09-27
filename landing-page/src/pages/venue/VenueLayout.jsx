@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package, PartyPopper } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
@@ -12,15 +12,17 @@ const NAV = [
     { label: 'Overview', short: 'Home',    path: '/venue',         icon: LayoutDashboard },
     { label: 'Events',   short: 'Events',  path: '/venue/events',  icon: CalendarDays    },
     { label: 'Discounts', short: 'Discounts', path: '/venue/partners', icon: BadgePercent, feature: 'events', mobile: false },
+    { label: 'Clash Nights', short: 'Nights', path: '/venue/clash-nights', icon: PartyPopper, paid: true, mobile: false },
     { label: 'Studio',   short: 'Studio',  path: '/venue/studio',  icon: Palette,   feature: 'studio'   },
     { label: 'Screens',  short: 'Screens', path: '/venue/screens', icon: Tv              },
     { label: 'Members',  short: 'Members', path: '/venue/members', icon: Users,     feature: 'insights' },
     { label: 'Settings', short: 'Settings', path: '/venue/settings', icon: Settings2      },
 ];
+const PAID_NIGHTS = ['pro', 'founding'];
 const PHONE_TABS = NAV.filter(item => item.mobile !== false);
 const SHEET_LINKS = NAV.filter(item => item.mobile === false);
 
-const PATH_LABELS = { venue: 'Overview', events: 'Events', partners: 'Discounts', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Settings', settings: 'Settings', package: 'Package', poster: 'Members' };
+const PATH_LABELS = { venue: 'Overview', events: 'Events', partners: 'Discounts', 'clash-nights': 'Clash Nights', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Settings', settings: 'Settings', package: 'Package', poster: 'Members' };
 
 // An event's own pages keep the Events tab lit.
 const isActive = (path, current) => current === path || (path !== '/venue' && current.startsWith(`${path}/`));
@@ -187,7 +189,10 @@ export function VenueLayout({ children }) {
         fetchGymPackage(partnerId).then(setPkg).catch(() => setPkg(PACKAGE_UNKNOWN));
     }, [partnerId]);
     useEffect(() => { setPkg(null); refreshPkg(); }, [refreshPkg]);
-    const locked = (item) => item.feature && pkg && !pkg.features?.[item.feature];
+    // Clash Nights come with the paid Pro packages only, never the trial (a night costs POWR a crew).
+    const locked = (item) => (item.paid
+        ? !!pkg && !pkg.unknown && !PAID_NIGHTS.includes(pkg.package)
+        : item.feature && pkg && !pkg.features?.[item.feature]);
 
     const segment = location.pathname.split('/')[2] || 'venue';
     const currentLabel = PATH_LABELS[segment] || segment;
