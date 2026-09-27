@@ -8,7 +8,7 @@
  * post goes with the saved pack too, for the list of saved packs.
  */
 import { BLEED_MM } from '../formats';
-import { prepareStudio, renderPost } from '../render';
+import { prepareStudio, renderPost, compositeLayers } from '../render';
 import { templateById } from '../templates';
 import { loadMedia } from '../media';
 import { exportVideo } from '../video';
@@ -80,6 +80,39 @@ export function renderPreview(canvas, plan, post, item, format = 'post', scale =
 }
 
 const toBlob = (canvas, type, q) => new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('The browser could not encode an image.'))), type, q));
+
+/**
+ * Play a reel in `canvas`: its clip under the template, looping over the
+ * reel's seconds, drawn the way the editor plays video (the design built once
+ * as layers, each new frame graded between them). Resolves with stop(),
+ * which pauses, lets the clip go and leaves the frame it stopped on.
+ */
+export async function playReel(canvas, plan, reel, item, { scale = 0.25 } = {}) {
+    const media = await loadMedia(item.file);
+    const v = media.source;
+    const end = Math.min(REEL_SECONDS, media.duration || REEL_SECONDS);
+    const layers = {};
+    renderPost(null, { ...optsFor(plan, reel, 'story', media, item), scale, cache: {}, layers });
+    let stopped = false;
+    let handle = 0;
+    const hasRvfc = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+    const next = () => { handle = hasRvfc ? v.requestVideoFrameCallback(step) : requestAnimationFrame(step); };
+    function step() {
+        if (stopped) return;
+        if (v.currentTime >= end - 0.03) v.currentTime = 0;
+        compositeLayers(canvas, layers, v, { seed: Math.round(v.currentTime * 30) + 1 });
+        next();
+    }
+    v.loop = false;
+    v.currentTime = 0;
+    await v.play();
+    next();
+    return () => {
+        stopped = true;
+        if (hasRvfc) v.cancelVideoFrameCallback?.(handle); else cancelAnimationFrame(handle);
+        release(media);
+    };
+}
 
 function release(m) {
     if (m?.kind !== 'video') return;
