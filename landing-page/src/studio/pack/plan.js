@@ -207,10 +207,12 @@ export function wordsFor(templateId, facts, extra = {}) {
 
 /** The photos worth posting, best first, with what each is good for. */
 export function rankPhotos(media) {
+    // A clip can stand in for a photo (a frame from it), so a shoot of only
+    // clips still fills its posts; real photos come first when there are some.
     return media
-        .filter((m) => m.kind === 'photo' && m.analysis?.ok && !m.excluded)
-        .map((m) => ({ ...m, q: quality(m.analysis), weak: weakness(m.analysis) }))
-        .sort((a, b) => b.q - a.q);
+        .filter((m) => (m.kind === 'photo' || m.kind === 'clip') && m.analysis?.ok && !m.excluded)
+        .map((m) => ({ ...m, q: quality(m.analysis) * (m.kind === 'clip' ? 0.8 : 1), weak: weakness(m.analysis) }))
+.sort((a, b) => (a.kind === 'photo' ? 0 : 1) - (b.kind === 'photo' ? 0 : 1) || b.q - a.q);
 }
 
 /** How well a photo suits a template (higher is better). */
