@@ -37,7 +37,7 @@ export const FORMAT_CHOICES = [
 
 export const LOOK_CHOICES = [
     { id: 'film', label: 'Film', blurb: 'black and white, the house look' },
-    { id: 'mixed', label: 'Mixed', blurb: 'colour where the photo has colour, film elsewhere' },
+    { id: 'mixed', label: 'Mixed', blurb: 'half in colour — the most colourful photos — half film' },
     { id: 'colour', label: 'Colour', blurb: 'the photos as shot' },
 ];
 
@@ -153,6 +153,8 @@ const FLAGSHIP = new Set(['ticket', 'results']);
 // Below this a photo is black and white already — colour would show nothing.
 const COLOURFUL = 0.035;
 const CASTS = [MIXED[1], MIXED[3]];
+// How much of a mixed pack goes to colour.
+const MIXED_SHARE = 0.5;
 
 /** The look for one post when every post gets the same (Film, Colour). */
 export function lookFor(options, n, templateId) {
@@ -168,17 +170,30 @@ export function lookFor(options, n, templateId) {
  * colour lands where there's colour to show.
  */
 export function withLooks(options, list, analysisOf) {
-    let k = 0;
-    const lookOf = (x, i) => {
-        if (options.look !== 'mixed') return options.look === 'colour' ? COLOUR : FILM;
+    const colourOf = (x) => {
         const a = analysisOf(x.mediaId);
-        if (FLAGSHIP.has(x.templateId) || !a || (a.chroma ?? 0) < COLOURFUL) return FILM;
-        const j = k++;
-        return j % 2 === 0 ? CASTS[(j / 2) % 2] : FILM;
+        return !FLAGSHIP.has(x.templateId) && a && (a.chroma ?? 0) >= COLOURFUL ? a.chroma : null;
+    };
+    // Mixed: half the pack in colour (the ticket and results aside), given to
+    // the most colourful photos first; the rest, and photos that are black and
+    // white already, get film.
+    let colourIds = new Set();
+    if (options.look === 'mixed') {
+        const open = list.filter((x) => !FLAGSHIP.has(x.templateId));
+        const target = Math.ceil(open.length * MIXED_SHARE);
+        colourIds = new Set(open.filter((x) => colourOf(x) !== null)
+            .sort((a, b) => colourOf(b) - colourOf(a))
+            .slice(0, target)
+            .map((x) => x.id));
+    }
+    let k = 0;
+    const lookOf = (x) => {
+        if (options.look !== 'mixed') return options.look === 'colour' ? COLOUR : FILM;
+        return colourIds.has(x.id) ? CASTS[k++ % 2] : FILM;
     };
     // Unchanged posts keep their object, so their previews don't redraw.
-    return list.map((x, i) => {
-        const look = lookOf(x, i);
+    return list.map((x) => {
+        const look = lookOf(x);
         return x.look === look ? x : { ...x, look };
     });
 }
