@@ -191,7 +191,7 @@ export function VenueLayout({ children }) {
     useEffect(() => { setPkg(null); refreshPkg(); }, [refreshPkg]);
     // Clash Nights come with the paid Pro packages only, never the trial (a night costs POWR a crew).
     const locked = (item) => (item.paid
-        ? !!pkg && !pkg.unknown && !PAID_NIGHTS.includes(pkg.package)
+        ? !!pkg && !pkg.unknown && (pkg.on_trial || !PAID_NIGHTS.includes(pkg.package))
         : item.feature && pkg && !pkg.features?.[item.feature]);
 
     const segment = location.pathname.split('/')[2] || 'venue';
