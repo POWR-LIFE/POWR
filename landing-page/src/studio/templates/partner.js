@@ -13,6 +13,8 @@ import { thousands, titleCase } from '../words';
 const PRESETS = [
     { name: 'Eat', fields: { label: 'Founding partner — Eat', headline: 'Feed\n{The}\nMove' }, style: { accent: '#1E8FD8' } },
     { name: 'Move', fields: { label: 'Founding partner — Move', headline: 'Sweat\n{Glow}\nRepeat' }, style: { accent: '#E8E23A' } },
+    { name: 'Mind', fields: { label: 'Founding partner — Mind', headline: 'Clear\n{Head}\nFull Effort' }, style: { accent: '#C4B5FD' } },
+    { name: 'Sleep', fields: { label: 'Founding partner — Sleep', headline: 'Lights\n{Out}\nStreak On' }, style: { accent: '#93C5FD' } },
     { name: 'Recover', fields: { label: 'Founding partner — Recover', headline: 'Rest\n{Is}\nTraining' }, style: { accent: '#7DD3C0' } },
     { name: 'Wear', fields: { label: 'Founding partner — Wear', headline: 'Built\n{For}\nThe Floor' }, style: { accent: '#F4F1EA' } },
 ];
