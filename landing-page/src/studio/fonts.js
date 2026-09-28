@@ -49,6 +49,8 @@ export const HEADLINE_FONTS = [
     { id: 'wide',      label: 'Michroma',      note: 'wide' },
     { id: 'brand',     label: 'Outfit',        note: 'POWR' },
     { id: 'brandL',    label: 'Outfit Light',  note: 'POWR, light' },
+    { id: 'serif',     label: 'Instrument Serif', note: 'serif' },
+    { id: 'serifI',    label: 'Serif Italic',  note: 'serif, italic' },
 ];
 
 // Every face a template draws with, as a CSS font shorthand. Italic Inter

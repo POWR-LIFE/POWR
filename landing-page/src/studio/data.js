@@ -110,7 +110,10 @@ export function eventFacts(row) {
 
 // ── Rewards ─────────────────────────────────────────────────────────────
 
-const CATEGORY_WORD = { food: 'Eat', nutrition: 'Eat', gym: 'Move', gear: 'Move', fashion: 'Wear', health: 'Recover' };
+// rewards.category is one of the four pillars; the older sector words are
+// kept for rows written before the pillars.
+const CATEGORY_WORD = { eat: 'Eat', move: 'Move', mind: 'Mind', sleep: 'Sleep', food: 'Eat', nutrition: 'Eat', gym: 'Move', gear: 'Move', fashion: 'Wear', health: 'Recover' };
+const PILLAR = { Eat: 'eat', Move: 'move', Mind: 'mind', Sleep: 'sleep' };
 
 const money = (v) => `£${Number(v) % 1 ? Number(v).toFixed(2) : Number(v)}`;
 
@@ -144,6 +147,7 @@ function rewardFacts(row) {
         description: (row.description || '').trim(),
         cost: row.powr_cost ?? null,
         category: CATEGORY_WORD[row.category] ?? '',
+        pillar: PILLAR[CATEGORY_WORD[row.category]] ?? null,
         terms: (row.terms || '').trim(),
         accent: legibleAccent(row.brand_color),
         logoUrl: row.image_url || row.partners?.logo_url || null,

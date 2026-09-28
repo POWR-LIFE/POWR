@@ -10,7 +10,7 @@ import ReactDOM from 'react-dom/client';
 import StudioEditor from './StudioEditor';
 import PackBuilder from './PackBuilder';
 import { prepareStudio, renderPost } from './render';
-import { templateById } from './templates';
+import { templateById, TEMPLATES } from './templates';
 import { loadMedia } from './media';
 import { loadAsset } from './assets';
 import { exportVideo } from './video';
@@ -27,6 +27,7 @@ window.__studio = {
     },
     async render({ template, format = 'post', photo: name, fields, style, look, focal, zoom, scale = 1, assets: assetUrls = {} }) {
         await prepareStudio();
+        if (!TEMPLATES.some((t) => t.id === template)) throw new Error(`No template "${template}" — is it in its pillar's index.js?`);
         const media = name ? await photo(name) : null;
         const assets = {};
         for (const [k, url] of Object.entries(assetUrls)) assets[k] = await loadAsset(await (await fetch(url)).blob());

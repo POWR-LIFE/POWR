@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Download, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
 import { prepareStudio, renderPost, compositeLayers, fieldDefaults, COLOURWAYS } from './render';
-import { TEMPLATES, CATEGORIES, templateById } from './templates';
+import { TEMPLATES, CATEGORIES, LIBRARIES, templateById } from './templates';
 import { FORMATS, FORMAT_LIST, FORMAT_GROUPS, BLEED_MM } from './formats';
 import { pdfFromCanvas, pdfFromPages, jpegPage, mmToPt } from './pdf';
 import { HEADLINE_FONTS } from './fonts';
@@ -109,6 +109,14 @@ export default function StudioEditor({
     const [ready, setReady] = useState(false);
     const [error, setError] = useState(null);
     const [templateId, setTemplateId] = useState(() => start?.templateId ?? available[0].id);
+    // The picker's tabs (POWR's own, then Move · Eat · Mind · Sleep) — only
+    // the ones this host offers. The open tab follows the chosen template.
+    const libraries = useMemo(() => LIBRARIES.filter((l) => cats.some((c) => l.categories.includes(c))), [cats]);
+    const libraryOf = useCallback((id) => libraries.find((l) => l.categories.includes(templateById(id).category)) ?? libraries[0], [libraries]);
+    const [libraryId, setLibraryId] = useState(() => libraryOf(start?.templateId ?? available[0].id).id);
+    const library = libraries.find((l) => l.id === libraryId) ?? libraries[0];
+    const shown = useMemo(() => available.filter((t) => library.categories.includes(t.category)), [available, library]);
+    useEffect(() => { setLibraryId(libraryOf(templateId).id); }, [templateId, libraryOf]);
     const [format, setFormat] = useState('post');
     const [media, setMedia] = useState(null);
     const [focal, setFocal] = useState({ x: 0.5, y: 0.42 });
@@ -307,7 +315,7 @@ export default function StudioEditor({
         let raf = 0;
         let i = 0;
         const next = () => {
-            const tpl = available[i++];
+            const tpl = shown[i++];
             if (!tpl) return;
             const c = thumbRefs.current[tpl.id];
             if (c) {
@@ -320,7 +328,7 @@ export default function StudioEditor({
         };
         const t = setTimeout(() => { raf = requestAnimationFrame(next); }, 450);
         return () => { clearTimeout(t); cancelAnimationFrame(raf); };
-    }, [ready, available, media, focal, zoom, style, fields, looks, assets, frameKey]);
+    }, [ready, shown, media, focal, zoom, style, fields, looks, assets, frameKey]);
 
     const takeFile = useCallback(async (file) => {
         if (!file) return;
@@ -715,6 +723,11 @@ export default function StudioEditor({
                     : { text: 'Nobody’s earned at the gym yet this week — Results keeps its own rows.' });
             } else {
                 if (item.accent) setStyle((st) => ({ ...st, accent: item.accent }));
+                // Their pillar's library is filled too — open it.
+                if (item.pillar && libraries.some((l) => l.id === item.pillar)) {
+                    setLibraryId(item.pillar);
+                    notes.push({ text: `The ${item.category} templates are filled with ${item.brand} too.` });
+                }
                 if (!item.active) notes.push({ warn: true, text: 'This reward is switched off — it isn’t in the app right now.' });
                 if (item.logoUrl) {
                     try {
@@ -818,9 +831,26 @@ export default function StudioEditor({
                 {intro && <div className="hidden lg:block">{intro}</div>}
                 <div className={CARD}>
                     <span className={LABEL}>Template</span>
-                    {cats.map((cat) => (
+                    {libraries.length > 1 && (
+                        <div className="mb-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Template library">
+                            {libraries.map((l) => (
+                                <button
+                                    key={l.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={l.id === library.id}
+                                    onClick={() => setLibraryId(l.id)}
+                                    className={`rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors ${l.id === library.id ? 'border-[#E8D200] bg-[#FFFBE0] text-[#111]' : 'border-[#E6E6E1] text-[#666] hover:border-[#CFCFC8]'}`}
+                                >
+                                    {l.label}
+                                    <span className="ml-1 font-normal text-[#999]">{available.filter((t) => l.categories.includes(t.category)).length}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {cats.filter((cat) => library.categories.includes(cat)).map((cat) => (
                     <div key={cat} className="mb-3 last:mb-0">
-                    <div className="mb-1.5 text-[11px] font-medium text-[#999]">{cat}</div>
+                    {library.categories.length > 1 && <div className="mb-1.5 text-[11px] font-medium text-[#999]">{cat}</div>}
                     <div className="grid grid-cols-3 gap-2.5">
                         {available.filter((t) => t.category === cat).map((t) => (
                             <button
