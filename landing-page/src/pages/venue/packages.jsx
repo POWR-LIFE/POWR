@@ -34,7 +34,7 @@ export const PACKAGES = [
         key: 'pro', name: 'Clash Pro', line: 'Events, content and data. The full engine.', price: '£349', per: '/ month', note: 'or £4,188 / year', tag: 'Most complete',
         items: [
             'Everything in Clash+',
-            '4 POWR Clash Nights a year, one per quarter. We bring the DJ, photographer and partner prizes · dates booked with us',
+            '4 POWR Clash Nights a year, one per quarter. We bring the DJ, photographer and partner prizes · book your dates in Clash Nights',
             'Studio and event kits: your photos and clips turned into branded posts, reels and carousels, at every size',
             'Upload your own footage from classes and PT sessions, and make content in minutes',
             'Full member insights (opted-in members), including early warning when members go quiet',

@@ -117,6 +117,7 @@ import VenueEventBuilder from './pages/venue/VenueEventBuilder';
 import VenueEventDetail from './pages/venue/VenueEventDetail';
 import VenueStudio from './pages/venue/VenueStudio';
 import VenuePackage from './pages/venue/VenuePackage';
+import VenueClashNights from './pages/venue/VenueClashNights';
 import VenuePartners from './pages/venue/VenuePartners';
 import { Gate } from './pages/venue/packages';
 import LandingV2 from './landing/LandingV2';
@@ -1621,6 +1622,7 @@ export default function App() {
                     <Route path="/venue/settings" element={<GymProtectedRoute><VenueLayout><VenueSettings /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/poster" element={<GymProtectedRoute><VenueLayout><VenuePoster /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/team" element={<Navigate to="/venue/settings#team" replace />} />
+                    <Route path="/venue/clash-nights" element={<GymProtectedRoute><VenueLayout><VenueClashNights /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/package" element={<GymProtectedRoute><VenueLayout><VenuePackage /></VenueLayout></GymProtectedRoute>} />
                     <Route path="/venue/partners" element={<GymProtectedRoute><VenueLayout><Gate feature="events" lock="discounts"><VenuePartners /></Gate></VenueLayout></GymProtectedRoute>} />
                     <Route path="/partner/login" element={<PartnerLogin />} />

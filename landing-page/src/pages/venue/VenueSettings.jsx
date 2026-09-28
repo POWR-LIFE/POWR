@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Building2, Clock, Image as ImageIcon, LifeBuoy, Mail, Package, Trash2, Upload } from 'lucide-react';
+import { Building2, Clock, Image as ImageIcon, Mail, Package, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Page, PageTitle, Card, Micro, Spinner, Empty, INPUT, LABEL, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
 import GymStaffPanel from '../../components/GymStaffPanel';
+import GymHelp from './GymHelp';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
 import { fetchGymProfile, setRecapEmail, updateGymProfile } from './venueApi';
 import { PackageContext, packageLine } from './packages';
@@ -210,16 +211,8 @@ export default function VenueSettings() {
                         <GymStaffPanel partnerId={gym.partner_id} gymName={profile.name} adminView={isActingGym} selfUserId={isActingGym ? null : user?.id} />
                     </div>
 
-                    {/* Help */}
-                    <Card className="p-6 sm:p-8">
-                        <div className="flex items-center gap-3 mb-4"><LifeBuoy size={15} className="text-[#8a7600]" /><Micro>Help</Micro></div>
-                        <p className="text-[13px] text-[#1A1A1A] leading-relaxed">Stuck, or something looks wrong? Write to us and a person answers, usually the same day.</p>
-                        <div className="flex flex-wrap gap-3 mt-5">
-                            <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`${profile.name} · gym portal`)}`} className={BTN_GOLD}>Email {SUPPORT_EMAIL}</a>
-                            <Link to="/venue/screens" className={BTN_GHOST}>Putting the board on a TV</Link>
-                            <Link to="/venue/poster" className={BTN_GHOST}>The join poster</Link>
-                        </div>
-                    </Card>
+                    {/* Help: Ask POWR opens a support ticket; answers show here */}
+                    <GymHelp supportEmail={SUPPORT_EMAIL} gymName={profile.name} />
                 </div>
 
                 <div className="space-y-6 min-w-0">
