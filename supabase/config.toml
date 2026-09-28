@@ -252,6 +252,10 @@ sender_name = "POWR"
 subject = "Reset your POWR password"
 content_path = "./supabase/templates/recovery.html"
 
+[auth.email.template.magic_link]
+subject = "Your POWR sign-in link"
+content_path = "./supabase/templates/magic-link.html"
+
 [auth.email.template.email_change]
 subject = "Confirm your POWR email change"
 content_path = "./supabase/templates/email-change.html"
