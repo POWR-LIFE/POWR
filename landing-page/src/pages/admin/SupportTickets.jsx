@@ -41,6 +41,7 @@ const CATEGORY_LABELS = {
 const GYM_ACTION = {
     gym_package:      'Set the package',
     gym_clash_night:  'Confirm or decline',
+    gym_clash_cancel: 'Stand down crew and close',
     gym_event_review: 'Review the event',
 };
 
