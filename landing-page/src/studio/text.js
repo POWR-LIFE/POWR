@@ -171,6 +171,10 @@ export function drawBlock(ctx, block, spec, x, top, { align = 'left', x2, tracki
         paintLine(ctx, segs, spec, block.px, pen, baseline, { tracking, color: lineColor, accent });
         boxes.push({ x: pen + m.inkL, y: baseline - block.cap, w: m.inkW, h: block.cap, baseline });
     });
+    // A field cleared in the editor has no lines. Templates stack what comes
+    // next under the block's last baseline, so hand back one empty line where
+    // the first would sit: nothing is drawn and the layout keeps its shape.
+    if (!boxes.length) boxes.push({ x, y: top, w: 0, h: block.cap, baseline: top + block.cap });
     return boxes;
 }
 

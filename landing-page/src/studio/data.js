@@ -110,9 +110,16 @@ export function eventFacts(row) {
 
 // ── Rewards ─────────────────────────────────────────────────────────────
 
-// rewards.category is one of the four pillars; the older sector words are
-// kept for rows written before the pillars.
-const CATEGORY_WORD = { eat: 'Eat', move: 'Move', mind: 'Mind', sleep: 'Sleep', food: 'Eat', nutrition: 'Eat', gym: 'Move', gear: 'Move', fashion: 'Wear', health: 'Recover' };
+// rewards.category still holds the legacy sector words (food, gym, health,
+// gear…) that the partner submit form writes. Map them exactly as the app's
+// Spend tab does (DB_TO_UI_CATEGORY in app/(tabs)/rewards.tsx), so a reward
+// opens the same pillar here that members find it under.
+const CATEGORY_WORD = {
+    eat: 'Eat', food: 'Eat', nutrition: 'Eat',
+    move: 'Move', gym: 'Move',
+    mind: 'Mind', health: 'Mind',
+    sleep: 'Sleep', gear: 'Sleep', fashion: 'Sleep',
+};
 const PILLAR = { Eat: 'eat', Move: 'move', Mind: 'mind', Sleep: 'sleep' };
 
 const money = (v) => `£${Number(v) % 1 ? Number(v).toFixed(2) : Number(v)}`;
