@@ -70,7 +70,7 @@ function panel(e, box, U, { anchor = 'bottom' } = {}) {
         drawText(ctx, head[1] ?? '', TYPE.brandSB, hPx, c2, hBase, { align: 'right', color: INK }),
         drawText(ctx, head[2] ?? '', TYPE.brandSB, hPx, x1, hBase, { align: 'right', color: INK }),
     ].filter(Boolean);
-    e.mark('columns', hb.reduce((a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(a.x + a.w, b.x + b.w) - Math.min(a.x, b.x), h: Math.max(a.h, b.h) })));
+    if (hb.length) e.mark('columns', hb.reduce((a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(a.x + a.w, b.x + b.w) - Math.min(a.x, b.x), h: Math.max(a.h, b.h) })));
     y += px * 2.2;
     rule(ctx, x0, y - thin * 1.5, x1, y - thin * 1.5, INK, thin * 3);
 
