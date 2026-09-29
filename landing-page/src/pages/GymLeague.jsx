@@ -201,7 +201,7 @@ export default function GymLeague() {
                 absorb(state.payload);
                 setLastOkAt(Date.now());
                 // Irregular gaps read as real traffic; bursts now and then.
-                const gap = (state.rnd() < 0.18 ? 250 + state.rnd() * 350 : 600 + state.rnd() * 1300) / pace;
+                const gap = (state.rnd() < 0.2 ? 220 + state.rnd() * 280 : 450 + state.rnd() * 950) / pace;
                 timer = setTimeout(step, gap);
             };
             timer = setTimeout(step, 1200);
@@ -489,42 +489,24 @@ function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset, tod
     const gap = Math.abs(host.points_week - rival.points_week);
     const share = shareOf(host.points_week, rival.points_week);
     const max = Math.max(...host.days, ...rival.days, 1);
-    const Side = ({ g, cls }) => {
-        const isHost = g.key === host.key;
-        const hit = hits[g.key];
-        const recent = feed.filter((f) => f.gym_key === g.key).slice(0, 3);
-        return (
-            <div className={`gl-side ${cls}${isHost ? ' host' : ''}`}>
-                <div className="gl-who">
-                    <div className="gl-mono">{monogram(g.name)}</div>
-                    <div><b>{g.name}</b><small>{ordinal(pool.indexOf(g) + 1)} in {scopeName}{placeLabel(g.address, '') && placeLabel(g.address, '') !== scopeName ? ` · ${placeLabel(g.address, '')}` : ''}</small></div>
-                </div>
-                <div className="gl-big">
-                    <RollNum value={g.points_week} />
-                    {hit && <span key={hit.key} className="gl-float">+{hit.points}</span>}
-                </div>
-                <div className="gl-lower">
-                    <div className="gl-days">
-                        {g.days.map((v, k) => (
-                            <i key={k} className={k === today ? 'today' : ''} style={{ height: `${Math.max(4, (v / max) * 100)}%` }}><span>{DAY_L[k]}</span></i>
-                        ))}
-                    </div>
-                    <div className="gl-stat"><b>{g.sessions_week}</b> sessions · <b>{g.athletes_week}</b> athletes · <b>{g.points_today}</b> today</div>
-                    <ul className="gl-recent">
-                        {recent.length === 0 && <li className="empty">Waiting for the next session here…</li>}
-                        {recent.map((f) => (
-                            <li key={f.key}><span><b>{boardName(f)}</b> · {activityMeta(f.type).label}<small>{f.minutes} min</small></span><em>+{f.points}</em></li>
-                        ))}
-                    </ul>
-                </div>
-            </div>
-        );
-    };
+    const side = (g, cls) => (
+        <DuelSide
+            g={g}
+            cls={cls}
+            isHost={g.key === host.key}
+            hit={hits[g.key]}
+            recent={feed.filter((f) => f.gym_key === g.key).slice(0, 3)}
+            rank={pool.indexOf(g) + 1}
+            scopeName={scopeName}
+            max={max}
+            today={today}
+        />
+    );
     return (
         <>
             <div className="gl-eyebrow"><h2>Head to head · {ahead ? 'the gym chasing you' : 'the gym directly above you'}</h2><div className="gl-hint">Points by day this week</div></div>
             <div className="gl-duel">
-                <Side g={host} cls="left" />
+                {side(host, 'left')}
                 <div className="gl-gap">
                     <div className="vs">{ahead ? 'Lead' : 'Gap to close'}</div>
                     <div className="n"><RollNum value={gap} /></div>
@@ -536,7 +518,7 @@ function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset, tod
                     </div>
                     <div className="clock">Resets in <b>{reset}</b></div>
                 </div>
-                <Side g={rival} cls="right" />
+                {side(rival, 'right')}
                 <div className="gl-tug">
                     <span className="cap">Share of the week so far</span>
                     <span className="pct l">{Math.round(share * 100)}%</span>
@@ -549,6 +531,52 @@ function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset, tod
         </>
     );
 }
+
+// A side of the duel. Top level on purpose: defined inside DuelScene it was a
+// new component every landing, so React remounted it and every "latest here"
+// row replayed its entrance — the list flashed instead of rolling.
+function DuelSide({ g, cls, isHost, hit, recent, rank, scopeName, max, today }) {
+    const place = placeLabel(g.address, '');
+    return (
+        <div className={`gl-side ${cls}${isHost ? ' host' : ''}`}>
+            <div className="gl-who">
+                <div className="gl-mono">{monogram(g.name)}</div>
+                <div><b>{g.name}</b><small>{ordinal(rank)} in {scopeName}{place && place !== scopeName ? ` · ${place}` : ''}</small></div>
+            </div>
+            <div className="gl-big">
+                <RollNum value={g.points_week} />
+                {hit && <span key={hit.key} className="gl-float">+{hit.points}</span>}
+            </div>
+            <div className="gl-lower">
+                <div className="gl-days">
+                    {g.days.map((v, k) => (
+                        <i key={k} className={k === today ? 'today' : ''} style={{ height: `${Math.max(4, (v / max) * 100)}%` }}><span>{DAY_L[k]}</span></i>
+                    ))}
+                </div>
+                <div className="gl-stat"><b>{g.sessions_week}</b> sessions · <b>{g.athletes_week}</b> athletes · <b>{g.points_today}</b> today</div>
+                <ul className="gl-recent">
+                    {recent.length === 0 && <li className="empty">Waiting for the next session here…</li>}
+                    <AnimatePresence initial={false}>
+                        {recent.map((f) => (
+                            <motion.li key={f.key} {...ROLL}>
+                                <span><b>{boardName(f)}</b> · {activityMeta(f.type).label}<small>{f.minutes} min</small></span><em>+{f.points}</em>
+                            </motion.li>
+                        ))}
+                    </AnimatePresence>
+                </ul>
+            </div>
+        </div>
+    );
+}
+
+// Lists roll: a new row drops in at the top, the rest glide down, the last fades out.
+const ROLL = {
+    layout: true,
+    initial: { opacity: 0, y: -14 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, transition: { duration: 0.25 } },
+    transition: { type: 'spring', stiffness: 320, damping: 34 },
+};
 
 // ─── Rail ────────────────────────────────────────────────────────
 
@@ -767,16 +795,18 @@ function FeedList({ feed, gyms, hostKey, now, tz }) {
     if (items.length === 0) return <div className="gl-empty">Quiet right now — the next session lands here.</div>;
     return (
         <ul className="gl-feed">
+            <AnimatePresence initial={false}>
             {items.map((f) => {
                 const g = byKey.get(f.gym_key);
                 return (
-                    <li key={f.key} className={f.gym_key === hostKey ? 'host' : ''}>
+                    <motion.li key={f.key} {...ROLL} className={f.gym_key === hostKey ? 'host' : ''}>
                         <div className="g">{g ? monogram(g.name) : '··'}</div>
                         <div className="t"><b>{boardName(f)} · {activityMeta(f.type).label}</b><small>{g?.name ?? 'POWR gym'} · {f.minutes} min · {time(f.started_at)}</small></div>
                         <div className="p">+{f.points}</div>
-                    </li>
+                    </motion.li>
                 );
             })}
+            </AnimatePresence>
             {/* keep `now` in the tree so relative labels could refresh; unused today */}
             <li hidden>{now}</li>
         </ul>
@@ -911,7 +941,7 @@ const CSS = `
 .gl-stat { font-size: 0.9rem; color: var(--ink-2); margin-top: 0.8rem; }
 .gl-stat b { color: #f2f2f2; font-weight: 600; font-variant-numeric: tabular-nums; }
 .gl-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; width: 100%; max-width: 26rem; }
-.gl-recent li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0.7rem; border-radius: 0.5rem; background: rgba(255,255,255,0.04); font-size: 0.85rem; animation: glSlide .5s cubic-bezier(.2,.8,.2,1); }
+.gl-recent li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0.7rem; border-radius: 0.5rem; background: rgba(255,255,255,0.04); font-size: 0.85rem; }
 .gl-recent li b { font-weight: 600; } .gl-recent li small { color: var(--ink-3); font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem; margin-left: 0.5rem; }
 .gl-recent li em { font-style: normal; color: var(--up); font-weight: 700; font-variant-numeric: tabular-nums; }
 .gl-recent .empty { color: var(--ink-3); font-size: 0.8rem; background: none; padding: 0.45rem 0; animation: none; }
@@ -944,8 +974,7 @@ const CSS = `
 .gl-legend span { white-space: nowrap; }
 .gl-legend i { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
 .gl-feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; overflow: hidden; flex: 1; min-height: 0; }
-.gl-feed li { display: grid; grid-template-columns: 2.1rem 1fr auto; gap: 0.7rem; align-items: center; padding: 0.55rem 0.7rem; border-radius: 0.6rem; background: rgba(255,255,255,0.03); animation: glSlide .5s cubic-bezier(.2,.8,.2,1); }
-@keyframes glSlide { from { opacity: 0; transform: translateY(-0.6rem) } to { opacity: 1; transform: none } }
+.gl-feed li { display: grid; grid-template-columns: 2.1rem 1fr auto; gap: 0.7rem; align-items: center; padding: 0.55rem 0.7rem; border-radius: 0.6rem; background: rgba(255,255,255,0.03); }
 .gl-feed .g { width: 2.1rem; height: 2.1rem; border-radius: 0.5rem; display: grid; place-items: center; font-weight: 700; font-size: 0.75rem; background: var(--bg-3); border: 1px solid var(--line); color: var(--ink-2); }
 .gl-feed .t { min-width: 0; } .gl-feed .t b { display: block; font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gl-feed .t small { font-size: 0.72rem; color: var(--ink-3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }

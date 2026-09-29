@@ -67,15 +67,19 @@ describe('film league', () => {
     }
   });
 
-  it('opens with the host one good session behind its local rival', () => {
+  it('opens with the host about a session behind its local rival', () => {
     const host = p.gyms.find((g) => g.key === p.host_key)!;
     const local = rankGyms(localGyms(p.gyms, host, p.radius_km));
     expect(local.length).toBeGreaterThanOrEqual(8);
     expect(local.length).toBeLessThanOrEqual(12);
     const { rival, ahead } = rivalOf(local, host.key);
     expect(ahead).toBe(false);
-    expect(rival!.points_week - host.points_week).toBeGreaterThan(20);
-    expect(rival!.points_week - host.points_week).toBeLessThan(80);
+    expect(rival!.points_week - host.points_week).toBeGreaterThan(10);
+    expect(rival!.points_week - host.points_week).toBeLessThan(40);
+  });
+
+  it('opens with the host in the recent feed', () => {
+    expect(p.feed.filter((f) => f.gym_key === FILM_HOST.key).length).toBeGreaterThanOrEqual(8);
   });
 
   it('invents unique names and never uses the OSM name', () => {
@@ -94,12 +98,38 @@ describe('film league', () => {
     expect(a.payload.gyms.map((g) => g.points_week)).toEqual(b.payload.gyms.map((g) => g.points_week));
   });
 
-  it('gives the host enough landings to overtake on camera', () => {
+  it('sends most landings to the lanes on screen, the host included', () => {
     const s = filmLeague(data as never, THU_19, { seed: 4 });
-    let host = 0;
-    for (let i = 0; i < 900; i++) { filmStep(s, THU_19 + i * 1000); if (s.payload.feed[0].gym_key === FILM_HOST.key) host++; }
-    expect(host / 900).toBeGreaterThan(0.08);
-    expect(host / 900).toBeLessThan(0.16);
+    const on = new Set(s.on.map((i) => s.payload.gyms[i].key));
+    let host = 0, onScreen = 0;
+    for (let i = 0; i < 1000; i++) {
+      filmStep(s, THU_19 + i * 1000);
+      const k = s.payload.feed[0].gym_key;
+      if (k === FILM_HOST.key) host++;
+      if (on.has(k)) onScreen++;
+    }
+    expect(onScreen / 1000).toBeGreaterThan(0.63);
+    expect(onScreen / 1000).toBeLessThan(0.77);
+    expect(host / 1000).toBeGreaterThan(0.03);
+  });
+
+  it('keeps the local race swapping places', () => {
+    const s = filmLeague(data as never, THU_19, { seed: 5 });
+    const host = s.payload.gyms.find((g) => g.key === s.payload.host_key)!;
+    const order = () => rankGyms(localGyms(s.payload.gyms, host, s.payload.radius_km)).map((g) => g.key).join();
+    const london = () => rankGyms(s.payload.gyms).slice(0, 12).map((g) => g.key).join();
+    let swaps = 0, last = order(), cityswaps = 0, cityLast = london();
+    for (let i = 0; i < 300; i++) { // five minutes at a landing a second
+      filmStep(s, THU_19 + i * 1000);
+      const now = order();
+      if (now !== last) swaps++;
+      last = now;
+      const c = london();
+      if (c !== cityLast) cityswaps++;
+      cityLast = c;
+    }
+    expect(swaps).toBeGreaterThan(25);
+    expect(cityswaps).toBeGreaterThan(25);
   });
 
   it('a landing moves exactly one gym by its points', () => {

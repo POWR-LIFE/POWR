@@ -29,8 +29,13 @@ export type FilmOptions = {
 
 export type FilmState = {
   payload: LeaguePayload;
-  /** Cumulative pick weights, same order as payload.gyms. */
+  /** Cumulative pick weights over the OFF-screen gyms (indexes in `off`). */
   cum: number[];
+  off: number[];
+  /** Indexes of the gyms a viewer can see (both races + the host); they share FILM_ON_SCREEN_SHARE of landings. */
+  on: number[];
+  /** Keys in the host's local lens — the tightest race, so it gets triple weight. */
+  local: Set<string>;
   rnd: () => number;
   n: number;
 };
@@ -38,8 +43,10 @@ export type FilmState = {
 export const FILM_HOST = { key: 'film-host', name: 'ONE LDN', address: 'Imperial Wharf, Fulham', lat: 51.47371, lng: -0.18256 };
 export const FILM_DEFAULT_ATHLETES = 25_000;
 export const FILM_LOCAL_GYMS = 12;
-/** Host's pick weight relative to every off-screen gym together (≈ 1 landing in 9). */
-export const FILM_HOST_SHARE = 0.28;
+/** Share of landings that go to gyms on screen. */
+export const FILM_ON_SCREEN_SHARE = 0.7;
+/** Points behind the gym above that doubles a lane's chance of the next landing. */
+export const FILM_CHASE_PTS = 20;
 
 // Invented operators. The first eight behave like chains (many sites, bigger
 // floors); the rest are one- or two-site boutiques.
@@ -228,24 +235,30 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
   // one good session behind the gym above it — so it overtakes on camera.
   const top = [...gyms].filter((g) => !localKeys.has(g.key)).sort((a, b) => b.points_week - a.points_week);
   const lead = top[0]?.points_week ?? 1000;
-  const band = new Map(top.slice(0, 14).map((g, i) => [g.key, Math.round(lead * (1 - 0.028 * i - 0.01 * rnd()))]));
+  // ~1% apart ≈ three sessions: close enough that a burst of landings swaps two lanes.
+  const band = new Map(top.slice(0, 14).map((g, i) => [g.key, Math.round(lead * (1 - 0.007 * i - 0.003 * rnd()))]));
   const local = byDist.filter((x) => localKeys.has(x.g.key)).map((x) => x.g).sort((a, b) => b.points_week - a.points_week);
   // The whole neighbourhood trains: no cliff from 5th to 6th.
-  local.forEach((g, i) => band.set(g.key, Math.round(lead * (i < 4 ? 0.955 - 0.03 * i - 0.008 * rnd() : Math.max(0.45, 0.8 - 0.055 * (i - 4) - 0.02 * rnd())))));
+  // Slot 2 of the local ladder is left for the host.
+  local.forEach((g, i) => {
+    const slot = i < 2 ? i : i + 1;
+    band.set(g.key, Math.round(lead * (slot < 7 ? 0.975 - 0.0035 * slot - 0.0015 * rnd() : Math.max(0.6, 0.95 - 0.006 * (slot - 7) - 0.006 * rnd()))));
+  });
   gyms = gyms.map((g) => (band.has(g.key) ? scaleTo(g, band.get(g.key)!) : g));
   const secondLocal = band.get(local[1]?.key ?? '') ?? lead * 0.9;
-  host = scaleTo(host, Math.round(secondLocal - 38 - 20 * rnd()));
+  host = scaleTo(host, Math.round(secondLocal - 18 - 8 * rnd()));
   gyms = [host, ...gyms];
 
-  // Who scores next: size-weighted, but the lanes a viewer is looking at get
-  // half of all landings and the host about one in nine — at a landing a
-  // second the host scores every ~9 s and overtakes within the first minute.
-  const onScreen = new Set([...band.keys(), ...localKeys]);
-  const offSum = gyms.reduce((s, g) => s + (g.key === FILM_HOST.key || onScreen.has(g.key) ? 0 : g.athletes_week), 0);
-  const onSum = gyms.reduce((s, g) => s + (onScreen.has(g.key) ? g.athletes_week : 0), 0);
-  const weights = gyms.map((g) => (g.key === FILM_HOST.key ? offSum * FILM_HOST_SHARE : onScreen.has(g.key) ? (g.athletes_week / Math.max(1, onSum)) * offSum : g.athletes_week));
+  // Who scores next. Off screen: by size. On screen: rubber-banded — the
+  // further a lane is behind the one above it, the likelier it scores next, so
+  // the pack keeps leapfrogging instead of spreading out. The host gets a
+  // little extra and starts ~40 pts behind, so it overtakes early on camera.
+  const onScreen = new Set([...band.keys(), ...localKeys, FILM_HOST.key]);
+  const on: number[] = [];
+  const off: number[] = [];
+  gyms.forEach((g, i) => (onScreen.has(g.key) ? on : off).push(i));
   const cum: number[] = [];
-  weights.reduce((s, w) => { cum.push(s + w); return s + w; }, 0);
+  off.reduce((s, i) => { cum.push(s + gyms[i].athletes_week); return s + gyms[i].athletes_week; }, 0);
 
   const weekSessions = gyms.reduce((s, g) => s + g.sessions_week, 0) / Math.max(0.02, weekDone);
   const sessionsHour = Math.round((weekSessions * DAY_W[dayIdx]) / DAY_SUM * (HOUR_W[Math.floor(hour)] / HOUR_SUM));
@@ -261,22 +274,41 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
       scope_label: 'London',
       sessions_hour: sessionsHour,
     },
-    cum, rnd, n: 0,
+    cum, off, on, local: new Set([...localKeys, FILM_HOST.key]), rnd, n: 0,
   };
   // Backfill the feed over the last half hour without touching the totals
   // (they already include these sessions).
   const feed: LeagueFeedItem[] = [];
-  for (let i = 0; i < 40; i++) feed.push(nextSession(state, nowMs - (i + 1) * 45_000 - Math.floor(rnd() * 30_000)).item);
+  // Every fifth is the host's, so its head-to-head side never opens idle.
+  for (let i = 0; i < 40; i++) feed.push(nextSession(state, nowMs - (i + 1) * 45_000 - Math.floor(rnd() * 30_000), i % 5 === 1 ? 0 : undefined).item);
   state.payload = { ...state.payload, feed };
   return state;
 }
 
-function nextSession(state: FilmState, atMs: number): { gi: number; item: LeagueFeedItem } {
-  const { rnd, cum } = state;
-  const r = rnd() * cum[cum.length - 1];
+function pickOffScreen(state: FilmState): number {
+  const { cum, off } = state;
+  const r = state.rnd() * cum[cum.length - 1];
   let lo = 0, hi = cum.length - 1;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < r) lo = mid + 1; else hi = mid; }
-  const gi = lo;
+  return off[lo];
+}
+
+function pickOnScreen(state: FilmState): number {
+  const gyms = state.payload.gyms;
+  const ladder = [...state.on].sort((a, b) => gyms[b].points_week - gyms[a].points_week);
+  const w = ladder.map((gi, k) => {
+    const gap = k === 0 ? 0 : gyms[ladder[k - 1]].points_week - gyms[gi].points_week;
+    const chase = k === 0 ? 0.7 : 1 + Math.min(5, gap / FILM_CHASE_PTS);
+    return chase * (gyms[gi].key === FILM_HOST.key ? 4 : state.local.has(gyms[gi].key) ? 3 : 1);
+  });
+  let r = state.rnd() * w.reduce((s, v) => s + v, 0);
+  for (let k = 0; k < ladder.length; k++) { r -= w[k]; if (r <= 0) return ladder[k]; }
+  return ladder[ladder.length - 1];
+}
+
+function nextSession(state: FilmState, atMs: number, force?: number): { gi: number; item: LeagueFeedItem } {
+  const { rnd } = state;
+  const gi = force ?? (rnd() < FILM_ON_SCREEN_SHARE || state.off.length === 0 ? pickOnScreen(state) : pickOffScreen(state));
   const tw = rnd() * TYPES.reduce((s, t) => s + t[1], 0);
   let acc = 0;
   const [type, , min, spread] = TYPES.find((t) => (acc += t[1]) >= tw) ?? TYPES[0];
