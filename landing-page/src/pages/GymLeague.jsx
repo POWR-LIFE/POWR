@@ -25,7 +25,9 @@ import {
     sessionsLastHour,
     sessionsToClose,
     shareOf,
+    todayIndex,
 } from '../../../shared/gymLeague.ts';
+import { filmClockOffset, filmLeague, filmStep } from '../../../shared/gymLeagueFilm.ts';
 
 /**
  * Gym League — powr.life/league/<slug>?k=<display_token>.
@@ -41,6 +43,13 @@ import {
  * session that landed since flashes its lane, rolls its number, ripples on
  * the map and slides into the feed. ?preview=sample runs a simulated feed
  * on real gym names so an admin can see the motion without waiting.
+ *
+ * ?preview=film is promo footage: a simulated London (every OSM gym, ~25k
+ * athletes, invented gym names, ONE LDN as host) landing a session every
+ * second or so. No key needed, nothing touches the database. Options:
+ * &at=thu-19:00 (the clock the screen shows), &athletes=, &seed= (same seed →
+ * same take), &pace= (landings per second, default 1), &names=real, &clean=1
+ * (no "Simulated" tag; add the disclaimer in the edit instead).
  */
 
 const GOLD = '#facc15';
@@ -52,6 +61,10 @@ const FN_BASE = `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/gym-le
 const SCENES = ['local', 'global', 'effort', 'duel'];
 const DAY_L = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const fmt = (n) => Math.round(n).toLocaleString('en-GB');
+const MAX_LANES = 12;
+// Above this many gyms in view the map draws every gym as a dot instead of
+// clustering (clustering is O(n²) per frame and a city reads as a heat picture).
+const DENSE_MAP = 80;
 
 // ─── Page ────────────────────────────────────────────────────────
 
@@ -59,14 +72,19 @@ export default function GymLeague() {
     const { slug } = useParams();
     const [params] = useSearchParams();
     const token = params.get('k') ?? '';
-    const preview = params.get('preview') === 'sample' ? 'sample' : null;
+    const preview = ['sample', 'film'].includes(params.get('preview')) ? params.get('preview') : null;
+    const film = preview === 'film';
+    const filmAt = params.get('at');
+    const clean = params.get('clean') === '1';
     const sceneParam = params.get('scene');
     const pinned = SCENES.includes(sceneParam) ? sceneParam : null;
 
     const [league, setLeague] = useState(null);
     const [invalid, setInvalid] = useState(false);
     const [lastOkAt, setLastOkAt] = useState(0);
-    const [now, setNow] = useState(Date.now());
+    // Film mode can show another time of the week; everything on screen reads this clock.
+    const clockOffset = useMemo(() => (film ? filmClockOffset(filmAt, Date.now()) : 0), [film, filmAt]);
+    const [now, setNow] = useState(() => Date.now() + clockOffset);
     // Sessions that landed since the previous payload: { [gymKey]: { points, at, key } }
     const [hits, setHits] = useState({});
     const seenRef = useRef(null);
@@ -128,7 +146,7 @@ export default function GymLeague() {
 
     // Sample: a believable league that keeps scoring while you watch.
     useEffect(() => {
-        if (!preview) return undefined;
+        if (preview !== 'sample') return undefined;
         let data = sampleLeague(Date.now());
         absorb(data);
         setLastOkAt(Date.now());
@@ -143,12 +161,13 @@ export default function GymLeague() {
             for (let i = 0; i < weights.length; i++) { r -= weights[i]; if (r <= 0) { gi = i; break; } }
             const minutes = 25 + Math.floor(Math.random() * 60);
             const points = 8 + Math.round(minutes / 3.5) + Math.floor(Math.random() * 6);
+            const today = todayIndex(data);
             const gyms = data.gyms.map((g, i) => (i !== gi ? g : {
                 ...g,
                 points_week: g.points_week + points,
                 points_today: g.points_today + points,
                 sessions_week: g.sessions_week + 1,
-                days: g.days.map((v, d) => (d === 6 ? v + points : v)),
+                days: g.days.map((v, d) => (d === today ? v + points : v)),
             }));
             const item = {
                 key: `sim-${n++}`, gym_key: gyms[gi].key, display_name: names[Math.floor(Math.random() * names.length)], username: null,
@@ -163,25 +182,55 @@ export default function GymLeague() {
         return () => clearTimeout(timer);
     }, [preview, absorb]);
 
+    // Film: a simulated London, one session landing about every second.
     useEffect(() => {
-        const id = setInterval(() => setNow(Date.now()), 1000);
+        if (!film) return undefined;
+        let alive = true;
+        let timer;
+        const athletes = Number(params.get('athletes')) || undefined;
+        const seed = Number(params.get('seed')) || 1;
+        const pace = Math.max(0.1, Math.min(10, Number(params.get('pace')) || 1));
+        const realNames = params.get('names') === 'real';
+        import('../data/londonFilmGyms.json').then(({ default: data }) => {
+            if (!alive) return;
+            const state = filmLeague(data, Date.now() + clockOffset, { athletes, seed, realNames });
+            absorb(state.payload);
+            setLastOkAt(Date.now());
+            const step = () => {
+                filmStep(state, Date.now() + clockOffset);
+                absorb(state.payload);
+                setLastOkAt(Date.now());
+                // Irregular gaps read as real traffic; bursts now and then.
+                const gap = (state.rnd() < 0.18 ? 250 + state.rnd() * 350 : 600 + state.rnd() * 1300) / pace;
+                timer = setTimeout(step, gap);
+            };
+            timer = setTimeout(step, 1200);
+        });
+        return () => { alive = false; clearTimeout(timer); };
+        // Read the options once per load, like a real screen boot.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [film, clockOffset, absorb]);
+
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now() + clockOffset), 1000);
         return () => clearInterval(id);
-    }, []);
+    }, [clockOffset]);
 
     const stale = league && lastOkAt > 0 && now - lastOkAt > STALE_MS;
 
-    if (!token) return <Shell><CenterNote big="This link is missing its key" small="Open it from the Screens page of your gym portal, or the admin: that link carries the key" /></Shell>;
+    if (!token && !preview) return <Shell><CenterNote big="This link is missing its key" small="Open it from the Screens page of your gym portal, or the admin: that link carries the key" /></Shell>;
     if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Make a new link from the Screens page of your gym portal, or ask the POWR team" /></Shell>;
     if (!league) return <Shell><CenterNote big="POWR" small="Connecting…" pulse /></Shell>;
 
     return (
         <Shell>
             <Wall league={league} now={now} stale={stale && !preview} pinned={pinned} hits={hits} ripplesRef={ripplesRef} />
-            {preview && (
+            {preview === 'sample' && (
                 <div className="pointer-events-none absolute bottom-[0.55rem] left-[2.2rem] rounded-full border border-amber-400/50 bg-amber-400/10 px-[1rem] py-[0.3rem] text-[0.7rem] font-black uppercase tracking-[0.3em] text-amber-300 z-20">
                     Preview — simulated sessions on real gyms
                 </div>
             )}
+            {film && !clean && <div className="gl-simtag">Simulated data</div>}
         </Shell>
     );
 }
@@ -218,10 +267,14 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
     const scope = scene === 'global' || scene === 'effort' ? 'global' : local.length >= 2 ? 'local' : 'global';
 
     const hostPlace = host ? placeLabel(host.address, host.name) : '';
-    const countries = new Set(gyms.map((g) => countryCode(g.address, g.lat, g.lng)).filter(Boolean)).size;
+    const countries = useMemo(() => new Set(gyms.map((g) => countryCode(g.address, g.lat, g.lng)).filter(Boolean)).size, [gyms]);
+    const wideLabel = league.scope_label || 'Global';
     const scopeSub = scope === 'local'
-        ? `${hostPlace} · within ${league.radius_km} km of ${host.name} · ${local.length} gyms`
-        : `Global · ${gyms.length} gyms${countries > 1 ? ` · ${countries} countries` : ''}`;
+        ? `${hostPlace} · within ${league.radius_km} km of ${host.name} · ${fmt(local.length)} gyms`
+        : `${wideLabel} · ${fmt(gyms.length)} gyms${countries > 1 ? ` · ${countries} countries` : ''}`;
+    const inView = scope === 'local' ? local : gyms;
+    const dense = inView.length > DENSE_MAP;
+    const hourCount = league.sessions_hour ?? sessionsLastHour(league.feed ?? [], now);
     const reset = resetLabel(countdownParts(league.week_end_at, now));
 
     return (
@@ -231,7 +284,7 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
                 <div className="gl-scope">
                     <div className="gl-lens">
                         <span className={scope === 'local' ? 'on' : ''}>Local</span>
-                        <span className={scope === 'global' ? 'on' : ''}>Global</span>
+                        <span className={scope === 'global' ? 'on' : ''}>{wideLabel}</span>
                     </div>
                     <div className="gl-sub">{scopeSub}</div>
                 </div>
@@ -248,7 +301,7 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
                     <AnimatePresence mode="wait">
                         {scene === 'duel' && host && rival ? (
                             <motion.section key="duel" className="gl-scene" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.45 }}>
-                                <DuelScene host={host} rival={rival} ahead={ahead} pool={duelPool} scopeName={localRanked.length >= 2 ? hostPlace : 'POWR'} feed={league.feed ?? []} hits={hits} reset={reset} />
+                                <DuelScene host={host} rival={rival} ahead={ahead} pool={duelPool} scopeName={localRanked.length >= 2 ? hostPlace : 'POWR'} feed={league.feed ?? []} hits={hits} reset={reset} today={todayIndex(league)} />
                             </motion.section>
                         ) : scene === 'effort' ? (
                             <motion.section key="effort" className="gl-scene" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.45 }}>
@@ -264,19 +317,28 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
 
                 <aside className="gl-rail">
                     <div className="gl-card">
-                        <h3>Network <span>{scope === 'local' ? `${local.length} gyms in view` : `${gyms.length} gyms${countries > 1 ? ` · ${countries} countries` : ''}`}</span></h3>
+                        <h3>Network <span>{scope === 'local' ? `${fmt(local.length)} gyms in view` : `${fmt(gyms.length)} gyms${countries > 1 ? ` · ${countries} countries` : ''}`}</span></h3>
                         <div className="gl-mapwrap">
-                            <NetworkMap scope={scope} gyms={scope === 'local' ? local : gyms} host={host} radiusKm={league.radius_km} hostKey={league.host_key} ripplesRef={ripplesRef} />
+                            <NetworkMap scope={scope} gyms={inView} host={host} radiusKm={league.radius_km} hostKey={league.host_key} ripplesRef={ripplesRef} />
                         </div>
                         <div className="gl-legend">
                             <span><i style={{ background: GOLD }} />This gym</span>
-                            <span><i style={{ background: 'rgba(242,242,242,.7)' }} />Scoring this week</span>
-                            <span><i style={{ background: 'rgba(242,242,242,.22)' }} />Quiet</span>
-                            <span>· a number = gyms in that spot</span>
+                            {dense ? (
+                                <>
+                                    <span><i style={{ background: 'rgba(242,242,242,.85)' }} />Top 3</span>
+                                    <span>· dot size = points this week</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span><i style={{ background: 'rgba(242,242,242,.7)' }} />Scoring this week</span>
+                                    <span><i style={{ background: 'rgba(242,242,242,.22)' }} />Quiet</span>
+                                    <span>· a number = gyms in that spot</span>
+                                </>
+                            )}
                         </div>
                     </div>
                     <div className="gl-card gl-feedcard">
-                        <h3>Landing now <span>{(() => { const n = sessionsLastHour(league.feed ?? [], now); return `${n} session${n === 1 ? '' : 's'} this hour · across POWR`; })()}</span></h3>
+                        <h3>Landing now <span>{`${fmt(hourCount)} session${hourCount === 1 ? '' : 's'} this hour · across POWR`}</span></h3>
                         <FeedList feed={league.feed ?? []} gyms={gyms} hostKey={league.host_key} now={now} tz={league.tz} />
                     </div>
                 </aside>
@@ -290,8 +352,8 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
 // ─── Race ────────────────────────────────────────────────────────
 
 function RaceScene({ scope, ranked, host, hits }) {
-    const show = scope === 'local' ? ranked : ranked.slice(0, 12);
-    const rest = scope === 'local' ? [] : ranked.slice(12);
+    const show = ranked.slice(0, MAX_LANES);
+    const rest = ranked.slice(MAX_LANES);
     const leader = Math.max(1, ranked[0]?.points_week ?? 1);
     const dayStart = useMemo(() => ranksAtDayStart(ranked), [ranked]);
     const hostRank = ranked.findIndex((g) => g.key === host?.key) + 1;
@@ -341,8 +403,8 @@ function RaceScene({ scope, ranked, host, hits }) {
             </div>
             {rest.length > 0 && (
                 <div className="gl-more">
-                    <span>and <b>{rest.length} more gyms</b> · {rest.filter((g) => g.points_week > 0).length} scoring this week</span>
-                    {host && hostRank > 0 && <span>{host.name} is <b>{ordinal(hostRank)} of {ranked.length}</b></span>}
+                    <span>and <b>{fmt(rest.length)} more gyms</b> · {fmt(rest.filter((g) => g.points_week > 0).length)} scoring this week</span>
+                    {host && hostRank > 0 && <span>{host.name} is <b>{ordinal(hostRank)} of {fmt(ranked.length)}</b></span>}
                 </div>
             )}
         </>
@@ -423,7 +485,7 @@ function RollNum({ value, className }) {
 
 // ─── Head to head ────────────────────────────────────────────────
 
-function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset }) {
+function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset, today }) {
     const gap = Math.abs(host.points_week - rival.points_week);
     const share = shareOf(host.points_week, rival.points_week);
     const max = Math.max(...host.days, ...rival.days, 1);
@@ -444,7 +506,7 @@ function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset }) {
                 <div className="gl-lower">
                     <div className="gl-days">
                         {g.days.map((v, k) => (
-                            <i key={k} className={k === 6 ? 'today' : ''} style={{ height: `${Math.max(4, (v / max) * 100)}%` }}><span>{DAY_L[k]}</span></i>
+                            <i key={k} className={k === today ? 'today' : ''} style={{ height: `${Math.max(4, (v / max) * 100)}%` }}><span>{DAY_L[k]}</span></i>
                         ))}
                     </div>
                     <div className="gl-stat"><b>{g.sessions_week}</b> sessions · <b>{g.athletes_week}</b> athletes · <b>{g.points_today}</b> today</div>
@@ -499,6 +561,13 @@ function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
         const s = stateRef.current;
         s.target = boundsOf(gyms.length ? gyms : (host ? [host] : []));
         if (!s.cur) s.cur = { ...s.target };
+        if (gyms.length > DENSE_MAP) {
+            const order = [...gyms].sort((a, b) => a.points_week - b.points_week);
+            const top = order.slice(-3).reverse();
+            s.dense = { order, top, max: Math.max(1, top[0]?.points_week ?? 1) };
+        } else {
+            s.dense = null;
+        }
     }, [scope, gyms, host]);
 
     useEffect(() => {
@@ -543,6 +612,8 @@ function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
                 }
             }
             ctx.restore();
+
+            if (s.dense && s.gyms.length > DENSE_MAP) { drawDense(ctx, s, p, rem, t, ripplesRef); return; }
 
             const nodes = clusterNodes(s.gyms, p, wide ? 0.7 * rem : 1.5 * rem, rem, s.hostKey);
             const ranked = rankGyms(s.gyms);
@@ -620,6 +691,75 @@ function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
     return <canvas ref={canvasRef} className="gl-canvas" />;
 }
 
+/** A city's worth of gyms: one dot each, sized by points; the top 3 and the host named. */
+function drawDense(ctx, s, p, rem, t, ripplesRef) {
+    const { order, top, max } = s.dense;
+    const pos = new Map();
+    const topKeys = new Set(top.map((g) => g.key));
+    for (const g of order) {
+        const [x, y] = p(g.lat, g.lng);
+        pos.set(g.key, [x, y]);
+        if (g.key === s.hostKey || topKeys.has(g.key)) continue;
+        const k = Math.sqrt(Math.max(0, g.points_week) / max);
+        ctx.fillStyle = `rgba(242,242,242,${0.16 + 0.5 * k})`;
+        ctx.beginPath(); ctx.arc(x, y, (0.07 + 0.2 * k) * rem, 0, Math.PI * 2); ctx.fill();
+    }
+    const hostPos = pos.get(s.hostKey);
+    if (hostPos) {
+        ctx.strokeStyle = 'rgba(250,204,21,0.25)'; ctx.lineWidth = 1; ctx.setLineDash([3, 5]); ctx.lineDashOffset = -(t / 60) % 8;
+        for (const g of top) {
+            const q = pos.get(g.key);
+            if (!q || g.key === s.hostKey) continue;
+            const mx = (hostPos[0] + q[0]) / 2, my = (hostPos[1] + q[1]) / 2, dx = q[0] - hostPos[0], dy = q[1] - hostPos[1], k = 0.18;
+            ctx.beginPath(); ctx.moveTo(hostPos[0], hostPos[1]); ctx.quadraticCurveTo(mx - dy * k, my + dx * k, q[0], q[1]); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+    }
+    ripplesRef.current = ripplesRef.current.filter((rp) => t - rp.t >= 0 && t - rp.t < 1600);
+    for (const rp of ripplesRef.current) {
+        const q = pos.get(rp.gymKey);
+        if (!q) continue;
+        const k = (t - rp.t) / 1600;
+        const isHost = rp.gymKey === s.hostKey;
+        ctx.strokeStyle = `rgba(${isHost ? '250,204,21' : '74,222,128'},${(1 - k) * (isHost ? 0.8 : 0.55)})`; ctx.lineWidth = 1.25;
+        ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(0, 0.15 * rem + k * 1.4 * rem), 0, Math.PI * 2); ctx.stroke();
+    }
+    for (const g of top) {
+        const q = pos.get(g.key);
+        if (!q || g.key === s.hostKey) continue;
+        const glow = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], 0.9 * rem);
+        glow.addColorStop(0, 'rgba(242,242,242,0.22)'); glow.addColorStop(1, 'rgba(242,242,242,0)');
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(q[0], q[1], 0.9 * rem, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(242,242,242,0.95)'; ctx.beginPath(); ctx.arc(q[0], q[1], 0.26 * rem, 0, Math.PI * 2); ctx.fill();
+    }
+    if (hostPos) {
+        ctx.fillStyle = GOLD; ctx.beginPath(); ctx.arc(hostPos[0], hostPos[1], 0.3 * rem, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(250,204,21,0.4)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(hostPos[0], hostPos[1], Math.max(0, 0.58 * rem + Math.sin(t / 500) * 0.08 * rem), 0, Math.PI * 2); ctx.stroke();
+    }
+    // Names: the top 3 by rank, then the host; step down past any label already placed.
+    const W = ctx.canvas.width / (window.devicePixelRatio || 1);
+    ctx.font = `500 ${0.66 * rem}px Outfit, sans-serif`; ctx.textBaseline = 'middle';
+    const labels = top.map((g, i) => ({ g, text: `${i + 1}  ${g.name}`, gold: g.key === s.hostKey }));
+    if (hostPos && !topKeys.has(s.hostKey)) {
+        const host = order.find((g) => g.key === s.hostKey);
+        if (host) labels.push({ g: host, text: host.name, gold: true });
+    }
+    const placed = [];
+    for (const l of labels) {
+        const q = pos.get(l.g.key);
+        if (!q) continue;
+        const w = ctx.measureText(l.text).width;
+        let x = q[0] + 0.55 * rem;
+        if (x + w > W - 0.3 * rem) x = q[0] - 0.55 * rem - w;
+        let y = q[1];
+        for (let tries = 0; tries < 6 && placed.some((o) => Math.abs(o.y - y) < 0.95 * rem && o.x < x + w + 0.3 * rem && x < o.x + o.w + 0.3 * rem); tries++) y += 0.95 * rem;
+        placed.push({ x, y, w });
+        ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(14,14,14,0.92)'; ctx.lineWidth = 3; ctx.strokeText(l.text, x, y);
+        ctx.fillStyle = l.gold ? GOLD : 'rgba(242,242,242,0.85)'; ctx.fillText(l.text, x, y);
+    }
+}
+
 function FeedList({ feed, gyms, hostKey, now, tz }) {
     const byKey = useMemo(() => new Map(gyms.map((g) => [g.key, g])), [gyms]);
     const time = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
@@ -649,10 +789,10 @@ function Marquee({ feed, gyms, ranked, hostKey, radiusKm, host }) {
     feed.slice(0, 4).forEach((f) => items.push(<><b>{boardName(f)}</b> earned <em>+{f.points}</em> at {byKey.get(f.gym_key)?.name ?? 'a POWR gym'}</>));
     ranked.slice(0, 5).forEach((g, i) => items.push(<><b>{ordinal(i + 1)}</b> {g.name} · {fmt(g.points_week)} pts</>));
     const inNow = gyms.reduce((s, g) => s + (g.in_now ?? 0), 0);
-    if (inNow > 0) items.push(<><b>{inNow}</b> athletes in a POWR gym right now</>);
+    if (inNow > 0) items.push(<><b>{fmt(inNow)}</b> athletes in a POWR gym right now</>);
     if (host) items.push(<>Local lens · <b>{radiusKm} km</b> around {host.name}</>);
     const hostRank = ranked.findIndex((g) => g.key === hostKey) + 1;
-    if (hostRank > 0) items.push(<>{host?.name} is <b>{ordinal(hostRank)} of {ranked.length}</b> on POWR this week</>);
+    if (hostRank > 0) items.push(<>{host?.name} is <b>{ordinal(hostRank)} of {fmt(ranked.length)}</b> on POWR this week</>);
     if (items.length === 0) return null;
     const track = [...items, ...items];
     return (
@@ -817,6 +957,7 @@ const CSS = `
 .gl-track span b { color: #f2f2f2; font-weight: 600; }
 .gl-track span em { font-style: normal; color: var(--gold); font-weight: 600; }
 @keyframes glMarquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+.gl-simtag { position: absolute; right: 0; bottom: 0; z-index: 20; pointer-events: none; font-size: 0.6rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); background: linear-gradient(90deg, transparent, #070707 1.5rem); padding: 0.95rem 2.2rem 0.95rem 2.5rem; }
 .gl-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem; text-align: center; padding: 2rem; }
 .gl-center-big { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.01em; }
 .gl-center-big.pulse { animation: glPulse 1.8s ease-in-out infinite; color: var(--gold); }
