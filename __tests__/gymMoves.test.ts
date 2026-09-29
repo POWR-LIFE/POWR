@@ -120,7 +120,7 @@ describe('gymMoves', () => {
     expect(gymMoves({ ...base, features: PRO, league: behind })[0].action.to).toBe('/venue/studio?board=week');
     const top = { ...behind, rank: 1, ahead: true };
     expect(keys({ league: top })).not.toContain('league');
-    expect(gymMoves({ ...base, features: PRO, league: top }).find((x) => x.key === 'league')?.title).toBe('Top of the Gym League within 15 km');
+    expect(gymMoves({ ...base, features: PRO, league: top }).find((x) => x.key === 'league')?.title).toBe('Top of Gym Clash within 15 km');
     expect(keys({ league: { ...behind, count: 1, rival: null } })).not.toContain('league');
   });
 

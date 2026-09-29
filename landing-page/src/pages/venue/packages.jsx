@@ -14,7 +14,7 @@ export const PACKAGES = [
     {
         key: 'clash', name: 'Clash', line: 'Get on the board.', price: 'Free', per: '', note: 'Always',
         items: [
-            'Your gym in the Gym League: the gyms near you, every week',
+            'Your gym in Gym Clash: the gyms near you, every week',
             'Gym vs gym, scored per active member so size doesn’t win',
             'Member leaderboard inside your gym',
             'Your live ranking',

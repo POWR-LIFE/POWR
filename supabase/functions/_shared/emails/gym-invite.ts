@@ -17,7 +17,7 @@ export interface GymInviteData {
 }
 
 const STEPS: Array<[string, string]> = [
-  ["Put your leaderboard on the gym TV", "A live weekly board of who's training at your gym, plus the Gym League against every other POWR gym"],
+  ["Put your leaderboard on the gym TV", "A live weekly board of who's training at your gym, plus Gym Clash against every other POWR gym"],
   ["See who's coming in", "Athletes, sessions and busiest hours, week by week"],
   ["Bring your team in", "Give the people who run the floor their own login"],
 ];

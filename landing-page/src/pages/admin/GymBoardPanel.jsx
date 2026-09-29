@@ -124,7 +124,7 @@ export default function GymBoardPanel({ partner, adminId }) {
                         A weekly leaderboard of points earned at <span className="font-semibold text-[#1A1A1A]">{partner.name}</span>,
                         designed for a TV on the gym floor. Resets every Monday, shows last week&apos;s champion, and a QR code
                         for members to join. You send the gym one link; it refreshes itself. Creating it also unlocks the
-                        <span className="font-semibold text-[#1A1A1A]"> Gym League</span> screen: this gym racing every other POWR gym.
+                        <span className="font-semibold text-[#1A1A1A]"> Gym Clash</span> screen: this gym racing every other POWR gym.
                     </p>
                     <div>
                         <label className="block text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mb-2">URL slug</label>
@@ -269,7 +269,7 @@ export default function GymBoardPanel({ partner, adminId }) {
                 <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden">
                     <div className="p-10 border-b border-[#E6E6E1] flex items-start justify-between gap-6">
                         <div>
-                            <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Gym League</h3>
+                            <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Gym Clash</h3>
                             <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">
                                 {leagueOn ? 'Live — this gym racing every POWR gym' : 'Paused — the league screen is blank'}
                             </p>
@@ -288,7 +288,7 @@ export default function GymBoardPanel({ partner, adminId }) {
                         <div>
                             <div className="flex items-center gap-2 mb-2">
                                 <Trophy size={13} className="text-[#888888]" />
-                                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">Gym League display URL</span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">Gym Clash display URL</span>
                             </div>
                             <div className="flex items-center gap-3 flex-wrap">
                                 <code className="text-[12px] font-mono text-[#555555] bg-[#F4F4F1] border border-[#EAEAE5] rounded-lg px-3 py-2 select-all break-all">{lUrl}</code>
@@ -345,7 +345,7 @@ export default function GymBoardPanel({ partner, adminId }) {
                         <p>Points from verified sessions <span className="font-semibold text-[#1A1A1A]">at this gym</span> — the same earn, adjustment and penalty rows as the app&apos;s weekly board. Streak and referral bonuses don&apos;t buy rank.</p>
                         <p>The week runs Monday 00:00 → Sunday 23:59 in <span className="font-mono text-[11px]">{board.tz}</span>. Arrows show places moved since the day began.</p>
                         <p>Only members with &ldquo;show on leaderboard&rdquo; on appear. Names and avatars come from their POWR profile.</p>
-                        <p>The Gym League adds up the same points per gym across every gym where someone has earned points in the last 28 days. Totals are the race; a second table ranks <span className="font-semibold text-[#1A1A1A]">points per athlete</span> (three athletes minimum) so a small gym can beat a chain on effort.</p>
+                        <p>Gym Clash adds up the same points per gym across every gym where someone has earned points in the last 28 days. Totals are the race; a second table ranks <span className="font-semibold text-[#1A1A1A]">points per athlete</span> (three athletes minimum) so a small gym can beat a chain on effort.</p>
                     </div>
                 </section>
                 <section className="bg-white border border-[#E6E6E1] p-10 rounded-[2rem]">

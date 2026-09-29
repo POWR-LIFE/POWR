@@ -149,7 +149,7 @@ function friday(w, seed) {
             ? (l.gap > 0 ? `${thousands(l.gap)} POWR clear of ${l.rival.name}.` : `Level with ${l.rival.name}.`)
             : `${thousands(l.gap)} POWR behind ${l.rival.name}. Every session counts.`;
         return {
-            stem: 'league', label: 'Gym League', template: 'club',
+            stem: 'league', label: 'Gym Clash', template: 'club',
             fields: words('club', {
                 headline: ORD(l.rank),
                 left: 'In the\nGym\nLeague',
@@ -157,7 +157,7 @@ function friday(w, seed) {
                 line: race,
                 signoff: l.rank === 1 ? 'Top of the league.' : 'Earned, not given.',
             }),
-            caption: `${g} is ${ORD(l.rank)} of ${l.count} gyms within ${l.radiusKm} km in the Gym League this week. ${race} The weekend decides it: check in with POWR and your sessions count for us.`,
+            caption: `${g} is ${ORD(l.rank)} of ${l.count} gyms within ${l.radiusKm} km in Gym Clash this week. ${race} The weekend decides it: check in with POWR and your sessions count for us.`,
         };
     }
     return {

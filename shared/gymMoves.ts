@@ -265,7 +265,7 @@ function leagueMoves(i: MovesInput): Move[] {
   if (l.ahead && l.rank === 1 && post) {
     return [{
       key: 'league', kind: 'league', priority: 26,
-      title: `Top of the Gym League within ${l.radiusKm} km`,
+      title: `Top of Gym Clash within ${l.radiusKm} km`,
       detail: l.gap > 0 ? `${num(l.gap)} POWR clear of ${l.rival.name}. Tell your members before the week ends.` : `Level with ${l.rival.name}. Tell your members it’s all to play for.`,
       action: { label: 'Make the post', to: BOARD_POST },
     }];
@@ -327,7 +327,7 @@ function screenMoves(i: MovesInput): Move[] {
     return [{
       key: 'screens', kind: 'screens', priority: 58,
       title: 'Put your leaderboard on the gym TV',
-      detail: 'This week’s board and the Gym League, on any screen with a web browser.',
+      detail: 'This week’s board and Gym Clash, on any screen with a web browser.',
       action: { label: 'Set up', to: '/venue/screens' },
     }];
   }
@@ -436,7 +436,7 @@ function everydayMoves(i: MovesInput): Move[] {
   if (l && l.rival && l.count >= 2) {
     pool.push({
       key: 'league-screen', kind: 'league', snooze: 'week',
-      title: `${ordinal(l.rank)} of ${l.count} in the Gym League`,
+      title: `${ordinal(l.rank)} of ${l.count} in Gym Clash`,
       detail: 'Keep the league on your gym TV, so members see the race while they train.',
       action: { label: 'Screens', to: '/venue/screens' },
     });
