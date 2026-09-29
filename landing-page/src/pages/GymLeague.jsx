@@ -309,7 +309,7 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef, onFocus }) {
         <div className="gl-wall">
             <header className="gl-head">
                 <div className="gl-brand">
-                    <span className="gl-powr">POWR</span><span className="gl-title">Gym League</span>
+                    <img className="gl-powr" src="/powr-logo-white.png" alt="POWR" /><span className="gl-title">Gym League</span>
                     {league.gym?.logo_url && <GymMark g={{ name: league.gym.name, logo_url: league.gym.logo_url, logo_bg: league.gym.logo_bg }} className="gl-hostmark" />}
                 </div>
                 <div className="gl-scope">
@@ -1139,8 +1139,8 @@ const CSS = `
 .gl-wall::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(60rem 30rem at 15% -10%, rgba(250,204,21,0.09), transparent 60%); animation: glDrift 24s ease-in-out infinite; }
 @keyframes glDrift { 0%,100% { transform: translate(0,0) } 50% { transform: translate(3vw,2vh) } }
 .gl-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 2rem; z-index: 1; }
-.gl-brand { display: flex; align-items: baseline; gap: 0.9rem; }
-.gl-powr { font-weight: 800; font-size: 1.6rem; letter-spacing: 0.02em; color: var(--gold); }
+.gl-brand { display: flex; align-items: center; gap: 0.9rem; }
+.gl-powr { height: 2.7rem; width: auto; display: block; }
 .gl-title { font-weight: 300; font-size: 1.6rem; letter-spacing: 0.04em; }
 .gl-scope { display: flex; align-items: center; gap: 0.7rem; justify-self: center; }
 .gl-lens { display: flex; gap: 0.3rem; padding: 0.25rem; border: 1px solid var(--line); border-radius: 999px; }
