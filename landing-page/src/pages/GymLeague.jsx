@@ -1119,12 +1119,12 @@ const CSS = `
 .gl-mono { width: 2.4rem; height: 2.4rem; border-radius: 0.6rem; display: grid; place-items: center; background: var(--bg-3); border: 1px solid var(--line); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; color: var(--ink-2); flex: none; }
 .gl-lane.host .gl-mono, .gl-side.host .gl-mono, .gl-feed li.host .g { background: var(--gold); color: #0d0d0d; border-color: var(--gold); }
 .gl-mono.has-logo, .gl-feed .g.has-logo, .gl-hostmark { background: #141414; overflow: hidden; }
-/* Logos get a landscape tile: most are wordmarks. The monogram keeps its square. */
-.gl-lane .gl-mono { justify-self: center; }
-.gl-lane .gl-mono.has-logo { width: 5.4rem; height: 2.9rem; padding: 0.35rem 0.45rem; border-radius: 0.55rem; }
-.gl-who .gl-mono.has-logo { width: 7.2rem; height: 3.6rem; padding: 0.45rem 0.6rem; }
-.gl-feed .g { justify-self: center; }
-.gl-feed .g.has-logo { width: 3.9rem; padding: 0.25rem 0.3rem; }
+/* Every gym tile is landscape (most logos are wordmarks); a gym without a
+   logo gets the same tile with its monogram, so each column reads as one. */
+.gl-lane .gl-mono { width: 5.4rem; height: 2.9rem; border-radius: 0.55rem; font-size: 1rem; letter-spacing: 0.08em; }
+.gl-lane .gl-mono.has-logo { padding: 0.35rem 0.45rem; }
+.gl-who .gl-mono.has-logo { padding: 0.45rem 0.6rem; }
+.gl-feed .g.has-logo { padding: 0.25rem 0.3rem; }
 .gl-mono.has-logo.light, .gl-feed .g.has-logo.light, .gl-hostmark.light { background: #fff; border-color: rgba(255,255,255,0.6); }
 .gl-lane.host .gl-mono.has-logo, .gl-side.host .gl-mono.has-logo, .gl-feed li.host .g.has-logo { background: #141414; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
 .gl-lane.host .gl-mono.has-logo.light, .gl-side.host .gl-mono.has-logo.light, .gl-feed li.host .g.has-logo.light { background: #fff; }
@@ -1163,7 +1163,7 @@ const CSS = `
 .gl-side.right { grid-column: 3; grid-row: 1; align-items: flex-end; }
 .gl-who { display: flex; align-items: center; gap: 0.9rem; }
 .gl-side.right .gl-who { flex-direction: row-reverse; text-align: right; }
-.gl-who .gl-mono { width: 3.2rem; height: 3.2rem; border-radius: 0.8rem; font-size: 1.1rem; }
+.gl-who .gl-mono { width: 7.2rem; height: 3.6rem; border-radius: 0.8rem; font-size: 1.3rem; letter-spacing: 0.08em; }
 .gl-who b { font-size: 1.7rem; font-weight: 600; display: block; line-height: 1.1; }
 .gl-who small { font-size: 0.85rem; color: var(--ink-3); letter-spacing: 0.04em; }
 .gl-big { font-size: 6.4rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; position: relative; }
@@ -1217,7 +1217,7 @@ const CSS = `
 .gl-legend i { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
 .gl-feed { position: relative; list-style: none; margin: 0; padding: 0; overflow: hidden; flex: 1; min-height: 0; }
 .gl-feed li { display: grid; grid-template-columns: 3.9rem 1fr auto; gap: 0.7rem; align-items: center; height: 3.2rem; padding: 0 0.7rem; border-radius: 0.6rem; background: rgba(255,255,255,0.03); }
-.gl-feed .g { width: 2.1rem; height: 2.1rem; border-radius: 0.5rem; display: grid; place-items: center; font-weight: 700; font-size: 0.75rem; background: var(--bg-3); border: 1px solid var(--line); color: var(--ink-2); }
+.gl-feed .g { width: 3.9rem; height: 2.1rem; border-radius: 0.5rem; letter-spacing: 0.06em; display: grid; place-items: center; font-weight: 700; font-size: 0.75rem; background: var(--bg-3); border: 1px solid var(--line); color: var(--ink-2); }
 .gl-feed .t { min-width: 0; } .gl-feed .t b { display: block; font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gl-feed .t small { font-size: 0.72rem; color: var(--ink-3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .gl-feed .p { font-weight: 700; font-size: 1rem; color: var(--up); font-variant-numeric: tabular-nums; white-space: nowrap; }
