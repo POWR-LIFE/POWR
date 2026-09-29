@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Activity, Bike, Dumbbell, Flower2, Footprints, Music, PersonStanding, Trophy, Waves, Zap } from 'lucide-react';
 import geo from '../data/geoEurope.json';
 import { activityMeta, boardName, countdownParts, resetLabel, rootFontSize, weekLabel } from '../../../shared/gymBoard.ts';
 import {
@@ -831,6 +832,13 @@ function FeedList({ feed, gyms, hostKey, now, tz }) {
     );
 }
 
+const ACTIVITY_ICONS = { gym: Dumbbell, running: Footprints, walking: PersonStanding, cycling: Bike, swimming: Waves, hiit: Zap, yoga: Flower2, sports: Trophy, dance: Music };
+
+function ActivityIcon({ type }) {
+    const Icon = ACTIVITY_ICONS[type] ?? Activity;
+    return <Icon size="0.8rem" strokeWidth={2.25} aria-hidden="true" />;
+}
+
 // The footer ticker. It never restarts: the track moves at a steady speed,
 // items that have left on the left are dropped, and fresh items — built from
 // the payload at that moment — join on the right as room opens up. (A CSS
@@ -857,7 +865,18 @@ function Marquee(props) {
         const push = (node) => out.push({ id: idRef.current++, node });
         feed.filter((f) => !shownRef.current.has(f.key)).slice(0, 4).forEach((f) => {
             shownRef.current.add(f.key);
-            push(<><b>{boardName(f)}</b> earned <em>+{f.points}</em> at {byKey.get(f.gym_key)?.name ?? 'a POWR gym'}</>);
+            push(
+                <>
+                    <span className="gl-tk-user">
+                        <span className="gl-tk-mark" aria-hidden="true">
+                            <span className="gl-tk-ico"><ActivityIcon type={f.type} /></span>
+                            <i className="gl-tk-line" />
+                        </span>
+                        <b>{boardName(f)}</b>
+                    </span>
+                    earned <em>+{f.points}</em> at {byKey.get(f.gym_key)?.name ?? 'a POWR gym'}
+                </>,
+            );
         });
         if (shownRef.current.size > 400) shownRef.current = new Set(feed.map((f) => f.key));
         ranked.slice(0, 5).forEach((g, i) => push(<><b>{ordinal(i + 1)}</b> {g.name} · {fmt(g.points_week)} pts</>));
@@ -1063,9 +1082,14 @@ const CSS = `
 .gl-feed .t small { font-size: 0.72rem; color: var(--ink-3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .gl-feed .p { font-weight: 700; font-size: 1rem; color: var(--up); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gl-empty { color: var(--ink-3); font-size: 0.85rem; padding: 1rem 0; }
-.gl-foot { border-top: 1px solid var(--line); margin: 0 -2.2rem; padding: 0.7rem 0; overflow: hidden; z-index: 1; }
+.gl-foot { border-top: 1px solid var(--line); margin: 0 -2.2rem; padding: 2.75rem 0 0.7rem; overflow: hidden; z-index: 1; }
 .gl-track { display: flex; white-space: nowrap; width: max-content; will-change: transform; }
-.gl-track span { font-size: 0.85rem; color: var(--ink-2); padding-right: 3rem; flex: none; }
+.gl-track > span { font-size: 0.85rem; color: var(--ink-2); padding-right: 3rem; flex: none; display: inline-flex; align-items: center; gap: 0.35em; }
+.gl-tk-user { position: relative; display: inline-block; }
+.gl-tk-mark { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; padding-bottom: 0.15rem; }
+.gl-tk-line { display: block; width: 1px; height: 0.75rem; background: linear-gradient(180deg, rgba(250,204,21,0.7), rgba(242,242,242,0.4)); position: relative; }
+.gl-tk-line::after { content: ''; position: absolute; left: -1px; bottom: -1.5px; width: 3px; height: 3px; border-radius: 50%; background: rgba(242,242,242,0.75); }
+.gl-tk-ico { display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; border: 1px solid rgba(250,204,21,0.55); background: rgba(250,204,21,0.1); color: var(--gold); box-shadow: 0 0 0.6rem rgba(250,204,21,0.18); }
 .gl-track span b { color: #f2f2f2; font-weight: 600; }
 .gl-track span em { font-style: normal; color: var(--gold); font-weight: 600; }
 .gl-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem; text-align: center; padding: 2rem; }
