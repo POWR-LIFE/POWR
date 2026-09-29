@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import geo from '../data/geoEurope.json';
@@ -48,8 +48,8 @@ import { filmClockOffset, filmLeague, filmStep } from '../../../shared/gymLeague
  * athletes, invented gym names, ONE LDN as host) landing a session every
  * second or so. No key needed, nothing touches the database. Options:
  * &at=thu-19:00 (the clock the screen shows), &athletes=, &seed= (same seed →
- * same take), &pace= (landings per second, default 1), &names=real, &clean=1
- * (no "Simulated" tag; add the disclaimer in the edit instead).
+ * same take), &pace= (landings per second, default 1), &names=real. There is
+ * no on-screen "simulated" tag: the illustrative-data disclaimer goes in the edit.
  */
 
 const GOLD = '#facc15';
@@ -75,7 +75,6 @@ export default function GymLeague() {
     const preview = ['sample', 'film'].includes(params.get('preview')) ? params.get('preview') : null;
     const film = preview === 'film';
     const filmAt = params.get('at');
-    const clean = params.get('clean') === '1';
     const sceneParam = params.get('scene');
     const pinned = SCENES.includes(sceneParam) ? sceneParam : null;
 
@@ -230,7 +229,6 @@ export default function GymLeague() {
                     Preview — simulated sessions on real gyms
                 </div>
             )}
-            {film && !clean && <div className="gl-simtag">Simulated data</div>}
         </Shell>
     );
 }
@@ -813,22 +811,87 @@ function FeedList({ feed, gyms, hostKey, now, tz }) {
     );
 }
 
-function Marquee({ feed, gyms, ranked, hostKey, radiusKm, host }) {
-    const byKey = new Map(gyms.map((g) => [g.key, g]));
-    const items = [];
-    feed.slice(0, 4).forEach((f) => items.push(<><b>{boardName(f)}</b> earned <em>+{f.points}</em> at {byKey.get(f.gym_key)?.name ?? 'a POWR gym'}</>));
-    ranked.slice(0, 5).forEach((g, i) => items.push(<><b>{ordinal(i + 1)}</b> {g.name} · {fmt(g.points_week)} pts</>));
-    const inNow = gyms.reduce((s, g) => s + (g.in_now ?? 0), 0);
-    if (inNow > 0) items.push(<><b>{fmt(inNow)}</b> athletes in a POWR gym right now</>);
-    if (host) items.push(<>Local lens · <b>{radiusKm} km</b> around {host.name}</>);
-    const hostRank = ranked.findIndex((g) => g.key === hostKey) + 1;
-    if (hostRank > 0) items.push(<>{host?.name} is <b>{ordinal(hostRank)} of {fmt(ranked.length)}</b> on POWR this week</>);
-    if (items.length === 0) return null;
-    const track = [...items, ...items];
+// The footer ticker. It never restarts: the track moves at a steady speed,
+// items that have left on the left are dropped, and fresh items — built from
+// the payload at that moment — join on the right as room opens up. (A CSS
+// loop over the whole list reset every time a landing changed the list.)
+const MARQUEE_REM_PER_S = 5;
+
+function Marquee(props) {
+    const latest = useRef(props);
+    latest.current = props;
+    const shownRef = useRef(new Set());
+    const idRef = useRef(0);
+    const [items, setItems] = useState([]);
+    const footRef = useRef(null);
+    const trackRef = useRef(null);
+    const offRef = useRef(0);
+    const dropRef = useRef(0);
+    const pendingRef = useRef(false);
+
+    // One pass of the story: sessions not yet shown, the top five, gyms busy now, the host.
+    const nextBatch = useCallback(() => {
+        const { feed, gyms, ranked, hostKey, radiusKm, host } = latest.current;
+        const byKey = new Map(gyms.map((g) => [g.key, g]));
+        const out = [];
+        const push = (node) => out.push({ id: idRef.current++, node });
+        feed.filter((f) => !shownRef.current.has(f.key)).slice(0, 4).forEach((f) => {
+            shownRef.current.add(f.key);
+            push(<><b>{boardName(f)}</b> earned <em>+{f.points}</em> at {byKey.get(f.gym_key)?.name ?? 'a POWR gym'}</>);
+        });
+        if (shownRef.current.size > 400) shownRef.current = new Set(feed.map((f) => f.key));
+        ranked.slice(0, 5).forEach((g, i) => push(<><b>{ordinal(i + 1)}</b> {g.name} · {fmt(g.points_week)} pts</>));
+        const inNow = gyms.reduce((sum, g) => sum + (g.in_now ?? 0), 0);
+        if (inNow > 0) push(<><b>{fmt(inNow)}</b> athletes in a POWR gym right now</>);
+        if (host) push(<>Local lens · <b>{radiusKm} km</b> around {host.name}</>);
+        const hostRank = ranked.findIndex((g) => g.key === hostKey) + 1;
+        if (hostRank > 0) push(<>{host?.name} is <b>{ordinal(hostRank)} of {fmt(ranked.length)}</b> on POWR this week</>);
+        return out;
+    }, []);
+
+    useEffect(() => {
+        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        let raf = 0;
+        let last = performance.now();
+        const tick = (t) => {
+            raf = requestAnimationFrame(tick);
+            const track = trackRef.current;
+            const foot = footRef.current;
+            if (!track || !foot) return;
+            const dt = Math.min(0.1, (t - last) / 1000);
+            last = t;
+            const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+            if (!reduce) offRef.current += dt * MARQUEE_REM_PER_S * rem;
+            track.style.transform = `translate3d(${-offRef.current}px,0,0)`;
+            if (pendingRef.current) return;
+            const first = track.firstElementChild;
+            if (first && offRef.current > first.offsetWidth) {
+                dropRef.current = first.offsetWidth;
+                pendingRef.current = true;
+                setItems((it) => it.slice(1));
+            } else if (track.scrollWidth - offRef.current < foot.clientWidth * 1.6) {
+                const batch = nextBatch();
+                if (batch.length) { pendingRef.current = true; setItems((it) => [...it, ...batch]); }
+            }
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [nextBatch]);
+
+    // Before paint: take the dropped item's width off the offset so nothing jumps.
+    useLayoutEffect(() => {
+        if (dropRef.current) {
+            offRef.current -= dropRef.current;
+            dropRef.current = 0;
+            if (trackRef.current) trackRef.current.style.transform = `translate3d(${-offRef.current}px,0,0)`;
+        }
+        pendingRef.current = false;
+    }, [items]);
+
     return (
-        <footer className="gl-foot">
-            <div className="gl-track" style={{ animationDuration: `${Math.max(30, track.length * 5)}s` }}>
-                {track.map((it, i) => <span key={i}>{it}</span>)}
+        <footer className="gl-foot" ref={footRef}>
+            <div className="gl-track" ref={trackRef}>
+                {items.map((it) => <span key={it.id}>{it.node}</span>)}
             </div>
         </footer>
     );
@@ -981,18 +1044,16 @@ const CSS = `
 .gl-feed .p { font-weight: 700; font-size: 1rem; color: var(--up); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gl-empty { color: var(--ink-3); font-size: 0.85rem; padding: 1rem 0; }
 .gl-foot { border-top: 1px solid var(--line); margin: 0 -2.2rem; padding: 0.7rem 0; overflow: hidden; z-index: 1; }
-.gl-track { display: flex; gap: 3rem; white-space: nowrap; width: max-content; animation: glMarquee 60s linear infinite; }
-.gl-track span { font-size: 0.85rem; color: var(--ink-2); }
+.gl-track { display: flex; white-space: nowrap; width: max-content; will-change: transform; }
+.gl-track span { font-size: 0.85rem; color: var(--ink-2); padding-right: 3rem; flex: none; }
 .gl-track span b { color: #f2f2f2; font-weight: 600; }
 .gl-track span em { font-style: normal; color: var(--gold); font-weight: 600; }
-@keyframes glMarquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
-.gl-simtag { position: absolute; right: 0; bottom: 0; z-index: 20; pointer-events: none; font-size: 0.6rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); background: linear-gradient(90deg, transparent, #070707 1.5rem); padding: 0.95rem 2.2rem 0.95rem 2.5rem; }
 .gl-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem; text-align: center; padding: 2rem; }
 .gl-center-big { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.01em; }
 .gl-center-big.pulse { animation: glPulse 1.8s ease-in-out infinite; color: var(--gold); }
 .gl-center-small { font-size: 0.95rem; color: var(--ink-2); max-width: 30rem; }
 @media (prefers-reduced-motion: reduce) {
-  .gl-wall::before, .gl-live i, .gl-lane:first-child .gl-fill::after, .gl-lane.hit .gl-fill::before, .gl-track, .gl-tug .a::after, .gl-days i.today::after { animation: none; }
+  .gl-wall::before, .gl-live i, .gl-lane:first-child .gl-fill::after, .gl-lane.hit .gl-fill::before, .gl-tug .a::after, .gl-days i.today::after { animation: none; }
   .gl-delta { animation: none; opacity: 0.8; }
 }
 `;
