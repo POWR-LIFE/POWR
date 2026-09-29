@@ -79,8 +79,11 @@ describe('film league', () => {
     expect(rival!.points_week - host.points_week).toBeLessThan(40);
   });
 
-  it('opens with the host in the recent feed', () => {
+  it('opens with the host and its nearest rivals in the recent feed', () => {
     expect(p.feed.filter((f) => f.gym_key === FILM_HOST.key).length).toBeGreaterThanOrEqual(8);
+    const host = p.gyms.find((g) => g.key === p.host_key)!;
+    const local = rankGyms(localGyms(p.gyms, host, p.radius_km)).filter((g) => g.key !== host.key).slice(0, 3);
+    for (const g of local) expect(p.feed.filter((f) => f.gym_key === g.key).length).toBeGreaterThanOrEqual(4);
   });
 
   it('invents unique names and never uses the OSM name', () => {
@@ -163,6 +166,6 @@ describe('film league', () => {
     expect(moved[0].points_week - before.get(item.gym_key)!).toBe(item.points);
     expect(moved[0].days[3]).toBe(moved[0].points_today);
     expect(s.payload.sessions_hour).toBe(hour + 1);
-    expect(s.payload.feed.length).toBe(40);
+    expect(s.payload.feed.length).toBe(41);
   });
 });

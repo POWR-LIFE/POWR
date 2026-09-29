@@ -63,6 +63,11 @@ const SCENES = ['local', 'global', 'effort', 'duel'];
 const DAY_L = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const fmt = (n) => Math.round(n).toLocaleString('en-GB');
 const MAX_LANES = 12;
+// Rows under each side of the head-to-head. The list box is a fixed height
+// for exactly this many (see .gl-recent), so rows rolling in and out never
+// change the scene's height — the duel is centred, so a growing list moved
+// the share bar.
+const DUEL_RECENT = 4;
 // Above this many gyms in view the map draws every gym as a dot instead of
 // clustering (clustering is O(n²) per frame and a city reads as a heat picture).
 const DENSE_MAP = 80;
@@ -358,7 +363,7 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef, onFocus }) {
                     </div>
                     <div className="gl-card gl-feedcard">
                         <h3>Landing now <span>{`${fmt(hourCount)} session${hourCount === 1 ? '' : 's'} this hour · across POWR`}</span></h3>
-                        <FeedList feed={league.feed ?? []} gyms={gyms} hostKey={league.host_key} now={now} tz={league.tz} />
+                        <FeedList feed={league.feed ?? []} gyms={gyms} hostKey={league.host_key} tz={league.tz} />
                     </div>
                 </aside>
             </main>
@@ -514,7 +519,7 @@ function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset, tod
             cls={cls}
             isHost={g.key === host.key}
             hit={hits[g.key]}
-            recent={feed.filter((f) => f.gym_key === g.key).slice(0, 3)}
+            recent={feed.filter((f) => f.gym_key === g.key).slice(0, DUEL_RECENT + 1)}
             rank={pool.indexOf(g) + 1}
             scopeName={scopeName}
             max={max}
@@ -573,29 +578,48 @@ function DuelSide({ g, cls, isHost, hit, recent, rank, scopeName, max, today }) 
                     ))}
                 </div>
                 <div className="gl-stat"><b>{g.sessions_week}</b> sessions · <b>{g.athletes_week}</b> athletes · <b>{g.points_today}</b> today</div>
-                <ul className="gl-recent">
-                    {recent.length === 0 && <li className="empty">Waiting for the next session here…</li>}
-                    <AnimatePresence initial={false}>
-                        {recent.map((f) => (
-                            <motion.li key={f.key} {...ROLL}>
-                                <span><b>{boardName(f)}</b> · {activityMeta(f.type).label}<small>{f.minutes} min</small></span><em>+{f.points}</em>
-                            </motion.li>
-                        ))}
-                    </AnimatePresence>
-                </ul>
+                {recent.length === 0
+                    ? <ul className="gl-recent"><li className="empty">Waiting for the next session here…</li></ul>
+                    : (
+                        <Conveyor
+                            className="gl-recent"
+                            items={recent}
+                            visible={DUEL_RECENT}
+                            pitch={2.45}
+                            render={(f) => <><span><b>{boardName(f)}</b> · {activityMeta(f.type).label}<small>{f.minutes} min</small></span><em>+{f.points}</em></>}
+                        />
+                    )}
             </div>
         </div>
     );
 }
 
-// Lists roll: a new row drops in at the top, the rest glide down, the last fades out.
-const ROLL = {
-    layout: true,
-    initial: { opacity: 0, y: -14 },
-    animate: { opacity: 1, y: 0 },
-    exit: { opacity: 0, transition: { duration: 0.25 } },
-    transition: { type: 'spring', stiffness: 320, damping: 34 },
-};
+// A conveyor list: every row sits in a fixed slot `pitch` rem apart and glides
+// down one slot when a new row lands; the new row slides in from above the
+// box and the old last row slides out below it (the box clips it), then is
+// dropped. Rows never overlap and back-to-back landings just keep it moving.
+// (AnimatePresence kept a leaving row in flow, or popped it under the rows
+// sliding past — both looked like a pile-up.) Pass visible + 1 items.
+function Conveyor({ items, visible, pitch, className, rowClass, render }) {
+    const mounted = useRef(false);
+    useEffect(() => { mounted.current = true; }, []);
+    return (
+        <ul className={className}>
+            {items.slice(0, visible + 1).map((f, i) => (
+                <motion.li
+                    key={f.key}
+                    className={rowClass ? rowClass(f) : undefined}
+                    style={{ position: 'absolute', left: 0, right: 0, top: 0 }}
+                    initial={mounted.current ? { y: `${-pitch}rem`, opacity: 0 } : false}
+                    animate={{ y: `${i * pitch}rem`, opacity: i < visible ? 1 : 0 }}
+                    transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }}
+                >
+                    {render(f)}
+                </motion.li>
+            ))}
+        </ul>
+    );
+}
 
 // ─── Rail ────────────────────────────────────────────────────────
 
@@ -807,28 +831,30 @@ function drawDense(ctx, s, p, rem, t, ripplesRef) {
     }
 }
 
-function FeedList({ feed, gyms, hostKey, now, tz }) {
+const FEED_ROWS = 7;
+
+function FeedList({ feed, gyms, hostKey, tz }) {
     const byKey = useMemo(() => new Map(gyms.map((g) => [g.key, g])), [gyms]);
     const time = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
-    const items = feed.slice(0, 7);
-    if (items.length === 0) return <div className="gl-empty">Quiet right now — the next session lands here.</div>;
+    if (feed.length === 0) return <div className="gl-empty">Quiet right now — the next session lands here.</div>;
     return (
-        <ul className="gl-feed">
-            <AnimatePresence initial={false}>
-            {items.map((f) => {
+        <Conveyor
+            className="gl-feed"
+            items={feed.slice(0, FEED_ROWS + 1)}
+            visible={FEED_ROWS}
+            pitch={3.65}
+            rowClass={(f) => (f.gym_key === hostKey ? 'host' : '')}
+            render={(f) => {
                 const g = byKey.get(f.gym_key);
                 return (
-                    <motion.li key={f.key} {...ROLL} className={f.gym_key === hostKey ? 'host' : ''}>
+                    <>
                         <div className="g">{g ? monogram(g.name) : '··'}</div>
                         <div className="t"><b>{boardName(f)} · {activityMeta(f.type).label}</b><small>{g?.name ?? 'POWR gym'} · {f.minutes} min · {time(f.started_at)}</small></div>
                         <div className="p">+{f.points}</div>
-                    </motion.li>
+                    </>
                 );
-            })}
-            </AnimatePresence>
-            {/* keep `now` in the tree so relative labels could refresh; unused today */}
-            <li hidden>{now}</li>
-        </ul>
+            }}
+        />
     );
 }
 
@@ -1042,8 +1068,8 @@ const CSS = `
 .gl-days i span { position: absolute; top: 100%; left: 0; right: 0; text-align: center; font-size: 0.65rem; color: var(--ink-3); margin-top: 0.3rem; letter-spacing: 0.1em; font-style: normal; }
 .gl-stat { font-size: 0.9rem; color: var(--ink-2); margin-top: 0.8rem; }
 .gl-stat b { color: #f2f2f2; font-weight: 600; font-variant-numeric: tabular-nums; }
-.gl-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; width: 100%; max-width: 26rem; }
-.gl-recent li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0.7rem; border-radius: 0.5rem; background: rgba(255,255,255,0.04); font-size: 0.85rem; }
+.gl-recent { position: relative; list-style: none; margin: 0; padding: 0; width: 100%; max-width: 26rem; flex: none; height: calc(4 * 2.1rem + 3 * 0.35rem); overflow: hidden; }
+.gl-recent li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; height: 2.1rem; padding: 0 0.7rem; border-radius: 0.5rem; background: rgba(255,255,255,0.04); font-size: 0.85rem; }
 .gl-recent li b { font-weight: 600; } .gl-recent li small { color: var(--ink-3); font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem; margin-left: 0.5rem; }
 .gl-recent li em { font-style: normal; color: var(--up); font-weight: 700; font-variant-numeric: tabular-nums; }
 .gl-recent .empty { color: var(--ink-3); font-size: 0.8rem; background: none; padding: 0.45rem 0; animation: none; }
@@ -1075,8 +1101,8 @@ const CSS = `
 .gl-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-top: 0.7rem; font-size: 0.72rem; color: var(--ink-3); }
 .gl-legend span { white-space: nowrap; }
 .gl-legend i { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
-.gl-feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; overflow: hidden; flex: 1; min-height: 0; }
-.gl-feed li { display: grid; grid-template-columns: 2.1rem 1fr auto; gap: 0.7rem; align-items: center; padding: 0.55rem 0.7rem; border-radius: 0.6rem; background: rgba(255,255,255,0.03); }
+.gl-feed { position: relative; list-style: none; margin: 0; padding: 0; overflow: hidden; flex: 1; min-height: 0; }
+.gl-feed li { display: grid; grid-template-columns: 2.1rem 1fr auto; gap: 0.7rem; align-items: center; height: 3.2rem; padding: 0 0.7rem; border-radius: 0.6rem; background: rgba(255,255,255,0.03); }
 .gl-feed .g { width: 2.1rem; height: 2.1rem; border-radius: 0.5rem; display: grid; place-items: center; font-weight: 700; font-size: 0.75rem; background: var(--bg-3); border: 1px solid var(--line); color: var(--ink-2); }
 .gl-feed .t { min-width: 0; } .gl-feed .t b { display: block; font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gl-feed .t small { font-size: 0.72rem; color: var(--ink-3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }

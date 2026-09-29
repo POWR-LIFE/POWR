@@ -49,6 +49,8 @@ export const FILM_LOCAL_GYMS = 12;
 export const FILM_ON_SCREEN_SHARE = 0.7;
 /** Points behind the gym above that doubles a lane's chance of the next landing. */
 export const FILM_CHASE_PTS = 20;
+/** Sessions kept in the feed: enough that both sides of the head-to-head can show their last four. */
+export const FILM_FEED_MAX = 150;
 /** Share of landings that go to the gyms in the current scene — the head-to-head shows two, so they trade points every second or two. */
 export const FILM_FOCUS_SHARE = 0.45;
 
@@ -283,8 +285,19 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
   // Backfill the feed over the last half hour without touching the totals
   // (they already include these sessions).
   const feed: LeagueFeedItem[] = [];
-  // Every fifth is the host's, so its head-to-head side never opens idle.
-  for (let i = 0; i < 40; i++) feed.push(nextSession(state, nowMs - (i + 1) * 45_000 - Math.floor(rnd() * 30_000), i % 5 === 1 ? 0 : undefined).item);
+  // The host and its three nearest rivals each get a share of the opening
+  // feed, so every side of the head-to-head opens with four rows.
+  const rivals = gyms
+    .map((g, i) => ({ g, i }))
+    .filter(({ g }) => localKeys.has(g.key))
+    .sort((a, b) => b.g.points_week - a.g.points_week)
+    .slice(0, 3)
+    .map(({ i }) => i);
+  for (let i = 0; i < 40; i++) {
+    const slot = i % 5;
+    const force = slot === 1 ? 0 : slot >= 3 && rivals.length ? rivals[(Math.floor(i / 5) * 2 + slot - 3) % rivals.length] : undefined;
+    feed.push(nextSession(state, nowMs - (i + 1) * 45_000 - Math.floor(rnd() * 30_000), force).item);
+  }
   state.payload = { ...state.payload, feed };
   return state;
 }
@@ -355,7 +368,7 @@ export function filmStep(state: FilmState, nowMs: number): FilmState {
   state.payload = {
     ...p,
     gyms,
-    feed: [item, ...p.feed].slice(0, 40),
+    feed: [item, ...p.feed].slice(0, FILM_FEED_MAX),
     sessions_hour: (p.sessions_hour ?? 0) + 1,
     generated_at: new Date(nowMs).toISOString(),
   };
