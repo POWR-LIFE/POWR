@@ -202,7 +202,7 @@ export default function VenueScreens() {
                         <h2 className="text-2xl font-light tracking-tight text-[#1A1A1A] mt-2">Switch on your screens</h2>
                         <p className="text-[13px] text-[#666] font-light leading-relaxed mt-3">
                             A weekly leaderboard of points earned at {gymName}, made for a TV on the gym floor. It resets every Monday, shows last
-                            week’s champion and carries a QR code so members can join. You also get the <span className="font-semibold text-[#1A1A1A]">Gym League</span>:
+                            week’s champion and carries a QR code so members can join. You also get <span className="font-semibold text-[#1A1A1A]">Gym Clash</span>:
                             your gym racing every other POWR gym nearby.
                         </p>
                         {canOwn ? (
@@ -282,7 +282,7 @@ export default function VenueScreens() {
             </ScreenRow>
 
             <ScreenRow
-                eyebrow="Screen 2" title="Gym League"
+                eyebrow="Screen 2" title="Gym Clash"
                 blurb={`${gymName} against the gyms nearby this week, then the whole POWR network, with a head-to-head against the gym just above you.`}
                 live={leagueLive}
                 src={leagueUrl(board.slug, board.display_token, null, here)}

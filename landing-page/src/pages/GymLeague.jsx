@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { storageImage } from '../lib/storage';
+import { Activity, Bike, Dumbbell, Flower2, Footprints, Music, PersonStanding, Trophy, Waves, Zap } from 'lucide-react';
 import geo from '../data/geoEurope.json';
 import { activityMeta, boardName, countdownParts, resetLabel, rootFontSize, weekLabel } from '../../../shared/gymBoard.ts';
 import {
@@ -25,7 +27,12 @@ import {
     sessionsLastHour,
     sessionsToClose,
     shareOf,
+    todayIndex,
 } from '../../../shared/gymLeague.ts';
+import { filmClockOffset, filmFocus, filmLeague, filmStep } from '../../../shared/gymLeagueFilm.ts';
+
+// The real basemap (MapLibre + CARTO Dark Matter), loaded only by this page.
+const GymLeagueBasemap = React.lazy(() => import('./GymLeagueBasemap.jsx'));
 
 /**
  * Gym League — powr.life/league/<slug>?k=<display_token>.
@@ -41,6 +48,14 @@ import {
  * session that landed since flashes its lane, rolls its number, ripples on
  * the map and slides into the feed. ?preview=sample runs a simulated feed
  * on real gym names so an admin can see the motion without waiting.
+ *
+ * ?preview=film is promo footage: POWR's real London gyms (names, locations,
+ * logos from the database, bundled at build time) with a simulated week on
+ * top — ~25k athletes, ONE LDN as host, a session landing every second or
+ * so. No key needed, nothing touches the database. Options: &at=thu-19:00
+ * (the clock the screen shows), &athletes=, &seed= (same seed → same take),
+ * &pace= (landings per second, default 1). There is no on-screen "simulated"
+ * tag: the illustrative-data disclaimer goes in the edit.
  */
 
 const GOLD = '#facc15';
@@ -52,6 +67,15 @@ const FN_BASE = `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/gym-le
 const SCENES = ['local', 'global', 'effort', 'duel'];
 const DAY_L = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const fmt = (n) => Math.round(n).toLocaleString('en-GB');
+const MAX_LANES = 12;
+// Rows under each side of the head-to-head. The list box is a fixed height
+// for exactly this many (see .gl-recent), so rows rolling in and out never
+// change the scene's height — the duel is centred, so a growing list moved
+// the share bar.
+const DUEL_RECENT = 4;
+// Above this many gyms in view the map draws every gym as a dot instead of
+// clustering (clustering is O(n²) per frame and a city reads as a heat picture).
+const DENSE_MAP = 80;
 
 // ─── Page ────────────────────────────────────────────────────────
 
@@ -59,17 +83,28 @@ export default function GymLeague() {
     const { slug } = useParams();
     const [params] = useSearchParams();
     const token = params.get('k') ?? '';
-    const preview = params.get('preview') === 'sample' ? 'sample' : null;
+    const preview = ['sample', 'film'].includes(params.get('preview')) ? params.get('preview') : null;
+    const film = preview === 'film';
+    const filmAt = params.get('at');
     const sceneParam = params.get('scene');
     const pinned = SCENES.includes(sceneParam) ? sceneParam : null;
 
     const [league, setLeague] = useState(null);
     const [invalid, setInvalid] = useState(false);
     const [lastOkAt, setLastOkAt] = useState(0);
-    const [now, setNow] = useState(Date.now());
+    // Film mode can show another time of the week; everything on screen reads this clock.
+    const clockOffset = useMemo(() => (film ? filmClockOffset(filmAt, Date.now()) : 0), [film, filmAt]);
+    const [now, setNow] = useState(() => Date.now() + clockOffset);
     // Sessions that landed since the previous payload: { [gymKey]: { points, at, key } }
     const [hits, setHits] = useState({});
     const seenRef = useRef(null);
+    // Film: the gyms the current scene shows, so the simulator lands sessions where the viewer is looking.
+    const filmRef = useRef(null);
+    const focusRef = useRef([]);
+    const onFocus = useCallback((keys) => {
+        focusRef.current = keys;
+        if (filmRef.current) filmFocus(filmRef.current, keys);
+    }, []);
     const ripplesRef = useRef([]);
 
     useEffect(() => {
@@ -128,7 +163,7 @@ export default function GymLeague() {
 
     // Sample: a believable league that keeps scoring while you watch.
     useEffect(() => {
-        if (!preview) return undefined;
+        if (preview !== 'sample') return undefined;
         let data = sampleLeague(Date.now());
         absorb(data);
         setLastOkAt(Date.now());
@@ -143,12 +178,13 @@ export default function GymLeague() {
             for (let i = 0; i < weights.length; i++) { r -= weights[i]; if (r <= 0) { gi = i; break; } }
             const minutes = 25 + Math.floor(Math.random() * 60);
             const points = 8 + Math.round(minutes / 3.5) + Math.floor(Math.random() * 6);
+            const today = todayIndex(data);
             const gyms = data.gyms.map((g, i) => (i !== gi ? g : {
                 ...g,
                 points_week: g.points_week + points,
                 points_today: g.points_today + points,
                 sessions_week: g.sessions_week + 1,
-                days: g.days.map((v, d) => (d === 6 ? v + points : v)),
+                days: g.days.map((v, d) => (d === today ? v + points : v)),
             }));
             const item = {
                 key: `sim-${n++}`, gym_key: gyms[gi].key, display_name: names[Math.floor(Math.random() * names.length)], username: null,
@@ -163,21 +199,51 @@ export default function GymLeague() {
         return () => clearTimeout(timer);
     }, [preview, absorb]);
 
+    // Film: a simulated London, one session landing about every second.
     useEffect(() => {
-        const id = setInterval(() => setNow(Date.now()), 1000);
+        if (!film) return undefined;
+        let alive = true;
+        let timer;
+        const athletes = Number(params.get('athletes')) || undefined;
+        const seed = Number(params.get('seed')) || 1;
+        const pace = Math.max(0.1, Math.min(10, Number(params.get('pace')) || 1));
+        import('../data/londonFilmGyms.json').then(({ default: data }) => {
+            if (!alive) return;
+            const state = filmLeague(data, Date.now() + clockOffset, { athletes, seed });
+            filmRef.current = state;
+            filmFocus(state, focusRef.current);
+            absorb(state.payload);
+            setLastOkAt(Date.now());
+            const step = () => {
+                filmStep(state, Date.now() + clockOffset);
+                absorb(state.payload);
+                setLastOkAt(Date.now());
+                // Irregular gaps read as real traffic; bursts now and then.
+                const gap = (state.rnd() < 0.2 ? 220 + state.rnd() * 280 : 450 + state.rnd() * 950) / pace;
+                timer = setTimeout(step, gap);
+            };
+            timer = setTimeout(step, 1200);
+        });
+        return () => { alive = false; clearTimeout(timer); filmRef.current = null; };
+        // Read the options once per load, like a real screen boot.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [film, clockOffset, absorb]);
+
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now() + clockOffset), 1000);
         return () => clearInterval(id);
-    }, []);
+    }, [clockOffset]);
 
     const stale = league && lastOkAt > 0 && now - lastOkAt > STALE_MS;
 
-    if (!token) return <Shell><CenterNote big="This link is missing its key" small="Open it from the Screens page of your gym portal, or the admin: that link carries the key" /></Shell>;
+    if (!token && !preview) return <Shell><CenterNote big="This link is missing its key" small="Open it from the Screens page of your gym portal, or the admin: that link carries the key" /></Shell>;
     if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Make a new link from the Screens page of your gym portal, or ask the POWR team" /></Shell>;
     if (!league) return <Shell><CenterNote big="POWR" small="Connecting…" pulse /></Shell>;
 
     return (
         <Shell>
-            <Wall league={league} now={now} stale={stale && !preview} pinned={pinned} hits={hits} ripplesRef={ripplesRef} />
-            {preview && (
+            <Wall league={league} now={now} stale={stale && !preview} pinned={pinned} hits={hits} ripplesRef={ripplesRef} onFocus={film ? onFocus : null} />
+            {preview === 'sample' && (
                 <div className="pointer-events-none absolute bottom-[0.55rem] left-[2.2rem] rounded-full border border-amber-400/50 bg-amber-400/10 px-[1rem] py-[0.3rem] text-[0.7rem] font-black uppercase tracking-[0.3em] text-amber-300 z-20">
                     Preview — simulated sessions on real gyms
                 </div>
@@ -188,7 +254,7 @@ export default function GymLeague() {
 
 // ─── Wall ────────────────────────────────────────────────────────
 
-function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
+function Wall({ league, now, stale, pinned, hits, ripplesRef, onFocus }) {
     const gyms = useMemo(() => league.gyms ?? [], [league.gyms]);
     const host = useMemo(() => gyms.find((g) => g.key === league.host_key) ?? null, [gyms, league.host_key]);
     const local = useMemo(() => (host ? localGyms(gyms, host, league.radius_km) : []), [gyms, host, league.radius_km]);
@@ -217,21 +283,39 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
     const scene = pinned && plan.some((p) => p.scene === pinned) ? pinned : plan[idx % plan.length].scene;
     const scope = scene === 'global' || scene === 'effort' ? 'global' : local.length >= 2 ? 'local' : 'global';
 
+    // Which gyms this scene shows. Keyed on a string so it only fires when the set changes.
+    const focusKey = !onFocus ? '' : (scene === 'duel' && host && rival
+        ? [host.key, rival.key]
+        : scene === 'effort'
+            ? effort.ranked.slice(0, 10).map((r) => r.gym.key)
+            : (scope === 'local' ? localRanked : globalRanked).slice(0, MAX_LANES).map((g) => g.key)
+    ).join('|');
+    useEffect(() => {
+        if (onFocus) onFocus(focusKey ? focusKey.split('|') : []);
+    }, [onFocus, focusKey]);
+
     const hostPlace = host ? placeLabel(host.address, host.name) : '';
-    const countries = new Set(gyms.map((g) => countryCode(g.address, g.lat, g.lng)).filter(Boolean)).size;
+    const countries = useMemo(() => new Set(gyms.map((g) => countryCode(g.address, g.lat, g.lng)).filter(Boolean)).size, [gyms]);
+    const wideLabel = league.scope_label || 'Global';
     const scopeSub = scope === 'local'
-        ? `${hostPlace} · within ${league.radius_km} km of ${host.name} · ${local.length} gyms`
-        : `Global · ${gyms.length} gyms${countries > 1 ? ` · ${countries} countries` : ''}`;
+        ? `${hostPlace} · within ${league.radius_km} km of ${host.name} · ${fmt(local.length)} gyms`
+        : `${wideLabel} · ${fmt(gyms.length)} gyms${countries > 1 ? ` · ${countries} countries` : ''}`;
+    const inView = scope === 'local' ? local : gyms;
+    const dense = inView.length > DENSE_MAP;
+    const hourCount = league.sessions_hour ?? sessionsLastHour(league.feed ?? [], now);
     const reset = resetLabel(countdownParts(league.week_end_at, now));
 
     return (
         <div className="gl-wall">
             <header className="gl-head">
-                <div className="gl-brand"><span className="gl-powr">POWR</span><span className="gl-title">Gym League</span></div>
+                <div className="gl-brand">
+                    <img className="gl-powr" src="/powr-logo-white.png" alt="POWR" /><span className="gl-title">Gym Clash</span>
+                    {league.gym?.logo_url && <GymMark g={{ name: league.gym.name, logo_url: league.gym.logo_url, logo_bg: league.gym.logo_bg }} className="gl-hostmark" />}
+                </div>
                 <div className="gl-scope">
                     <div className="gl-lens">
                         <span className={scope === 'local' ? 'on' : ''}>Local</span>
-                        <span className={scope === 'global' ? 'on' : ''}>Global</span>
+                        <span className={scope === 'global' ? 'on' : ''}>{wideLabel}</span>
                     </div>
                     <div className="gl-sub">{scopeSub}</div>
                 </div>
@@ -248,7 +332,7 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
                     <AnimatePresence mode="wait">
                         {scene === 'duel' && host && rival ? (
                             <motion.section key="duel" className="gl-scene" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.45 }}>
-                                <DuelScene host={host} rival={rival} ahead={ahead} pool={duelPool} scopeName={localRanked.length >= 2 ? hostPlace : 'POWR'} feed={league.feed ?? []} hits={hits} reset={reset} />
+                                <DuelScene host={host} rival={rival} ahead={ahead} pool={duelPool} scopeName={localRanked.length >= 2 ? hostPlace : 'POWR'} feed={league.feed ?? []} hits={hits} reset={reset} today={todayIndex(league)} />
                             </motion.section>
                         ) : scene === 'effort' ? (
                             <motion.section key="effort" className="gl-scene" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.45 }}>
@@ -264,20 +348,30 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
 
                 <aside className="gl-rail">
                     <div className="gl-card">
-                        <h3>Network <span>{scope === 'local' ? `${local.length} gyms in view` : `${gyms.length} gyms${countries > 1 ? ` · ${countries} countries` : ''}`}</span></h3>
+                        <h3>Network <span>{scope === 'local' ? `${fmt(local.length)} gyms in view` : `${fmt(gyms.length)} gyms${countries > 1 ? ` · ${countries} countries` : ''}`}</span></h3>
                         <div className="gl-mapwrap">
-                            <NetworkMap scope={scope} gyms={scope === 'local' ? local : gyms} host={host} radiusKm={league.radius_km} hostKey={league.host_key} ripplesRef={ripplesRef} />
+                            <NetworkMap scope={scope} gyms={inView} host={host} radiusKm={league.radius_km} hostKey={league.host_key} ripplesRef={ripplesRef} />
                         </div>
                         <div className="gl-legend">
                             <span><i style={{ background: GOLD }} />This gym</span>
-                            <span><i style={{ background: 'rgba(242,242,242,.7)' }} />Scoring this week</span>
-                            <span><i style={{ background: 'rgba(242,242,242,.22)' }} />Quiet</span>
-                            <span>· a number = gyms in that spot</span>
+                            {dense ? (
+                                <>
+                                    <span><i style={{ background: 'rgba(242,242,242,.85)' }} />Top 3</span>
+                                    <span>· dot size = points this week</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span><i style={{ background: 'rgba(242,242,242,.7)' }} />Scoring this week</span>
+                                    <span><i style={{ background: 'rgba(242,242,242,.22)' }} />Quiet</span>
+                                    <span>· a number = gyms in that spot</span>
+                                </>
+                            )}
+                            <span className="gl-attrib">© OpenStreetMap contributors © CARTO</span>
                         </div>
                     </div>
                     <div className="gl-card gl-feedcard">
-                        <h3>Landing now <span>{(() => { const n = sessionsLastHour(league.feed ?? [], now); return `${n} session${n === 1 ? '' : 's'} this hour · across POWR`; })()}</span></h3>
-                        <FeedList feed={league.feed ?? []} gyms={gyms} hostKey={league.host_key} now={now} tz={league.tz} />
+                        <h3>Landing now <span>{`${fmt(hourCount)} session${hourCount === 1 ? '' : 's'} this hour · across POWR`}</span></h3>
+                        <FeedList feed={league.feed ?? []} gyms={gyms} hostKey={league.host_key} tz={league.tz} />
                     </div>
                 </aside>
             </main>
@@ -290,8 +384,8 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
 // ─── Race ────────────────────────────────────────────────────────
 
 function RaceScene({ scope, ranked, host, hits }) {
-    const show = scope === 'local' ? ranked : ranked.slice(0, 12);
-    const rest = scope === 'local' ? [] : ranked.slice(12);
+    const show = ranked.slice(0, MAX_LANES);
+    const rest = ranked.slice(MAX_LANES);
     const leader = Math.max(1, ranked[0]?.points_week ?? 1);
     const dayStart = useMemo(() => ranksAtDayStart(ranked), [ranked]);
     const hostRank = ranked.findIndex((g) => g.key === host?.key) + 1;
@@ -323,7 +417,7 @@ function RaceScene({ scope, ranked, host, hits }) {
                         >
                             <div className="gl-rank">{rank}</div>
                             <div className={`gl-move${d > 0 ? ' up' : d < 0 ? ' down' : ''}`}>{d > 0 ? `▲${d}` : d < 0 ? `▼${-d}` : '—'}</div>
-                            <div className="gl-mono">{monogram(g.name)}</div>
+                            <GymMark g={g} className="gl-mono" />
                             <div className="gl-name">
                                 <b>{g.name}</b>
                                 <small>{g.founding && <span className="gl-founding">Founding gym</span>}{meta} · {g.sessions_week} sessions{rawPerAthlete(g) != null ? ` · ${Math.round(rawPerAthlete(g))} pts/athlete` : ''}{g.in_now ? <> · <span className="in">{g.in_now} in now</span></> : null}<Momentum g={g} /></small>
@@ -341,8 +435,8 @@ function RaceScene({ scope, ranked, host, hits }) {
             </div>
             {rest.length > 0 && (
                 <div className="gl-more">
-                    <span>and <b>{rest.length} more gyms</b> · {rest.filter((g) => g.points_week > 0).length} scoring this week</span>
-                    {host && hostRank > 0 && <span>{host.name} is <b>{ordinal(hostRank)} of {ranked.length}</b></span>}
+                    <span>and <b>{fmt(rest.length)} more gyms</b> · {fmt(rest.filter((g) => g.points_week > 0).length)} scoring this week</span>
+                    {host && hostRank > 0 && <span>{host.name} is <b>{ordinal(hostRank)} of {fmt(ranked.length)}</b></span>}
                 </div>
             )}
         </>
@@ -374,7 +468,7 @@ function EffortScene({ effort, host, hits }) {
                         <motion.div key={g.key} layout transition={{ type: 'spring', stiffness: 260, damping: 32 }} className={`gl-lane${isHost ? ' host' : ''}${hit ? ' hit' : ''}`}>
                             <div className="gl-rank">{i + 1}</div>
                             <div className="gl-move" />
-                            <div className="gl-mono">{monogram(g.name)}</div>
+                            <GymMark g={g} className="gl-mono" />
                             <div className="gl-name">
                                 <b>{g.name}</b>
                                 <small>{g.founding && <span className="gl-founding">Founding gym</span>}{place ? `${place} · ` : ''}{g.athletes_week} athletes · {fmt(g.points_week)} pts<Momentum g={g} /></small>
@@ -423,46 +517,28 @@ function RollNum({ value, className }) {
 
 // ─── Head to head ────────────────────────────────────────────────
 
-function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset }) {
+function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset, today }) {
     const gap = Math.abs(host.points_week - rival.points_week);
     const share = shareOf(host.points_week, rival.points_week);
     const max = Math.max(...host.days, ...rival.days, 1);
-    const Side = ({ g, cls }) => {
-        const isHost = g.key === host.key;
-        const hit = hits[g.key];
-        const recent = feed.filter((f) => f.gym_key === g.key).slice(0, 3);
-        return (
-            <div className={`gl-side ${cls}${isHost ? ' host' : ''}`}>
-                <div className="gl-who">
-                    <div className="gl-mono">{monogram(g.name)}</div>
-                    <div><b>{g.name}</b><small>{ordinal(pool.indexOf(g) + 1)} in {scopeName}{placeLabel(g.address, '') && placeLabel(g.address, '') !== scopeName ? ` · ${placeLabel(g.address, '')}` : ''}</small></div>
-                </div>
-                <div className="gl-big">
-                    <RollNum value={g.points_week} />
-                    {hit && <span key={hit.key} className="gl-float">+{hit.points}</span>}
-                </div>
-                <div className="gl-lower">
-                    <div className="gl-days">
-                        {g.days.map((v, k) => (
-                            <i key={k} className={k === 6 ? 'today' : ''} style={{ height: `${Math.max(4, (v / max) * 100)}%` }}><span>{DAY_L[k]}</span></i>
-                        ))}
-                    </div>
-                    <div className="gl-stat"><b>{g.sessions_week}</b> sessions · <b>{g.athletes_week}</b> athletes · <b>{g.points_today}</b> today</div>
-                    <ul className="gl-recent">
-                        {recent.length === 0 && <li className="empty">Waiting for the next session here…</li>}
-                        {recent.map((f) => (
-                            <li key={f.key}><span><b>{boardName(f)}</b> · {activityMeta(f.type).label}<small>{f.minutes} min</small></span><em>+{f.points}</em></li>
-                        ))}
-                    </ul>
-                </div>
-            </div>
-        );
-    };
+    const side = (g, cls) => (
+        <DuelSide
+            g={g}
+            cls={cls}
+            isHost={g.key === host.key}
+            hit={hits[g.key]}
+            recent={feed.filter((f) => f.gym_key === g.key).slice(0, DUEL_RECENT + 1)}
+            rank={pool.indexOf(g) + 1}
+            scopeName={scopeName}
+            max={max}
+            today={today}
+        />
+    );
     return (
         <>
             <div className="gl-eyebrow"><h2>Head to head · {ahead ? 'the gym chasing you' : 'the gym directly above you'}</h2><div className="gl-hint">Points by day this week</div></div>
             <div className="gl-duel">
-                <Side g={host} cls="left" />
+                {side(host, 'left')}
                 <div className="gl-gap">
                     <div className="vs">{ahead ? 'Lead' : 'Gap to close'}</div>
                     <div className="n"><RollNum value={gap} /></div>
@@ -474,7 +550,7 @@ function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset }) {
                     </div>
                     <div className="clock">Resets in <b>{reset}</b></div>
                 </div>
-                <Side g={rival} cls="right" />
+                {side(rival, 'right')}
                 <div className="gl-tug">
                     <span className="cap">Share of the week so far</span>
                     <span className="pct l">{Math.round(share * 100)}%</span>
@@ -488,17 +564,112 @@ function DuelScene({ host, rival, ahead, pool, scopeName, feed, hits, reset }) {
     );
 }
 
+// A side of the duel. Top level on purpose: defined inside DuelScene it was a
+// new component every landing, so React remounted it and every "latest here"
+// row replayed its entrance — the list flashed instead of rolling.
+function DuelSide({ g, cls, isHost, hit, recent, rank, scopeName, max, today }) {
+    const place = placeLabel(g.address, '');
+    return (
+        <div className={`gl-side ${cls}${isHost ? ' host' : ''}`}>
+            <div className="gl-who">
+                <GymMark g={g} className="gl-mono" />
+                <div><b>{g.name}</b><small>{ordinal(rank)} in {scopeName}{place && place !== scopeName ? ` · ${place}` : ''}</small></div>
+            </div>
+            <div className="gl-big">
+                <RollNum value={g.points_week} />
+                {hit && <span key={hit.key} className="gl-float">+{hit.points}</span>}
+            </div>
+            <div className="gl-lower">
+                <div className="gl-days">
+                    {g.days.map((v, k) => (
+                        <i key={k} className={k === today ? 'today' : ''} style={{ height: `${Math.max(4, (v / max) * 100)}%` }}><span>{DAY_L[k]}</span></i>
+                    ))}
+                </div>
+                <div className="gl-stat"><b>{g.sessions_week}</b> sessions · <b>{g.athletes_week}</b> athletes · <b>{g.points_today}</b> today</div>
+                {recent.length === 0
+                    ? <ul className="gl-recent"><li className="empty">Waiting for the next session here…</li></ul>
+                    : (
+                        <Conveyor
+                            className="gl-recent"
+                            items={recent}
+                            visible={DUEL_RECENT}
+                            pitch={2.45}
+                            render={(f) => <><span><b>{boardName(f)}</b> · {activityMeta(f.type).label}<small>{f.minutes} min</small></span><em>+{f.points}</em></>}
+                        />
+                    )}
+            </div>
+        </div>
+    );
+}
+
+// A conveyor list: every row sits in a fixed slot `pitch` rem apart and glides
+// down one slot when a new row lands; the new row slides in from above the
+// box and the old last row slides out below it (the box clips it), then is
+// dropped. Rows never overlap and back-to-back landings just keep it moving.
+// (AnimatePresence kept a leaving row in flow, or popped it under the rows
+// sliding past — both looked like a pile-up.) Pass visible + 1 items.
+function Conveyor({ items, visible, pitch, className, rowClass, render }) {
+    const mounted = useRef(false);
+    useEffect(() => { mounted.current = true; }, []);
+    return (
+        <ul className={className}>
+            {items.slice(0, visible + 1).map((f, i) => (
+                <motion.li
+                    key={f.key}
+                    className={rowClass ? rowClass(f) : undefined}
+                    style={{ position: 'absolute', left: 0, right: 0, top: 0 }}
+                    initial={mounted.current ? { y: `${-pitch}rem`, opacity: 0 } : false}
+                    animate={{ y: `${i * pitch}rem`, opacity: i < visible ? 1 : 0 }}
+                    transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }}
+                >
+                    {render(f)}
+                </motion.li>
+            ))}
+        </ul>
+    );
+}
+
 // ─── Rail ────────────────────────────────────────────────────────
+
+// Glide the basemap's camera to the lens — only when the lens really moves,
+// not on every landing (a new gyms array arrives each second).
+function fitMap(s, animate) {
+    if (!s.map || !s.target) return;
+    const key = ['n', 's', 'e', 'w'].map((k) => s.target[k].toFixed(3)).join();
+    if (key === s.fitKey) return;
+    s.fitKey = key;
+    s.map.fitBounds([[s.target.w, s.target.s], [s.target.e, s.target.n]], { duration: animate ? 1800 : 0, padding: 6 });
+}
 
 function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
     const canvasRef = useRef(null);
-    const stateRef = useRef({ scope, gyms, host, hostKey, radiusKm, target: null, cur: null });
+    const stateRef = useRef({ scope, gyms, host, hostKey, radiusKm, target: null, cur: null, map: null, fitKey: '' });
     stateRef.current = { ...stateRef.current, scope, gyms, host, hostKey, radiusKm };
+    const initialBounds = useMemo(() => {
+        const b = boundsOf(gyms.length ? gyms : (host ? [host] : []));
+        return [[b.w, b.s], [b.e, b.n]];
+        // the camera is driven by fitMap after boot
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    const onMap = useCallback((map) => {
+        const s = stateRef.current;
+        s.map = map;
+        s.fitKey = '';
+        if (map) fitMap(s, false);
+    }, []);
 
     useEffect(() => {
         const s = stateRef.current;
         s.target = boundsOf(gyms.length ? gyms : (host ? [host] : []));
         if (!s.cur) s.cur = { ...s.target };
+        fitMap(s, true);
+        if (gyms.length > DENSE_MAP) {
+            const order = [...gyms].sort((a, b) => a.points_week - b.points_week);
+            const top = order.slice(-3).reverse();
+            s.dense = { order, top, max: Math.max(1, top[0]?.points_week ?? 1) };
+        } else {
+            s.dense = null;
+        }
     }, [scope, gyms, host]);
 
     useEffect(() => {
@@ -520,22 +691,39 @@ function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
             const H = r.height;
             ctx.clearRect(0, 0, W, H);
             if (!s.cur) s.cur = { ...s.target };
-            for (const k of ['n', 's', 'e', 'w']) s.cur[k] += (s.target[k] - s.cur[k]) * 0.06;
-            const b = s.cur;
             const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-            const p = projector(b, W, H);
+            let b;
+            let p;
+            if (s.map) {
+                // The real map owns the camera; every gym is placed through its projection.
+                const m = s.map;
+                const bb = m.getBounds();
+                b = { n: bb.getNorth(), s: bb.getSouth(), e: bb.getEast(), w: bb.getWest() };
+                p = (lat, lng) => { const q = m.project([lng, lat]); return [q.x, q.y]; };
+                p.kx = Math.cos(((b.n + b.s) / 2) * Math.PI / 180);
+                p.sc = W / Math.max(1e-6, (b.e - b.w) * p.kx);
+            } else {
+                for (const k of ['n', 's', 'e', 'w']) s.cur[k] += (s.target[k] - s.cur[k]) * 0.06;
+                b = s.cur;
+                p = projector(b, W, H);
+            }
             const wide = (b.n - b.s) > 2;
 
-            // land — sea is the card, land a shade lighter
             ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-            ctx.fillStyle = 'rgba(255,255,255,0.045)'; ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1; ctx.lineJoin = 'round';
-            ctx.beginPath();
-            for (const ring of geo.land) { ring.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); }
-            ctx.fill('evenodd'); if (wide) ctx.stroke();
+            if (!s.map) {
+                // No basemap (still loading, or offline): the drawn coastline and Thames.
+                ctx.fillStyle = 'rgba(255,255,255,0.045)'; ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1; ctx.lineJoin = 'round';
+                ctx.beginPath();
+                for (const ring of geo.land) { ring.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); }
+                ctx.fill('evenodd'); if (wide) ctx.stroke();
+                if (!wide) {
+                    const a = Math.min(1, (2 - (b.n - b.s)) / 1.5);
+                    ctx.strokeStyle = `rgba(255,255,255,${0.16 * a})`; ctx.lineWidth = Math.max(1.5, 0.0009 * p.sc); ctx.lineCap = 'round';
+                    ctx.beginPath(); for (const line of geo.thames) line.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.stroke();
+                }
+            }
             if (!wide) {
                 const a = Math.min(1, (2 - (b.n - b.s)) / 1.5);
-                ctx.strokeStyle = `rgba(255,255,255,${0.16 * a})`; ctx.lineWidth = Math.max(1.5, 0.0009 * p.sc); ctx.lineCap = 'round';
-                ctx.beginPath(); for (const line of geo.thames) line.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.stroke();
                 if (s.host && s.scope === 'local') {
                     const [hx, hy] = p(s.host.lat, s.host.lng);
                     const [ex] = p(s.host.lat, s.host.lng + s.radiusKm / (111 * Math.cos((s.host.lat * Math.PI) / 180)));
@@ -543,6 +731,8 @@ function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
                 }
             }
             ctx.restore();
+
+            if (s.dense && s.gyms.length > DENSE_MAP) { drawDense(ctx, s, p, rem, t, ripplesRef); return; }
 
             const nodes = clusterNodes(s.gyms, p, wide ? 0.7 * rem : 1.5 * rem, rem, s.hostKey);
             const ranked = rankGyms(s.gyms);
@@ -617,48 +807,306 @@ function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
         return () => cancelAnimationFrame(raf);
     }, [ripplesRef]);
 
-    return <canvas ref={canvasRef} className="gl-canvas" />;
-}
-
-function FeedList({ feed, gyms, hostKey, now, tz }) {
-    const byKey = useMemo(() => new Map(gyms.map((g) => [g.key, g])), [gyms]);
-    const time = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
-    const items = feed.slice(0, 7);
-    if (items.length === 0) return <div className="gl-empty">Quiet right now — the next session lands here.</div>;
     return (
-        <ul className="gl-feed">
-            {items.map((f) => {
-                const g = byKey.get(f.gym_key);
-                return (
-                    <li key={f.key} className={f.gym_key === hostKey ? 'host' : ''}>
-                        <div className="g">{g ? monogram(g.name) : '··'}</div>
-                        <div className="t"><b>{boardName(f)} · {activityMeta(f.type).label}</b><small>{g?.name ?? 'POWR gym'} · {f.minutes} min · {time(f.started_at)}</small></div>
-                        <div className="p">+{f.points}</div>
-                    </li>
-                );
-            })}
-            {/* keep `now` in the tree so relative labels could refresh; unused today */}
-            <li hidden>{now}</li>
-        </ul>
+        <>
+            <React.Suspense fallback={null}>
+                <GymLeagueBasemap onMap={onMap} initialBounds={initialBounds} />
+            </React.Suspense>
+            <canvas ref={canvasRef} className="gl-canvas" />
+        </>
     );
 }
 
-function Marquee({ feed, gyms, ranked, hostKey, radiusKm, host }) {
-    const byKey = new Map(gyms.map((g) => [g.key, g]));
-    const items = [];
-    feed.slice(0, 4).forEach((f) => items.push(<><b>{boardName(f)}</b> earned <em>+{f.points}</em> at {byKey.get(f.gym_key)?.name ?? 'a POWR gym'}</>));
-    ranked.slice(0, 5).forEach((g, i) => items.push(<><b>{ordinal(i + 1)}</b> {g.name} · {fmt(g.points_week)} pts</>));
-    const inNow = gyms.reduce((s, g) => s + (g.in_now ?? 0), 0);
-    if (inNow > 0) items.push(<><b>{inNow}</b> athletes in a POWR gym right now</>);
-    if (host) items.push(<>Local lens · <b>{radiusKm} km</b> around {host.name}</>);
-    const hostRank = ranked.findIndex((g) => g.key === hostKey) + 1;
-    if (hostRank > 0) items.push(<>{host?.name} is <b>{ordinal(hostRank)} of {ranked.length}</b> on POWR this week</>);
-    if (items.length === 0) return null;
-    const track = [...items, ...items];
+/** A city's worth of gyms: one dot each, sized by points; the top 3 and the host named. */
+function drawDense(ctx, s, p, rem, t, ripplesRef) {
+    const { order, top, max } = s.dense;
+    const pos = new Map();
+    const topKeys = new Set(top.map((g) => g.key));
+    for (const g of order) {
+        const [x, y] = p(g.lat, g.lng);
+        pos.set(g.key, [x, y]);
+        if (g.key === s.hostKey || topKeys.has(g.key)) continue;
+        const k = Math.sqrt(Math.max(0, g.points_week) / max);
+        ctx.fillStyle = `rgba(242,242,242,${0.16 + 0.5 * k})`;
+        ctx.beginPath(); ctx.arc(x, y, (0.07 + 0.2 * k) * rem, 0, Math.PI * 2); ctx.fill();
+    }
+    const hostPos = pos.get(s.hostKey);
+    if (hostPos) {
+        ctx.strokeStyle = 'rgba(250,204,21,0.25)'; ctx.lineWidth = 1; ctx.setLineDash([3, 5]); ctx.lineDashOffset = -(t / 60) % 8;
+        for (const g of top) {
+            const q = pos.get(g.key);
+            if (!q || g.key === s.hostKey) continue;
+            const mx = (hostPos[0] + q[0]) / 2, my = (hostPos[1] + q[1]) / 2, dx = q[0] - hostPos[0], dy = q[1] - hostPos[1], k = 0.18;
+            ctx.beginPath(); ctx.moveTo(hostPos[0], hostPos[1]); ctx.quadraticCurveTo(mx - dy * k, my + dx * k, q[0], q[1]); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+    }
+    ripplesRef.current = ripplesRef.current.filter((rp) => t - rp.t >= 0 && t - rp.t < 1600);
+    for (const rp of ripplesRef.current) {
+        const q = pos.get(rp.gymKey);
+        if (!q) continue;
+        const k = (t - rp.t) / 1600;
+        const isHost = rp.gymKey === s.hostKey;
+        ctx.strokeStyle = `rgba(${isHost ? '250,204,21' : '74,222,128'},${(1 - k) * (isHost ? 0.8 : 0.55)})`; ctx.lineWidth = 1.25;
+        ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(0, 0.15 * rem + k * 1.4 * rem), 0, Math.PI * 2); ctx.stroke();
+    }
+    for (const g of top) {
+        const q = pos.get(g.key);
+        if (!q || g.key === s.hostKey) continue;
+        const glow = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], 0.9 * rem);
+        glow.addColorStop(0, 'rgba(242,242,242,0.22)'); glow.addColorStop(1, 'rgba(242,242,242,0)');
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(q[0], q[1], 0.9 * rem, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(242,242,242,0.95)'; ctx.beginPath(); ctx.arc(q[0], q[1], 0.26 * rem, 0, Math.PI * 2); ctx.fill();
+    }
+    if (hostPos) {
+        ctx.fillStyle = GOLD; ctx.beginPath(); ctx.arc(hostPos[0], hostPos[1], 0.3 * rem, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(250,204,21,0.4)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(hostPos[0], hostPos[1], Math.max(0, 0.58 * rem + Math.sin(t / 500) * 0.08 * rem), 0, Math.PI * 2); ctx.stroke();
+    }
+    // Names: the top 3 by rank, then the host; step down past any label already placed.
+    const W = ctx.canvas.width / (window.devicePixelRatio || 1);
+    ctx.font = `500 ${0.66 * rem}px Outfit, sans-serif`; ctx.textBaseline = 'middle';
+    const labels = top.map((g, i) => ({ g, text: `${i + 1}  ${g.name}`, gold: g.key === s.hostKey }));
+    if (hostPos && !topKeys.has(s.hostKey)) {
+        const host = order.find((g) => g.key === s.hostKey);
+        if (host) labels.push({ g: host, text: host.name, gold: true });
+    }
+    const placed = [];
+    for (const l of labels) {
+        const q = pos.get(l.g.key);
+        if (!q) continue;
+        const w = ctx.measureText(l.text).width;
+        let x = q[0] + 0.55 * rem;
+        if (x + w > W - 0.3 * rem) x = q[0] - 0.55 * rem - w;
+        let y = q[1];
+        for (let tries = 0; tries < 6 && placed.some((o) => Math.abs(o.y - y) < 0.95 * rem && o.x < x + w + 0.3 * rem && x < o.x + o.w + 0.3 * rem); tries++) y += 0.95 * rem;
+        placed.push({ x, y, w });
+        ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(14,14,14,0.92)'; ctx.lineWidth = 3; ctx.strokeText(l.text, x, y);
+        ctx.fillStyle = l.gold ? GOLD : 'rgba(242,242,242,0.85)'; ctx.fillText(l.text, x, y);
+    }
+}
+
+const FEED_ROWS = 7;
+
+function FeedList({ feed, gyms, hostKey, tz }) {
+    const byKey = useMemo(() => new Map(gyms.map((g) => [g.key, g])), [gyms]);
+    const time = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+    if (feed.length === 0) return <div className="gl-empty">Quiet right now — the next session lands here.</div>;
     return (
-        <footer className="gl-foot">
-            <div className="gl-track" style={{ animationDuration: `${Math.max(30, track.length * 5)}s` }}>
-                {track.map((it, i) => <span key={i}>{it}</span>)}
+        <Conveyor
+            className="gl-feed"
+            items={feed.slice(0, FEED_ROWS + 1)}
+            visible={FEED_ROWS}
+            pitch={3.65}
+            rowClass={(f) => (f.gym_key === hostKey ? 'host' : '')}
+            render={(f) => {
+                const g = byKey.get(f.gym_key);
+                return (
+                    <>
+                        <GymMark g={g} className="g" />
+                        <div className="t"><b>{boardName(f)} · {activityMeta(f.type).label}</b><small>{g?.name ?? 'POWR gym'} · {f.minutes} min · {time(f.started_at)}</small></div>
+                        <div className="p">+{f.points}</div>
+                    </>
+                );
+            }}
+        />
+    );
+}
+
+/** partners.logo_bg is 'white' | 'black' | 'dark' (as the admin and partner portal read it). */
+const logoTile = (bg) => (bg === 'white' ? 'light' : bg === 'black' ? 'black' : 'dark');
+
+// Logo files often carry wide empty margins (Third Space's wordmark is
+// 117 px tall on a 448 px canvas), so a logo drawn "contain" into a tile
+// came out a sliver. Each logo is trimmed once to its ink — transparent
+// margins, or margins the colour of its own corner pixel — and cached.
+const trimmed = new Map();
+function trimLogo(src) {
+    if (trimmed.has(src)) return trimmed.get(src);
+    const job = new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.decoding = 'async';
+        img.onload = () => {
+            try {
+                const k = Math.min(1, 480 / Math.max(img.naturalWidth, img.naturalHeight));
+                const w = Math.max(1, Math.round(img.naturalWidth * k));
+                const h = Math.max(1, Math.round(img.naturalHeight * k));
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const ctx = c.getContext('2d', { willReadFrequently: true });
+                ctx.drawImage(img, 0, 0, w, h);
+                const d = ctx.getImageData(0, 0, w, h).data;
+                const clear = d[3] < 24;
+                const [br, bg, bb] = [d[0], d[1], d[2]];
+                const ink = (i) => d[i + 3] > 24 && (clear || Math.abs(d[i] - br) + Math.abs(d[i + 1] - bg) + Math.abs(d[i + 2] - bb) > 48);
+                let x0 = w, y0 = h, x1 = -1, y1 = -1;
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        if (ink((y * w + x) * 4)) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+                    }
+                }
+                if (x1 < 0 || (x1 - x0) * (y1 - y0) < 16) { resolve(null); return; }
+                const pad = Math.round(Math.max(x1 - x0, y1 - y0) * 0.04);
+                x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+                const out = document.createElement('canvas');
+                out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
+                out.getContext('2d').drawImage(c, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+                resolve(out.toDataURL('image/png'));
+            } catch {
+                resolve(null); // tainted or undecodable: fall back to the file as served
+            }
+        };
+        img.onerror = () => resolve(null);
+        img.src = src;
+    });
+    trimmed.set(src, job);
+    return job;
+}
+
+// The trimmed image is remembered WITH the file it came from, so a tile that
+// switches gyms (the duel's rival changes on an overtake) never shows the
+// previous gym's logo — not for a frame, and not when the new gym has none.
+function useLogo(url, size) {
+    const src = url ? storageImage(url, size) : null;
+    const [trim, setTrim] = useState({ from: null, img: null });
+    useEffect(() => {
+        if (!src) return undefined;
+        let alive = true;
+        trimLogo(src).then((img) => { if (alive && img) setTrim({ from: src, img }); });
+        return () => { alive = false; };
+    }, [src]);
+    if (!src) return null;
+    return trim.from === src ? trim.img : src;
+}
+
+/** A gym's logo, trimmed, on a landscape tile of the colour its logo_bg asks for; its monogram when it has none or the image fails. */
+function GymMark({ g, className }) {
+    const [brokenUrl, setBrokenUrl] = useState(null);
+    const broken = !!g?.logo_url && brokenUrl === g.logo_url;
+    const src = useLogo(g?.logo_url && !broken ? g.logo_url : null, 480);
+    if (src) {
+        return (
+            <div className={`${className} has-logo ${logoTile(g.logo_bg)}`} title={g.name}>
+                <img src={src} alt="" decoding="async" onError={() => setBrokenUrl(g.logo_url)} />
+            </div>
+        );
+    }
+    return <div className={className}>{g ? monogram(g.name) : '··'}</div>;
+}
+
+/** A small logo in running text (the ticker); nothing when the gym has none. */
+function InlineMark({ g }) {
+    const [brokenUrl, setBrokenUrl] = useState(null);
+    const broken = !!g?.logo_url && brokenUrl === g.logo_url;
+    const src = useLogo(g?.logo_url && !broken ? g.logo_url : null, 320);
+    if (!src) return null;
+    return (
+        <span className={`gl-inmark ${logoTile(g.logo_bg)}`}>
+            <img src={src} alt="" decoding="async" onError={() => setBrokenUrl(g.logo_url)} />
+        </span>
+    );
+}
+
+const ACTIVITY_ICONS = { gym: Dumbbell, running: Footprints, walking: PersonStanding, cycling: Bike, swimming: Waves, hiit: Zap, yoga: Flower2, sports: Trophy, dance: Music };
+
+function ActivityIcon({ type }) {
+    const Icon = ACTIVITY_ICONS[type] ?? Activity;
+    return <Icon size="0.8rem" strokeWidth={2.25} aria-hidden="true" />;
+}
+
+// The footer ticker. It never restarts: the track moves at a steady speed,
+// items that have left on the left are dropped, and fresh items — built from
+// the payload at that moment — join on the right as room opens up. (A CSS
+// loop over the whole list reset every time a landing changed the list.)
+const MARQUEE_REM_PER_S = 5;
+
+function Marquee(props) {
+    const latest = useRef(props);
+    latest.current = props;
+    const shownRef = useRef(new Set());
+    const idRef = useRef(0);
+    const [items, setItems] = useState([]);
+    const footRef = useRef(null);
+    const trackRef = useRef(null);
+    const offRef = useRef(0);
+    const dropRef = useRef(0);
+    const pendingRef = useRef(false);
+
+    // One pass of the story: sessions not yet shown, the top five, gyms busy now, the host.
+    const nextBatch = useCallback(() => {
+        const { feed, gyms, ranked, hostKey, radiusKm, host } = latest.current;
+        const byKey = new Map(gyms.map((g) => [g.key, g]));
+        const out = [];
+        const push = (node) => out.push({ id: idRef.current++, node });
+        feed.filter((f) => !shownRef.current.has(f.key)).slice(0, 4).forEach((f) => {
+            shownRef.current.add(f.key);
+            push(
+                <>
+                    <span className="gl-tk-user">
+                        <span className="gl-tk-mark" aria-hidden="true">
+                            <span className="gl-tk-ico"><ActivityIcon type={f.type} /></span>
+                            <i className="gl-tk-line" />
+                        </span>
+                        <b>{boardName(f)}</b>
+                    </span>
+                    earned <em>+{f.points}</em> at <InlineMark g={byKey.get(f.gym_key)} />{byKey.get(f.gym_key)?.name ?? 'a POWR gym'}
+                </>,
+            );
+        });
+        if (shownRef.current.size > 400) shownRef.current = new Set(feed.map((f) => f.key));
+        ranked.slice(0, 5).forEach((g, i) => push(<><b>{ordinal(i + 1)}</b> <InlineMark g={g} />{g.name} · {fmt(g.points_week)} pts</>));
+        const inNow = gyms.reduce((sum, g) => sum + (g.in_now ?? 0), 0);
+        if (inNow > 0) push(<><b>{fmt(inNow)}</b> athletes in a POWR gym right now</>);
+        if (host) push(<>Local lens · <b>{radiusKm} km</b> around {host.name}</>);
+        const hostRank = ranked.findIndex((g) => g.key === hostKey) + 1;
+        if (hostRank > 0) push(<>{host?.name} is <b>{ordinal(hostRank)} of {fmt(ranked.length)}</b> on POWR this week</>);
+        return out;
+    }, []);
+
+    useEffect(() => {
+        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        let raf = 0;
+        let last = performance.now();
+        const tick = (t) => {
+            raf = requestAnimationFrame(tick);
+            const track = trackRef.current;
+            const foot = footRef.current;
+            if (!track || !foot) return;
+            const dt = Math.min(0.1, (t - last) / 1000);
+            last = t;
+            const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+            if (!reduce) offRef.current += dt * MARQUEE_REM_PER_S * rem;
+            track.style.transform = `translate3d(${-offRef.current}px,0,0)`;
+            if (pendingRef.current) return;
+            const first = track.firstElementChild;
+            if (first && offRef.current > first.offsetWidth) {
+                dropRef.current = first.offsetWidth;
+                pendingRef.current = true;
+                setItems((it) => it.slice(1));
+            } else if (track.scrollWidth - offRef.current < foot.clientWidth * 1.6) {
+                const batch = nextBatch();
+                if (batch.length) { pendingRef.current = true; setItems((it) => [...it, ...batch]); }
+            }
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [nextBatch]);
+
+    // Before paint: take the dropped item's width off the offset so nothing jumps.
+    useLayoutEffect(() => {
+        if (dropRef.current) {
+            offRef.current -= dropRef.current;
+            dropRef.current = 0;
+            if (trackRef.current) trackRef.current.style.transform = `translate3d(${-offRef.current}px,0,0)`;
+        }
+        pendingRef.current = false;
+    }, [items]);
+
+    return (
+        <footer className="gl-foot" ref={footRef}>
+            <div className="gl-track" ref={trackRef}>
+                {items.map((it) => <span key={it.id}>{it.node}</span>)}
             </div>
         </footer>
     );
@@ -691,8 +1139,8 @@ const CSS = `
 .gl-wall::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(60rem 30rem at 15% -10%, rgba(250,204,21,0.09), transparent 60%); animation: glDrift 24s ease-in-out infinite; }
 @keyframes glDrift { 0%,100% { transform: translate(0,0) } 50% { transform: translate(3vw,2vh) } }
 .gl-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 2rem; z-index: 1; }
-.gl-brand { display: flex; align-items: baseline; gap: 0.9rem; }
-.gl-powr { font-weight: 800; font-size: 1.6rem; letter-spacing: 0.02em; color: var(--gold); }
+.gl-brand { display: flex; align-items: center; gap: 0.9rem; }
+.gl-powr { height: 2.7rem; width: auto; display: block; }
 .gl-title { font-weight: 300; font-size: 1.6rem; letter-spacing: 0.04em; }
 .gl-scope { display: flex; align-items: center; gap: 0.7rem; justify-self: center; }
 .gl-lens { display: flex; gap: 0.3rem; padding: 0.25rem; border: 1px solid var(--line); border-radius: 999px; }
@@ -712,7 +1160,7 @@ const CSS = `
 .gl-eyebrow h2 { margin: 0; font-size: 0.8rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
 .gl-hint { font-size: 0.8rem; color: var(--ink-3); }
 .gl-lanes { display: flex; flex-direction: column; gap: 0.45rem; flex: 1; min-height: 0; }
-.gl-lane { flex: 1 1 0; max-height: 5.4rem; min-height: 3.4rem; display: grid; grid-template-columns: 2.4rem 2.3rem 2.6rem 15rem 1fr 6.4rem; align-items: center; gap: 0.9rem; padding: 0.55rem 0.9rem; border: 1px solid transparent; border-radius: 0.7rem; position: relative; transition: border-color .4s, background .4s; }
+.gl-lane { flex: 1 1 0; max-height: 5.4rem; min-height: 3.4rem; display: grid; grid-template-columns: 2.4rem 2.3rem 5.4rem 15rem 1fr 6.4rem; align-items: center; gap: 0.9rem; padding: 0.55rem 0.9rem; border: 1px solid transparent; border-radius: 0.7rem; position: relative; transition: border-color .4s, background .4s; }
 .gl-lane.host { border-color: rgba(250,204,21,0.45); background: linear-gradient(90deg, rgba(250,204,21,0.07), transparent 60%); }
 .gl-lane.hit { background: rgba(255,255,255,0.05); }
 .gl-rank { font-size: 1.6rem; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; }
@@ -721,6 +1169,21 @@ const CSS = `
 .gl-move.up { color: var(--up); } .gl-move.down { color: var(--down); }
 .gl-mono { width: 2.4rem; height: 2.4rem; border-radius: 0.6rem; display: grid; place-items: center; background: var(--bg-3); border: 1px solid var(--line); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; color: var(--ink-2); flex: none; }
 .gl-lane.host .gl-mono, .gl-side.host .gl-mono, .gl-feed li.host .g { background: var(--gold); color: #0d0d0d; border-color: var(--gold); }
+.gl-mono.has-logo, .gl-feed .g.has-logo, .gl-hostmark { background: #141414; overflow: hidden; }
+/* Every gym tile is landscape (most logos are wordmarks); a gym without a
+   logo gets the same tile with its monogram, so each column reads as one. */
+.gl-lane .gl-mono { width: 5.4rem; height: 2.9rem; border-radius: 0.55rem; font-size: 1rem; letter-spacing: 0.08em; }
+.gl-lane .gl-mono.has-logo { padding: 0.35rem 0.45rem; }
+.gl-who .gl-mono.has-logo { padding: 0.45rem 0.6rem; }
+.gl-feed .g.has-logo { padding: 0.25rem 0.3rem; }
+.gl-mono.has-logo.light, .gl-feed .g.has-logo.light, .gl-hostmark.light { background: #fff; border-color: rgba(255,255,255,0.6); }
+.gl-lane.host .gl-mono.has-logo, .gl-side.host .gl-mono.has-logo, .gl-feed li.host .g.has-logo { background: #141414; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.gl-lane.host .gl-mono.has-logo.light, .gl-side.host .gl-mono.has-logo.light, .gl-feed li.host .g.has-logo.light { background: #fff; }
+.gl-mono img, .gl-feed .g img, .gl-hostmark img, .gl-inmark img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.gl-hostmark { width: 5rem; height: 2.4rem; padding: 0.3rem 0.45rem; border-radius: 0.55rem; border: 1px solid var(--line); margin-left: 0.6rem; align-self: center; flex: none; }
+.gl-inmark { display: inline-block; width: 2.9rem; height: 1.45rem; border-radius: 0.3rem; background: #141414; border: 1px solid var(--line); padding: 0.15rem 0.25rem; vertical-align: middle; flex: none; }
+.gl-inmark.light { background: #fff; }
+.gl-mono.has-logo.black, .gl-feed .g.has-logo.black, .gl-hostmark.black, .gl-inmark.black, .gl-lane.host .gl-mono.has-logo.black, .gl-side.host .gl-mono.has-logo.black, .gl-feed li.host .g.has-logo.black { background: #000; }
 .gl-name { min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
 .gl-name b { font-weight: 600; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gl-name small { font-size: 0.72rem; color: var(--ink-3); letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -751,7 +1214,7 @@ const CSS = `
 .gl-side.right { grid-column: 3; grid-row: 1; align-items: flex-end; }
 .gl-who { display: flex; align-items: center; gap: 0.9rem; }
 .gl-side.right .gl-who { flex-direction: row-reverse; text-align: right; }
-.gl-who .gl-mono { width: 3.2rem; height: 3.2rem; border-radius: 0.8rem; font-size: 1.1rem; }
+.gl-who .gl-mono { width: 7.2rem; height: 3.6rem; border-radius: 0.8rem; font-size: 1.3rem; letter-spacing: 0.08em; }
 .gl-who b { font-size: 1.7rem; font-weight: 600; display: block; line-height: 1.1; }
 .gl-who small { font-size: 0.85rem; color: var(--ink-3); letter-spacing: 0.04em; }
 .gl-big { font-size: 6.4rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; position: relative; }
@@ -770,8 +1233,8 @@ const CSS = `
 .gl-days i span { position: absolute; top: 100%; left: 0; right: 0; text-align: center; font-size: 0.65rem; color: var(--ink-3); margin-top: 0.3rem; letter-spacing: 0.1em; font-style: normal; }
 .gl-stat { font-size: 0.9rem; color: var(--ink-2); margin-top: 0.8rem; }
 .gl-stat b { color: #f2f2f2; font-weight: 600; font-variant-numeric: tabular-nums; }
-.gl-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; width: 100%; max-width: 26rem; }
-.gl-recent li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0.7rem; border-radius: 0.5rem; background: rgba(255,255,255,0.04); font-size: 0.85rem; animation: glSlide .5s cubic-bezier(.2,.8,.2,1); }
+.gl-recent { position: relative; list-style: none; margin: 0; padding: 0; width: 100%; max-width: 26rem; flex: none; height: calc(4 * 2.1rem + 3 * 0.35rem); overflow: hidden; }
+.gl-recent li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; height: 2.1rem; padding: 0 0.7rem; border-radius: 0.5rem; background: rgba(255,255,255,0.04); font-size: 0.85rem; }
 .gl-recent li b { font-weight: 600; } .gl-recent li small { color: var(--ink-3); font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem; margin-left: 0.5rem; }
 .gl-recent li em { font-style: normal; color: var(--up); font-weight: 700; font-variant-numeric: tabular-nums; }
 .gl-recent .empty { color: var(--ink-3); font-size: 0.8rem; background: none; padding: 0.45rem 0; animation: none; }
@@ -798,31 +1261,37 @@ const CSS = `
 .gl-card { background: var(--bg-2); border: 1px solid var(--line); border-radius: 1rem; padding: 1rem 1.1rem; min-height: 0; display: flex; flex-direction: column; }
 .gl-card h3 { margin: 0 0 0.6rem; font-size: 0.75rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; display: flex; justify-content: space-between; gap: 1rem; }
 .gl-card h3 span { letter-spacing: 0.04em; text-transform: none; color: var(--ink-2); text-align: right; }
-.gl-mapwrap { position: relative; aspect-ratio: 1 / 0.82; width: 100%; }
+.gl-mapwrap { position: relative; aspect-ratio: 1 / 0.82; width: 100%; border-radius: 0.6rem; overflow: hidden; background: #131313; }
+.gl-basemap { position: absolute; inset: 0; }
+.gl-basemap .maplibregl-canvas { outline: none; }
+.gl-attrib { margin-left: auto; font-size: 0.55rem; color: rgba(242,242,242,0.28); letter-spacing: 0.02em; }
 .gl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .gl-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-top: 0.7rem; font-size: 0.72rem; color: var(--ink-3); }
 .gl-legend span { white-space: nowrap; }
 .gl-legend i { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
-.gl-feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; overflow: hidden; flex: 1; min-height: 0; }
-.gl-feed li { display: grid; grid-template-columns: 2.1rem 1fr auto; gap: 0.7rem; align-items: center; padding: 0.55rem 0.7rem; border-radius: 0.6rem; background: rgba(255,255,255,0.03); animation: glSlide .5s cubic-bezier(.2,.8,.2,1); }
-@keyframes glSlide { from { opacity: 0; transform: translateY(-0.6rem) } to { opacity: 1; transform: none } }
-.gl-feed .g { width: 2.1rem; height: 2.1rem; border-radius: 0.5rem; display: grid; place-items: center; font-weight: 700; font-size: 0.75rem; background: var(--bg-3); border: 1px solid var(--line); color: var(--ink-2); }
+.gl-feed { position: relative; list-style: none; margin: 0; padding: 0; overflow: hidden; flex: 1; min-height: 0; }
+.gl-feed li { display: grid; grid-template-columns: 3.9rem 1fr auto; gap: 0.7rem; align-items: center; height: 3.2rem; padding: 0 0.7rem; border-radius: 0.6rem; background: rgba(255,255,255,0.03); }
+.gl-feed .g { width: 3.9rem; height: 2.1rem; border-radius: 0.5rem; letter-spacing: 0.06em; display: grid; place-items: center; font-weight: 700; font-size: 0.75rem; background: var(--bg-3); border: 1px solid var(--line); color: var(--ink-2); }
 .gl-feed .t { min-width: 0; } .gl-feed .t b { display: block; font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gl-feed .t small { font-size: 0.72rem; color: var(--ink-3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .gl-feed .p { font-weight: 700; font-size: 1rem; color: var(--up); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gl-empty { color: var(--ink-3); font-size: 0.85rem; padding: 1rem 0; }
-.gl-foot { border-top: 1px solid var(--line); margin: 0 -2.2rem; padding: 0.7rem 0; overflow: hidden; z-index: 1; }
-.gl-track { display: flex; gap: 3rem; white-space: nowrap; width: max-content; animation: glMarquee 60s linear infinite; }
-.gl-track span { font-size: 0.85rem; color: var(--ink-2); }
+.gl-foot { border-top: 1px solid var(--line); margin: 0 -2.2rem; padding: 2.75rem 0 0.7rem; overflow: hidden; z-index: 1; }
+.gl-track { display: flex; white-space: nowrap; width: max-content; will-change: transform; }
+.gl-track > span { font-size: 0.85rem; color: var(--ink-2); padding-right: 3rem; flex: none; display: inline-flex; align-items: center; gap: 0.35em; }
+.gl-tk-user { position: relative; display: inline-block; }
+.gl-tk-mark { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; padding-bottom: 0.15rem; }
+.gl-tk-line { display: block; width: 1px; height: 0.75rem; background: linear-gradient(180deg, rgba(250,204,21,0.7), rgba(242,242,242,0.4)); position: relative; }
+.gl-tk-line::after { content: ''; position: absolute; left: -1px; bottom: -1.5px; width: 3px; height: 3px; border-radius: 50%; background: rgba(242,242,242,0.75); }
+.gl-tk-ico { display: grid; place-items: center; width: 1.45rem; height: 1.45rem; border-radius: 50%; border: 1px solid rgba(250,204,21,0.55); background: rgba(250,204,21,0.1); color: var(--gold); box-shadow: 0 0 0.6rem rgba(250,204,21,0.18); }
 .gl-track span b { color: #f2f2f2; font-weight: 600; }
 .gl-track span em { font-style: normal; color: var(--gold); font-weight: 600; }
-@keyframes glMarquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
 .gl-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem; text-align: center; padding: 2rem; }
 .gl-center-big { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.01em; }
 .gl-center-big.pulse { animation: glPulse 1.8s ease-in-out infinite; color: var(--gold); }
 .gl-center-small { font-size: 0.95rem; color: var(--ink-2); max-width: 30rem; }
 @media (prefers-reduced-motion: reduce) {
-  .gl-wall::before, .gl-live i, .gl-lane:first-child .gl-fill::after, .gl-lane.hit .gl-fill::before, .gl-track, .gl-tug .a::after, .gl-days i.today::after { animation: none; }
+  .gl-wall::before, .gl-live i, .gl-lane:first-child .gl-fill::after, .gl-lane.hit .gl-fill::before, .gl-tug .a::after, .gl-days i.today::after { animation: none; }
   .gl-delta { animation: none; opacity: 0.8; }
 }
 `;

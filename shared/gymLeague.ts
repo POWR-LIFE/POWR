@@ -24,6 +24,10 @@ export type LeagueGym = {
   in_now: number;
   /** A founding gym: on Founding Pro, badged on every league screen. */
   founding?: boolean;
+  /** The gym's own logo, shown wherever the screen would otherwise print a monogram. */
+  logo_url?: string | null;
+  /** partners.logo_bg: 'white' = the logo needs a white tile; 'black' | 'dark' sit on dark. */
+  logo_bg?: string | null;
 };
 
 export type LeagueFeedItem = {
@@ -49,6 +53,10 @@ export type LeaguePayload = {
   gyms: LeagueGym[];
   feed: LeagueFeedItem[];
   generated_at: string;
+  /** Name of the wide lens when it is one city, not the network ("London"). Film mode only. */
+  scope_label?: string;
+  /** Sessions across the network this hour, when the payload knows better than its 40-row feed. */
+  sessions_hour?: number;
 };
 
 export const LEAGUE_RADII = [5, 10, 15, 25, 50, 100];
@@ -250,6 +258,12 @@ export function leagueScenePlan(opts: { localCount: number; globalCount: number;
 /** Sessions across the network in the last hour. */
 export function sessionsLastHour(feed: LeagueFeedItem[], nowMs: number): number {
   return feed.filter((f) => nowMs - new Date(f.started_at).getTime() < 3_600_000).length;
+}
+
+/** Which of the payload's Monday-first `days` is today. */
+export function todayIndex(p: { week_start_at: string; day_start_at: string }): number {
+  const d = Math.round((new Date(p.day_start_at).getTime() - new Date(p.week_start_at).getTime()) / 86_400_000);
+  return Number.isFinite(d) ? Math.max(0, Math.min(6, d)) : 6;
 }
 
 export function ordinal(n: number): string {

@@ -838,7 +838,7 @@ export default function SettingsScreen() {
             <RowToggle
               icon="tv-outline"
               label="Show me on gym boards"
-              sublabel="Your name and points on the leaderboard at gyms you train at: the app, their screens and the Gym League. Off, you still earn."
+              sublabel="Your name and points on the leaderboard at gyms you train at: the app, their screens and Gym Clash. Off, you still earn."
               value={showOnBoards}
               onValueChange={toggleShowOnBoards}
               isLast={!showGymSharing}
