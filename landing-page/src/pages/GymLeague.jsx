@@ -309,7 +309,7 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef, onFocus }) {
         <div className="gl-wall">
             <header className="gl-head">
                 <div className="gl-brand">
-                    <img className="gl-powr" src="/powr-logo-white.png" alt="POWR" /><span className="gl-title">Gym League</span>
+                    <img className="gl-powr" src="/powr-logo-white.png" alt="POWR" /><span className="gl-title">Gym Clash</span>
                     {league.gym?.logo_url && <GymMark g={{ name: league.gym.name, logo_url: league.gym.logo_url, logo_bg: league.gym.logo_bg }} className="gl-hostmark" />}
                 </div>
                 <div className="gl-scope">
