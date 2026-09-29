@@ -2,6 +2,7 @@ import { localGyms, rankGyms, rivalOf, todayIndex } from '../shared/gymLeague';
 import {
   FILM_HOST,
   dayShareBy,
+  filmFocus,
   filmClockOffset,
   filmLeague,
   filmStep,
@@ -130,6 +131,25 @@ describe('film league', () => {
     }
     expect(swaps).toBeGreaterThan(25);
     expect(cityswaps).toBeGreaterThan(25);
+  });
+
+  it('lands on the gyms the screen is showing', () => {
+    const s = filmLeague(data as never, THU_19, { seed: 6 });
+    const rival = s.payload.gyms[5].key;
+    filmFocus(s, [FILM_HOST.key, rival, 'nope']);
+    let hits = 0, host = 0, other = 0;
+    for (let i = 0; i < 17; i++) { // one 12 s head-to-head at ~1.4 landings a second
+      filmStep(s, THU_19 + i * 700);
+      const k = s.payload.feed[0].gym_key;
+      if (k === FILM_HOST.key) host++;
+      if (k === rival) other++;
+      if (k === FILM_HOST.key || k === rival) hits++;
+    }
+    expect(hits).toBeGreaterThanOrEqual(5);
+    expect(host).toBeGreaterThan(0);
+    expect(other).toBeGreaterThan(0);
+    filmFocus(s, []);
+    expect(s.focus).toEqual([]);
   });
 
   it('a landing moves exactly one gym by its points', () => {

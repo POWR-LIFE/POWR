@@ -27,7 +27,7 @@ import {
     shareOf,
     todayIndex,
 } from '../../../shared/gymLeague.ts';
-import { filmClockOffset, filmLeague, filmStep } from '../../../shared/gymLeagueFilm.ts';
+import { filmClockOffset, filmFocus, filmLeague, filmStep } from '../../../shared/gymLeagueFilm.ts';
 
 /**
  * Gym League — powr.life/league/<slug>?k=<display_token>.
@@ -87,6 +87,13 @@ export default function GymLeague() {
     // Sessions that landed since the previous payload: { [gymKey]: { points, at, key } }
     const [hits, setHits] = useState({});
     const seenRef = useRef(null);
+    // Film: the gyms the current scene shows, so the simulator lands sessions where the viewer is looking.
+    const filmRef = useRef(null);
+    const focusRef = useRef([]);
+    const onFocus = useCallback((keys) => {
+        focusRef.current = keys;
+        if (filmRef.current) filmFocus(filmRef.current, keys);
+    }, []);
     const ripplesRef = useRef([]);
 
     useEffect(() => {
@@ -193,6 +200,8 @@ export default function GymLeague() {
         import('../data/londonFilmGyms.json').then(({ default: data }) => {
             if (!alive) return;
             const state = filmLeague(data, Date.now() + clockOffset, { athletes, seed, realNames });
+            filmRef.current = state;
+            filmFocus(state, focusRef.current);
             absorb(state.payload);
             setLastOkAt(Date.now());
             const step = () => {
@@ -205,7 +214,7 @@ export default function GymLeague() {
             };
             timer = setTimeout(step, 1200);
         });
-        return () => { alive = false; clearTimeout(timer); };
+        return () => { alive = false; clearTimeout(timer); filmRef.current = null; };
         // Read the options once per load, like a real screen boot.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [film, clockOffset, absorb]);
@@ -223,7 +232,7 @@ export default function GymLeague() {
 
     return (
         <Shell>
-            <Wall league={league} now={now} stale={stale && !preview} pinned={pinned} hits={hits} ripplesRef={ripplesRef} />
+            <Wall league={league} now={now} stale={stale && !preview} pinned={pinned} hits={hits} ripplesRef={ripplesRef} onFocus={film ? onFocus : null} />
             {preview === 'sample' && (
                 <div className="pointer-events-none absolute bottom-[0.55rem] left-[2.2rem] rounded-full border border-amber-400/50 bg-amber-400/10 px-[1rem] py-[0.3rem] text-[0.7rem] font-black uppercase tracking-[0.3em] text-amber-300 z-20">
                     Preview — simulated sessions on real gyms
@@ -235,7 +244,7 @@ export default function GymLeague() {
 
 // ─── Wall ────────────────────────────────────────────────────────
 
-function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
+function Wall({ league, now, stale, pinned, hits, ripplesRef, onFocus }) {
     const gyms = useMemo(() => league.gyms ?? [], [league.gyms]);
     const host = useMemo(() => gyms.find((g) => g.key === league.host_key) ?? null, [gyms, league.host_key]);
     const local = useMemo(() => (host ? localGyms(gyms, host, league.radius_km) : []), [gyms, host, league.radius_km]);
@@ -263,6 +272,17 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef }) {
     }, [idx, planKey, pinned]);
     const scene = pinned && plan.some((p) => p.scene === pinned) ? pinned : plan[idx % plan.length].scene;
     const scope = scene === 'global' || scene === 'effort' ? 'global' : local.length >= 2 ? 'local' : 'global';
+
+    // Which gyms this scene shows. Keyed on a string so it only fires when the set changes.
+    const focusKey = !onFocus ? '' : (scene === 'duel' && host && rival
+        ? [host.key, rival.key]
+        : scene === 'effort'
+            ? effort.ranked.slice(0, 10).map((r) => r.gym.key)
+            : (scope === 'local' ? localRanked : globalRanked).slice(0, MAX_LANES).map((g) => g.key)
+    ).join('|');
+    useEffect(() => {
+        if (onFocus) onFocus(focusKey ? focusKey.split('|') : []);
+    }, [onFocus, focusKey]);
 
     const hostPlace = host ? placeLabel(host.address, host.name) : '';
     const countries = useMemo(() => new Set(gyms.map((g) => countryCode(g.address, g.lat, g.lng)).filter(Boolean)).size, [gyms]);

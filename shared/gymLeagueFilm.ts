@@ -36,6 +36,8 @@ export type FilmState = {
   on: number[];
   /** Keys in the host's local lens — the tightest race, so it gets triple weight. */
   local: Set<string>;
+  /** Gyms the screen is showing right now (set by the page via filmFocus); they get FILM_FOCUS_SHARE of landings. */
+  focus: number[];
   rnd: () => number;
   n: number;
 };
@@ -47,6 +49,8 @@ export const FILM_LOCAL_GYMS = 12;
 export const FILM_ON_SCREEN_SHARE = 0.7;
 /** Points behind the gym above that doubles a lane's chance of the next landing. */
 export const FILM_CHASE_PTS = 20;
+/** Share of landings that go to the gyms in the current scene — the head-to-head shows two, so they trade points every second or two. */
+export const FILM_FOCUS_SHARE = 0.45;
 
 // Invented operators. The first eight behave like chains (many sites, bigger
 // floors); the rest are one- or two-site boutiques.
@@ -274,7 +278,7 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
       scope_label: 'London',
       sessions_hour: sessionsHour,
     },
-    cum, off, on, local: new Set([...localKeys, FILM_HOST.key]), rnd, n: 0,
+    cum, off, on, local: new Set([...localKeys, FILM_HOST.key]), focus: [], rnd, n: 0,
   };
   // Backfill the feed over the last half hour without touching the totals
   // (they already include these sessions).
@@ -293,13 +297,24 @@ function pickOffScreen(state: FilmState): number {
   return off[lo];
 }
 
+/** Tell the simulator which gyms the screen is showing; they get the next landings. Unknown keys are ignored. */
+export function filmFocus(state: FilmState, keys: string[]): void {
+  const want = new Set(keys);
+  state.focus = state.payload.gyms.flatMap((g, i) => (want.has(g.key) ? [i] : []));
+}
+
 function pickOnScreen(state: FilmState): number {
+  return pickLadder(state, state.on, (key) => (key === FILM_HOST.key ? 4 : state.local.has(key) ? 3 : 1));
+}
+
+/** Rubber band: the further a gym is behind the one above it, the likelier it scores next. */
+function pickLadder(state: FilmState, pool: number[], boost: (key: string) => number): number {
   const gyms = state.payload.gyms;
-  const ladder = [...state.on].sort((a, b) => gyms[b].points_week - gyms[a].points_week);
+  const ladder = [...pool].sort((a, b) => gyms[b].points_week - gyms[a].points_week);
   const w = ladder.map((gi, k) => {
     const gap = k === 0 ? 0 : gyms[ladder[k - 1]].points_week - gyms[gi].points_week;
     const chase = k === 0 ? 0.7 : 1 + Math.min(5, gap / FILM_CHASE_PTS);
-    return chase * (gyms[gi].key === FILM_HOST.key ? 4 : state.local.has(gyms[gi].key) ? 3 : 1);
+    return chase * boost(gyms[gi].key);
   });
   let r = state.rnd() * w.reduce((s, v) => s + v, 0);
   for (let k = 0; k < ladder.length; k++) { r -= w[k]; if (r <= 0) return ladder[k]; }
@@ -308,7 +323,8 @@ function pickOnScreen(state: FilmState): number {
 
 function nextSession(state: FilmState, atMs: number, force?: number): { gi: number; item: LeagueFeedItem } {
   const { rnd } = state;
-  const gi = force ?? (rnd() < FILM_ON_SCREEN_SHARE || state.off.length === 0 ? pickOnScreen(state) : pickOffScreen(state));
+  const focused = state.focus.length > 0 && rnd() < FILM_FOCUS_SHARE;
+  const gi = force ?? (focused ? pickLadder(state, state.focus, (key) => (key === FILM_HOST.key ? 1.5 : 1)) : rnd() < FILM_ON_SCREEN_SHARE || state.off.length === 0 ? pickOnScreen(state) : pickOffScreen(state));
   const tw = rnd() * TYPES.reduce((s, t) => s + t[1], 0);
   let acc = 0;
   const [type, , min, spread] = TYPES.find((t) => (acc += t[1]) >= tw) ?? TYPES[0];
