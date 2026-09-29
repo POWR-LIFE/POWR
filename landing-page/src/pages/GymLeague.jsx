@@ -46,12 +46,13 @@ import { filmClockOffset, filmFocus, filmLeague, filmStep } from '../../../share
  * the map and slides into the feed. ?preview=sample runs a simulated feed
  * on real gym names so an admin can see the motion without waiting.
  *
- * ?preview=film is promo footage: a simulated London (every OSM gym, ~25k
- * athletes, invented gym names, ONE LDN as host) landing a session every
- * second or so. No key needed, nothing touches the database. Options:
- * &at=thu-19:00 (the clock the screen shows), &athletes=, &seed= (same seed →
- * same take), &pace= (landings per second, default 1), &names=real. There is
- * no on-screen "simulated" tag: the illustrative-data disclaimer goes in the edit.
+ * ?preview=film is promo footage: POWR's real London gyms (names, locations,
+ * logos from the database, bundled at build time) with a simulated week on
+ * top — ~25k athletes, ONE LDN as host, a session landing every second or
+ * so. No key needed, nothing touches the database. Options: &at=thu-19:00
+ * (the clock the screen shows), &athletes=, &seed= (same seed → same take),
+ * &pace= (landings per second, default 1). There is no on-screen "simulated"
+ * tag: the illustrative-data disclaimer goes in the edit.
  */
 
 const GOLD = '#facc15';
@@ -203,10 +204,9 @@ export default function GymLeague() {
         const athletes = Number(params.get('athletes')) || undefined;
         const seed = Number(params.get('seed')) || 1;
         const pace = Math.max(0.1, Math.min(10, Number(params.get('pace')) || 1));
-        const realNames = params.get('names') === 'real';
         import('../data/londonFilmGyms.json').then(({ default: data }) => {
             if (!alive) return;
-            const state = filmLeague(data, Date.now() + clockOffset, { athletes, seed, realNames });
+            const state = filmLeague(data, Date.now() + clockOffset, { athletes, seed });
             filmRef.current = state;
             filmFocus(state, focusRef.current);
             absorb(state.payload);

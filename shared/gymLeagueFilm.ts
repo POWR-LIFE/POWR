@@ -2,28 +2,26 @@
  * Gym League — FILM MODE: a whole city on POWR, for promo footage.
  *
  * powr.life/league/film?preview=film renders the real Gym League page on a
- * simulated London: every gym OpenStreetMap knows inside the M25-ish ring
- * (landing-page/src/data/londonFilmGyms.json), ~25,000 athletes spread across
- * them, and a steady stream of sessions landing so lanes race, ranks swap and
- * the map ripples. Nothing is read from or written to the database.
+ * simulated week: POWR's own London gyms — real names, real locations, real
+ * logos, from `partners` (landing-page/src/data/londonFilmGyms.json, built
+ * from the database; hotels, parks and non-gyms removed) — ~25,000 athletes
+ * spread across them, and a steady stream of sessions landing so lanes race,
+ * ranks swap and the map ripples. The activity is simulated; nothing is read
+ * from or written to the database at runtime. ONE LDN hosts.
  *
  * Pure and seeded: the same seed and clock give the same opening board and
  * the same sequence of landings, so every take of the film matches.
- *
- * Gym names are invented ("<brand> <area>") unless realNames is set — a real
- * operator's name on a POWR board in an ad reads as a partnership. The host is
- * ONE LDN, a real POWR partner, in both modes.
  */
 
 import { haversineKm, type LeagueFeedItem, type LeagueGym, type LeaguePayload } from './gymLeague';
 
-export type FilmData = { areas: string[]; gyms: Array<[number, number, number, string]> };
+/** [lat, lng, name, area, logo_url, logo_bg] per gym. */
+export type FilmData = { gyms: Array<[number, number, string, string, string | null, string]> };
 
 export type FilmOptions = {
   /** Athletes on POWR across the city (active + lapsed members). */
   athletes?: number;
   seed?: number;
-  realNames?: boolean;
   tz?: string;
 };
 
@@ -44,7 +42,7 @@ export type FilmState = {
 
 export const FILM_HOST = {
   key: 'film-host', name: 'ONE LDN', address: 'Imperial Wharf, Fulham', lat: 51.47371, lng: -0.18256,
-  // ONE LDN's real logo (partners.logo_url); every invented gym shows its monogram.
+  // ONE LDN's logo (partners.logo_url), used if the data file lacks it.
   logo_url: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/partners/1780309700450-phgw9x.webp',
   logo_bg: 'dark',
 };
@@ -53,21 +51,20 @@ export const FILM_LOCAL_GYMS = 12;
 /** Share of landings that go to gyms on screen. */
 export const FILM_ON_SCREEN_SHARE = 0.7;
 /** Points behind the gym above that doubles a lane's chance of the next landing. */
-export const FILM_CHASE_PTS = 20;
+export const FILM_CHASE_PTS = 12;
+/** Points between neighbouring lanes at the front of a race: about one session. */
+export const FILM_RUNG_PTS = 14;
+/** Below the front of a race, each lane starts this share of the leader's points lower. */
+export const FILM_STEP_DOWN = 0.035;
 /** Sessions kept in the feed: enough that both sides of the head-to-head can show their last four. */
 export const FILM_FEED_MAX = 150;
 /** Share of landings that go to the gyms in the current scene — the head-to-head shows two, so they trade points every second or two. */
 export const FILM_FOCUS_SHARE = 0.45;
 
-// Invented operators. The first eight behave like chains (many sites, bigger
-// floors); the rest are one- or two-site boutiques.
-const CHAINS = ['Kestrel Fitness', 'Northline Gym', 'Halden Athletic', 'Tidewater', 'Ostrum Strength', 'Brightwell Health Club', 'Veyra', 'Marlow & Stone'];
-const BOUTIQUES = [
-  'Kiln Barbell', 'Halcyon Boxing', 'Ember Cycle', 'Loft Pilates Co.', 'Ironleaf', 'Saltmarsh Yoga', 'Tallow Strength', 'Juniper Athletic',
-  'Copperline Fitness', 'Slate & Oak', 'Kinloch Performance', 'Redbrick Barbell', 'Quarry Fitness', 'Wharfside Athletic', 'Longbow Boxing Club',
-  'Ferrum Gym', 'Ninefold Fitness', 'Cinder Track Club', 'Lumen Studio', 'Arcadia Strength', 'Hollow Oak Yoga', 'Sable Fight Club',
-  'Riverside Kinetic', 'Wrenfield Fitness', 'Tempo Row Club', 'Northfold', 'Bramble Pilates', 'Oxbow Strength', 'Hearth Fitness', 'Millrace Gym',
-];
+// Big-box operators and council leisure centres have bigger floors than
+// studios and boutiques; the rest sit in between.
+const BIG = /\b(puregym|the gym group|virgin active|david lloyd|nuffield|third space|energie|anytime|bannatyne|fitness first|gymbox|leisure|sports centre|lido|baths|park view)\b/i;
+const SMALL = /\b(yoga|pilates|barre|boxing|martial|kickboxing|studio|spin|1rebel|barry's|psycle|sweatbox|reformer|dance|gymnastics|self defence|fight|personal training|climbing|tennis)\b/i;
 
 const FIRST = [
   'Amara', 'Ben', 'Chloe', 'Dev', 'Ella', 'Femi', 'Grace', 'Hassan', 'Isla', 'Jonah', 'Kemi', 'Leo', 'Maya', 'Nico', 'Olu', 'Priya', 'Quinn',
@@ -144,23 +141,6 @@ export function dayShareBy(hour: number): number {
   return s / HOUR_SUM;
 }
 
-/** Invented "<brand> <area>" names, unique across the city; chains own most sites. */
-export function inventGymNames(areas: string[], rnd: () => number): string[] {
-  const used = new Set<string>();
-  return areas.map((area) => {
-    const order = [...CHAINS.map((b) => [b, 3 + rnd()] as const), ...BOUTIQUES.map((b) => [b, rnd() * 2.2] as const)]
-      .sort((x, y) => y[1] - x[1])
-      .map(([b]) => b);
-    for (const b of order) {
-      const name = `${b} ${area}`;
-      if (!used.has(name)) { used.add(name); return name; }
-    }
-    const name = `${order[0]} ${area} ${used.size}`;
-    used.add(name);
-    return name;
-  });
-}
-
 function gauss(rnd: () => number): number {
   return Math.sqrt(-2 * Math.log(Math.max(1e-9, rnd()))) * Math.cos(2 * Math.PI * rnd());
 }
@@ -196,12 +176,11 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
   const todayShare = dayShareBy(hour);
   const weekDone = (DAY_W.slice(0, dayIdx).reduce((s, v) => s + v, 0) + DAY_W[dayIdx] * todayShare) / DAY_SUM;
 
-  const names = opts.realNames ? data.gyms.map((g) => g[3]) : inventGymNames(data.gyms.map((g) => data.areas[g[2]]), rnd);
-  const chainSet = new Set(CHAINS);
-  const sizes = data.gyms.map((_, i) => {
-    const chain = !opts.realNames && chainSet.has(CHAINS.find((c) => names[i].startsWith(c)) ?? '');
-    return Math.exp(gauss(rnd) * 0.7) * (chain ? 1.5 : 0.75);
-  });
+  // The host is built separately (below), so its row in the data file is skipped here.
+  const rows = data.gyms.filter((g) => g[2] !== FILM_HOST.name);
+  const hostRow = data.gyms.find((g) => g[2] === FILM_HOST.name);
+  const hostLogo = { logo_url: hostRow?.[4] ?? FILM_HOST.logo_url, logo_bg: hostRow?.[5] ?? FILM_HOST.logo_bg };
+  const sizes = rows.map(([, , name]) => Math.exp(gauss(rnd) * 0.6) * (BIG.test(name) ? 1.6 : SMALL.test(name) ? 0.55 : 0.9));
   const hostSize = 2.4;
   const sizeSum = sizes.reduce((s, v) => s + v, 0) + hostSize;
 
@@ -226,7 +205,11 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
     };
   };
 
-  let gyms: LeagueGym[] = data.gyms.map(([lat, lng, area], i) => build(`film-${i}`, names[i], data.areas[area], lat, lng, sizes[i]));
+  let gyms: LeagueGym[] = rows.map(([lat, lng, name, area, logo_url, logo_bg], i) => ({
+    ...build(`film-${i}`, name, area, lat, lng, sizes[i]),
+    logo_url,
+    logo_bg,
+  }));
   // The host's members are keen: near the top of the effort table as well as in the race.
   let host = build(FILM_HOST.key, FILM_HOST.name, FILM_HOST.address, FILM_HOST.lat, FILM_HOST.lng, hostSize, 2.5);
 
@@ -247,17 +230,25 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
   const top = [...gyms].filter((g) => !localKeys.has(g.key)).sort((a, b) => b.points_week - a.points_week);
   const lead = top[0]?.points_week ?? 1000;
   // ~1% apart ≈ three sessions: close enough that a burst of landings swaps two lanes.
-  const band = new Map(top.slice(0, 14).map((g, i) => [g.key, Math.round(lead * (1 - 0.007 * i - 0.003 * rnd()))]));
+  // A board that reads like a real league: the front of each race is packed
+  // (rungs in POINTS, about a session apart, so overtakes happen on camera),
+  // and below that lanes step down a few percent each so the bars show spread.
+  const rung = (i: number, base: number, tight: number) => (i < tight
+    ? base - FILM_RUNG_PTS * i - FILM_RUNG_PTS * 0.5 * rnd()
+    : base - FILM_RUNG_PTS * tight - lead * FILM_STEP_DOWN * (i - tight + 1) - lead * 0.01 * rnd());
+  const band = new Map(top.slice(0, 14).map((g, i) => [g.key, Math.round(rung(i, lead, 6))]));
   const local = byDist.filter((x) => localKeys.has(x.g.key)).map((x) => x.g).sort((a, b) => b.points_week - a.points_week);
   // The whole neighbourhood trains: no cliff from 5th to 6th.
   // Slot 2 of the local ladder is left for the host.
   local.forEach((g, i) => {
     const slot = i < 2 ? i : i + 1;
-    band.set(g.key, Math.round(lead * (slot < 7 ? 0.975 - 0.0035 * slot - 0.0015 * rnd() : Math.max(0.6, 0.95 - 0.006 * (slot - 7) - 0.006 * rnd()))));
+    // The neighbourhood pack sits a little below the city's front runners (~8th–12th in London).
+    band.set(g.key, Math.round(Math.max(lead * 0.5, rung(slot, lead * 0.9, 7))));
   });
   gyms = gyms.map((g) => (band.has(g.key) ? scaleTo(g, band.get(g.key)!) : g));
   const secondLocal = band.get(local[1]?.key ?? '') ?? lead * 0.9;
-  host = { ...scaleTo(host, Math.round(secondLocal - 18 - 8 * rnd())), logo_url: FILM_HOST.logo_url, logo_bg: FILM_HOST.logo_bg };
+  // One rung behind its rival (slot 2 of the ladder was kept free for it).
+  host = { ...scaleTo(host, Math.round(secondLocal - FILM_RUNG_PTS - 3 * rnd())), ...hostLogo };
   gyms = [host, ...gyms];
 
   // Who scores next. Off screen: by size. On screen: rubber-banded — the
@@ -276,7 +267,7 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
 
   const state: FilmState = {
     payload: {
-      gym: { name: FILM_HOST.name, address: FILM_HOST.address, logo_url: FILM_HOST.logo_url, logo_bg: FILM_HOST.logo_bg },
+      gym: { name: FILM_HOST.name, address: FILM_HOST.address, ...hostLogo },
       slug: 'film', host_key: FILM_HOST.key, radius_km: radius, tz,
       week_start_at: new Date(weekStart).toISOString(),
       week_end_at: new Date(weekStart + 7 * 86_400_000).toISOString(),

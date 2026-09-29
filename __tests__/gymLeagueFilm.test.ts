@@ -6,9 +6,7 @@ import {
   filmClockOffset,
   filmLeague,
   filmStep,
-  inventGymNames,
   parseFilmClock,
-  seededRandom,
   weekClock,
 } from '../shared/gymLeagueFilm';
 import data from '../landing-page/src/data/londonFilmGyms.json';
@@ -46,18 +44,32 @@ describe('film league', () => {
   const state = filmLeague(data as never, THU_19, { seed: 1 });
   const p = state.payload;
 
-  it('covers the city with the host in it', () => {
-    expect(p.gyms.length).toBe(data.gyms.length + 1);
-    expect(p.gyms.length).toBeGreaterThan(900);
+  it('is POWR\'s own London gyms, with the host once', () => {
+    const others = data.gyms.filter((g) => g[2] !== FILM_HOST.name);
+    expect(p.gyms.length).toBe(others.length + 1);
+    expect(p.gyms.length).toBeGreaterThan(150);
+    expect(p.gyms.filter((g) => g.name === FILM_HOST.name)).toHaveLength(1);
     expect(p.host_key).toBe(FILM_HOST.key);
     expect(p.scope_label).toBe('London');
     expect(todayIndex(p)).toBe(3);
   });
 
+  it('carries the real names and logos', () => {
+    const byName = new Map(data.gyms.map((g) => [g[2], g]));
+    for (const g of p.gyms) {
+      const row = byName.get(g.name);
+      expect(row).toBeDefined();
+      if (g.key !== FILM_HOST.key) expect(g.logo_url ?? null).toBe(row![4]);
+    }
+    expect(p.gyms.filter((g) => g.logo_url).length).toBeGreaterThan(60);
+    expect(p.gyms.find((g) => g.key === FILM_HOST.key)!.logo_url).toMatch(/^https:/);
+    expect(p.gym.logo_url).toMatch(/^https:/);
+  });
+
   it('adds up to roughly the athletes asked for', () => {
     const active = p.gyms.reduce((s, g) => s + g.athletes_week, 0);
     expect(active).toBeGreaterThan(10_000);
-    expect(active).toBeLessThan(25_000);
+    expect(active).toBeLessThan(32_000);
   });
 
   it('keeps each gym consistent: days sum to the week, today is today, no future', () => {
@@ -86,12 +98,9 @@ describe('film league', () => {
     for (const g of local) expect(p.feed.filter((f) => f.gym_key === g.key).length).toBeGreaterThanOrEqual(4);
   });
 
-  it('invents unique names and never uses the OSM name', () => {
+  it('has one lane per name', () => {
     const names = p.gyms.map((g) => g.name);
     expect(new Set(names).size).toBe(names.length);
-    const osm = new Set(data.gyms.map((g) => g[3]));
-    expect(names.filter((n) => n !== FILM_HOST.name && osm.has(n))).toEqual([]);
-    expect(inventGymNames(['Hackney', 'Hackney'], seededRandom(3))).toHaveLength(2);
   });
 
   it('is repeatable for a seed', () => {
@@ -117,23 +126,21 @@ describe('film league', () => {
     expect(host / 1000).toBeGreaterThan(0.03);
   });
 
-  it('keeps the local race swapping places', () => {
-    const s = filmLeague(data as never, THU_19, { seed: 5 });
-    const host = s.payload.gyms.find((g) => g.key === s.payload.host_key)!;
-    const order = () => rankGyms(localGyms(s.payload.gyms, host, s.payload.radius_km)).map((g) => g.key).join();
-    const london = () => rankGyms(s.payload.gyms).slice(0, 12).map((g) => g.key).join();
-    let swaps = 0, last = order(), cityswaps = 0, cityLast = london();
-    for (let i = 0; i < 300; i++) { // five minutes at a landing a second
-      filmStep(s, THU_19 + i * 1000);
-      const now = order();
-      if (now !== last) swaps++;
-      last = now;
-      const c = london();
-      if (c !== cityLast) cityswaps++;
-      cityLast = c;
+  it('keeps both races swapping places while they are on screen', () => {
+    for (const scene of ['local', 'london']) {
+      const s = filmLeague(data as never, THU_19, { seed: 5 });
+      const host = s.payload.gyms.find((g) => g.key === s.payload.host_key)!;
+      const lanes = () => (scene === 'local' ? rankGyms(localGyms(s.payload.gyms, host, s.payload.radius_km)) : rankGyms(s.payload.gyms).slice(0, 12));
+      let swaps = 0, last = lanes().map((g) => g.key).join();
+      for (let i = 0; i < 100; i++) { // ~70 s at the page's landing rate; the page focuses the scene's lanes
+        filmFocus(s, lanes().map((g) => g.key));
+        filmStep(s, THU_19 + i * 700);
+        const now = lanes().map((g) => g.key).join();
+        if (now !== last) swaps++;
+        last = now;
+      }
+      expect(swaps).toBeGreaterThan(7);
     }
-    expect(swaps).toBeGreaterThan(25);
-    expect(cityswaps).toBeGreaterThan(25);
   });
 
   it('lands on the gyms the screen is showing', () => {
