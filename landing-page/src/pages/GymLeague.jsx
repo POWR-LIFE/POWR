@@ -31,6 +31,9 @@ import {
 } from '../../../shared/gymLeague.ts';
 import { filmClockOffset, filmFocus, filmLeague, filmStep } from '../../../shared/gymLeagueFilm.ts';
 
+// The real basemap (MapLibre + CARTO Dark Matter), loaded only by this page.
+const GymLeagueBasemap = React.lazy(() => import('./GymLeagueBasemap.jsx'));
+
 /**
  * Gym League — powr.life/league/<slug>?k=<display_token>.
  *
@@ -363,6 +366,7 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef, onFocus }) {
                                     <span>· a number = gyms in that spot</span>
                                 </>
                             )}
+                            <span className="gl-attrib">© OpenStreetMap contributors © CARTO</span>
                         </div>
                     </div>
                     <div className="gl-card gl-feedcard">
@@ -627,15 +631,38 @@ function Conveyor({ items, visible, pitch, className, rowClass, render }) {
 
 // ─── Rail ────────────────────────────────────────────────────────
 
+// Glide the basemap's camera to the lens — only when the lens really moves,
+// not on every landing (a new gyms array arrives each second).
+function fitMap(s, animate) {
+    if (!s.map || !s.target) return;
+    const key = ['n', 's', 'e', 'w'].map((k) => s.target[k].toFixed(3)).join();
+    if (key === s.fitKey) return;
+    s.fitKey = key;
+    s.map.fitBounds([[s.target.w, s.target.s], [s.target.e, s.target.n]], { duration: animate ? 1800 : 0, padding: 6 });
+}
+
 function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
     const canvasRef = useRef(null);
-    const stateRef = useRef({ scope, gyms, host, hostKey, radiusKm, target: null, cur: null });
+    const stateRef = useRef({ scope, gyms, host, hostKey, radiusKm, target: null, cur: null, map: null, fitKey: '' });
     stateRef.current = { ...stateRef.current, scope, gyms, host, hostKey, radiusKm };
+    const initialBounds = useMemo(() => {
+        const b = boundsOf(gyms.length ? gyms : (host ? [host] : []));
+        return [[b.w, b.s], [b.e, b.n]];
+        // the camera is driven by fitMap after boot
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    const onMap = useCallback((map) => {
+        const s = stateRef.current;
+        s.map = map;
+        s.fitKey = '';
+        if (map) fitMap(s, false);
+    }, []);
 
     useEffect(() => {
         const s = stateRef.current;
         s.target = boundsOf(gyms.length ? gyms : (host ? [host] : []));
         if (!s.cur) s.cur = { ...s.target };
+        fitMap(s, true);
         if (gyms.length > DENSE_MAP) {
             const order = [...gyms].sort((a, b) => a.points_week - b.points_week);
             const top = order.slice(-3).reverse();
@@ -664,22 +691,39 @@ function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
             const H = r.height;
             ctx.clearRect(0, 0, W, H);
             if (!s.cur) s.cur = { ...s.target };
-            for (const k of ['n', 's', 'e', 'w']) s.cur[k] += (s.target[k] - s.cur[k]) * 0.06;
-            const b = s.cur;
             const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-            const p = projector(b, W, H);
+            let b;
+            let p;
+            if (s.map) {
+                // The real map owns the camera; every gym is placed through its projection.
+                const m = s.map;
+                const bb = m.getBounds();
+                b = { n: bb.getNorth(), s: bb.getSouth(), e: bb.getEast(), w: bb.getWest() };
+                p = (lat, lng) => { const q = m.project([lng, lat]); return [q.x, q.y]; };
+                p.kx = Math.cos(((b.n + b.s) / 2) * Math.PI / 180);
+                p.sc = W / Math.max(1e-6, (b.e - b.w) * p.kx);
+            } else {
+                for (const k of ['n', 's', 'e', 'w']) s.cur[k] += (s.target[k] - s.cur[k]) * 0.06;
+                b = s.cur;
+                p = projector(b, W, H);
+            }
             const wide = (b.n - b.s) > 2;
 
-            // land — sea is the card, land a shade lighter
             ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-            ctx.fillStyle = 'rgba(255,255,255,0.045)'; ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1; ctx.lineJoin = 'round';
-            ctx.beginPath();
-            for (const ring of geo.land) { ring.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); }
-            ctx.fill('evenodd'); if (wide) ctx.stroke();
+            if (!s.map) {
+                // No basemap (still loading, or offline): the drawn coastline and Thames.
+                ctx.fillStyle = 'rgba(255,255,255,0.045)'; ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1; ctx.lineJoin = 'round';
+                ctx.beginPath();
+                for (const ring of geo.land) { ring.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath(); }
+                ctx.fill('evenodd'); if (wide) ctx.stroke();
+                if (!wide) {
+                    const a = Math.min(1, (2 - (b.n - b.s)) / 1.5);
+                    ctx.strokeStyle = `rgba(255,255,255,${0.16 * a})`; ctx.lineWidth = Math.max(1.5, 0.0009 * p.sc); ctx.lineCap = 'round';
+                    ctx.beginPath(); for (const line of geo.thames) line.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.stroke();
+                }
+            }
             if (!wide) {
                 const a = Math.min(1, (2 - (b.n - b.s)) / 1.5);
-                ctx.strokeStyle = `rgba(255,255,255,${0.16 * a})`; ctx.lineWidth = Math.max(1.5, 0.0009 * p.sc); ctx.lineCap = 'round';
-                ctx.beginPath(); for (const line of geo.thames) line.forEach(([lng, lat], i) => { const [x, y] = p(lat, lng); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.stroke();
                 if (s.host && s.scope === 'local') {
                     const [hx, hy] = p(s.host.lat, s.host.lng);
                     const [ex] = p(s.host.lat, s.host.lng + s.radiusKm / (111 * Math.cos((s.host.lat * Math.PI) / 180)));
@@ -763,7 +807,14 @@ function NetworkMap({ scope, gyms, host, hostKey, radiusKm, ripplesRef }) {
         return () => cancelAnimationFrame(raf);
     }, [ripplesRef]);
 
-    return <canvas ref={canvasRef} className="gl-canvas" />;
+    return (
+        <>
+            <React.Suspense fallback={null}>
+                <GymLeagueBasemap onMap={onMap} initialBounds={initialBounds} />
+            </React.Suspense>
+            <canvas ref={canvasRef} className="gl-canvas" />
+        </>
+    );
 }
 
 /** A city's worth of gyms: one dot each, sized by points; the top 3 and the host named. */
@@ -1210,7 +1261,10 @@ const CSS = `
 .gl-card { background: var(--bg-2); border: 1px solid var(--line); border-radius: 1rem; padding: 1rem 1.1rem; min-height: 0; display: flex; flex-direction: column; }
 .gl-card h3 { margin: 0 0 0.6rem; font-size: 0.75rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; display: flex; justify-content: space-between; gap: 1rem; }
 .gl-card h3 span { letter-spacing: 0.04em; text-transform: none; color: var(--ink-2); text-align: right; }
-.gl-mapwrap { position: relative; aspect-ratio: 1 / 0.82; width: 100%; }
+.gl-mapwrap { position: relative; aspect-ratio: 1 / 0.82; width: 100%; border-radius: 0.6rem; overflow: hidden; background: #131313; }
+.gl-basemap { position: absolute; inset: 0; }
+.gl-basemap .maplibregl-canvas { outline: none; }
+.gl-attrib { margin-left: auto; font-size: 0.55rem; color: rgba(242,242,242,0.28); letter-spacing: 0.02em; }
 .gl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .gl-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-top: 0.7rem; font-size: 0.72rem; color: var(--ink-3); }
 .gl-legend span { white-space: nowrap; }
