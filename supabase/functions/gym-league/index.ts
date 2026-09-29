@@ -115,6 +115,15 @@ Deno.serve(async (req: Request) => {
     .eq("package", "founding");
   const founding = new Set((foundingRows ?? []).map((r: { partner_id: string }) => r.partner_id));
 
+  // Logos: every lane, duel side and feed row shows the gym's own mark where it has one.
+  const logos = new Map<string, { logo_url: string | null; logo_bg: string | null }>();
+  if (gyms.length) {
+    const { data: logoRows } = await admin.from("partners").select("id, logo_url, logo_bg").in("id", gyms.map((g) => g.id));
+    for (const r of (logoRows ?? []) as Array<{ id: string; logo_url: string | null; logo_bg: string | null }>) {
+      if (r.logo_url) logos.set(r.id, { logo_url: r.logo_url, logo_bg: r.logo_bg });
+    }
+  }
+
   const gymKeys = new Map<string, string>();
   for (const g of gyms) gymKeys.set(g.id, await displayKey(scope, g.id));
   const names = await namesById([...new Set(feedRows.map((f) => f.user_id))]);
@@ -133,6 +142,8 @@ Deno.serve(async (req: Request) => {
     days: g.days,
     in_now: g.in_now,
     founding: founding.has(g.id),
+    logo_url: logos.get(g.id)?.logo_url ?? null,
+    logo_bg: logos.get(g.id)?.logo_bg ?? null,
   }));
 
   // Only sessions at gyms the screen knows about; a session at a gym with

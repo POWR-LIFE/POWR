@@ -24,6 +24,10 @@ export type LeagueGym = {
   in_now: number;
   /** A founding gym: on Founding Pro, badged on every league screen. */
   founding?: boolean;
+  /** The gym's own logo, shown wherever the screen would otherwise print a monogram. */
+  logo_url?: string | null;
+  /** partners.logo_bg: 'white' = the logo needs a white tile; 'black' | 'dark' sit on dark. */
+  logo_bg?: string | null;
 };
 
 export type LeagueFeedItem = {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { storageImage } from '../lib/storage';
 import { Activity, Bike, Dumbbell, Flower2, Footprints, Music, PersonStanding, Trophy, Waves, Zap } from 'lucide-react';
 import geo from '../data/geoEurope.json';
 import { activityMeta, boardName, countdownParts, resetLabel, rootFontSize, weekLabel } from '../../../shared/gymBoard.ts';
@@ -304,7 +305,10 @@ function Wall({ league, now, stale, pinned, hits, ripplesRef, onFocus }) {
     return (
         <div className="gl-wall">
             <header className="gl-head">
-                <div className="gl-brand"><span className="gl-powr">POWR</span><span className="gl-title">Gym League</span></div>
+                <div className="gl-brand">
+                    <span className="gl-powr">POWR</span><span className="gl-title">Gym League</span>
+                    {league.gym?.logo_url && <GymMark g={{ name: league.gym.name, logo_url: league.gym.logo_url, logo_bg: league.gym.logo_bg }} className="gl-hostmark" />}
+                </div>
                 <div className="gl-scope">
                     <div className="gl-lens">
                         <span className={scope === 'local' ? 'on' : ''}>Local</span>
@@ -409,7 +413,7 @@ function RaceScene({ scope, ranked, host, hits }) {
                         >
                             <div className="gl-rank">{rank}</div>
                             <div className={`gl-move${d > 0 ? ' up' : d < 0 ? ' down' : ''}`}>{d > 0 ? `▲${d}` : d < 0 ? `▼${-d}` : '—'}</div>
-                            <div className="gl-mono">{monogram(g.name)}</div>
+                            <GymMark g={g} className="gl-mono" />
                             <div className="gl-name">
                                 <b>{g.name}</b>
                                 <small>{g.founding && <span className="gl-founding">Founding gym</span>}{meta} · {g.sessions_week} sessions{rawPerAthlete(g) != null ? ` · ${Math.round(rawPerAthlete(g))} pts/athlete` : ''}{g.in_now ? <> · <span className="in">{g.in_now} in now</span></> : null}<Momentum g={g} /></small>
@@ -460,7 +464,7 @@ function EffortScene({ effort, host, hits }) {
                         <motion.div key={g.key} layout transition={{ type: 'spring', stiffness: 260, damping: 32 }} className={`gl-lane${isHost ? ' host' : ''}${hit ? ' hit' : ''}`}>
                             <div className="gl-rank">{i + 1}</div>
                             <div className="gl-move" />
-                            <div className="gl-mono">{monogram(g.name)}</div>
+                            <GymMark g={g} className="gl-mono" />
                             <div className="gl-name">
                                 <b>{g.name}</b>
                                 <small>{g.founding && <span className="gl-founding">Founding gym</span>}{place ? `${place} · ` : ''}{g.athletes_week} athletes · {fmt(g.points_week)} pts<Momentum g={g} /></small>
@@ -564,7 +568,7 @@ function DuelSide({ g, cls, isHost, hit, recent, rank, scopeName, max, today }) 
     return (
         <div className={`gl-side ${cls}${isHost ? ' host' : ''}`}>
             <div className="gl-who">
-                <div className="gl-mono">{monogram(g.name)}</div>
+                <GymMark g={g} className="gl-mono" />
                 <div><b>{g.name}</b><small>{ordinal(rank)} in {scopeName}{place && place !== scopeName ? ` · ${place}` : ''}</small></div>
             </div>
             <div className="gl-big">
@@ -848,13 +852,40 @@ function FeedList({ feed, gyms, hostKey, tz }) {
                 const g = byKey.get(f.gym_key);
                 return (
                     <>
-                        <div className="g">{g ? monogram(g.name) : '··'}</div>
+                        <GymMark g={g} className="g" />
                         <div className="t"><b>{boardName(f)} · {activityMeta(f.type).label}</b><small>{g?.name ?? 'POWR gym'} · {f.minutes} min · {time(f.started_at)}</small></div>
                         <div className="p">+{f.points}</div>
                     </>
                 );
             }}
         />
+    );
+}
+
+/** partners.logo_bg is 'white' | 'black' | 'dark' (as the admin and partner portal read it). */
+const logoTile = (bg) => (bg === 'white' ? 'light' : bg === 'black' ? 'black' : 'dark');
+
+/** A gym's logo on the tile its logo_bg asks for; its monogram when it has none or the image fails. */
+function GymMark({ g, className }) {
+    const [broken, setBroken] = useState(false);
+    if (g?.logo_url && !broken) {
+        return (
+            <div className={`${className} has-logo ${logoTile(g.logo_bg)}`} title={g.name}>
+                <img src={storageImage(g.logo_url, 160)} alt="" decoding="async" onError={() => setBroken(true)} />
+            </div>
+        );
+    }
+    return <div className={className}>{g ? monogram(g.name) : '··'}</div>;
+}
+
+/** A small logo in running text (the ticker); nothing when the gym has none. */
+function InlineMark({ g }) {
+    const [broken, setBroken] = useState(false);
+    if (!g?.logo_url || broken) return null;
+    return (
+        <span className={`gl-inmark ${logoTile(g.logo_bg)}`}>
+            <img src={storageImage(g.logo_url, 96)} alt="" decoding="async" onError={() => setBroken(true)} />
+        </span>
     );
 }
 
@@ -900,12 +931,12 @@ function Marquee(props) {
                         </span>
                         <b>{boardName(f)}</b>
                     </span>
-                    earned <em>+{f.points}</em> at {byKey.get(f.gym_key)?.name ?? 'a POWR gym'}
+                    earned <em>+{f.points}</em> at <InlineMark g={byKey.get(f.gym_key)} />{byKey.get(f.gym_key)?.name ?? 'a POWR gym'}
                 </>,
             );
         });
         if (shownRef.current.size > 400) shownRef.current = new Set(feed.map((f) => f.key));
-        ranked.slice(0, 5).forEach((g, i) => push(<><b>{ordinal(i + 1)}</b> {g.name} · {fmt(g.points_week)} pts</>));
+        ranked.slice(0, 5).forEach((g, i) => push(<><b>{ordinal(i + 1)}</b> <InlineMark g={g} />{g.name} · {fmt(g.points_week)} pts</>));
         const inNow = gyms.reduce((sum, g) => sum + (g.in_now ?? 0), 0);
         if (inNow > 0) push(<><b>{fmt(inNow)}</b> athletes in a POWR gym right now</>);
         if (host) push(<>Local lens · <b>{radiusKm} km</b> around {host.name}</>);
@@ -1019,6 +1050,15 @@ const CSS = `
 .gl-move.up { color: var(--up); } .gl-move.down { color: var(--down); }
 .gl-mono { width: 2.4rem; height: 2.4rem; border-radius: 0.6rem; display: grid; place-items: center; background: var(--bg-3); border: 1px solid var(--line); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; color: var(--ink-2); flex: none; }
 .gl-lane.host .gl-mono, .gl-side.host .gl-mono, .gl-feed li.host .g { background: var(--gold); color: #0d0d0d; border-color: var(--gold); }
+.gl-mono.has-logo, .gl-feed .g.has-logo, .gl-hostmark { background: #141414; padding: 0.1rem; overflow: hidden; }
+.gl-mono.has-logo.light, .gl-feed .g.has-logo.light, .gl-hostmark.light { background: #fff; border-color: rgba(255,255,255,0.6); }
+.gl-lane.host .gl-mono.has-logo, .gl-side.host .gl-mono.has-logo, .gl-feed li.host .g.has-logo { background: #141414; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.gl-lane.host .gl-mono.has-logo.light, .gl-side.host .gl-mono.has-logo.light, .gl-feed li.host .g.has-logo.light { background: #fff; }
+.gl-mono img, .gl-feed .g img, .gl-hostmark img, .gl-inmark img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.gl-hostmark { width: 2.3rem; height: 2.3rem; border-radius: 0.55rem; border: 1px solid var(--line); margin-left: 0.4rem; align-self: center; flex: none; }
+.gl-inmark { display: inline-block; width: 1.25rem; height: 1.25rem; border-radius: 0.3rem; background: #141414; border: 1px solid var(--line); padding: 0.1rem; vertical-align: middle; flex: none; }
+.gl-inmark.light { background: #fff; }
+.gl-mono.has-logo.black, .gl-feed .g.has-logo.black, .gl-hostmark.black, .gl-inmark.black, .gl-lane.host .gl-mono.has-logo.black, .gl-side.host .gl-mono.has-logo.black, .gl-feed li.host .g.has-logo.black { background: #000; }
 .gl-name { min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
 .gl-name b { font-weight: 600; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gl-name small { font-size: 0.72rem; color: var(--ink-3); letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

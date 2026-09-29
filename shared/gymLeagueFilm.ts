@@ -42,7 +42,12 @@ export type FilmState = {
   n: number;
 };
 
-export const FILM_HOST = { key: 'film-host', name: 'ONE LDN', address: 'Imperial Wharf, Fulham', lat: 51.47371, lng: -0.18256 };
+export const FILM_HOST = {
+  key: 'film-host', name: 'ONE LDN', address: 'Imperial Wharf, Fulham', lat: 51.47371, lng: -0.18256,
+  // ONE LDN's real logo (partners.logo_url); every invented gym shows its monogram.
+  logo_url: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/partners/1780309700450-phgw9x.webp',
+  logo_bg: 'dark',
+};
 export const FILM_DEFAULT_ATHLETES = 25_000;
 export const FILM_LOCAL_GYMS = 12;
 /** Share of landings that go to gyms on screen. */
@@ -252,7 +257,7 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
   });
   gyms = gyms.map((g) => (band.has(g.key) ? scaleTo(g, band.get(g.key)!) : g));
   const secondLocal = band.get(local[1]?.key ?? '') ?? lead * 0.9;
-  host = scaleTo(host, Math.round(secondLocal - 18 - 8 * rnd()));
+  host = { ...scaleTo(host, Math.round(secondLocal - 18 - 8 * rnd())), logo_url: FILM_HOST.logo_url, logo_bg: FILM_HOST.logo_bg };
   gyms = [host, ...gyms];
 
   // Who scores next. Off screen: by size. On screen: rubber-banded — the
@@ -271,7 +276,7 @@ export function filmLeague(data: FilmData, nowMs: number, opts: FilmOptions = {}
 
   const state: FilmState = {
     payload: {
-      gym: { name: FILM_HOST.name, address: FILM_HOST.address },
+      gym: { name: FILM_HOST.name, address: FILM_HOST.address, logo_url: FILM_HOST.logo_url, logo_bg: FILM_HOST.logo_bg },
       slug: 'film', host_key: FILM_HOST.key, radius_km: radius, tz,
       week_start_at: new Date(weekStart).toISOString(),
       week_end_at: new Date(weekStart + 7 * 86_400_000).toISOString(),

@@ -406,7 +406,8 @@ function Rail({ board, now }) {
     const parts = countdownParts(board.week_end_at, now);
     const span = new Date(board.week_end_at) - new Date(board.week_start_at);
     const elapsed = span > 0 ? Math.min(1, Math.max(0, (now - new Date(board.week_start_at)) / span)) : 0;
-    const logoDark = board.gym.logo_bg !== 'light';
+    // partners.logo_bg is 'white' | 'black' | 'dark' — only 'white' logos want a light tile.
+    const logoDark = board.gym.logo_bg !== 'white';
     const since = champ ? memberSince(champ.member_since, board.tz) : null;
 
     return (
