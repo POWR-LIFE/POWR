@@ -865,13 +865,79 @@ function FeedList({ feed, gyms, hostKey, tz }) {
 /** partners.logo_bg is 'white' | 'black' | 'dark' (as the admin and partner portal read it). */
 const logoTile = (bg) => (bg === 'white' ? 'light' : bg === 'black' ? 'black' : 'dark');
 
-/** A gym's logo on the tile its logo_bg asks for; its monogram when it has none or the image fails. */
+// Logo files often carry wide empty margins (Third Space's wordmark is
+// 117 px tall on a 448 px canvas), so a logo drawn "contain" into a tile
+// came out a sliver. Each logo is trimmed once to its ink — transparent
+// margins, or margins the colour of its own corner pixel — and cached.
+const trimmed = new Map();
+function trimLogo(src) {
+    if (trimmed.has(src)) return trimmed.get(src);
+    const job = new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.decoding = 'async';
+        img.onload = () => {
+            try {
+                const k = Math.min(1, 480 / Math.max(img.naturalWidth, img.naturalHeight));
+                const w = Math.max(1, Math.round(img.naturalWidth * k));
+                const h = Math.max(1, Math.round(img.naturalHeight * k));
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const ctx = c.getContext('2d', { willReadFrequently: true });
+                ctx.drawImage(img, 0, 0, w, h);
+                const d = ctx.getImageData(0, 0, w, h).data;
+                const clear = d[3] < 24;
+                const [br, bg, bb] = [d[0], d[1], d[2]];
+                const ink = (i) => d[i + 3] > 24 && (clear || Math.abs(d[i] - br) + Math.abs(d[i + 1] - bg) + Math.abs(d[i + 2] - bb) > 48);
+                let x0 = w, y0 = h, x1 = -1, y1 = -1;
+                for (let y = 0; y < h; y++) {
+                    for (let x = 0; x < w; x++) {
+                        if (ink((y * w + x) * 4)) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+                    }
+                }
+                if (x1 < 0 || (x1 - x0) * (y1 - y0) < 16) { resolve(null); return; }
+                const pad = Math.round(Math.max(x1 - x0, y1 - y0) * 0.04);
+                x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+                const out = document.createElement('canvas');
+                out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
+                out.getContext('2d').drawImage(c, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+                resolve(out.toDataURL('image/png'));
+            } catch {
+                resolve(null); // tainted or undecodable: fall back to the file as served
+            }
+        };
+        img.onerror = () => resolve(null);
+        img.src = src;
+    });
+    trimmed.set(src, job);
+    return job;
+}
+
+// The trimmed image is remembered WITH the file it came from, so a tile that
+// switches gyms (the duel's rival changes on an overtake) never shows the
+// previous gym's logo — not for a frame, and not when the new gym has none.
+function useLogo(url, size) {
+    const src = url ? storageImage(url, size) : null;
+    const [trim, setTrim] = useState({ from: null, img: null });
+    useEffect(() => {
+        if (!src) return undefined;
+        let alive = true;
+        trimLogo(src).then((img) => { if (alive && img) setTrim({ from: src, img }); });
+        return () => { alive = false; };
+    }, [src]);
+    if (!src) return null;
+    return trim.from === src ? trim.img : src;
+}
+
+/** A gym's logo, trimmed, on a landscape tile of the colour its logo_bg asks for; its monogram when it has none or the image fails. */
 function GymMark({ g, className }) {
-    const [broken, setBroken] = useState(false);
-    if (g?.logo_url && !broken) {
+    const [brokenUrl, setBrokenUrl] = useState(null);
+    const broken = !!g?.logo_url && brokenUrl === g.logo_url;
+    const src = useLogo(g?.logo_url && !broken ? g.logo_url : null, 480);
+    if (src) {
         return (
             <div className={`${className} has-logo ${logoTile(g.logo_bg)}`} title={g.name}>
-                <img src={storageImage(g.logo_url, 160)} alt="" decoding="async" onError={() => setBroken(true)} />
+                <img src={src} alt="" decoding="async" onError={() => setBrokenUrl(g.logo_url)} />
             </div>
         );
     }
@@ -880,11 +946,13 @@ function GymMark({ g, className }) {
 
 /** A small logo in running text (the ticker); nothing when the gym has none. */
 function InlineMark({ g }) {
-    const [broken, setBroken] = useState(false);
-    if (!g?.logo_url || broken) return null;
+    const [brokenUrl, setBrokenUrl] = useState(null);
+    const broken = !!g?.logo_url && brokenUrl === g.logo_url;
+    const src = useLogo(g?.logo_url && !broken ? g.logo_url : null, 320);
+    if (!src) return null;
     return (
         <span className={`gl-inmark ${logoTile(g.logo_bg)}`}>
-            <img src={storageImage(g.logo_url, 96)} alt="" decoding="async" onError={() => setBroken(true)} />
+            <img src={src} alt="" decoding="async" onError={() => setBrokenUrl(g.logo_url)} />
         </span>
     );
 }
@@ -1041,7 +1109,7 @@ const CSS = `
 .gl-eyebrow h2 { margin: 0; font-size: 0.8rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
 .gl-hint { font-size: 0.8rem; color: var(--ink-3); }
 .gl-lanes { display: flex; flex-direction: column; gap: 0.45rem; flex: 1; min-height: 0; }
-.gl-lane { flex: 1 1 0; max-height: 5.4rem; min-height: 3.4rem; display: grid; grid-template-columns: 2.4rem 2.3rem 2.6rem 15rem 1fr 6.4rem; align-items: center; gap: 0.9rem; padding: 0.55rem 0.9rem; border: 1px solid transparent; border-radius: 0.7rem; position: relative; transition: border-color .4s, background .4s; }
+.gl-lane { flex: 1 1 0; max-height: 5.4rem; min-height: 3.4rem; display: grid; grid-template-columns: 2.4rem 2.3rem 5.4rem 15rem 1fr 6.4rem; align-items: center; gap: 0.9rem; padding: 0.55rem 0.9rem; border: 1px solid transparent; border-radius: 0.7rem; position: relative; transition: border-color .4s, background .4s; }
 .gl-lane.host { border-color: rgba(250,204,21,0.45); background: linear-gradient(90deg, rgba(250,204,21,0.07), transparent 60%); }
 .gl-lane.hit { background: rgba(255,255,255,0.05); }
 .gl-rank { font-size: 1.6rem; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; }
@@ -1050,13 +1118,19 @@ const CSS = `
 .gl-move.up { color: var(--up); } .gl-move.down { color: var(--down); }
 .gl-mono { width: 2.4rem; height: 2.4rem; border-radius: 0.6rem; display: grid; place-items: center; background: var(--bg-3); border: 1px solid var(--line); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; color: var(--ink-2); flex: none; }
 .gl-lane.host .gl-mono, .gl-side.host .gl-mono, .gl-feed li.host .g { background: var(--gold); color: #0d0d0d; border-color: var(--gold); }
-.gl-mono.has-logo, .gl-feed .g.has-logo, .gl-hostmark { background: #141414; padding: 0.1rem; overflow: hidden; }
+.gl-mono.has-logo, .gl-feed .g.has-logo, .gl-hostmark { background: #141414; overflow: hidden; }
+/* Logos get a landscape tile: most are wordmarks. The monogram keeps its square. */
+.gl-lane .gl-mono { justify-self: center; }
+.gl-lane .gl-mono.has-logo { width: 5.4rem; height: 2.9rem; padding: 0.35rem 0.45rem; border-radius: 0.55rem; }
+.gl-who .gl-mono.has-logo { width: 7.2rem; height: 3.6rem; padding: 0.45rem 0.6rem; }
+.gl-feed .g { justify-self: center; }
+.gl-feed .g.has-logo { width: 3.9rem; padding: 0.25rem 0.3rem; }
 .gl-mono.has-logo.light, .gl-feed .g.has-logo.light, .gl-hostmark.light { background: #fff; border-color: rgba(255,255,255,0.6); }
 .gl-lane.host .gl-mono.has-logo, .gl-side.host .gl-mono.has-logo, .gl-feed li.host .g.has-logo { background: #141414; border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
 .gl-lane.host .gl-mono.has-logo.light, .gl-side.host .gl-mono.has-logo.light, .gl-feed li.host .g.has-logo.light { background: #fff; }
 .gl-mono img, .gl-feed .g img, .gl-hostmark img, .gl-inmark img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.gl-hostmark { width: 2.3rem; height: 2.3rem; border-radius: 0.55rem; border: 1px solid var(--line); margin-left: 0.4rem; align-self: center; flex: none; }
-.gl-inmark { display: inline-block; width: 1.25rem; height: 1.25rem; border-radius: 0.3rem; background: #141414; border: 1px solid var(--line); padding: 0.1rem; vertical-align: middle; flex: none; }
+.gl-hostmark { width: 5rem; height: 2.4rem; padding: 0.3rem 0.45rem; border-radius: 0.55rem; border: 1px solid var(--line); margin-left: 0.6rem; align-self: center; flex: none; }
+.gl-inmark { display: inline-block; width: 2.9rem; height: 1.45rem; border-radius: 0.3rem; background: #141414; border: 1px solid var(--line); padding: 0.15rem 0.25rem; vertical-align: middle; flex: none; }
 .gl-inmark.light { background: #fff; }
 .gl-mono.has-logo.black, .gl-feed .g.has-logo.black, .gl-hostmark.black, .gl-inmark.black, .gl-lane.host .gl-mono.has-logo.black, .gl-side.host .gl-mono.has-logo.black, .gl-feed li.host .g.has-logo.black { background: #000; }
 .gl-name { min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
@@ -1142,7 +1216,7 @@ const CSS = `
 .gl-legend span { white-space: nowrap; }
 .gl-legend i { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
 .gl-feed { position: relative; list-style: none; margin: 0; padding: 0; overflow: hidden; flex: 1; min-height: 0; }
-.gl-feed li { display: grid; grid-template-columns: 2.1rem 1fr auto; gap: 0.7rem; align-items: center; height: 3.2rem; padding: 0 0.7rem; border-radius: 0.6rem; background: rgba(255,255,255,0.03); }
+.gl-feed li { display: grid; grid-template-columns: 3.9rem 1fr auto; gap: 0.7rem; align-items: center; height: 3.2rem; padding: 0 0.7rem; border-radius: 0.6rem; background: rgba(255,255,255,0.03); }
 .gl-feed .g { width: 2.1rem; height: 2.1rem; border-radius: 0.5rem; display: grid; place-items: center; font-weight: 700; font-size: 0.75rem; background: var(--bg-3); border: 1px solid var(--line); color: var(--ink-2); }
 .gl-feed .t { min-width: 0; } .gl-feed .t b { display: block; font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gl-feed .t small { font-size: 0.72rem; color: var(--ink-3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
