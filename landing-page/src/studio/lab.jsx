@@ -1,6 +1,6 @@
 /**
  * Dev harness — see studio-lab.html. `?ui` mounts the editor (`?pack` the
- * pack builder) without admin
+ * pack builder, `?studio` the admin Studio shell with its Instagram mode) without admin
  * auth; `window.__studio.render(spec)` returns a PNG data URL for one post,
  * using the local test photos in public/studio-samples/ (gitignored).
  */
@@ -9,6 +9,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import StudioEditor from './StudioEditor';
 import PackBuilder from './PackBuilder';
+import AdminStudio from '../pages/admin/Studio';
 import { prepareStudio, renderPost } from './render';
 import { templateById, TEMPLATES } from './templates';
 import { loadMedia } from './media';
@@ -68,6 +69,14 @@ if (new URLSearchParams(window.location.search).has('ui')) {
     ReactDOM.createRoot(document.getElementById('root')).render(
         <div className="max-w-[1600px] px-8 py-8">
             <StudioEditor />
+        </div>,
+    );
+}
+
+if (new URLSearchParams(window.location.search).has('studio')) {
+    ReactDOM.createRoot(document.getElementById('root')).render(
+        <div className="max-w-[1600px] px-8 py-8">
+            <AdminStudio />
         </div>,
     );
 }

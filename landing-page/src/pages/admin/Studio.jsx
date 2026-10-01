@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Palette } from 'lucide-react';
 import StudioEditor from '../../studio/StudioEditor';
 import PackBuilder from '../../studio/PackBuilder';
+import InstagramPanel from '../../studio/social/InstagramPanel';
+import InstagramPosts from '../../studio/social/InstagramPosts';
 
 /**
  * Studio — social posts from a single photo, or a whole pack from a shoot.
@@ -12,17 +14,24 @@ import PackBuilder from '../../studio/PackBuilder';
 const MODES = [
     { id: 'post', label: 'One post', blurb: 'Pick a template, drop the photo in, change the words — the grade, crop and type are handled.' },
     { id: 'pack', label: 'A pack from a shoot', blurb: 'Drop a folder, photos or a ZIP, pick the event — every post it needs, made in one go, downloaded and saved.' },
+    { id: 'instagram', label: 'Instagram', blurb: 'Posts sent to POWR’s Instagram from the Studio — scheduled, published and failed — and the account they go to.' },
 ];
+const MODE_IDS = MODES.map((m) => m.id);
 
 export default function Studio() {
-    const [mode, setMode] = useState(() => (new URLSearchParams(window.location.search).get('mode') === 'pack' ? 'pack' : 'post'));
+    const [mode, setMode] = useState(() => {
+        const m = new URLSearchParams(window.location.search).get('mode');
+        return MODE_IDS.includes(m) ? m : 'post';
+    });
+    const [publishJob, setPublishJob] = useState(null);
+    const [postsKey, setPostsKey] = useState(0);
     const [opened, setOpened] = useState(() => new Set([mode]));
 
     const choose = (id) => {
         setMode(id);
         setOpened((s) => new Set(s).add(id));
         const url = new URL(window.location.href);
-        if (id === 'pack') url.searchParams.set('mode', 'pack'); else url.searchParams.delete('mode');
+        if (id !== 'post') url.searchParams.set('mode', id); else url.searchParams.delete('mode');
         window.history.replaceState(null, '', url);
     };
 
@@ -48,8 +57,10 @@ export default function Studio() {
 
     return (
         <>
-            {opened.has('post') && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor intro={intro} /></div>}
+            {opened.has('post') && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor intro={intro} onPublish={setPublishJob} /></div>}
             {opened.has('pack') && <div className={mode === 'pack' ? '' : 'hidden'}><PackBuilder intro={intro} /></div>}
+            {mode === 'instagram' && <InstagramPosts intro={intro} refreshKey={postsKey} />}
+            {publishJob && <InstagramPanel job={publishJob} onClose={() => setPublishJob(null)} onDone={() => setPostsKey((k) => k + 1)} />}
         </>
     );
 }
