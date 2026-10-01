@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
 import { prepareStudio, renderPost, compositeLayers, fieldDefaults, COLOURWAYS } from './render';
 import { TEMPLATES, CATEGORIES, LIBRARIES, templateById } from './templates';
 import { FORMATS, FORMAT_LIST, FORMAT_GROUPS, BLEED_MM } from './formats';
@@ -98,10 +98,13 @@ function forVenue(value, venue) {
  * start       open on a template, filled from one item: { templateId, fill: { kind, id } }
  * venue       { name, city }: the host gym, swapped into the sample venue
  * showRefs    show each template's "After …" reference (admin only: they name other brands)
+ * onPublish   admin only: shows "Post to Instagram" by Download; called with
+ *             { format, slideCount, hasVideo, thumb, render } — render()
+ *             makes the files to post (JPEG q0.92 / MP4, one per slide)
  */
 export default function StudioEditor({
     intro = null, data = adminStudioData, categories = CATEGORIES,
-    stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, showRefs = true,
+    stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, showRefs = true, onPublish = null,
 }) {
     const startingFields = (t) => Object.fromEntries(Object.entries(fieldDefaults(t)).map(([k, v]) => [k, forVenue(v, venue)]));
     const available = useMemo(() => TEMPLATES.filter((t) => categories.includes(t.category)), [categories]);
@@ -639,6 +642,39 @@ export default function StudioEditor({
             setProgress(null);
             abortRef.current = null;
         }
+    };
+
+    // Post to Instagram (admin only): the files, made on demand by the panel —
+    // JPEG at q0.92 (Instagram rejects PNG) or the MP4 export, a file a slide.
+    const startPublish = () => {
+        setPlaying(false);
+        const list = slides.map((sl, i) => (i === current ? snapshot() : sl));
+        let thumb = null;
+        try { thumb = canvasRef.current?.toDataURL('image/jpeg', 0.8) ?? null; } catch { thumb = null; }
+        const render = async ({ onProgress, signal } = {}) => {
+            const out = [];
+            for (const [i, sl] of list.entries()) {
+                if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+                const o = optsFor(sl);
+                if (sl.media?.kind === 'video') {
+                    const blob = await exportVideo({
+                        ...o, start: sl.clip.start, end: sl.clip.end, keepAudio: sl.keepSound, signal,
+                        cache: i === current ? cacheRef.current : {},
+                        onProgress: (p) => onProgress?.((i + p) / list.length),
+                    });
+                    out.push({ blob, type: 'video', width: F.w, height: F.h });
+                } else {
+                    const c = document.createElement('canvas');
+                    renderPost(c, { ...o, scale: 1, cache: i === current ? cacheRef.current : {} });
+                    const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.92));
+                    c.width = 0;
+                    out.push({ blob, type: 'image', width: F.w, height: F.h });
+                }
+                onProgress?.((i + 1) / list.length);
+            }
+            return out;
+        };
+        onPublish({ format, formatInfo: F, slideCount: list.length, hasVideo: list.some((sl) => sl.media?.kind === 'video'), thumb, render });
     };
 
     // Video downloads as MP4 — except print, where a video's current frame goes to paper.
@@ -1179,7 +1215,7 @@ export default function StudioEditor({
                                 </button>
                             ))}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                             <label className="flex items-center gap-1.5 text-xs text-white/60 mr-1">
                                 <input type="checkbox" checked={showSafe} onChange={(e) => setShowSafe(e.target.checked)} className="accent-[#E8D200]" />
                                 Safe zones
@@ -1235,6 +1271,13 @@ export default function StudioEditor({
                                 All {group.toLowerCase()}
                             </button>
                             </>
+                            )}
+                            {onPublish && (
+                                <button type="button" disabled={!ready || exporting} onClick={startPublish}
+                                    title="Post this to POWR's Instagram, now or scheduled"
+                                    className="flex items-center gap-1.5 rounded-lg border border-[#E8D200]/50 px-3 py-1.5 text-sm font-semibold text-[#E8D200] hover:bg-[#E8D200]/10 disabled:opacity-50">
+                                    <Send size={14} /> Post to Instagram
+                                </button>
                             )}
                         </div>
                     </div>
