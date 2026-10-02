@@ -512,10 +512,11 @@ interface StoredGeofence {
 
 // Bump to force every device to rewrite its cache on next check, regardless of
 // TTL — v2 = the paginated fetch (v1 caches were truncated to 1000 partners).
-// v3 = the Stratford-upon-Avon load. A bump is how newly loaded venues become
-// earnable before the 24 h TTL lapses; without it a user can stand in a brand
-// new partner for up to a day and neither see its pin nor trigger its geofence.
-const PARTNER_MAP_VERSION = 3;
+// v3 = the Stratford-upon-Avon load. v4 = the 147 missing Gym Group sites. A
+// bump is how newly loaded venues become earnable before the 24 h TTL lapses;
+// without it a user can stand in a brand new partner for up to a day and
+// neither see its pin nor trigger its geofence.
+const PARTNER_MAP_VERSION = 4;
 
 interface PartnerMapMeta { fetchedAt: number; v?: number }
 
