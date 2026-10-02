@@ -43,6 +43,7 @@ import {
   removePushToken,
   getNotificationPreferences,
   updateNotificationPreferences,
+  refreshAdminNotificationSwitches,
   fetchPendingActionCounts,
   fetchUnreadActivityCount,
   markAllActivityRead,
@@ -405,6 +406,25 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       })
       .catch((err) => console.warn('[Notifications] Failed to load preferences:', err));
   }, [user?.id, registerForPush]);
+
+  // The admin's on/off for the notifications this phone draws itself (the
+  // check-in banner, the session fallbacks). Mirrored for the headless geofence
+  // task, which can't rely on the network — so refresh at sign-in and on every
+  // return to the app; a switch flipped in admin lands here the next time the
+  // app is opened. Signed-in only: a signed-out read sees no rows and would
+  // clear the mirror.
+  useEffect(() => {
+    if (!user?.id) return;
+    const refresh = () => {
+      refreshAdminNotificationSwitches()
+        .catch((err) => console.warn('[Notifications] Failed to load admin switches:', err));
+    };
+    refresh();
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active') refresh();
+    });
+    return () => sub.remove();
+  }, [user?.id]);
 
   // The background task does NOT run when the app is in the foreground — the
   // received-listener gets the push instead. Handle the beacon's presence check

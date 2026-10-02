@@ -2,6 +2,7 @@ import { getAppVersion } from '@/lib/device';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import type { NotificationType } from '@/lib/notifications';
 import { cacheStepGoalPref } from '@/lib/stepGoalPrefCache';
+import { APP_HONOURED_SWITCHES, cacheAdminSwitchesOff, type AppHonouredSwitch } from '@/lib/adminNotificationSwitches';
 
 // ---------------------------------------------------------------------------
 // Push token registration
@@ -187,6 +188,26 @@ export async function updateNotificationPreferences(
 
   if (error) throw error;
   if (typeof prefs.step_goal_nudge === 'boolean') cacheStepGoalPref(prefs.step_goal_nudge);
+}
+
+// ---------------------------------------------------------------------------
+// Admin switches the phone enforces (see lib/adminNotificationSwitches.ts)
+// ---------------------------------------------------------------------------
+
+/** Mirrors the admin's on/off for the notifications the phone draws itself.
+ *  A failed read keeps the last mirror; an empty result (no rows readable yet)
+ *  clears it, which is the behaviour from before the switches existed. */
+export async function refreshAdminNotificationSwitches(): Promise<void> {
+  const { data, error } = await supabase
+    .from('notification_config')
+    .select('type, enabled')
+    .in('type', [...APP_HONOURED_SWITCHES]);
+  if (error) return;
+  cacheAdminSwitchesOff(
+    (data ?? [])
+      .filter((row) => row.enabled === false)
+      .map((row) => row.type as AppHonouredSwitch),
+  );
 }
 
 // ---------------------------------------------------------------------------

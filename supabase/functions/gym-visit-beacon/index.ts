@@ -28,6 +28,7 @@ import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 import { staleVisitVerdict, sessionBelongsToVisit, SESSION_OWNERSHIP_MARGIN_MS } from '../_shared/gymReaper.ts';
 import { settleIsTerminal } from '../_shared/settleOutcome.ts';
 import { EXIT_SETTLE_LOOKBACK_MS, EXIT_SETTLE_RIGHT_OF_WAY_MS, exitSettleDue, exitSettleExhausted } from '../_shared/exitSettle.ts';
+import { exitPushCopy, exitPushEndedWhileOff, exitPushPassOpen, type ExitPushSwitchRow } from '../_shared/exitPushSwitch.ts';
 import {
   deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepCorroboratesPresence,
   sweepWitnessesOutside, SWEEP_WITNESSES_REQUIRED,
@@ -154,7 +155,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settled_exit: 0, settle_declined: 0, disowned_closed: 0, settle_contradicted: 0, sweep_closed: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, shared_session_skipped: 0, complete_suppressed: 0, complete_no_token: 0, complete_switched_off: 0, complete_ended_while_off: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0, settled_exit: 0, settle_declined: 0, disowned_closed: 0, settle_contradicted: 0, sweep_closed: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -171,7 +172,21 @@ Deno.serve(async (req: Request) => {
   // Deliberately keyed on upgraded_at rather than "is it past the upgrade
   // threshold" — the latter is a guess about what MIGHT still land, and the
   // whole point of the grace is to not guess.
-  {
+  //
+  // THE ADMIN SWITCH (2026-10-02). This banner never passes send-push, so the
+  // notification_config kill-switch every other type obeys never reached it.
+  // It now has a row of its own, 'gym_session_complete'. Read with `*` so a
+  // column the migration hasn't added yet can't turn the read into an error
+  // that skips every tick. See _shared/exitPushSwitch.ts.
+  const { data: exitSwitchData, error: exitSwitchErr } = await admin
+    .from('notification_config')
+    .select('*')
+    .eq('type', 'gym_session_complete')
+    .maybeSingle();
+  if (exitSwitchErr) console.error('[gym-visit-beacon] exit switch read failed — complete pass skipped this tick', exitSwitchErr);
+  const exitSwitch = (exitSwitchData ?? null) as ExitPushSwitchRow | null;
+  if (!exitPushPassOpen(exitSwitch, !!exitSwitchErr)) stats.complete_switched_off = 1;
+  else {
     const COMPLETE_GRACE_MS = 2 * 60 * 1000;
     // ⚠ THE WINDOW KEYED ON A BACKDATED COLUMN, SO SOME USERS WERE NEVER TOLD
     // (2026-08-17). It was `ended_at >= now() - 30 min`, and `ended_at` is not
@@ -243,6 +258,12 @@ Deno.serve(async (req: Request) => {
       const endedAgoMs = Date.now() - new Date(visit.ended_at as string).getTime();
       if (visit.close_reason === 'abandoned_12h' || endedAgoMs > END_FRESH_MS) {
         stats.complete_suppressed++;
+        continue;
+      }
+      // Ended while the switch was off: owed by the scan, but not by the switch.
+      // Unstamped for the same reason as the skip above.
+      if (exitPushEndedWhileOff(exitSwitch, visit.ended_at as string)) {
+        stats.complete_ended_while_off++;
         continue;
       }
 
@@ -334,9 +355,12 @@ Deno.serve(async (req: Request) => {
       // does not mean "the app's default" — per Expo's docs it means Expo's own
       // auto-created "Default" channel, at importance DEFAULT, so the most
       // satisfying notification in the product had no heads-up banner.
-      const result = await deliverVisiblePush(admin, tokens, {
+      const copy = exitPushCopy(exitSwitch, {
         title: 'Session complete 💪',
         body: `${gymName} · ${mins} min` + (totalPts > 0 ? ` · +${totalPts} pts today` : ''),
+      });
+      const result = await deliverVisiblePush(admin, tokens, {
+        ...copy,
         data: { type: 'session_completed', route: '/(tabs)/index' },
         sound: 'default',
         channelId: 'powr_default_v2',
