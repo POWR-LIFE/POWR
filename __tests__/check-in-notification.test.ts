@@ -1,6 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { notifyCheckInAvailable, cancelPendingCheckInBanner, CHECK_IN_BANNER_DELAY_S } from '@/lib/notifications';
+import {
+  notifyCheckInAvailable, cancelPendingCheckInBanner, CHECK_IN_BANNER_DELAY_S,
+  notifySessionCompleted, notifySessionUpgraded,
+} from '@/lib/notifications';
+import { cacheAdminSwitchesOff, isAdminSwitchedOff } from '@/lib/adminNotificationSwitches';
 
 jest.mock('expo-notifications', () => ({
   AndroidImportance: { HIGH: 4 },
@@ -100,5 +104,57 @@ describe('notifyCheckInAvailable', () => {
     cancel.mockRejectedValueOnce(new Error('already delivered'));
 
     await expect(cancelPendingCheckInBanner(LOCATION_ID)).resolves.toBe('unknown');
+  });
+});
+
+// /admin/notifications can switch these off for everyone. The phone draws them
+// itself, so the switch reaches them through a cached mirror — and a mirror
+// that is missing or broken must never be what mutes them.
+describe('admin switches', () => {
+  const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+
+  it('does not schedule the check-in banner when admin has switched it off', async () => {
+    cacheAdminSwitchesOff(['check_in_reminder']);
+    await flush();
+
+    await expect(notifyCheckInAvailable('Test Gym', LOCATION_ID)).resolves.toBe('admin_off');
+    expect(schedule).not.toHaveBeenCalled();
+    // Not consumed: switching it back on must not leave this venue on a cooldown.
+    expect(await AsyncStorage.getItem(COOLDOWN_KEY)).toBeNull();
+  });
+
+  it('schedules the check-in banner when only other switches are off', async () => {
+    cacheAdminSwitchesOff(['session_completed', 'session_upgraded']);
+    await flush();
+    schedule.mockResolvedValueOnce('notification-id');
+
+    await expect(notifyCheckInAvailable('Test Gym', LOCATION_ID)).resolves.toBe('scheduled');
+  });
+
+  it('skips the on-device points and bonus fallbacks when admin has switched them off', async () => {
+    cacheAdminSwitchesOff(['session_completed', 'session_upgraded']);
+    await flush();
+
+    await notifySessionCompleted('Test Gym', 'session-1', 30, 4);
+    await notifySessionUpgraded('Test Gym', 'session-1', 10);
+    expect(schedule).not.toHaveBeenCalled();
+  });
+
+  it('still fires the fallbacks with no switches off', async () => {
+    cacheAdminSwitchesOff([]);
+    await flush();
+    schedule.mockResolvedValue('notification-id');
+
+    await notifySessionCompleted('Test Gym', 'session-1', 30, 4);
+    await notifySessionUpgraded('Test Gym', 'session-1', 10);
+    expect(schedule).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a missing or corrupt mirror as everything on', async () => {
+    await expect(isAdminSwitchedOff('check_in_reminder')).resolves.toBe(false);
+    await AsyncStorage.setItem('@powr/admin_notification_switches_off', '{not json');
+    await expect(isAdminSwitchedOff('check_in_reminder')).resolves.toBe(false);
+    await AsyncStorage.setItem('@powr/admin_notification_switches_off', '"check_in_reminder"');
+    await expect(isAdminSwitchedOff('check_in_reminder')).resolves.toBe(false);
   });
 });
