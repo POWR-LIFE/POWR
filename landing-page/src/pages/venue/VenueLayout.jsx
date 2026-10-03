@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package, PartyPopper } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../lib/i18n';
+import { rememberProfileLanguage } from '../../lib/locale';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
@@ -8,26 +11,27 @@ import { fetchGymPackage } from './venueApi';
 import { PackageContext, PACKAGE_UNKNOWN, packageLine, trialDaysLeft } from './packages';
 
 // mobile: false keeps an item out of the six phone tabs; the account sheet links it instead.
+// Labels are translation keys (shared/i18n/<lang>/portal.json → gym.nav).
 const NAV = [
-    { label: 'Overview', short: 'Home',    path: '/venue',         icon: LayoutDashboard },
-    { label: 'Events',   short: 'Events',  path: '/venue/events',  icon: CalendarDays    },
-    { label: 'Discounts', short: 'Discounts', path: '/venue/partners', icon: BadgePercent, feature: 'events', mobile: false },
-    { label: 'Clash Nights', short: 'Nights', path: '/venue/clash-nights', icon: PartyPopper, paid: true, mobile: false },
-    { label: 'Studio',   short: 'Studio',  path: '/venue/studio',  icon: Palette,   feature: 'studio'   },
-    { label: 'Screens',  short: 'Screens', path: '/venue/screens', icon: Tv              },
-    { label: 'Members',  short: 'Members', path: '/venue/members', icon: Users,     feature: 'insights' },
-    { label: 'Settings', short: 'Settings', path: '/venue/settings', icon: Settings2      },
+    { label: 'gym.nav.overview',    short: 'gym.nav.home',      path: '/venue',         icon: LayoutDashboard },
+    { label: 'gym.nav.events',      short: 'gym.nav.events',    path: '/venue/events',  icon: CalendarDays    },
+    { label: 'gym.nav.discounts',   short: 'gym.nav.discounts', path: '/venue/partners', icon: BadgePercent, feature: 'events', mobile: false },
+    { label: 'gym.nav.clashNights', short: 'gym.nav.nights',    path: '/venue/clash-nights', icon: PartyPopper, paid: true, mobile: false },
+    { label: 'gym.nav.studio',      short: 'gym.nav.studio',    path: '/venue/studio',  icon: Palette,   feature: 'studio'   },
+    { label: 'gym.nav.screens',     short: 'gym.nav.screens',   path: '/venue/screens', icon: Tv              },
+    { label: 'gym.nav.members',     short: 'gym.nav.members',   path: '/venue/members', icon: Users,     feature: 'insights' },
+    { label: 'gym.nav.settings',    short: 'gym.nav.settings',  path: '/venue/settings', icon: Settings2      },
 ];
 const PAID_NIGHTS = ['pro', 'founding'];
 const PHONE_TABS = NAV.filter(item => item.mobile !== false);
 const SHEET_LINKS = NAV.filter(item => item.mobile === false);
 
-const PATH_LABELS = { venue: 'Overview', events: 'Events', partners: 'Discounts', 'clash-nights': 'Clash Nights', studio: 'Studio', screens: 'Screens', members: 'Members', team: 'Settings', settings: 'Settings', package: 'Package', poster: 'Members' };
+const PATH_LABELS = { venue: 'gym.nav.overview', events: 'gym.nav.events', partners: 'gym.nav.discounts', 'clash-nights': 'gym.nav.clashNights', studio: 'gym.nav.studio', screens: 'gym.nav.screens', members: 'gym.nav.members', team: 'gym.nav.settings', settings: 'gym.nav.settings', package: 'gym.nav.package', poster: 'gym.nav.members' };
 
 // An event's own pages keep the Events tab lit.
 const isActive = (path, current) => current === path || (path !== '/venue' && current.startsWith(`${path}/`));
 
-const ROLE_LABEL = { owner: 'Owner', staff: 'Team', admin: 'POWR admin' };
+const ROLE_LABEL = { owner: 'gym.role.owner', staff: 'gym.role.staff', admin: 'gym.role.admin' };
 
 /** A gym's logo on the tile its artwork was made for ('dark' logos are light marks). */
 export function GymLogo({ gym, size = 'w-10 h-10', rounded = 'rounded-xl' }) {
@@ -142,6 +146,7 @@ function AdminGymPicker({ onSelect }) {
 
 // Someone on more than one gym's team switches between them here.
 function GymSwitcher({ className = '' }) {
+    const { t } = useTranslation();
     const { gym, gymMemberships, setActiveGym, isActingGym } = useAuth();
     const others = gymMemberships.filter(m => m.active && m.partner_id !== gym?.partner_id);
     const [open, setOpen] = useState(false);
@@ -152,7 +157,7 @@ function GymSwitcher({ className = '' }) {
                 onClick={() => setOpen(o => !o)}
                 className="w-full flex items-center justify-between gap-2 h-9 px-4 bg-white border border-[#E6E6E1] rounded-full text-[9px] uppercase tracking-[0.25em] font-black text-[#888] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all"
             >
-                Switch gym <ChevronDown size={12} />
+                {t('gym.switchGym')} <ChevronDown size={12} />
             </button>
             {open && (
                 <div className="absolute z-50 left-0 right-0 mt-2 bg-white border border-[#E6E6E1] rounded-2xl shadow-xl overflow-hidden">
@@ -173,6 +178,7 @@ function GymSwitcher({ className = '' }) {
 }
 
 export function VenueLayout({ children }) {
+    const { t } = useTranslation();
     const location = useLocation();
     const navigate = useNavigate();
     const { user, gym, isAdmin, isActingGym, setActingGym } = useAuth();
@@ -189,13 +195,15 @@ export function VenueLayout({ children }) {
         fetchGymPackage(partnerId).then(setPkg).catch(() => setPkg(PACKAGE_UNKNOWN));
     }, [partnerId]);
     useEffect(() => { setPkg(null); refreshPkg(); }, [refreshPkg]);
+    // Save this person's browser language so gym emails can follow it later.
+    useEffect(() => { rememberProfileLanguage(supabase, user?.id); }, [user?.id]);
     // Clash Nights come with the paid Pro packages only, never the trial (a night costs POWR a crew).
     const locked = (item) => (item.paid
         ? !!pkg && !pkg.unknown && (pkg.on_trial || !PAID_NIGHTS.includes(pkg.package))
         : item.feature && pkg && !pkg.features?.[item.feature]);
 
     const segment = location.pathname.split('/')[2] || 'venue';
-    const currentLabel = PATH_LABELS[segment] || segment;
+    const currentLabel = PATH_LABELS[segment] ? t(PATH_LABELS[segment]) : segment;
 
     // On desktop the content pane scrolls, not the window, so reset both.
     const paneRef = useRef(null);
@@ -209,10 +217,10 @@ export function VenueLayout({ children }) {
     // Admin with no gym of their own and no preview pick yet → pick one first.
     if (!gym && isAdmin) return <AdminGymPicker onSelect={setActingGym} />;
 
-    const roleLabel = ROLE_LABEL[gym?.role] ?? '';
+    const roleLabel = ROLE_LABEL[gym?.role] ? t(ROLE_LABEL[gym.role]) : '';
 
     return (
-        <div className="min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808] lg:flex">
+        <div lang={i18n.language} dir={i18n.dir()} className="min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808] lg:flex">
             <div
                 aria-hidden
                 className="fixed inset-0 pointer-events-none z-0"
@@ -250,7 +258,7 @@ export function VenueLayout({ children }) {
 
                 <nav className="flex-1 px-6 space-y-1.5 overflow-y-auto">
                     <div className="px-4 mb-4">
-                        <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Gym Portal</div>
+                        <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">{t('gym.portalName')}</div>
                         <div className="h-[2px] w-10 bg-[#E8D200]/70" />
                     </div>
                     {NAV.map(item => {
@@ -265,8 +273,8 @@ export function VenueLayout({ children }) {
                                 style={{ color: active ? '#080808' : '#BBBBBB' }}
                             >
                                 <item.icon size={18} strokeWidth={active ? 3 : 2} className={active ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
-                                <span className="text-[11px] uppercase tracking-[0.2em] font-black">{item.label}</span>
-                                {locked(item) && <Lock size={11} className="ml-auto opacity-70" aria-label="Not in your package" />}
+                                <span className="text-[11px] uppercase tracking-[0.2em] font-black">{t(item.label)}</span>
+                                {locked(item) && <Lock size={11} className="ml-auto opacity-70" aria-label={t('common.notInPackage')} />}
                             </Link>
                         );
                     })}
@@ -275,7 +283,7 @@ export function VenueLayout({ children }) {
                 <div className="p-6 mt-auto">
                     {user?.email && (
                         <div className="mb-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
-                            <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
+                            <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">{t('common.signedInAs')}</div>
                             <div className="text-[11px] text-[#666] truncate font-mono">{user.email}</div>
                         </div>
                     )}
@@ -283,7 +291,7 @@ export function VenueLayout({ children }) {
                         onClick={handleSignOut}
                         className="w-full flex items-center justify-center gap-3 h-12 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/50 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all border border-transparent hover:border-red-500/10"
                     >
-                        <LogOut size={16} /> Sign Out
+                        <LogOut size={16} /> {t('common.signOut')}
                     </button>
                 </div>
             </aside>
@@ -297,7 +305,7 @@ export function VenueLayout({ children }) {
                         <span className="text-[10px] uppercase tracking-[0.3em] font-black text-[#8a7600] truncate">{currentLabel}</span>
                     </div>
                     {gym ? (
-                        <button onClick={() => setMenuOpen(o => !o)} aria-label="Account, package and sign out" className="shrink-0">
+                        <button onClick={() => setMenuOpen(o => !o)} aria-label={t('gym.accountMenu')} className="shrink-0">
                             <GymLogo gym={gym} size="w-9 h-9" />
                         </button>
                     ) : <div className="w-9" />}
@@ -316,7 +324,7 @@ export function VenueLayout({ children }) {
                 {!isActingGym && pkg && !pkg.unknown && pkg.on_trial && trialDaysLeft(pkg) <= 14 && (
                     <Link to="/venue/package" className="mx-5 mb-3 flex items-center gap-2 px-3 py-2 bg-[#FFFBE0] border border-[#E8D200]/40 rounded-full">
                         <Package size={12} className="text-[#8a7600] shrink-0" />
-                        <span className="text-[9px] uppercase tracking-[0.15em] font-black text-[#8a7600] truncate">{packageLine(pkg)} · see what changes</span>
+                        <span className="text-[9px] uppercase tracking-[0.15em] font-black text-[#8a7600] truncate">{t('gym.trialNudge', { package: packageLine(pkg) })}</span>
                     </Link>
                 )}
             </header>
@@ -337,7 +345,7 @@ export function VenueLayout({ children }) {
                                     <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mt-0.5">{roleLabel}</div>
                                 </div>
                             </div>
-                            <button onClick={() => setMenuOpen(false)} className="w-9 h-9 rounded-full bg-[#F4F4F1] flex items-center justify-center text-[#888]" aria-label="Close">
+                            <button onClick={() => setMenuOpen(false)} className="w-9 h-9 rounded-full bg-[#F4F4F1] flex items-center justify-center text-[#888]" aria-label={t('common.close')}>
                                 <X size={16} />
                             </button>
                         </div>
@@ -352,13 +360,13 @@ export function VenueLayout({ children }) {
                         {SHEET_LINKS.map(item => (
                             <Link key={item.path} to={item.path} className="mb-4 flex items-center gap-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                                 <item.icon size={14} className="text-[#8a7600] shrink-0" />
-                                <span className="flex-1 text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] truncate">{item.label}</span>
-                                {locked(item) ? <Lock size={12} className="text-[#BBBBBB]" aria-label="Not in your package" /> : <ChevronRight size={14} className="text-[#BBBBBB]" />}
+                                <span className="flex-1 text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] truncate">{t(item.label)}</span>
+                                {locked(item) ? <Lock size={12} className="text-[#BBBBBB]" aria-label={t('common.notInPackage')} /> : <ChevronRight size={14} className="text-[#BBBBBB]" />}
                             </Link>
                         ))}
                         {user?.email && (
                             <div className="mb-4 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
-                                <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
+                                <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">{t('common.signedInAs')}</div>
                                 <div className="text-[12px] text-[#666] truncate font-mono">{user.email}</div>
                             </div>
                         )}
@@ -366,7 +374,7 @@ export function VenueLayout({ children }) {
                             onClick={handleSignOut}
                             className="w-full flex items-center justify-center gap-3 h-12 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/70 bg-red-500/5 border border-red-500/10 rounded-2xl"
                         >
-                            <LogOut size={16} /> Sign Out
+                            <LogOut size={16} /> {t('common.signOut')}
                         </button>
                     </div>
                 </div>
@@ -376,7 +384,7 @@ export function VenueLayout({ children }) {
             <main className="relative z-10 flex-1 flex flex-col min-w-0 lg:h-screen lg:overflow-hidden">
                 <header className="hidden lg:flex h-24 border-b border-[#E6E6E1] flex-shrink-0 items-center justify-between px-16 bg-[#F4F4F1]/70 backdrop-blur-3xl sticky top-0 z-30">
                     <div className="flex items-center gap-5">
-                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">Gym Portal</div>
+                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">{t('gym.portalName')}</div>
                         <ChevronRight size={13} className="text-[#BBBBBB]" />
                         <div className="flex items-center gap-3">
                             <div className="h-1.5 w-1.5 rounded-full bg-[#E8D200] shadow-[0_0_10px_rgba(232,210,0,0.7)] animate-pulse" />
@@ -425,9 +433,9 @@ export function VenueLayout({ children }) {
                                 {active && <span className="absolute top-0 h-[2px] w-8 rounded-full bg-[#E8D200] shadow-[0_0_12px_rgba(232,210,0,0.8)]" />}
                                 <span className="relative">
                                     <item.icon size={20} strokeWidth={active ? 2.5 : 1.8} />
-                                    {locked(item) && <Lock size={9} className="absolute -right-2 -top-1" aria-label="Not in your package" />}
+                                    {locked(item) && <Lock size={9} className="absolute -right-2 -top-1" aria-label={t('common.notInPackage')} />}
                                 </span>
-                                <span className="text-[9px] uppercase tracking-[0.15em] font-black">{item.short}</span>
+                                <span className="text-[9px] uppercase tracking-[0.15em] font-black">{t(item.short)}</span>
                             </Link>
                         );
                     })}
