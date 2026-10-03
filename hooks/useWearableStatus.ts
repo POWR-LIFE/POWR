@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 
-import { ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
+import { ALL_PROVIDER_META, isPausedProvider, type HealthProviderId } from '@/lib/health/providers';
 import {
     formatSyncAge,
     hoursSinceUpload,
@@ -74,14 +74,17 @@ export function useWearableStatus(): WearableStatus {
                 .eq('user_id', user.id)
                 .is('deauthed_at', null)
                 .order('last_upload_at', { ascending: false, nullsFirst: false })
-                .limit(1);
+                .limit(5);
 
             // supabase-js resolves rather than throws on query errors, so an
             // explicit check is the only thing standing between a failed fetch
             // and a false "no wearable" (see the partner-portal empty-state bug).
             if (error) { setState(s => ({ ...s, loading: false })); return; }
 
-            const row = (data ?? [])[0] as ConnRow | undefined;
+            // A paused provider's row stays live, and Terra's empty polls keep
+            // restamping last_upload_at — it would read "synced just now" while
+            // delivering nothing. Skip it so the chip doesn't vouch for it.
+            const row = ((data ?? []) as ConnRow[]).find(r => !isPausedProvider(r.provider));
             if (!row) { setState(EMPTY); return; }
 
             const providerId = row.provider.toLowerCase() as HealthProviderId;

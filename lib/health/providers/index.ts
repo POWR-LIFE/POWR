@@ -32,7 +32,10 @@ export const ALL_PROVIDER_META: HealthProviderMeta[] = [
     { id: 'whoop',  name: 'Whoop',  native: false, transport: 'terra', capabilities: ['activities', 'sleep', 'heart-rate', 'calories'] },
     { id: 'oura',   name: 'Oura',   native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate'] },
     { id: 'polar',  name: 'Polar',  native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
-    { id: 'garmin', name: 'Garmin', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
+    // Paused 2026-10: Garmin now approves each app itself and has paused new
+    // approvals, so Terra's shared access has delivered nothing since 21 Sep.
+    // Garmin Connect still writes to Apple Health / Health Connect — see `paused`.
+    { id: 'garmin', name: 'Garmin', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'], paused: true },
     { id: 'fitbit', name: 'Fitbit', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
     { id: 'strava', name: 'Strava', native: false, transport: 'terra', capabilities: ['activities', 'heart-rate'] },
     { id: 'huawei', name: 'Huawei Health', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
@@ -107,6 +110,16 @@ export const WEARABLE_PROVIDERS: HealthProviderId[] = ['fitbit', 'strava', 'whoo
 export function isTerraProvider(id: HealthProviderId | null): boolean {
     if (!id) return false;
     return ALL_PROVIDER_META.find(m => m.id === id)?.transport === 'terra';
+}
+
+/**
+ * True for a provider whose direct link is paused (see `HealthProviderMeta.paused`).
+ * Accepts Terra's uppercase slugs too ('GARMIN'), as stored on terra_connections.
+ */
+export function isPausedProvider(id: string | null | undefined): boolean {
+    if (!id) return false;
+    const key = id.toLowerCase();
+    return ALL_PROVIDER_META.find(m => m.id === key)?.paused === true;
 }
 
 /**

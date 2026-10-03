@@ -1,8 +1,9 @@
+import GarminViaPhoneSheet from '@/components/GarminViaPhoneSheet';
 import GeometricBackground from '@/components/GeometricBackground';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { androidHealthConnectStatus, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
-import { getNativeProviderId, type HealthProviderId } from '@/lib/health/providers';
+import { getNativeProviderId, isPausedProvider, type HealthProviderId } from '@/lib/health/providers';
 import { setOnboardingOwnsBackfill } from '@/lib/api/onboardingSync';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -155,6 +156,9 @@ export default function OnboardingWearablesScreen() {
 
     const [showHealthConnectInstall, setShowHealthConnectInstall] = useState(false);
     const [showSamsungSheet, setShowSamsungSheet] = useState(false);
+    const [showGarminSheet, setShowGarminSheet] = useState(false);
+    const phoneStore = Platform.OS === 'android' ? 'Health Connect' : 'Apple Health';
+    const phoneConnected = !!providers.rows.find(r => r.meta.native)?.connection;
 
     async function connectHealthConnect() {
         // Samsung path only — its data reaches POWR through Health Connect.
@@ -182,7 +186,24 @@ export default function OnboardingWearablesScreen() {
         }
     }
 
+    async function connectPhoneForGarmin() {
+        // Garmin's direct link is paused; its data arrives via the phone store.
+        if (Platform.OS === 'android') return connectHealthConnect();
+        const result = await health.requestPermissions();
+        if (!result) return;
+        const nativeId = getNativeProviderId();
+        if (!nativeId) return;
+        try { await providers.connect(nativeId); }
+        catch (e) { console.warn('[Onboarding] persist provider failed:', e); }
+    }
+
     async function handleConnect(source: WearableSource) {
+        // Garmin's direct link is paused — explain, and connect the phone store
+        // Garmin Connect shares into instead.
+        if (isPausedProvider(source.id)) {
+            setShowGarminSheet(true);
+            return;
+        }
         // Samsung Health has no direct OAuth (SDK-only on Terra) — it shares data via
         // Health Connect. Show the explainer sheet, which then connects Health Connect.
         if (source.id === 'samsung-health') {
@@ -273,6 +294,9 @@ export default function OnboardingWearablesScreen() {
                                         <BrandIcon id={source.id} size={Math.round(CARD_W * 0.44)} />
                                     </View>
                                     <Text style={styles.cardName} numberOfLines={1}>{source.name}</Text>
+                                    {isPausedProvider(source.id) && (
+                                        <Text style={styles.cardVia} numberOfLines={1}>VIA {phoneStore.toUpperCase()}</Text>
+                                    )}
                                     {isConnected && (
                                         <View style={styles.cardCheckBadge}>
                                             <MaterialCommunityIcons name="check" size={10} color="#fff" />
@@ -341,6 +365,14 @@ export default function OnboardingWearablesScreen() {
                     </View>
                 </View>
             </Modal>
+
+            <GarminViaPhoneSheet
+                visible={showGarminSheet}
+                phoneConnected={phoneConnected}
+                busy={health.requesting}
+                onConnectPhone={() => { connectPhoneForGarmin(); }}
+                onClose={() => setShowGarminSheet(false)}
+            />
 
             {/* Samsung Health explainer (Android) — connects via Health Connect */}
             <Modal
@@ -504,6 +536,15 @@ const styles = StyleSheet.create({
         letterSpacing: 0.2,
         textAlign: 'center',
         paddingHorizontal: 4,
+    },
+    cardVia: {
+        color: 'rgba(255,255,255,0.25)',
+        fontSize: 7,
+        fontFamily: FONT_MEDIUM,
+        fontWeight: '500',
+        letterSpacing: 1,
+        textAlign: 'center',
+        marginTop: -5,
     },
     cardCheckBadge: {
         position: 'absolute',
