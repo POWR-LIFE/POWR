@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import '../../lib/i18n';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { PortalShell } from '../../components/portal/PortalShell';
@@ -10,6 +12,7 @@ import { INPUT, LABEL, BTN_GOLD } from '../../components/portal/ui';
 // so an emailed sign-in link is always offered. shouldCreateUser:false means
 // the link can only sign into an account that already exists.
 export default function VenueLogin() {
+    const { t } = useTranslation();
     const navigate = useNavigate();
     const { user, isGymStaff, isAdmin, gymMemberships, rolesFor, loading: authLoading } = useAuth();
     const [email, setEmail] = useState('');
@@ -24,7 +27,7 @@ export default function VenueLogin() {
 
     const emailLink = async () => {
         const addr = email.trim().toLowerCase();
-        if (!addr) return setError('Enter your email first.');
+        if (!addr) return setError(t('gym.login.enterEmail'));
         setBusy('link'); setError(null);
         const { error: e } = await supabase.auth.signInWithOtp({
             email: addr,
@@ -33,7 +36,7 @@ export default function VenueLogin() {
         setBusy(null);
         if (e) {
             return setError(/signups? not allowed|not found|user_not_found/i.test(e.message)
-                ? "We couldn't find a POWR account with that email. Use the one your invite was for, or open your invite link again."
+                ? t('gym.login.noAccount')
                 : e.message);
         }
         setLinkSent(true);
@@ -55,49 +58,47 @@ export default function VenueLogin() {
         const paused = gymMemberships.length > 0;
         return (
             <PortalShell
-                eyebrow="Gym Portal"
-                title={paused ? 'Portal paused' : 'Not on a gym team'}
-                sub={paused
-                    ? `Your gym's portal is switched off right now. Get in touch with POWR and we'll sort it.`
-                    : `You're signed in as ${user.email}, but this account isn't on a gym's team. Open the invite link your gym or POWR sent you, or sign in with the account you accepted it with.`}
+                eyebrow={t('gym.portalName')}
+                title={paused ? t('gym.login.pausedTitle') : t('gym.login.noTeamTitle')}
+                sub={paused ? t('gym.login.pausedSub') : t('gym.login.noTeamSub', { email: user.email })}
             >
-                <a href="mailto:support@powr.life" className={`${BTN_GOLD} w-full`} style={{ color: '#080808' }}>Contact POWR</a>
-                <button onClick={signOut} className="w-full mt-4 text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">Sign out</button>
+                <a href="mailto:support@powr.life" className={`${BTN_GOLD} w-full`} style={{ color: '#080808' }}>{t('gym.login.contact')}</a>
+                <button onClick={signOut} className="w-full mt-4 text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">{t('gym.login.signOut')}</button>
             </PortalShell>
         );
     }
 
     if (linkSent) {
         return (
-            <PortalShell eyebrow="Gym Portal" title="Check your email" sub={`We've sent a sign-in link to ${email.trim()}. Open it on this device and you're in.`}>
-                <button onClick={() => setLinkSent(false)} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">Use a different email</button>
+            <PortalShell eyebrow={t('gym.portalName')} title={t('gym.login.checkEmailTitle')} sub={t('gym.login.checkEmailSub', { email: email.trim() })}>
+                <button onClick={() => setLinkSent(false)} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">{t('gym.login.differentEmail')}</button>
             </PortalShell>
         );
     }
 
     return (
-        <PortalShell eyebrow="Gym Portal" title="Welcome back" sub="Sign in with your POWR account. Use Google or Apple in the app? Leave the password blank and we'll email you a link.">
+        <PortalShell eyebrow={t('gym.portalName')} title={t('gym.login.welcomeTitle')} sub={t('gym.login.welcomeSub')}>
             <form onSubmit={passwordLogin} className="space-y-5">
                 <div>
-                    <label className={LABEL}>Email address</label>
+                    <label className={LABEL}>{t('gym.login.email')}</label>
                     <input type="email" className={INPUT} value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" />
                 </div>
                 <div>
-                    <label className={LABEL}>Password <span className="normal-case tracking-normal text-[#CCCCCC]">— optional</span></label>
+                    <label className={LABEL}>{t('gym.login.password')} <span className="normal-case tracking-normal text-[#CCCCCC]">{t('gym.login.optional')}</span></label>
                     <input type="password" className={INPUT} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
                 </div>
                 {error && <div className="text-red-500 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}
                 <button type="submit" disabled={!!busy} className={`${BTN_GOLD} w-full`}>
-                    {busy === 'password' ? 'Signing in…' : busy === 'link' ? 'Sending…' : password ? 'Sign In' : 'Email me a sign-in link'}
+                    {busy === 'password' ? t('gym.login.signingIn') : busy === 'link' ? t('gym.login.sending') : password ? t('gym.login.signIn') : t('gym.login.emailLink')}
                 </button>
                 {password && (
                     <button type="button" onClick={emailLink} disabled={!!busy} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">
-                        Forgot it? Email me a sign-in link
+                        {t('gym.login.forgot')}
                     </button>
                 )}
             </form>
             <p className="text-[11px] text-[#AAAAAA] text-center mt-6 leading-relaxed">
-                Run a gym and want it on POWR? <Link to="/partners"><span className="text-[#8a7600]">Partner with us</span></Link>
+                {t('gym.login.partnerPrompt')} <Link to="/partners"><span className="text-[#8a7600]">{t('gym.login.partnerLink')}</span></Link>
             </p>
         </PortalShell>
     );
