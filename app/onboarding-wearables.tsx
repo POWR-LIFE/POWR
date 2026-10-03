@@ -157,8 +157,10 @@ export default function OnboardingWearablesScreen() {
     const [showHealthConnectInstall, setShowHealthConnectInstall] = useState(false);
     const [showSamsungSheet, setShowSamsungSheet] = useState(false);
     const [showGarminSheet, setShowGarminSheet] = useState(false);
-    const phoneStore = Platform.OS === 'android' ? 'Health Connect' : 'Apple Health';
-    const phoneConnected = !!providers.rows.find(r => r.meta.native)?.connection;
+    const phoneStore = Platform.OS === 'android' ? 'Health Connect' : Platform.OS === 'ios' ? 'Apple Health' : 'your phone';
+    // Live grant, not the profile record — a permission revoked in system
+    // settings must bring the connect button back.
+    const phoneConnected = health.isAuthorized;
 
     async function connectHealthConnect() {
         // Samsung path only — its data reaches POWR through Health Connect.
