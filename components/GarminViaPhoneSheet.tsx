@@ -24,6 +24,9 @@ type Props = {
 export default function GarminViaPhoneSheet({ visible, phoneConnected, busy, onConnectPhone, onClose }: Props) {
     const insets = useSafeAreaInsets();
     const android = Platform.OS === 'android';
+    // Web has no phone health store to connect (getNativeProviderId() is null),
+    // so it gets the explanation without a connect action.
+    const web = Platform.OS === 'web';
     const store = android ? 'Health Connect' : 'Apple Health';
     const garminPath = android
         ? 'Garmin Connect → Settings → Health Connect, then allow everything'
@@ -40,11 +43,17 @@ export default function GarminViaPhoneSheet({ visible, phoneConnected, busy, onC
                             <MaterialCommunityIcons name="watch-variant" size={24} color={GOLD} />
                         </View>
                     </View>
-                    <Text style={styles.title}>Garmin syncs through {store}</Text>
-                    <Text style={styles.reassurance}>
-                        Our direct Garmin link is paused for now. Your watch still earns POWR: Garmin Connect shares your workouts, steps and sleep with {store}, and POWR reads them from there.
-                    </Text>
-                    <View style={styles.steps}>
+                    <Text style={styles.title}>Garmin syncs through {web ? 'your phone' : store}</Text>
+                    {web ? (
+                        <Text style={styles.reassurance}>
+                            Our direct Garmin link is paused for now. Open POWR on your phone to connect Apple Health or Health Connect. Your Garmin data reaches POWR from there.
+                        </Text>
+                    ) : (
+                        <Text style={styles.reassurance}>
+                            Our direct Garmin link is paused for now. Your watch still earns POWR: Garmin Connect shares your workouts, steps and sleep with {store}, and POWR reads them from there.
+                        </Text>
+                    )}
+                    {!web && <View style={styles.steps}>
                         <View style={styles.stepRow}>
                             <Ionicons
                                 name={phoneConnected ? 'checkmark-circle' : 'link'}
@@ -65,13 +74,13 @@ export default function GarminViaPhoneSheet({ visible, phoneConnected, busy, onC
                                 <Text style={styles.stepDesc}>{garminPath}</Text>
                             </View>
                         </View>
-                    </View>
-                    {phoneConnected ? (
+                    </View>}
+                    {web || phoneConnected ? (
                         <Pressable
                             style={({ pressed }) => [styles.connectBtn, pressed && { opacity: 0.8 }]}
                             onPress={onClose}
                         >
-                            <Text style={styles.connectBtnText}>DONE</Text>
+                            <Text style={styles.connectBtnText}>{web ? 'GOT IT' : 'DONE'}</Text>
                         </Pressable>
                     ) : (
                         <>

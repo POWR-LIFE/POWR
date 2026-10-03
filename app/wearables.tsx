@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GarminViaPhoneSheet from '@/components/GarminViaPhoneSheet';
 import GeometricBackground from '@/components/GeometricBackground';
-import { androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
+import { androidCheckAlreadyGranted, androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { getNativeProviderId, HealthProviderNotImplementedError, type HealthProviderId } from '@/lib/health/providers';
 
@@ -103,15 +103,32 @@ export default function WearablesScreen() {
   // Garmin's direct link is paused — its tile opens the sync-through-the-phone
   // sheet instead of connecting.
   const [showGarminSheet, setShowGarminSheet] = useState(false);
+  const [androidGranted, setAndroidGranted] = useState(false);
   const nativeId = getNativeProviderId();
-  const phoneConnected = !!providers.rows.find(r => r.meta.native)?.connection;
-  const phoneStore = Platform.OS === 'android' ? 'Health Connect' : 'Apple Health';
+  // Android reports the live Health Connect grant silently, so a permission
+  // revoked in system settings brings the connect button back. HealthKit hides
+  // read access entirely (and asking would prompt), so iOS uses the profile's
+  // connection record.
+  const phoneConnected = Platform.OS === 'android'
+    ? androidGranted
+    : !!providers.rows.find(r => r.meta.native)?.connection;
+
+  function openGarminSheet() {
+    setShowGarminSheet(true);
+    if (Platform.OS === 'android') {
+      androidCheckAlreadyGranted().then(setAndroidGranted).catch(() => setAndroidGranted(false));
+    }
+  }
+  const phoneStore = Platform.OS === 'android' ? 'Health Connect' : Platform.OS === 'ios' ? 'Apple Health' : 'your phone';
 
   function connectPhone() {
     if (!nativeId) return;
     (async () => {
       const result = await providers.connect(nativeId);
-      if (result !== 'failed') return;
+      if (result !== 'failed') {
+        if (Platform.OS === 'android') setAndroidGranted(true);
+        return;
+      }
       if (Platform.OS === 'android') {
         Alert.alert(
           'Health Connect not connected',
@@ -149,7 +166,7 @@ export default function WearablesScreen() {
     const row = wearableRows.find(r => r.meta.id === id);
     if (!row) return;
     if (row.meta.paused) {
-      setShowGarminSheet(true);
+      openGarminSheet();
       return;
     }
     const connected = !!row.connection;
