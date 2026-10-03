@@ -38,6 +38,7 @@
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
     "expo-crypto": "~15.0.7",
+    "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-font": "~14.0.11",
     "expo-gl": "~16.0.10",
@@ -47,6 +48,7 @@
     "expo-intent-launcher": "~13.0.8",
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.11",
+    "expo-localization": "~17.0.9",
     "expo-location": "~19.0.8",
     "expo-media-library": "~18.2.1",
     "expo-notifications": "~0.32.17",
@@ -115,6 +117,16 @@
     "tmp": "^0.2.6",
     "undici": "^6.27.0",
     "react-native-nitro-modules": "0.35.9"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-location",
+          "expo-notifications"
+        ]
+      }
+    }
   },
   "private": true
 }

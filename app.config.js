@@ -44,7 +44,16 @@ module.exports = {
       entitlements: {
         ...expo.ios?.entitlements,
         'com.apple.developer.healthkit': true,
+        // Lets HealthKit wake the app when new steps/workouts are written
+        // (HKObserverQuery + enableBackgroundDelivery), so walking points stop
+        // depending on an app open. Entitlement only — the observer code ships
+        // by OTA; without it this grants nothing and costs nothing.
+        'com.apple.developer.healthkit.background-delivery': true,
         'com.apple.developer.applesignin': ['Default'],
+        // Allows interruptionLevel 'timeSensitive' so check-in / event-door /
+        // streak-at-risk alerts break through Focus. App Review 4.5.4: never for
+        // marketing pushes. Unused until a payload sets the level.
+        'com.apple.developer.usernotifications.time-sensitive': true,
       },
     },
     android: {
@@ -85,6 +94,10 @@ module.exports = {
       // duplicate ACTION_SHOW_PERMISSIONS_RATIONALE intent-filter on
       // MainActivity.
       'expo-secure-store',
+      // Device language for lib/locale.ts. With no options this plugin writes
+      // nothing native — it is registered so the per-app language list
+      // (supportedLocales) has a home once there are translations to declare.
+      'expo-localization',
       // Picks a profile/share-card image and nothing else. On Android 13+ this
       // goes through the system photo picker and requests NO permission, which
       // is what Google Play's Photo and Video Permissions policy requires.

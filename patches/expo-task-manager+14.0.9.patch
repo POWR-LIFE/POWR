@@ -1,0 +1,83 @@
+diff --git a/node_modules/expo-task-manager/ios/EXTaskManager/EXTaskService.m b/node_modules/expo-task-manager/ios/EXTaskManager/EXTaskService.m
+index ae5f800..a7323c7 100644
+--- a/node_modules/expo-task-manager/ios/EXTaskManager/EXTaskService.m
++++ b/node_modules/expo-task-manager/ios/EXTaskManager/EXTaskService.m
+@@ -219,22 +219,37 @@ - (void)notifyTaskWithName:(NSString *)taskName
+   }
+   
+   // Remove event and maybe invalidate related app record
+-  NSMutableArray *appEvents = _events[appId];
+-  
+-  if (appEvents) {
+-    [appEvents removeObject:eventId];
+-    
+-    if (appEvents.count == 0) {
+-      [self->_events removeObjectForKey:appId];
+-      
+-      // Invalidate app record but after 1 seconds delay so we can still take batched events.
+-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+-        if (!self->_events[appId]) {
+-          [self _invalidateAppWithId:appId];
+-        }
+-      });
++  // POWR patch: _events is mutated here (module queue, from JS
++  // notifyTaskFinishedAsync) and in executeTask: (main thread, CoreLocation
++  // callbacks) with no lock — Sentry POWR-G 2026-08-30 NSRangeException
++  // insertObject:atIndex: on an array emptied between count and insert. Every
++  // _events access now holds the same lock.
++  BOOL scheduleInvalidate = NO;
++  @synchronized (self->_events) {
++    NSMutableArray *appEvents = self->_events[appId];
++    
++    if (appEvents) {
++      [appEvents removeObject:eventId];
++      
++      if (appEvents.count == 0) {
++        [self->_events removeObjectForKey:appId];
++        scheduleInvalidate = YES;
++      }
+     }
+   }
++  
++  if (scheduleInvalidate) {
++    // Invalidate app record but after 1 seconds delay so we can still take batched events.
++    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
++      BOOL stillIdle;
++      @synchronized (self->_events) {
++        stillIdle = self->_events[appId] == nil;
++      }
++      if (stillIdle) {
++        [self _invalidateAppWithId:appId];
++      }
++    });
++  }
+ }
+ 
+ - (void)setTaskManager:(id<EXTaskManagerInterface>)taskManager
+@@ -285,9 +300,12 @@ - (void)executeTask:(nonnull id<EXTaskInterface>)task
+   NSLog(@"EXTaskService: Executing task '%@' for app '%@'.", task.name, task.appId);
+   
+   // Save an event so we can keep tracking events for this app
+-  NSMutableArray *appEvents = _events[task.appId] ?: [NSMutableArray new];
+-  [appEvents addObject:executionInfo[@"eventId"]];
+-  [_events setObject:appEvents forKey:task.appId];
++  // POWR patch: same lock as notifyTaskWithName: (see there).
++  @synchronized (self->_events) {
++    NSMutableArray *appEvents = self->_events[task.appId] ?: [NSMutableArray new];
++    [appEvents addObject:executionInfo[@"eventId"]];
++    [self->_events setObject:appEvents forKey:task.appId];
++  }
+   
+   if (taskManager != nil) {
+     // Task manager is initialized and can execute events
+@@ -546,7 +564,9 @@ - (void)_loadAppWithId:(nonnull NSString *)appId
+     appRecord = [appLoader loadAppWithUrl:appUrl options:nil callback:^(BOOL success, NSError *error) {
+       if (!success) {
+         NSLog(@"EXTaskService: Loading app '%@' from url '%@' failed. Error description: %@", appId, appUrl, error.description);
+-        [self->_events removeObjectForKey:appId];
++        @synchronized (self->_events) {
++          [self->_events removeObjectForKey:appId];
++        }
+         [self->_eventsQueues removeObjectForKey:appId];
+         [self->_appRecords removeObjectForKey:appId];
+         
