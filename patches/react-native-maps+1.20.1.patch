@@ -1,0 +1,48 @@
+diff --git a/node_modules/react-native-maps/ios/AirGoogleMaps/AIRGoogleMap.m b/node_modules/react-native-maps/ios/AirGoogleMaps/AIRGoogleMap.m
+index a1ffe69..f6a1378 100644
+--- a/node_modules/react-native-maps/ios/AirGoogleMaps/AIRGoogleMap.m
++++ b/node_modules/react-native-maps/ios/AirGoogleMaps/AIRGoogleMap.m
+@@ -148,6 +148,10 @@ - (id)eventFromCoordinate:(CLLocationCoordinate2D)coordinate {
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wobjc-missing-super-calls"
+ - (void)insertReactSubview:(id<RCTComponent>)subview atIndex:(NSInteger)atIndex {
++  // POWR patch: Fabric's legacy interop can hand us a nil child (or an index past
++  // the end) when the marker set churns mid-update — Sentry 2026-09-05
++  // NSInvalidArgumentException insertObject:atIndex: nil. Mirrors upstream #5871.
++  if (!subview) return;
+   // Our desired API is to pass up markers/overlays as children to the mapview component.
+   // This is where we intercept them and do the appropriate underlying mapview action.
+   if ([subview isKindOfClass:[AIRGoogleMapMarker class]]) {
+@@ -188,7 +192,7 @@ - (void)insertReactSubview:(id<RCTComponent>)subview atIndex:(NSInteger)atIndex
+       [self insertReactSubview:(UIView *)childSubviews[i] atIndex:atIndex];
+     }
+   }
+-  [_reactSubviews insertObject:(UIView *)subview atIndex:(NSUInteger) atIndex];
++  [_reactSubviews insertObject:(UIView *)subview atIndex:MIN((NSUInteger)atIndex, _reactSubviews.count)];
+ }
+ #pragma clang diagnostic pop
+ 
+diff --git a/node_modules/react-native-maps/ios/AirMaps/AIRMap.m b/node_modules/react-native-maps/ios/AirMaps/AIRMap.m
+index 07a4638..1cfa6a2 100644
+--- a/node_modules/react-native-maps/ios/AirMaps/AIRMap.m
++++ b/node_modules/react-native-maps/ios/AirMaps/AIRMap.m
+@@ -104,6 +104,10 @@ -(void)addSubview:(UIView *)view {
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wobjc-missing-super-calls"
+ - (void)insertReactSubview:(id<RCTComponent>)subview atIndex:(NSInteger)atIndex {
++    // POWR patch: Fabric's legacy interop can hand us a nil child (or an index past
++    // the end) when the marker set churns mid-update — Sentry 2026-09-05
++    // NSInvalidArgumentException insertObject:atIndex: nil. Mirrors upstream #5871.
++    if (!subview) return;
+     // Our desired API is to pass up markers/overlays as children to the mapview component.
+     // This is where we intercept them and do the appropriate underlying mapview action.
+     if ([subview isKindOfClass:[AIRMapMarker class]]) {
+@@ -135,7 +139,7 @@ - (void)insertReactSubview:(id<RCTComponent>)subview atIndex:(NSInteger)atIndex
+             [self insertReactSubview:(UIView *)childSubviews[i] atIndex:atIndex];
+         }
+     }
+-    [_reactSubviews insertObject:(UIView *)subview atIndex:(NSUInteger) atIndex];
++    [_reactSubviews insertObject:(UIView *)subview atIndex:MIN((NSUInteger)atIndex, _reactSubviews.count)];
+ }
+ #pragma clang diagnostic pop
+ 
