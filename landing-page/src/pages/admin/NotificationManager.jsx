@@ -47,18 +47,23 @@ function fmtType(t) {
     return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// The four notifications one gym visit can put on a phone, in the order they
+// The five notifications one gym visit can put on a phone, in the order they
 // arrive. They get their own section so combinations can be tested at a glance;
 // they are left out of the category lists below so each switch appears once.
 //   check-in  drawn by the phone itself, so the switch is mirrored to each phone
 //             when the app opens, and its copy lives in the app (not editable)
 //   exit      sent by the gym-visit beacon, which reads this row directly
+//   reward    drawn by the phone too, but only when claim-points hands it a
+//             reward to name, and claim-points reads this row at claim time.
+//             Only a gym visit's claim schedules it; copy lives in the app.
 const GYM_VISIT_FLOW = [
     { type: 'check_in_reminder',    label: 'Check-in',     when: () => '75 s after they arrive',                          copyEditable: false,
       note: 'Drawn by the phone. Each phone picks up a change the next time the app is opened.' },
     { type: 'session_completed',    label: 'Points',       when: (t) => `When the visit's points land · ${t.dwell} min`, copyEditable: true },
     { type: 'session_upgraded',     label: 'Bonus points', when: (t) => `When the bonus lands · ${t.upgrade} min`,       copyEditable: true },
     { type: 'gym_session_complete', label: 'Exit',         when: () => 'About 2 min after they leave',                   copyEditable: true },
+    { type: 'points_milestone',     label: 'Reward within reach', when: () => 'About 2.5 h after the points, 08:00–21:00, once a day', copyEditable: false,
+      note: 'Drawn by the phone when they are close to a reward. Takes effect from the next claim, which also cancels one already queued.' },
 ];
 const GYM_VISIT_TYPES = new Set(GYM_VISIT_FLOW.map(f => f.type));
 

@@ -1239,13 +1239,30 @@ Deno.serve(async (req) => {
       }, { onConflict: 'user_id' });
       // Respect the user's points_milestone preference — the client schedule
       // bypasses send-push-notification's server-side preference gate.
-      const { data: pref } = await supabase
-        .from('notification_preferences')
-        .select('points_milestone')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      //
+      // And the admin's switch for the same banner (notification_config
+      // 'points_milestone', /admin/notifications), for the same reason: the
+      // kill-switch lives in send-push, which a phone-scheduled banner never
+      // passes (2026-10-04 — it was the one gym-visit notification that still
+      // went out after every other one was switched off). Returning null also
+      // cancels a banner the phone already has queued. A failed read sends
+      // nothing: a missed nudge is cheaper than ignoring a switch someone
+      // turned off.
+      const [{ data: pref }, { data: adminRow, error: adminErr }] = await Promise.all([
+        supabase
+          .from('notification_preferences')
+          .select('points_milestone')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+        supabase
+          .from('notification_config')
+          .select('enabled')
+          .eq('type', 'points_milestone')
+          .maybeSingle(),
+      ]);
+      const adminOn = !adminErr && adminRow?.enabled !== false;
 
-      if (!pref || pref.points_milestone !== false) {
+      if (adminOn && (!pref || pref.points_milestone !== false)) {
         withinReach = {
           points_to_unlock: Math.ceil(target.powr_cost - newBalance),
           reward_name: target.title,
