@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../lib/i18n';
+import { rememberProfileLanguage } from '../../lib/locale';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { methodLaterKey } from './PartnerIntegrationHub';
@@ -100,46 +103,48 @@ function AdminPartnerPicker({ onSelect }) {
 // The integration slot adapts to the brand's chosen delivery method — one
 // nav item, labelled by the method; Promo Codes only surfaces for manual
 // brands (it stays routable for the others as their fallback pool).
+// Labels are translation keys (shared/i18n/<lang>/portal.json → brand.nav).
 const INTEGRATION_NAV = {
-    api:     { label: 'API',         path: '/partner/integration/api',     icon: Code2,  match: '/partner/integration' },
-    shopify: { label: 'Shopify',     path: '/partner/integration/shopify', icon: Store,  match: '/partner/integration' },
-    manual:  { label: 'Promo Codes', path: '/partner/promo-codes',         icon: Ticket, match: '/partner/integration' },
+    api:     { label: 'brand.nav.api',        path: '/partner/integration/api',     icon: Code2,  match: '/partner/integration' },
+    shopify: { label: 'brand.nav.shopify',    path: '/partner/integration/shopify', icon: Store,  match: '/partner/integration' },
+    manual:  { label: 'brand.nav.promoCodes', path: '/partner/promo-codes',         icon: Ticket, match: '/partner/integration' },
 };
-const INTEGRATION_NAV_DEFAULT = { label: 'Integration', path: '/partner/integration', icon: Plug, match: '/partner/integration' };
+const INTEGRATION_NAV_DEFAULT = { label: 'brand.nav.integration', path: '/partner/integration', icon: Plug, match: '/partner/integration' };
 
 const navItemsFor = (deliveryMethod) => [
-    { label: 'Overview',    path: '/partner',             icon: LayoutDashboard },
-    { label: 'My Rewards',  path: '/partner/rewards',     icon: Award           },
+    { label: 'brand.nav.overview',    path: '/partner',             icon: LayoutDashboard },
+    { label: 'brand.nav.rewards',     path: '/partner/rewards',     icon: Award           },
     INTEGRATION_NAV[deliveryMethod] ?? INTEGRATION_NAV_DEFAULT,
-    { label: "What's On",   path: '/partner/featured',    icon: CalendarDays    },
-    { label: 'Placements',  path: '/partner/placements',  icon: MapPin, gated: true },
-    { label: 'Redemptions', path: '/partner/redemptions', icon: Gift            },
-    { label: 'Settings',    path: '/partner/settings',    icon: Settings        },
+    { label: 'brand.nav.whatsOn',     path: '/partner/featured',    icon: CalendarDays    },
+    { label: 'brand.nav.placements',  path: '/partner/placements',  icon: MapPin, gated: true },
+    { label: 'brand.nav.redemptions', path: '/partner/redemptions', icon: Gift            },
+    { label: 'brand.nav.settings',    path: '/partner/settings',    icon: Settings        },
 ];
 
 const PATH_LABELS = {
-    partner:       'Overview',
-    rewards:       'My Rewards',
-    'promo-codes': 'Promo Codes',
-    featured:      "What's On",
-    placements:    'Placements',
-    redemptions:   'Redemptions',
-    integration:   'Integration',
-    settings:      'Settings',
-    support:       'Support',
+    partner:       'brand.nav.overview',
+    rewards:       'brand.nav.rewards',
+    'promo-codes': 'brand.nav.promoCodes',
+    featured:      'brand.nav.whatsOn',
+    placements:    'brand.nav.placements',
+    redemptions:   'brand.nav.redemptions',
+    integration:   'brand.nav.integration',
+    settings:      'brand.nav.settings',
+    support:       'brand.nav.support',
 };
 
-const INTEGRATION_SUB_LABELS = { api: 'API', shopify: 'Shopify' };
+const INTEGRATION_SUB_LABELS = { api: 'brand.nav.api', shopify: 'brand.nav.shopify' };
 
 export function PartnerLayout({ children }) {
+    const { t } = useTranslation();
     const location = useLocation();
     const navigate = useNavigate();
     const { user, partnerData, isAdmin, isActingPartner, setActingPartner, placementsEnabled, deliveryMethod } = useAuth();
 
     const segment = location.pathname.split('/')[2] || 'partner';
     const currentLabel = segment === 'integration'
-        ? (INTEGRATION_SUB_LABELS[location.pathname.split('/')[3]] ?? 'Integration')
-        : (PATH_LABELS[segment] || segment);
+        ? t(INTEGRATION_SUB_LABELS[location.pathname.split('/')[3]] ?? 'brand.nav.integration')
+        : (PATH_LABELS[segment] ? t(PATH_LABELS[segment]) : segment);
 
     // Placements is gated: hidden for brands until the feature flag is on,
     // but always shown to admins (incl. admin-preview) for testing.
@@ -159,6 +164,9 @@ export function PartnerLayout({ children }) {
         navigate('/partner/integration');
     }, [brandKey, deliveryMethod, location.pathname, navigate]);
 
+    // Save this person's browser language so brand emails can follow it later.
+    useEffect(() => { rememberProfileLanguage(supabase, user?.id); }, [user?.id]);
+
     const handleSignOut = async () => {
         await supabase.auth.signOut();
         navigate('/partner/login');
@@ -170,7 +178,7 @@ export function PartnerLayout({ children }) {
     }
 
     return (
-        <div className="flex min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808]">
+        <div lang={i18n.language} dir={i18n.dir()} className="flex min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808]">
             {/* Sidebar */}
             <aside className="w-72 flex-shrink-0 border-r border-[#E6E6E1] bg-white flex flex-col h-screen sticky top-0 z-[100]">
                 <div className="px-8 pt-8 pb-5 flex items-center justify-start pointer-events-none">
@@ -206,7 +214,7 @@ export function PartnerLayout({ children }) {
                     scrolling; overflow-y-auto is only a short-window fallback. */}
                 <nav className="flex-1 px-6 space-y-1.5 overflow-y-auto">
                     <div className="px-4 mb-4">
-                        <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Partner Portal</div>
+                        <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">{t('brand.portalName')}</div>
                         <div className="h-[2px] w-10 bg-[#E8D200]/60"></div>
                     </div>
                     {navItems.map(item => {
@@ -223,7 +231,7 @@ export function PartnerLayout({ children }) {
                                 }`}
                             >
                                 <item.icon size={18} strokeWidth={active ? 3 : 2} className={active ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
-                                <span className="text-[11px] uppercase tracking-[0.2em] font-black">{item.label}</span>
+                                <span className="text-[11px] uppercase tracking-[0.2em] font-black">{t(item.label)}</span>
                             </Link>
                         );
                     })}
@@ -242,11 +250,11 @@ export function PartnerLayout({ children }) {
                         }`}
                     >
                         <LifeBuoy size={18} strokeWidth={location.pathname === '/partner/support' ? 3 : 2} className={location.pathname === '/partner/support' ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
-                        <span className="text-[11px] uppercase tracking-[0.2em] font-black">Support</span>
+                        <span className="text-[11px] uppercase tracking-[0.2em] font-black">{t('brand.nav.support')}</span>
                     </Link>
                     {user?.email && (
                         <div className="mb-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
-                            <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
+                            <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">{t('common.signedInAs')}</div>
                             <div className="text-[11px] text-[#666] truncate font-mono">{user.email}</div>
                         </div>
                     )}
@@ -254,7 +262,7 @@ export function PartnerLayout({ children }) {
                         onClick={handleSignOut}
                         className="w-full flex items-center justify-center gap-3 h-12 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/40 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all border border-transparent hover:border-red-500/10"
                     >
-                        <LogOut size={16} /> Sign Out
+                        <LogOut size={16} /> {t('common.signOut')}
                     </button>
                 </div>
             </aside>
@@ -265,7 +273,7 @@ export function PartnerLayout({ children }) {
             <main className="flex-1 flex flex-col h-screen overflow-hidden bg-[#F4F4F1] border-l border-[#E6E6E1]">
                 <header className="h-24 border-b border-[#E6E6E1] flex-shrink-0 flex items-center justify-between px-16 bg-[#F4F4F1]/60 backdrop-blur-3xl sticky top-0 z-50">
                     <div className="flex items-center gap-5">
-                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#CCCCCC]">Partner Portal</div>
+                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#CCCCCC]">{t('brand.portalName')}</div>
                         <ChevronRight size={13} className="text-[#CCCCCC]" />
                         <div className="flex items-center gap-3">
                             <div className="h-1.5 w-1.5 rounded-full bg-[#E8D200] shadow-[0_0_10px_rgba(232,210,0,0.6)] animate-pulse"></div>

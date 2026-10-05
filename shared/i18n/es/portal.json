@@ -1,0 +1,74 @@
+{
+  "common": {
+    "signedInAs": "Sesión iniciada como",
+    "signOut": "Cerrar sesión",
+    "close": "Cerrar",
+    "notInPackage": "No incluido en tu paquete",
+    "backToSite": "Volver a powr.life"
+  },
+  "gym": {
+    "portalName": "Portal del gimnasio",
+    "nav": {
+      "overview": "Resumen",
+      "home": "Inicio",
+      "events": "Eventos",
+      "discounts": "Descuentos",
+      "clashNights": "Clash Nights",
+      "nights": "Noches",
+      "studio": "Studio",
+      "screens": "Pantallas",
+      "members": "Miembros",
+      "settings": "Ajustes",
+      "package": "Paquete"
+    },
+    "role": {
+      "owner": "Propietario",
+      "staff": "Equipo",
+      "admin": "Admin de POWR"
+    },
+    "switchGym": "Cambiar de gimnasio",
+    "accountMenu": "Cuenta, paquete y cerrar sesión",
+    "trialNudge": "{{package}} · mira qué cambia",
+    "login": {
+      "welcomeTitle": "Hola de nuevo",
+      "welcomeSub": "Inicia sesión con tu cuenta de POWR. ¿Usas Google o Apple en la app? Deja la contraseña en blanco y te enviaremos un enlace por email.",
+      "email": "Correo electrónico",
+      "password": "Contraseña",
+      "optional": "— opcional",
+      "signingIn": "Iniciando sesión…",
+      "sending": "Enviando…",
+      "signIn": "Iniciar sesión",
+      "emailLink": "Envíame un enlace de acceso",
+      "forgot": "¿La has olvidado? Envíame un enlace de acceso",
+      "partnerPrompt": "¿Tienes un gimnasio y quieres estar en POWR?",
+      "partnerLink": "Colabora con nosotros",
+      "enterEmail": "Primero introduce tu email.",
+      "noAccount": "No encontramos ninguna cuenta de POWR con ese email. Usa la de tu invitación o vuelve a abrir el enlace de invitación.",
+      "checkEmailTitle": "Revisa tu email",
+      "checkEmailSub": "Hemos enviado un enlace de acceso a {{email}}. Ábrelo en este dispositivo y listo.",
+      "differentEmail": "Usar otro email",
+      "pausedTitle": "Portal en pausa",
+      "pausedSub": "El portal de tu gimnasio está desactivado ahora mismo. Ponte en contacto con POWR y lo solucionamos.",
+      "noTeamTitle": "No formas parte de ningún gimnasio",
+      "noTeamSub": "Has iniciado sesión como {{email}}, pero esta cuenta no forma parte del equipo de ningún gimnasio. Abre el enlace de invitación que te envió tu gimnasio o POWR, o inicia sesión con la cuenta con la que la aceptaste.",
+      "contact": "Contactar con POWR",
+      "signOut": "Cerrar sesión"
+    }
+  },
+  "brand": {
+    "portalName": "Portal de partners",
+    "nav": {
+      "overview": "Resumen",
+      "rewards": "Mis recompensas",
+      "promoCodes": "Códigos promocionales",
+      "whatsOn": "Destacados",
+      "placements": "Emplazamientos",
+      "redemptions": "Canjes",
+      "integration": "Integración",
+      "api": "API",
+      "shopify": "Shopify",
+      "settings": "Ajustes",
+      "support": "Soporte"
+    }
+  }
+}

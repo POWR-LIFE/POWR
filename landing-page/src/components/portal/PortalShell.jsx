@@ -1,12 +1,15 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../lib/i18n';
 
 // The framed, centred card every pre-portal screen sits in: login, setup,
 // "not open yet". Same canvas and glow as the portal so the door matches the
 // room. Full-bleed on phones (the card IS the screen), boxed on desktop.
 export function PortalShell({ eyebrow, title, sub, children, footer = true }) {
+    const { t } = useTranslation();
     return (
-        <div className="min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] relative overflow-x-hidden">
+        <div lang={i18n.language} dir={i18n.dir()} className="min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] relative overflow-x-hidden">
             <div
                 aria-hidden
                 className="fixed inset-0 pointer-events-none"
@@ -34,7 +37,7 @@ export function PortalShell({ eyebrow, title, sub, children, footer = true }) {
                     {footer && (
                         <div className="text-center mt-8">
                             <Link to="/" className="text-[10px] uppercase tracking-[0.3em] font-black">
-                                <span className="text-[#BBBBBB] hover:text-[#8a7600] transition-colors">Back to powr.life</span>
+                                <span className="text-[#BBBBBB] hover:text-[#8a7600] transition-colors">{t('common.backToSite')}</span>
                             </Link>
                         </div>
                     )}

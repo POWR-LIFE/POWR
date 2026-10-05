@@ -1,0 +1,74 @@
+{
+  "common": {
+    "signedInAs": "Signed in as",
+    "signOut": "Sign Out",
+    "close": "Close",
+    "notInPackage": "Not in your package",
+    "backToSite": "Back to powr.life"
+  },
+  "gym": {
+    "portalName": "Gym Portal",
+    "nav": {
+      "overview": "Overview",
+      "home": "Home",
+      "events": "Events",
+      "discounts": "Discounts",
+      "clashNights": "Clash Nights",
+      "nights": "Nights",
+      "studio": "Studio",
+      "screens": "Screens",
+      "members": "Members",
+      "settings": "Settings",
+      "package": "Package"
+    },
+    "role": {
+      "owner": "Owner",
+      "staff": "Team",
+      "admin": "POWR admin"
+    },
+    "switchGym": "Switch gym",
+    "accountMenu": "Account, package and sign out",
+    "trialNudge": "{{package}} · see what changes",
+    "login": {
+      "welcomeTitle": "Welcome back",
+      "welcomeSub": "Sign in with your POWR account. Use Google or Apple in the app? Leave the password blank and we'll email you a link.",
+      "email": "Email address",
+      "password": "Password",
+      "optional": "— optional",
+      "signingIn": "Signing in…",
+      "sending": "Sending…",
+      "signIn": "Sign In",
+      "emailLink": "Email me a sign-in link",
+      "forgot": "Forgot it? Email me a sign-in link",
+      "partnerPrompt": "Run a gym and want it on POWR?",
+      "partnerLink": "Partner with us",
+      "enterEmail": "Enter your email first.",
+      "noAccount": "We couldn't find a POWR account with that email. Use the one your invite was for, or open your invite link again.",
+      "checkEmailTitle": "Check your email",
+      "checkEmailSub": "We've sent a sign-in link to {{email}}. Open it on this device and you're in.",
+      "differentEmail": "Use a different email",
+      "pausedTitle": "Portal paused",
+      "pausedSub": "Your gym's portal is switched off right now. Get in touch with POWR and we'll sort it.",
+      "noTeamTitle": "Not on a gym team",
+      "noTeamSub": "You're signed in as {{email}}, but this account isn't on a gym's team. Open the invite link your gym or POWR sent you, or sign in with the account you accepted it with.",
+      "contact": "Contact POWR",
+      "signOut": "Sign out"
+    }
+  },
+  "brand": {
+    "portalName": "Partner Portal",
+    "nav": {
+      "overview": "Overview",
+      "rewards": "My Rewards",
+      "promoCodes": "Promo Codes",
+      "whatsOn": "What's On",
+      "placements": "Placements",
+      "redemptions": "Redemptions",
+      "integration": "Integration",
+      "api": "API",
+      "shopify": "Shopify",
+      "settings": "Settings",
+      "support": "Support"
+    }
+  }
+}
