@@ -40,7 +40,14 @@ for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 1000));
 }
 
-const browser = await chromium.launch({ args: ['--ignore-gpu-blocklist', '--use-gl=angle', '--use-angle=swiftshader'] });
+// Playwright's browser ignores HTTPS_PROXY, so in a sandbox whose only way
+// out is that proxy (the cloud routine's) the Google Fonts request fails and
+// every render silently falls back to a system font. Hand the proxy over.
+const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+const browser = await chromium.launch({
+    args: ['--ignore-gpu-blocklist', '--use-gl=angle', '--use-angle=swiftshader'],
+    ...(proxy ? { proxy: { server: proxy, bypass: '127.0.0.1,localhost' } } : {}),
+});
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
