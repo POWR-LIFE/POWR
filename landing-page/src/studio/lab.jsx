@@ -29,7 +29,7 @@ window.__studio = {
     },
     async render({ blueprint, template, format = 'post', photo: name, fields, style, look, focal, zoom, scale = 1, assets: assetUrls = {} }) {
         await prepareStudio();
-        if (!TEMPLATES.some((t) => t.id === template)) throw new Error(`No template "${template}" — is it in its pillar's index.js?`);
+        if (!blueprint && !TEMPLATES.some((t) => t.id === template)) throw new Error(`No template "${template}" — is it in its pillar's index.js?`);
         const media = name ? await photo(name) : null;
         const assets = {};
         for (const [k, url] of Object.entries(assetUrls)) assets[k] = await loadAsset(await (await fetch(url)).blob());
