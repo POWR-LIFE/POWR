@@ -252,6 +252,10 @@ sender_name = "POWR"
 subject = "Reset your POWR password"
 content_path = "./supabase/templates/recovery.html"
 
+[auth.email.template.magic_link]
+subject = "Your POWR sign-in link"
+content_path = "./supabase/templates/magic-link.html"
+
 [auth.email.template.email_change]
 subject = "Confirm your POWR email change"
 content_path = "./supabase/templates/email-change.html"
@@ -648,4 +652,10 @@ verify_jwt = false
 [functions.send-redemption-receipt]
 # Invoked by the notify_redemption_receipt() DB trigger via pg_net (no Supabase
 # user JWT) — gated by the x-resolve-token shared secret instead.
+verify_jwt = false
+
+[functions.publish-instagram]
+# Studio → Instagram. Called by pg_cron every 5 min (no user JWT) through the
+# x-resolve-token gate, and by admins from the Studio — the admin modes check
+# the caller's JWT against admin_roles inside the function.
 verify_jwt = false

@@ -2,7 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -14,10 +14,11 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import GarminViaPhoneSheet from '@/components/GarminViaPhoneSheet';
 import GeometricBackground from '@/components/GeometricBackground';
-import { androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
+import { androidCheckAlreadyGranted, androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
-import { HealthProviderNotImplementedError, type HealthProviderId } from '@/lib/health/providers';
+import { getNativeProviderId, HealthProviderNotImplementedError, type HealthProviderId } from '@/lib/health/providers';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -99,6 +100,50 @@ export default function WearablesScreen() {
   const wearableRows = providers.rows.filter(r => !r.meta.native);
   const connectedWearable = wearableRows.find(r => !!r.connection);
 
+  // Garmin's direct link is paused — its tile opens the sync-through-the-phone
+  // sheet instead of connecting.
+  const [showGarminSheet, setShowGarminSheet] = useState(false);
+  const [androidGranted, setAndroidGranted] = useState(false);
+  const nativeId = getNativeProviderId();
+  // Android reports the live Health Connect grant silently, so a permission
+  // revoked in system settings brings the connect button back. HealthKit hides
+  // read access entirely (and asking would prompt), so iOS uses the profile's
+  // connection record.
+  const phoneConnected = Platform.OS === 'android'
+    ? androidGranted
+    : !!providers.rows.find(r => r.meta.native)?.connection;
+
+  function openGarminSheet() {
+    setShowGarminSheet(true);
+    if (Platform.OS === 'android') {
+      androidCheckAlreadyGranted().then(setAndroidGranted).catch(() => setAndroidGranted(false));
+    }
+  }
+  const phoneStore = Platform.OS === 'android' ? 'Health Connect' : Platform.OS === 'ios' ? 'Apple Health' : 'your phone';
+
+  function connectPhone() {
+    if (!nativeId) return;
+    (async () => {
+      const result = await providers.connect(nativeId);
+      if (result !== 'failed') {
+        if (Platform.OS === 'android') setAndroidGranted(true);
+        return;
+      }
+      if (Platform.OS === 'android') {
+        Alert.alert(
+          'Health Connect not connected',
+          'Permission was not granted. You can allow it in Health Connect settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Health Connect', onPress: androidOpenHealthConnectSettings },
+          ],
+        );
+      } else {
+        Alert.alert('Apple Health not connected', 'We could not start the connection. Please try again.');
+      }
+    })();
+  }
+
   function doConnect(id: HealthProviderId, name: string) {
     (async () => {
       try {
@@ -120,6 +165,10 @@ export default function WearablesScreen() {
   function handleCardPress(id: HealthProviderId, name: string) {
     const row = wearableRows.find(r => r.meta.id === id);
     if (!row) return;
+    if (row.meta.paused) {
+      openGarminSheet();
+      return;
+    }
     const connected = !!row.connection;
     if (providers.busyId) return;
 
@@ -199,6 +248,9 @@ export default function WearablesScreen() {
                   <BrandIcon id={id} size={Math.round(CARD_W * 0.44)} />
                 </View>
                 <Text style={styles.cardName} numberOfLines={1}>{row.meta.name}</Text>
+                {row.meta.paused && (
+                  <Text style={styles.cardVia} numberOfLines={1}>VIA {phoneStore.toUpperCase()}</Text>
+                )}
                 {connected && (
                   <View style={styles.checkBadge}>
                     <MaterialCommunityIcons name="check" size={10} color="#000" />
@@ -213,6 +265,14 @@ export default function WearablesScreen() {
           More devices sync automatically via Apple Health or Health Connect — connect those from the health sources section in Settings.
         </Text>
       </ScrollView>
+
+      <GarminViaPhoneSheet
+        visible={showGarminSheet}
+        phoneConnected={phoneConnected}
+        busy={!!nativeId && providers.busyId === nativeId}
+        onConnectPhone={connectPhone}
+        onClose={() => setShowGarminSheet(false)}
+      />
     </View>
   );
 }
@@ -308,6 +368,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     textAlign: 'center',
     paddingHorizontal: 4,
+  },
+
+  cardVia: {
+    color: MUTED,
+    fontSize: 7,
+    fontWeight: '500',
+    letterSpacing: 1,
+    textAlign: 'center',
+    marginTop: -5,
   },
 
   checkBadge: {

@@ -12,8 +12,9 @@ import { fetchGymSummary } from './venueApi';
 // from this gym's own events and weekly board (studio/gymData.js). Photos and
 // clips never leave the device; the post is drawn and saved in the browser.
 // Partners (founding-partner posts, reward vouchers) is POWR's own marketing,
-// so it isn't offered here.
-const GYM_CATEGORIES = ['Brand', 'Events', 'Challenges'];
+// so it isn't offered here. The four pillar libraries are: a gym posts about
+// food, headspace and rest as much as training.
+const GYM_CATEGORIES = ['Brand', 'Events', 'Challenges', 'Move', 'Eat', 'Mind', 'Sleep'];
 
 export default function VenueStudio() {
     const { gym } = useAuth();

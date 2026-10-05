@@ -60,6 +60,13 @@ export type HealthProviderMeta = {
     capabilities: HealthProviderCapability[];
     /** Hidden from UI — integration exists in code but is not yet available to users. */
     hidden?: boolean;
+    /**
+     * The direct (Terra) link delivers nothing right now, but the brand's
+     * companion app still writes to Apple Health / Health Connect. The tile
+     * stays visible and routes to the phone health store instead, and any
+     * existing connection is treated as gone so native sync takes over.
+     */
+    paused?: boolean;
 };
 
 /**

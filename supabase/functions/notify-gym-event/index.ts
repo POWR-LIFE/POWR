@@ -9,7 +9,9 @@
 // kinds: submitted (a gym's first events wait for review), published (a
 // trusted gym went straight out), cancelled, disqualified — and one per gym,
 // not per event: package_request (an owner asked to switch package, via
-// _gym_notify; POWR sets it in /admin/gyms and invoices).
+// _gym_notify; POWR sets it in /admin/gyms and invoices), clash_night_request
+// and clash_night_cancelled (a Clash Pro gym asked for, or called off, a night),
+// help_request (the team wrote to POWR from Settings; the ticket is in /admin/support).
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
@@ -75,6 +77,24 @@ serve(async (req) => {
       context.push("<https://powr.life/admin/gyms|Set it in Gym Portals>");
       break;
     }
+    case "clash_night_request": {
+      const backup = fmtDay(detail?.backup_date);
+      text = `:tada: *${gymName}* wants a Clash Night on *${fmtDay(detail?.date)}* at ${clean(detail?.start_time)}${who}`;
+      if (backup) context.push(`Backup: ${backup}`);
+      if (detail?.notes) context.push(`“${clean(detail.notes)}”`);
+      context.push(PACKAGE_LABEL[detail?.package] ?? clean(detail?.package));
+      context.push("<https://powr.life/admin/gyms|Confirm in Gym Portals>");
+      break;
+    }
+    case "clash_night_cancelled":
+      text = `:x: *${gymName}* called off its Clash Night on *${fmtDay(detail?.date)}*${who}`;
+      context.push(detail?.was === "confirmed" ? "It was confirmed: stand the crew down" : "It was still a request");
+      break;
+    case "help_request":
+      text = `:sos: *${gymName}* wrote to POWR${who}: *${clean(detail?.subject)}*`;
+      if (detail?.topic) context.push(clean(detail.topic));
+      context.push("<https://powr.life/admin/support|Answer in Support>");
+      break;
     default:
       return new Response("skipped", { status: 200 });
   }

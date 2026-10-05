@@ -6,6 +6,8 @@ import { compileBlueprint } from '../../studio/blueprint/compile';
 import StudioEditor from '../../studio/StudioEditor';
 import PackBuilder from '../../studio/PackBuilder';
 import TrendsPanel from '../../studio/TrendsPanel';
+import InstagramPanel from '../../studio/social/InstagramPanel';
+import InstagramPosts from '../../studio/social/InstagramPosts';
 
 /**
  * Studio — social posts from a single photo, or a whole pack from a shoot.
@@ -17,6 +19,7 @@ const MODES = [
     { id: 'post', label: 'One post', blurb: 'Pick a template, drop the photo in, change the words — the grade, crop and type are handled.' },
     { id: 'pack', label: 'A pack from a shoot', blurb: 'Drop a folder, photos or a ZIP, pick the event — every post it needs, made in one go, downloaded and saved.' },
     { id: 'trends', label: "This week's trends", blurb: 'What the big fitness brands’ campaigns look like right now, and what we can make of it. New every Monday.' },
+    { id: 'instagram', label: 'Instagram', blurb: 'Posts sent to POWR’s Instagram from the Studio — scheduled, published and failed — and the account they go to.' },
 ];
 const MODE_IDS = MODES.map((m) => m.id);
 
@@ -25,6 +28,8 @@ export default function Studio() {
         const m = new URLSearchParams(window.location.search).get('mode');
         return MODE_IDS.includes(m) ? m : 'post';
     });
+    const [publishJob, setPublishJob] = useState(null);
+    const [postsKey, setPostsKey] = useState(0);
     const [opened, setOpened] = useState(() => new Set([mode]));
     const [apply, setApply] = useState(null);
     // Blueprint templates the weekly trend routine published: loaded before
@@ -52,7 +57,7 @@ export default function Studio() {
         setMode(id);
         setOpened((s) => new Set(s).add(id));
         const url = new URL(window.location.href);
-        if (id === 'post') url.searchParams.delete('mode'); else url.searchParams.set('mode', id);
+        if (id !== 'post') url.searchParams.set('mode', id); else url.searchParams.delete('mode');
         window.history.replaceState(null, '', url);
     };
 
@@ -81,7 +86,7 @@ export default function Studio() {
             {opened.has('post') && published === null && mode === 'post' && (
                 <div className="flex items-center gap-2 text-sm text-[#777]"><Loader2 size={16} className="animate-spin" /> Loading the Studio…</div>
             )}
-            {opened.has('post') && published !== null && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor intro={intro} apply={apply} /></div>}
+            {opened.has('post') && published !== null && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor intro={intro} apply={apply} onPublish={setPublishJob} /></div>}
             {opened.has('pack') && <div className={mode === 'pack' ? '' : 'hidden'}><PackBuilder intro={intro} /></div>}
             {opened.has('trends') && (
                 <div className={mode === 'trends' ? '' : 'hidden'}>
@@ -89,6 +94,8 @@ export default function Studio() {
                         onTry={(a) => { setApply({ ...a }); choose('post'); window.scrollTo(0, 0); }} />
                 </div>
             )}
+            {mode === 'instagram' && <InstagramPosts intro={intro} refreshKey={postsKey} />}
+            {publishJob && <InstagramPanel job={publishJob} onClose={() => setPublishJob(null)} onDone={() => setPostsKey((k) => k + 1)} />}
         </>
     );
 }

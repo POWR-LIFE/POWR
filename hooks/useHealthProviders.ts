@@ -5,6 +5,7 @@ import {
     ALL_PROVIDER_META,
     getNativeProviderId,
     getProvider,
+    isPausedProvider,
     isTerraProvider,
     visibleProviders,
     type HealthProviderId,
@@ -35,18 +36,23 @@ type ProfileRow = {
 };
 
 /**
- * Drop stale Terra-provider connections that predate the Terra migration — i.e.
- * an old direct Whoop/Fitbit entry that has no `terra_user_id`. Such an entry can
- * no longer sync (the direct integrations were retired), so it must read as "not
- * connected" to prompt the user to reconnect through Terra. Native entries are
- * untouched (they never carry a terra_user_id).
+ * Drop Terra-provider connections that can't deliver:
+ *   - stale entries that predate the Terra migration — an old direct Whoop/Fitbit
+ *     entry with no `terra_user_id`. Such an entry can no longer sync (the direct
+ *     integrations were retired), so it must read as "not connected" to prompt
+ *     the user to reconnect through Terra.
+ *   - paused providers (Garmin): Terra delivers nothing for them, so keeping the
+ *     entry would leave native sync switched off. Dropping it lets the self-heal
+ *     in `refresh` move `active` back to the phone health store.
+ * Native entries are untouched (they never carry a terra_user_id).
  */
-function sanitizeConnections(
+export function sanitizeConnections(
     conns: Record<string, ProviderConnection>,
 ): Record<string, ProviderConnection> {
     const out: Record<string, ProviderConnection> = {};
     for (const [id, conn] of Object.entries(conns)) {
         if (isTerraProvider(id as HealthProviderId) && !conn?.terra_user_id) continue;
+        if (isPausedProvider(id)) continue;
         out[id] = conn;
     }
     return out;
@@ -76,7 +82,7 @@ export function useHealthProviders() {
             const sanitized = sanitizeConnections(data?.health_provider_connections ?? {});
             let active = data?.active_health_provider ?? null;
             // Self-heal: if active still points at a Terra wearable whose connection
-            // was dropped as stale (no terra_user_id), the sync gates would stay shut
+            // was dropped as stale (no terra_user_id) or paused, the sync gates would stay shut
             // — useHealthSync treats a Terra active as "webhook owns sync" and turns
             // native sleep/workout sync off, and walkingSync skips native steps for
             // step-capable wearables. Re-point active at a still-valid connection
@@ -145,6 +151,10 @@ export function useHealthProviders() {
     }, []);
 
     const connect = useCallback(async (id: HealthProviderId): Promise<ConnectResult> => {
+        // A paused provider's direct link delivers nothing — callers route the
+        // user to the phone health store instead. Refuse rather than deauth the
+        // user's other wearable for a connection that can't sync.
+        if (isPausedProvider(id)) return 'failed';
         setBusyId(id);
         try {
             const provider = getProvider(id);

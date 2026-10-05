@@ -406,7 +406,8 @@ function Rail({ board, now }) {
     const parts = countdownParts(board.week_end_at, now);
     const span = new Date(board.week_end_at) - new Date(board.week_start_at);
     const elapsed = span > 0 ? Math.min(1, Math.max(0, (now - new Date(board.week_start_at)) / span)) : 0;
-    const logoDark = board.gym.logo_bg !== 'light';
+    // partners.logo_bg is 'white' | 'black' | 'dark' — only 'white' logos want a light tile.
+    const logoDark = board.gym.logo_bg !== 'white';
     const since = champ ? memberSince(champ.member_since, board.tz) : null;
 
     return (
@@ -665,7 +666,7 @@ function Main({ board, now, stale, pinned }) {
         <section className="min-h-0 min-w-0 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-[1.4rem] min-w-0">
-                    <div className="text-[0.9rem] font-black tracking-[0.5em] uppercase">POWR</div>
+                    <img src="/powr-logo-white.png" alt="POWR" className="h-[2rem] w-auto block shrink-0" />
                     <AnimatePresence mode="wait">
                         <motion.span
                             key={scene}

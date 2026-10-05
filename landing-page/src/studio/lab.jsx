@@ -1,6 +1,6 @@
 /**
  * Dev harness — see studio-lab.html. `?ui` mounts the editor (`?pack` the
- * pack builder) without admin
+ * pack builder, `?studio` the admin Studio shell with its Instagram mode) without admin
  * auth; `window.__studio.render(spec)` returns a PNG data URL for one post,
  * using the local test photos in public/studio-samples/ (gitignored).
  */
@@ -9,8 +9,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import StudioEditor from './StudioEditor';
 import PackBuilder from './PackBuilder';
+import AdminStudio from '../pages/admin/Studio';
 import { prepareStudio, renderPost } from './render';
-import { templateById } from './templates';
+import { templateById, TEMPLATES } from './templates';
 import { loadMedia } from './media';
 import { loadAsset } from './assets';
 import { exportVideo } from './video';
@@ -28,6 +29,7 @@ window.__studio = {
     },
     async render({ blueprint, template, format = 'post', photo: name, fields, style, look, focal, zoom, scale = 1, assets: assetUrls = {} }) {
         await prepareStudio();
+        if (!TEMPLATES.some((t) => t.id === template)) throw new Error(`No template "${template}" — is it in its pillar's index.js?`);
         const media = name ? await photo(name) : null;
         const assets = {};
         for (const [k, url] of Object.entries(assetUrls)) assets[k] = await loadAsset(await (await fetch(url)).blob());
@@ -68,6 +70,14 @@ if (new URLSearchParams(window.location.search).has('ui')) {
     ReactDOM.createRoot(document.getElementById('root')).render(
         <div className="max-w-[1600px] px-8 py-8">
             <StudioEditor />
+        </div>,
+    );
+}
+
+if (new URLSearchParams(window.location.search).has('studio')) {
+    ReactDOM.createRoot(document.getElementById('root')).render(
+        <div className="max-w-[1600px] px-8 py-8">
+            <AdminStudio />
         </div>,
     );
 }

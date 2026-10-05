@@ -59,7 +59,7 @@ export default function VenuePackage() {
                         </p>
                         {pkg.package === 'clash' && (
                             <p className="text-[12px] text-[#888] leading-relaxed mt-3 max-w-2xl">
-                                <b className="text-[#1A1A1A]">What stays:</b> your leaderboard and Gym League screens, the join poster, your team. <b className="text-[#1A1A1A]">What switches off:</b> your own events, partner discounts, the members dashboard, the Studio and event kits, unless you choose Clash+ or Clash Pro.
+                                <b className="text-[#1A1A1A]">What stays:</b> your leaderboard and Gym Clash screens, the join poster, your team. <b className="text-[#1A1A1A]">What switches off:</b> your own events, partner discounts, the members dashboard, the Studio and event kits, unless you choose Clash+ or Clash Pro.
                             </p>
                         )}
                     </>
@@ -69,7 +69,7 @@ export default function VenuePackage() {
                         <div className="mt-3 text-4xl sm:text-5xl font-light tracking-tighter text-[#1A1A1A]">{current}</div>
                         <p className="text-[14px] text-[#777] leading-relaxed mt-3">
                             {pkg.package === 'clash'
-                                ? 'The free package: your gym in the Gym League, its own leaderboard and screens.'
+                                ? 'The free package: your gym in Gym Clash, its own leaderboard and screens.'
                                 : `${pkg.billing === 'annual' ? 'Billed yearly' : pkg.billing === 'monthly' ? 'Billed monthly' : 'Set up by POWR'}.`}
                         </p>
                     </>

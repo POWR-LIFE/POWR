@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
 import { prepareStudio, renderPost, compositeLayers, fieldDefaults, COLOURWAYS } from './render';
-import { TEMPLATES, CATEGORIES, templateById } from './templates';
+import { TEMPLATES, CATEGORIES, LIBRARIES, templateById } from './templates';
 import { FORMATS, FORMAT_LIST, FORMAT_GROUPS, BLEED_MM } from './formats';
 import { pdfFromCanvas, pdfFromPages, jpegPage, mmToPt } from './pdf';
 import { HEADLINE_FONTS } from './fonts';
@@ -100,10 +100,13 @@ function forVenue(value, venue) {
  * showRefs    show each template's "After …" reference (admin only: they name other brands)
  * apply       a new object switches to its template and lays its words and look
  *             over the current ones: { templateId, fields, look } (Trends → Try it)
+ * onPublish   admin only: shows "Post to Instagram" by Download; called with
+ *             { format, slideCount, hasVideo, thumb, render } — render()
+ *             makes the files to post (JPEG q0.92 / MP4, one per slide)
  */
 export default function StudioEditor({
     intro = null, data = adminStudioData, categories = CATEGORIES,
-    stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, showRefs = true, apply = null,
+    stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, showRefs = true, apply = null, onPublish = null,
 }) {
     const startingFields = (t) => Object.fromEntries(Object.entries(fieldDefaults(t)).map(([k, v]) => [k, forVenue(v, venue)]));
     const available = useMemo(() => TEMPLATES.filter((t) => categories.includes(t.category)), [categories]);
@@ -111,6 +114,14 @@ export default function StudioEditor({
     const [ready, setReady] = useState(false);
     const [error, setError] = useState(null);
     const [templateId, setTemplateId] = useState(() => start?.templateId ?? available[0].id);
+    // The picker's tabs (POWR's own, then Move · Eat · Mind · Sleep) — only
+    // the ones this host offers. The open tab follows the chosen template.
+    const libraries = useMemo(() => LIBRARIES.filter((l) => cats.some((c) => l.categories.includes(c))), [cats]);
+    const libraryOf = useCallback((id) => libraries.find((l) => l.categories.includes(templateById(id).category)) ?? libraries[0], [libraries]);
+    const [libraryId, setLibraryId] = useState(() => libraryOf(start?.templateId ?? available[0].id).id);
+    const library = libraries.find((l) => l.id === libraryId) ?? libraries[0];
+    const shown = useMemo(() => available.filter((t) => library.categories.includes(t.category)), [available, library]);
+    useEffect(() => { setLibraryId(libraryOf(templateId).id); }, [templateId, libraryOf]);
     const [format, setFormat] = useState('post');
     const [media, setMedia] = useState(null);
     const [focal, setFocal] = useState({ x: 0.5, y: 0.42 });
@@ -309,7 +320,7 @@ export default function StudioEditor({
         let raf = 0;
         let i = 0;
         const next = () => {
-            const tpl = available[i++];
+            const tpl = shown[i++];
             if (!tpl) return;
             const c = thumbRefs.current[tpl.id];
             if (c) {
@@ -322,7 +333,7 @@ export default function StudioEditor({
         };
         const t = setTimeout(() => { raf = requestAnimationFrame(next); }, 450);
         return () => { clearTimeout(t); cancelAnimationFrame(raf); };
-    }, [ready, available, media, focal, zoom, style, fields, looks, assets, frameKey]);
+    }, [ready, shown, media, focal, zoom, style, fields, looks, assets, frameKey]);
 
     const takeFile = useCallback(async (file) => {
         if (!file) return;
@@ -635,6 +646,39 @@ export default function StudioEditor({
         }
     };
 
+    // Post to Instagram (admin only): the files, made on demand by the panel —
+    // JPEG at q0.92 (Instagram rejects PNG) or the MP4 export, a file a slide.
+    const startPublish = () => {
+        setPlaying(false);
+        const list = slides.map((sl, i) => (i === current ? snapshot() : sl));
+        let thumb = null;
+        try { thumb = canvasRef.current?.toDataURL('image/jpeg', 0.8) ?? null; } catch { thumb = null; }
+        const render = async ({ onProgress, signal } = {}) => {
+            const out = [];
+            for (const [i, sl] of list.entries()) {
+                if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+                const o = optsFor(sl);
+                if (sl.media?.kind === 'video') {
+                    const blob = await exportVideo({
+                        ...o, start: sl.clip.start, end: sl.clip.end, keepAudio: sl.keepSound, signal,
+                        cache: i === current ? cacheRef.current : {},
+                        onProgress: (p) => onProgress?.((i + p) / list.length),
+                    });
+                    out.push({ blob, type: 'video', width: F.w, height: F.h });
+                } else {
+                    const c = document.createElement('canvas');
+                    renderPost(c, { ...o, scale: 1, cache: i === current ? cacheRef.current : {} });
+                    const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.92));
+                    c.width = 0;
+                    out.push({ blob, type: 'image', width: F.w, height: F.h });
+                }
+                onProgress?.((i + 1) / list.length);
+            }
+            return out;
+        };
+        onPublish({ format, formatInfo: F, slideCount: list.length, hasVideo: list.some((sl) => sl.media?.kind === 'video'), thumb, render });
+    };
+
     // Video downloads as MP4 — except print, where a video's current frame goes to paper.
     const download = (ids) => {
         const print = ids.every((id) => FORMATS[id].print);
@@ -717,6 +761,11 @@ export default function StudioEditor({
                     : { text: 'Nobody’s earned at the gym yet this week — Results keeps its own rows.' });
             } else {
                 if (item.accent) setStyle((st) => ({ ...st, accent: item.accent }));
+                // Their pillar's library is filled too — open it.
+                if (item.pillar && libraries.some((l) => l.id === item.pillar)) {
+                    setLibraryId(item.pillar);
+                    notes.push({ text: `The ${item.category} templates are filled with ${item.brand} too.` });
+                }
                 if (!item.active) notes.push({ warn: true, text: 'This reward is switched off — it isn’t in the app right now.' });
                 if (item.logoUrl) {
                     try {
@@ -828,9 +877,26 @@ export default function StudioEditor({
                 {intro && <div className="hidden lg:block">{intro}</div>}
                 <div className={CARD}>
                     <span className={LABEL}>Template</span>
-                    {cats.map((cat) => (
+                    {libraries.length > 1 && (
+                        <div className="mb-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Template library">
+                            {libraries.map((l) => (
+                                <button
+                                    key={l.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={l.id === library.id}
+                                    onClick={() => setLibraryId(l.id)}
+                                    className={`rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors ${l.id === library.id ? 'border-[#E8D200] bg-[#FFFBE0] text-[#111]' : 'border-[#E6E6E1] text-[#666] hover:border-[#CFCFC8]'}`}
+                                >
+                                    {l.label}
+                                    <span className="ml-1 font-normal text-[#999]">{available.filter((t) => l.categories.includes(t.category)).length}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {cats.filter((cat) => library.categories.includes(cat)).map((cat) => (
                     <div key={cat} className="mb-3 last:mb-0">
-                    <div className="mb-1.5 text-[11px] font-medium text-[#999]">{cat}</div>
+                    {library.categories.length > 1 && <div className="mb-1.5 text-[11px] font-medium text-[#999]">{cat}</div>}
                     <div className="grid grid-cols-3 gap-2.5">
                         {available.filter((t) => t.category === cat).map((t) => (
                             <button
@@ -1159,7 +1225,7 @@ export default function StudioEditor({
                                 </button>
                             ))}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                             <label className="flex items-center gap-1.5 text-xs text-white/60 mr-1">
                                 <input type="checkbox" checked={showSafe} onChange={(e) => setShowSafe(e.target.checked)} className="accent-[#E8D200]" />
                                 Safe zones
@@ -1215,6 +1281,13 @@ export default function StudioEditor({
                                 All {group.toLowerCase()}
                             </button>
                             </>
+                            )}
+                            {onPublish && (
+                                <button type="button" disabled={!ready || exporting} onClick={startPublish}
+                                    title="Post this to POWR's Instagram, now or scheduled"
+                                    className="flex items-center gap-1.5 rounded-lg border border-[#E8D200]/50 px-3 py-1.5 text-sm font-semibold text-[#E8D200] hover:bg-[#E8D200]/10 disabled:opacity-50">
+                                    <Send size={14} /> Post to Instagram
+                                </button>
                             )}
                         </div>
                     </div>

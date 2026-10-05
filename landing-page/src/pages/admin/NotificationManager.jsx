@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Edit2, X, Save, ChevronRight, Zap, Users, Award, Activity, Megaphone, CalendarDays } from 'lucide-react';
+import { Bell, Edit2, X, Save, ChevronRight, Zap, Users, Award, Activity, Megaphone, CalendarDays, Dumbbell } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
@@ -10,10 +10,11 @@ const DEFAULTS = {
     daily_reminder:            { title: 'Time to move 💪',                      body: 'Every step earns POWR. Log your activity and keep the streak alive.' },
     streak_at_risk:            { title: 'Your N-day streak is at risk 🔥',       body: 'Log any activity before midnight to keep it alive.',                  dynamic: true },
     weekly_challenge_expiry:   { title: 'Challenge ending soon ⏰',              body: '"Challenge" expires in 24 hours. Don\'t miss your bonus POWR points.', dynamic: true },
-    check_in_reminder:         { title: 'POWR',                                 body: 'You\'re in. Every minute counts.' },
+    check_in_reminder:         { title: 'POWR',                                 body: 'You\'re in at [Gym]. Every minute counts.',                         dynamic: true },
     inactivity_nudge:          { title: 'We miss you 👋',                        body: 'It\'s been 3 days. Even a short walk earns POWR points.',              dynamic: true },
     session_completed:         { title: 'Session recorded 🔥',                  body: '[Partner] · +X pts · Day N streak',                                   dynamic: true },
     session_upgraded:          { title: 'Bonus unlocked 🔓',                    body: '[Partner] · +X pts · 40-min bonus',                                   dynamic: true },
+    gym_session_complete:      { title: 'Session complete 💪',                  body: '[Gym] · N min · +X pts today',                                        dynamic: true },
     sleep_target_met:          { title: 'Sleep goal reached 🌙',                 body: 'X.Xh of sleep earned you N POWR points.',                             dynamic: true },
     reward_unlocked:           { title: 'New reward unlocked 🎁',                body: 'You\'ve unlocked "Reward". Redeem it before it expires.',             dynamic: true },
     points_milestone:          { title: 'Reward within reach',                  body: 'You\'re close. N pts to unlock your next reward.',                    dynamic: true },
@@ -46,6 +47,144 @@ function fmtType(t) {
     return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// The five notifications one gym visit can put on a phone, in the order they
+// arrive. They get their own section so combinations can be tested at a glance;
+// they are left out of the category lists below so each switch appears once.
+//   check-in  drawn by the phone itself, so the switch is mirrored to each phone
+//             when the app opens, and its copy lives in the app (not editable)
+//   exit      sent by the gym-visit beacon, which reads this row directly
+//   reward    drawn by the phone too, but only when claim-points hands it a
+//             reward to name, and claim-points reads this row at claim time.
+//             Only a gym visit's claim schedules it; copy lives in the app.
+const GYM_VISIT_FLOW = [
+    { type: 'check_in_reminder',    label: 'Check-in',     when: () => '75 s after they arrive',                          copyEditable: false,
+      note: 'Drawn by the phone. Each phone picks up a change the next time the app is opened.' },
+    { type: 'session_completed',    label: 'Points',       when: (t) => `When the visit's points land · ${t.dwell} min`, copyEditable: true },
+    { type: 'session_upgraded',     label: 'Bonus points', when: (t) => `When the bonus lands · ${t.upgrade} min`,       copyEditable: true },
+    { type: 'gym_session_complete', label: 'Exit',         when: () => 'About 2 min after they leave',                   copyEditable: true },
+    { type: 'points_milestone',     label: 'Reward within reach', when: () => 'About 2.5 h after the points, 08:00–21:00, once a day', copyEditable: false,
+      note: 'Drawn by the phone when they are close to a reward. Takes effect from the next claim, which also cancels one already queued.' },
+];
+const GYM_VISIT_TYPES = new Set(GYM_VISIT_FLOW.map(f => f.type));
+
+function fmtSince(iso) {
+    if (!iso) return null;
+    return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function Switch({ on, busy, disabled, onClick }) {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            className={`mt-0.5 shrink-0 ${busy ? 'opacity-40' : ''}`}
+            title={on ? 'Click to disable' : 'Click to enable'}>
+            <div className={`w-11 h-6 rounded-full relative transition-all duration-200 ${on ? 'bg-[#10B981]' : 'bg-[#E6E6E1]'}`}>
+                <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${on ? 'translate-x-5' : 'translate-x-0'}`} />
+            </div>
+        </button>
+    );
+}
+
+function GymVisitFlow({ configs, thresholds, toggling, onToggle, onEdit, onClear }) {
+    // No row = no switch yet, and the sender then behaves as it always has: it
+    // sends. Show it that way rather than as switched off.
+    const steps = GYM_VISIT_FLOW.map(f => {
+        const row = configs.find(c => c.type === f.type) ?? null;
+        return { ...f, row, sends: row ? !!row.enabled : true };
+    });
+    const sending = steps.filter(s => s.sends);
+    return (
+        <div>
+            <div className="flex items-center gap-3 mb-4">
+                <Dumbbell size={14} className="text-[#EF4444]" />
+                <span className="text-[10px] uppercase tracking-[0.5em] font-black text-[#EF4444]">Gym visit</span>
+                <div className="flex-1 h-[1px] bg-[#F0F0EC]" />
+                <span className="text-[9px] uppercase tracking-[0.3em] text-[#CCCCCC] font-black">
+                    {sending.length} / {steps.length} active
+                </span>
+            </div>
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+                {/* What one visit sends right now */}
+                <div className="px-8 py-5 bg-[#F9F9F8] border-b border-[#F0F0EC]">
+                    <div className="text-[9px] uppercase tracking-[0.4em] text-[#AAAAAA] font-black mb-2">A visit sends right now</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {steps.map((s, i) => (
+                            <React.Fragment key={s.type}>
+                                {i > 0 && <ChevronRight size={12} className="text-[#CCCCCC]" />}
+                                <span className={`text-[10px] uppercase tracking-[0.2em] font-black px-3 py-1 rounded-full ${
+                                    s.sends ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#F4F4F1] text-[#BBBBBB] line-through'}`}>
+                                    {s.label}
+                                </span>
+                            </React.Fragment>
+                        ))}
+                    </div>
+                </div>
+                <div className="divide-y divide-[#F4F4F1]">
+                    {steps.map((s, i) => {
+                        const row = s.row;
+                        const def = DEFAULTS[s.type];
+                        const hasOverride = row && (row.title_override || row.body_override);
+                        const since = fmtSince(row?.enabled_changed_at);
+                        return (
+                            <div key={s.type} className={`flex items-start gap-6 px-8 py-6 transition-all ${row && !row.enabled ? 'opacity-50' : ''}`}>
+                                <Switch
+                                    on={s.sends}
+                                    busy={toggling === s.type}
+                                    disabled={!row || !!toggling}
+                                    onClick={() => row && onToggle(row)} />
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+                                        <span className="text-[9px] font-black text-[#CCCCCC] tabular-nums">{String(i + 1).padStart(2, '0')}</span>
+                                        <span className="text-sm font-black text-[#1A1A1A] tracking-tight">{s.label}</span>
+                                        <span className="text-[10px] text-[#AAAAAA]">{s.when(thresholds)}</span>
+                                        {hasOverride && (
+                                            <span className="text-[8px] uppercase tracking-[0.3em] font-black px-2 py-0.5 rounded-full bg-[#FEF9C3] text-[#854D0E]">Custom copy</span>
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] text-[#AAAAAA] mb-3 leading-relaxed">
+                                        {!row
+                                            ? 'Always sent — no switch yet. The migration that creates it has not been applied.'
+                                            : <>{row.enabled ? 'On' : 'Off'}{since ? ` since ${since}` : ''}{s.note ? ` · ${s.note}` : ''}</>}
+                                    </p>
+                                    <div className="bg-[#F9F9F8] rounded-xl px-4 py-3 space-y-1.5">
+                                        <div className="flex gap-2 items-start">
+                                            <span className="text-[8px] uppercase tracking-widest text-[#BBBBBB] font-black w-9 shrink-0 pt-[3px]">Title</span>
+                                            <span className="text-[11px] text-[#555555] font-medium leading-snug">{row?.title_override || def?.title || '—'}</span>
+                                        </div>
+                                        <div className="flex gap-2 items-start">
+                                            <span className="text-[8px] uppercase tracking-widest text-[#BBBBBB] font-black w-9 shrink-0 pt-[3px]">Body</span>
+                                            <span className="text-[11px] text-[#777777] leading-snug">{row?.body_override || def?.body || '—'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {row && s.copyEditable && (
+                                    <div className="flex items-center gap-1 mt-1 shrink-0">
+                                        {hasOverride && (
+                                            <button
+                                                onClick={() => onClear(row)}
+                                                className="p-2 rounded-xl text-[#CCCCCC] hover:text-[#F43F5E] hover:bg-[#FEE2E2] transition-all"
+                                                title="Clear copy override">
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => onEdit(row)}
+                                            className="p-2 rounded-xl text-[#CCCCCC] hover:text-[#555555] hover:bg-[#F4F4F1] transition-all"
+                                            title="Edit copy override">
+                                            <Edit2 size={14} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function NotificationManager() {
     const toast = useToast();
     const { user } = useAuth();
@@ -55,39 +194,66 @@ export default function NotificationManager() {
     const [editRow, setEditRow] = useState(null);
     const [draft, setDraft] = useState({ title: '', body: '' });
     const [saving, setSaving] = useState(false);
+    const [thresholds, setThresholds] = useState({ dwell: 30, upgrade: 40 });
 
     const load = async () => {
         setLoading(true);
-        const { data, error } = await supabase
-            .from('notification_config')
-            .select('*')
-            .order('category')
-            .order('type');
+        const [{ data, error }, { data: cfg }] = await Promise.all([
+            supabase
+                .from('notification_config')
+                .select('*')
+                .order('category')
+                .order('type'),
+            // The gym timings are admin-tunable; quote what the server rewards.
+            supabase
+                .from('system_config')
+                .select('key, value')
+                .in('key', ['min_gym_dwell_minutes', 'gym_upgrade_minutes']),
+        ]);
         if (error) { toast.error('Failed to load notification config'); setLoading(false); return; }
         setConfigs(data ?? []);
+        const minutes = (key, fallback) => {
+            const n = parseInt(cfg?.find(r => r.key === key)?.value ?? '', 10);
+            return Number.isFinite(n) && n > 0 ? n : fallback;
+        };
+        setThresholds({ dwell: minutes('min_gym_dwell_minutes', 30), upgrade: minutes('gym_upgrade_minutes', 40) });
         setLoading(false);
     };
 
     useEffect(() => { load(); }, []);
 
+    // Best-effort: a failed audit write must never undo the change it records.
+    // (This was `.insert(...).catch(...)`, but a supabase-js query builder has
+    // no .catch — it threw after every save, so the toggle never updated and
+    // every switch stayed disabled until a reload.)
     const logAction = async (action, type, meta = {}) => {
-        await supabase.from('admin_audit_log').insert({
-            admin_id: user.id, action, target_type: 'notification_config', target_id: type, metadata: meta,
-        }).catch(() => {});
+        try {
+            const { error } = await supabase.from('admin_audit_log').insert({
+                admin_id: user.id, action, target_type: 'notification_config', target_id: type, metadata: meta,
+            });
+            if (error) console.warn('[NotificationManager] audit log write failed:', error.message);
+        } catch (err) {
+            console.warn('[NotificationManager] audit log write failed:', err);
+        }
     };
 
     const handleToggle = async (row) => {
         if (toggling) return;
         setToggling(row.type);
         const next = !row.enabled;
-        const { error } = await supabase
+        // Read the row back: a trigger stamps enabled_changed_at, which the Gym
+        // visit section shows as "Off since …".
+        const { data: saved, error } = await supabase
             .from('notification_config')
             .update({ enabled: next, updated_at: new Date().toISOString(), updated_by: user.id })
-            .eq('type', row.type);
+            .eq('type', row.type)
+            .select()
+            .maybeSingle();
         if (error) { toast.error(error.message); setToggling(null); return; }
         await logAction(next ? 'notif_enabled' : 'notif_disabled', row.type, { enabled: next });
-        toast.success(`${fmtType(row.type)} ${next ? 'enabled' : 'disabled'}`);
-        setConfigs(prev => prev.map(c => c.type === row.type ? { ...c, enabled: next } : c));
+        const name = GYM_VISIT_FLOW.find(f => f.type === row.type)?.label ?? fmtType(row.type);
+        toast.success(`${name} ${next ? 'enabled' : 'disabled'}`);
+        setConfigs(prev => prev.map(c => c.type === row.type ? { ...c, ...(saved ?? {}), enabled: next } : c));
         setToggling(null);
     };
 
@@ -124,7 +290,7 @@ export default function NotificationManager() {
     };
 
     const byCategory = CATEGORY_ORDER.reduce((acc, cat) => {
-        acc[cat] = configs.filter(c => c.category === cat);
+        acc[cat] = configs.filter(c => c.category === cat && !GYM_VISIT_TYPES.has(c.type));
         return acc;
     }, {});
 
@@ -186,6 +352,13 @@ export default function NotificationManager() {
                 </div>
             ) : (
                 <div className="space-y-10">
+                    <GymVisitFlow
+                        configs={configs}
+                        thresholds={thresholds}
+                        toggling={toggling}
+                        onToggle={handleToggle}
+                        onEdit={openEdit}
+                        onClear={clearOverride} />
                     {CATEGORY_ORDER.map(cat => {
                         const rows = byCategory[cat] ?? [];
                         if (!rows.length) return null;
@@ -212,15 +385,11 @@ export default function NotificationManager() {
                                                 className={`flex items-start gap-6 px-8 py-6 transition-all ${!row.enabled ? 'opacity-50' : ''}`}>
 
                                                 {/* Toggle */}
-                                                <button
-                                                    onClick={() => handleToggle(row)}
+                                                <Switch
+                                                    on={row.enabled}
+                                                    busy={isToggling}
                                                     disabled={!!toggling}
-                                                    className={`mt-0.5 shrink-0 ${isToggling ? 'opacity-40' : ''}`}
-                                                    title={row.enabled ? 'Click to disable' : 'Click to enable'}>
-                                                    <div className={`w-11 h-6 rounded-full relative transition-all duration-200 ${row.enabled ? 'bg-[#10B981]' : 'bg-[#E6E6E1]'}`}>
-                                                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${row.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                                                    </div>
-                                                </button>
+                                                    onClick={() => handleToggle(row)} />
 
                                                 {/* Content */}
                                                 <div className="flex-1 min-w-0">

@@ -26,6 +26,7 @@ import {
 } from '@/lib/api/activity';
 import {
     getNativeProviderId,
+    isPausedProvider,
     verificationForProvider,
     type HealthProviderId,
 } from '@/lib/health/providers';
@@ -250,7 +251,12 @@ async function resolveActiveProviderId(): Promise<HealthProviderId | null> {
             .select('active_health_provider')
             .eq('id', user.id)
             .single<{ active_health_provider: HealthProviderId | null }>();
-        return data?.active_health_provider ?? getNativeProviderId();
+        const active = data?.active_health_provider ?? null;
+        // A paused provider delivers nothing, so the phone store is the source —
+        // useHealthProviders' self-heal rewrites the column, but this can run
+        // first (background task, before any screen mounts the hook).
+        if (!active || isPausedProvider(active)) return getNativeProviderId();
+        return active;
     } catch {
         return getNativeProviderId();
     }

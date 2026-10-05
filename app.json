@@ -2,7 +2,7 @@
   "expo": {
     "name": "POWR",
     "slug": "POWR",
-    "version": "1.5.1",
+    "version": "1.6.0",
     "orientation": "portrait",
     "icon": "./assets/images/ios_icon_black.png",
     "scheme": "powr",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.powr.life",
-      "buildNumber": "17",
+      "buildNumber": "19",
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:powr.life"
@@ -57,6 +57,7 @@
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_DISTANCE",
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_HEART_RATE",
         "android.permission.health.READ_RESTING_HEART_RATE",
@@ -76,7 +77,7 @@
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ],
       "package": "com.powr.life",
-      "versionCode": 20,
+      "versionCode": 21,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -165,13 +166,14 @@
       "react-native-health-connect",
       "./withHealthConnectMainActivity.js",
       "./withHealthConnectManifestQueries.js",
+      "./withHealthConnectPermissionUsage.js",
       [
         "expo-build-properties",
         {
           "android": {
             "minSdkVersion": 26,
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36
           }
         }
       ]

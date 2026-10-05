@@ -1059,7 +1059,8 @@ export default function VenueEventBuilder() {
                 title="Check it over"
                 sub={id ? 'Save to update it everywhere it shows.' : 'Nothing goes out until you publish. You can save it as a draft and come back.'}
             />
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-10 items-start">
+            {/* Single column: at xl the phone sits in the page's side column, so a second column here stayed empty. */}
+            <div className="grid grid-cols-1 gap-10 items-start">
                 <div className="divide-y divide-[#F0F0EC]">
                     <ReviewRow label="Format" onEdit={id ? null : () => go(0)}>{tpl.name}</ReviewRow>
                     <ReviewRow label="When" onEdit={() => go(1)}>
@@ -1109,6 +1110,7 @@ export default function VenueEventBuilder() {
     const last = STEPS.length - 1;
     const problem = problems[step];
     const isDraft = !ev || ev.status === 'draft';
+    const sidePreview = !!previewEvent && step > 0;
 
     return (
         <Page>
@@ -1126,7 +1128,8 @@ export default function VenueEventBuilder() {
                     ) : null}
                 />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-[210px_minmax(0,1fr)] xl:grid-cols-[180px_minmax(0,1fr)_280px] 2xl:grid-cols-[210px_minmax(0,1fr)_320px] gap-6 lg:gap-8 items-start">
+            {/* The third column only exists while the phone preview fills it; an empty one squeezed the form. */}
+            <div className={`grid grid-cols-1 lg:grid-cols-[210px_minmax(0,1fr)] ${sidePreview ? 'xl:grid-cols-[180px_minmax(0,1fr)_280px] 2xl:grid-cols-[210px_minmax(0,1fr)_320px]' : ''} gap-6 lg:gap-8 items-start`}>
                 <StepRail current={step} problems={problems} reachable={reachable} onJump={go} formatLocked={!!id} />
                 <div className="min-w-0 space-y-5">
                     <Card className="p-6 sm:p-10">{body}</Card>
@@ -1183,7 +1186,7 @@ export default function VenueEventBuilder() {
                         </p>
                     )}
                 </div>
-                {previewEvent && step > 0 && (
+                {sidePreview && (
                     <div className="hidden xl:block xl:sticky xl:top-6">
                         <EventAppPreview event={previewEvent} venue={previewVenue} pageTheme="light" width={280} />
                     </div>

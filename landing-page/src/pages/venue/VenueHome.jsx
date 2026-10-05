@@ -404,8 +404,8 @@ function League({ board, standing, error, founding }) {
     if (!board) {
         body = (
             <div className="flex-1 min-h-0 flex flex-col justify-center">
-                <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">Join the Gym League</div>
-                <p className="text-[13px] text-[#888] leading-relaxed mt-2">Put your screens up and your gym goes in the Gym League: gym against gym, every week.</p>
+                <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">Join Gym Clash</div>
+                <p className="text-[13px] text-[#888] leading-relaxed mt-2">Put your screens up and your gym goes into Gym Clash: gym against gym, every week.</p>
             </div>
         );
     } else if (error) {
@@ -435,7 +435,7 @@ function League({ board, standing, error, founding }) {
                         </span>
                     )}
                 </div>
-                <ol className="mt-3 space-y-1 shrink-0" aria-label="The Gym League near you this week">
+                <ol className="mt-3 space-y-1 shrink-0" aria-label="Gym Clash near you this week">
                     {shown.map(({ g, r }) => {
                         const me = g.key === host.key;
                         return (
@@ -470,7 +470,7 @@ function League({ board, standing, error, founding }) {
     }
     return (
         <Card className="flex-1 p-6 flex flex-col min-h-0" glow={!board}>
-            <Head icon={Flag} to="/venue/screens" linkLabel={board ? 'Screens' : 'Set up'}>Gym League</Head>
+            <Head icon={Flag} to="/venue/screens" linkLabel={board ? 'Screens' : 'Set up'}>Gym Clash</Head>
             {body}
         </Card>
     );

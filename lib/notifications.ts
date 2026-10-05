@@ -3,6 +3,7 @@ import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
+import { isAdminSwitchedOff } from '@/lib/adminNotificationSwitches';
 // ⚠ THE ANDROID CHANNEL RIDES ON THE TRIGGER, NEVER ON `content`.
 // Expo's native scheduler (NotificationScheduler.kt) reads channelId off the
 // TRIGGER and silently drops any channelId set inside `content` — no warning,
@@ -337,7 +338,7 @@ const CHECK_IN_LAST_FIRED_PREFIX = '@powr/check_in_last_fired/';
  *  failure still THROWS, because the Android caller depends on the throw to fall
  *  back to the server announce. It exists so a caller that catches can record
  *  the reason in this same vocabulary. */
-export type CheckInNotifyResult = 'shown' | 'scheduled' | 'cooldown' | 'pref_off' | 'no_permission' | 'failed';
+export type CheckInNotifyResult = 'shown' | 'scheduled' | 'cooldown' | 'pref_off' | 'admin_off' | 'no_permission' | 'failed';
 
 /** How long after check-in the "You're in" banner is allowed to draw.
  *
@@ -408,6 +409,10 @@ export async function notifyCheckInAvailable(
   locationId: string,
 ): Promise<CheckInNotifyResult> {
   if (!(await isCheckInReminderEnabled())) return 'pref_off';
+  // Switched off for everyone from /admin/notifications. Its own verdict, so a
+  // test run with the banner off reads as that in check_in_announced, not as
+  // users muting it.
+  if (await isAdminSwitchedOff('check_in_reminder')) return 'admin_off';
 
   const permissions = await Notifications.getPermissionsAsync().catch(() => null);
   const allowed = permissions?.granted
@@ -611,6 +616,9 @@ export async function notifySessionCompleted(
   earned?: number,
   currentStreak?: number,
 ) {
+  // The server skips an admin-disabled type without asking for this fallback,
+  // so this only matters when send-push could not be reached at all.
+  if (await isAdminSwitchedOff('session_completed')) return;
   const hasEarned = earned !== undefined && earned > 0;
   const title = hasEarned ? `+${earned!.toLocaleString()} pts earned! 🔥` : 'Session complete 🔥';
 
@@ -654,6 +662,7 @@ export async function notifySessionUpgraded(
   sessionId: string,
   earned?: number,
 ) {
+  if (await isAdminSwitchedOff('session_upgraded')) return;
   const name = partnerName.trim();
   const pts = Math.max(0, Math.round(earned ?? 0));
   const parts: string[] = [];
