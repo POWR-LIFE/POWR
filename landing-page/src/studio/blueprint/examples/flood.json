@@ -1,0 +1,39 @@
+{
+  "v": 1,
+  "id": "flood-2026-40",
+  "name": "Flood",
+  "trend": "Single-hue flood",
+  "blurb": "One saturated colour owns the photo; a flat acid block carries the words.",
+  "headlineFont": "groteskX",
+  "fields": [
+    { "key": "headline", "label": "Headline", "rows": 2, "value": "Every move\ncounts.", "hint": "Two short lines." },
+    { "key": "line", "label": "Line under it", "rows": 2, "value": "Gym, run, walk, ride. All of it earns." },
+    { "key": "tag", "label": "Tag", "value": "Week 40", "hint": "Leave empty to hide it." }
+  ],
+  "presets": [
+    { "name": "Every move counts", "fields": { "headline": "Every move\ncounts.", "line": "Gym, run, walk, ride. All of it earns.", "tag": "Week 40" } },
+    { "name": "New season", "fields": { "headline": "New season.\nSame streak.", "line": "Autumn’s here. The points don’t stop.", "tag": "Autumn ’26" } },
+    { "name": "Event", "fields": { "headline": "Friday\nFinals.", "line": "One night on the gym floor. Every minute counts.", "tag": "Live" } },
+    { "name": "Earned", "fields": { "headline": "Earned,\nnot given.", "line": "Your rewards are waiting in the app.", "tag": "" } }
+  ],
+  "look": { "mono": 1, "contrast": 0.72, "crush": 0.25, "target": 0.34, "vignette": 0.25, "grain": 0.4 },
+  "swatches": ["#E0115F", "#A6E22E", "#2F6BFF", "#FF5A1F"],
+  "layouts": {
+    "post": [
+      { "type": "photo", "space": "safe", "box": [0, 0, 1, 1], "flood": true },
+      { "type": "logo", "box": [0, 0, 0.1, 0.06], "color": "ink" },
+      { "type": "chip", "field": "tag", "box": [0.55, 0, 0.45, 0.042], "bg": "accent", "color": "dark", "font": "mono", "align": "right" },
+      { "type": "fill", "space": "safe", "box": [0, 0.64, 0.84, 0.36], "color": "accent" },
+      { "type": "text", "field": "headline", "box": [0.04, 0.68, 0.74, 0.19], "font": "headline", "color": "dark", "tracking": -0.03, "gap": 0.12 },
+      { "type": "text", "field": "line", "box": [0.04, 0.9, 0.72, 0.07], "font": "brandM", "color": "dark/0.82", "size": 0.028, "wrap": true, "maxLines": 2 }
+    ],
+    "wide": [
+      { "type": "photo", "space": "safe", "box": [0, 0, 1, 1], "flood": true },
+      { "type": "fill", "space": "safe", "box": [0, 0, 0.44, 1], "color": "accent" },
+      { "type": "logo", "box": [0.02, 0.02, 0.07, 0.09], "color": "dark" },
+      { "type": "chip", "field": "tag", "box": [0.6, 0, 0.4, 0.07], "bg": "accent", "color": "dark", "font": "mono", "align": "right" },
+      { "type": "text", "field": "headline", "box": [0.02, 0.3, 0.38, 0.42], "font": "headline", "color": "dark", "tracking": -0.03, "gap": 0.12 },
+      { "type": "text", "field": "line", "box": [0.02, 0.78, 0.36, 0.14], "font": "brandM", "color": "dark/0.82", "size": 0.05, "wrap": true, "maxLines": 2 }
+    ]
+  }
+}
