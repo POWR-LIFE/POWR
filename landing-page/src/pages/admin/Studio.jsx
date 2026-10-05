@@ -15,11 +15,17 @@ import InstagramPosts from '../../studio/social/InstagramPosts';
  * shell around the editor, the pack builder and the week's trend drop. Each
  * stays mounted once opened, so switching between them keeps the work in all.
  */
+// Posting to Instagram stays hidden until it is live end to end: the Meta app
+// connected, and the studio_social_posts migration + publish-instagram
+// function applied. Switch this on then; the tab and the "Post to Instagram"
+// button both follow it.
+const INSTAGRAM_ON = false;
+
 const MODES = [
     { id: 'post', label: 'One post', blurb: 'Pick a template, drop the photo in, change the words — the grade, crop and type are handled.' },
     { id: 'pack', label: 'A pack from a shoot', blurb: 'Drop a folder, photos or a ZIP, pick the event — every post it needs, made in one go, downloaded and saved.' },
     { id: 'trends', label: "This week's trends", blurb: 'What the big fitness brands’ campaigns look like right now, and what we can make of it. New every Monday.' },
-    { id: 'instagram', label: 'Instagram', blurb: 'Posts sent to POWR’s Instagram from the Studio — scheduled, published and failed — and the account they go to.' },
+    ...(INSTAGRAM_ON ? [{ id: 'instagram', label: 'Instagram', blurb: 'Posts sent to POWR’s Instagram from the Studio — scheduled, published and failed — and the account they go to.' }] : []),
 ];
 const MODE_IDS = MODES.map((m) => m.id);
 
@@ -92,7 +98,7 @@ export default function Studio() {
             {opened.has('post') && published === null && mode === 'post' && (
                 <div className="flex items-center gap-2 text-sm text-[#777]"><Loader2 size={16} className="animate-spin" /> Loading the Studio…</div>
             )}
-            {opened.has('post') && published !== null && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor apply={apply} onPublish={setPublishJob} /></div>}
+            {opened.has('post') && published !== null && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor apply={apply} onPublish={INSTAGRAM_ON ? setPublishJob : null} /></div>}
             {opened.has('pack') && <div className={mode === 'pack' ? '' : 'hidden'}><PackBuilder /></div>}
             {opened.has('trends') && (
                 <div className={mode === 'trends' ? '' : 'hidden'}>
@@ -100,8 +106,8 @@ export default function Studio() {
                         onTry={(a) => { setApply({ ...a }); choose('post'); window.scrollTo(0, 0); }} />
                 </div>
             )}
-            {mode === 'instagram' && <InstagramPosts refreshKey={postsKey} />}
-            {publishJob && <InstagramPanel job={publishJob} onClose={() => setPublishJob(null)} onDone={() => setPostsKey((k) => k + 1)} />}
+            {INSTAGRAM_ON && mode === 'instagram' && <InstagramPosts refreshKey={postsKey} />}
+            {INSTAGRAM_ON && publishJob && <InstagramPanel job={publishJob} onClose={() => setPublishJob(null)} onDone={() => setPostsKey((k) => k + 1)} />}
         </>
     );
 }
