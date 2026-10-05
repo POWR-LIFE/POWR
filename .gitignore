@@ -42,6 +42,7 @@ app-example
 # generated native folders
 /ios
 /android
+.gradle/
 .vercel
 
 # IDE
