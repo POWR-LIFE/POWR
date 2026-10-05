@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Download, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
 import { prepareStudio, renderPost, compositeLayers, fieldDefaults, COLOURWAYS } from './render';
-import { TEMPLATES, CATEGORIES, LIBRARIES, templateById } from './templates';
+import { TEMPLATES, CATEGORIES, LIBRARIES, SECTIONS, templateById } from './templates';
 import { FORMATS, FORMAT_LIST, FORMAT_GROUPS, BLEED_MM } from './formats';
 import { pdfFromCanvas, pdfFromPages, jpegPage, mmToPt } from './pdf';
 import { HEADLINE_FONTS } from './fonts';
@@ -62,6 +62,9 @@ const NO_LOOK = {};
 const stamp = () => new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
 // An uploaded (or fetched) image, cleaned for the post, plus a small preview for the field.
+// Image fields shared by every template that has them (see takeAsset).
+const SHARED_ASSETS = ['logo', 'product'];
+
 async function assetWithPreview(file) {
     const a = await loadAsset(file);
     const pv = document.createElement('canvas');
@@ -120,7 +123,16 @@ export default function StudioEditor({
     const libraryOf = useCallback((id) => libraries.find((l) => l.categories.includes(templateById(id).category)) ?? libraries[0], [libraries]);
     const [libraryId, setLibraryId] = useState(() => libraryOf(start?.templateId ?? available[0].id).id);
     const library = libraries.find((l) => l.id === libraryId) ?? libraries[0];
-    const shown = useMemo(() => available.filter((t) => library.categories.includes(t.category)), [available, library]);
+    // Headings inside the tab: Core groups by category; a pillar splits into
+    // Lifestyle (the person doing it) and Products (a brand selling for it).
+    const groups = useMemo(() => {
+        const inLib = available.filter((t) => library.categories.includes(t.category));
+        if (library.categories.length > 1) {
+            return cats.filter((c) => library.categories.includes(c)).map((c) => ({ label: c, items: inLib.filter((t) => t.category === c) }));
+        }
+        return SECTIONS.map((sec) => ({ label: sec, items: inLib.filter((t) => (t.section ?? SECTIONS[0]) === sec) })).filter((g) => g.items.length);
+    }, [available, library, cats]);
+    const shown = useMemo(() => groups.flatMap((g) => g.items), [groups]);
     useEffect(() => { setLibraryId(libraryOf(templateId).id); }, [templateId, libraryOf]);
     const [format, setFormat] = useState('post');
     const [media, setMedia] = useState(null);
@@ -691,7 +703,14 @@ export default function StudioEditor({
         setError(null);
         try {
             const a = await assetWithPreview(file);
-            setAssets((prev) => ({ ...prev, [templateId]: { ...(prev[templateId] ?? {}), [key]: a } }));
+            // A partner logo or product shot is the brand's, not one post's:
+            // it goes into every template that takes it.
+            const ids = SHARED_ASSETS.includes(key) ? available.filter((t) => t.fields.some((f) => f.key === key)).map((t) => t.id) : [templateId];
+            setAssets((prev) => {
+                const next = { ...prev };
+                for (const id of ids) next[id] = { ...(prev[id] ?? {}), [key]: a };
+                return next;
+            });
         } catch (e) {
             setError(e.message);
         }
@@ -788,9 +807,14 @@ export default function StudioEditor({
         }
     };
     const dropAsset = (key) => setAssets((prev) => {
-        const next = { ...(prev[templateId] ?? {}) };
-        delete next[key];
-        return { ...prev, [templateId]: next };
+        const ids = SHARED_ASSETS.includes(key) ? Object.keys(prev) : [templateId];
+        const next = { ...prev };
+        for (const id of ids) {
+            if (!next[id]?.[key]) continue;
+            next[id] = { ...next[id] };
+            delete next[id][key];
+        }
+        return next;
     });
 
     // A starting point swaps in a template's words (and, for partners, their colour).
@@ -894,11 +918,11 @@ export default function StudioEditor({
                             ))}
                         </div>
                     )}
-                    {cats.filter((cat) => library.categories.includes(cat)).map((cat) => (
-                    <div key={cat} className="mb-3 last:mb-0">
-                    {library.categories.length > 1 && <div className="mb-1.5 text-[11px] font-medium text-[#999]">{cat}</div>}
+                    {groups.map((g) => (
+                    <div key={g.label} className="mb-3 last:mb-0">
+                    {groups.length > 1 && <div className="mb-1.5 text-[11px] font-medium text-[#999]">{g.label}</div>}
                     <div className="grid grid-cols-3 gap-2.5">
-                        {available.filter((t) => t.category === cat).map((t) => (
+                        {g.items.map((t) => (
                             <button
                                 key={t.id}
                                 type="button"
