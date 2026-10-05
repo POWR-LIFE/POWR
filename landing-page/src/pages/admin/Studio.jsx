@@ -61,40 +61,46 @@ export default function Studio() {
         window.history.replaceState(null, '', url);
     };
 
-    // The intro sits at the top of the controls column, not above the whole
-    // grid, so the sticky preview starts level with it.
-    const intro = (
-        <div className="px-1">
-            <div className="flex items-center gap-3 mb-1">
-                <Palette size={22} className="text-[#E8D200]" />
-                <h1 className="text-xl font-bold text-[#111]">Studio</h1>
+    // The title and the mode tabs head the page at full width; each mode's
+    // own layout (controls | sticky preview, the trend drop, the posts) sits
+    // underneath, so the tabs never squeeze into the controls column.
+    const header = (
+        <div className="mb-6">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                <div className="flex items-center gap-3">
+                    <Palette size={22} className="text-[#E8D200]" />
+                    <h1 className="text-xl font-bold text-[#111]">Studio</h1>
+                </div>
+                <div className="max-w-full overflow-x-auto">
+                    <div className="inline-flex rounded-xl bg-[#EAEAE5] p-1" role="tablist" aria-label="Studio mode">
+                        {MODES.map((m) => (
+                            <button key={m.id} type="button" role="tab" aria-selected={mode === m.id} onClick={() => choose(m.id)}
+                                className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm transition-colors ${mode === m.id ? 'bg-white font-semibold text-[#111] shadow-sm' : 'text-[#666] hover:text-[#111]'}`}>
+                                {m.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             </div>
-            <div className="mt-2 mb-2 inline-flex rounded-xl bg-[#EAEAE5] p-1">
-                {MODES.map((m) => (
-                    <button key={m.id} type="button" onClick={() => choose(m.id)}
-                        className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${mode === m.id ? 'bg-white font-semibold text-[#111] shadow-sm' : 'text-[#666] hover:text-[#111]'}`}>
-                        {m.label}
-                    </button>
-                ))}
-            </div>
-            <p className="text-sm text-[#777]">{MODES.find((m) => m.id === mode).blurb}</p>
+            <p className="mt-3 text-sm text-[#777]">{MODES.find((m) => m.id === mode).blurb}</p>
         </div>
     );
 
     return (
         <>
+            {header}
             {opened.has('post') && published === null && mode === 'post' && (
                 <div className="flex items-center gap-2 text-sm text-[#777]"><Loader2 size={16} className="animate-spin" /> Loading the Studio…</div>
             )}
-            {opened.has('post') && published !== null && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor intro={intro} apply={apply} onPublish={setPublishJob} /></div>}
-            {opened.has('pack') && <div className={mode === 'pack' ? '' : 'hidden'}><PackBuilder intro={intro} /></div>}
+            {opened.has('post') && published !== null && <div className={mode === 'post' ? '' : 'hidden'}><StudioEditor apply={apply} onPublish={setPublishJob} /></div>}
+            {opened.has('pack') && <div className={mode === 'pack' ? '' : 'hidden'}><PackBuilder /></div>}
             {opened.has('trends') && (
                 <div className={mode === 'trends' ? '' : 'hidden'}>
-                    <TrendsPanel intro={intro} published={published} onStatus={setStatus}
+                    <TrendsPanel published={published} onStatus={setStatus}
                         onTry={(a) => { setApply({ ...a }); choose('post'); window.scrollTo(0, 0); }} />
                 </div>
             )}
-            {mode === 'instagram' && <InstagramPosts intro={intro} refreshKey={postsKey} />}
+            {mode === 'instagram' && <InstagramPosts refreshKey={postsKey} />}
             {publishJob && <InstagramPanel job={publishJob} onClose={() => setPublishJob(null)} onDone={() => setPostsKey((k) => k + 1)} />}
         </>
     );

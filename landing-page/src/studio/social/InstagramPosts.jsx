@@ -14,7 +14,7 @@ const STATUS = {
     cancelled: 'bg-[#EEE] text-[#777]',
 };
 
-export default function InstagramPosts({ intro = null, refreshKey = 0 }) {
+export default function InstagramPosts({ refreshKey = 0 }) {
     const [posts, setPosts] = useState(null);
     const [account, setAccount] = useState(null);
     const [error, setError] = useState(null);
@@ -36,8 +36,7 @@ export default function InstagramPosts({ intro = null, refreshKey = 0 }) {
     };
 
     return (
-        <div className="mx-auto max-w-5xl space-y-6 pb-16">
-            {intro}
+        <div className="max-w-5xl space-y-6 pb-16">
             <ConnectCard account={account} onChanged={load} />
 
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">

@@ -123,7 +123,7 @@ function TryIt({ onTry, templateId, fields, look, children = 'Try it' }) {
     );
 }
 
-export default function TrendsPanel({ intro = null, onTry, published = null, onStatus }) {
+export default function TrendsPanel({ onTry, published = null, onStatus }) {
     const [drops, setDrops] = useState(null);
     const [error, setError] = useState(null);
     const [week, setWeek] = useState(null);
@@ -151,15 +151,12 @@ export default function TrendsPanel({ intro = null, onTry, published = null, onS
 
     return (
         <div className="max-w-[1180px] space-y-6">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-                {intro}
-                {drops?.length > 1 && (
-                    <select value={week ?? ''} onChange={(ev) => setWeek(ev.target.value)}
-                        className="rounded-lg border border-[#E6E6E1] bg-white px-3 py-2 text-sm text-[#111]">
-                        {drops.map((d) => <option key={d.id} value={d.week_start}>{weekLabel(d.week_start)} — {d.title}</option>)}
-                    </select>
-                )}
-            </div>
+            {drops?.length > 1 && (
+                <select value={week ?? ''} onChange={(ev) => setWeek(ev.target.value)}
+                    className="rounded-lg border border-[#E6E6E1] bg-white px-3 py-2 text-sm text-[#111]">
+                    {drops.map((d) => <option key={d.id} value={d.week_start}>{weekLabel(d.week_start)} — {d.title}</option>)}
+                </select>
+            )}
 
             {error && <div className="flex items-center gap-2 rounded-xl bg-[#FFF1F0] p-4 text-sm text-[#A8071A]"><TriangleAlert size={16} /> {error}</div>}
             {!drops && !error && <div className="flex items-center gap-2 text-sm text-[#777]"><Loader2 size={16} className="animate-spin" /> Loading the trend drops…</div>}
