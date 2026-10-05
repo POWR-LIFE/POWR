@@ -21,14 +21,25 @@ const PREVIEW_KEY = 'powr:portal:previewLang';
 const PREVIEWABLE = [...PORTAL_LANGUAGES, ...DRAFT_LANGUAGES];
 
 function previewLanguage() {
+    let asked;
     try {
-        const asked = new URLSearchParams(window.location.search).get('lang');
-        if (asked === 'off') sessionStorage.removeItem(PREVIEW_KEY);
-        else if (asked && PREVIEWABLE.includes(asked)) sessionStorage.setItem(PREVIEW_KEY, asked);
+        asked = new URLSearchParams(window.location.search).get('lang');
+    } catch {
+        return null;
+    }
+    if (asked === 'off') {
+        try { sessionStorage.removeItem(PREVIEW_KEY); } catch { /* storage blocked */ }
+        return null;
+    }
+    if (asked && PREVIEWABLE.includes(asked)) {
+        try { sessionStorage.setItem(PREVIEW_KEY, asked); } catch { /* preview still works for this visit */ }
+        return asked;
+    }
+    try {
         const stored = sessionStorage.getItem(PREVIEW_KEY);
         return stored && PREVIEWABLE.includes(stored) ? stored : null;
     } catch {
-        return null; // storage blocked — a preview just doesn't stick
+        return null;
     }
 }
 
