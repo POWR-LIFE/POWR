@@ -138,3 +138,15 @@ export function inkLuma(img) {
     lumaCache.set(img, l);
     return l;
 }
+
+/** loadAsset, plus a small preview (data URL) for the field that shows it. */
+export async function assetWithPreview(file) {
+    const a = await loadAsset(file);
+    const pv = document.createElement('canvas');
+    const k = Math.min(1, 160 / Math.max(a.image.width, a.image.height));
+    pv.width = Math.max(1, Math.round(a.image.width * k));
+    pv.height = Math.max(1, Math.round(a.image.height * k));
+    pv.getContext('2d').drawImage(a.image, 0, 0, pv.width, pv.height);
+    a.preview = pv.toDataURL();
+    return a;
+}
