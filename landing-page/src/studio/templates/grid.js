@@ -75,23 +75,26 @@ export default {
         const m = cell / 2;
         const top = Math.max(safe.t, m);
         const bottom = H - Math.max(safe.b, m);
+        // The right edge steps in where the app's buttons sit (a Reel); the
+        // left keeps half a cell so the kicker still fits beside the photo.
+        const right = W - Math.max(safe.r, m);
 
         const logoW = 132 * u;
-        const logoH = e.logo(e.ink, W - m - logoW, top, logoW);
+        const logoH = e.logo(e.ink, right - logoW, top, logoW);
 
         // Headline: shared size, staggered alignment.
         const size = e.look.size ?? 1;
         const lines = splitLines(e.caps(e.fields.headline)).slice(0, 4);
         const tracking = -0.035;
         const block = fitBlock(ctx, lines, e.headline, {
-            maxW: (W - 2 * m) * 0.9 * size,
+            maxW: (right - m) * 0.9 * size,
             maxH: H * (tall ? 0.19 : sq ? 0.25 : 0.245) * size,
             tracking,
             gap: 0.2,
         });
         const headTop = top + logoH + (sq ? 22 : 34) * u;
         const heads = drawBlock(ctx, block, e.headline, m, headTop, {
-            align: 'stagger', x2: W - m, tracking,
+            align: 'stagger', x2: right, tracking,
             color: e.headlineAccent ? e.accent : e.ink, accent: e.accent,
         });
         const headBottom = heads[heads.length - 1].baseline;
@@ -107,7 +110,7 @@ export default {
 
         // Photo inset: from the second grid line to the right margin.
         const gap = (tall ? 0.028 : 0.04) * H;
-        const rect = { x: cell * 2, y: headBottom + gap, w: W - m - cell * 2, h: footTop - gap - (headBottom + gap) };
+        const rect = { x: cell * 2, y: headBottom + gap, w: right - cell * 2, h: footTop - gap - (headBottom + gap) };
         if (rect.h > 40 * u) e.photo(rect);
 
         // Kicker hangs off the photo's left edge.
@@ -121,7 +124,7 @@ export default {
         // Date sits top-right against the footer's first line.
         const dPx = (sq ? 40 : 46) * u;
         const dCap = dPx * 0.72;
-        e.mark('date', drawText(ctx, e.caps(e.fields.date), TYPE.groteskM, dPx, W - m, footTop + dCap, {
+        e.mark('date', drawText(ctx, e.caps(e.fields.date), TYPE.groteskM, dPx, right, footTop + dCap, {
             align: 'right', tracking: -0.025, color: e.accent,
         }));
     },

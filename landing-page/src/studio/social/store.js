@@ -23,7 +23,7 @@ export function kindsFor({ formatInfo: F, slideCount, hasVideo }) {
     const tall = Math.abs(r - 9 / 16) < 0.01;
     const feed = r >= 0.8 - 0.001 && r <= 1.91 + 0.001;
     if (F.print || (!tall && !feed)) {
-        return { kinds: [], reason: `${F.label} (${F.w}×${F.h}) isn't an Instagram size — Instagram takes 4:5 to 1.91:1 in the feed and 9:16 for stories and reels. Switch to Post, Square or Story.` };
+        return { kinds: [], reason: `${F.label} (${F.w}×${F.h}) isn't an Instagram size — Instagram takes 4:5 to 1.91:1 in the feed and 9:16 for stories and reels. Switch to Post, Square, Story or Reel.` };
     }
     if (slideCount > CAROUSEL_MAX) return { kinds: [], reason: `Instagram carousels take up to ${CAROUSEL_MAX} slides — this has ${slideCount}.` };
     if (slideCount > 1) {
@@ -31,7 +31,7 @@ export function kindsFor({ formatInfo: F, slideCount, hasVideo }) {
         return { kinds: ['carousel'] };
     }
     if (tall) return { kinds: hasVideo ? ['reel', 'story'] : ['story'] };
-    if (hasVideo) return { kinds: [], reason: 'Reels are 9:16 — switch to Story size to post this video as a reel.' };
+    if (hasVideo) return { kinds: [], reason: 'Reels are 9:16 — switch to Reel size to post this video as a reel.' };
     return { kinds: ['image'] };
 }
 

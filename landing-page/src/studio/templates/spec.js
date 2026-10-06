@@ -84,10 +84,14 @@ export default {
         const { ctx, W, H, u, safe, shape } = e;
         const tall = shape === 'tall';
         const sq = shape === 'square';
+        // The tall heights below were set on a Story (330 px caption zone). A
+        // Reel's caption zone is deeper, so the stack under the photo — date,
+        // wordmark, info — rises with it and the partner line keeps its gap.
+        const lift = tall ? Math.max(0, safe.b - 330 * u) : 0;
         const focus = e.photo({ x: 0, y: 0, w: W, h: H });
 
         e.fade(0, 0, W, H * 0.22, 'top', 0.5);
-        e.fade(0, H * (tall ? 0.56 : 0.58), W, H * (tall ? 0.44 : 0.42), 'bottom', 0.82);
+        e.fade(0, H * (tall ? 0.56 : 0.58) - lift, W, H * (tall ? 0.44 : 0.42) + lift, 'bottom', 0.82);
 
         const logoW = 128 * u;
         e.logo(e.ink, W / 2 - logoW / 2, safe.t + 8 * u, logoW);
@@ -143,7 +147,7 @@ export default {
         const date = e.caps(e.fields.date);
         const dateW = textWidth(ctx, date, TYPE.mono, datePx, dateTrack);
         const dx = safe.l * 0.55 + datePx * 0.9;
-        const dy = H * (tall ? 0.56 : 0.6);
+        const dy = H * (tall ? 0.56 : 0.6) - lift;
         ctx.save();
         ctx.translate(dx, dy);
         ctx.rotate(-Math.PI / 2);
@@ -157,7 +161,7 @@ export default {
         const wm = fitBlock(ctx, [e.caps(e.fields.headline)], e.headline, {
             maxW: W * 0.68 * size, maxH: H * 0.11 * size, gap: 0,
         });
-        const wmTop = tall ? H * 0.545 : sq ? H * 0.53 : H * 0.56;
+        const wmTop = (tall ? H * 0.545 : sq ? H * 0.53 : H * 0.56) - lift;
         const wmH = wm.cap + 22 * u + subPxFor(sq, u);
         e.shade({ x: W * 0.16, y: wmTop, w: W * 0.68, h: wmH }, { ceiling: 0.28, max: 0.55 });
         const [wmBox] = drawBlock(ctx, wm, e.headline, W / 2, wmTop, { align: 'center', color: e.accent, accent: e.accent });
@@ -172,7 +176,7 @@ export default {
         // ── Info block ─────────────────────────────────────────────────────
         const infoPx = (sq ? 18 : 21) * u;
         const lead = 1.3;
-        const infoTop = tall ? H * 0.69 : sq ? H * 0.745 : H * 0.745;
+        const infoTop = (tall ? H * 0.69 : sq ? H * 0.745 : H * 0.745) - lift;
         const leftX = W * 0.22;
         const rightX = W * 0.56;
         e.mark('infoLeft', drawText(ctx, e.caps(e.fields.infoLeft), TYPE.groteskB, infoPx, leftX, infoTop + infoPx, {
