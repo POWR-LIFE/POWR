@@ -4,9 +4,13 @@
  * 300 dpi and also download as PDF with a 3 mm bleed.
  *
  * `safe` is the inset type may sit in. Feed posts only lose a sliver to the
- * profile grid's crop; stories and reels lose the top ~200 px to the progress
- * bar + handle and the bottom ~330 px to the reply bar and captions; print
- * keeps type ~5 mm clear of the trim.
+ * profile grid's crop; stories lose the top ~200 px to the progress bar +
+ * handle and the bottom ~330 px to the reply bar; reels lose more — the top
+ * ~220 px to the Reels header, the bottom ~440 px to the handle, caption and
+ * audio line, and the right ~120 px to the like / comment / share rail (kept
+ * even on both sides so centred type stays centred); print keeps type ~5 mm
+ * clear of the trim. `sides` shows the left/right insets in the safe-zone
+ * overlay too, where the app's own buttons sit in them.
  */
 const mm = (v) => Math.round((v / 25.4) * 300); // mm → px at 300 dpi
 
@@ -15,6 +19,7 @@ export const FORMATS = {
     portrait:  { id: 'portrait',  group: 'Social',  label: 'Portrait',  ratio: '3:4',    w: 1080, h: 1440, safe: { t: 64,  r: 64, b: 64,  l: 64 } },
     square:    { id: 'square',    group: 'Social',  label: 'Square',    ratio: '1:1',    w: 1080, h: 1080, safe: { t: 60,  r: 60, b: 60,  l: 60 } },
     story:     { id: 'story',     group: 'Social',  label: 'Story',     ratio: '9:16',   w: 1080, h: 1920, safe: { t: 210, r: 72, b: 330, l: 72 } },
+    reel:      { id: 'reel',      group: 'Social',  label: 'Reel',      ratio: '9:16',   w: 1080, h: 1920, safe: { t: 220, r: 120, b: 440, l: 120 }, sides: true, note: '1080×1920 · clear of the Reels buttons & caption' },
 
     landscape: { id: 'landscape', group: 'Banners', label: 'Landscape', ratio: '16:9',   w: 1920, h: 1080, safe: { t: 64,  r: 84, b: 64,  l: 84 }, note: 'YouTube · web · gym screens' },
     link:      { id: 'link',      group: 'Banners', label: 'Link',      ratio: '1.91:1', w: 1200, h: 628,  safe: { t: 40,  r: 56, b: 40,  l: 56 }, note: 'LinkedIn & Facebook posts' },

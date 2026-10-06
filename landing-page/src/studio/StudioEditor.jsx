@@ -1360,6 +1360,12 @@ export default function StudioEditor({
                             <div className="pointer-events-none absolute inset-0">
                                 <div className="absolute inset-x-0 top-0 bg-[#E8D200]/15 border-b border-dashed border-[#E8D200]/70" style={{ height: `${(F.safe.t / F.h) * 100}%` }} />
                                 <div className="absolute inset-x-0 bottom-0 bg-[#E8D200]/15 border-t border-dashed border-[#E8D200]/70" style={{ height: `${(F.safe.b / F.h) * 100}%` }} />
+                                {F.sides && (
+                                    <>
+                                        <div className="absolute left-0 bg-[#E8D200]/15 border-r border-dashed border-[#E8D200]/70" style={{ top: `${(F.safe.t / F.h) * 100}%`, bottom: `${(F.safe.b / F.h) * 100}%`, width: `${(F.safe.l / F.w) * 100}%` }} />
+                                        <div className="absolute right-0 bg-[#E8D200]/15 border-l border-dashed border-[#E8D200]/70" style={{ top: `${(F.safe.t / F.h) * 100}%`, bottom: `${(F.safe.b / F.h) * 100}%`, width: `${(F.safe.r / F.w) * 100}%` }} />
+                                    </>
+                                )}
                             </div>
                         )}
                         {!ready && (
