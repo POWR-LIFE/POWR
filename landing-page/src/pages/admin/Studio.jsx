@@ -18,11 +18,10 @@ import { countDrafts } from '../../studio/drafts/store';
  * drafts. Each stays mounted once opened, so switching between them keeps the
  * work in all (Drafts reloads each visit, to show what was just saved).
  */
-// Posting to Instagram stays hidden until it is live end to end: the Meta app
-// connected, and the studio_social_posts migration + publish-instagram
-// function applied. Switch this on then; the tab and the "Post to Instagram"
-// button both follow it.
-const INSTAGRAM_ON = false;
+// Posting to Instagram: the tab and the "Post to Instagram" button both
+// follow this switch. The migration and publish-instagram function are live
+// (2026-10-06); the function stays in dry run until DRY_RUN=false is set.
+const INSTAGRAM_ON = true;
 
 const MODES = [
     { id: 'post', label: 'One post', blurb: 'Pick a template, drop the photo in, change the words — the grade, crop and type are handled.' },
