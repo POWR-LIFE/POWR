@@ -44,6 +44,13 @@ const MAX_ATTEMPTS = 3;
 const STALE_MINUTES = 20;
 const VIDEO_POLL_MS = 5_000;
 const VIDEO_TIMEOUT_MS = 5 * 60_000;
+// Images are usually ready in a second or two: poll them faster.
+const IMAGE_POLL_MS = 1_500;
+// "The media is not ready for publishing" (code 9007, subcode 2207027):
+// Instagram is still processing the upload. Wait and try the publish again.
+const NOT_READY_CODE = 9007;
+const PUBLISH_TRIES = 4;
+const PUBLISH_RETRY_MS = 4_000;
 const REFRESH_WITHIN_DAYS = 10;
 const SIGNED_URL_SECONDS = 60 * 60;
 
@@ -64,7 +71,13 @@ type Post = {
 };
 type Account = { ig_user_id: string; access_token: string; token_expires_at: string | null; username: string | null };
 
-class GraphError extends Error {}
+class GraphError extends Error {
+  code?: number;
+  constructor(message: string, code?: number) {
+    super(message);
+    this.code = code;
+  }
+}
 
 // ── Graph calls ───────────────────────────────────────────────────────────
 // Every call goes through here, so a dry run logs exactly what would be sent.
@@ -104,6 +117,7 @@ async function graph(
     const e = body?.error ?? {};
     throw new GraphError(
       `Instagram said: ${e.error_user_msg ?? e.message ?? `HTTP ${res.status}`}${e.code ? ` (code ${e.code}${e.error_subcode ? `/${e.error_subcode}` : ""})` : ""}`,
+      Number(e.code) || undefined,
     );
   }
   return body;
@@ -111,19 +125,21 @@ async function graph(
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function waitFinished(id: string, token: string, log: string[]) {
+// Every container — image, video, carousel — must report FINISHED before it
+// can be published; publishing early fails with code 9007.
+async function waitFinished(id: string, token: string, log: string[], kind: "image" | "video" | "carousel" = "video") {
   const started = Date.now();
   while (true) {
     const r = await graph("GET", id, { fields: "status_code" }, token, log);
     const code = String(r.status_code ?? "");
     if (code === "FINISHED") return;
     if (code === "ERROR" || code === "EXPIRED") {
-      throw new GraphError(`Instagram couldn't process the video (status ${code}).`);
+      throw new GraphError(`Instagram couldn't process the ${kind} (status ${code}).`);
     }
     if (Date.now() - started > VIDEO_TIMEOUT_MS) {
-      throw new GraphError("Instagram took more than 5 minutes to process the video.");
+      throw new GraphError(`Instagram took more than 5 minutes to process the ${kind}.`);
     }
-    await sleep(VIDEO_POLL_MS);
+    await sleep(kind === "video" ? VIDEO_POLL_MS : IMAGE_POLL_MS);
   }
 }
 
@@ -190,7 +206,7 @@ async function publishPost(admin: SupabaseClient, post: Post, acct: Account, tok
         is_carousel_item: "true",
       }, token, log);
       const id = String(r.id);
-      if (m.type === "video") await waitFinished(id, token, log);
+      await waitFinished(id, token, log, m.type);
       children.push(id);
     }
     const r = await graph("POST", `${user}/media`, {
@@ -199,7 +215,7 @@ async function publishPost(admin: SupabaseClient, post: Post, acct: Account, tok
       caption: post.caption ?? "",
     }, token, log);
     creationId = String(r.id);
-    await waitFinished(creationId, token, log);
+    await waitFinished(creationId, token, log, "carousel");
   } else {
     const m = items[0];
     const params: Record<string, string> = { ...mediaParam(m, urls[0]) };
@@ -215,11 +231,21 @@ async function publishPost(admin: SupabaseClient, post: Post, acct: Account, tok
     }
     const r = await graph("POST", `${user}/media`, params, token, log);
     creationId = String(r.id);
-    if (m.type === "video") await waitFinished(creationId, token, log);
+    await waitFinished(creationId, token, log, m.type);
   }
 
-  const pub = await graph("POST", `${user}/media_publish`, { creation_id: creationId }, token, log);
-  const mediaId = String(pub.id);
+  // Publish, allowing for Instagram saying the media isn't ready yet even
+  // after FINISHED (it happens): wait and try again a few times.
+  let pub: Record<string, unknown> | null = null;
+  for (let attempt = 1; !pub; attempt++) {
+    try {
+      pub = await graph("POST", `${user}/media_publish`, { creation_id: creationId }, token, log);
+    } catch (e) {
+      if (!(e instanceof GraphError) || e.code !== NOT_READY_CODE || attempt >= PUBLISH_TRIES) throw e;
+      await sleep(PUBLISH_RETRY_MS);
+    }
+  }
+  const mediaId = String(pub!.id);
   let permalink: string | null = null;
   try {
     const p = await graph("GET", mediaId, { fields: "permalink" }, token, log);
