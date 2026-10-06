@@ -141,7 +141,7 @@ export function useLiveEventSignals() {
                 if (!onBoard.current.has(slug)) return;
                 if (AppState.currentState !== 'active') return;
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-                router.navigate({ pathname: '/(tabs)/league', params: { event: slug } });
+                router.navigate({ pathname: '/(tabs)/league', params: { event: slug, at: String(Date.now()) } });
             };
 
             let set = handlers.get(slug);

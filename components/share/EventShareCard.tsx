@@ -6,7 +6,14 @@ import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 import { EventLockup, lockupImageCount } from '@/components/events/EventLockup';
 import { fontFamily } from '@/constants/tokens';
 import type { EventShareEvent } from '@/lib/eventShare';
-import { eventDateRange, eventNightLine, eventStatusChip, isVideoUrl } from '@/lib/liveEventDisplay';
+import {
+  eventDateRange,
+  eventNightLine,
+  eventStatusChip,
+  isComingSoon,
+  isVideoUrl,
+  registrationLine,
+} from '@/lib/liveEventDisplay';
 import { storageImage } from '@/lib/storageImage';
 
 /**
@@ -115,6 +122,16 @@ export const EventShareCard = forwardRef<View, EventShareCardProps>(
               locations={[0, 0.5, 1]}
               style={StyleSheet.absoluteFillObject}
             />
+            {/* The lockup and the fact labels run down the left — the same left
+                shade as the Home and League cards, so small labels survive a
+                bright photo (Stars Gym's windows, 2026-10-06). */}
+            <LinearGradient
+              colors={['rgba(10,10,10,0.7)', 'rgba(10,10,10,0.35)', 'rgba(10,10,10,0)']}
+              locations={[0, 0.55, 1]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFillObject}
+            />
           </>
         ) : (
           <LinearGradient
@@ -161,6 +178,9 @@ export const EventShareCard = forwardRef<View, EventShareCardProps>(
               {night && <Fact s={s} label="THE NIGHT" value={night} />}
               {venueName && <Fact s={s} label="WHERE" value={venueName} />}
               <Fact s={s} label="SCORING" value={eventDateRange(event)} />
+              {isComingSoon(event) && (
+                <Fact s={s} label="SIGN-UP" value={registrationLine(event).replace(/^Registration opens/, 'Opens')} />
+              )}
             </View>
           </View>
 

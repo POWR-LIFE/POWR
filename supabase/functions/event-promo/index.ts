@@ -53,7 +53,7 @@ Deno.serve(async (req: Request) => {
   const { data: ev } = await admin
     .from("live_events")
     .select(
-      "id, name, slug, status, window_start_at, window_end_at, prizes, promo_media_url, promo_headline, venue_partner_id, display_token",
+      "id, name, slug, status, window_start_at, window_end_at, registration_opens_at, prizes, promo_media_url, promo_headline, venue_partner_id, display_token",
     )
     .eq("slug", slug)
     .single();
@@ -79,6 +79,8 @@ Deno.serve(async (req: Request) => {
     status: ev.status,
     window_start_at: ev.window_start_at,
     window_end_at: ev.window_end_at,
+    // Coming soon ('announced') only: when registration opens; null = "soon".
+    registration_opens_at: ev.registration_opens_at ?? null,
     prizes: ev.prizes ?? [],
     headline: ev.promo_headline,
     media_url: ev.promo_media_url,

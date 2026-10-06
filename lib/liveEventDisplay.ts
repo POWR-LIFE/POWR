@@ -32,9 +32,26 @@ export function eventDateRange(event: Pick<LiveEvent, 'window_start_at' | 'windo
 export function scoringLine(
     event: Pick<LiveEvent, 'status' | 'window_start_at' | 'window_end_at'>,
 ): string {
-    return event.status === 'scheduled'
+    return event.status === 'scheduled' || event.status === 'announced'
         ? `Scoring starts ${shortDate(event.window_start_at)}`
         : `Scoring ends ${lastDayOf(event.window_end_at)}`;
+}
+
+/** A Coming soon event. One predicate so no surface tests the raw status. */
+export function isComingSoon(event: Pick<LiveEvent, 'status'>): boolean {
+    return event.status === 'announced';
+}
+
+/**
+ * When a Coming soon event opens its doors — the one fact it has to sell.
+ * "soon" when the admin hasn't set a time (they open it by hand), and also
+ * once the time has passed but the server hasn't flipped it yet: a date in
+ * the past would read as "you missed it".
+ */
+export function registrationLine(event: Pick<LiveEvent, 'registration_opens_at'>): string {
+    const at = event.registration_opens_at;
+    if (!at || new Date(at).getTime() <= Date.now()) return 'Registration opens soon';
+    return `Registration opens ${shortDate(at)}`;
 }
 
 /** Local wall-clock as a flyer writes it: "6pm", "6:30pm". */
@@ -162,6 +179,7 @@ export function eventNightLine(
  * at the wrong date in the same way the bare start date was.
  */
 export function eventStatusChip(event: Pick<LiveEvent, 'status' | 'window_start_at'>): string {
+    if (event.status === 'announced') return 'COMING SOON';
     if (event.status !== 'scheduled') return 'LIVE NOW';
     const days = Math.max(0, Math.ceil((new Date(event.window_start_at).getTime() - Date.now()) / 86_400_000));
     if (days === 0) return 'SCORING TODAY';

@@ -35,6 +35,15 @@ const lastDay = (endIso) => fmtDay(new Date(new Date(endIso).getTime() - 60_000)
 
 const medal = (rank) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`);
 
+// Coming soon ('announced'): same words as registrationLine() in the app —
+// "soon" when no time is set, or once it has passed but the minute cron
+// hasn't opened it yet (a past date reads as "you missed it").
+const registrationLine = (ev) => {
+    const at = ev.registration_opens_at;
+    if (!at || new Date(at).getTime() <= Date.now()) return 'Registration opens soon';
+    return `Registration opens ${fmtDay(at)}`;
+};
+
 export default function EventPromo() {
     const { slug } = useParams();
     const [params] = useSearchParams();
@@ -90,6 +99,11 @@ export default function EventPromo() {
         );
     }
 
+    // Coming soon: the page is public and sells the event, but the QR can't
+    // promise registration yet — it still opens the event in the app, where
+    // the card says when sign-up opens.
+    const comingSoon = event.status === 'announced';
+
     return (
         <Shell media={event.media_url}>
             {/* Eyebrow */}
@@ -101,7 +115,7 @@ export default function EventPromo() {
                     className="text-[clamp(10px,1.4vw,14px)] font-black uppercase tracking-[0.65em] pl-[0.65em]"
                     style={{ color: GOLD }}
                 >
-                    POWR · Live event
+                    {comingSoon ? 'POWR · Coming soon' : 'POWR · Live event'}
                 </motion.span>
             </div>
 
@@ -172,8 +186,12 @@ export default function EventPromo() {
                         />
                     </div>
                     <div className="text-center">
-                        <div className="text-[clamp(11px,1.3vw,14px)] font-semibold text-white/90 uppercase tracking-[0.25em]">Scan to register</div>
-                        <div className="text-[clamp(10px,1.1vw,12px)] text-white/45 font-light mt-0.5">Free with the POWR app</div>
+                        <div className="text-[clamp(11px,1.3vw,14px)] font-semibold text-white/90 uppercase tracking-[0.25em]">
+                            {comingSoon ? registrationLine(event) : 'Scan to register'}
+                        </div>
+                        <div className="text-[clamp(10px,1.1vw,12px)] text-white/45 font-light mt-0.5">
+                            {comingSoon ? 'Scan to get the POWR app — it’s free' : 'Free with the POWR app'}
+                        </div>
                     </div>
                 </div>
 

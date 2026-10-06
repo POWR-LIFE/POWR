@@ -1,4 +1,15 @@
-import { countdownParts, eventNightLine, eventStatusChip, gateProgress, inviteRewardLine, rankMove, revealMoment, scoringLine } from '@/lib/liveEventDisplay';
+import {
+    countdownParts,
+    eventNightLine,
+    eventStatusChip,
+    gateProgress,
+    inviteRewardLine,
+    isComingSoon,
+    rankMove,
+    registrationLine,
+    revealMoment,
+    scoringLine,
+} from '@/lib/liveEventDisplay';
 
 const realToLocaleDateString = Date.prototype.toLocaleDateString;
 const realToLocaleTimeString = Date.prototype.toLocaleTimeString;
@@ -83,6 +94,42 @@ describe('eventStatusChip', () => {
 
     it('drops the countdown entirely once live', () => {
         expect(eventStatusChip({ ...WINDOW, status: 'live' })).toBe('LIVE NOW');
+    });
+
+    // Coming soon used to fall through to "LIVE NOW" (anything not scheduled
+    // did) — the exact lie the server-side build gate keeps older apps from.
+    it('says COMING SOON for an announced event, never LIVE NOW', () => {
+        expect(eventStatusChip({ ...WINDOW, status: 'announced' })).toBe('COMING SOON');
+    });
+});
+
+describe('Coming soon', () => {
+    afterEach(() => { jest.useRealTimers(); });
+
+    it('only an announced event is coming soon', () => {
+        expect(isComingSoon({ status: 'announced' })).toBe(true);
+        expect(isComingSoon({ status: 'scheduled' })).toBe(false);
+    });
+
+    it('quotes the scoring START while announced, like scheduled', () => {
+        expect(scoringLine({ ...WINDOW, status: 'announced' })).toMatch(/^Scoring starts .*27/);
+    });
+
+    it('names the day registration opens', () => {
+        jest.useFakeTimers().setSystemTime(new Date('2026-08-10T09:00:00+01:00'));
+        expect(registrationLine({ registration_opens_at: '2026-08-17T08:00:00+00:00' })).toBe('Registration opens Mon 17 Aug');
+    });
+
+    it('says "soon" with no time set', () => {
+        expect(registrationLine({ registration_opens_at: null })).toBe('Registration opens soon');
+        expect(registrationLine({})).toBe('Registration opens soon');
+    });
+
+    it('never quotes a time that has already passed', () => {
+        // The minute cron hasn't flipped it yet — a past date reads as
+        // "you missed it", so it stays "soon" until the status moves.
+        jest.useFakeTimers().setSystemTime(new Date('2026-08-17T08:00:30+00:00'));
+        expect(registrationLine({ registration_opens_at: '2026-08-17T08:00:00+00:00' })).toBe('Registration opens soon');
     });
 });
 

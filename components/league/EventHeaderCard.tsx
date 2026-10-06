@@ -8,7 +8,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { EventLockup } from '@/components/events/EventLockup';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import type { LiveEvent } from '@/lib/api/liveEvents';
-import { eventDateRange, eventNightLine, isVideoUrl, lastDayOf } from '@/lib/liveEventDisplay';
+import {
+    eventDateRange,
+    eventNightLine,
+    isComingSoon,
+    isVideoUrl,
+    lastDayOf,
+    registrationLine,
+} from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 const CARD_BG = 'rgba(40,40,40,0.85)';
@@ -17,6 +24,7 @@ const DIM = 'rgba(255,255,255,0.5)';
 
 /** One line on where the event is up to — shared with the compact board header. */
 export function eventStatusLine(event: LiveEvent): string {
+    if (isComingSoon(event)) return `Coming soon · ${registrationLine(event).replace(/^Registration/, 'registration')}`;
     if (event.status === 'scheduled') {
         const days = Math.max(
             0,
@@ -148,6 +156,18 @@ export function EventHeaderCard({
                         locations={[0, 0.45, 1]}
                         style={StyleSheet.absoluteFillObject}
                     />
+                    {/* The lockup sits top-left where the vertical scrim is
+                        lightest, and the facts run down the left — a bright venue
+                        photo swallowed both (Stars Gym, 2026-10-06). Same left
+                        shade as the home card, so the right of the artwork keeps
+                        its colour. */}
+                    <LinearGradient
+                        colors={['rgba(10,10,10,0.65)', 'rgba(10,10,10,0.3)', 'rgba(10,10,10,0)']}
+                        locations={[0, 0.55, 1]}
+                        start={{ x: 0, y: 0.5 }}
+                        end={{ x: 1, y: 0.5 }}
+                        style={StyleSheet.absoluteFillObject}
+                    />
                 </>
             )}
 
@@ -219,7 +239,9 @@ export function EventHeaderCard({
                 )}
             </View>
 
-            <Text style={styles.statusLine}>{eventStatusLine(event)}</Text>
+            {/* Coming soon: the held bar below already says when registration
+                opens, so the line names the state and nothing more. */}
+            <Text style={styles.statusLine}>{isComingSoon(event) ? 'Coming soon' : eventStatusLine(event)}</Text>
 
 
             {canJoin && (
@@ -234,6 +256,16 @@ export function EventHeaderCard({
                 >
                     <Text style={styles.joinBtnText}>JOIN THE WEEK</Text>
                 </Pressable>
+            )}
+
+            {/* Coming soon: the button's place, held. Same shape as JOIN THE
+                WEEK so the page doesn't change layout when registration
+                opens — just not a button, and it says when it becomes one. */}
+            {isComingSoon(event) && (
+                <View style={styles.soonBar} accessibilityRole="text">
+                    <Ionicons name="time-outline" size={13} color={GOLD} />
+                    <Text style={styles.soonBarText}>{registrationLine(event).toUpperCase()}</Text>
+                </View>
             )}
         </View>
     );
@@ -292,4 +324,17 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     joinBtnText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
+    soonBar: {
+        marginTop: 14,
+        borderRadius: 100,
+        borderWidth: 1,
+        borderColor: 'rgba(232,210,0,0.45)',
+        backgroundColor: 'rgba(0,0,0,0.35)',
+        paddingVertical: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 7,
+    },
+    soonBarText: { fontSize: 11, fontWeight: '800', color: GOLD, letterSpacing: 1.5 },
 });
