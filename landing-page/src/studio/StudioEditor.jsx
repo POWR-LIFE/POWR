@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Send, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Copy, Download, FilePlus2, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Send, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
 import { prepareStudio, renderPost, compositeLayers, fieldDefaults, COLOURWAYS } from './render';
 import { TEMPLATES, CATEGORIES, LIBRARIES, SECTIONS, templateById } from './templates';
 import { FORMATS, FORMAT_LIST, FORMAT_GROUPS, BLEED_MM } from './formats';
@@ -7,9 +7,10 @@ import { pdfFromCanvas, pdfFromPages, jpegPage, mmToPt } from './pdf';
 import { HEADLINE_FONTS } from './fonts';
 import { TINTS } from './grade';
 import { loadMedia } from './media';
-import { loadAsset } from './assets';
+import { assetWithPreview } from './assets';
 import { exportVideo, EXPORT_FPS, MAX_CLIP_SECONDS } from './video';
 import { adminStudioData } from './data';
+import { saveDraft, renameDraft, signature } from './drafts/store';
 
 // The data fills: what each is called, and the data-source call that lists
 // it. A kind shows only when the template takes it AND the source has it
@@ -61,20 +62,8 @@ const NO_LOOK = {};
 
 const stamp = () => new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
-// An uploaded (or fetched) image, cleaned for the post, plus a small preview for the field.
 // Image fields shared by every template that has them (see takeAsset).
 const SHARED_ASSETS = ['logo', 'product'];
-
-async function assetWithPreview(file) {
-    const a = await loadAsset(file);
-    const pv = document.createElement('canvas');
-    const k = Math.min(1, 160 / Math.max(a.image.width, a.image.height));
-    pv.width = Math.max(1, Math.round(a.image.width * k));
-    pv.height = Math.max(1, Math.round(a.image.height * k));
-    pv.getContext('2d').drawImage(a.image, 0, 0, pv.width, pv.height);
-    a.preview = pv.toDataURL();
-    return a;
-}
 
 function downloadBlob(blob, name) {
     const a = document.createElement('a');
@@ -106,22 +95,55 @@ function forVenue(value, venue) {
  * onPublish   admin only: shows "Post to Instagram" by Download; called with
  *             { format, slideCount, hasVideo, thumb, render } — render()
  *             makes the files to post (JPEG q0.92 / MP4, one per slide)
+ * drafts      shows the draft bar (name, Save draft / ⌘S, Save as copy, New
+ *             post): { partnerId, onChange({ id, title, dirty }), onSaved(draft),
+ *             onNew(), renamed, deletedId } — onNew asks the host for a fresh
+ *             editor; renamed ({ id, title, updated_at }) and deletedId report
+ *             changes made on the Drafts tab (a deleted draft's work stays here
+ *             and saves as a new draft)
+ * initial     open on a saved draft, as drafts/store.js openDraft() returns it
  */
 export default function StudioEditor({
     intro = null, data = adminStudioData, categories = CATEGORIES,
     stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, showRefs = true, apply = null, onPublish = null,
+    drafts = null, initial = null,
 }) {
     const startingFields = (t) => Object.fromEntries(Object.entries(fieldDefaults(t)).map(([k, v]) => [k, forVenue(v, venue)]));
     const available = useMemo(() => TEMPLATES.filter((t) => categories.includes(t.category)), [categories]);
     const cats = useMemo(() => CATEGORIES.filter((c) => available.some((t) => t.category === c)), [available]);
+    // Every template's starting words: a draft keeps only what differs from them.
+    const defaults = useMemo(() => Object.fromEntries(TEMPLATES.map((t) => [t.id, startingFields(t)])), [venue]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Opening a draft: its slides as the editor holds them — every template's
+    // words (the draft's changes over the starting ones), and a template that
+    // has since left the Studio swapped for the first one offered.
+    const [boot] = useState(() => {
+        if (!initial?.state) return null;
+        const okTemplate = (id) => (available.some((t) => t.id === id) ? id : available[0].id);
+        const slidesIn = initial.state.slides.map((sl, i) => ({
+            id: i + 1,
+            templateId: okTemplate(sl.templateId),
+            media: sl.media ?? null,
+            focal: sl.focal ?? { x: 0.5, y: 0.42 },
+            zoom: sl.zoom ?? 1,
+            fields: Object.fromEntries(TEMPLATES.map((t) => [t.id, { ...defaults[t.id], ...(sl.fields?.[t.id] ?? {}) }])),
+            looks: sl.looks ?? {},
+            assets: sl.assets ?? {},
+            clip: sl.clip ?? { start: 0, end: 0 },
+            keepSound: Boolean(sl.keepSound),
+            picks: sl.picks ?? {},
+            time: sl.time ?? 0,
+        }));
+        return { slides: slidesIn, current: initial.state.current ?? 0, format: FORMATS[initial.state.format] ? initial.state.format : 'post', style: initial.state.style };
+    });
+    const bootSlide = boot?.slides[boot.current] ?? null;
     const [ready, setReady] = useState(false);
     const [error, setError] = useState(null);
-    const [templateId, setTemplateId] = useState(() => start?.templateId ?? available[0].id);
+    const [templateId, setTemplateId] = useState(() => bootSlide?.templateId ?? start?.templateId ?? available[0].id);
     // The picker's tabs (POWR's own, then Move · Eat · Mind · Sleep) — only
     // the ones this host offers. The open tab follows the chosen template.
     const libraries = useMemo(() => LIBRARIES.filter((l) => cats.some((c) => l.categories.includes(c))), [cats]);
     const libraryOf = useCallback((id) => libraries.find((l) => l.categories.includes(templateById(id).category)) ?? libraries[0], [libraries]);
-    const [libraryId, setLibraryId] = useState(() => libraryOf(start?.templateId ?? available[0].id).id);
+    const [libraryId, setLibraryId] = useState(() => libraryOf(templateId).id);
     const library = libraries.find((l) => l.id === libraryId) ?? libraries[0];
     // Headings inside the tab: Core groups by category; a pillar splits into
     // Lifestyle (the person doing it) and Products (a brand selling for it).
@@ -134,14 +156,14 @@ export default function StudioEditor({
     }, [available, library, cats]);
     const shown = useMemo(() => groups.flatMap((g) => g.items), [groups]);
     useEffect(() => { setLibraryId(libraryOf(templateId).id); }, [templateId, libraryOf]);
-    const [format, setFormat] = useState('post');
-    const [media, setMedia] = useState(null);
-    const [focal, setFocal] = useState({ x: 0.5, y: 0.42 });
-    const [zoom, setZoom] = useState(1);
-    const [fields, setFields] = useState(() => Object.fromEntries(TEMPLATES.map((t) => [t.id, startingFields(t)])));
-    const [looks, setLooks] = useState({});
-    const [assets, setAssets] = useState({}); // { [templateId]: { [fieldKey]: { image, name, preview } } }
-    const [style, setStyle] = useState({ colourway: 'powr', headlineFont: '' });
+    const [format, setFormat] = useState(boot?.format ?? 'post');
+    const [media, setMedia] = useState(bootSlide?.media ?? null);
+    const [focal, setFocal] = useState(bootSlide?.focal ?? { x: 0.5, y: 0.42 });
+    const [zoom, setZoom] = useState(bootSlide?.zoom ?? 1);
+    const [fields, setFields] = useState(() => bootSlide?.fields ?? { ...defaults });
+    const [looks, setLooks] = useState(bootSlide?.looks ?? {});
+    const [assets, setAssets] = useState(bootSlide?.assets ?? {}); // { [templateId]: { [fieldKey]: { image, name, preview } } }
+    const [style, setStyle] = useState(() => ({ colourway: 'powr', headlineFont: '', ...(boot?.style ?? {}) }));
     const [showSafe, setShowSafe] = useState(false);
     const [loadingPhoto, setLoadingPhoto] = useState(false);
     const [exporting, setExporting] = useState(false);
@@ -152,16 +174,16 @@ export default function StudioEditor({
     const [clip, setClip] = useState({ start: 0, end: 0 });
     const [time, setTime] = useState(0);
     const [frameKey, setFrameKey] = useState(0);
-    const [keepSound, setKeepSound] = useState(false);
+    const [keepSound, setKeepSound] = useState(bootSlide?.keepSound ?? false);
     const [progress, setProgress] = useState(null);
     // Carousel: one entry per slide. The slide being edited lives in the state
     // above; its entry here is a stale snapshot until you move off it.
-    const [slides, setSlides] = useState([{ id: 1 }]);
-    const [current, setCurrent] = useState(0);
+    const [slides, setSlides] = useState(boot?.slides ?? [{ id: 1 }]);
+    const [current, setCurrent] = useState(boot?.current ?? 0);
     // Data fills: the admin's events and rewards (loaded when a template
     // that uses them is first picked), and which one this slide was filled from.
     const [dataLists, setDataLists] = useState({});
-    const [picks, setPicks] = useState({});
+    const [picks, setPicks] = useState(bootSlide?.picks ?? {});
     const [filling, setFilling] = useState(false);
     const [fillNote, setFillNote] = useState(null);
     const [activeField, setActiveField] = useState(null);
@@ -178,10 +200,11 @@ export default function StudioEditor({
     const clipRef = useRef(clip);
     const abortRef = useRef(null);
     const scrubRef = useRef(null);
-    const pendingClip = useRef(null);
+    // A draft opening on a clip: the [media] effect takes its range and frame from here.
+    const pendingClip = useRef(bootSlide?.media?.kind === 'video' ? { clip: bootSlide.clip, time: bootSlide.time } : null);
     const slideThumbs = useRef({});
     const thumbSigs = useRef({});
-    const slideSeq = useRef(1);
+    const slideSeq = useRef(boot?.slides.length ?? 1);
     const clockRef = useRef(null);
 
     const isVideo = media?.kind === 'video';
@@ -840,6 +863,231 @@ export default function StudioEditor({
         setLooks((l) => ({ ...l, [templateId]: {} }));
     };
 
+    // ── Drafts ─────────────────────────────────────────────────────────
+    // The whole editor — every slide's template, photo or clip, words, look
+    // and logos, the size and the style — saved to finish later. "Unsaved
+    // changes" compares the state now with the state last saved or opened.
+    const [draft, setDraft] = useState(initial?.draft ?? null); // { id, title, updated_at }
+    const [title, setTitle] = useState(initial?.draft?.title ?? '');
+    const [saving, setSaving] = useState(null); // { done, total, label }
+    const [draftNotes, setDraftNotes] = useState(initial?.notes ?? []);
+    const [sig, setSig] = useState(null);
+    const [savedSig, setSavedSig] = useState(null);
+    const rootRef = useRef(null);
+    const saveRef = useRef(null);
+
+    const slideList = () => slides.map((sl, i) => (i === current ? snapshot() : sl));
+    // What a draft keeps of each slide: the words that differ from the template's
+    // starting ones, the looks that were changed, and the clip range (and frame).
+    // (Which slide is open and the clip's paused frame are kept, but moving
+    // between them isn't a change worth saving.)
+    const draftPayload = (list, { forSig = false } = {}) => ({
+        format, style, current: forSig ? 0 : current,
+        slides: list.map((sl) => ({
+            templateId: sl.templateId,
+            media: sl.media ?? null,
+            focal: sl.focal,
+            zoom: sl.zoom,
+            fields: Object.fromEntries(Object.entries(sl.fields ?? {}).map(([tid, vals]) => [
+                tid, Object.fromEntries(Object.entries(vals ?? {}).filter(([k, v]) => v !== defaults[tid]?.[k])),
+            ]).filter(([, vals]) => Object.keys(vals).length)),
+            looks: Object.fromEntries(Object.entries(sl.looks ?? {}).filter(([, l]) => l && Object.keys(l).length)),
+            assets: Object.fromEntries(Object.entries(sl.assets ?? {}).filter(([, byKey]) => byKey && Object.keys(byKey).length)),
+            clip: sl.media?.kind === 'video' ? sl.clip : null,
+            time: sl.media?.kind === 'video' && !forSig ? sl.time : 0,
+            keepSound: Boolean(sl.keepSound),
+            picks: sl.picks ?? {},
+        })),
+    });
+
+    useEffect(() => {
+        if (!drafts) return undefined;
+        const t = setTimeout(() => setSig(signature(draftPayload(slideList(), { forSig: true }))), 300);
+        return () => clearTimeout(t);
+    }, [drafts, slides, current, templateId, media, focal, zoom, fields, looks, assets, style, format, clip, keepSound, picks]); // eslint-disable-line react-hooks/exhaustive-deps
+    // The first reading is the baseline: a new post, or the draft as opened.
+    useEffect(() => { if (sig !== null && savedSig === null) setSavedSig(sig); }, [sig, savedSig]);
+    const dirty = sig !== null && savedSig !== null && sig !== savedSig;
+
+    useEffect(() => { drafts?.onChange?.({ id: draft?.id ?? null, title: draft?.title ?? null, dirty }); }, [draft, dirty]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Renamed on the Drafts tab while open here: the next save keeps the new name.
+    useEffect(() => {
+        const r = drafts?.renamed;
+        if (!r || r.id !== draft?.id) return;
+        setDraft((d) => ({ ...d, title: r.title, updated_at: r.updated_at ?? d.updated_at }));
+        setTitle(r.title);
+    }, [drafts?.renamed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Deleted from the Drafts tab while open here: keep the work, unsaved.
+    useEffect(() => {
+        if (!drafts?.deletedId || drafts.deletedId !== draft?.id) return;
+        setDraft(null);
+        setSavedSig('');
+    }, [drafts?.deletedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // A name until one is given: the first words on the first slide.
+    const autoTitle = (() => {
+        const sl = current === 0 ? { templateId, fields } : slides[0];
+        const tpl = templateById(sl.templateId);
+        const words = tpl.fields.filter((f) => f.type !== 'image')
+            .map((f) => String(sl.fields?.[sl.templateId]?.[f.key] ?? '').replace(/[_{}*]/g, '').replace(/\s+/g, ' ').trim())
+            .find((v) => v.length > 1);
+        return (words ? words : tpl.name).slice(0, 60);
+    })();
+
+    const thumbOf = async (sl) => {
+        const c = document.createElement('canvas');
+        renderPost(c, { ...optsFor(sl), scale: Math.min(1, 640 / Math.max(F.w, F.h)) });
+        const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
+        c.width = 0;
+        return blob;
+    };
+
+    const saveNow = async ({ asCopy = false } = {}) => {
+        if (!drafts || saving || !ready || exporting || (draft && !dirty && !asCopy)) return;
+        setPlaying(false);
+        const list = slideList();
+        const payload = draftPayload(list);
+        const sigNow = signature(draftPayload(list, { forSig: true }));
+        const name = (title.trim() || autoTitle).slice(0, 112);
+        setSaving({ done: 0, total: 1, label: 'Saving…' });
+        setError(null);
+        try {
+            const { draft: d, notes } = await saveDraft({
+                id: asCopy ? null : draft?.id ?? null,
+                title: asCopy ? `${name} (copy)` : name,
+                partnerId: drafts.partnerId ?? null,
+                payload,
+                thumb: await thumbOf(list[0]).catch(() => null),
+                onProgress: setSaving,
+            });
+            setDraft(d);
+            setTitle(d.title);
+            setSavedSig(sigNow);
+            setDraftNotes(notes);
+            drafts.onSaved?.(d);
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setSaving(null);
+        }
+    };
+    saveRef.current = saveNow;
+
+    const commitTitle = async () => {
+        const t = title.trim();
+        if (!draft) return;
+        if (!t) { setTitle(draft.title); return; }
+        if (t === draft.title) return;
+        try {
+            setDraft(await renameDraft(draft.id, t.slice(0, 120)));
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+
+    const newPost = () => {
+        if (dirty && !window.confirm(draft ? `Start a new post? Changes to “${draft.title}” since it was saved will be lost.` : 'Start a new post? This one isn’t saved.')) return;
+        drafts.onNew?.();
+    };
+
+    // ⌘S / Ctrl+S saves — while the editor is on screen (it stays mounted behind other tabs).
+    useEffect(() => {
+        if (!drafts) return undefined;
+        const onKey = (e) => {
+            if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 's' || !rootRef.current?.offsetParent) return;
+            e.preventDefault();
+            saveRef.current?.();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [drafts]);
+
+    // Opened on a clip: show the frame the draft was left on.
+    useEffect(() => {
+        const m = bootSlide?.media;
+        if (m?.kind !== 'video') return;
+        m.source.currentTime = bootSlide.time;
+        m.source.addEventListener('seeked', () => setFrameKey((k) => k + 1), { once: true });
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Replaced by a fresh editor (a draft opened, or a new post): let the clips go.
+    const liveRef = useRef(null);
+    liveRef.current = { slides, media };
+    useEffect(() => () => {
+        const { slides: all, media: m } = liveRef.current;
+        for (const x of new Set([m, ...all.map((sl) => sl.media)])) {
+            if (x?.kind !== 'video') continue;
+            x.source.pause();
+            if (x.blob) {
+                x.source.removeAttribute('src');
+                x.source.load();
+                URL.revokeObjectURL(x.url);
+            }
+        }
+    }, []);
+
+    const savedAt = draft?.updated_at ? new Date(draft.updated_at) : null;
+    const savedLabel = savedAt && (savedAt.toDateString() === new Date().toDateString()
+        ? savedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        : savedAt.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+    const draftBar = drafts && (
+        <div className="mb-3">
+            {/* On a narrow screen the buttons drop under the name. */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-2xl border border-[#E6E6E1] bg-white py-2 pl-2 pr-2.5">
+                <div className="min-w-[13rem] flex-1">
+                    <input value={title} placeholder={autoTitle} aria-label="Draft name" maxLength={120}
+                        onChange={(e) => setTitle(e.target.value)} onBlur={commitTitle}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setTitle(draft?.title ?? ''); e.currentTarget.blur(); } }}
+                        className="block w-full truncate rounded-lg border border-transparent bg-transparent px-2 py-0.5 text-sm font-semibold text-[#111] placeholder:font-normal placeholder:text-[#AAA] hover:border-[#E6E6E1] focus:border-[#E8D200] focus:outline-none" />
+                    <div className="flex items-center gap-1.5 whitespace-nowrap px-2 text-[11px] text-[#888]">
+                        {saving ? (
+                            <><Loader2 size={11} className="flex-none animate-spin" /><span className="truncate">{saving.label}{saving.total > 2 && !/%/.test(saving.label) ? ` ${Math.min(saving.done + 1, saving.total)} of ${saving.total}` : ''}</span></>
+                        ) : draft && dirty ? (
+                            <><span className="h-1.5 w-1.5 flex-none rounded-full bg-[#D97706]" /><span className="truncate">Unsaved changes · last saved {savedLabel}</span></>
+                        ) : draft ? (
+                            <span className="truncate">Saved in Drafts · {savedLabel}</span>
+                        ) : (
+                            <span className="truncate">Not saved — keep it in Drafts to finish later</span>
+                        )}
+                    </div>
+                </div>
+                <div className="ml-auto flex flex-none items-center gap-1">
+                    {draft && (
+                        <button type="button" onClick={() => saveNow({ asCopy: true })} disabled={Boolean(saving) || !ready || exporting}
+                            title="Save as a new draft — this one stays as it was last saved" aria-label="Save as a copy"
+                            className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-[#888] hover:bg-[#F4F4F1] hover:text-[#111] disabled:opacity-40">
+                            <Copy size={15} />
+                        </button>
+                    )}
+                    {(draft || dirty) && (
+                        <button type="button" onClick={newPost} disabled={Boolean(saving)}
+                            title="Start a new post" aria-label="Start a new post"
+                            className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-[#888] hover:bg-[#F4F4F1] hover:text-[#111] disabled:opacity-40">
+                            <FilePlus2 size={15} />
+                        </button>
+                    )}
+                    <button type="button" onClick={() => saveNow()} disabled={Boolean(saving) || !ready || exporting || (draft && !dirty)}
+                        title={`Save to Drafts (${/Mac|iP/.test(navigator.platform) ? '⌘' : 'Ctrl+'}S)`}
+                        className={`flex flex-none items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${draft && !dirty && !saving
+                            ? 'bg-[#F4F4F1] text-[#888]'
+                            : 'bg-[#111] text-white hover:bg-[#333] disabled:opacity-50'}`}>
+                        {saving ? <Loader2 size={14} className="animate-spin" /> : draft && !dirty ? <Check size={14} /> : <Save size={14} />}
+                        {saving ? 'Saving' : draft && !dirty ? 'Saved' : draft ? 'Save' : 'Save draft'}
+                    </button>
+                </div>
+            </div>
+            {draftNotes.length > 0 && (
+                <div className="mt-2 flex items-start gap-2 rounded-xl bg-[#FEF3C7] px-3 py-2 text-xs text-[#92400E]">
+                    <TriangleAlert size={13} className="mt-px flex-none" />
+                    <div className="min-w-0 flex-1 space-y-1">{draftNotes.map((n) => <p key={n}>{n}</p>)}</div>
+                    <button type="button" onClick={() => setDraftNotes([])} aria-label="Dismiss" className="flex-none text-[#92400E]/70 hover:text-[#92400E]"><X size={13} /></button>
+                </div>
+            )}
+        </div>
+    );
+
     const fieldProps = (key) => ({
         ref: (el) => { fieldRefs.current[key] = el; },
         onChange: (e) => setField(key, e.target.value),
@@ -891,7 +1139,7 @@ export default function StudioEditor({
     };
 
     return (
-        <div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)] items-start">
+        <div ref={rootRef} className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)] items-start">
             {/* On a phone the post comes first and the controls follow, so a
                 template or a photo shows what it did without a scroll back up;
                 the intro stays on top. On a laptop it is controls | preview. */}
@@ -1238,6 +1486,7 @@ export default function StudioEditor({
                 bottom of the page, where the layout's bottom spacer would
                 otherwise push a taller panel up under the header. */}
             <div className={`lg:sticky ${stickyClass} min-w-0 order-2 lg:order-none`}>
+                {draftBar}
                 <div className="rounded-2xl bg-[#141413] p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div className="inline-flex rounded-xl bg-white/5 p-1">
@@ -1341,7 +1590,8 @@ export default function StudioEditor({
                             // As tall as the panel allows, but never wider than it — so a
                             // 4:1 cover fits the width and a 9:16 story fits the height.
                             // The carousel strip takes another ~84 px.
-                            width: `min(100%, calc(clamp(${isVideo ? 300 : 320}px, calc(100vh - ${(isVideo ? 370 : 325) + (carousel ? 84 : 0) + canvasInset}px), 900px) * ${F.w / F.h}))`,
+                            // The draft bar above the panel takes another ~64 px.
+                            width: `min(100%, calc(clamp(${isVideo ? 300 : 320}px, calc(100vh - ${(isVideo ? 370 : 325) + (carousel ? 84 : 0) + (drafts ? 64 : 0) + canvasInset}px), 900px) * ${F.w / F.h}))`,
                         }}
                         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                         onDragLeave={() => setDragOver(false)}
