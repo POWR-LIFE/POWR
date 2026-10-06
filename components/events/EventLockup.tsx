@@ -133,11 +133,15 @@ export function EventLockup({
     );
 }
 
-// Two successive 5% trims on the POWR mark (2026-08-14), compounded rather than
-// added: 0.95 × 0.95. The dimensions above apply it to the ORIGINAL tuned
-// values, so the sizes and their trim margins can never drift apart, and a
-// third pass is a one-number change here instead of six rounded literals.
-const MARK_SCALE = 0.95 * 0.95;
+// The POWR mark is never bigger than the gym logo above it (Jamie, 2026-10-06,
+// after two 5% trims on 08-14 and a 10% one still left it the dominant mark).
+// Rule, not a guess: the mark's visible ink is 234 of its 400px canvas tall
+// (rows 91–325), so scale the canvas until that ink is exactly as tall as the
+// large venue-logo box (28). The normal size inherits the same factor and
+// lands under its own 22 box. The dimensions above apply it to the ORIGINAL
+// tuned values, so the sizes and their trim margins can never drift apart.
+const MARK_INK_HEIGHT = 234 / 400;
+const MARK_SCALE = 28 / MARK_INK_HEIGHT / 90;
 const mark = (tuned: number) => tuned * MARK_SCALE;
 
 const styles = StyleSheet.create({

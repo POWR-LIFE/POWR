@@ -38,8 +38,11 @@ const logAction = async (adminId, action, targetType, targetId, metadata = {}) =
 const ACTIVITIES = ['gym', 'running', 'cycling', 'hiit', 'yoga', 'swimming', 'sports', 'dance', 'walking', 'sleep'];
 const VERIFICATIONS = ['geofence', 'wearable'];
 
+// 'announced' is stored as such and shown as "Coming soon": visible in the
+// app and on the promo page, registration shut until it moves to scheduled.
 const STATUS_META = {
     draft:     { color: '#9CA3AF', label: 'Draft' },
+    announced: { color: '#CA8A04', label: 'Coming soon' },
     scheduled: { color: '#3B82F6', label: 'Scheduled' },
     live:      { color: '#10B981', label: 'Live' },
     locked:    { color: '#F97316', label: 'Locked' },
@@ -68,8 +71,9 @@ const slugify = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replac
 
 // Three buckets, because that's how the list is actually used: things
 // you're still writing, the one you're running, and the pile you keep
-// for the record. Everything between scheduled and settled is "active"
-// — a settled event still gets its results read off it.
+// for the record. Everything between coming soon and settled is "active"
+// (coming soon is public, so it's no longer something you're still
+// writing) — a settled event still gets its results read off it.
 const BUCKETS = [
     ['active',   'Active'],
     ['draft',    'Drafts'],
@@ -117,6 +121,7 @@ const editableFields = (ev) => ({
     lock_at: ev.lock_at,
     doors_open_at: ev.doors_open_at,
     doors_close_at: ev.doors_close_at,
+    registration_opens_at: ev.registration_opens_at ?? null,
     eligibility_cutoff_at: ev.eligibility_cutoff_at,
     scope: ev.scope,
     audience_mode: ev.audience_mode ?? 'all',
@@ -576,7 +581,7 @@ const setCheckin = async (ev, row, present) => {
         const newStart = new Date(); newStart.setDate(newStart.getDate() + 14);
         newStart.setHours(oldStart.getHours(), oldStart.getMinutes(), 0, 0);
         const delta = newStart.getTime() - oldStart.getTime();
-        for (const k of ['window_start_at', 'window_end_at', 'lock_at', 'doors_open_at', 'doors_close_at', 'eligibility_cutoff_at', 'conversion_deadline_at']) {
+        for (const k of ['window_start_at', 'window_end_at', 'lock_at', 'doors_open_at', 'doors_close_at', 'registration_opens_at', 'eligibility_cutoff_at', 'conversion_deadline_at']) {
             if (copy[k]) copy[k] = new Date(new Date(copy[k]).getTime() + delta).toISOString();
         }
         // Invites count from the copy's own birth: friends brought in for the
@@ -616,6 +621,18 @@ const setCheckin = async (ev, row, present) => {
             // Mirrors the DB check constraint — fail here with a usable
             // message instead of a constraint-violation toast.
             toast.error('Booking URL must start with http:// or https://'); return;
+        }
+        if (form.registration_opens_at) {
+            // Same instant join_live_event stops taking registrations.
+            const joinCloses = form.eligibility_cutoff_at ?? form.window_end_at;
+            if (joinCloses && new Date(form.registration_opens_at) >= new Date(joinCloses)) {
+                toast.error('Registration has to open before joining closes (the eligibility cutoff, or scoring end if that is blank)'); return;
+            }
+            // Allowed (people can join mid-week), but every day it opens late
+            // is a day nobody is registered to score.
+            if (new Date(form.registration_opens_at) > new Date(form.window_start_at)) {
+                toast.info('Heads up: registration opens after scoring starts');
+            }
         }
         setSaving(true);
         const payload = {
@@ -941,6 +958,10 @@ const setCheckin = async (ev, row, present) => {
                         acting={acting}
                         onSchedule={() => setStatus(selected, 'scheduled', {},
                             'Schedule this event? The moment it is scheduled the event card appears in the app for every up-to-date user.')}
+                        onAnnounce={() => setStatus(selected, 'announced', {},
+                            'Show this event as Coming soon? The card appears in the app and the promo page goes public straight away — registration stays closed until you open it.')}
+                        onOpenRegistration={() => setStatus(selected, 'scheduled', {},
+                            'Open registration? People can register from the app straight away.')}
                         onUnschedule={() => setStatus(selected, 'draft', {}, 'Back to draft? The event card disappears from the app.')}
                         onGoLive={() => setStatus(selected, 'live', {}, 'Go live? The board starts returning standings in the app.')}
                         onLock={() => setStatus(selected, 'locked', {},
@@ -1036,6 +1057,7 @@ const setCheckin = async (ev, row, present) => {
                         venueName={venueName}
                         setVenueName={setVenueName}
                         locked={['revealed', 'settled', 'archived'].includes(selected.status)}
+                        autoLifecycle={selected.auto_lifecycle !== false}
                     />
                 </div>
             )}
@@ -2415,7 +2437,7 @@ function PreviewBlock({ ev, acting, onSetPreview, onSetBoardState }) {
             <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
                 Only the accounts listed here can see this draft event in the app. For them it looks exactly as it
                 will for everyone once scheduled (or live once scoring starts), with a PREVIEW badge. Everyone else
-                sees nothing until you press Schedule. Test registrations are real — they stay if you launch the
+                sees nothing until you press Coming soon or Schedule. Test registrations are real — they stay if you launch the
                 event, and disappear if you delete the draft.
             </p>
         </div>
@@ -2426,7 +2448,7 @@ function PreviewBlock({ ev, acting, onSetPreview, onSetBoardState }) {
 
 function LifecyclePanel({
     ev, counts, acting,
-    onSchedule, onUnschedule, onGoLive, onLock, onToggleHidden,
+    onSchedule, onAnnounce, onOpenRegistration, onUnschedule, onGoLive, onLock, onToggleHidden,
     onSettle, onReveal, onMarkSettled, onArchive, onPull,
     onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate, onSetPreview, onSetBoardState,
     onSetAutoLifecycle,
@@ -2438,7 +2460,8 @@ function LifecyclePanel({
     // transitions have a "next"; everything after lock is a human decision.
     const auto = ev.auto_lifecycle !== false;
     const nextAuto =
-        ev.status === 'scheduled' ? { label: 'goes live', at: ev.window_start_at }
+        ev.status === 'announced' && ev.registration_opens_at ? { label: 'opens registration', at: ev.registration_opens_at }
+        : ev.status === 'scheduled' ? { label: 'goes live', at: ev.window_start_at }
         : ev.status === 'live' && ev.lock_at ? { label: 'locks', at: ev.lock_at }
         : null;
 
@@ -2488,10 +2511,27 @@ function LifecyclePanel({
                 <div className="flex items-center gap-3 flex-wrap">
                     {ev.status === 'draft' && (
                         <>
+                            {/* Gym-run events go public through the gym portal's
+                                own review flow, which has no Coming soon stage. */}
+                            {!gymRun && <Btn icon={Megaphone} label="Coming soon" tone="gold" onClick={onAnnounce} />}
                             <Btn icon={Rocket} label="Schedule" tone="primary" onClick={onSchedule} />
                             <span className="text-[11px] text-[#999999] inline-flex items-center gap-1.5">
                                 <AlertTriangle size={12} className="text-[#F97316]" />
-                                Scheduling makes the event card visible in the app immediately.
+                                {gymRun
+                                    ? 'Scheduling makes the event card visible in the app immediately.'
+                                    : 'Both make the event card visible in the app immediately. Coming soon keeps registration closed; Schedule opens it.'}
+                            </span>
+                        </>
+                    )}
+                    {ev.status === 'announced' && (
+                        <>
+                            <Btn icon={Rocket} label="Open registration" tone="primary" onClick={onOpenRegistration} />
+                            <Btn icon={Undo2} label="Back to draft" onClick={onUnschedule} />
+                            <span className="text-[11px] text-[#999999]">
+                                Showing in the app as Coming soon · {ev.registration_opens_at
+                                    ? <>“Registration opens {fmtDay(ev.registration_opens_at)}”</>
+                                    : <>“Registration opens soon” — set a date under Who competes to show one</>}.
+                                {' '}Only app versions with the Coming soon update show it; older ones see nothing until registration opens.
                             </span>
                         </>
                     )}
@@ -2623,8 +2663,9 @@ function LifecyclePanel({
                     </div>
                     <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
                         The public web page to share when promoting the event — background, venue logo, registration QR
-                        code and POWR logo. Anyone can open it once the event is scheduled; while it&apos;s a draft only the
-                        Preview link works. Change the background and headline in Configuration below.
+                        code and POWR logo. Anyone can open it once the event is Coming soon or scheduled (while it&apos;s
+                        Coming soon it says when registration opens instead of &ldquo;Scan to register&rdquo;); while it&apos;s a
+                        draft only the Preview link works. Change the background and headline in Configuration below.
                     </p>
                 </div>
 
@@ -3531,7 +3572,7 @@ const stepState = (form) => ({
     })(),
 });
 
-function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueName, setVenueName, locked }) {
+function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueName, setVenueName, locked, autoLifecycle }) {
     const set = (patch) => setForm(prev => ({ ...prev, ...patch }));
     const [stepKey, setStepKey] = useState('basics');
     const topRef = useRef(null);
@@ -3662,6 +3703,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
             blurb: 'Whether people have to join, until when, and how many make the leaderboard.',
             inApp: [
                 ['home', 'Opt-in: the card sells the event with a Join button until entry closes. Global: everyone is in automatically and there is no join step.'],
+                ['home', 'Coming soon: the card shows with a COMING SOON chip and “Registration opens <day>” (or “soon”) instead of a Register button; tapping it opens the event on League.'],
                 ['register', 'Joining opens the join sheet (dates, prizes, rules) and lands people on the League tab.'],
                 ['league', 'The leaderboard lists the top places up to Leaderboard size; the same number of final places are saved when you press Settle.'],
                 ['ticket', 'After the eligibility cutoff, joining stops — the ticket and invite progress of people already in stay where they are.'],
@@ -3678,6 +3720,21 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                                     </Chip>
                                 ))}
                             </div>
+                        </Field>
+                        <Field label="Registration opens" hint="Only used while the event is Coming soon. The app card and the promo page say “Registration opens <day>”, and with automatic lifecycle on, registration opens by itself at this time. Leave blank to say “Registration opens soon” and open it yourself from the Lifecycle panel.">
+                            <DateTimeInput value={form.registration_opens_at} onChange={v => set({ registration_opens_at: v })} clearable />
+                            {form.registration_opens_at && (
+                                <p className="text-[11px] text-[#999999] leading-relaxed mt-2 max-w-md">
+                                    The app reads{' '}
+                                    <span className="font-medium text-[#555555]">“Registration opens {fmtDay(form.registration_opens_at)}”</span>
+                                    {autoLifecycle
+                                        ? <> and opens it at {fmtDT(form.registration_opens_at)}.</>
+                                        : <> — automatic lifecycle is off, so press Open registration yourself.</>}
+                                    {new Date(form.registration_opens_at) > new Date(form.window_start_at) && (
+                                        <span className="text-[#B45309]"> That&rsquo;s after scoring starts, so nobody is registered for the first days.</span>
+                                    )}
+                                </p>
+                            )}
                         </Field>
                         <Field label="Eligibility cutoff" hint="Entry closes here: anyone who created their POWR account after this time can't compete, and joining stops at the same moment. Set it after the scoring end to let people sign up, join and bring invites right up to the event day — their points still only count inside the scoring window. Leave blank to use the scoring start time.">
                             <DateTimeInput value={form.eligibility_cutoff_at} onChange={v => set({ eligibility_cutoff_at: v })} clearable />

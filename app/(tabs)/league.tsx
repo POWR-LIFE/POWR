@@ -3,10 +3,11 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import {
+  BackHandler,
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -35,7 +36,8 @@ import { EventBoardHeader } from '@/components/league/EventBoardHeader';
 import { EventGateStrip } from '@/components/league/EventGateStrip';
 import { EventHeaderCard } from '@/components/league/EventHeaderCard';
 import { EventTicketCard } from '@/components/league/EventTicketCard';
-import { EventSwitcherLine, EventSwitcherSheet } from '@/components/league/EventSwitcher';
+import { EventHub, EventHubBackButton } from '@/components/league/EventHub';
+import { EventSharePanel } from '@/components/league/EventSharePanel';
 import { LeaguePreview } from '@/components/league/LeaguePreview';
 import { PodiumAvatarRing } from '@/components/league/PodiumAvatarRing';
 import { SegmentBar } from '@/components/league/SegmentBar';
@@ -47,7 +49,14 @@ import { useLiveEvents } from '@/hooks/useLiveEvents';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
 import type { BoardPreviewState, EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
-import { countdownParts, eventNightLine, gateProgress, rankMove, revealMoment, shortDate } from '@/lib/liveEventDisplay';
+import {
+  countdownParts,
+  eventNightLine,
+  gateProgress,
+  rankMove,
+  revealMoment,
+  shortDate,
+} from '@/lib/liveEventDisplay';
 import { getLevelInfo } from '@/constants/levels';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -99,7 +108,7 @@ export default function LeagueScreen() {
   const [selectedUserPoints, setSelectedUserPoints] = useState<number | undefined>(undefined);
   const indicatorX = useSharedValue(0);
 
-  const { tab, event: eventSlug } = useLocalSearchParams<{ tab?: string; event?: string }>();
+  const { tab, event: eventSlug, at: eventPinnedAt } = useLocalSearchParams<{ tab?: string; event?: string; at?: string }>();
 
   const { weeklyEarned, totalEarned } = usePoints();
   const myPoints = metric === 'weekly' ? weeklyEarned : totalEarned;
@@ -109,20 +118,40 @@ export default function LeagueScreen() {
   // gets — the server ignores this argument for anyone else.
   const [boardPreview, setBoardPreview] = useState<BoardPreviewState | null>(null);
 
-  // Several events can be on at once; the tab shows ONE at a time. A slug the
-  // user picked in the switcher wins, then the deep-link/Home pin, then the
-  // most relevant event in the list. A fresh pin (another Home card tapped)
-  // clears the pick so the tab follows the tap. Always pin the list's first
-  // event: the list can hold an event the no-position single pick wouldn't
-  // return (a venue event reaching this phone by its location).
-  const { events: liveEvents } = useLiveEvents();
+  // Several events can be on at once. With two or more the tab opens on the
+  // hub — every event, one card each — and a card opens that event's full
+  // page with "All events" to come back. With one there is nothing to choose
+  // between, so the tab opens straight on it, as it always did. A Home card,
+  // the register flow or a reveal push pins `?event=<slug>` (plus `at`, so
+  // tapping the same card twice still re-opens it after backing out).
+  const { events: liveEvents, loading: eventsLoading } = useLiveEvents();
   const paramSlug = typeof eventSlug === 'string' ? eventSlug : undefined;
-  const [pickedSlug, setPickedSlug] = useState<string | undefined>(undefined);
-  const [switcherOpen, setSwitcherOpen] = useState(false);
-  useEffect(() => { setPickedSlug(undefined); }, [paramSlug]);
-  const shownSlug = pickedSlug ?? paramSlug ?? liveEvents[0]?.slug;
+  const [openSlug, setOpenSlug] = useState<string | undefined>(paramSlug);
+  useEffect(() => { if (paramSlug) setOpenSlug(paramSlug); }, [paramSlug, eventPinnedAt]);
+  const hubMode = liveEvents.length > 1;
+  const showHub = hubMode && !openSlug;
+  // Always resolve an event, even behind the hub: the first card's page is
+  // then already loaded, and a single-event tab needs no extra request.
+  const shownSlug = openSlug ?? liveEvents[0]?.slug;
+  // A preview tester's forced board state belongs to the event it was set on.
+  useEffect(() => { setBoardPreview(null); }, [openSlug]);
 
-  const { event: activeEvent, invites, board: eventBoard } = useLiveEvent(shownSlug, boardPreview);
+  // Back to the hub: Android's back button, or tapping the League tab again
+  // while an event is open (the usual "tap the tab to go to its top").
+  useFocusEffect(useCallback(() => {
+    if (!hubMode || !openSlug) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setOpenSlug(undefined);
+      return true;
+    });
+    return () => sub.remove();
+  }, [hubMode, openSlug]));
+  const navigation = useNavigation();
+  useEffect(() => navigation.addListener('tabPress' as never, () => {
+    if (navigation.isFocused()) setOpenSlug(undefined);
+  }), [navigation]);
+
+  const { event: activeEvent, loading: eventLoading, invites, board: eventBoard } = useLiveEvent(shownSlug, boardPreview);
   const [registerOpen, setRegisterOpen] = useState(false);
 
   // Event mode is two segments: the LEADERBOARD and the EVENT (hero, prizes,
@@ -142,12 +171,27 @@ export default function LeagueScreen() {
   useEffect(() => {
     if (!evStatus || segmentTouched.current) return;
     const inEvent = !!evJoined || evScope === 'global';
-    setSegment(evStatus !== 'scheduled' && inEvent ? 'board' : 'event');
+    const preWindow = evStatus === 'scheduled' || evStatus === 'announced';
+    setSegment(!preWindow && inEvent ? 'board' : 'event');
   }, [evId, evStatus, evJoined, evScope]);
   const pickSegment = (next: EventSegment) => {
     segmentTouched.current = true;
     setSegment(next);
   };
+
+  // The Leaderboard tab only exists while there's a board: from scoring start
+  // on (live, sealed, winners). Before that — scheduled or Coming soon — the
+  // event page is the whole story, with no tab bar and no empty board behind
+  // it. A preview tester forcing a board state counts as a board: the
+  // switcher sits on the event page while there's no tab, and a forced state
+  // brings the tab with it.
+  const boardForced =
+    !!eventBoard?.is_preview &&
+    (eventBoard.is_locked || !!eventBoard.is_gated || !!eventBoard.standings || !!eventBoard.results);
+  const boardRunning =
+    !!activeEvent &&
+    ((activeEvent.status !== 'scheduled' && activeEvent.status !== 'announced') || boardForced);
+  const shownSegment: EventSegment = boardRunning ? segment : 'event';
 
   // Load leaderboard data when metric changes (only when live)
   useEffect(() => {
@@ -204,10 +248,16 @@ export default function LeagueScreen() {
       <GeometricBackground />
       {/* ── Screen header ─────────────────────────── */}
       <View style={styles.header}>
+        {/* Inside one event from the hub: a round back button where people
+            look for one, and the event's name under the title so it's clear
+            which event this is and that there's a level above it. */}
+        {!LEAGUE_LIVE && hubMode && openSlug && (
+          <EventHubBackButton onPress={() => setOpenSlug(undefined)} />
+        )}
         <View style={styles.titleBlock}>
           <Text style={styles.title}>League</Text>
-          {!LEAGUE_LIVE && activeEvent && liveEvents.length > 1 && (
-            <EventSwitcherLine event={activeEvent} onPress={() => setSwitcherOpen(true)} />
+          {!LEAGUE_LIVE && hubMode && openSlug && activeEvent && (
+            <Text style={styles.titleSub} numberOfLines={1}>{activeEvent.name}</Text>
           )}
         </View>
         <HeaderActions />
@@ -215,13 +265,23 @@ export default function LeagueScreen() {
 
       {!LEAGUE_LIVE ? (
         /* Event mode: when an event is configured the tab carries the event.
-           Three blocks, one job each — what the event IS (header), how you get
-           onto the board (ticket), and the board itself. No event → the
-           between-events preview. */
-        activeEvent ? (
+           Two or more → the hub first (every event, one card each). An open
+           event has three blocks, one job each — what the event IS (header),
+           how you get onto the board (ticket), and the board itself. No event →
+           the between-events preview. Nothing while the list is still
+           arriving, so a multi-event tab never flashes one event's page
+           before the hub. */
+        eventsLoading && !openSlug ? null
+        : showHub ? (
+          <EventHub
+            events={liveEvents}
+            onOpen={e => { setOpenSlug(e.slug); }}
+            bottomInset={insets.bottom}
+          />
+        ) : activeEvent ? (
           <>
-            <EventSegmentBar value={segment} onChange={pickSegment} />
-            {segment === 'board' ? (
+            {boardRunning && <EventSegmentBar value={segment} onChange={pickSegment} />}
+            {shownSegment === 'board' ? (
               <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: insets.bottom + 24, gap: 8 }}
@@ -238,13 +298,6 @@ export default function LeagueScreen() {
                 {activeEvent.is_preview && (
                   <BoardPreviewSwitcher value={boardPreview} onChange={setBoardPreview} />
                 )}
-                {activeEvent.status === 'scheduled' && !eventBoard?.is_preview && (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>
-                      {`The board opens when scoring starts ${shortDate(activeEvent.window_start_at)}.`}
-                    </Text>
-                  </View>
-                )}
                 <EventBoardSection
                   event={activeEvent}
                   board={eventBoard}
@@ -258,6 +311,18 @@ export default function LeagueScreen() {
                 contentContainerStyle={{ paddingBottom: insets.bottom + 24, gap: 8 }}
                 showsVerticalScrollIndicator={false}
               >
+                {/* Testers only, before scoring: there's no Leaderboard tab
+                    yet, so the walkthrough lives here. Picking a state brings
+                    the tab and goes to it. */}
+                {activeEvent.is_preview && activeEvent.status === 'scheduled' && !boardRunning && (
+                  <BoardPreviewSwitcher
+                    value={boardPreview}
+                    onChange={next => {
+                      setBoardPreview(next);
+                      if (next) pickSegment('board');
+                    }}
+                  />
+                )}
                 <EventHeaderCard
                   event={activeEvent}
                   onRegister={() => setRegisterOpen(true)}
@@ -267,18 +332,16 @@ export default function LeagueScreen() {
                 <EventPrizeGallery event={activeEvent} />
                 {/* The ticket only means anything once you're in the event, and
                     only while there's still time to convert an invite. */}
-                {activeEvent.viewer.joined && invitesOpen(activeEvent) && (
+                {/* Registered (while invites still count): the ticket carries
+                    the code, progress and share tools. Everyone else — and
+                    every Coming soon event — gets sharing in plain sight. */}
+                {activeEvent.viewer.joined && invitesOpen(activeEvent) ? (
                   <EventTicketCard event={activeEvent} invites={invites} />
+                ) : (
+                  <EventSharePanel event={activeEvent} />
                 )}
               </ScrollView>
             )}
-            <EventSwitcherSheet
-              visible={switcherOpen}
-              onClose={() => setSwitcherOpen(false)}
-              events={liveEvents}
-              activeId={activeEvent.id}
-              onSelect={e => setPickedSlug(e.slug)}
-            />
             <EventRegisterFlow
               event={activeEvent}
               visible={registerOpen}
@@ -292,7 +355,7 @@ export default function LeagueScreen() {
               onClose={() => { setSelectedUserId(null); setSelectedUserPoints(undefined); }}
             />
           </>
-        ) : (
+        ) : eventLoading ? null : (
           /* Between events: the global board sealed with the viewer's own
              starting line, and how a live event works — same two-segment
              shape as event mode, so the tab already looks like what it is
@@ -1559,6 +1622,7 @@ const styles = StyleSheet.create({
   },
   titleBlock: { flex: 1, marginRight: 12 },
   title: { fontSize: 28, fontWeight: '200', letterSpacing: -0.4, color: TEXT },
+  titleSub: { fontSize: 12, fontWeight: '400', color: 'rgba(255,255,255,0.6)', marginTop: 1 },
 
   // ── Top tab bar
   topTabBar: {

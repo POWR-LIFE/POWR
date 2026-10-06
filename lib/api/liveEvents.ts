@@ -85,7 +85,10 @@ export type LiveEvent = {
     /** Hide the name text on the card — the lockup alone (rendered larger)
      *  carries the identity. The name still exists for sheets/boards/a11y. */
     logo_only: boolean;
-    status: 'scheduled' | 'live' | 'locked' | 'revealed' | 'settled';
+    /** 'announced' = Coming soon: shown and sold, but registration isn't open
+     *  yet (the server refuses a join). Only arrives for a build that asks for
+     *  it (p_with_announced) — older builds never see the state. */
+    status: 'announced' | 'scheduled' | 'live' | 'locked' | 'revealed' | 'settled';
     scope: 'global' | 'opt_in';
     /** 'venue' = shown only to the venue's members, recent visitors and people
      *  nearby (plus anyone who opens it by link). Absent on pre-20260924
@@ -104,6 +107,9 @@ export type LiveEvent = {
      *  every surface treats "no doors time" as "don't claim a date". */
     doors_open_at?: string | null;
     doors_close_at?: string | null;
+    /** Coming soon only: when registration opens. Null = "opens soon" (the
+     *  admin opens it by hand). Absent on pre-20261005 payloads. */
+    registration_opens_at?: string | null;
     is_locked: boolean;
     revealed_at: string | null;
     prizes: LiveEventPrize[];
@@ -258,14 +264,18 @@ export async function fetchActiveLiveEvent(): Promise<LiveEvent | null> {
  *  then live, upcoming, finished. `near` (rounded last known position) only
  *  lets a venue event with a radius reach someone nearby — the server uses it
  *  in the query and never stores it. A server without the list RPC gets the
- *  single pick instead. */
+ *  single pick instead. `p_with_announced` opts this build into Coming soon
+ *  events — the server leaves them out for any build that doesn't ask, and a
+ *  server that predates them rejects the argument, so that retries without
+ *  it rather than dropping to the single pick. */
 export async function fetchActiveLiveEvents(
     near?: { lat: number; lng: number } | null,
 ): Promise<LiveEvent[]> {
-    const { data, error } = await supabase.rpc('get_active_live_events', {
-        p_lat: near?.lat ?? null,
-        p_lng: near?.lng ?? null,
-    });
+    const args = { p_lat: near?.lat ?? null, p_lng: near?.lng ?? null };
+    const first = await supabase.rpc('get_active_live_events', { ...args, p_with_announced: true });
+    const { data, error } = first.error
+        ? await supabase.rpc('get_active_live_events', args)
+        : first;
     if (error) {
         const single = await fetchActiveLiveEvent();
         return single ? [single] : [];
@@ -273,9 +283,14 @@ export async function fetchActiveLiveEvents(
     return Array.isArray(data) ? (data as LiveEvent[]) : [];
 }
 
-/** A specific event by slug (promo-page QR deep link). Draft/archived → null. */
+/** A specific event by slug (promo-page QR deep link). Draft/archived → null.
+ *  A server that predates Coming soon rejects p_with_announced, so that
+ *  retries with the slug alone. */
 export async function fetchLiveEventBySlug(slug: string): Promise<LiveEvent | null> {
-    const { data, error } = await supabase.rpc('get_live_event', { p_slug: slug });
+    const first = await supabase.rpc('get_live_event', { p_slug: slug, p_with_announced: true });
+    const { data, error } = first.error
+        ? await supabase.rpc('get_live_event', { p_slug: slug })
+        : first;
     if (error) return null;
     return (data as LiveEvent | null) ?? null;
 }

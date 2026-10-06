@@ -12,7 +12,7 @@ import {
     type EventLeaderboard,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
-import { eventStatusChip, isVideoUrl, scoringLine } from '@/lib/liveEventDisplay';
+import { eventStatusChip, isComingSoon, isVideoUrl, registrationLine, scoringLine } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -93,7 +93,9 @@ function registeredPill(
 /** Whether Home carries this event at all — the carousel filters on it so a
  *  card that would render nothing never takes a page. */
 export function showsOnHome(event: LiveEvent): boolean {
-    if (event.status !== 'scheduled' && event.status !== 'live') return false;
+    // Coming soon rides along: it's on Home to be advertised, and the card
+    // says registration isn't open rather than offering it.
+    if (event.status !== 'scheduled' && event.status !== 'live' && !isComingSoon(event)) return false;
     if (event.scope !== 'opt_in') return false;
     if (!event.viewer.eligible || event.viewer.disqualified) return false;
     // Locked means scores are being verified for the in-person reveal: there
@@ -116,9 +118,11 @@ export function showsOnHome(event: LiveEvent): boolean {
  * goes to the League tab, where the ticket and the board live. Home is where
  * the event is sold, so it shouldn't go quiet the moment someone says yes.
  *
- * `active` is the carousel's "this page is the one on screen": only the active
- * card plays its promo video, so two events never means two HLS streams
- * decoding on the busiest screen in the app. A lone card is always active.
+ * `active` is the carousel's "this card owns the video player": the rail runs
+ * exactly one, on the card on screen when it's a video, otherwise on the
+ * nearest video card so it's already looping when swiped to. Two events never
+ * means two HLS streams decoding on the busiest screen in the app. A lone card
+ * is always active.
  */
 export function LiveEventCard({ event, active = true }: { event: LiveEvent; active?: boolean }) {
     const [sheetOpen, setSheetOpen] = useState(false);
@@ -141,6 +145,10 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
     if (!showsOnHome(event)) return null;
 
     const registered = event.viewer.joined;
+    // Coming soon: sold, never registered for. Nobody can be in it yet, so it
+    // has no register sheet to open — the tap goes to the event's page on
+    // League (dates, venue, prizes) and the pill says where things stand.
+    const comingSoon = isComingSoon(event);
 
     const media = event.promo_media_url;
     const isVideo = isVideoUrl(media);
@@ -151,8 +159,11 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
     // Preview keeps the register sheet reachable after joining so the flow can
     // be reset and run again; a real registration sends you to the tab that
     // owns the event from here on.
-    const opensSheet = !registered || !!event.is_preview;
-    const pill = registeredPill(event, board);
+    const opensSheet = !comingSoon && (!registered || !!event.is_preview);
+    const pill = comingSoon
+        ? { label: 'SEE EVENT', a11y: `${registrationLine(event)}. Tap to see the event.` }
+        : registeredPill(event, board);
+    const outlinedPill = registered || comingSoon;
 
     return (
         <>
@@ -162,12 +173,14 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
                         ? setSheetOpen(true)
                         // Pin the event: with several on, League has to open on
                         // the one that was tapped, not whichever ranks first.
-                        : router.push({ pathname: '/(tabs)/league', params: { event: event.slug } })
+                        : router.push({ pathname: '/(tabs)/league', params: { event: event.slug, at: String(Date.now()) } })
                 }
                 style={({ pressed }) => [pressed && { opacity: 0.92 }]}
                 accessibilityRole="button"
                 accessibilityLabel={
-                    !registered
+                    comingSoon
+                        ? `Coming soon: ${event.name}. ${pill.a11y}`
+                        : !registered
                         ? `Live event: ${event.name}. Tap to register.`
                         : event.is_preview
                             ? `Live event: ${event.name}. Registered — tap to reset the preview.`
@@ -188,6 +201,20 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
                             locations={[0, 0.35, 0.7, 1]}
                             style={StyleSheet.absoluteFillObject}
                         />
+                        {/* The lockup and every line of text sit on the left, which
+                            the top-to-bottom scrim leaves bare through the middle —
+                            a bright venue photo swallowed the white logos there
+                            (Stars Gym, 2026-10-06). Shade the left and fade it out
+                            so the rest of the artwork stays vivid. */}
+                        {!!media && (
+                            <LinearGradient
+                                colors={['rgba(10,10,10,0.8)', 'rgba(10,10,10,0.45)', 'rgba(10,10,10,0)']}
+                                locations={[0, 0.5, 0.9]}
+                                start={{ x: 0, y: 0.5 }}
+                                end={{ x: 1, y: 0.5 }}
+                                style={StyleSheet.absoluteFillObject}
+                            />
+                        )}
 
                         <View style={styles.topRow}>
                             <Text style={styles.eyebrowText}>LIVE EVENT</Text>
@@ -223,13 +250,15 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
                                             {event.promo_headline}
                                         </Text>
                                     )}
+                                    {/* Coming soon swaps the scoring date for the date
+                                        that matters first: when you can sign up. */}
                                     <Text style={styles.scoringLine} numberOfLines={1}>
-                                        {scoringLine(event)}
+                                        {comingSoon ? registrationLine(event) : scoringLine(event)}
                                     </Text>
                                 </View>
-                                <View style={[styles.registerPill, registered && styles.registeredPill]}>
-                                    <Text style={[styles.registerText, registered && styles.registeredText]}>
-                                        {registered ? pill.label : 'REGISTER'}
+                                <View style={[styles.registerPill, outlinedPill && styles.registeredPill]}>
+                                    <Text style={[styles.registerText, outlinedPill && styles.registeredText]}>
+                                        {outlinedPill ? pill.label : 'REGISTER'}
                                     </Text>
                                 </View>
                             </View>

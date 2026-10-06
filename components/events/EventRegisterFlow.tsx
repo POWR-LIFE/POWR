@@ -204,7 +204,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
             origin === 'home'
                 // Pinned: with several events on, League must open on the one
                 // just joined, not whichever ranks first.
-                ? () => router.push({ pathname: '/(tabs)/league', params: { event: event.slug } })
+                ? () => router.push({ pathname: '/(tabs)/league', params: { event: event.slug, at: String(Date.now()) } })
                 : undefined,
         );
     };

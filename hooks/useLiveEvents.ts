@@ -5,10 +5,11 @@ import { fetchActiveLiveEvents, type LiveEvent } from '@/lib/api/liveEvents';
 
 /**
  * Where the viewer stands decides what they see first: an event you're in
- * outranks one you could join, and scoring now outranks scoring later.
+ * outranks one you could join, scoring now outranks scoring later, and one
+ * you can join outranks one that's only Coming soon.
  */
 function relevance(e: LiveEvent): number {
-    return (e.viewer.joined ? 0 : 2) + (e.status === 'scheduled' ? 1 : 0);
+    return (e.viewer.joined ? 0 : 3) + (e.status === 'scheduled' ? 1 : e.status === 'announced' ? 2 : 0);
 }
 
 // A venue event with a radius also reaches people near the venue. The last

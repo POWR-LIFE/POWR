@@ -10,6 +10,7 @@ import {
 
 import { LiveEventCard, showsOnHome } from '@/components/home/LiveEventCard';
 import { useLiveEvents } from '@/hooks/useLiveEvents';
+import { isVideoUrl } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 
@@ -34,6 +35,24 @@ export function LiveEventCarousel() {
     const visible = events.filter(showsOnHome);
     if (visible.length === 0) return null;
     if (visible.length === 1) return <LiveEventCard event={visible[0]} />;
+
+    // ONE video player for the whole rail (two hardware decoders can take an
+    // Android device down — see RewardHeroMedia), but not necessarily on the
+    // card on screen: when that card is a still, the player goes to the
+    // nearest video card instead. It loads and loops in the peek, so swiping
+    // over finds it already playing rather than a black card buffering
+    // (ONE LDN's HLS clip, 2026-10-06). Ties go right — the way people swipe.
+    const videoIndex = (() => {
+        if (visible[index] && isVideoUrl(visible[index].promo_media_url)) return index;
+        let best = -1;
+        visible.forEach((e, i) => {
+            if (!isVideoUrl(e.promo_media_url)) return;
+            const d = Math.abs(i - index);
+            const bestD = Math.abs(best - index);
+            if (best === -1 || d < bestD || (d === bestD && i > best)) best = i;
+        });
+        return best;
+    })();
 
     const cardW = width - HOME_GUTTER * 2 - PEEK;
     const stride = cardW + GAP;
@@ -64,7 +83,7 @@ export function LiveEventCarousel() {
             >
                 {visible.map((event, i) => (
                     <View key={event.id} style={{ width: cardW }}>
-                        <LiveEventCard event={event} active={i === index} />
+                        <LiveEventCard event={event} active={i === videoIndex} />
                     </View>
                 ))}
             </ScrollView>

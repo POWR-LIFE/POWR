@@ -26,6 +26,7 @@ export type EventShareEvent = Pick<
     | 'window_end_at'
     | 'doors_open_at'
     | 'doors_close_at'
+    | 'registration_opens_at'
     | 'invite_bonus_points'
     | 'promo_media_url'
     | 'promo_headline'

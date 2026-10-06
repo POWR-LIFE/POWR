@@ -38,11 +38,14 @@ export function useLiveEvent(slug?: string, boardPreviewState?: BoardPreviewStat
 
     // Per event: with several running, invite progress is toward the one on
     // screen. The ['liveEventInvites'] prefix still invalidates every entry.
+    // A Coming soon event has no invites (nobody can be in it yet) and no
+    // board, so neither query runs for one.
+    const comingSoon = eventQuery.data?.status === 'announced';
     const inviteQuery = useQuery<InviteProgress | null>({
         queryKey: ['liveEventInvites', eventQuery.data?.id ?? null],
         queryFn: () => fetchInviteProgress(eventQuery.data?.id),
         staleTime: 60_000,
-        enabled: !!eventQuery.data,
+        enabled: !!eventQuery.data && !comingSoon,
     });
 
     // The board is server-driven state — standings while live and visible,
@@ -59,6 +62,7 @@ export function useLiveEvent(slug?: string, boardPreviewState?: BoardPreviewStat
         // previewers always ask and let the server decide the shape.
         enabled:
             !!eventQuery.data &&
+            !comingSoon &&
             (eventQuery.data.status !== 'scheduled' || !!eventQuery.data.is_preview),
         refetchInterval: 60_000,
         staleTime: 30_000,
