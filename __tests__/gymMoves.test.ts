@@ -230,6 +230,16 @@ describe('gymMoves', () => {
       expect(all({ recapOn: false })).toContain('recap');
     });
 
+    it('asks for the team only when nobody is on the gym’s page, and never when it can’t tell', () => {
+      const all = (i: Partial<MovesInput>) => [0, 1, 2, 3, 4, 5, 6].flatMap((d) => gymMoves({ ...calm, ...i, nowMs: NOW + d * DAY }));
+      expect(all({}).map((m) => m.key)).not.toContain('team');
+      expect(all({ teamCount: null }).map((m) => m.key)).not.toContain('team');
+      expect(all({ teamCount: 2 }).map((m) => m.key)).not.toContain('team');
+      const team = all({ teamCount: 0 }).find((m) => m.key === 'team');
+      expect(team).toMatchObject({ kind: 'setup', snooze: 'week', action: { to: '/venue#app-team' } });
+      expect(all({ hasPhoto: false }).find((m) => m.key === 'photo')?.action.to).toBe('/venue#app-cover');
+    });
+
     it('only suggests next month’s challenge when nothing is booked in the next 30 days', () => {
       const week = (i: Partial<MovesInput>) => [0, 1, 2, 3, 4, 5, 6].flatMap((d) => gymMoves({ ...calm, ...i, nowMs: NOW + d * DAY }).map((m) => m.key));
       expect(week({})).not.toContain('plan-next');

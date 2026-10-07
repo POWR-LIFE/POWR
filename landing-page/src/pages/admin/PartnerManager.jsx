@@ -195,7 +195,7 @@ const LocationEditor = ({ locations, onChange }) => {
 };
 
 // --- Trainers editor ---
-const BLANK_TRAINER = { name: '', photo_url: '', bio: '', specialties: '', experience: '', profile_url: '', booking_url: '', active: true, sort_order: 0 };
+const BLANK_TRAINER = { name: '', role: '', photo_url: '', bio: '', specialties: '', experience: '', profile_url: '', booking_url: '', active: true, sort_order: 0 };
 
 const TrainersEditor = ({ partnerId, toast }) => {
     const [trainers, setTrainers] = useState([]);
@@ -228,6 +228,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
         setEditingTrainer(t);
         setTrainerForm({
             name: t.name,
+            role: t.role || '',
             photo_url: t.photo_url || '',
             bio: t.bio || '',
             specialties: (t.specialties || []).join(', '),
@@ -277,6 +278,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
             bio: trainerForm.bio || null,
             specialties: trainerForm.specialties ? trainerForm.specialties.split(',').map(s => s.trim()).filter(Boolean) : null,
             experience: trainerForm.experience || null,
+            role: trainerForm.role?.trim() || null,
             profile_url: trainerForm.profile_url?.trim() || null,
             booking_url: trainerForm.booking_url?.trim() || null,
             active: trainerForm.active,
@@ -352,7 +354,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                     <div className={`h-1.5 w-1.5 rounded-full ${t.active ? 'bg-[#10B981]' : 'bg-[#DADAD3]'}`} />
                                 </div>
                                 <p className="text-[10px] text-[#BBB] font-bold uppercase tracking-wider truncate mt-0.5">
-                                    {[t.experience, ...(t.specialties || [])].filter(Boolean).join(' · ') || 'No details'}
+                                    {[t.role, t.experience, ...(t.specialties || [])].filter(Boolean).join(' · ') || 'No details'}
                                 </p>
                             </div>
                             {/* Actions */}
@@ -422,6 +424,18 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                     className="w-full px-6 py-4 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] text-[#222222] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all resize-none"
                                     value={trainerForm.bio}
                                     onChange={e => setTrainerForm({ ...trainerForm, bio: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-3">
+                                <label className="block text-[8px] uppercase tracking-[0.5em] text-[#BBB] font-black ml-2">Role</label>
+                                <input
+                                    type="text"
+                                    maxLength={30}
+                                    placeholder="Personal trainer (leave empty) · Coach · Physio · Manager"
+                                    className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
+                                    value={trainerForm.role}
+                                    onChange={e => setTrainerForm({ ...trainerForm, role: e.target.value })}
                                 />
                             </div>
 

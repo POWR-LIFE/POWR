@@ -95,6 +95,23 @@ export const fetchGymProfile = (partnerId) => rpc('gym_profile', { p_partner_id:
 export const updateGymProfile = (partnerId, patch) => rpc('gym_update_profile', { p_partner_id: partnerId, p_patch: patch });
 /** The caller's own Monday recap switch (each of the team chooses). */
 export const setRecapEmail = (partnerId, on) => rpc('gym_set_recap_email', { p_partner_id: partnerId, p_on: on });
+
+// ── The gym's page in the app: the team on it (trainers, coaches, staff) ────
+export const fetchGymTeam = (partnerId) => rpc('gym_team', { p_partner_id: partnerId });
+/** Adds someone when memberId is null. Returns the team, plus saved_id. */
+export const saveGymTeamMember = (partnerId, memberId, fields) =>
+    rpc('gym_save_team_member', { p_partner_id: partnerId, p_member_id: memberId ?? null, p_fields: fields });
+export const deleteGymTeamMember = (partnerId, memberId) => rpc('gym_delete_team_member', { p_partner_id: partnerId, p_member_id: memberId });
+export const orderGymTeam = (partnerId, ids) => rpc('gym_order_team', { p_partner_id: partnerId, p_ids: ids });
+/** Where the pin is, and the area the app names under it (partners is public: the app reads it). */
+export const fetchGymPlace = async (partnerId) => {
+    const { data, error } = await supabase.from('partners').select('locations').eq('id', partnerId).maybeSingle();
+    if (error) throw new Error(error.message);
+    const locs = data?.locations;
+    const loc = Array.isArray(locs) ? locs[0] : locs;
+    if (!loc) return null;
+    return { lat: loc.lat ?? null, lng: loc.lng ?? null, area: (loc.address?.trim() || loc.name?.trim()) || 'Local' };
+};
 export const setDriftEmail = (partnerId, on) => rpc('gym_set_drift_email', { p_partner_id: partnerId, p_on: on });
 
 // ── The door on a finale night, and prizes handed over ───────────────────────

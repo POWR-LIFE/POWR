@@ -92,7 +92,7 @@ export default function VenueSettings() {
     useEffect(() => { setProfile(null); load(); }, [gym.partner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // A #section in the link lands on that card: #team (the old Team page),
-    // #photo and #recap (the Overview's suggestions).
+    // #photo and #recap (the Overview's suggestions), #help.
     useEffect(() => {
         if (!profile || !location.hash) return;
         document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' });
@@ -213,8 +213,8 @@ export default function VenueSettings() {
                         <GymStaffPanel partnerId={gym.partner_id} gymName={profile.name} adminView={isActingGym} selfUserId={isActingGym ? null : user?.id} />
                     </div>
 
-                    {/* Help: Ask POWR opens a support ticket; answers show here */}
-                    <GymHelp supportEmail={SUPPORT_EMAIL} gymName={profile.name} />
+                    {/* Help: Ask POWR opens a support ticket; answers show here (#help: the Overview's "move my pin") */}
+                    <div id="help" className="scroll-mt-6"><GymHelp supportEmail={SUPPORT_EMAIL} gymName={profile.name} /></div>
                 </div>
 
                 <div className="space-y-6 min-w-0">
