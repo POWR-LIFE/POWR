@@ -88,9 +88,9 @@ export function eventPushCopy(
       };
     }
     case 'gym_quiet_nudge': {
-      // A gym's members who share their activity with it and have gone
-      // quiet, on the gym's press (gym_nudge_quiet). POWR's words, never
-      // the gym's. `weeks` is since their last session, when known.
+      // Someone drifting from a gym (well past their own usual gap between
+      // visits), on the gym's press from Retention (gym_nudge_quiet). POWR's
+      // words, never the gym's. `weeks` is since their last visit there.
       const weeks = Math.max(0, Math.round(Number(payload.weeks ?? 0)));
       const since = weeks >= 2 ? `It’s been ${weeks} weeks.` : 'It’s been a while.';
       return {

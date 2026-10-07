@@ -1,4 +1,4 @@
-// Email to a gym's team, three kinds, one function:
+// Email to a gym's team, four kinds, one function:
 //   weekly_recap  — Monday: what members did at the gym last week. Cron
 //                   gym-weekly-recap-email, 10:00 UTC, after the member weekly
 //                   and the brand digest so it never competes for the Mailgun
@@ -12,8 +12,15 @@
 //                   never produces it.
 //   review_result — POWR approved / asked for a change / pulled the event.
 //                   Same trigger, on review_status.
-// Recipients are the gym's team (gym_staff → auth.users); the weekly goes to
-// those who keep the switch on (Settings, then Email). Never members.
+//   drift_digest  — mornings: who started drifting since yesterday (Retention,
+//                   get_gym_drift_digests). Cron gym-drift-digest-email. Only
+//                   gyms with someone new; Clash Pro names them, Clash+ gets
+//                   the count (and nothing under 5 people). A real run (no
+//                   dry_run, only_email or limit) also opens and closes the
+//                   drift episodes, so the same person is never sent twice.
+// Recipients are the gym's team (gym_staff → auth.users); the weekly and the
+// drift email go to those who keep each switch on (Settings, then Email).
+// Never members.
 //
 // Security: verify_jwt=false (pg_net and pg_cron are not users); access is
 // gated by x-resolve-token, validated via verify_resolve_token against
@@ -36,6 +43,7 @@ import {
   type GymWeeklyRecapData,
 } from "../_shared/emails/gym-weekly-recap.ts";
 import { gymEventEmail, type GymEventMailData, type GymEventMailKind } from "../_shared/emails/gym-event-mail.ts";
+import { gymDriftDigestEmail, type GymDriftDigestData, type GymDriftPerson } from "../_shared/emails/gym-drift-digest.ts";
 
 const REPLY_TO = "support@powr.life";
 const CONCURRENCY = 5;
@@ -73,6 +81,18 @@ interface EventMailRow {
   top: { rank: number; name: string; points: number; prize: string | null }[] | null;
 }
 
+interface DriftRow {
+  partner_id: string;
+  name: string;
+  tz: string;
+  named: boolean;
+  too_few: boolean;
+  counts: { drifting?: number; slipping?: number } | null;
+  new_count: number;
+  new: GymDriftPerson[] | null;
+  recipients: string[];
+}
+
 interface SendResult { to: string; gym?: string; ok: boolean; error?: string }
 
 function recapData(row: RecapRow): GymWeeklyRecapData {
@@ -92,6 +112,17 @@ function recapData(row: RecapRow): GymWeeklyRecapData {
     quiet: row.quiet,
     quietNamed: row.features?.people === true,
     events: row.events ?? [],
+  };
+}
+
+function driftData(row: DriftRow): GymDriftDigestData {
+  return {
+    gymName: row.name,
+    named: row.named,
+    newCount: row.new_count ?? 0,
+    people: row.new ?? [],
+    drifting: row.counts?.drifting ?? 0,
+    slipping: row.counts?.slipping ?? 0,
   };
 }
 
@@ -134,6 +165,21 @@ function sampleRecap(): GymWeeklyRecapData {
       { id: "sample-live", name: "October Challenge", status: "live", participants: 23, window_start_at: new Date(now - 6 * day).toISOString(), window_end_at: new Date(now + 22 * day).toISOString() },
       { id: "sample-next", name: "Points Week", status: "scheduled", participants: 9, window_start_at: new Date(now + 10 * day).toISOString(), window_end_at: new Date(now + 17 * day).toISOString() },
     ],
+  };
+}
+
+function sampleDrift(): GymDriftDigestData {
+  return {
+    gymName: "POWR Gym Leamington",
+    named: true,
+    newCount: 3,
+    people: [
+      { name: "Callum R.", gap_days: 12, per_week: 3.1, part: "morning", dows: [1, 3, 5] },
+      { name: "Theo B.", gap_days: 15, per_week: 2.8, part: "morning", dows: null },
+      { name: "Esme W.", gap_days: 11, per_week: 2.0, part: null, dows: [2, 6] },
+    ],
+    drifting: 4,
+    slipping: 2,
   };
 }
 
@@ -217,6 +263,9 @@ Deno.serve(async (req: Request) => {
     } else if (kind === "results_ready") {
       rendered = gymEventEmail(sampleEvent("results_ready"));
       tag = "gym-results-ready";
+    } else if (kind === "drift_digest") {
+      rendered = gymDriftDigestEmail(sampleDrift());
+      tag = "gym-drift-digest";
     } else if (kind === "review_result") {
       const decision = ["approved", "rejected", "pulled"].includes(String(body?.decision)) ? (body.decision as GymEventMailKind) : "approved";
       rendered = gymEventEmail(sampleEvent(decision));
@@ -251,6 +300,34 @@ Deno.serve(async (req: Request) => {
     }
     const week = rows[0] ? weekLabel(rows[0].week_start, rows[0].week_end, rows[0].tz) : null;
     return json({ kind, week, gyms: rows.length, sent, dry_run: dryRun, skipped, results });
+  }
+
+  // ── Mornings: who started drifting since yesterday ────────────────────
+  if (kind === "drift_digest") {
+    // Only a full, real run moves the episodes on; a test to one inbox, a
+    // dry run or a limited run only looks.
+    const commit = !dryRun && !onlyEmail && limit === null;
+    const { data, error } = await admin.rpc("get_gym_drift_digests", { p_commit: commit }) as { data: DriftRow[] | null; error: unknown };
+    if (error) {
+      console.error("get_gym_drift_digests error:", error);
+      return json({ error: "rpc_failed", detail: String(error) }, 500);
+    }
+    let rows = data ?? [];
+    if (onlyEmail) rows = rows.filter((r) => (r.recipients ?? []).map((e) => e.toLowerCase()).includes(onlyEmail));
+    if (limit !== null) rows = rows.slice(0, limit);
+
+    const results: SendResult[] = [];
+    const skipped: { gym: string; why: string }[] = [];
+    let sent = 0;
+    for (const row of rows) {
+      const tos = (row.recipients ?? []).map((e) => e.toLowerCase()).filter((e) => !onlyEmail || e === onlyEmail);
+      if (!row.new_count) { skipped.push({ gym: row.name, why: "nobody_new" }); continue; }
+      if (row.too_few) { skipped.push({ gym: row.name, why: "too_few" }); continue; }
+      if (tos.length === 0) { skipped.push({ gym: row.name, why: "no_recipients" }); continue; }
+      const rendered = gymDriftDigestEmail(driftData(row));
+      sent += await deliver(tos.map((to) => deliverTo ?? to), rendered, "gym-drift-digest", dryRun, results, row.name);
+    }
+    return json({ kind, committed: commit, gyms: rows.length, sent, dry_run: dryRun, skipped, results });
   }
 
   // ── One event: results ready, or POWR's decision ──────────────────────

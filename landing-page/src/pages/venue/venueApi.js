@@ -95,6 +95,7 @@ export const fetchGymProfile = (partnerId) => rpc('gym_profile', { p_partner_id:
 export const updateGymProfile = (partnerId, patch) => rpc('gym_update_profile', { p_partner_id: partnerId, p_patch: patch });
 /** The caller's own Monday recap switch (each of the team chooses). */
 export const setRecapEmail = (partnerId, on) => rpc('gym_set_recap_email', { p_partner_id: partnerId, p_on: on });
+export const setDriftEmail = (partnerId, on) => rpc('gym_set_drift_email', { p_partner_id: partnerId, p_on: on });
 
 // ── The door on a finale night, and prizes handed over ───────────────────────
 export const fetchEventDoor = (eventId) => rpc('gym_event_door', { p_event_id: eventId });
@@ -102,7 +103,16 @@ export const checkinAtDoor = (eventId, userId) => rpc('gym_event_checkin', { p_e
 export const setPrizeHanded = (eventId, rank, handed) => rpc('gym_event_prize_handed', { p_event_id: eventId, p_rank: rank, p_handed: handed });
 
 // ── The quiet-member nudge (Clash Pro): a dry run counts, then the send ──
-export const nudgeQuietMembers = (partnerId, dryRun = true) => rpc('gym_nudge_quiet', { p_partner_id: partnerId, p_dry_run: dryRun });
+// Everyone drifting (at most once a day), or one person from their row.
+export const nudgeQuietMembers = (partnerId, dryRun = true, userId = null) =>
+    rpc('gym_nudge_quiet', { p_partner_id: partnerId, p_dry_run: dryRun, ...(userId ? { p_user_id: userId } : {}) });
+
+// ── Retention (Clash+ counts, Clash Pro names): who's drifting from their
+// own usual visits, and what the team did about it ──
+export const fetchRetention = (partnerId) => rpc('gym_retention', { p_partner_id: partnerId });
+export const logOutreach = (partnerId, userId, channel, note) =>
+    rpc('gym_log_outreach', { p_partner_id: partnerId, p_user_id: userId, p_channel: channel, p_note: note || null });
+export const deleteOutreach = (partnerId, id) => rpc('gym_delete_outreach', { p_partner_id: partnerId, p_id: id });
 
 // ── Clash Nights (Clash Pro): the gym asks for a date, POWR confirms ────────
 export const fetchClashNights = (partnerId) => rpc('gym_clash_nights', { p_partner_id: partnerId });

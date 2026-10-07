@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Clock, Compass, Dumbbell, Sparkles, Trophy } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Page, Card, Micro, PageTitle, Spinner, Empty, fmtNum, BTN_GHOST } from '../../components/portal/ui';
@@ -10,7 +11,7 @@ import { memberInsights, changeLabel } from '../../../../shared/memberInsights.t
 import { activityMeta, boardName, hourLabel, weekdayFull } from '../../../../shared/gymBoard.ts';
 
 // The gym's members on POWR, one question per row and nothing shown twice:
-// how many, how engaged (active anywhere, trained here, gone quiet, new); what
+// how many, how engaged (active anywhere, trained here, drifting, new); what
 // the numbers say; what they do, where and how often; when they come here;
 // and, on Pro, the members who share their activity by name.
 //
@@ -125,7 +126,9 @@ export default function VenueMembers() {
                             <>
                                 <Fact label="Active" value={activity.active_4w} note={activity.active_prev_4w != null ? `anywhere, last 4 weeks · ${fmtNum(activity.active_prev_4w)} before that` : 'anywhere, last 4 weeks'} />
                                 <Fact label="Trained here" value={venue.athletes_28d} note="last 28 days" />
-                                <Fact label="Gone quiet" value={activity.quiet ?? 0} note={activity.slowing ? `+${activity.slowing} slowing down` : 'in the last 2 weeks'} tone={(activity.quiet ?? 0) > 0 ? 'amber' : undefined} />
+                                <Link to="/venue/retention" className="min-w-0 rounded-xl -m-1 p-1 hover:bg-[#FAFAF8]">
+                                    <Fact label="Drifting" value={activity.quiet ?? 0} note={activity.slowing ? `+${activity.slowing} slipping · see Retention` : 'from their usual visits · see Retention'} tone={(activity.quiet ?? 0) > 0 ? 'amber' : undefined} />
+                                </Link>
                                 <Fact label="New here" value={newThisWeek} note="first session this week" tone={newThisWeek > 0 ? 'green' : undefined} />
                             </>
                         ) : (

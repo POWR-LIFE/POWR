@@ -21,17 +21,17 @@ describe('memberInsights', () => {
     expect(memberInsights(null, opts)).toEqual([]);
   });
 
-  it('leads with members going quiet, and points Clash+ gyms at Pro for names', () => {
+  it('leads with regulars drifting, and points Clash+ gyms at Pro for names', () => {
     const [first] = memberInsights({ ...base, quiet: 4, slowing: 1 }, opts);
     expect(first).toEqual({
       key: 'quiet',
-      finding: '4 members have gone quiet, and 1 more is slowing down',
+      finding: '4 regulars are drifting, and 1 more is slipping',
       action: 'Reach out before they cancel. Clash Pro shows you who.',
       tone: 'watch',
     });
-    expect(memberInsights({ ...base, quiet: 1 }, { ...opts, canSeePeople: true })[0].finding).toBe('1 member has gone quiet');
-    expect(memberInsights({ ...base, quiet: 1 }, { ...opts, canSeePeople: true })[0].action).toBe('Reach out before they cancel. See who below.');
-    expect(memberInsights({ ...base, slowing: 2 }, opts)[0].finding).toBe('2 members are slowing down');
+    expect(memberInsights({ ...base, quiet: 1 }, { ...opts, canSeePeople: true })[0].finding).toBe('1 regular is drifting');
+    expect(memberInsights({ ...base, quiet: 1 }, { ...opts, canSeePeople: true })[0].action).toBe('Reach out before they cancel. See who in Retention.');
+    expect(memberInsights({ ...base, slowing: 2 }, opts)[0].finding).toBe('2 regulars are slipping');
   });
 
   it('names the biggest per-member rise with its action (the sheet’s run club)', () => {

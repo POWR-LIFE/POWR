@@ -22,7 +22,7 @@ export default function TermsOfService() {
 
             <main className="max-w-3xl mx-auto px-6 py-16 pb-32">
                 <h1 className="text-4xl font-light tracking-tight mb-2">Terms of Service</h1>
-                <p className="text-[#444] text-sm mb-12">Last updated: 22 April 2026</p>
+                <p className="text-[#444] text-sm mb-12">Last updated: 7 October 2026</p>
 
                 <div className="space-y-10 text-[#B0B0B0] text-[15px] leading-relaxed">
                     <section>
@@ -88,12 +88,18 @@ export default function TermsOfService() {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-semibold text-[#F2F2F2] mb-3">7. Partner Businesses</h2>
+                        <h2 className="text-xl font-semibold text-[#F2F2F2] mb-3">7. Partner Businesses and Gyms</h2>
                         <p>
                             Rewards are provided by independent partner businesses. POWR acts as a platform connecting you
                             with these partners. We are not responsible for the quality, availability, or fulfilment of
                             rewards offered by partners. Any disputes regarding a specific reward should be raised with the
                             partner business directly, though we are happy to assist where we can.
+                        </p>
+                        <p className="mt-3">
+                            Gyms that use POWR’s gym portal can see your visits to them, so they can notice if you stop
+                            coming and get in touch, as our Privacy Policy describes under “Your gym”. You can switch this
+                            off at any time in Settings, then Privacy. Gyms are independent businesses: your membership,
+                            and how a gym contacts you about it, are between you and the gym.
                         </p>
                     </section>
 

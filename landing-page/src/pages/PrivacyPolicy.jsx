@@ -22,7 +22,7 @@ export default function PrivacyPolicy() {
 
             <main className="max-w-3xl mx-auto px-6 py-16 pb-32">
                 <h1 className="text-4xl font-light tracking-tight mb-2">Privacy Policy</h1>
-                <p className="text-[#444] text-sm mb-12">Last updated: 24 September 2026</p>
+                <p className="text-[#444] text-sm mb-12">Last updated: 7 October 2026</p>
 
                 <div className="space-y-10 text-[#B0B0B0] text-[15px] leading-relaxed">
                     <section>
@@ -53,7 +53,7 @@ export default function PrivacyPolicy() {
                             <li>To provide and operate the POWR rewards platform, including tracking activity and awarding points.</li>
                             <li>To verify gym visits and workout sessions for reward eligibility.</li>
                             <li>To display relevant partner rewards and offers near your location.</li>
-                            <li>To give the gym you pick anonymous totals about its members’ activity, and your own activity only if you switch that on (see “Your gym” below).</li>
+                            <li>To show the gyms you train at your visits there, so they can notice if you stop coming, unless you switch that off; to give the gym you pick anonymous totals about its members’ activity; and to share your other activity with it only if you switch that on (see “Your gym” below).</li>
                             <li>To communicate with you about your account, rewards, and service updates.</li>
                             <li>To improve our services, fix bugs, and develop new features.</li>
                             <li>To prevent fraud and ensure the integrity of the rewards system.</li>
@@ -65,8 +65,8 @@ export default function PrivacyPolicy() {
                         <p>We process your personal data on the following legal bases under UK GDPR:</p>
                         <ul className="list-disc pl-6 space-y-2 mt-3">
                             <li><strong className="text-[#F2F2F2]">Contract:</strong> processing necessary to provide you with the POWR service you signed up for.</li>
-                            <li><strong className="text-[#F2F2F2]">Consent:</strong> for health data and location data, which you explicitly opt in to share, and for sharing your activity with your gym if you switch that on.</li>
-                            <li><strong className="text-[#F2F2F2]">Legitimate interest:</strong> for analytics, fraud prevention, and service improvement.</li>
+                            <li><strong className="text-[#F2F2F2]">Consent:</strong> for health data and location data, which you explicitly opt in to share, and for sharing your other activity with your gym if you switch that on.</li>
+                            <li><strong className="text-[#F2F2F2]">Legitimate interest:</strong> for analytics, fraud prevention, and service improvement, and for showing a gym your visits there so it can look after you as a member. You can object at any time by switching off “Let gyms see my visits” (Settings, then Privacy).</li>
                         </ul>
                     </section>
 
@@ -76,11 +76,12 @@ export default function PrivacyPolicy() {
                         <ul className="list-disc pl-6 space-y-2">
                             <li><strong className="text-[#F2F2F2]">Reward partners:</strong> only the minimum information needed to fulfil a reward you choose to redeem (e.g. a redemption code). We never share your health data with reward partners.</li>
                             <li>
-                                <strong className="text-[#F2F2F2]">Your gym:</strong> if you pick a gym as your gym in the app and it uses POWR’s gym portal:
+                                <strong className="text-[#F2F2F2]">Your gym:</strong> gyms that use POWR’s gym portal see the following:
                                 <ul className="list-[circle] pl-6 space-y-1.5 mt-2">
-                                    <li>it sees anonymous totals about its members’ activity, such as how many members ran this month or which days are busiest, never who did what. We only show these once at least five members have picked that gym;</li>
-                                    <li>if you switch on “Share with [your gym]” (Settings, then Privacy), it also sees your name, POWR ID and your recent activity: what you did, when and how often, for example so staff notice if you stop training. It is off unless you turn it on, it stops if you pick another gym, and you can turn it off at any time. If you have gone quiet, that gym can ask POWR to send you one reminder, in POWR’s words, no more than once a fortnight; the Notifications switches in the app apply;</li>
-                                    <li>we never share your sleep, heart rate, steps or location with a gym;</li>
+                                    <li><strong className="text-[#F2F2F2]">your visits there.</strong> A gym you pick, or have checked in at in the last six months, sees your name, POWR ID and the days and times POWR checked you in at that gym, compared with your usual pattern, so staff can notice if you stop coming and get in touch. This is your visits at that gym only. It is on unless you switch off “Let gyms see my visits” (Settings, then Privacy), and if you had already taken yourself off gym boards, it starts off. Staff can note that they got in touch. A gym can also ask POWR to send you one reminder, in POWR’s words, no more than once a fortnight; the Notifications switches in the app apply;</li>
+                                    <li><strong className="text-[#F2F2F2]">anonymous totals.</strong> The gym you pick as your gym sees anonymous totals about its members’ activity, such as how many members ran this month or which days are busiest, never who did what. We only show these once at least five members have picked that gym;</li>
+                                    <li><strong className="text-[#F2F2F2]">your other activity, if you choose.</strong> If you switch on “Share with [your gym]” (Settings, then Privacy), the gym you pick also sees your other recent activity by name: what you did, when and how often. It is off unless you turn it on, it stops if you pick another gym, and you can turn it off at any time;</li>
+                                    <li>we never share your sleep, heart rate, steps, or where you are outside that gym, and gyms may use what they see only to look after you as a member, never to sell or pass on;</li>
                                     <li>if you join an event a gym runs on POWR, that gym sees your name and POWR ID for the event, and gyms that show POWR leaderboards on screens show the names and points of members who train there. You can take yourself off gym boards and screens in Settings, then Privacy.</li>
                                 </ul>
                             </li>

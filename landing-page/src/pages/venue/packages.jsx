@@ -27,7 +27,8 @@ export const PACKAGES = [
             'Run your own in-gym challenges, monthly or whenever you want',
             'Partner discounts: buy prizes and kit at the POWR members’ price, one code when you need it',
             'If you like, everyone who takes part in your event gets a partner brand’s code in their Wallet',
-            'Members dashboard: what they do, where they train, who’s gone quiet',
+            'Members dashboard: what they do, where they train, when they come in',
+            'Retention: how many are slipping and drifting from their usual visits, week by week',
         ],
     },
     {
@@ -37,7 +38,8 @@ export const PACKAGES = [
             '4 POWR Clash Nights a year, one per quarter. We bring the DJ, photographer and partner prizes · book your dates in Clash Nights',
             'Studio and event kits: your photos and clips turned into branded posts, reels and carousels, at every size',
             'Upload your own footage from classes and PT sessions, and make content in minutes',
-            'Full member insights (opted-in members), including early warning when members go quiet',
+            'Retention by name: who’s drifting from their own usual visits, a morning email when someone starts, a one-tap nudge, and who came back after you reached out',
+            'Full activity insights for members who share all their training with you',
             'Guest leads from every event: who joined without being a member, named for the front desk, with export',
             'Quarterly insights report: 3 trends, 3 actions, with a matched brand partner · coming this season',
         ],
@@ -68,7 +70,12 @@ const LOCKS = {
     },
     people: {
         title: 'Named member insights come with Clash Pro',
-        body: 'What each member who shares with you has been doing, and an early warning when someone goes quiet.',
+        body: 'Who’s drifting from their usual visits by name, and what each member who shares all their training with you has been doing.',
+    },
+    // Unlocked with 'insights' (Clash+), in its own words.
+    retention: {
+        title: 'Retention comes with Clash+',
+        body: 'See who’s slipping and drifting from their usual visits before they cancel, measured against each person’s own normal. Clash Pro names them.',
     },
     studio: {
         title: 'Studio comes with Clash Pro',

@@ -165,7 +165,7 @@ export function gymWeeklyRecapEmail(data: GymWeeklyRecapData): { subject: string
     ? `Nothing was logged at ${esc(gym)} last week. The board on the TV and the poster by the door are what get members checking in.`
     : `Here's what your members did at ${esc(gym)} last week.`;
 
-  // ── Also this week: the busiest day, who has gone quiet ───────────────
+  // ── Also this week: the busiest day, who's drifting ─────────────────
   const also: string[] = [];
   const alsoText: string[] = [];
   if (data.busiest && data.busiest.sessions > 0) {
@@ -174,13 +174,13 @@ export function gymWeeklyRecapEmail(data: GymWeeklyRecapData): { subject: string
   }
   if (data.quiet != null) {
     if (data.quiet > 0) {
-      const who = `${plural(data.quiet, "member")} ${data.quiet === 1 ? "has" : "have"} gone quiet`;
-      const how = quietNamed ? " Reach out from Members." : "";
-      also.push(noteLine(`<strong style="font-weight:600;color:#F2F2F2;">${who}</strong>: trained regularly, nothing in a fortnight.${esc(how)}`));
-      alsoText.push(`${who}: trained regularly, nothing in a fortnight.${how}`);
+      const who = `${plural(data.quiet, "regular")} ${data.quiet === 1 ? "is" : "are"} drifting`;
+      const how = quietNamed ? " See who in Retention." : "";
+      also.push(noteLine(`<strong style="font-weight:600;color:#F2F2F2;">${who}</strong>: well past their usual gap between visits.${esc(how)}`));
+      alsoText.push(`${who}: well past their usual gap between visits.${how}`);
     } else {
-      also.push(noteLine(`Nobody has gone quiet.`));
-      alsoText.push("Nobody has gone quiet.");
+      also.push(noteLine(`Nobody is drifting.`));
+      alsoText.push("Nobody is drifting.");
     }
   }
 

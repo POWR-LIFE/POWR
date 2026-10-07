@@ -1,27 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Lock, Send } from 'lucide-react';
-import { Card, Micro, Spinner, BTN_GHOST, BTN_GOLD, fmtNum } from '../../components/portal/ui';
-import { useToast } from '../../lib/toast';
-import { fetchMemberPeople, nudgeQuietMembers } from './venueApi';
-import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
+import { Lock } from 'lucide-react';
+import { Card, Micro, Spinner, BTN_GHOST, fmtNum } from '../../components/portal/ui';
+import { fetchMemberPeople } from './venueApi';
 import { usePackage } from './packages';
 import { boardName, activityMeta } from '../../../../shared/gymBoard.ts';
 import { formatMemberId } from '../../../../shared/memberId.ts';
 
 // Named member detail (Clash Pro), ONLY for members who switched on "Share
-// with <gym>" in the app: what they've done lately and whether they've gone
-// quiet, so staff can reach out before someone cancels. Activity only; never
-// sleep, heart rate or location (gym_member_people).
+// with <gym>" in the app: what they've done lately ANYWHERE (runs, rides,
+// home workouts), and whether that's gone quiet. Drifting from the gym itself
+// is Retention's job (/venue/retention), for everyone, from visits here.
+// Activity only; never sleep, heart rate or location (gym_member_people).
 
 const STATUS = {
-    quiet:    { label: 'Gone quiet',    cls: 'bg-[#FEE2E2] text-[#B91C1C] border-[#FECACA]' },
-    slowing:  { label: 'Slowing down',  cls: 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]' },
+    quiet:    { label: 'Quiet everywhere', cls: 'bg-[#FEE2E2] text-[#B91C1C] border-[#FECACA]' },
+    slowing:  { label: 'Slowing everywhere', cls: 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]' },
     active:   { label: 'Active',        cls: 'bg-[#DCFCE7] text-[#0B7A57] border-[#BBF7D0]' },
     inactive: { label: 'Not active yet', cls: 'bg-[#F4F4F1] text-[#888] border-[#E6E6E1]' },
 };
 
-const FILTERS = [['all', 'Everyone'], ['quiet', 'Gone quiet'], ['slowing', 'Slowing down']];
+const FILTERS = [['all', 'Everyone'], ['quiet', 'Quiet everywhere'], ['slowing', 'Slowing everywhere']];
 
 function ago(iso) {
     if (!iso) return 'no activity yet';
@@ -34,61 +33,6 @@ function Avatar({ row }) {
     return row.avatar_url
         ? <img src={row.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border border-[#E6E6E1] shrink-0" />
         : <div className="w-10 h-10 rounded-full bg-[#E8D200]/10 border border-[#E8D200]/25 flex items-center justify-center text-[12px] font-black text-[#8a7600] uppercase shrink-0">{name?.[0] ?? '?'}</div>;
-}
-
-/**
- * Reach out to everyone who has gone quiet: one push in POWR's words, on
- * the gym's press. A dry run says how many it would reach and how many
- * were nudged in the last fortnight (they wait).
- */
-function NudgeQuiet({ gym, quiet }) {
-    const toast = useToast();
-    const [plan, setPlan] = useState(null);     // { recipients, cooling }
-    const [busy, setBusy] = useState(false);
-    const [sent, setSent] = useState(null);     // recipients, after a send
-    useEffect(() => {
-        let alive = true;
-        nudgeQuietMembers(gym.partner_id, true).then((r) => { if (alive) setPlan(r); }).catch(() => { if (alive) setPlan({ recipients: 0, cooling: 0, unavailable: true }); });
-        return () => { alive = false; };
-    }, [gym.partner_id, quiet]);
-    const preview = eventPushCopy('gym_quiet_nudge', { gym_name: gym.name, weeks: 3 });
-    const send = async () => {
-        if (!plan?.recipients) return;
-        if (!window.confirm(`Send this to ${plan.recipients} member${plan.recipients === 1 ? '' : 's'} who’ve gone quiet? Each gets it once, and not again for a fortnight.`)) return;
-        setBusy(true);
-        try {
-            const r = await nudgeQuietMembers(gym.partner_id, false);
-            setSent(r.recipients);
-            setPlan({ recipients: 0, cooling: (plan.cooling ?? 0) + r.recipients });
-            toast.success(`Sent to ${r.recipients}`);
-        } catch (e) { toast.error(e.message); }
-        finally { setBusy(false); }
-    };
-    return (
-        <div className="rounded-2xl border border-[#E6E6E1] bg-[#FAFAF8] p-5 mb-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
-                    <Micro gold>Reach out</Micro>
-                    <div className="text-[13px] text-[#1A1A1A] mt-2">One push, in POWR’s words, to everyone who’s gone quiet. It opens your gym in the app.</div>
-                    <div className="mt-3 max-w-md rounded-xl bg-white border border-[#E6E6E1] px-4 py-3">
-                        <div className="text-[9px] uppercase tracking-[0.25em] font-black text-[#BBBBBB]">POWR · now</div>
-                        <div className="text-[12px] font-bold text-[#1A1A1A] mt-1">{preview.title}</div>
-                        <div className="text-[12px] text-[#666]">{preview.body}</div>
-                    </div>
-                    <p className="text-[11px] text-[#AAAAAA] mt-2">
-                        {plan == null ? 'Counting…'
-                            : plan.unavailable ? 'Not available right now.'
-                            : `${plan.recipients} would get it now${plan.cooling ? ` · ${plan.cooling} had one in the last fortnight and wait` : ''}. Members who turned announcements off don’t get it.`}
-                    </p>
-                </div>
-                <div className="shrink-0">
-                    {sent != null && !plan?.recipients
-                        ? <span className="text-[11px] font-bold text-[#0B7A57]">Sent to {sent}. Again tomorrow at the earliest.</span>
-                        : <button type="button" onClick={send} disabled={busy || !plan?.recipients} className={`${BTN_GOLD} h-11 px-6`}><Send size={13} /> {busy ? 'Sending…' : `Send to ${plan?.recipients ?? 0}`}</button>}
-                </div>
-            </div>
-        </div>
-    );
 }
 
 export default function MemberPeople({ gym }) {
@@ -111,10 +55,10 @@ export default function MemberPeople({ gym }) {
         return (
             <Card className="p-6 sm:p-8">
                 <div className="flex items-center gap-3 mb-3"><Lock size={13} className="text-[#8a7600]" /><Micro gold>Clash Pro</Micro></div>
-                <div className="text-2xl font-light tracking-tight">See who’s gone quiet</div>
+                <div className="text-2xl font-light tracking-tight">See everything they train</div>
                 <p className="text-[13px] text-[#777] leading-relaxed mt-2 max-w-2xl">
-                    Clash Pro names the members who share their activity with you: what they’ve been doing, and an early
-                    warning when someone goes quiet, so you can reach out before they cancel.
+                    Clash Pro names the members who share all their training with you: their runs, rides and home workouts
+                    as well as their visits here.
                 </p>
                 <Link to="/venue/package" className={`${BTN_GHOST} mt-5`}>See packages</Link>
             </Card>
@@ -155,11 +99,9 @@ export default function MemberPeople({ gym }) {
                 time. You see what they do and when, never their sleep, heart rate or where they are.
             </p>
 
-            {count('quiet') > 0 && <NudgeQuiet gym={gym} quiet={count('quiet')} />}
-
             {people.length === 0 ? (
                 <p className="text-sm text-[#888] font-light">
-                    Nobody shares yet. Mention it at the front desk: members who share get noticed when they drift off, not when they cancel.
+                    Nobody shares yet. Visits here are in Retention for everyone; this is for members who also share their training elsewhere.
                 </p>
             ) : shown.length === 0 ? (
                 <p className="text-sm text-[#888] font-light">Nobody in this group right now.</p>

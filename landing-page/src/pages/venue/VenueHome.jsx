@@ -208,9 +208,10 @@ function ActionLink({ action, primary }) {
 }
 
 /**
- * The quiet-member nudge, sent from here (Clash Pro): the same one push, in
- * POWR's words, as the Members page. It reaches the quiet members who share
- * their activity with the gym and haven't had one in the last fortnight.
+ * The drifting nudge, sent from here (Clash Pro): the same one push, in
+ * POWR's words, as the Retention page. It reaches everyone drifting from
+ * their usual visits whose phone POWR can still hear, and who hasn't had
+ * one in the last fortnight.
  */
 function NudgeAction({ gym, quiet, primary }) {
     const toast = useToast();
@@ -230,13 +231,13 @@ function NudgeAction({ gym, quiet, primary }) {
     if (!plan.recipients) {
         return plan.cooling
             ? <span className="inline-flex items-center h-9 text-[11px] font-bold text-[#888] whitespace-nowrap">Nudged in the last fortnight</span>
-            : <ActionLink action={{ label: 'See who', to: '/venue/members' }} primary={false} />;
+            : <ActionLink action={{ label: 'See who', to: '/venue/retention' }} primary={false} />;
     }
     const send = async () => {
-        const copy = eventPushCopy('gym_quiet_nudge', { gym_name: gym.name, weeks: 3 });
+        const copy = eventPushCopy('gym_quiet_nudge', { gym_name: gym.name, weeks: 2 });
         const who = plan.recipients === quiet
             ? `${plan.recipients === 1 ? 'them' : `all ${plan.recipients}`}`
-            : `the ${plan.recipients} of them who share their activity with ${gym.name}`;
+            : `the ${plan.recipients} of them who haven’t had one in the last fortnight`;
         if (!window.confirm(`Send this push to ${who}?\n\n${copy.title}\n${copy.body}\n\nEach gets it once, and not again for a fortnight.`)) return;
         setBusy(true);
         try {
@@ -342,7 +343,7 @@ function People({ wall, top, failed, summary, activity }) {
     const quiet = activity && !activity.too_few ? (activity.quiet ?? 0) : null;
     const counts = [
         `${fmtNum(summary.members ?? 0)} member${summary.members === 1 ? '' : 's'}`,
-        quiet != null && `${fmtNum(quiet)} gone quiet`,
+        quiet != null && `${fmtNum(quiet)} drifting`,
         summary.new_faces ? `${fmtNum(summary.new_faces)} new face${summary.new_faces === 1 ? '' : 's'}` : null,
     ].filter(Boolean).join(' · ');
     return (
