@@ -13,7 +13,8 @@ import { deleteGymTeamMember, fetchGymPlace, orderGymTeam, saveGymTeamMember, up
 // the about, and the team: trainers, coaches and staff, each with a photo,
 // what they do and a booking link, so a member can book them from the app.
 // Changes show on the phone as they're typed and reach members on Save.
-// Owners change things; staff (and an admin previewing) can look.
+// Owners change things, and so can POWR admins previewing a gym (the server
+// allows them and audits it as 'admin'), under a banner saying so. Staff look.
 
 const DAYS = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']];
 const BG = { dark: '#141414', black: '#000000', white: '#FFFFFF' };
@@ -48,11 +49,12 @@ function Saved({ on }) {
     return on ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0B7A57]"><Check size={12} /> Saved. Members see it now.</span> : null;
 }
 
-function UploadButton({ label, busy, disabled, onFile, compact = false }) {
+function UploadButton({ label, busy, disabled, onFile, compact = false, primary = false }) {
     const ref = useRef(null);
     return (
         <>
-            <button type="button" onClick={() => ref.current?.click()} disabled={busy || disabled} className={`${BTN_GHOST} h-10 ${compact ? 'px-4 gap-2 tracking-[0.12em] whitespace-nowrap' : ''}`}>
+            <button type="button" onClick={() => ref.current?.click()} disabled={busy || disabled}
+                className={primary ? `${BTN_GOLD} h-11 px-6` : `${BTN_GHOST} h-10 ${compact ? 'px-4 gap-2 tracking-[0.12em] whitespace-nowrap' : ''}`}>
                 <Upload size={13} /> {busy ? 'Uploading' : label}
             </button>
             <input ref={ref} type="file" accept="image/*" className="hidden" aria-label={label}
@@ -156,7 +158,8 @@ export default function GymAppCard({ gym, profile, onProfile, team, onTeam, focu
     }, [pid]);
 
     const ready = !!profile && !!profile.id && team != null;
-    const canEdit = !!profile?.can_edit && !isActingGym;
+    // gym_profile's can_edit: an owner, or a POWR admin (previewing any gym).
+    const canEdit = !!profile?.can_edit;
     const members = useMemo(() => team?.members ?? [], [team]);
     const liveCount = members.filter((m) => m.active).length;
 
@@ -302,7 +305,7 @@ export default function GymAppCard({ gym, profile, onProfile, team, onTeam, focu
     const expandedId = selected?.startsWith('member:') ? selected.slice(7) : null;
     const readOnlyNote = !canEdit && (
         <p className="text-[12px] text-[#888] bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl px-4 py-3 mb-5">
-            {isActingGym ? 'Preview only: change a gym’s page from the admin pages.' : 'Only an owner can change your page. You can see everything here.'}
+            Only an owner can change your page. You can see everything here.
         </p>
     );
 
@@ -318,7 +321,7 @@ export default function GymAppCard({ gym, profile, onProfile, team, onTeam, focu
                 </div>
                 {canEdit && (
                     <div className="flex flex-wrap items-center gap-2 mt-4">
-                        <UploadButton label={view.image_url ? 'Replace' : 'Upload a photo'} busy={busy === 'cover'} onFile={(f) => uploadProfileImage('cover', 'image_url', f)} />
+                        <UploadButton primary={!view.image_url} label={view.image_url ? 'Replace' : 'Upload a photo'} busy={busy === 'cover'} onFile={(f) => uploadProfileImage('cover', 'image_url', f)} />
                         {view.image_url && <button type="button" onClick={() => saveProfile('cover', { image_url: null })} disabled={!!busy} className={`${BTN_GHOST} h-10`}><Trash2 size={13} /> Remove</button>}
                         <Saved on={saved === 'cover'} />
                     </div>
@@ -338,7 +341,7 @@ export default function GymAppCard({ gym, profile, onProfile, team, onTeam, focu
                     <div className="min-w-0">
                         {canEdit && (
                             <div className="flex flex-wrap gap-2">
-                                <UploadButton label={view.logo_url ? 'Replace' : 'Upload your logo'} busy={busy === 'logo'} onFile={(f) => uploadProfileImage('logo', 'logo_url', f)} />
+                                <UploadButton primary={!view.logo_url} label={view.logo_url ? 'Replace' : 'Upload your logo'} busy={busy === 'logo'} onFile={(f) => uploadProfileImage('logo', 'logo_url', f)} />
                                 {view.logo_url && <button type="button" onClick={() => saveProfile('logo', { logo_url: null })} disabled={!!busy} className={`${BTN_GHOST} h-10`}><Trash2 size={13} /> Remove</button>}
                             </div>
                         )}
@@ -621,6 +624,12 @@ export default function GymAppCard({ gym, profile, onProfile, team, onTeam, focu
                             })}
                         </div>
                         <div className="mt-6 pt-6 border-t border-[#F0F0EC]">
+                            {isActingGym && canEdit && (
+                                <div className="mb-5 flex items-start gap-2.5 text-[12px] text-[#6b5c00] bg-[#FBF8E1] border border-[#E8D200]/60 rounded-xl px-4 py-3">
+                                    <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#E8D200] shrink-0" />
+                                    <span>You’re changing <b>{profile.name}</b>’s page as a POWR admin. Saves go live in the app straight away, and the gym can see them.</span>
+                                </div>
+                            )}
                             {error && <div className="mb-4 text-red-600 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}
                             {editor}
                         </div>
