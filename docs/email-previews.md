@@ -2,7 +2,7 @@
 
 Every server-sent email function (`send-weekly-summary`, `send-level-up-email`,
 `send-brand-weekly-report`, `send-reengagement-email`, `send-partner-setup-reminder`,
-`send-redemption-receipt`)
+`send-redemption-receipt`, `send-gym-email`)
 has a `sample: true` mode that renders representative data to one address and
 touches nothing. It is gated by the same `x-resolve-token` as the real sends.
 The anon key never authorises a send: it is public, so accepting it would make
@@ -38,6 +38,7 @@ Per-function sample options:
 | `send-reengagement-email` | `{"sample":true,"only_email":…,"variant":"lapsed"\|"never_started","stage":1\|2}` (both omitted = all four); `{"dry_run":true}` lists who is due without sending |
 | `send-partner-setup-reminder` | `{"sample":true,"only_email":…,"stage":"invite"\|"delivery"}` (omitted = both); `{"dry_run":true}` lists the brands due without sending |
 | `send-redemption-receipt` | `{"sample":true,"only_email":…,"kind":"code"\|"link"}` (omitted = both) |
+| `send-gym-email` | `{"sample":true,"only_email":…,"kind":K}`; K = `weekly_recap` \| `drift_digest` \| `results_ready` \| `review_result` (+`decision` approved\|rejected\|pulled) \| `welcome` (+`role` owner\|staff) \| `invite_reminder` \| `trial_ending` (+`stage` 14\|3) \| `trial_ended` \| `package_changed` (+`from`/`to`) \| `support_reply` (+`updated`) \| `clash_night` (+`decision` confirmed\|declined\|called_off). `{"kind":"lifecycle","dry_run":true}` lists the trial mail and invite reminders due without sending |
 
 The `email-previews` function is the other route: it has its own key and a
 hard-coded recipient allowlist, and renders the welcome / weekly / level-up

@@ -44,6 +44,9 @@ type NotificationType =
   // A gym's "your spot's still here" to members who share activity with it
   // and have gone quiet (gym_nudge_quiet, Clash Pro, on the gym's press).
   | 'gym_quiet_nudge'
+  // Once per gym, automatically, the first time its portal is switched on:
+  // "<gym> is on POWR" to the people it can now see (_gym_member_notice_dispatch).
+  | 'gym_on_powr'
   // One-shot setup notice when a user loses 'always' location (dispatch-daily-
   // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
   | 'location_permission_lost'
@@ -111,6 +114,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'event_kickoff':
     case 'event_doors_open':
     case 'gym_quiet_nudge':
+    case 'gym_on_powr':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -175,6 +179,7 @@ const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   daily_reminder:          6 * 60 * 60,
   inactivity_nudge:        12 * 60 * 60,
   gym_quiet_nudge:         24 * 60 * 60,  // a day late is still a nudge; a week late is noise
+  gym_on_powr:             48 * 60 * 60,  // a notice, not a moment: two days late still says it
   // Someone has probably taken it by tomorrow; a stale "new on the board" is
   // worse than none, because tapping it lands on a challenge that's gone.
   challenge_open_posted:   12 * 60 * 60,
@@ -625,8 +630,10 @@ function buildMessage(
           priority: 'high',
         };
       }
-      case 'gym_quiet_nudge': {
-        // gym_nudge_quiet — the gym pressed Send on its Members page. Tapping
+      case 'gym_quiet_nudge':
+      case 'gym_on_powr': {
+        // gym_nudge_quiet — the gym pressed Send on its Members page; or
+        // gym_on_powr — the gym's portal went on (once, automatically). Tapping
         // opens the gym's card in Discover (a check-in is the ask), which
         // needs the venue id and where it is; the tab alone otherwise.
         const { title, body } = eventPushCopy(type, payload);
@@ -1224,6 +1231,8 @@ async function processOne(
     : type === 'event_announced' ? 'announcements'
     // A gym reaching out to someone who has drifted is an announcement too.
     : type === 'gym_quiet_nudge' ? 'announcements'
+    // "<gym> is on POWR" is an announcement from POWR about the gym.
+    : type === 'gym_on_powr' ? 'announcements'
     : type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
     : type === 'session_upgraded' ? 'session_completed'
     : type === 'vault_unlocked' ? 'points_milestone'
