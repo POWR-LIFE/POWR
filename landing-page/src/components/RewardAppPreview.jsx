@@ -53,6 +53,17 @@ export const ION = {
   // Codepoints from @expo/vector-icons' Ionicons glyph map.
   'home': '\uf382',
   'bag-outline': '\uf161',
+  // The gym's page on Discover (GymAppPreview).
+  'close': '\uf24a',
+  'time-outline': '\uf5de',
+  'location-sharp': '\uf3c6',
+  'flash': '\uf316',
+  'person-outline': '\uf4ac',
+  'ribbon-outline': '\uf545',
+  'calendar': '\uf1cf',
+  'star': '\uf595',
+  'star-outline': '\uf599',
+  'navigate': '\uf46c',
   'home-outline': '',
   'bar-chart-outline': '',
   'trophy-outline': '',

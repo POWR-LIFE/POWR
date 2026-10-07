@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
     ArrowRight, CalendarDays, Flag, Flame, Lock, Megaphone, Package, Send, Sparkles, TrendingUp, Trophy, Tv, UserPlus, Users, Zap,
 } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Card, Micro, Spinner, Empty, fmtNum, BTN_GHOST } from '../../components/portal/ui';
 import { useToast } from '../../lib/toast';
-import { fetchGymBoard, fetchGymEvents, fetchGymInsights, fetchGymLeague, fetchGymProfile, fetchGymSummary, fetchMemberActivity, nudgeQuietMembers } from './venueApi';
+import { fetchGymBoard, fetchGymEvents, fetchGymInsights, fetchGymLeague, fetchGymProfile, fetchGymSummary, fetchGymTeam, fetchMemberActivity, nudgeQuietMembers } from './venueApi';
 import { Columns } from './charts';
 import { boardName, ordinal, pctChange, weekLabel } from '../../../../shared/gymBoard.ts';
 import { localGyms, rankByEffort, rankGyms, ranksAtDayStart, rivalOf, sessionsToClose } from '../../../../shared/gymLeague.ts';
@@ -16,6 +16,7 @@ import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushC
 import { usePackage, trialDaysLeft, PACKAGE_LABEL } from './packages';
 import { statusKey, fmtDay, lastDay } from './eventUi';
 import WeekPosts from './WeekPosts';
+import GymAppCard from './GymAppCard';
 import { markDone, useDone, endOfDay } from './doneStore';
 
 // The page a gym opens most. Every card earns its place:
@@ -24,6 +25,9 @@ import { markDone, useDone, endOfDay } from './doneStore';
 //                button that does it (shared/gymMoves.ts picks them)
 //   Posts        this week's posts, made from those numbers and the gym's
 //                photo, to look through and download (WeekPosts.jsx)
+//   In the app   the gym's page as members see it, on a phone, with every
+//                part of it (cover, logo, hours, the team) a tap from
+//                changing (GymAppCard.jsx)
 //   Your people  who's worth a word this week, by name: the leader, the most
 //                improved, the session of the week, the longest streak, the new faces
 //   Gym League   the race: the table of gyms nearby, the gap, who's in, per member
@@ -572,7 +576,8 @@ export default function VenueHome() {
     const [wall, setWall] = useState(null);               // the gym's big-screen feed: spotlight, streaks, all-time
     const [activity, setActivity] = useState(null);
     const [activityDone, setActivityDone] = useState(false);
-    const [profile, setProfile] = useState(null);         // gym_profile: where it is (the join QR), the recap switch
+    const [profile, setProfile] = useState(null);         // gym_profile: where it is (the join QR), the recap switch, the app page
+    const [team, setTeam] = useState(null);               // gym_team: who's on the gym's page in the app; { failed } if it didn't load
     const [todayPost, setTodayPost] = useState(undefined); // from the posts row; undefined until it reports
     const [error, setError] = useState(null);
     const ticks = useRef(0);
@@ -584,8 +589,20 @@ export default function VenueHome() {
         fetchGymProfile(gym.partner_id)
             .then((p) => { if (alive) setProfile(p ?? {}); })
             .catch(() => { if (alive) setProfile({}); });
+        setTeam(null);
+        fetchGymTeam(gym.partner_id)
+            .then((t) => { if (alive) setTeam(t ?? { failed: true }); })
+            .catch(() => { if (alive) setTeam({ failed: true }); });
         return () => { alive = false; };
     }, [gym.partner_id]);
+
+    // /venue#app (or #app-team, #app-cover…, from a move): down to the phone, that part open.
+    const { hash } = useLocation();
+    const appFocus = hash.startsWith('#app') ? (hash.slice(5) || null) : null;
+    useEffect(() => {
+        if (!summary || !hash.startsWith('#app')) return;
+        setTimeout(() => document.getElementById('app')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    }, [hash, !!summary]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const load = useCallback(async (first) => {
         const slow = first || ticks.current % SLOW_EVERY === 0;
@@ -641,7 +658,7 @@ export default function VenueHome() {
     // moves don't reshuffle as each arrives.
     const leagueSettled = !summary?.board?.slug || !summary.board.display_token || league != null || leagueError;
     const moves = useMemo(() => {
-        if (!summary || !pkg || insights == null || !activityDone || !leagueSettled || !profile || todayPost === undefined) return null;
+        if (!summary || !pkg || insights == null || !activityDone || !leagueSettled || !profile || !team || todayPost === undefined) return null;
         let posterMade = false;
         try { posterMade = !!localStorage.getItem(`powr_join_poster_${summary.gym?.id ?? ''}`); } catch { /* fine */ }
         return gymMoves({
@@ -659,14 +676,15 @@ export default function VenueHome() {
             weekdays: Array.isArray(insights.days) ? insights.days : null,
             posterMade,
             todayPost,
-            hasPhoto: !!summary.gym?.image_url,
+            hasPhoto: profile && 'image_url' in profile ? !!profile.image_url : !!summary.gym?.image_url,
+            teamCount: team.members ? team.members.filter((m) => m.active).length : null,
             recapOn: typeof profile.recap_email === 'boolean' ? profile.recap_email : null,
             lastWeekSessions: summary.last_week?.sessions ?? null,
             done,
             fmtDay,
             lastDay,
         });
-    }, [summary, pkg, insights, activityDone, leagueSettled, profile, todayPost, done, activity, events, standing, name]);
+    }, [summary, pkg, insights, activityDone, leagueSettled, profile, team, todayPost, done, activity, events, standing, name]);
     const later = useCallback((m) => markDone(gym.partner_id, m.key, m.snooze === 'day' ? endOfDay(tz) : new Date(Date.now() + 7 * 86_400_000)), [gym.partner_id, tz]);
 
     if (error) return <Empty title="Couldn’t load your gym" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
@@ -698,6 +716,9 @@ export default function VenueHome() {
                 <div className="creator-rise lg:col-span-6 flex flex-col min-h-0" style={{ animationDelay: '120ms' }}><Moves moves={moves} gym={{ ...gym, name }} quiet={quiet} onLater={later} /></div>
                 <div className="creator-rise lg:col-span-12 min-w-0" style={{ animationDelay: '180ms' }}>
                     <WeekPosts gym={gym} name={name} summary={summary} insights={insights} standing={standing} events={events} pkg={pkg} tz={tz} profile={profile} onToday={setTodayPost} />
+                </div>
+                <div className="creator-rise lg:col-span-12 min-w-0" style={{ animationDelay: '220ms' }}>
+                    <GymAppCard gym={gym} profile={profile} onProfile={setProfile} team={team} onTeam={setTeam} focus={appFocus} />
                 </div>
                 <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '240ms' }}><People wall={wall} top={top} failed={!!insights?.failed} summary={summary} activity={activity} /></div>
                 <div className="creator-rise lg:col-span-4 flex flex-col min-h-0" style={{ animationDelay: '300ms' }}><League board={board} standing={standing} error={leagueError} founding={pkg?.package === 'founding'} /></div>

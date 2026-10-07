@@ -11,7 +11,9 @@ import { PackageContext, packageLine } from './packages';
 
 // Settings: the gym's own details (what the app, the boards and every post
 // show), its logo and photo, opening hours, the team, the package and help.
-// Owners change things; staff can see them.
+// Owners change things, and so can POWR admins previewing a gym (the server
+// allows them and audits it as 'admin'), under a banner saying so, as on the
+// Overview's app page. Staff can see them.
 
 const SUPPORT_EMAIL = 'support@powr.life';
 const DAYS = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']];
@@ -92,13 +94,14 @@ export default function VenueSettings() {
     useEffect(() => { setProfile(null); load(); }, [gym.partner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // A #section in the link lands on that card: #team (the old Team page),
-    // #photo and #recap (the Overview's suggestions).
+    // #photo and #recap (the Overview's suggestions), #help.
     useEffect(() => {
         if (!profile || !location.hash) return;
         document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' });
     }, [profile, location.hash]);
 
-    const canEdit = !!profile?.can_edit && !isActingGym;
+    // gym_profile's can_edit: an owner, or a POWR admin (previewing any gym).
+    const canEdit = !!profile?.can_edit;
     const dirty = useMemo(() => profile && TEXT_FIELDS.some((k) => (form[k] ?? '') !== (profile[k] ?? '')), [form, profile]);
     const hoursDirty = useMemo(() => profile && JSON.stringify(hoursFrom(profile.opening_hours)) !== JSON.stringify(hours), [hours, profile]);
 
@@ -148,7 +151,13 @@ export default function VenueSettings() {
     return (
         <Page>
             <PageTitle eyebrow="Settings" title="Your gym" sub={profile.name} />
-            {!canEdit && <p className="text-[12px] text-[#888] mt-4">{isActingGym ? 'Preview only: change a gym’s details from the admin pages.' : 'Only an owner can change these details. You can see them, and the team.'}</p>}
+            {!canEdit && <p className="text-[12px] text-[#888] mt-4">Only an owner can change these details. You can see them, and the team.</p>}
+            {isActingGym && canEdit && (
+                <div className="mt-4 flex items-start gap-2.5 text-[12px] text-[#6b5c00] bg-[#FBF8E1] border border-[#E8D200]/60 rounded-xl px-4 py-3 max-w-2xl">
+                    <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#E8D200] shrink-0" />
+                    <span>You’re changing <b>{profile.name}</b>’s details as a POWR admin. Saves go live in the app straight away, and the gym can see them.</span>
+                </div>
+            )}
             {error && <div className="mt-4 text-red-600 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-xl">{error}</div>}
 
             <div className="mt-8 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
@@ -213,8 +222,8 @@ export default function VenueSettings() {
                         <GymStaffPanel partnerId={gym.partner_id} gymName={profile.name} adminView={isActingGym} selfUserId={isActingGym ? null : user?.id} />
                     </div>
 
-                    {/* Help: Ask POWR opens a support ticket; answers show here */}
-                    <GymHelp supportEmail={SUPPORT_EMAIL} gymName={profile.name} />
+                    {/* Help: Ask POWR opens a support ticket; answers show here (#help: the Overview's "move my pin") */}
+                    <div id="help" className="scroll-mt-6"><GymHelp supportEmail={SUPPORT_EMAIL} gymName={profile.name} /></div>
                 </div>
 
                 <div className="space-y-6 min-w-0">

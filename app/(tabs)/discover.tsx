@@ -1,5 +1,6 @@
 import { HeaderActions } from '@/components/HeaderActions';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
+import { teamHeading, teamLine } from '@/shared/gymTeam';
 import PermissionFixScreen, { type PermissionFixKind } from '@/components/PermissionFixScreen';
 import { fetchPartnersInArea, getPartnerGeometry, searchPartners, useGeofenceContext, type DayKey, type OpeningHours, type Partner, type PartnerGeoPoint, type Trainer } from '@/context/GeofenceContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
@@ -1513,11 +1514,12 @@ export default function DiscoverScreen() {
                   {trainers.length > 0 && (
                     <View style={styles.trainersSection}>
                       <View style={styles.trainersDivider} />
-                      <Text style={styles.trainersSectionTitle}>Personal Trainers</Text>
+                      <Text style={styles.trainersSectionTitle}>{teamHeading(trainers)}</Text>
                       {trainers.map(t => (
                         <TrainerCard
                           key={t.id}
                           trainer={t}
+                          line={teamLine(t, trainers)}
                           expanded={expandedTrainerId === t.id}
                           onToggle={() => {
                             LayoutAnimation.configureNext(
@@ -2047,9 +2049,10 @@ function PartnerListRow({
 }
 
 function TrainerCard({
-  trainer, expanded, onToggle,
+  trainer, line, expanded, onToggle,
 }: {
-  trainer: Trainer; expanded: boolean; onToggle: () => void;
+  /** Their role (once the team is mixed) and experience: shared/gymTeam.ts. */
+  trainer: Trainer; line: string; expanded: boolean; onToggle: () => void;
 }) {
   const hasProfile = !!trainer.profile_url;
   const hasBooking = !!trainer.booking_url;
@@ -2086,8 +2089,8 @@ function TrainerCard({
           </View>
           <View style={styles.trainerInfo}>
             <Text style={styles.trainerName} numberOfLines={1}>{trainer.name}</Text>
-            {trainer.experience ? (
-              <Text style={styles.trainerExperience}>{trainer.experience}</Text>
+            {line ? (
+              <Text style={styles.trainerExperience}>{line}</Text>
             ) : null}
             {trainer.bio ? (
               <Text style={styles.trainerBio} numberOfLines={2}>{trainer.bio}</Text>
@@ -2113,10 +2116,10 @@ function TrainerCard({
             <Ionicons name="chevron-up" size={16} color={GOLD} />
           </Pressable>
           <Text style={styles.trainerNameLarge} numberOfLines={1} adjustsFontSizeToFit>{trainer.name}</Text>
-          {trainer.experience ? (
+          {line ? (
             <View style={styles.trainerExperienceRow}>
               <Ionicons name="ribbon-outline" size={12} color={GOLD} />
-              <Text style={styles.trainerExperienceLarge}>{trainer.experience}</Text>
+              <Text style={styles.trainerExperienceLarge}>{line}</Text>
             </View>
           ) : null}
 

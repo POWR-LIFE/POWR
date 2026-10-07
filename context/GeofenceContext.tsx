@@ -78,6 +78,8 @@ export interface Trainer {
   bio: string | null;
   specialties: string[] | null;
   experience: string | null;
+  /** Null for a personal trainer (every row before roles); else e.g. Coach, Physio. */
+  role?: string | null;
   profile_url: string | null;
   booking_url: string | null;
   active: boolean;

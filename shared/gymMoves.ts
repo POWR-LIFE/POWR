@@ -5,7 +5,7 @@
 //
 // The card is never empty: after what the numbers call for come the everyday
 // moves (today's post, the join link, next month's challenge, the discounts,
-// the Members page, the Studio, a missing photo or recap), a different order
+// the Members page, the Studio, a missing photo, team or recap), a different order
 // each day. Those can be put off ("Not now", `done`) and the next one steps up.
 //
 // Pure: the portal passes what it has already loaded (the summary, its
@@ -87,6 +87,8 @@ export type MovesInput = {
   todayPost?: { label: string; free: boolean } | null;
   /** The gym has a photo on its POWR listing (false: it hasn't; undefined: unknown). */
   hasPhoto?: boolean;
+  /** People shown on the gym's page in the app (gym_team, active); null or undefined: unknown. */
+  teamCount?: number | null;
   /** The Monday recap email for whoever is looking: on, off, or unknown (null). */
   recapOn?: boolean | null;
   /** Last week's sessions at the gym. */
@@ -389,7 +391,15 @@ function everydayMoves(i: MovesInput): Move[] {
       key: 'photo', kind: 'setup', snooze: 'week',
       title: 'Add your gym’s photo',
       detail: 'It goes behind every post, and on your gym’s page in the app.',
-      action: { label: 'Add it', to: '/venue/settings#photo' },
+      action: { label: 'Add it', to: '/venue#app-cover' },
+    });
+  }
+  if (i.teamCount === 0) {
+    pool.push({
+      key: 'team', kind: 'setup', snooze: 'week',
+      title: 'Put your trainers in the app',
+      detail: `Members who open ${g} in the app see them, and can book a session straight from their card.`,
+      action: { label: 'Add them', to: '/venue#app-team' },
     });
   }
   if (i.recapOn === false) {
