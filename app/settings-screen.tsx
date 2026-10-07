@@ -36,7 +36,7 @@ import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifica
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
 import { formatMemberId } from '@/shared/memberId';
-import { getGymSharing, setGymSharing, type GymSharing } from '@/lib/api/gymSharing';
+import { getGymSharing, setGymSharing, setGymVisitSharing, type GymSharing } from '@/lib/api/gymSharing';
 import { fetchProfile, updateLeaderboardVisibility } from '@/lib/api/user';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -240,6 +240,19 @@ export default function SettingsScreen() {
     }
   };
   const showGymSharing = !!(gymSharing?.portal && gymSharing.gym_name);
+  // "Let gyms see my visits": on unless switched off, for every gym the member
+  // trains at, so it's offered whether or not they've picked a gym.
+  const showVisitSharing = typeof gymSharing?.visits === 'boolean';
+  const toggleVisitSharing = async (on: boolean) => {
+    const before = gymSharing;
+    setGymSharingState((s) => (s ? { ...s, visits: on } : s));
+    try {
+      setGymSharingState(await setGymVisitSharing(on));
+    } catch (e: any) {
+      setGymSharingState(before);
+      Alert.alert('Couldn’t change that', e?.message ?? 'Try again in a moment.');
+    }
+  };
   // "Show me on gym boards": profiles.show_on_leaderboard. Every gym board
   // and screen, the Gym League and a gym portal's top ten join on it, so off
   // means no gym shows this member by name. Read on focus; null until known.
@@ -832,7 +845,7 @@ export default function SettingsScreen() {
             sublabel="Friends can see your workouts"
             value={shareActivity}
             onValueChange={(v) => { setShareActivity(v); persistMeta('share_activity', v); }}
-            isLast={showOnBoards === null && !showGymSharing}
+            isLast={showOnBoards === null && !showVisitSharing && !showGymSharing}
           />
           {showOnBoards !== null && (
             <RowToggle
@@ -841,6 +854,16 @@ export default function SettingsScreen() {
               sublabel="Your name and points on the leaderboard at gyms you train at: the app, their screens and Gym Clash. Off, you still earn."
               value={showOnBoards}
               onValueChange={toggleShowOnBoards}
+              isLast={!showVisitSharing && !showGymSharing}
+            />
+          )}
+          {showVisitSharing && (
+            <RowToggle
+              icon="walk-outline"
+              label="Let gyms see my visits"
+              sublabel="Gyms you train at see when you were in, so they can notice if you stop coming. Never your other training, health data or where you are."
+              value={gymSharing!.visits!}
+              onValueChange={toggleVisitSharing}
               isLast={!showGymSharing}
             />
           )}
@@ -848,7 +871,7 @@ export default function SettingsScreen() {
             <RowToggle
               icon="business-outline"
               label={`Share with ${gymSharing!.gym_name}`}
-              sublabel="Your gym sees what you train, how often and when. Never your sleep, heart rate or where you are."
+              sublabel="Your gym also sees the rest of your training: runs, rides, home workouts, how often and when. Never your sleep, heart rate or where you are."
               value={gymSharing!.sharing}
               onValueChange={toggleGymSharing}
               isLast

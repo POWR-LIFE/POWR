@@ -227,24 +227,24 @@ function memberMoves(i: MovesInput): Move[] {
     return [{
       key: 'quiet-locked', kind: 'members', priority: 12,
       title: 'See who’s drifting before they cancel',
-      detail: 'Clash+ counts the members who’ve gone quiet. Clash Pro names them.',
+      detail: 'Clash+ counts who’s drifting from their usual visits. Clash Pro names them.',
       action: { label: 'Clash+', to: PACKAGES, lock: 'clash_plus' },
     }];
   }
   const a = i.activity;
   const q = a && !a.too_few ? a.quiet ?? 0 : 0;
   if (q < 1) return [];
-  // Regulars: 6+ days of training in the 6 weeks before, none in the last 2.
-  const title = `${plural(q, 'regular has', 'regulars have')} gone quiet`;
+  // Retention's drifting: well past their own usual gap between visits.
+  const title = `${plural(q, 'regular is', 'regulars are')} drifting`;
   return f.people
     ? [{
       key: 'quiet', kind: 'members', priority: 70, nudge: true, title,
-      detail: 'Nothing in the last 2 weeks. One push from POWR invites them back.',
-      action: { label: 'Nudge them', to: '/venue/members' },
+      detail: 'Well past their usual gap between visits. One push from POWR invites them back.',
+      action: { label: 'See who', to: '/venue/retention' },
     }]
     : [{
       key: 'quiet', kind: 'members', priority: 55, title,
-      detail: 'Nothing in the last 2 weeks. Clash Pro names them and nudges them back.',
+      detail: 'Well past their usual gap between visits. Clash Pro names them and nudges them back.',
       action: { label: 'Clash Pro', to: PACKAGES, lock: 'pro' },
     }];
 }

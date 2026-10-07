@@ -71,7 +71,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const noun = (type: string) => ACTIVITY_NOUN[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
 
 /**
- * Up to `limit` findings, most useful first: members going quiet (retention),
+ * Up to `limit` findings, most useful first: regulars drifting (Retention),
  * the biggest rise, heavy walkers vs light lifters, training at other gyms,
  * the biggest fall, a weak weekday, a seasonal dip, the committed core.
  * Nothing when the gym is below the member threshold.
@@ -88,13 +88,15 @@ export function memberInsights(
   const quiet = a.quiet ?? 0;
   const slowing = a.slowing ?? 0;
   if (quiet + slowing > 0) {
+    // quiet/slowing are Retention's drifting/slipping: each person against
+    // their own usual gap between visits (gym_member_activity, 20261007120000).
     const finding = quiet > 0
-      ? `${quiet} member${quiet === 1 ? ' has' : 's have'} gone quiet${slowing ? `, and ${slowing} more ${slowing === 1 ? 'is' : 'are'} slowing down` : ''}`
-      : `${slowing} member${slowing === 1 ? ' is' : 's are'} slowing down`;
+      ? `${quiet} regular${quiet === 1 ? ' is' : 's are'} drifting${slowing ? `, and ${slowing} more ${slowing === 1 ? 'is' : 'are'} slipping` : ''}`
+      : `${slowing} regular${slowing === 1 ? ' is' : 's are'} slipping`;
     out.push({
       key: 'quiet',
       finding,
-      action: opts.canSeePeople ? 'Reach out before they cancel. See who below.' : 'Reach out before they cancel. Clash Pro shows you who.',
+      action: opts.canSeePeople ? 'Reach out before they cancel. See who in Retention.' : 'Reach out before they cancel. Clash Pro shows you who.',
       tone: 'watch',
     });
   }

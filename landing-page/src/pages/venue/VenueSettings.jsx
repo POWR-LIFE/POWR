@@ -6,7 +6,7 @@ import { Page, PageTitle, Card, Micro, Spinner, Empty, INPUT, LABEL, BTN_GOLD, B
 import GymStaffPanel from '../../components/GymStaffPanel';
 import GymHelp from './GymHelp';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
-import { fetchGymProfile, setRecapEmail, updateGymProfile } from './venueApi';
+import { fetchGymProfile, setDriftEmail, setRecapEmail, updateGymProfile } from './venueApi';
 import { PackageContext, packageLine } from './packages';
 
 // Settings: the gym's own details (what the app, the boards and every post
@@ -124,18 +124,20 @@ export default function VenueSettings() {
     };
     const saveHours = () => apply('hours', { opening_hours: hours });
     const setDay = (k, next) => setHours((h) => ({ ...h, [k]: next }));
-    // The Monday recap is each person's own choice, so staff can set it too.
-    const setRecap = async (on) => {
-        setSaving('recap');
+    // The emails are each person's own choice, so staff can set them too.
+    const setEmail = (key, call) => async (on) => {
+        setSaving(key);
         setError(null);
         try {
-            const v = await setRecapEmail(gym.partner_id, on);
-            setProfile((p) => ({ ...p, recap_email: v }));
-            setSaved('recap');
-            setTimeout(() => setSaved((s) => (s === 'recap' ? null : s)), 2500);
+            const v = await call(gym.partner_id, on);
+            setProfile((p) => ({ ...p, [`${key}_email`]: v }));
+            setSaved(key);
+            setTimeout(() => setSaved((s) => (s === key ? null : s)), 2500);
         } catch (e) { setError(e.message || 'That didn’t save.'); }
         finally { setSaving(null); }
     };
+    const setRecap = setEmail('recap', setRecapEmail);
+    const setDrift = setEmail('drift', setDriftEmail);
 
     if (loadError) return <Page><Empty title="Couldn’t load your settings" action={<button type="button" onClick={load} className={BTN_GHOST}>Try again</button>}>{loadError}</Empty></Page>;
     if (!profile) return <Page><Spinner /></Page>;
@@ -265,6 +267,18 @@ export default function VenueSettings() {
                                 </span>
                             </label>
                             {saved === 'recap' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">Saved.</p>}
+                            {profile.drift_email != null && pkg?.features?.insights && (
+                                <>
+                                    <label className="flex items-start gap-3 cursor-pointer mt-5 pt-5 border-t border-[#F0F0EC]">
+                                        <input type="checkbox" className="accent-[#E8D200] w-4 h-4 mt-0.5 shrink-0" checked={!!profile.drift_email} disabled={busy('drift')} onChange={(e) => setDrift(e.target.checked)} />
+                                        <span>
+                                            <span className="block text-[13px] font-bold text-[#1A1A1A]">When someone starts drifting</span>
+                                            <span className="block text-[12px] text-[#888] leading-relaxed mt-1">A morning email on days when someone goes well past their usual gap between visits{pkg?.features?.people ? ', with who' : ''}. Never more than one a day.</span>
+                                        </span>
+                                    </label>
+                                    {saved === 'drift' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">Saved.</p>}
+                                </>
+                            )}
                         </Card>
                         </div>
                     )}

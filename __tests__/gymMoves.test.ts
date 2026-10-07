@@ -95,11 +95,11 @@ describe('gymMoves', () => {
     expect(keys({ events: null })).not.toContain('first');
   });
 
-  it('turns quiet members into a nudge on Pro, and names the package otherwise', () => {
+  it('turns drifting regulars into a nudge on Pro, and names the package otherwise', () => {
     const pro = gymMoves({ ...base, features: PRO, activity: activity({ quiet: 4 }) });
-    expect(pro[0]).toMatchObject({ key: 'quiet', nudge: true, title: '4 regulars have gone quiet', action: { label: 'Nudge them' } });
+    expect(pro[0]).toMatchObject({ key: 'quiet', nudge: true, title: '4 regulars are drifting', action: { label: 'See who', to: '/venue/retention' } });
     const plus = gymMoves({ ...base, activity: activity({ quiet: 1 }) });
-    expect(plus[0]).toMatchObject({ key: 'quiet', title: '1 regular has gone quiet', action: { lock: 'pro', to: '/venue/package' } });
+    expect(plus[0]).toMatchObject({ key: 'quiet', title: '1 regular is drifting', action: { lock: 'pro', to: '/venue/package' } });
     expect(plus[0].nudge).toBeUndefined();
     // Under the member threshold there's no count to show.
     expect(keys({ activity: { members: 4, too_few: true, min_members: 5 } })).not.toContain('quiet');

@@ -14,12 +14,25 @@ export type GymSharing = {
   portal: boolean;
   sharing: boolean;
   since: string | null;
+  /**
+   * "Let gyms see my visits": gyms on POWR's portal see the days and times
+   * the member was checked in THERE, so staff notice if they stop coming
+   * (Retention). On unless switched off (gym_visit_optouts); undefined from a
+   * server without migration 20261007120000, and then the row hides.
+   */
+  visits?: boolean;
 };
 
 export async function getGymSharing(): Promise<GymSharing | null> {
   const { data, error } = await supabase.rpc('my_gym_sharing');
   if (error) return null;
   return (data as GymSharing) ?? null;
+}
+
+export async function setGymVisitSharing(on: boolean): Promise<GymSharing> {
+  const { data, error } = await supabase.rpc('set_gym_visit_sharing', { p_on: on });
+  if (error) throw new Error(error.message);
+  return data as GymSharing;
 }
 
 export async function setGymSharing(on: boolean): Promise<GymSharing> {

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package, PartyPopper } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Radar, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package, PartyPopper } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
@@ -14,8 +14,10 @@ const NAV = [
     { label: 'Discounts', short: 'Discounts', path: '/venue/partners', icon: BadgePercent, feature: 'events', mobile: false },
     { label: 'Clash Nights', short: 'Nights', path: '/venue/clash-nights', icon: PartyPopper, paid: true, mobile: false },
     { label: 'Studio',   short: 'Studio',  path: '/venue/studio',  icon: Palette,   feature: 'studio'   },
-    { label: 'Screens',  short: 'Screens', path: '/venue/screens', icon: Tv              },
+    // Screens is set up once; Retention is checked every morning, so it takes the phone tab.
+    { label: 'Screens',  short: 'Screens', path: '/venue/screens', icon: Tv, mobile: false },
     { label: 'Members',  short: 'Members', path: '/venue/members', icon: Users,     feature: 'insights' },
+    { label: 'Retention', short: 'Retention', path: '/venue/retention', icon: Radar, feature: 'insights' },
     { label: 'Settings', short: 'Settings', path: '/venue/settings', icon: Settings2      },
 ];
 const PAID_NIGHTS = ['pro', 'founding'];

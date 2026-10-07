@@ -30,7 +30,7 @@ export default function TermsOfServiceScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.updated}>Last updated: 22 April 2026</Text>
+        <Text style={styles.updated}>Last updated: 7 October 2026</Text>
 
         <Section title="1. About POWR">
           POWR ("we", "us", "our") operates the POWR mobile application and website at powr.life.
@@ -75,11 +75,15 @@ export default function TermsOfServiceScreen() {
           • Impersonate another person or misrepresent your identity.
         </Section>
 
-        <Section title="7. Partner Businesses">
+        <Section title="7. Partner Businesses and Gyms">
           Rewards are provided by independent partner businesses. POWR acts as a platform connecting you
           with these partners. We are not responsible for the quality, availability, or fulfilment of
           rewards offered by partners. Any disputes regarding a specific reward should be raised with the
-          partner business directly, though we are happy to assist where we can.
+          partner business directly, though we are happy to assist where we can.{'\n\n'}
+          Gyms that use POWR’s gym portal can see your visits to them, so they can notice if you stop
+          coming and get in touch, as our Privacy Policy describes under “Your gym”. You can switch this
+          off at any time in Settings, then Privacy. Gyms are independent businesses: your membership,
+          and how a gym contacts you about it, are between you and the gym.
         </Section>
 
         <Section title="8. Intellectual Property">
