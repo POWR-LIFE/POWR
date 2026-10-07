@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronRight, Eye, EyeOff, MapPin, Plus, Smartphone, Star, Trash2, Upload, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Camera, Check, ChevronLeft, ChevronRight, Eye, EyeOff, MapPin, Plus, Smartphone, Star, Trash2, Upload, X } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Card, Micro, Spinner, INPUT, LABEL, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
 import GymAppPreview from '../../components/GymAppPreview';
@@ -49,17 +49,51 @@ function Saved({ on }) {
     return on ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0B7A57]"><Check size={12} /> Saved. Members see it now.</span> : null;
 }
 
-function UploadButton({ label, busy, disabled, onFile, compact = false, primary = false }) {
+function UploadButton({ label, busy, disabled, onFile, primary = false }) {
     const ref = useRef(null);
     return (
         <>
             <button type="button" onClick={() => ref.current?.click()} disabled={busy || disabled}
-                className={primary ? `${BTN_GOLD} h-11 px-6` : `${BTN_GHOST} h-10 ${compact ? 'px-4 gap-2 tracking-[0.12em] whitespace-nowrap' : ''}`}>
+                className={primary ? `${BTN_GOLD} h-11 px-6` : `${BTN_GHOST} h-10`}>
                 <Upload size={13} /> {busy ? 'Uploading' : label}
             </button>
             <input ref={ref} type="file" accept="image/*" className="hidden" aria-label={label}
                 onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
         </>
+    );
+}
+
+/**
+ * Someone's photo: the circle is the button (tap to add or change), so the
+ * column never has to hold anything wider than the photo itself.
+ */
+function PhotoPicker({ url, busy, canEdit, onFile, onRemove }) {
+    const ref = useRef(null);
+    const label = url ? 'Change photo' : 'Add photo';
+    return (
+        <div className="w-28 flex flex-col items-center gap-2">
+            <button type="button" onClick={() => ref.current?.click()} disabled={!canEdit || busy} aria-label={label} title={canEdit ? label : undefined}
+                className="group relative w-28 h-28 rounded-full overflow-hidden border-2 border-[#E8D200] bg-[#F4F4F1] flex items-center justify-center enabled:hover:border-[#8a7600] transition-colors disabled:cursor-default">
+                {url && <img src={storageImage(url, 300)} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+                {!url && (
+                    <span className="flex flex-col items-center gap-1.5 text-[#AAAAAA] group-enabled:group-hover:text-[#8a7600]">
+                        <Camera size={18} />
+                        <span className="text-[9px] uppercase tracking-[0.18em] font-black">{busy ? 'Uploading' : canEdit ? 'Add photo' : 'No photo'}</span>
+                    </span>
+                )}
+                {url && canEdit && (
+                    <span className={`absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1 text-white transition-opacity ${busy ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                        <Camera size={16} />
+                        <span className="text-[9px] uppercase tracking-[0.18em] font-black">{busy ? 'Uploading' : 'Change'}</span>
+                    </span>
+                )}
+            </button>
+            {canEdit && url && !busy && (
+                <button type="button" onClick={onRemove} className="text-[9px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] hover:text-red-600">Remove</button>
+            )}
+            <input ref={ref} type="file" accept="image/*" className="hidden" aria-label={label}
+                onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
+        </div>
     );
 }
 
@@ -459,18 +493,9 @@ export default function GymAppCard({ gym, profile, onProfile, team, onTeam, focu
                 </EditorHead>
                 {readOnlyNote}
                 <div className="grid grid-cols-1 sm:grid-cols-[112px_minmax(0,1fr)] gap-x-6 gap-y-5">
-                    <div>
-                        <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-[#E8D200] bg-[#F4F4F1] flex items-center justify-center">
-                            {f.photo_url ? <img src={storageImage(f.photo_url, 300)} alt="" className="w-full h-full object-cover" /> : <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#BBBBBB]">{busy === 'photo' ? '…' : 'Photo'}</span>}
-                        </div>
-                        {canEdit && (
-                            <div className="flex flex-col items-start gap-1.5 mt-3">
-                                <UploadButton compact label={f.photo_url ? 'Replace' : 'Add photo'} busy={busy === 'photo'}
-                                    onFile={async (file) => { const url = await uploadImage('photo', file, 'team'); if (url) setMemberField('photo_url', url); }} />
-                                {f.photo_url && <button type="button" onClick={() => setMemberField('photo_url', null)} className="text-[10px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] hover:text-[#1A1A1A] pl-2">Remove</button>}
-                            </div>
-                        )}
-                    </div>
+                    <PhotoPicker url={f.photo_url} busy={busy === 'photo'} canEdit={canEdit}
+                        onFile={async (file) => { const url = await uploadImage('photo', file, 'team'); if (url) setMemberField('photo_url', url); }}
+                        onRemove={() => setMemberField('photo_url', null)} />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
                         <div><label className={LABEL} htmlFor="gap-m-name">Name</label><input id="gap-m-name" className={INPUT} value={f.name} onChange={(e) => setMemberField('name', e.target.value)} disabled={!canEdit} maxLength={60} placeholder="Sam Carter" /></div>
                         <div><label className={LABEL} htmlFor="gap-m-exp">Experience</label><input id="gap-m-exp" className={INPUT} value={f.experience} onChange={(e) => setMemberField('experience', e.target.value)} disabled={!canEdit} maxLength={40} placeholder="8 years" /></div>
