@@ -54,13 +54,16 @@ function newToken() {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// An open invite for this token: exists, unused, unrevoked, unexpired.
+// An open invite for this token: exists, unused, unrevoked, unexpired. The
+// 5-day reminder (send-gym-email) mints a second link for the same invite,
+// so a token may match either hash; whichever is used first burns the row.
 async function openInvite(adminClient, token) {
   if (!token || typeof token !== 'string' || token.length < 16) return { reason: 'invalid' };
+  const hash = await sha256Hex(token);
   const { data: inv } = await adminClient
     .from('gym_staff_invites')
     .select('id, partner_id, role, status, expires_at, created_by, email')
-    .eq('token_hash', await sha256Hex(token))
+    .or(`token_hash.eq.${hash},reminder_token_hash.eq.${hash}`)
     .maybeSingle();
   if (!inv) return { reason: 'invalid' };
   if (inv.status === 'used') return { reason: 'used' };

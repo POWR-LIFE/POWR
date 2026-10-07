@@ -21,6 +21,24 @@ export interface GymRecapEvent {
   revealed_at?: string | null;
 }
 
+/**
+ * The members' notice (push gym_on_powr, once, when the portal went on) and
+ * who has been back since: get_gym_notice_returns().
+ */
+export interface GymNoticeReturns {
+  sentAt: string;
+  told: number;
+  /** Behind their own usual gap between visits that day (slipping, drifting, lapsed). */
+  away: number;
+  /** Not checked in there for 180 days or more, or never. */
+  unseen: number;
+  back: number;
+  unseenBack: number;
+  /** First visits back inside the recap's week. */
+  backIn: number;
+  unseenBackIn: number;
+}
+
 export interface GymWeeklyRecapData {
   gymName: string;
   /** "15–21 Sep", see weekLabel(). */
@@ -45,6 +63,8 @@ export interface GymWeeklyRecapData {
   /** The package names them (Clash Pro): the line can point at Members. */
   quietNamed?: boolean;
   events: GymRecapEvent[];
+  /** Shown for 12 weeks after the notice went (the caller decides). */
+  notice?: GymNoticeReturns | null;
   portalUrl?: string;
 }
 
@@ -141,6 +161,26 @@ function eventRow(e: GymRecapEvent, tz: string, portalUrl: string, isLast: boole
             </table>`;
 }
 
+/** "Since we told your members": who has been back since the notice. */
+export function noticeLines(nr: GymNoticeReturns, tz: string, gym: string): { big: number | null; lead: string; lines: string[] } {
+  const day = fmtDay(nr.sentAt, tz);
+  const awayAll = nr.away + nr.unseen;
+  const backAll = nr.back + nr.unseenBack;
+  const week = nr.backIn + nr.unseenBackIn;
+  if (awayAll === 0) {
+    return { big: null, lead: `On ${day} POWR told ${plural(nr.told, "person", "people")} who train at ${gym} that you're on POWR. Every one of them was already coming in regularly.`, lines: [] };
+  }
+  const lines: string[] = [];
+  if (nr.away > 0) lines.push(`${n(nr.back)} of the ${n(nr.away)} who had fallen behind their usual visits`);
+  if (nr.unseen > 0) lines.push(`${n(nr.unseenBack)} of the ${n(nr.unseen)} who hadn't been in for six months or more`);
+  if (week > 0) lines.push(`${n(week)} of them came back last week`);
+  return {
+    big: backAll,
+    lead: `Of the ${n(awayAll)} who were away when POWR told ${plural(nr.told, "person", "people")} you're on POWR, on ${day}.`,
+    lines,
+  };
+}
+
 function noteLine(text: string): string {
   return `<p style="margin:0 0 8px;font-size:13px;font-weight:300;color:#bbbbbb;line-height:1.6;font-family:${FONT};">${text}</p>`;
 }
@@ -218,6 +258,21 @@ ${statTile(n(data.newFaces), "New faces", `<span style="font-size:11px;font-weig
         </tr>`
     : "";
 
+  // ── Since we told your members ──────────────────────────────────────
+  const nl = data.notice && data.notice.told > 0 ? noticeLines(data.notice, data.tz, gym) : null;
+  const noticeHtml = nl
+    ? `
+        <tr>
+          <td class="sec" style="background-color:#080808;padding:28px 40px 24px;border-bottom:1px solid #111111;">
+            ${sectionLabel("Since we told your members")}
+            ${nl.big !== null ? `<p style="margin:14px 0 0;font-family:${FONT};"><span class="statnum" style="font-size:44px;font-weight:200;color:${GOLD};letter-spacing:-1px;line-height:1;font-family:${FONT};">${n(nl.big)}</span><span style="font-size:15px;font-weight:300;color:#F2F2F2;font-family:${FONT};">&nbsp;&nbsp;back through the door</span></p>` : ""}
+            <p style="margin:10px 0 0;font-size:14px;font-weight:300;color:#dddddd;line-height:1.6;font-family:${FONT};">${esc(nl.lead)}</p>
+            ${nl.lines.map((l) => `<p style="margin:8px 0 0;font-size:12px;font-weight:300;color:#999999;line-height:1.5;font-family:${FONT};">&#8212;&nbsp;${esc(l)}</p>`).join("")}
+            <p style="margin:16px 0 0;font-size:11px;font-weight:300;color:#666666;line-height:1.6;font-family:${FONT};">Back = a POWR check-in at ${esc(gym)} since. Away = behind their own usual gap between visits, or not in for six months, on the day.</p>
+          </td>
+        </tr>`
+    : "";
+
   const alsoHtml = also.length
     ? `
         <tr>
@@ -254,7 +309,7 @@ ${statTile(n(data.newFaces), "New faces", `<span style="font-size:11px;font-weig
   const html = emailShell({
     title: `Your week at ${gym}`,
     preheader,
-    rows: hero + tiles + topHtml + alsoHtml + eventsHtml + cta,
+    rows: hero + tiles + noticeHtml + topHtml + alsoHtml + eventsHtml + cta,
     unsubscribe: false,
   });
 
@@ -270,6 +325,9 @@ ${statTile(n(data.newFaces), "New faces", `<span style="font-size:11px;font-weig
     `Athletes: ${n(data.athletes)} (the week before: ${n(data.prevAthletes)})`,
     `New faces: ${n(data.newFaces)}`,
   ];
+  if (nl) {
+    lines.push("", "SINCE WE TOLD YOUR MEMBERS", ...(nl.big !== null ? [`${n(nl.big)} back through the door.`] : []), nl.lead, ...nl.lines.map((l) => `- ${l}`));
+  }
   if (top.length) {
     lines.push("", "TOP OF THE BOARD");
     top.forEach((r, i) => lines.push(`${i + 1}. ${r.name} — ${n(r.points)} POWR, ${plural(r.sessions, "session")}`));

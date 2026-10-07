@@ -70,8 +70,8 @@ describe('gymWeeklyRecapEmail', () => {
     expect(html).toContain('Tom &amp; Jerry');
     expect(html).toContain('13 vs the week before');
     expect(html).toContain('level with the week before');
-    expect(html).toContain('4 members have gone quiet</strong>');
-    expect(html).toContain('Reach out from Members.');
+    expect(html).toContain('4 regulars are drifting</strong>');
+    expect(html).toContain('See who in Retention.');
     expect(html).toContain('https://powr.life/venue/events/e1');
     expect(html).not.toContain('undefined');
     expect(html).not.toContain('NaN');
@@ -90,10 +90,10 @@ describe('gymWeeklyRecapEmail', () => {
 
   it('counts the quiet without pointing at Members below Clash Pro, and says nothing below Clash+', () => {
     const plus = gymWeeklyRecapEmail({ ...recap, quietNamed: false, quiet: 1 });
-    expect(plus.html).toContain('1 member has gone quiet</strong>');
-    expect(plus.html).not.toContain('Reach out from Members');
+    expect(plus.html).toContain('1 regular is drifting</strong>');
+    expect(plus.html).not.toContain('See who in Retention');
     const free = gymWeeklyRecapEmail({ ...recap, quiet: null });
-    expect(free.html).not.toContain('gone quiet');
+    expect(free.html).not.toContain('drifting');
   });
 
   it('never carries a Mailgun unsubscribe: the switch is in Settings', () => {

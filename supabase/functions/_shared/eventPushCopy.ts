@@ -7,7 +7,7 @@
 // The payload is _live_event_template_payload's jsonb (the portal gets the
 // same object from gym_event_push_status). Pure: no imports, no I/O.
 
-export type EventPushType = 'event_announced' | 'event_kickoff' | 'event_doors_open' | 'gym_quiet_nudge';
+export type EventPushType = 'event_announced' | 'event_kickoff' | 'event_doors_open' | 'gym_quiet_nudge' | 'gym_on_powr';
 
 // "Wed 1 Oct" on the UK clock, or '' when missing.
 export function ukDay(iso: unknown): string {
@@ -96,6 +96,17 @@ export function eventPushCopy(
       return {
         title: gym ? `${gym}: your spot’s still here` : 'Your spot’s still here',
         body: `${since} One check-in and you’re back on the board.`,
+      };
+    }
+    case 'gym_on_powr': {
+      // Once per gym, automatically, when its portal is first switched on
+      // (_gym_member_notice_dispatch): the people the gym can now see in
+      // Retention. It is also the notice the privacy policy promises, so it
+      // says what the gym sees and where the switch is ("Let gyms see my
+      // visits", Settings, then Privacy).
+      return {
+        title: gym ? `${gym} is on POWR` : 'Your gym is on POWR',
+        body: 'The team there can now see when you check in, so they can look out for you. Rather they didn’t? Settings, then Privacy.',
       };
     }
     case 'event_doors_open': {

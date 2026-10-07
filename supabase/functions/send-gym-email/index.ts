@@ -1,4 +1,4 @@
-// Email to a gym's team, four kinds, one function:
+// Email to a gym's team, one function:
 //   weekly_recap  — Monday: what members did at the gym last week. Cron
 //                   gym-weekly-recap-email, 10:00 UTC, after the member weekly
 //                   and the brand digest so it never competes for the Mailgun
@@ -18,20 +18,43 @@
 //                   the count (and nothing under 5 people). A real run (no
 //                   dry_run, only_email or limit) also opens and closes the
 //                   drift episodes, so the same person is never sent twice.
+//   welcome          someone joined the team. Trigger gym_staff_welcome_mail.
+//   package_changed  POWR set the package in /admin/gyms. Owners only.
+//                    Trigger gym_portal_settings_package_mail.
+//   support_reply    POWR answered a question the team sent from Settings,
+//                    then Help. To whoever wrote it. Trigger
+//                    support_tickets_gym_reply_mail.
+//   clash_night      POWR confirmed, declined or called off a Clash Night.
+//                    Owners + whoever asked. Trigger
+//                    gym_clash_nights_decision_mail.
+//   lifecycle        daily (cron gym-lifecycle-email, 09:45 UTC): invite
+//                    links unused after 5 days get a second link; owners
+//                    hear 14 and 3 days before the free trial ends, and once
+//                    it has (only when the package loses something).
+//                    gym_email_log keeps each one to once.
+// The Monday recap also says who has come back since POWR told the gym's
+// members it is on POWR (get_gym_notice_returns), for 12 weeks after.
 // Recipients are the gym's team (gym_staff → auth.users); the weekly and the
 // drift email go to those who keep each switch on (Settings, then Email).
-// Never members.
+// Nothing goes to a gym whose portal is off, except the answer to a question
+// it asked while it was on. Never members.
 //
 // Security: verify_jwt=false (pg_net and pg_cron are not users); access is
 // gated by x-resolve-token, validated via verify_resolve_token against
 // Vault, like the other cron mail.
 //
 // Operational body params (all optional):
-//   { kind, dry_run, only_email, deliver_to, week_start, limit, sample, decision, event_id }
+//   { kind, dry_run, only_email, deliver_to, week_start, limit, sample, decision, event_id,
+//     partner_id, user_id, from, to, ticket_id, updated, night_id, was, role, stage }
 //   - deliver_to redirects delivery and is honoured only alongside only_email,
 //     so a full run can never be re-routed to a single inbox by accident.
 //   - sample renders representative data to only_email (still token-gated);
-//     decision picks the review_result sample: approved | rejected | pulled.
+//     decision picks the review_result sample: approved | rejected | pulled,
+//     or the clash_night one: confirmed | declined | called_off; role picks
+//     welcome's (owner | staff); stage picks trial_ending's (14 | 3); from/to
+//     pick package_changed's.
+//   - lifecycle with only_email runs for that address only, for real: an
+//     invite reminder is a real link, so it never goes to deliver_to.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -39,13 +62,34 @@ import { sendEmail } from "../_shared/mailgun.ts";
 import {
   gymWeeklyRecapEmail,
   weekLabel,
+  type GymNoticeReturns,
   type GymRecapEvent,
   type GymWeeklyRecapData,
 } from "../_shared/emails/gym-weekly-recap.ts";
+import {
+  gymInviteReminderEmail,
+  gymPackageEmail,
+  gymTrialEmail,
+  gymWelcomeEmail,
+} from "../_shared/emails/gym-account-mail.ts";
+import { gymClashNightEmail, gymSupportReplyEmail } from "../_shared/emails/gym-reply-mail.ts";
+import {
+  sampleClashNight,
+  sampleInviteReminder,
+  sampleNotice,
+  samplePackage,
+  sampleSupportReply,
+  sampleTrial,
+  sampleWelcome,
+} from "../_shared/emails/gym-mail.samples.ts";
 import { gymEventEmail, type GymEventMailData, type GymEventMailKind } from "../_shared/emails/gym-event-mail.ts";
 import { gymDriftDigestEmail, type GymDriftDigestData, type GymDriftPerson } from "../_shared/emails/gym-drift-digest.ts";
 
 const REPLY_TO = "support@powr.life";
+const SITE_URL = Deno.env.get("SITE_URL") ?? "https://powr.life";
+const PACKAGES = ["clash", "clash_plus", "pro", "founding"];
+// How long after the members' notice the Monday recap keeps counting returns.
+const NOTICE_WEEKS = 12;
 const CONCURRENCY = 5;
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -95,7 +139,61 @@ interface DriftRow {
 
 interface SendResult { to: string; gym?: string; ok: boolean; error?: string }
 
-function recapData(row: RecapRow): GymWeeklyRecapData {
+interface TeamMember { user_id: string; role: "owner" | "staff"; email: string; name: string | null }
+
+interface MailContext {
+  gym: { id: string; name: string; logo_url: string | null; logo_bg: string | null; tz: string };
+  live: boolean;
+  package: string | null;
+  billing: string | null;
+  trial_ends_at: string | null;
+  on_trial: boolean;
+  member_notice_at: string | null;
+  member_notice_count: number | null;
+  team: TeamMember[];
+}
+
+interface TrialDue {
+  partner_id: string; gym: string; tz: string;
+  kind: "trial_ending" | "trial_ended"; ref: string;
+  package: string; trial_ends_at: string; days_left: number; lost: string[]; owners: string[];
+}
+
+interface InviteDue {
+  invite_id: string; partner_id: string; gym: string; tz: string; logo_url: string | null;
+  role: "owner" | "staff"; email: string; created_at: string; expires_at: string;
+}
+
+interface NoticeRow {
+  sent_at: string; told: number; away: number; unseen: number;
+  back: number; unseen_back: number; back_in: number; unseen_back_in: number;
+}
+
+function noticeData(row: NoticeRow | null, weekEnd: string): GymNoticeReturns | null {
+  if (!row?.sent_at || !(row.told > 0)) return null;
+  const sent = new Date(row.sent_at).getTime();
+  const end = new Date(weekEnd).getTime();
+  if (!(sent < end) || end - sent > NOTICE_WEEKS * 7 * 24 * 60 * 60 * 1000) return null;
+  return {
+    sentAt: row.sent_at, told: row.told, away: row.away, unseen: row.unseen,
+    back: row.back, unseenBack: row.unseen_back, backIn: row.back_in, unseenBackIn: row.unseen_back_in,
+  };
+}
+
+const owners = (ctx: MailContext) => ctx.team.filter((t) => t.role === "owner").map((t) => t.email);
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Same shape as manage-gym-staff's setup tokens.
+function newToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function recapData(row: RecapRow, notice: GymNoticeReturns | null = null): GymWeeklyRecapData {
   return {
     gymName: row.name,
     weekLabel: weekLabel(row.week_start, row.week_end, row.tz),
@@ -112,6 +210,7 @@ function recapData(row: RecapRow): GymWeeklyRecapData {
     quiet: row.quiet,
     quietNamed: row.features?.people === true,
     events: row.events ?? [],
+    notice,
   };
 }
 
@@ -161,6 +260,7 @@ function sampleRecap(): GymWeeklyRecapData {
     top: [{ name: "Aisha K", points: 240, sessions: 7 }, { name: "Tom Reid", points: 223, sessions: 6 }, { name: "Maya Chen", points: 206, sessions: 6 }],
     busiest: { day: "Tuesday", sessions: 21 },
     quiet: 4, quietNamed: true,
+    notice: sampleNotice(now),
     events: [
       { id: "sample-live", name: "October Challenge", status: "live", participants: 23, window_start_at: new Date(now - 6 * day).toISOString(), window_end_at: new Date(now + 22 * day).toISOString() },
       { id: "sample-next", name: "Points Week", status: "scheduled", participants: 9, window_start_at: new Date(now + 10 * day).toISOString(), window_end_at: new Date(now + 17 * day).toISOString() },
@@ -251,6 +351,7 @@ Deno.serve(async (req: Request) => {
   const limit = Number.isInteger(body?.limit) ? (body.limit as number) : null;
   const weekStart = typeof body?.week_start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.week_start as string) ? (body.week_start as string) : null;
   const eventId = typeof body?.event_id === "string" ? (body.event_id as string) : null;
+  const str = (k: string) => (typeof body?.[k] === "string" ? (body[k] as string) : null);
 
   // ── Samples: one representative email to one address ──────────────────
   if (sample) {
@@ -270,6 +371,30 @@ Deno.serve(async (req: Request) => {
       const decision = ["approved", "rejected", "pulled"].includes(String(body?.decision)) ? (body.decision as GymEventMailKind) : "approved";
       rendered = gymEventEmail(sampleEvent(decision));
       tag = "gym-review-result";
+    } else if (kind === "welcome") {
+      rendered = gymWelcomeEmail(sampleWelcome(str("role") === "staff" ? "staff" : "owner"));
+      tag = "gym-welcome";
+    } else if (kind === "invite_reminder") {
+      rendered = gymInviteReminderEmail(sampleInviteReminder(SITE_URL));
+      tag = "gym-invite-reminder";
+    } else if (kind === "trial_ending") {
+      rendered = gymTrialEmail(sampleTrial("trial_ending", Number(body?.stage) === 3 ? 3 : 14));
+      tag = "gym-trial";
+    } else if (kind === "trial_ended") {
+      rendered = gymTrialEmail(sampleTrial("trial_ended"));
+      tag = "gym-trial";
+    } else if (kind === "package_changed") {
+      const from = PACKAGES.includes(str("from") ?? "") ? str("from")! : "clash";
+      const to = PACKAGES.includes(str("to") ?? "") ? str("to")! : "clash_plus";
+      rendered = gymPackageEmail(samplePackage(from, to));
+      tag = "gym-package";
+    } else if (kind === "support_reply") {
+      rendered = gymSupportReplyEmail(sampleSupportReply(body?.updated === true));
+      tag = "gym-support-reply";
+    } else if (kind === "clash_night") {
+      const d = str("decision");
+      rendered = gymClashNightEmail(sampleClashNight(d === "declined" || d === "called_off" ? d : "confirmed"));
+      tag = "gym-clash-night";
     } else {
       return json({ error: "unknown_kind" }, 400);
     }
@@ -295,7 +420,13 @@ Deno.serve(async (req: Request) => {
       const tos = (row.recipients ?? []).map((e) => e.toLowerCase()).filter((e) => !onlyEmail || e === onlyEmail);
       if (row.quiet_week) { skipped.push({ gym: row.name, why: "quiet_week" }); continue; }
       if (tos.length === 0) { skipped.push({ gym: row.name, why: "no_recipients" }); continue; }
-      const rendered = gymWeeklyRecapEmail(recapData(row));
+      // Who has been back since POWR told the gym's people it is on POWR.
+      // A failure here only drops that section, never the recap.
+      const { data: nr, error: nrErr } = await admin.rpc("get_gym_notice_returns", {
+        p_partner_id: row.partner_id, p_from: row.week_start, p_to: row.week_end,
+      }) as { data: NoticeRow | null; error: unknown };
+      if (nrErr) console.error(`get_gym_notice_returns (${row.name}) error:`, nrErr);
+      const rendered = gymWeeklyRecapEmail(recapData(row, nrErr ? null : noticeData(nr, row.week_end)));
       sent += await deliver(tos.map((to) => deliverTo ?? to), rendered, "gym-weekly-recap", dryRun, results, row.name);
     }
     const week = rows[0] ? weekLabel(rows[0].week_start, rows[0].week_end, rows[0].tz) : null;
@@ -363,6 +494,173 @@ Deno.serve(async (req: Request) => {
     const results: SendResult[] = [];
     const sent = await deliver(tos.map((to) => deliverTo ?? to), rendered, tag, dryRun, results, data.gym.name);
     return json({ kind, mail: mailKind, event_id: eventId, event: data.event.name, gym: data.gym.name, sent, dry_run: dryRun, subject: rendered.subject, results });
+  }
+
+  const context = async (partnerId: string | null): Promise<MailContext | null> => {
+    if (!partnerId) return null;
+    const { data, error } = await admin.rpc("get_gym_mail_context", { p_partner_id: partnerId }) as { data: MailContext | null; error: unknown };
+    if (error) throw new Error(`get_gym_mail_context: ${String((error as { message?: string })?.message ?? error)}`);
+    return data?.gym ? data : null;
+  };
+  const only = (emails: string[]) => [...new Set(emails.map((e) => e.toLowerCase()))].filter((e) => !onlyEmail || e === onlyEmail);
+  const one = async (tos: string[], rendered: { subject: string; html: string; text: string }, tag: string, gym: string, extra: Record<string, unknown> = {}) => {
+    if (tos.length === 0) return json({ kind, ...extra, gym, skipped: "no_recipients" });
+    const results: SendResult[] = [];
+    const sent = await deliver(tos.map((to) => deliverTo ?? to), rendered, tag, dryRun, results, gym);
+    return json({ kind, ...extra, gym, sent, dry_run: dryRun, subject: rendered.subject, results });
+  };
+
+  try {
+    // ── Someone joined the team ──────────────────────────────────────────
+    if (kind === "welcome") {
+      const ctx = await context(str("partner_id"));
+      if (!ctx) return json({ kind, skipped: "not_found" }, 404);
+      if (!ctx.live) return json({ kind, gym: ctx.gym.name, skipped: "portal_off" });
+      const who = ctx.team.find((t) => t.user_id === str("user_id"));
+      if (!who) return json({ kind, gym: ctx.gym.name, skipped: "not_on_team" });
+      // Portals switched on before the notice existed have a time but no count.
+      const notice = !ctx.member_notice_at
+        ? { sentAt: null, count: null }
+        : ctx.member_notice_count != null ? { sentAt: ctx.member_notice_at, count: ctx.member_notice_count } : null;
+      const rendered = gymWelcomeEmail({
+        gymName: ctx.gym.name, role: who.role, tz: ctx.gym.tz,
+        trialEndsAt: ctx.on_trial ? ctx.trial_ends_at : null, notice,
+      });
+      return await one(only([who.email]), rendered, "gym-welcome", ctx.gym.name, { role: who.role });
+    }
+
+    // ── POWR set the package (owners) ────────────────────────────────────
+    if (kind === "package_changed") {
+      const from = str("from");
+      const to = str("to");
+      if (!from || !to || !PACKAGES.includes(from) || !PACKAGES.includes(to) || from === to) {
+        return json({ kind, skipped: "no_change" });
+      }
+      const ctx = await context(str("partner_id"));
+      if (!ctx) return json({ kind, skipped: "not_found" }, 404);
+      if (!ctx.live) return json({ kind, gym: ctx.gym.name, skipped: "portal_off" });
+      const rendered = gymPackageEmail({
+        gymName: ctx.gym.name, tz: ctx.gym.tz, from, to, billing: ctx.billing,
+        onTrial: ctx.on_trial, trialEndsAt: ctx.trial_ends_at,
+      });
+      return await one(only(owners(ctx)), rendered, "gym-package", ctx.gym.name, { from, to });
+    }
+
+    // ── POWR answered a question from Settings, then Help ────────────────
+    if (kind === "support_reply") {
+      const ticketId = str("ticket_id");
+      if (!ticketId) return json({ error: "ticket_id required" }, 400);
+      const { data: t } = await admin.from("support_tickets")
+        .select("id, email, subject, message, admin_reply, category, gym_partner_id")
+        .eq("id", ticketId).maybeSingle();
+      if (!t) return json({ kind, skipped: "not_found" }, 404);
+      if (t.category !== "gym_help" || !t.gym_partner_id) return json({ kind, skipped: "not_gym_help" });
+      if (!String(t.admin_reply ?? "").trim()) return json({ kind, skipped: "no_reply" });
+      // The answer goes even if the portal has since been switched off: they
+      // asked while it was on.
+      const ctx = await context(t.gym_partner_id);
+      if (!ctx) return json({ kind, skipped: "gym_not_found" }, 404);
+      const rendered = gymSupportReplyEmail({
+        gymName: ctx.gym.name, subject: t.subject, message: t.message, reply: t.admin_reply,
+        updated: body?.updated === true,
+      });
+      return await one(only([t.email]), rendered, "gym-support-reply", ctx.gym.name, { ticket_id: ticketId });
+    }
+
+    // ── POWR decided a Clash Night (owners + whoever asked) ──────────────
+    if (kind === "clash_night") {
+      const nightId = str("night_id");
+      if (!nightId) return json({ error: "night_id required" }, 400);
+      const { data: night } = await admin.from("gym_clash_nights")
+        .select("id, partner_id, night_date, start_time, backup_date, status, admin_note, requested_by")
+        .eq("id", nightId).maybeSingle();
+      if (!night) return json({ kind, skipped: "not_found" }, 404);
+      // Re-read after commit: a night cancelled since has nothing to tell.
+      if (night.status !== "confirmed" && night.status !== "declined") return json({ kind, skipped: `status_${night.status}` });
+      const ctx = await context(night.partner_id);
+      if (!ctx) return json({ kind, skipped: "gym_not_found" }, 404);
+      if (!ctx.live) return json({ kind, gym: ctx.gym.name, skipped: "portal_off" });
+      const asker = ctx.team.find((m) => m.user_id === night.requested_by)?.email;
+      const rendered = gymClashNightEmail({
+        gymName: ctx.gym.name, decision: night.status, was: str("was") ?? "requested",
+        nightDate: night.night_date, startTime: night.start_time, backupDate: night.backup_date, note: night.admin_note,
+      });
+      return await one(only([...owners(ctx), ...(asker ? [asker] : [])]), rendered, "gym-clash-night", ctx.gym.name, { night_id: nightId, status: night.status });
+    }
+
+    // ── Daily: invite reminders and the free trial ───────────────────────
+    if (kind === "lifecycle") {
+      const { data, error } = await admin.rpc("get_gym_lifecycle_mail") as { data: { trial: TrialDue[]; invites: InviteDue[] } | null; error: unknown };
+      if (error) {
+        console.error("get_gym_lifecycle_mail error:", error);
+        return json({ error: "rpc_failed", detail: String(error) }, 500);
+      }
+      // Only a full real run (or one aimed at one address) records anything.
+      const commit = !dryRun;
+      const results: SendResult[] = [];
+      const skipped: { gym: string; what: string; why: string }[] = [];
+      let sent = 0;
+
+      for (const t of data?.trial ?? []) {
+        const tos = only(t.owners ?? []);
+        if (tos.length === 0) { if (!onlyEmail) skipped.push({ gym: t.gym, what: t.kind, why: "no_owner" }); continue; }
+        // A test to one inbox (deliver_to) never marks the real one as sent.
+        const record = commit && !deliverTo;
+        if (record) {
+          const { error: claimErr } = await admin.from("gym_email_log")
+            .insert({ partner_id: t.partner_id, kind: t.kind, ref: t.ref, detail: { days_left: t.days_left, package: t.package } });
+          if (claimErr) {
+            const dup = (claimErr as { code?: string }).code === "23505";
+            if (!dup) console.error(`gym_email_log claim (${t.gym}) error:`, claimErr);
+            skipped.push({ gym: t.gym, what: t.kind, why: dup ? "already_sent" : "claim_failed" });
+            continue;
+          }
+        }
+        const rendered = gymTrialEmail({
+          kind: t.kind, gymName: t.gym, tz: t.tz, trialEndsAt: t.trial_ends_at,
+          daysLeft: t.days_left, package: t.package, lost: t.lost ?? [],
+        });
+        const n = await deliver(tos.map((to) => deliverTo ?? to), rendered, "gym-trial", dryRun, results, t.gym);
+        sent += n;
+        if (record && n === 0) {
+          await admin.from("gym_email_log").delete().match({ partner_id: t.partner_id, kind: t.kind, ref: t.ref });
+        }
+      }
+
+      for (const inv of data?.invites ?? []) {
+        if (onlyEmail && inv.email !== onlyEmail) continue;
+        if (dryRun) { results.push({ to: inv.email, gym: inv.gym, ok: true }); sent++; continue; }
+        // A second link for the same invite; the first keeps working.
+        const token = newToken();
+        const { data: upd, error: updErr } = await admin.from("gym_staff_invites")
+          .update({ reminder_token_hash: await sha256Hex(token), reminded_at: new Date().toISOString() })
+          .eq("id", inv.invite_id).eq("status", "invited").is("reminded_at", null)
+          .select("id");
+        if (updErr || (upd ?? []).length !== 1) {
+          if (updErr) console.error(`invite reminder (${inv.gym}) error:`, updErr);
+          skipped.push({ gym: inv.gym, what: "invite_reminder", why: updErr ? "update_failed" : "taken" });
+          continue;
+        }
+        const rendered = gymInviteReminderEmail({
+          gymName: inv.gym, role: inv.role, tz: inv.tz, setupUrl: `${SITE_URL}/venue/setup/${token}`,
+          invitedAt: inv.created_at, expiresAt: inv.expires_at,
+        });
+        // A real setup link: only ever to the person it was meant for.
+        const n = await deliver([inv.email], rendered, "gym-invite-reminder", false, results, inv.gym);
+        sent += n;
+        if (n === 0) {
+          await admin.from("gym_staff_invites").update({ reminder_token_hash: null, reminded_at: null }).eq("id", inv.invite_id);
+        }
+      }
+
+      return json({
+        kind, dry_run: dryRun, sent, skipped, results,
+        due: { trial: (data?.trial ?? []).length, invites: (data?.invites ?? []).length },
+      });
+    }
+  } catch (err) {
+    console.error(`[send-gym-email] ${kind} failed:`, err);
+    return json({ kind, error: "failed", detail: String(err) }, 500);
   }
 
   return json({ error: "unknown_kind" }, 400);
