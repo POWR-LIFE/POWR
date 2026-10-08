@@ -639,6 +639,12 @@ verify_jwt = false
 # (Vault db_webhook_secret) — same model as notify-creator-request.
 verify_jwt = false
 
+[functions.tracker-slack]
+# Tracker issues → Slack #issues and #development. Invoked by
+# _tracker_slack_notify() via pg_net with x-webhook-secret (Vault
+# db_webhook_secret), like notify-gym-event; the header check is the access control.
+verify_jwt = false
+
 [functions.send-gym-email]
 # Email to a gym's team: the Monday recap, the morning drift email, event
 # mail, welcome, trial, package, support replies and Clash Nights. Called by

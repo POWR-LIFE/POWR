@@ -32,6 +32,7 @@ import {
     Radio,
     Sparkles,
     HeartPulse,
+    SquareKanban,
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -91,6 +92,7 @@ import LiveEvents from './pages/admin/LiveEvents';
 import LiveOps from './pages/admin/LiveOps';
 import SystemHealth from './pages/admin/SystemHealth';
 import GymPortals from './pages/admin/GymPortals';
+import Tracker from './pages/admin/Tracker';
 import { judgeAll, needsAttentionCount } from '../../shared/systemHealth.ts';
 import AthleteSignup from './pages/AthleteSignup';
 import { CreatorLayout } from './pages/creator/CreatorLayout';
@@ -520,6 +522,7 @@ const PATH_LABELS = {
     liveops: 'Live Ops',
     'system-health': 'System Health',
     config: 'Config',
+    tracker: 'Tracker',
 };
 
 // --- Partner Login ---
@@ -951,6 +954,7 @@ const AdminHome = () => {
     // System Health: signals at the ACT line, judged in shared/systemHealth.ts.
     // A failed read stays null and renders '—' — never a reassuring 0.
     const [healthAttention, setHealthAttention] = useState(null);
+    const [urgentIssues, setUrgentIssues] = useState(null);
     // Earned creator invites waiting on a human (Creators › Requests).
     const [pendingCreatorRequests, setPendingCreatorRequests] = useState(0);
     useEffect(() => {
@@ -967,6 +971,16 @@ const AdminHome = () => {
             setHealthAttention(error || !data ? null : needsAttentionCount(judgeAll(data, null)));
         });
         return () => { cancelled = true; };
+    }, []);
+    // P0–P1 tracker issues not yet verified or closed. Null (shown as —)
+    // until the tracker migration is applied.
+    useEffect(() => {
+        supabase
+            .from('tracker_issues')
+            .select('id', { count: 'exact', head: true })
+            .lte('priority', 1)
+            .not('status', 'in', '(verified,closed)')
+            .then(({ count, error }) => setUrgentIssues(error ? null : count ?? 0));
     }, []);
 
     useEffect(() => {
@@ -1098,6 +1112,7 @@ const AdminHome = () => {
         { label: 'Affiliate Requests',   count: pendingCreatorRequests,   to: '/admin/creators/requests',  color: '#E8D200', icon: Sparkles,      desc: 'Members asking to join'   },
         { label: 'Support Tickets',      count: stats.openTickets,        to: '/admin/support',            color: '#0EA5E9', icon: MessageSquare, desc: 'Open & in-progress'       },
         { label: 'System Health',        count: healthAttention ?? '—',   to: '/admin/system-health',      color: '#F43F5E', icon: HeartPulse,    desc: 'Signals at the act line'  },
+        { label: 'Urgent Issues',        count: urgentIssues ?? '—',      to: '/admin/tracker?quick=urgent', color: '#DC2626', icon: SquareKanban, desc: 'P0–P1 not yet verified'   },
     ];
 
     // Activity-mix colors (matched to type)
@@ -1126,6 +1141,7 @@ const AdminHome = () => {
         { label: 'Support',     path: '/admin/support',            icon: MessageSquare, color: '#0EA5E9' },
         { label: 'Vault',       path: '/admin/vault',              icon: Lock,          color: '#E8D200' },
         { label: 'Audit Log',   path: '/admin/audit',              icon: ScrollText,    color: '#AAAAAA' },
+        { label: 'Tracker',     path: '/admin/tracker',            icon: SquareKanban,  color: '#E8D200' },
         { label: 'Config',      path: '/admin/config',             icon: Settings,      color: '#AAAAAA' },
     ];
 
@@ -1342,6 +1358,7 @@ const AdminLayout = ({ children }) => {
     const [pendingPlacements, setPendingPlacements] = useState(0);
     const [pendingCreatorRequests, setPendingCreatorRequests] = useState(0);
     const [openTickets, setOpenTickets] = useState(0);
+    const [trackerTriage, setTrackerTriage] = useState(0);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('admin_sidebar') === '1');
 
     const toggleSidebar = () => setCollapsed(c => {
@@ -1396,6 +1413,12 @@ const AdminLayout = ({ children }) => {
             .select('id', { count: 'exact', head: true })
             .in('status', ['open', 'in_progress'])
             .then(({ count }) => setOpenTickets(count ?? 0));
+        // Filed but not yet sorted into the flow.
+        supabase
+            .from('tracker_issues')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'triage')
+            .then(({ count }) => setTrackerTriage(count ?? 0));
     }, [location.pathname]);
 
     const navItems = [
@@ -1414,6 +1437,7 @@ const AdminLayout = ({ children }) => {
     ];
 
     const opsItems = [
+        { label: 'Tracker',     path: '/admin/tracker',     icon: SquareKanban, badge: trackerTriage },
         { label: 'Analytics',   path: '/admin/analytics',   icon: BarChart3     },
         { label: 'Usage',       path: '/admin/usage',       icon: MousePointerClick },
         { label: 'Sessions',    path: '/admin/sessions',    icon: Shield        },
@@ -1681,6 +1705,7 @@ export default function App() {
                     <Route path="/admin/events" element={<ProtectedRoute><AdminLayout><LiveEvents /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/liveops" element={<ProtectedRoute><AdminLayout><LiveOps /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/system-health" element={<ProtectedRoute><AdminLayout><SystemHealth /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/tracker" element={<ProtectedRoute><AdminLayout><Tracker /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/creators" element={<ProtectedRoute><AdminLayout><CreatorManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/creators/programmes" element={<ProtectedRoute><AdminLayout><CreatorPrograms view="programmes" /></AdminLayout></ProtectedRoute>} />
