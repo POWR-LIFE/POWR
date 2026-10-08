@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy } from 'lucide-react';
+import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy, Palette } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { methodLaterKey } from './PartnerIntegrationHub';
@@ -113,6 +113,7 @@ const navItemsFor = (deliveryMethod) => [
     INTEGRATION_NAV[deliveryMethod] ?? INTEGRATION_NAV_DEFAULT,
     { label: "What's On",   path: '/partner/featured',    icon: CalendarDays    },
     { label: 'Placements',  path: '/partner/placements',  icon: MapPin, gated: true },
+    { label: 'Studio',      path: '/partner/studio',      icon: Palette         },
     { label: 'Redemptions', path: '/partner/redemptions', icon: Gift            },
     { label: 'Settings',    path: '/partner/settings',    icon: Settings        },
 ];
@@ -123,6 +124,7 @@ const PATH_LABELS = {
     'promo-codes': 'Promo Codes',
     featured:      "What's On",
     placements:    'Placements',
+    studio:        'Studio',
     redemptions:   'Redemptions',
     integration:   'Integration',
     settings:      'Settings',
@@ -202,9 +204,9 @@ export function PartnerLayout({ children }) {
                 )}
 
                 {/* Vertical rhythm is deliberately tight — the whole sidebar
-                    (7 nav items + chrome) must fit a laptop viewport without
+                    (8 nav items + chrome) must fit a laptop viewport without
                     scrolling; overflow-y-auto is only a short-window fallback. */}
-                <nav className="flex-1 px-6 space-y-1.5 overflow-y-auto">
+                <nav className="flex-1 px-6 space-y-1 overflow-y-auto">
                     <div className="px-4 mb-4">
                         <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Partner Portal</div>
                         <div className="h-[2px] w-10 bg-[#E8D200]/60"></div>
@@ -216,7 +218,7 @@ export function PartnerLayout({ children }) {
                             <Link
                                 key={item.path}
                                 to={item.path}
-                                className={`flex items-center gap-4 px-5 py-3 rounded-2xl transition-all group ${
+                                className={`flex items-center gap-4 px-5 py-2.5 rounded-2xl transition-all group ${
                                     active
                                         ? 'bg-[#E8D200] text-[#080808] shadow-[0_20px_50px_rgba(232,210,0,0.2)]'
                                         : 'text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]'
@@ -230,12 +232,12 @@ export function PartnerLayout({ children }) {
                 </nav>
 
                 <div className="p-6 mt-auto">
-                    {/* Support lives outside the main nav — the 7-item list above
+                    {/* Support lives outside the main nav — the 8-item list above
                         is at its laptop-viewport budget, and help belongs by the
                         account chrome anyway. */}
                     <Link
                         to="/partner/support"
-                        className={`mb-3 flex items-center gap-4 px-5 py-3 rounded-2xl transition-all group ${
+                        className={`mb-3 flex items-center gap-4 px-5 py-2.5 rounded-2xl transition-all group ${
                             location.pathname === '/partner/support'
                                 ? 'bg-[#E8D200] text-[#080808] shadow-[0_20px_50px_rgba(232,210,0,0.2)]'
                                 : 'text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]'

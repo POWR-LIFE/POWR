@@ -9,7 +9,8 @@ import { listDrafts, openDraft, renameDraft, deleteDraft, mb } from './store';
  * Open puts the editor back where the draft was left (every slide, photo or
  * clip, words and look); rename and delete happen here too.
  *
- * partnerId     a gym's drafts; without it, POWR's own
+ * partnerId     a gym's drafts
+ * brand         a reward brand's drafts (rewards.brand_name); with neither, POWR's own
  * editing       the editor's draft status: { id, title, dirty }
  * onOpened      a draft has been fetched and loaded: openDraft()'s result
  * onShowEditor  back to the editor, as it is
@@ -17,7 +18,7 @@ import { listDrafts, openDraft, renameDraft, deleteDraft, mb } from './store';
  * onDeleted     a draft was deleted (id)
  * onCount       how many drafts there are now
  */
-export default function DraftsPanel({ partnerId = null, editing = null, onOpened, onShowEditor, onRenamed, onDeleted, onCount }) {
+export default function DraftsPanel({ partnerId = null, brand = null, editing = null, onOpened, onShowEditor, onRenamed, onDeleted, onCount }) {
     const [drafts, setDrafts] = useState(null);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(null); // { id, label }
@@ -27,10 +28,10 @@ export default function DraftsPanel({ partnerId = null, editing = null, onOpened
 
     const refresh = useCallback(() => {
         setError(null);
-        listDrafts({ partnerId })
+        listDrafts({ partnerId, brand })
             .then((list) => { setDrafts(list); onCount?.(list.length); })
             .catch((e) => { setDrafts((d) => d ?? []); setError(e.message); });
-    }, [partnerId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [partnerId, brand]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => { refresh(); }, [refresh]);
 
     const open = async (d) => {
@@ -75,7 +76,7 @@ export default function DraftsPanel({ partnerId = null, editing = null, onOpened
         setBusy({ id: d.id, label: 'Deleting…' });
         setError(null);
         try {
-            await deleteDraft(d.id, { partnerId });
+            await deleteDraft(d.id, { partnerId, brand });
             const next = drafts.filter((x) => x.id !== d.id);
             setDrafts(next);
             onCount?.(next.length);
