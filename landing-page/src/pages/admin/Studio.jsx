@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, Palette } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { registerTemplates } from '../../studio/templates';
@@ -9,7 +9,7 @@ import TrendsPanel from '../../studio/TrendsPanel';
 import InstagramPanel from '../../studio/social/InstagramPanel';
 import InstagramPosts from '../../studio/social/InstagramPosts';
 import DraftsPanel from '../../studio/drafts/DraftsPanel';
-import { countDrafts } from '../../studio/drafts/store';
+import { useDrafts } from '../../studio/drafts/useDrafts';
 
 /**
  * Studio — social posts from a single photo, or a whole pack from a shoot.
@@ -44,15 +44,12 @@ export default function Studio() {
     // Blueprint templates the weekly trend routine published: loaded before
     // the editor mounts, so they sit in its "Trending" group from the start.
     const [published, setPublished] = useState(null);
-    // Drafts: a new editor mounts (key) for each draft opened or new post
-    // started; `editing` is what the editor reports about its draft.
-    const [editorKey, setEditorKey] = useState(0);
-    const [initial, setInitial] = useState(null);
-    const [editing, setEditing] = useState(null);
-    const [draftCount, setDraftCount] = useState(null);
-    const [renamed, setRenamed] = useState(null);
-    const [deletedId, setDeletedId] = useState(null);
-    useEffect(() => { countDrafts().then(setDraftCount); }, []);
+    // Drafts (POWR's own): a new editor mounts for each draft opened or new
+    // post started. The last "Try it" from Trends isn't laid over it again.
+    const dr = useDrafts({}, {
+        show: () => { choose('post'); window.scrollTo(0, 0); },
+        onFresh: () => setApply(null),
+    });
 
     const loadPublished = useCallback(async () => {
         const { data, error } = await supabase
@@ -79,25 +76,6 @@ export default function Studio() {
         window.history.replaceState(null, '', url);
     };
 
-    // A fresh editor: on a draft just opened, or empty for a new post. The
-    // last "Try it" from Trends isn't laid over it again.
-    const freshEditor = (draft) => {
-        setApply(null);
-        setInitial(draft);
-        setEditing(null);
-        setEditorKey((k) => k + 1);
-        choose('post');
-        window.scrollTo(0, 0);
-    };
-    const drafts = useMemo(() => ({
-        partnerId: null,
-        renamed,
-        deletedId,
-        onChange: setEditing,
-        onSaved: () => countDrafts().then(setDraftCount),
-        onNew: () => freshEditor(null),
-    }), [renamed, deletedId]); // eslint-disable-line react-hooks/exhaustive-deps
-
     // The title and the mode tabs head the page at full width; each mode's
     // own layout (controls | sticky preview, the trend drop, the posts) sits
     // underneath, so the tabs never squeeze into the controls column.
@@ -114,8 +92,8 @@ export default function Studio() {
                             <button key={m.id} type="button" role="tab" aria-selected={mode === m.id} onClick={() => choose(m.id)}
                                 className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm transition-colors ${mode === m.id ? 'bg-white font-semibold text-[#111] shadow-sm' : 'text-[#666] hover:text-[#111]'}`}>
                                 {m.label}
-                                {m.id === 'drafts' && draftCount > 0 && (
-                                    <span className={`ml-1.5 rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${mode === m.id ? 'bg-[#FFFBE0] text-[#111]' : 'bg-black/5 text-[#666]'}`}>{draftCount}</span>
+                                {m.id === 'drafts' && dr.count > 0 && (
+                                    <span className={`ml-1.5 rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${mode === m.id ? 'bg-[#FFFBE0] text-[#111]' : 'bg-black/5 text-[#666]'}`}>{dr.count}</span>
                                 )}
                             </button>
                         ))}
@@ -134,7 +112,7 @@ export default function Studio() {
             )}
             {opened.has('post') && published !== null && (
                 <div className={mode === 'post' ? '' : 'hidden'}>
-                    <StudioEditor key={editorKey} apply={apply} onPublish={INSTAGRAM_ON ? setPublishJob : null} drafts={drafts} initial={initial} />
+                    <StudioEditor key={dr.editorKey} apply={apply} onPublish={INSTAGRAM_ON ? setPublishJob : null} {...dr.editor} />
                 </div>
             )}
             {opened.has('pack') && <div className={mode === 'pack' ? '' : 'hidden'}><PackBuilder /></div>}
@@ -145,14 +123,7 @@ export default function Studio() {
                 </div>
             )}
             {mode === 'drafts' && (
-                <DraftsPanel
-                    editing={editing}
-                    onOpened={freshEditor}
-                    onShowEditor={() => { choose('post'); window.scrollTo(0, 0); }}
-                    onRenamed={setRenamed}
-                    onDeleted={setDeletedId}
-                    onCount={setDraftCount}
-                />
+                <DraftsPanel {...dr.panel} />
             )}
             {INSTAGRAM_ON && mode === 'instagram' && <InstagramPosts refreshKey={postsKey} />}
             {INSTAGRAM_ON && publishJob && <InstagramPanel job={publishJob} onClose={() => setPublishJob(null)} onDone={() => setPostsKey((k) => k + 1)} />}

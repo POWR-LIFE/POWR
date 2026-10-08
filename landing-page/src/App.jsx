@@ -47,6 +47,7 @@ import PartnerPortalFeatured from './pages/partner/PartnerFeatured';
 import PartnerPortalPlacements from './pages/partner/PartnerPlacements';
 import PartnerPortalSettings from './pages/partner/PartnerSettings';
 import PartnerPortalSupport from './pages/partner/PartnerSupport';
+import PartnerPortalStudio from './pages/partner/PartnerStudio';
 import PartnerIntegrationHub from './pages/partner/PartnerIntegrationHub';
 import PartnerIntegrationApi from './pages/partner/PartnerIntegrationApi';
 import PartnerIntegrationShopify from './pages/partner/PartnerIntegrationShopify';
@@ -1634,6 +1635,7 @@ export default function App() {
                     <Route path="/partner/promo-codes" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPromoCodes /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/featured" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalFeatured /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/placements" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPlacements /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/studio" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalStudio /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/redemptions" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRedemptions /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/settings" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSettings /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/support" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSupport /></PartnerLayout></PartnerProtectedRoute>} />

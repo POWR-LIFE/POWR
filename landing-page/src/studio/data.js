@@ -7,8 +7,9 @@
  * reach a design by accident.
  *
  * The editor takes its data as a source object (`adminStudioData` below; the
- * gym portal's is gymData.js), so the same editor serves a gym with only
- * that gym's own events and board.
+ * gym portal's is gymData.js, a reward brand's brandData.js), so the same
+ * editor serves a gym with only that gym's own events and board, and a brand
+ * with only its own rewards.
  */
 import { supabase } from '../lib/supabase';
 import { eventRegisterUrl } from '../lib/eventRegisterUrl';
@@ -32,10 +33,13 @@ export async function eventStandings(eventId, n = 5) {
     return (data?.standings ?? []).slice(0, n).map((r) => ({ name: shortName(r.display_name), points: r.points ?? 0 }));
 }
 
+// What a design may know about a reward (never a promo code).
+export const REWARD_COLUMNS = 'id, title, description, brand_name, brand_color, offer, value_label, discount_type, discount_value, powr_cost, category, terms, active, image_url, hero_image_url';
+
 export async function listRewards() {
     const { data, error } = await supabase
         .from('rewards')
-        .select('id, title, description, brand_name, brand_color, offer, value_label, discount_type, discount_value, powr_cost, category, terms, active, image_url, hero_image_url, partners:partner_id (name, logo_url)')
+        .select(`${REWARD_COLUMNS}, partners:partner_id (name, logo_url)`)
         .order('active', { ascending: false })
         .order('brand_name', { ascending: true });
     if (error) throw new Error(`Couldn’t load rewards — ${error.message}`);
@@ -124,7 +128,7 @@ const PILLAR = { Eat: 'eat', Move: 'move', Mind: 'mind', Sleep: 'sleep' };
 
 const money = (v) => `£${Number(v) % 1 ? Number(v).toFixed(2) : Number(v)}`;
 
-function rewardFacts(row) {
+export function rewardFacts(row) {
     const brand = (row.brand_name || row.partners?.name || row.title || '').trim();
     const pct = row.discount_type === 'percentage' && Number(row.discount_value) > 0;
     const fixed = row.discount_type === 'fixed_amount' && Number(row.discount_value) > 0;

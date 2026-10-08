@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Plus, ChevronLeft, Upload, Award, Clock, CheckCircle, XCircle, AlertCircle, Eye, X, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadPublicImage } from '../../lib/storage';
@@ -935,18 +936,29 @@ export default function PartnerRewards() {
                                             </span>
                                         </td>
                                         <td className="px-6 py-5 text-right">
-                                            {pendingEditRewardIds.has(r.id) ? (
-                                                <span className="inline-flex items-center gap-2 px-4 py-2 bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full text-[9px] font-black uppercase tracking-[0.2em] text-[#8a7600]">
-                                                    <Clock size={10} /> Update in review
-                                                </span>
-                                            ) : (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); openEditListing(r); }}
-                                                    className="h-9 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all"
+                                            {/* Stacked: the table shares the page with the phone preview, so two pills side by side don't fit. */}
+                                            <div className="inline-flex flex-col items-end gap-2">
+                                                {/* The Studio, opened on this reward's voucher. */}
+                                                <Link
+                                                    to={`/partner/studio?reward=${r.id}`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="inline-flex items-center h-9 px-5 whitespace-nowrap text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all"
                                                 >
-                                                    Edit Listing
-                                                </button>
-                                            )}
+                                                    Make a post
+                                                </Link>
+                                                {pendingEditRewardIds.has(r.id) ? (
+                                                    <span className="inline-flex items-center gap-2 px-4 py-2 bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full text-[9px] font-black uppercase tracking-[0.2em] text-[#8a7600]">
+                                                        <Clock size={10} /> Update in review
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); openEditListing(r); }}
+                                                        className="h-9 px-5 whitespace-nowrap text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all"
+                                                    >
+                                                        Edit Listing
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

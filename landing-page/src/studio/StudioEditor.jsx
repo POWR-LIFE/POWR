@@ -62,6 +62,10 @@ const NO_LOOK = {};
 
 const stamp = () => new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
+// "Ticket, Spec and Results"; past a handful (a reward fills every pillar
+// template, 80-odd) the names stop helping, so just the count.
+const templateNames = (names) => (names.length > 4 ? `${names.length} templates` : names.join(', ').replace(/, ([^,]*)$/, ' and $1'));
+
 // Image fields shared by every template that has them (see takeAsset).
 const SHARED_ASSETS = ['logo', 'product'];
 
@@ -82,13 +86,26 @@ function forVenue(value, venue) {
     return v.replaceAll(',\nLondon', '').replaceAll(', London', '').replaceAll('\nLondon', '').replaceAll('London', '');
 }
 
+// In a reward brand's portal the fields that name the partner beside POWR
+// start as the brand's own name: the pillars' and the voucher's `brand`,
+// Partner's `partnerName` and Tally's lockup (Ticket's lockup is the event).
+// The sample label "Founding partner" reads "POWR partner": only POWR's first
+// brands are founding partners, so a template can't say it for them.
+const isPartnerName = (templateId, key) => key === 'brand' || key === 'partnerName' || (templateId === 'tally' && key === 'lockup');
+function forBrand(templateId, key, value, brandName) {
+    if (!brandName || typeof value !== 'string') return value;
+    if (isPartnerName(templateId, key)) return brandName;
+    return value.replaceAll('Founding partner', 'POWR partner');
+}
+
 /**
- * data        where fills come from (admin by default; gymData.js for a gym)
- * categories  which template groups to offer (the gym portal leaves out Partners)
+ * data        where fills come from (admin by default; gymData.js for a gym,
+ *             brandData.js for a reward brand)
  * stickyClass the preview's sticky offset under the host layout's header
  * canvasInset extra px the host layout takes from the preview's height
  * start       open on a template, filled from one item: { templateId, fill: { kind, id } }
  * venue       { name, city }: the host gym, swapped into the sample venue
+ * brandName   the host reward brand: its name starts in every partner-name field
  * showRefs    show each template's "After …" reference (admin only: they name other brands)
  * apply       a new object switches to its template and lays its words and look
  *             over the current ones: { templateId, fields, look } (Trends → Try it)
@@ -96,23 +113,28 @@ function forVenue(value, venue) {
  *             { format, slideCount, hasVideo, thumb, render } — render()
  *             makes the files to post (JPEG q0.92 / MP4, one per slide)
  * drafts      shows the draft bar (name, Save draft / ⌘S, Save as copy, New
- *             post): { partnerId, onChange({ id, title, dirty }), onSaved(draft),
+ *             post): { scope, onChange({ id, title, dirty }), onSaved(draft),
  *             onNew(), renamed, deletedId } — onNew asks the host for a fresh
  *             editor; renamed ({ id, title, updated_at }) and deletedId report
  *             changes made on the Drafts tab (a deleted draft's work stays here
- *             and saves as a new draft)
+ *             and saves as a new draft). scope is whose drafts: { partnerId }
+ *             a gym's, { brand } a reward brand's, {} POWR's own
  * initial     open on a saved draft, as drafts/store.js openDraft() returns it
  */
 export default function StudioEditor({
-    intro = null, data = adminStudioData, categories = CATEGORIES,
-    stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, showRefs = true, apply = null, onPublish = null,
+    intro = null, data = adminStudioData,
+    stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, brandName = null, showRefs = true, apply = null, onPublish = null,
     drafts = null, initial = null,
 }) {
-    const startingFields = (t) => Object.fromEntries(Object.entries(fieldDefaults(t)).map(([k, v]) => [k, forVenue(v, venue)]));
-    const available = useMemo(() => TEMPLATES.filter((t) => categories.includes(t.category)), [categories]);
+    const forHost = (templateId, key, value) => forBrand(templateId, key, forVenue(value, venue), brandName);
+    const startingFields = (t) => Object.fromEntries(Object.entries(fieldDefaults(t)).map(([k, v]) => [k, forHost(t.id, k, v)]));
+    // Every host (admin, a gym, a reward brand) offers every template: the
+    // built-in ones and the week's Trending blueprints, registered before the
+    // editor opens. Only the fills differ, with what each host's data can fill.
+    const available = useMemo(() => TEMPLATES.filter((t) => CATEGORIES.includes(t.category)), []);
     const cats = useMemo(() => CATEGORIES.filter((c) => available.some((t) => t.category === c)), [available]);
     // Every template's starting words: a draft keeps only what differs from them.
-    const defaults = useMemo(() => Object.fromEntries(TEMPLATES.map((t) => [t.id, startingFields(t)])), [venue]); // eslint-disable-line react-hooks/exhaustive-deps
+    const defaults = useMemo(() => Object.fromEntries(TEMPLATES.map((t) => [t.id, startingFields(t)])), [venue, brandName]); // eslint-disable-line react-hooks/exhaustive-deps
     // Opening a draft: its slides as the editor holds them — every template's
     // words (the draft's changes over the starting ones), and a template that
     // has since left the Studio swapped for the first one offered.
@@ -842,7 +864,7 @@ export default function StudioEditor({
 
     // A starting point swaps in a template's words (and, for partners, their colour).
     const applyPreset = (p) => {
-        const words = Object.fromEntries(Object.entries(p.fields ?? {}).map(([k, v]) => [k, forVenue(v, venue)]));
+        const words = Object.fromEntries(Object.entries(p.fields ?? {}).map(([k, v]) => [k, forHost(templateId, k, v)]));
         setFields((f) => ({ ...f, [templateId]: { ...f[templateId], ...words } }));
         if (p.look) setLooks((l) => ({ ...l, [templateId]: { ...(l[templateId] ?? {}), ...p.look } }));
         if (p.style) setStyle((st) => ({ ...st, ...p.style }));
@@ -957,7 +979,7 @@ export default function StudioEditor({
             const { draft: d, notes } = await saveDraft({
                 id: asCopy ? null : draft?.id ?? null,
                 title: asCopy ? `${name} (copy)` : name,
-                partnerId: drafts.partnerId ?? null,
+                scope: drafts.scope ?? {},
                 payload,
                 thumb: await thumbOf(list[0]).catch(() => null),
                 onProgress: setSaving,
@@ -1316,7 +1338,7 @@ export default function StudioEditor({
                             {list?.error && <p className="mt-2 text-xs text-[#991B1B]">{list.error}</p>}
                             {note ? (
                                 <div className="mt-2.5 space-y-1.5">
-                                    <p className="text-xs text-[#555]">Filled {note.filled.join(', ').replace(/, ([^,]*)$/, ' and $1')} from {note.name}. Edit anything after.</p>
+                                    <p className="text-xs text-[#555]">Filled {templateNames(note.filled)} from {note.name}. Edit anything after.</p>
                                     {note.notes.map((n) => (
                                         <p key={n.text} className={`flex gap-1.5 text-xs ${n.warn ? 'text-[#92400E]' : 'text-[#888]'}`}>
                                             {n.warn && <TriangleAlert size={13} className="mt-px flex-none" />}{n.text}
@@ -1325,7 +1347,7 @@ export default function StudioEditor({
                                 </div>
                             ) : (
                                 <p className="mt-2 text-[11px] text-[#999]">
-                                    Fills {users.join(', ').replace(/, ([^,]*)$/, ' and $1')} in one go — {FILL[kind].what}.
+                                    Fills {templateNames(users)} in one go — {FILL[kind].what}.
                                 </p>
                             )}
                             {kind === 'reward' && item?.heroUrl && (

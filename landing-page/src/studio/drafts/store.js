@@ -2,8 +2,13 @@
  * Drafts: a post or carousel saved from the editor to finish later. The row
  * (studio_drafts) holds the editor's state as JSON; the photos, clips and
  * logos it uses sit beside it in the private studio-packs bucket, under
- * drafts/<id>/ (a gym's under gyms/<partner_id>/drafts/<id>/). See
- * supabase/migrations/20261006120000_studio_drafts.sql.
+ * drafts/<id>/ (a gym's under gyms/<partner_id>/drafts/<id>/, a reward
+ * brand's under brands/<brand slug>/drafts/<id>/). See
+ * supabase/migrations/20261006120000_studio_drafts.sql and
+ * 20261008130000_studio_drafts_brands.sql.
+ *
+ * Whose drafts is the `scope` every call takes: { partnerId } a gym's,
+ * { brand } a reward brand's (rewards.brand_name), neither for POWR's own.
  *
  * Saving again only uploads what's new: every photo, clip and logo opened
  * from or saved to a draft is remembered (`kept`), so re-saving a draft whose
@@ -26,7 +31,21 @@ const VIDEO_TYPES = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime'
 // offset/length: the stretch of the original clip the kept file holds.
 const kept = new WeakMap();
 
-const folderOf = (id, partnerId) => (partnerId ? `gyms/${partnerId}/drafts/${id}` : `drafts/${id}`);
+// "Healthspan Elite" → "healthspan-elite": a brand's folder. The bucket's
+// policy works it out the same way (studio_brand_slug), and anything outside
+// a–z 0–9 becomes a dash however each side lowercases it.
+export const brandSlug = (name) => String(name ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+const folderOf = (id, { partnerId = null, brand = null } = {}) => (partnerId ? `gyms/${partnerId}/drafts/${id}`
+    : brand ? `brands/${brandSlug(brand)}/drafts/${id}` : `drafts/${id}`);
+
+// The rows in a scope. A brand matches case-insensitively, as everywhere in
+// the partner portal; POWR's own are the rows that are neither a gym's nor a brand's.
+function inScope(q, { partnerId = null, brand = null } = {}) {
+    if (partnerId) return q.eq('partner_id', partnerId);
+    if (brand) return q.ilike('brand_name', brand.replace(/[\\%_]/g, '\\$&'));
+    return q.is('partner_id', null).is('brand_name', null);
+}
 const token = () => Math.random().toString(36).slice(2, 8);
 
 // A stable id per photo/clip/logo object, for comparing states.
@@ -98,7 +117,7 @@ async function trimmedClip(blob, m, start, end, onProgress) {
  * where each slide carries its photo/clip and logo OBJECTS; `thumb` is a JPEG
  * of the first slide. Resolves with { draft: { id, title, updated_at }, notes }.
  */
-export async function saveDraft({ id = null, title, partnerId = null, payload, thumb, onProgress }) {
+export async function saveDraft({ id = null, title, scope = {}, payload, thumb, onProgress }) {
     // A draft deleted from the Drafts tab while open here saves as a new one.
     if (id) {
         const { data } = await supabase.from('studio_drafts').select('id').eq('id', id).maybeSingle();
@@ -106,7 +125,7 @@ export async function saveDraft({ id = null, title, partnerId = null, payload, t
     }
     const isNew = !id;
     const draftId = id ?? crypto.randomUUID();
-    const base = folderOf(draftId, partnerId);
+    const base = folderOf(draftId, scope);
     const notes = [];
 
     // Every photo/clip and logo the slides use, once each.
@@ -235,7 +254,7 @@ export async function saveDraft({ id = null, title, partnerId = null, payload, t
         bytes: [...keptMedia.values(), ...keptAssets.values()].reduce((n, k) => n + (k?.bytes ?? 0), 0) + (thumb?.size ?? 0),
     };
     const q = isNew
-        ? supabase.from('studio_drafts').insert({ id: draftId, partner_id: partnerId, ...row })
+        ? supabase.from('studio_drafts').insert({ id: draftId, partner_id: scope.partnerId ?? null, ...(scope.brand ? { brand_name: scope.brand } : {}), ...row })
         : supabase.from('studio_drafts').update(row).eq('id', draftId);
     const { data: saved, error } = await q.select('id, title, updated_at').single();
     if (error) {
@@ -274,18 +293,14 @@ async function signed(paths, seconds = 3600) {
     return map;
 }
 
-/**
- * Drafts, last edited first, each with its preview and who last saved it.
- * `partnerId` lists a gym's; without it, POWR's own.
- */
-export async function listDrafts({ partnerId = null, limit = 200 } = {}) {
-    let q = supabase
+/** A scope's drafts, last edited first, each with its preview and who last saved it. */
+export async function listDrafts(scope = {}, { limit = 200 } = {}) {
+    const q = supabase
         .from('studio_drafts')
         .select('id, title, format, slide_count, has_video, template_id, thumb_path, bytes, created_at, updated_at, updated_by')
         .order('updated_at', { ascending: false })
         .limit(limit);
-    q = partnerId ? q.eq('partner_id', partnerId) : q.is('partner_id', null);
-    const { data, error } = await q;
+    const { data, error } = await inScope(q, scope);
     if (error) throw new Error(`Couldn’t load the drafts — ${error.message}`);
     const rows = data ?? [];
     if (!rows.length) return [];
@@ -303,11 +318,9 @@ async function peopleNames(userIds) {
     return new Map((data ?? []).map((p) => [p.id, (p.display_name || p.username || '').split(' ')[0] || null]));
 }
 
-/** How many drafts there are — for the tab's count. */
-export async function countDrafts({ partnerId = null } = {}) {
-    let q = supabase.from('studio_drafts').select('id', { count: 'exact', head: true });
-    q = partnerId ? q.eq('partner_id', partnerId) : q.is('partner_id', null);
-    const { count, error } = await q;
+/** How many drafts a scope has — for the tab's count. */
+export async function countDrafts(scope = {}) {
+    const { count, error } = await inScope(supabase.from('studio_drafts').select('id', { count: 'exact', head: true }), scope);
     return error ? null : count ?? 0;
 }
 
@@ -389,8 +402,8 @@ export async function renameDraft(id, title) {
 }
 
 /** Delete a draft and its files. */
-export async function deleteDraft(id, { partnerId = null } = {}) {
-    await clearFolder(folderOf(id, partnerId)).catch((e) => { throw new Error(`Couldn’t delete the draft’s files — ${e.message}`); });
+export async function deleteDraft(id, scope = {}) {
+    await clearFolder(folderOf(id, scope)).catch((e) => { throw new Error(`Couldn’t delete the draft’s files — ${e.message}`); });
     const { error } = await supabase.from('studio_drafts').delete().eq('id', id);
     if (error) throw new Error(`Couldn’t delete the draft — ${error.message}`);
 }
