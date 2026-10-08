@@ -27,6 +27,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/mailgun.ts";
+import { type LogoSize, measureLogo } from "../_shared/emails/brand-logo.ts";
 import {
   type DeliveryMethod,
   partnerSetupReminderEmail,
@@ -80,13 +81,22 @@ Deno.serve(async (req: Request) => {
   }
   if (!authed) return new Response("forbidden", { status: 403 });
 
-  const render = (c: Candidate) =>
+  // One header read per logo URL, however many brands share it.
+  const sizes = new Map<string, Promise<LogoSize | null>>();
+  const sizeOf = (url: string | null) => {
+    if (!url) return Promise.resolve(null);
+    if (!sizes.has(url)) sizes.set(url, measureLogo(url));
+    return sizes.get(url)!;
+  };
+
+  const render = async (c: Candidate) =>
     partnerSetupReminderEmail({
       brandName: c.brand_name,
       step: c.step,
       contactName: c.contact_name,
       rewardTitle: c.reward_title,
       logoUrl: c.logo_url,
+      logoSize: await sizeOf(c.logo_url),
       brandColor: c.brand_color,
       method: c.method,
       inviteToken: c.invite_token,
@@ -102,7 +112,7 @@ Deno.serve(async (req: Request) => {
     const steps = STEPS.includes(body?.step as SetupStep) ? [body.step as SetupStep] : STEPS;
     const sent: string[] = [];
     for (const step of steps) {
-      const email = render({
+      const email = await render({
         brand_name: "Healthspan Elite",
         brand_key: "healthspan elite",
         step,
@@ -143,15 +153,15 @@ Deno.serve(async (req: Request) => {
       ok: true,
       mode: "dry_run",
       total: candidates.length,
-      due: candidates.map((c) => ({
+      due: await Promise.all(candidates.map(async (c) => ({
         brand: c.brand_name,
         step: c.step,
         to: c.recipients,
         reminder: c.reminder_number,
         waiting_since: c.waiting_since,
         reward: c.reward_title,
-        subject: render(c).subject,
-      })),
+        subject: (await render(c)).subject,
+      }))),
     });
   }
 
@@ -175,7 +185,7 @@ Deno.serve(async (req: Request) => {
         return;
       }
 
-      const email = render(c);
+      const email = await render(c);
       try {
         // One email to the brand's whole side, so they can see who else has it.
         await sendEmail({ to: c.recipients.join(", "), subject: email.subject, html: email.html, text: email.text, replyTo: REPLY_TO, tag: `partner-setup-reminder-${c.step}` });

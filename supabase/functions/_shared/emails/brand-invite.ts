@@ -1,3 +1,5 @@
+import { brandLogoImg } from "./brand-logo.ts";
+
 export interface BrandInviteData {
   /** The reward brand the recipient is being invited to manage. */
   brandName: string;
@@ -82,18 +84,13 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
   const footerNote = `This invite link is single-use and tied to your brand.<br>
             ${approved ? "Questions about your listing? Reply to this email." : "Didn&#8217;t expect this? Reply to this email and we&#8217;ll sort it."}`;
   const accent = /^#[0-9a-f]{6}$/i.test(data.brandColor ?? "") ? data.brandColor! : GOLD;
-  const logoUrl = (data.logoUrl ?? "").trim();
-  // The brand's own mark sits above the headline in a white tile, so dark and
-  // light logos both read on the black hero. Sized by height; portrait and
-  // landscape marks both fit inside the 120×56 box.
-  const logoTile = logoUrl && /^https:\/\//.test(logoUrl)
+  // The brand's own mark sits straight on the black hero, as it does on a
+  // reward card in the app (see brand-logo.ts).
+  const logo = brandLogoImg(data.logoUrl, brandName);
+  const logoTile = logo
     ? `
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 24px;">
-              <tr>
-                <td style="background-color:#ffffff;border-radius:16px;padding:14px 22px;">
-                  <img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(brandName)}" height="56" style="display:block;height:56px;max-width:120px;width:auto;object-fit:contain;margin:0 auto;">
-                </td>
-              </tr>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 26px;">
+              <tr><td align="center">${logo}</td></tr>
             </table>`
     : "";
 

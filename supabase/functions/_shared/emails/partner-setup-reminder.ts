@@ -8,7 +8,8 @@
 // The body is the brand's own checklist: what's done, the one thing to do
 // next (the button), what follows, and our part at the end.
 
-import { emailShell, esc, FONT, GOLD, optimizeImage } from "./layout.ts";
+import { emailShell, esc, FONT, GOLD } from "./layout.ts";
+import { brandLogoImg, type LogoSize } from "./brand-logo.ts";
 import { ctaRow, gold, noteRow, TEXT_SIGNOFF } from "./gym-mail-parts.ts";
 
 export type SetupStep = "login" | "submit" | "choose" | "connect";
@@ -22,8 +23,10 @@ export interface PartnerSetupReminderData {
   contactName?: string | null;
   /** The brand's newest reward, once one is approved. */
   rewardTitle?: string | null;
-  /** The brand's logo (rewards.image_url), shown in a white tile above the heading. */
+  /** The brand's logo (rewards.image_url), above the heading on the black hero. */
   logoUrl?: string | null;
+  /** Its pixel size (measureLogo), so every client draws it at the right size. */
+  logoSize?: LogoSize | null;
   /** rewards.brand_color, e.g. "#c6a13e": the dot by the eyebrow. Everything else stays POWR gold. */
   brandColor?: string | null;
   /** How codes reach members, once chosen. */
@@ -161,23 +164,17 @@ function checklistSection(label: string, rows: Row[]): string {
 }
 
 function heroRow(d: PartnerSetupReminderData, headingHtml: string, body: string): string {
-  const logo = (d.logoUrl ?? "").trim();
-  // White tile so dark and light marks both read on black. Sized by height;
-  // portrait and landscape logos both fit the 120×56 box.
-  const tile = /^https:\/\//.test(logo)
+  const logo = brandLogoImg(d.logoUrl, d.brandName, d.logoSize);
+  const logoRow = logo
     ? `
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 24px;">
-              <tr>
-                <td style="background-color:#ffffff;border-radius:16px;padding:14px 22px;">
-                  <img src="${esc(optimizeImage(logo, { width: 240, height: 112, resize: "contain" }))}" alt="${esc(d.brandName)}" height="56" style="display:block;height:56px;max-width:120px;width:auto;margin:0 auto;">
-                </td>
-              </tr>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 26px;">
+              <tr><td align="center">${logo}</td></tr>
             </table>`
     : "";
   const dot = /^#[0-9a-f]{6}$/i.test(d.brandColor ?? "") ? d.brandColor! : GOLD;
   return `
         <tr>
-          <td class="sec" style="background-color:#080808;padding:40px 40px 34px;text-align:center;border-bottom:1px solid #111111;">${tile}
+          <td class="sec" style="background-color:#080808;padding:40px 40px 34px;text-align:center;border-bottom:1px solid #111111;">${logoRow}
             <p style="margin:0 0 10px;font-size:11px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:#777777;font-family:${FONT};"><span style="color:${dot};">&#9679;</span>&nbsp; ${esc(oneLine(d.brandName))} &middot; Partner portal</p>
             <h1 class="hero-h1" style="margin:0;font-size:38px;font-weight:200;letter-spacing:0.5px;line-height:1.18;color:#F2F2F2;font-family:${FONT};">${headingHtml}</h1>
             <p style="margin:18px 0 0;font-size:15px;font-weight:300;color:#999999;line-height:1.7;font-family:${FONT};">${esc(body)}</p>
