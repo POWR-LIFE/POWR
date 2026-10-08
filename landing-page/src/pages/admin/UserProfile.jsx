@@ -16,7 +16,7 @@ import {
     Heart, Moon, Flame, Footprints, Star, Trash2,
     Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil, Copy,
     Smartphone, Bell,
-    Dumbbell, Bike, Waves, Wind, PersonStanding, Music
+    Dumbbell, Bike, Waves, Wind, PersonStanding, Music, SquareKanban
 } from 'lucide-react';
 
 const MIN_USERNAME = 3;
@@ -852,12 +852,20 @@ export default function UserProfile() {
                     <ChevronLeft size={16} />
                     <span className="text-[10px] uppercase tracking-[0.4em] font-black">Back to Registry</span>
                 </Link>
-                <button
-                    onClick={() => setDeleteConfirm(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-[#E6E6E1] text-[#999999] hover:text-red-400 hover:border-red-400/30 transition-all text-[10px] font-black uppercase tracking-widest"
-                >
-                    <Trash2 size={13} /> Delete User
-                </button>
+                <div className="flex items-center gap-3">
+                    <Link
+                        to={`/admin/tracker?new=1&user=${userId}`}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-[#E6E6E1] text-[#666666] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all text-[10px] font-black uppercase tracking-widest"
+                    >
+                        <SquareKanban size={13} /> File an issue
+                    </Link>
+                    <button
+                        onClick={() => setDeleteConfirm(true)}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-[#E6E6E1] text-[#999999] hover:text-red-400 hover:border-red-400/30 transition-all text-[10px] font-black uppercase tracking-widest"
+                    >
+                        <Trash2 size={13} /> Delete User
+                    </button>
+                </div>
             </div>
 
             {/* Device lock — one account per device. Shown only when a device is bound. */}

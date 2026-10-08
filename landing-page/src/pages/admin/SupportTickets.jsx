@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { MessageSquare, Search, ChevronDown, ChevronUp, Send, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { MessageSquare, Search, ChevronDown, ChevronUp, Send, Clock, CheckCircle, XCircle, AlertCircle, SquareKanban } from 'lucide-react';
 
 const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -58,7 +58,11 @@ export default function SupportTickets() {
     const [loading, setLoading]     = useState(true);
     const [search, setSearch]       = useState('');
     const [filterStatus, setFilter] = useState('all');
-    const [expanded, setExpanded]   = useState(null);
+    const [params]                  = useSearchParams();
+    // ?ticket=<id> (from a Tracker issue) opens that ticket.
+    const [expanded, setExpanded]   = useState(() => params.get('ticket'));
+    // ticket id → POWR-n of the tracker issue filed from it.
+    const [tracked, setTracked]     = useState({});
     const [replyText, setReplyText] = useState({});
     const [saving, setSaving]       = useState(null);
     const [gymOnly, setGymOnly]     = useState(false);
@@ -82,6 +86,12 @@ export default function SupportTickets() {
         if (error) toast.error('Failed to load support tickets');
         else setTickets(data || []);
         setLoading(false);
+        // Quietly empty until the tracker migration is applied.
+        const { data: issues } = await supabase
+            .from('tracker_issues')
+            .select('number, support_ticket_id')
+            .not('support_ticket_id', 'is', null);
+        setTracked(Object.fromEntries((issues ?? []).map(i => [i.support_ticket_id, `POWR-${i.number}`])));
     };
 
     const handleUpdateStatus = async (id, status) => {
@@ -273,6 +283,19 @@ export default function SupportTickets() {
                                                 </Link>
                                             </div>
                                         )}
+
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            {tracked[ticket.id] ? (
+                                                <Link to={`/admin/tracker?issue=${tracked[ticket.id]}`} className="h-10 px-5 inline-flex items-center gap-2 rounded-full border border-[#E6E6E1] bg-white text-[#1A1A1A] text-[10px] font-black uppercase tracking-[0.2em] hover:border-[#E8D200]">
+                                                    <SquareKanban size={13} /> Tracked as {tracked[ticket.id]}
+                                                </Link>
+                                            ) : (
+                                                <Link to={`/admin/tracker?new=1&ticket=${ticket.id}`} className="h-10 px-5 inline-flex items-center gap-2 rounded-full border border-[#E6E6E1] bg-white text-[#666666] text-[10px] font-black uppercase tracking-[0.2em] hover:border-[#E8D200] hover:text-[#1A1A1A]">
+                                                    <SquareKanban size={13} /> Track as an issue
+                                                </Link>
+                                            )}
+                                            <span className="text-[11px] text-[#AAAAAA]">For a bug or a feature request the team needs to fix, not just a reply.</span>
+                                        </div>
 
                                         {/* Existing reply */}
                                         {ticket.admin_reply && (
