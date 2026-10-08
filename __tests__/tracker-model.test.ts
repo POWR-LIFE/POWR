@@ -4,6 +4,7 @@ import {
   burndown,
   daysLeft,
   isDone,
+  linkLabel,
   matchesSearch,
   sprintStats,
 } from '../landing-page/src/pages/admin/tracker/model';
@@ -66,5 +67,20 @@ describe('sprint maths', () => {
     expect(daysLeft(sprint, at('2026-10-09T08:00:00'))).toBe(0);
     expect(daysLeft(sprint, at('2026-10-11T08:00:00'))).toBe(-2);
     expect(addDays('2026-10-30', 3)).toBe('2026-11-02');
+  });
+});
+
+describe('link labels', () => {
+  it('names real services and their subdomains', () => {
+    expect(linkLabel('https://powr.sentry.io/issues/1')).toBe('Sentry');
+    expect(linkLabel('https://sentry.io/x')).toBe('Sentry');
+    expect(linkLabel('https://powr.slack.com/archives/C1')).toBe('Slack');
+    expect(linkLabel('https://supabase.com/dashboard')).toBe('Supabase');
+  });
+
+  it('never gives a lookalike domain a trusted name', () => {
+    expect(linkLabel('https://evilsentry.io/x')).toBe('evilsentry.io');
+    expect(linkLabel('https://notslack.com/x')).toBe('notslack.com');
+    expect(linkLabel('https://sentry.io.evil.com/x')).toBe('sentry.io.evil.com');
   });
 });

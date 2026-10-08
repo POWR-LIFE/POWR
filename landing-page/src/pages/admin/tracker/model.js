@@ -274,16 +274,19 @@ export function ecosystemCounts(issues) {
 }
 
 // GitHub, Sentry and friends get a name instead of a raw URL.
+// The domain itself or a subdomain of it — never a lookalike (evilsentry.io).
+const onDomain = (host, domain) => host === domain || host.endsWith(`.${domain}`);
+
 export function linkLabel(url) {
     try {
         const host = new URL(url).hostname.replace(/^www\./, '');
-        if (host.endsWith('sentry.io')) return 'Sentry';
+        if (onDomain(host, 'sentry.io')) return 'Sentry';
         if (host === 'github.com') return 'GitHub';
-        if (host.endsWith('slack.com')) return 'Slack';
+        if (onDomain(host, 'slack.com')) return 'Slack';
         if (host === 'drive.google.com' || host === 'docs.google.com') return 'Google Drive';
         if (host === 'expo.dev') return 'Expo';
-        if (host.endsWith('supabase.com')) return 'Supabase';
-        if (host.endsWith('vercel.com')) return 'Vercel';
+        if (onDomain(host, 'supabase.com')) return 'Supabase';
+        if (onDomain(host, 'vercel.com')) return 'Vercel';
         if (host === 'claude.ai') return 'Claude';
         return host;
     } catch {

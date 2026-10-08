@@ -113,8 +113,9 @@ Deno.serve(async (req) => {
     }
   }
   if (errors.length) {
+    // The detail stays in the function logs; the caller (pg_net) only needs to know it failed.
     console.error("[tracker-slack]", label, errors.join(" | "));
-    return new Response(errors.join("\n"), { status: 502 });
+    return new Response(`${errors.length} of ${posts.length} Slack posts failed — see the tracker-slack logs`, { status: 502 });
   }
   return new Response(`ok ${posts.length}`, { status: 200 });
 });
