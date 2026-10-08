@@ -36,7 +36,7 @@ Per-function sample options:
 | `send-level-up-email` | `{"sample":true,"only_email":…}` |
 | `send-brand-weekly-report` | `{"sample":true,"only_email":…}` |
 | `send-reengagement-email` | `{"sample":true,"only_email":…,"variant":"lapsed"\|"never_started","stage":1\|2}` (both omitted = all four); `{"dry_run":true}` lists who is due without sending |
-| `send-partner-setup-reminder` | `{"sample":true,"only_email":…,"stage":"invite"\|"delivery"}` (omitted = both); `{"dry_run":true}` lists the brands due without sending |
+| `send-partner-setup-reminder` | `{"sample":true,"only_email":…,"step":"login"\|"submit"\|"choose"\|"connect"}` (omitted = all four); `{"dry_run":true}` lists the brands due today, who it goes to and the subject, without sending; `{"brand":"Healthspan Elite"}` is a real send for that brand only, and only if it is due |
 | `send-redemption-receipt` | `{"sample":true,"only_email":…,"kind":"code"\|"link"}` (omitted = both) |
 | `send-gym-email` | `{"sample":true,"only_email":…,"kind":K}`; K = `weekly_recap` \| `drift_digest` \| `results_ready` \| `review_result` (+`decision` approved\|rejected\|pulled) \| `welcome` (+`role` owner\|staff) \| `invite_reminder` \| `trial_ending` (+`stage` 14\|3) \| `trial_ended` \| `package_changed` (+`from`/`to`) \| `support_reply` (+`updated`) \| `clash_night` (+`decision` confirmed\|declined\|called_off). `{"kind":"lifecycle","dry_run":true}` lists the trial mail and invite reminders due without sending |
 
