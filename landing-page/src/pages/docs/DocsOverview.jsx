@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Callout, CodeBlock, DocsLayout, GUIDES, P, Section, Table } from './docsShared';
+import { Callout, CodeBlock, DocsLayout, METHOD_GUIDES, P, Section, Table } from './docsShared';
 
 // /docs — the shared mental model, then the three ways to deliver codes.
 // Everything method-specific lives in the three guides; this page's job is to
@@ -56,7 +56,7 @@ expired    → it lapsed before anyone claimed it`}</CodeBlock>
                     one method delivers at a time.
                 </P>
                 <div className="space-y-4 my-6">
-                    {GUIDES.filter(g => g.path !== '/docs').map((g, i) => (
+                    {METHOD_GUIDES.map((g, i) => (
                         <Link key={g.path} to={g.path}
                             className="group flex items-start gap-5 p-6 bg-white border border-[#E6E6E1] rounded-3xl hover:border-[#E8D200]/50 transition-all">
                             <div className="w-11 h-11 rounded-2xl bg-[#F4F4F1] flex items-center justify-center shrink-0">

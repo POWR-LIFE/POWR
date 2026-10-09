@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { LifeBuoy, Send, Clock, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, MessageSquare, Mail, FileText, Plug, Award, Settings } from 'lucide-react';
+import { LifeBuoy, Send, Clock, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, MessageSquare, Mail, FileText, Plug, Award, Settings, BookOpen } from 'lucide-react';
 import { SectionCard, RailRow, RailLink, INPUT } from './integrationShared';
 
 // Stored in support_tickets.category — the partner_ prefix is what tells the
@@ -278,6 +278,12 @@ export default function PartnerSupport() {
                 </SectionCard>
 
                 <SectionCard icon={LifeBuoy} title="Fix It Faster">
+                    <RailLink
+                        to="/docs/getting-started"
+                        icon={BookOpen}
+                        label="How-to guides"
+                        detail="Step-by-step guides to every page of the portal."
+                    />
                     <RailLink
                         to="/partner/integration"
                         icon={Plug}

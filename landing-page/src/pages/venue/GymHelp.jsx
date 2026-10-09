@@ -10,6 +10,7 @@ import { fetchGymTickets, submitGymTicket } from './venueApi';
 // /admin/support, plus a Slack line) and sees everything it has asked POWR
 // for, with POWR's answers. Package changes, Clash Nights and first-event
 // reviews open their own tickets automatically, so they're listed here too.
+// The how-to guides (/docs/gyms) answer most questions before they're asked.
 
 const TOPICS = ['Something’s not working', 'Package and billing', 'Events', 'Screens and the board', 'Studio', 'Other'];
 
@@ -93,6 +94,7 @@ export default function GymHelp({ supportEmail, gymName }) {
             ) : (
                 <div className="flex flex-wrap gap-3 mt-5">
                     <button type="button" onClick={() => setOpen(true)} className={BTN_GOLD}>Ask POWR</button>
+                    <a href="/docs/gyms" target="_blank" rel="noopener" className={BTN_GHOST}>How-to guides</a>
                     <Link to="/venue/screens" className={BTN_GHOST}>Putting the board on a TV</Link>
                     <Link to="/venue/poster" className={BTN_GHOST}>The join poster</Link>
                 </div>

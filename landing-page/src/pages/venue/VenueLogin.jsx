@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { PortalShell } from '../../components/portal/PortalShell';
@@ -11,7 +11,14 @@ import { INPUT, LABEL, BTN_GOLD } from '../../components/portal/ui';
 // the link can only sign into an account that already exists.
 export default function VenueLogin() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user, isGymStaff, isAdmin, gymMemberships, rolesFor, loading: authLoading } = useAuth();
+    // Back to where sign-in was asked for (a portal page, or a gym guide),
+    // never anywhere outside those two.
+    const from = location.state?.from;
+    const back = from && /^\/(venue|docs\/gyms)(\/|$)/.test(from.pathname)
+        ? `${from.pathname}${from.search ?? ''}${from.hash ?? ''}`
+        : '/venue';
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [busy, setBusy] = useState(null); // 'password' | 'link'
@@ -19,8 +26,8 @@ export default function VenueLogin() {
     const [linkSent, setLinkSent] = useState(false);
 
     useEffect(() => {
-        if (user && rolesFor === user.id && (isGymStaff || isAdmin)) navigate('/venue');
-    }, [user, rolesFor, isGymStaff, isAdmin, navigate]);
+        if (user && rolesFor === user.id && (isGymStaff || isAdmin)) navigate(back, { replace: true });
+    }, [user, rolesFor, isGymStaff, isAdmin, navigate, back]);
 
     const emailLink = async () => {
         const addr = email.trim().toLowerCase();

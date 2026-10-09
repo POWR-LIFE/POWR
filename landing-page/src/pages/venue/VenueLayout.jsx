@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Radar, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package, PartyPopper } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Radar, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package, PartyPopper, BookOpen } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
@@ -281,12 +281,19 @@ export function VenueLayout({ children }) {
                             <div className="text-[11px] text-[#666] truncate font-mono">{user.email}</div>
                         </div>
                     )}
-                    <button
-                        onClick={handleSignOut}
-                        className="w-full flex items-center justify-center gap-3 h-12 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/50 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all border border-transparent hover:border-red-500/10"
-                    >
-                        <LogOut size={16} /> Sign Out
-                    </button>
+                    {/* The guides share Sign Out's row: nine pages already fill a laptop-height sidebar. */}
+                    <div className="grid grid-cols-2 gap-2">
+                        <a href="/docs/gyms" target="_blank" rel="noopener" style={{ color: '#999999' }}
+                            className="flex items-center justify-center gap-2 h-12 text-[10px] uppercase tracking-[0.2em] font-black rounded-2xl transition-all group hover:bg-[#EFEFEC]">
+                            <BookOpen size={15} className="group-hover:text-[#8a7600] transition-colors" /> Guides
+                        </a>
+                        <button
+                            onClick={handleSignOut}
+                            className="flex items-center justify-center gap-2 h-12 text-[10px] uppercase tracking-[0.2em] font-black text-red-500/50 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all border border-transparent hover:border-red-500/10"
+                        >
+                            <LogOut size={15} /> Sign Out
+                        </button>
+                    </div>
                 </div>
             </aside>
 
@@ -358,6 +365,11 @@ export function VenueLayout({ children }) {
                                 {locked(item) ? <Lock size={12} className="text-[#BBBBBB]" aria-label="Not in your package" /> : <ChevronRight size={14} className="text-[#BBBBBB]" />}
                             </Link>
                         ))}
+                        <a href="/docs/gyms" target="_blank" rel="noopener" className="mb-4 flex items-center gap-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
+                            <BookOpen size={14} className="text-[#8a7600] shrink-0" />
+                            <span className="flex-1 text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] truncate">Guides</span>
+                            <ChevronRight size={14} className="text-[#BBBBBB]" />
+                        </a>
                         {user?.email && (
                             <div className="mb-4 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                                 <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>

@@ -34,7 +34,7 @@ import {
     HeartPulse,
     SquareKanban,
 } from 'lucide-react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, lazy, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
@@ -58,6 +58,14 @@ import DocsOverview from './pages/docs/DocsOverview';
 import DocsPromoCodes from './pages/docs/DocsPromoCodes';
 import DocsShopify from './pages/docs/DocsShopify';
 import DocsApi from './pages/docs/DocsApi';
+import { GuideGate } from './pages/docs/docsShared';
+import DocsGettingStarted from './pages/docs/DocsGettingStarted';
+import DocsRewards from './pages/docs/DocsRewards';
+import DocsWhatsOn from './pages/docs/DocsWhatsOn';
+import DocsStudio from './pages/docs/DocsStudio';
+import DocsRedemptions from './pages/docs/DocsRedemptions';
+import DocsSettings from './pages/docs/DocsSettings';
+import GymDocsStart from './pages/docs/gyms/GymDocsStart';
 
 import Analytics from './pages/admin/Analytics';
 import UsageAnalytics from './pages/admin/UsageAnalytics';
@@ -138,6 +146,17 @@ import GymLeague from './pages/GymLeague';
 import EventPromo from './pages/EventPromo';
 import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
+
+// Guides behind a sign-in (gym) or not open yet (Placements) are separate
+// chunks: GuideGate only loads one for a reader who may see it.
+const DocsPlacements = lazy(() => import('./pages/docs/DocsPlacements'));
+const GymDocsSettings = lazy(() => import('./pages/docs/gyms/GymDocsSettings'));
+const GymDocsEvents = lazy(() => import('./pages/docs/gyms/GymDocsEvents'));
+const GymDocsDiscounts = lazy(() => import('./pages/docs/gyms/GymDocsDiscounts'));
+const GymDocsClashNights = lazy(() => import('./pages/docs/gyms/GymDocsClashNights'));
+const GymDocsScreens = lazy(() => import('./pages/docs/gyms/GymDocsScreens'));
+const GymDocsStudio = lazy(() => import('./pages/docs/gyms/GymDocsStudio'));
+const GymDocsMembers = lazy(() => import('./pages/docs/gyms/GymDocsMembers'));
 
 // --- Auth Context ---
 export const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, creatorProgramEnabled: false, placementsEnabled: false, deliveryMethod: undefined, loading: true });
@@ -1671,6 +1690,21 @@ export default function App() {
                     <Route path="/docs/promo-codes" element={<DocsPromoCodes />} />
                     <Route path="/docs/shopify" element={<DocsShopify />} />
                     <Route path="/docs/api" element={<DocsApi />} />
+                    <Route path="/docs/getting-started" element={<DocsGettingStarted />} />
+                    <Route path="/docs/rewards" element={<DocsRewards />} />
+                    <Route path="/docs/whats-on" element={<DocsWhatsOn />} />
+                    <Route path="/docs/placements" element={<GuideGate><DocsPlacements /></GuideGate>} />
+                    <Route path="/docs/studio" element={<DocsStudio />} />
+                    <Route path="/docs/redemptions" element={<DocsRedemptions />} />
+                    <Route path="/docs/settings" element={<DocsSettings />} />
+                    <Route path="/docs/gyms" element={<GymDocsStart />} />
+                    <Route path="/docs/gyms/settings" element={<GuideGate><GymDocsSettings /></GuideGate>} />
+                    <Route path="/docs/gyms/events" element={<GuideGate><GymDocsEvents /></GuideGate>} />
+                    <Route path="/docs/gyms/discounts" element={<GuideGate><GymDocsDiscounts /></GuideGate>} />
+                    <Route path="/docs/gyms/clash-nights" element={<GuideGate><GymDocsClashNights /></GuideGate>} />
+                    <Route path="/docs/gyms/screens" element={<GuideGate><GymDocsScreens /></GuideGate>} />
+                    <Route path="/docs/gyms/studio" element={<GuideGate><GymDocsStudio /></GuideGate>} />
+                    <Route path="/docs/gyms/members" element={<GuideGate><GymDocsMembers /></GuideGate>} />
                     {/* Legacy — the API reference lived here before the docs hub */}
                     <Route path="/developers" element={<Navigate to="/docs/api" replace />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
