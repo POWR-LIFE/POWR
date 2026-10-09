@@ -8,7 +8,9 @@ import { verificationFromProvenance, sourceLabel } from '@/lib/health/dataSource
 import { getInferredActivitiesForWeek } from '@/lib/health/runInference';
 import { reconcileRecentGymSessions } from '@/lib/health/gymReconcile';
 import { captureRecentGymVitals } from '@/lib/health/gymVitals';
-import { readWindowVitals, SESSION_SCOPED_EXTRAS, type WindowVitals } from '@/lib/health/windowVitals';
+import { syncDailyVitals } from '@/lib/health/dailyVitals';
+import { readWindowVitals, sessionExtras, type WindowVitals } from '@/lib/health/windowVitals';
+import { resolveMaxHr } from '@/lib/health/maxHeartRate';
 import { supabase } from '@/lib/supabase';
 import { calculateBasePoints, calculateSleepPoints, mapHealthType } from '@/lib/health/points';
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
@@ -193,6 +195,17 @@ export function useHealthSync() {
         syncedKeys.add(`${s.type}_${new Date(s.started_at).toISOString()}`);
       }
 
+      // The same start instant is the same workout, whatever it was typed as.
+      // syncedKeys is keyed on type, so a workout whose type changed after it
+      // was recorded (the Health Connect type table was corrected on
+      // 2026-10-07, turning a run that synced as gym back into a run) would
+      // otherwise land a second time under its new type and be paid twice.
+      const recordedWorkoutStarts = new Set(
+        [...(existingSessions ?? []), ...(suppressedDone ?? [])]
+          .filter(s => s.type !== 'walking' && s.type !== 'sleep')
+          .map(s => new Date(s.started_at).toISOString()),
+      );
+
       // Today's heart rate + calories — used to enrich *today's* sessions only. We
       // have no per-day aggregates for past days, so backfilled sessions are saved
       // without (misleading) day-wide HR/calorie figures rather than wrong ones.
@@ -200,6 +213,10 @@ export function useHealthSync() {
         getHeartRateToday().catch(() => null),
         getCaloriesToday().catch(() => null),
       ]);
+
+      // Max heart rate for the zone breakdown of each workout's window — read
+      // once per sync (cached for the session). Null = no zones, nothing else.
+      const maxHr = isNativeProvider ? await resolveMaxHr().catch(() => null) : null;
 
       // ── Workouts (every provider; today + backfill) ─────────────────────
       const workouts = weekHistory.flatMap(d => d.activities);
@@ -212,7 +229,10 @@ export function useHealthSync() {
 
         const key = `${mappedType}_${new Date(health.startedAt).toISOString()}`;
         if (syncedKeys.has(key)) continue;
+        const startKey = new Date(health.startedAt).toISOString();
+        if (recordedWorkoutStarts.has(startKey)) continue;
         syncedKeys.add(key); // also guard against duplicates within this run
+        recordedWorkoutStarts.add(startKey);
 
         const today = isLocalToday(health.startedAt);
         // On the native path, derive wearable-vs-phone from the sample's own
@@ -228,7 +248,7 @@ export function useHealthSync() {
         // for that span, in which case we fall back to the day-wide read for
         // today only, exactly as before.
         const windowVitals: WindowVitals | null = isNativeProvider
-          ? await readWindowVitals(+new Date(health.startedAt), +new Date(health.startedAt) + health.durationMin * 60000)
+          ? await readWindowVitals(+new Date(health.startedAt), +new Date(health.startedAt) + health.durationMin * 60000, { maxHr })
           : null;
         const hrAvgFor = windowVitals?.hrAvg ?? (today ? heartRate?.avg : undefined);
 
@@ -279,8 +299,9 @@ export function useHealthSync() {
             source,
             sourceDetail: health.source ? sourceLabel(health.source) : undefined,
             // The marker that lets the sheet trust these over a day-wide row
-            // from the same provider. Only when the window actually measured.
-            extras: windowVitals ? { ...SESSION_SCOPED_EXTRAS } : undefined,
+            // from the same provider, plus the window's heart-rate zones. Only
+            // when the window actually measured.
+            extras: windowVitals ? sessionExtras(windowVitals) : undefined,
           });
         }
 
@@ -323,7 +344,7 @@ export function useHealthSync() {
           const actVerification = verificationFromProvenance(act.source, verificationSource);
           const inferredPoints = calculateBasePoints(act.type, act.durationMin, act.distanceM);
           // Same per-window read as the workout path — this IS the native path.
-          const actVitals = await readWindowVitals(actStart, actEnd);
+          const actVitals = await readWindowVitals(actStart, actEnd, { maxHr });
           const inferredSessionId = await logManualSession({
             type: act.type,
             duration_sec: act.durationMin * 60,
@@ -359,7 +380,7 @@ export function useHealthSync() {
               durationSec: act.durationMin * 60,
               source,
               sourceDetail: act.source ? sourceLabel(act.source) : undefined,
-              extras: actVitals ? { ...SESSION_SCOPED_EXTRAS } : undefined,
+              extras: actVitals ? sessionExtras(actVitals) : undefined,
             });
           }
 
@@ -400,6 +421,13 @@ export function useHealthSync() {
       if (isNativeProvider) {
         await captureRecentGymVitals().catch(e =>
           console.warn('[HealthSync] gym vitals capture failed:', e),
+        );
+        // ── The week's resting HR and HRV, one row per day ────────────────
+        // What terra-webhook writes for cloud wearables, read from the phone
+        // store instead — the Body tab's resting-HR and HRV charts. Hourly at
+        // most; never blocks the sync.
+        await syncDailyVitals().catch(e =>
+          console.warn('[HealthSync] daily vitals failed:', e),
         );
       }
     } catch (e: any) {

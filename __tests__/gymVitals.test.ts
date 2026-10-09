@@ -16,6 +16,7 @@ jest.mock('@/lib/health/windowVitals', () => ({
     ...jest.requireActual('@/lib/health/windowVitals'),
     readWindowVitals: (...args: unknown[]) => mockRead(...args),
 }));
+jest.mock('@/lib/health/maxHeartRate', () => ({ resolveMaxHr: jest.fn(async () => 186) }));
 
 const mockSave = jest.fn(async (_params: Record<string, unknown>) => {});
 jest.mock('@/lib/api/activity', () => ({ saveHealthSnapshot: (params: Record<string, unknown>) => mockSave(params) }));
@@ -78,7 +79,8 @@ it('writes a session-scoped snapshot over the visit\'s own window', async () => 
 
     await captureRecentGymVitals(NOW);
 
-    expect(mockRead).toHaveBeenCalledWith(+new Date(s.started_at), +new Date(s.ended_at!));
+    // The max heart rate rides along so the read can build the visit's zones.
+    expect(mockRead).toHaveBeenCalledWith(+new Date(s.started_at), +new Date(s.ended_at!), { maxHr: 186 });
     expect(mockSave).toHaveBeenCalledTimes(1);
     expect(mockSave.mock.calls[0][0]).toMatchObject({
         sessionId: 's1',
@@ -88,6 +90,18 @@ it('writes a session-scoped snapshot over the visit\'s own window', async () => 
         source: 'healthkit',
         extras: { scope: 'session' },
     });
+});
+
+it('keeps the visit\'s heart-rate zones in the snapshot, in the shape the sheet reads', async () => {
+    const zones = [0, 1, 2, 3, 4, 5].map(zone => ({
+        name: `Zone ${zone}`, zone, start_percentage: 0, end_percentage: 0, duration_seconds: 300,
+    }));
+    mockRead.mockResolvedValue({ hrAvg: 131, hrMax: 164, caloriesActive: 402, hrZones: zones });
+    mockDb([row('s1', 2 * H, 3300)]);
+
+    await captureRecentGymVitals(NOW);
+
+    expect(mockSave.mock.calls[0][0]).toMatchObject({ extras: { scope: 'session', hr_zones: zones } });
 });
 
 it('leaves a session that already carries vitals alone', async () => {

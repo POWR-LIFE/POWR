@@ -29,7 +29,8 @@ import { Platform } from 'react-native';
 import { saveHealthSnapshot } from '@/lib/api/activity';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
-import { readWindowVitals, SESSION_SCOPED_EXTRAS } from './windowVitals';
+import { resolveMaxHr } from './maxHeartRate';
+import { readWindowVitals, sessionExtras } from './windowVitals';
 
 /** How far back to look. A visit from a few days ago still deserves its numbers. */
 const LOOKBACK_DAYS = 7;
@@ -101,6 +102,9 @@ export async function captureRecentGymVitals(now: number = Date.now()): Promise<
     const liveIds = new Set((live ?? []).map(v => v.claimed_session_id).filter(Boolean));
 
     const source = Platform.OS === 'ios' ? 'healthkit' : 'health_connect';
+    // Zones over the visit are as readable as its average — read the max heart
+    // rate they're measured against once for the pass.
+    const maxHr = await resolveMaxHr(now).catch(() => null);
     let written = 0;
     for (const s of candidates) {
         if (written >= MAX_PER_PASS) break;
@@ -108,7 +112,7 @@ export async function captureRecentGymVitals(now: number = Date.now()): Promise<
         try {
             const startMs = new Date(s.started_at).getTime();
             const endMs = s.ended_at ? new Date(s.ended_at).getTime() : startMs + s.duration_sec * 1000;
-            const vitals = await readWindowVitals(startMs, endMs);
+            const vitals = await readWindowVitals(startMs, endMs, { maxHr });
             if (!vitals) continue; // nothing measured (yet) — try again next sync
 
             await saveHealthSnapshot({
@@ -119,7 +123,7 @@ export async function captureRecentGymVitals(now: number = Date.now()): Promise<
                 activityType: 'gym',
                 durationSec: Math.round((endMs - startMs) / 1000),
                 source,
-                extras: { ...SESSION_SCOPED_EXTRAS },
+                extras: sessionExtras(vitals),
             });
             written++;
             console.log(

@@ -71,14 +71,15 @@ export function createNativeHealthProvider(): HealthProvider {
         async isConnected() {
             if (Platform.OS === 'ios') {
                 // HealthKit has no read-state query; treat "init succeeded" as connected.
-                return iosRequestPermissions();
+                // 'core' — a silent restore must never raise the sheet for new types.
+                return iosRequestPermissions('core');
             }
             if (Platform.OS === 'android') return androidCheckAlreadyGranted();
             return false;
         },
 
         async connect() {
-            if (Platform.OS === 'ios') return (await iosRequestPermissions()) ? 'connected' : 'failed';
+            if (Platform.OS === 'ios') return (await iosRequestPermissions('all')) ? 'connected' : 'failed';
             if (Platform.OS === 'android') {
                 // Skip the dialog if permissions were already granted (e.g. via system settings).
                 if (await androidCheckAlreadyGranted()) return 'connected';

@@ -344,6 +344,39 @@ describe('seriesFromSnapshots — night vitals belong to the morning you woke', 
 });
 
 /**
+ * 2026-10-07 — HRV from the phone. HealthKit records SDNN, Terra and Health
+ * Connect RMSSD: different statistics, so one chart never mixes them.
+ */
+describe('seriesFromSnapshots — one HRV measure per chart', () => {
+    const iso = (day: string, time: string) => new Date(`${day}T${time}`).toISOString();
+    const day = (n: number, extras: Record<string, unknown>) => ({
+        recorded_at: iso(daysAgo(n), '23:59:00'), source: 'healthkit', hr_max: null, calories_active: null,
+        hr_resting: 58, sleep_duration_h: null, sleep_deep_h: null, sleep_rem_h: null, sleep_light_h: null,
+        extras: { scope: 'day', ...extras }, session: null,
+    });
+
+    test("an Apple Health user's SDNN days chart as their HRV", () => {
+        const s = seriesFromSnapshots([day(2, { hrv_sdnn: 44 }), day(1, { hrv_sdnn: 47.5 })] as never);
+        expect(s.hrv).toEqual([{ date: daysAgo(2), value: 44 }, { date: daysAgo(1), value: 47.5 }]);
+        expect(s.restingHr).toEqual([{ date: daysAgo(2), value: 58 }, { date: daysAgo(1), value: 58 }]);
+    });
+
+    test('a row carrying both measures (a Terra night) keeps RMSSD', () => {
+        const s = seriesFromSnapshots([day(1, { hrv_rmssd: 70, hrv_sdnn: 52 })] as never);
+        expect(s.hrv).toEqual([{ date: daysAgo(1), value: 70 }]);
+    });
+
+    test('after a switch of device, the measure being recorded now wins — never a blend', () => {
+        // Whoop (RMSSD) until four days ago, an Apple Watch (SDNN) since.
+        const s = seriesFromSnapshots([
+            day(6, { hrv_rmssd: 80 }), day(5, { hrv_rmssd: 78 }),
+            day(3, { hrv_sdnn: 45 }), day(1, { hrv_sdnn: 49 }),
+        ] as never);
+        expect(s.hrv).toEqual([{ date: daysAgo(3), value: 45 }, { date: daysAgo(1), value: 49 }]);
+    });
+});
+
+/**
  * 2026-09-19 — Jamie, eight days off the wrist: the tab kept judging a week
  * that was over ("waiting on your device" ×3, charts ending short of today,
  * "on your 8h goal this week" summed over no nights at all).

@@ -37,7 +37,8 @@ import {
 } from '@/lib/api/activity';
 import { calculateBasePoints, calculateSleepPoints, mapHealthType } from '@/lib/health/points';
 import { sourceLabel, verificationFromProvenance } from '@/lib/health/dataSource';
-import { readWindowVitals, SESSION_SCOPED_EXTRAS } from '@/lib/health/windowVitals';
+import { readWindowVitals, sessionExtras } from '@/lib/health/windowVitals';
+import { resolveMaxHr } from '@/lib/health/maxHeartRate';
 import { emitPointsChanged } from '@/lib/pointsEvents';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -121,6 +122,10 @@ export async function syncHistoricalHealthData(
     // policy, so an unfiltered probe can match a STRANGER's session and
     // silently drop this user's own workout.
     const syncedKeys = new Set<string>();
+    // Start instants of workouts already on record, whatever they were typed
+    // as — see the matching guard in useHealthSync: a workout whose type was
+    // corrected after it synced must not land again under its new type.
+    const recordedWorkoutStarts = new Set<string>();
 if (weekData.length > 0) {
     const earliest = weekData.reduce((min, d) => (d.date < min ? d.date : min), weekData[0].date);
     const latest = weekData.reduce((max, d) => (d.date > max ? d.date : max), weekData[0].date);
@@ -135,8 +140,14 @@ if (weekData.length > 0) {
         .lt('started_at', end.toISOString());
     for (const s of existing ?? []) {
         syncedKeys.add(`${s.type}_${new Date(s.started_at).toISOString()}`);
+        if (s.type !== 'walking' && s.type !== 'sleep') {
+            recordedWorkoutStarts.add(new Date(s.started_at).toISOString());
+        }
     }
 }
+
+    // Max heart rate for each workout's zone breakdown, read once for the pass.
+    const maxHr = await resolveMaxHr().catch(() => null);
 
     for (let idx = 0; idx < weekData.length; idx++) {
         const day = weekData[idx];
@@ -156,7 +167,10 @@ if (weekData.length > 0) {
 
             const key = `${mappedType}_${new Date(activity.startedAt).toISOString()}`;
             if (syncedKeys.has(key)) continue;
+            const startKey = new Date(activity.startedAt).toISOString();
+            if (recordedWorkoutStarts.has(startKey)) continue;
             syncedKeys.add(key);
+            recordedWorkoutStarts.add(startKey);
 
             try {
                 const startMs = new Date(activity.startedAt).getTime();
@@ -165,7 +179,7 @@ if (weekData.length > 0) {
                 // the day's figure stamped on every session (the Progress sheet has
                 // to gate those out as untrustworthy). Null when the store has
                 // nothing for that span.
-                const vitals = await readWindowVitals(startMs, endMs).catch(() => null);
+                const vitals = await readWindowVitals(startMs, endMs, { maxHr }).catch(() => null);
                 const points = calculateBasePoints(mappedType, activity.durationMin, activity.distanceM ?? null);
 
                 const sessionId = await logManualSession({
@@ -198,7 +212,7 @@ if (weekData.length > 0) {
                     durationSec: activity.durationMin * 60,
                     source,
                     sourceDetail: activity.source ? sourceLabel(activity.source) : undefined,
-                    extras: vitals ? { ...SESSION_SCOPED_EXTRAS } : undefined,
+                    extras: vitals ? sessionExtras(vitals) : undefined,
                 });
 
                 dayResult.activities.push(ACTIVITIES[mappedType].label);

@@ -20,16 +20,39 @@
 
 import { Platform } from 'react-native';
 
+import { zonesFromSamples, type HrSample, type HrZoneRecord } from './hrZones';
+
 export type WindowVitals = {
     /** Average heart rate across the window's samples, bpm. Null = no samples. */
     hrAvg: number | null;
     hrMax: number | null;
     /** Active energy burned in the window, kcal. Null = nothing recorded. */
     caloriesActive: number | null;
+    /**
+     * Time in each heart-rate zone (lib/health/hrZones), when the caller passed
+     * a max heart rate and the window held enough samples. Absent otherwise.
+     */
+    hrZones?: HrZoneRecord[];
+};
+
+export type WindowVitalsOptions = {
+    /** Max heart rate to build zones against (lib/health/maxHeartRate). No zones without it. */
+    maxHr?: number | null;
 };
 
 /** The marker a window-scoped snapshot carries in health_snapshots.extras. */
 export const SESSION_SCOPED_EXTRAS = { scope: 'session' } as const;
+
+/**
+ * The extras a window-read session snapshot carries: the scope marker and, when
+ * the read built them, the zones — under `hr_zones`, the key and shape Whoop's
+ * zones arrive in from Terra, so the sheet and the Body tab draw both alike.
+ */
+export function sessionExtras(vitals: Pick<WindowVitals, 'hrZones'>): Record<string, unknown> {
+    return vitals.hrZones
+        ? { ...SESSION_SCOPED_EXTRAS, hr_zones: vitals.hrZones }
+        : { ...SESSION_SCOPED_EXTRAS };
+}
 
 /** True when a snapshot's extras say its vitals were read over the session's own window. */
 export function isSessionScoped(extras: Record<string, unknown> | null | undefined): boolean {
@@ -40,16 +63,62 @@ function finite(n: unknown): number | null {
     return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function pack(hrAvg: number | null, hrMax: number | null, caloriesActive: number | null): WindowVitals | null {
+function pack(
+    hrAvg: number | null, hrMax: number | null, caloriesActive: number | null, hrZones: HrZoneRecord[] | null,
+): WindowVitals | null {
     if (hrAvg == null && hrMax == null && caloriesActive == null) return null;
-    return {
+    const vitals: WindowVitals = {
         hrAvg: hrAvg != null ? Math.round(hrAvg) : null,
         hrMax: hrMax != null ? Math.round(hrMax) : null,
         caloriesActive: caloriesActive != null ? Math.round(caloriesActive) : null,
     };
+    if (hrZones) vitals.hrZones = hrZones;
+    return vitals;
 }
 
-async function readWindowVitalsIOS(fromMs: number, toMs: number): Promise<WindowVitals | null> {
+async function readZonesIOS(fromMs: number, toMs: number, maxHr: number): Promise<HrZoneRecord[] | null> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const HK = require('@kingstinct/react-native-healthkit') as typeof import('@kingstinct/react-native-healthkit');
+        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierHeartRate', {
+            filter: { date: { startDate: new Date(fromMs), endDate: new Date(toMs) } },
+            limit: -1,
+            unit: 'count/min',
+            ascending: true,
+        });
+        const points: HrSample[] = samples.map(s => ({ atMs: s.startDate.getTime(), bpm: s.quantity }));
+        return zonesFromSamples(points, toMs, maxHr);
+    } catch {
+        return null; // zones are a nicety — never cost the averages
+    }
+}
+
+async function readZonesAndroid(fromMs: number, toMs: number, maxHr: number): Promise<HrZoneRecord[] | null> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { readRecords } = require('react-native-health-connect');
+        const { records } = await readRecords('HeartRate', {
+            timeRangeFilter: {
+                operator: 'between',
+                startTime: new Date(fromMs).toISOString(),
+                endTime: new Date(toMs).toISOString(),
+            },
+        });
+        const points: HrSample[] = [];
+        for (const r of (records ?? []) as { samples?: { time: string; beatsPerMinute: number }[] }[]) {
+            for (const s of r.samples ?? []) {
+                const atMs = new Date(s.time).getTime();
+                // A record can straddle the window; only its samples inside count.
+                if (atMs >= fromMs && atMs <= toMs) points.push({ atMs, bpm: s.beatsPerMinute });
+            }
+        }
+        return zonesFromSamples(points, toMs, maxHr);
+    } catch {
+        return null;
+    }
+}
+
+async function readWindowVitalsIOS(fromMs: number, toMs: number, maxHr: number | null): Promise<WindowVitals | null> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const HK = require('@kingstinct/react-native-healthkit') as typeof import('@kingstinct/react-native-healthkit');
@@ -77,14 +146,15 @@ async function readWindowVitalsIOS(fromMs: number, toMs: number): Promise<Window
             kcal = finite(energy.sumQuantity?.quantity);
         } catch { /* active energy not readable */ }
 
-        return pack(hrAvg, hrMax, kcal);
+        const zones = hrAvg != null && maxHr ? await readZonesIOS(fromMs, toMs, maxHr) : null;
+        return pack(hrAvg, hrMax, kcal, zones);
     } catch (e) {
         console.warn('[windowVitals] iOS read failed:', e);
         return null;
     }
 }
 
-async function readWindowVitalsAndroid(fromMs: number, toMs: number): Promise<WindowVitals | null> {
+async function readWindowVitalsAndroid(fromMs: number, toMs: number, maxHr: number | null): Promise<WindowVitals | null> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { initialize, aggregateRecord } = require('react-native-health-connect');
@@ -114,7 +184,8 @@ async function readWindowVitalsAndroid(fromMs: number, toMs: number): Promise<Wi
             kcal = finite(energy?.ACTIVE_CALORIES_TOTAL?.inKilocalories);
         } catch { /* active energy not readable */ }
 
-        return pack(hrAvg, hrMax, kcal);
+        const zones = hrAvg != null && maxHr ? await readZonesAndroid(fromMs, toMs, maxHr) : null;
+        return pack(hrAvg, hrMax, kcal, zones);
     } catch (e) {
         console.warn('[windowVitals] Android read failed:', e);
         return null;
@@ -123,12 +194,16 @@ async function readWindowVitalsAndroid(fromMs: number, toMs: number): Promise<Wi
 
 /**
  * Heart rate and active energy between `fromMs` and `toMs` from the native
- * health store. Foreground only — native reads are unreliable headless. Null
- * when unavailable or when nothing was measured in the window.
+ * health store, plus time-in-zone when `opts.maxHr` is given. Foreground only —
+ * native reads are unreliable headless. Null when unavailable or when nothing
+ * was measured in the window.
  */
-export function readWindowVitals(fromMs: number, toMs: number): Promise<WindowVitals | null> {
+export function readWindowVitals(
+    fromMs: number, toMs: number, opts: WindowVitalsOptions = {},
+): Promise<WindowVitals | null> {
     if (!(toMs > fromMs)) return Promise.resolve(null);
-    if (Platform.OS === 'ios') return readWindowVitalsIOS(fromMs, toMs);
-    if (Platform.OS === 'android') return readWindowVitalsAndroid(fromMs, toMs);
+    const maxHr = opts.maxHr ?? null;
+    if (Platform.OS === 'ios') return readWindowVitalsIOS(fromMs, toMs, maxHr);
+    if (Platform.OS === 'android') return readWindowVitalsAndroid(fromMs, toMs, maxHr);
     return Promise.resolve(null);
 }
