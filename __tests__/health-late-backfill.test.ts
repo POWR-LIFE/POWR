@@ -35,7 +35,7 @@ jest.mock('@/lib/api/activity', () => ({
     stepTierPoints: jest.fn(() => 0),
     WALKING_DAILY_CAP: 5,
 }));
-jest.mock('@/lib/health/windowVitals', () => ({ readWindowVitals: jest.fn(async () => null), SESSION_SCOPED_EXTRAS: { scope: 'session' } }));
+jest.mock('@/lib/health/windowVitals', () => ({ readWindowVitals: jest.fn(async () => null), SESSION_SCOPED_EXTRAS: { scope: 'session' }, sessionExtras: () => ({ scope: 'session' }) }));
 jest.mock('@/lib/pointsEvents', () => ({ emitPointsChanged: jest.fn() }));
 
 import { getWeekHistoryNow } from '@/hooks/useHealthData';

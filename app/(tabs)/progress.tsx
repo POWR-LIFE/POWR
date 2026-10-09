@@ -431,6 +431,7 @@ export default function ProgressScreen() {
           sleepBedtimes={sleepBedtimes}
           bodyTrends={bodyTrends}
           bodyDeviceName={cloudWearable?.meta.name}
+          onBodyStale={loadBody}
         />
         </>)}
 
@@ -492,7 +493,7 @@ function ActivityEmptyCard({ hasProviderConnected, onConnect, onLog }: {
 type BreakdownTabItem = { key: string; label: string };
 
 function BreakdownSection({
-  activeTab, activeIndex, onIndexChange, period, onPeriodChange, lookback, onLookbackChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, sleepHrs, sleepBedtimes, bodyTrends, bodyDeviceName,
+  activeTab, activeIndex, onIndexChange, period, onPeriodChange, lookback, onLookbackChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, sleepHrs, sleepBedtimes, bodyTrends, bodyDeviceName, onBodyStale,
 }: {
   activeTab: string;
   activeIndex: number;
@@ -510,6 +511,7 @@ function BreakdownSection({
   sleepBedtimes: (string | null)[];
   bodyTrends: BodyTrends | null;
   bodyDeviceName?: string;
+  onBodyStale?: () => void;
 }) {
   const carouselRef = useRef<ScrollView>(null);
   const [pageWidth, setPageWidth] = useState(0);
@@ -643,7 +645,7 @@ function BreakdownSection({
                   onOffsetChange={onLookbackChange}
                 />
               )}
-              {key === 'body' && <BodyTab initialTrends={bodyTrends} deviceName={bodyDeviceName} />}
+              {key === 'body' && <BodyTab initialTrends={bodyTrends} deviceName={bodyDeviceName} onTrendsStale={onBodyStale} />}
               {key !== 'walking' && key !== 'sleep' && key !== 'body' && (
                 <WorkoutsTab
                   type={key as ActivityType}

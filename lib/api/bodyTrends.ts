@@ -542,6 +542,10 @@ export function seriesFromSnapshots(rows: SnapshotRow[]): Omit<BodyTrends, 'load
     const rhrByNight = new Map<string, number>();
     const hrvByDay = new Map<string, number>();
     const hrvByNight = new Map<string, number>();
+    // HealthKit's HRV is SDNN, Terra's and Health Connect's RMSSD — kept apart
+    // here and never merged into one series (see pickHrvSeries).
+    const sdnnByDay = new Map<string, number>();
+    const sdnnByNight = new Map<string, number>();
     const readinessByNight = new Map<string, ReadinessPoint>();
     const nightByDay = new Map<string, SleepNight>();
 
@@ -558,6 +562,8 @@ export function seriesFromSnapshots(rows: SnapshotRow[]): Omit<BodyTrends, 'load
             if (r.hr_resting != null && r.hr_resting > 0) rhrByDay.set(day, r.hr_resting);
             const hrv = positive(r.extras?.hrv_rmssd);
             if (hrv != null) hrvByDay.set(day, hrv);
+            const sdnn = positive(r.extras?.hrv_sdnn);
+            if (sdnn != null) sdnnByDay.set(day, sdnn);
             continue;
         }
 
@@ -596,6 +602,8 @@ export function seriesFromSnapshots(rows: SnapshotRow[]): Omit<BodyTrends, 'load
         if (r.hr_resting != null && r.hr_resting > 0) rhrByNight.set(wakeDay, r.hr_resting);
         const hrv = positive(r.extras?.hrv_rmssd);
         if (hrv != null) hrvByNight.set(wakeDay, hrv);
+        const sdnn = positive(r.extras?.hrv_sdnn);
+        if (sdnn != null) sdnnByNight.set(wakeDay, sdnn);
         const score = positive(r.extras?.readiness);
         if (score != null) readinessByNight.set(wakeDay, { date: wakeDay, value: score, source: r.source });
     }
@@ -607,11 +615,28 @@ export function seriesFromSnapshots(rows: SnapshotRow[]): Omit<BodyTrends, 'load
 
     return {
         restingHr: toSeries(new Map([...rhrByDay, ...rhrByNight])),
-        hrv: toSeries(new Map([...hrvByDay, ...hrvByNight])),
+        hrv: pickHrvSeries(
+            toSeries(new Map([...hrvByDay, ...hrvByNight])),
+            toSeries(new Map([...sdnnByDay, ...sdnnByNight])),
+        ),
         sleepHours: nights.map(n => ({ date: n.date, value: n.hours })),
         sleepNights: nights,
         readiness: byDate([...readinessByNight.values()]),
     };
+}
+
+/**
+ * One HRV series, in one measure. RMSSD (Terra, Health Connect) and SDNN
+ * (HealthKit) are different statistics with different typical values, so a
+ * chart mixing them would show a switch of device as a swing in recovery, and
+ * a baseline across both would mean nothing. The series whose latest reading
+ * is newest wins — the device the user wears now — and a tie keeps RMSSD,
+ * which is what a Terra night carrying both is charted in.
+ */
+function pickHrvSeries(rmssd: TrendPoint[], sdnn: TrendPoint[]): TrendPoint[] {
+    if (sdnn.length === 0) return rmssd;
+    if (rmssd.length === 0) return sdnn;
+    return sdnn[sdnn.length - 1].date > rmssd[rmssd.length - 1].date ? sdnn : rmssd;
 }
 
 /** Minutes a session adds to its day: walking/sleep excluded, 4h+ singles capped. */

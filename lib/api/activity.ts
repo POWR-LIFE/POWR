@@ -2009,11 +2009,18 @@ export type HealthSnapshotParams = {
      * day-wide figures the same provider used to stamp on every session.
      */
     extras?: Record<string, unknown>;
+    /**
+     * When the reading belongs to, if not now. Only the day-level vitals rows
+     * (lib/health/dailyVitals.ts) set it: a past day's resting HR is stamped
+     * inside that day, because the Body tab buckets rows by their recorded_at.
+     */
+    recordedAt?: string;
 };
 
 /** Persists a health data snapshot to the health_snapshots table. */
 export async function saveHealthSnapshot(params: HealthSnapshotParams): Promise<void> {
     const { error } = await supabase.from('health_snapshots').insert({
+        ...(params.recordedAt ? { recorded_at: params.recordedAt } : {}),
         session_id: params.sessionId ?? null,
         steps: params.steps ?? null,
         distance_m: params.distanceM ?? null,

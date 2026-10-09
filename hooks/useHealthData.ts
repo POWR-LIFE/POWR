@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { classifyProvenance, type HealthDataProvenance } from '@/lib/health/dataSource';
+import { HC_EXERCISE_TYPES, HK_WORKOUT_TYPES } from '@/lib/health/workoutTypes';
 
 function toLocalISO(d: Date): string {
     return d.toISOString();
@@ -138,12 +139,66 @@ const HK_READ_PERMISSIONS = [
     'HKQuantityTypeIdentifierRestingHeartRate',
 ] as const;
 
-export async function iosRequestPermissions(): Promise<boolean> {
+/**
+ * HRV and birth date — the Body tab's HRV chart (lib/health/dailyVitals) and
+ * the max heart rate heart-rate zones are measured against
+ * (lib/health/maxHeartRate). Kept OUT of HK_READ_PERMISSIONS on purpose: that
+ * list is re-requested silently on every launch to restore the grant, and
+ * HealthKit shows its sheet whenever a requested type is still undecided — so
+ * adding these there would put the Health sheet in front of every existing user
+ * on their next launch with no context. New connects ask for them alongside the
+ * rest ('all'); existing users are asked from the Body tab, where HRV shows.
+ */
+const HK_VITALS_PERMISSIONS = [
+    'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
+    'HKCharacteristicTypeIdentifierDateOfBirth',
+] as const;
+
+/**
+ * Requests HealthKit read access. 'core' is the silent launch-time restore
+ * (no sheet for anyone who has already decided); 'all' is a user-initiated
+ * connect, which asks for the vitals types in the same sheet.
+ */
+export async function iosRequestPermissions(scope: 'core' | 'all' = 'core'): Promise<boolean> {
     try {
         const HK = getHK();
-        return await HK.requestAuthorization({ toRead: HK_READ_PERMISSIONS });
+        const toRead = scope === 'all'
+            ? [...HK_READ_PERMISSIONS, ...HK_VITALS_PERMISSIONS]
+            : HK_READ_PERMISSIONS;
+        return await HK.requestAuthorization({ toRead });
     } catch (e) {
         console.warn('Failed to initialize Apple HealthKit:', e);
+        return false;
+    }
+}
+
+/** HKAuthorizationRequestStatus.shouldRequest — a requested type is still undecided. */
+const HK_REQUEST_STATUS_SHOULD_REQUEST = 1;
+
+/**
+ * True when the HRV / birth-date sheet hasn't been shown yet. HealthKit never
+ * says whether READ access was granted (a denial reads as "no data"), only
+ * whether the user has been asked — which is exactly what the prompt needs.
+ */
+export async function iosVitalsAccessUndecided(): Promise<boolean> {
+    if (Platform.OS !== 'ios') return false;
+    try {
+        const HK = getHK();
+        const status = await HK.getRequestStatusForAuthorization({ toRead: HK_VITALS_PERMISSIONS });
+        return status === HK_REQUEST_STATUS_SHOULD_REQUEST;
+    } catch {
+        return false;
+    }
+}
+
+/** Shows HealthKit's sheet for HRV and birth date. Resolves once the user is done with it. */
+export async function iosRequestVitalsAccess(): Promise<boolean> {
+    if (Platform.OS !== 'ios') return false;
+    try {
+        const HK = getHK();
+        return await HK.requestAuthorization({ toRead: HK_VITALS_PERMISSIONS });
+    } catch (e) {
+        console.warn('[HealthData] vitals access request failed:', e);
         return false;
     }
 }
@@ -167,114 +222,12 @@ async function iosGetStepsToday(): Promise<number> {
     }
 }
 
-// Maps HKWorkoutActivityType numeric values to POWR activity type strings.
-// Full enum: https://developer.apple.com/documentation/healthkit/hkworkoutactivitytype
-const HK_WORKOUT_TYPE_MAP: Record<number, string> = {
-    6:  'sports',          // basketball
-    8:  'sports',          // boxing
-    9:  'gym',             // climbing
-    11: 'gym',             // crossTraining
-    13: 'cycling',
-    14: 'dance',           // dance
-    16: 'gym',             // elliptical
-    18: 'sports',          // fencing
-    20: 'gym',             // functionalStrengthTraining
-    22: 'sports',          // gymnastics
-    23: 'sports',          // handball
-    24: 'walking',         // hiking
-    28: 'sports',          // martialArts
-    29: 'yoga',            // mindAndBody
-    30: 'hiit',            // mixedMetabolicCardioTraining
-    34: 'sports',          // racquetball
-    35: 'gym',             // rowing
-    37: 'running',
-    39: 'sports',          // skatingSports
-    41: 'sports',          // soccer
-    43: 'sports',          // squash
-    44: 'gym',             // stairClimbing
-    45: 'sports',          // surfingSports
-    46: 'swimming',
-    47: 'sports',          // tableTennis
-    48: 'sports',          // tennis
-    49: 'running',         // trackAndField
-    50: 'gym',             // traditionalStrengthTraining
-    51: 'sports',          // volleyball
-    52: 'walking',
-    53: 'swimming',        // waterFitness
-    57: 'yoga',
-    58: 'yoga',            // barre
-    59: 'gym',             // coreTraining
-    60: 'sports',          // crossCountrySkiing
-    61: 'sports',          // downhillSkiing
-    63: 'hiit',            // highIntensityIntervalTraining
-    64: 'hiit',            // jumpRope
-    65: 'hiit',            // kickboxing
-    66: 'yoga',            // pilates
-    67: 'sports',          // snowboarding
-    68: 'gym',             // stairs
-    69: 'gym',             // stepTraining
-    72: 'yoga',            // taiChi
-    73: 'hiit',            // mixedCardio
-    74: 'cycling',         // handCycling
-    77: 'dance',           // cardioDance (iOS 14+)
-    78: 'dance',           // socialDance (iOS 14+)
-    79: 'sports',          // pickleball (iOS 16+)
-};
-
-// Human-readable names for the same HKWorkoutActivityType ints, preserved on
-// each activity as `rawName` so the bucketing above stays lossless downstream
-// (stored in activity_sessions.raw_activity_name, shown as a feed subtitle).
-const HK_WORKOUT_NAME_MAP: Record<number, string> = {
-    6:  'Basketball',
-    8:  'Boxing',
-    9:  'Climbing',
-    11: 'Cross Training',
-    13: 'Cycling',
-    14: 'Dance',
-    16: 'Elliptical',
-    18: 'Fencing',
-    20: 'Functional Strength Training',
-    22: 'Gymnastics',
-    23: 'Handball',
-    24: 'Hiking',
-    28: 'Martial Arts',
-    29: 'Mind & Body',
-    30: 'Mixed Metabolic Cardio',
-    34: 'Racquetball',
-    35: 'Rowing',
-    37: 'Running',
-    39: 'Skating',
-    41: 'Soccer',
-    43: 'Squash',
-    44: 'Stair Climbing',
-    45: 'Surfing',
-    46: 'Swimming',
-    47: 'Table Tennis',
-    48: 'Tennis',
-    49: 'Track & Field',
-    50: 'Strength Training',
-    51: 'Volleyball',
-    52: 'Walking',
-    53: 'Water Fitness',
-    57: 'Yoga',
-    58: 'Barre',
-    59: 'Core Training',
-    60: 'Cross Country Skiing',
-    61: 'Downhill Skiing',
-    63: 'HIIT',
-    64: 'Jump Rope',
-    65: 'Kickboxing',
-    66: 'Pilates',
-    67: 'Snowboarding',
-    68: 'Stairs',
-    69: 'Step Training',
-    72: 'Tai Chi',
-    73: 'Mixed Cardio',
-    74: 'Hand Cycling',
-    77: 'Cardio Dance',
-    78: 'Social Dance',
-    79: 'Pickleball',
-};
+// Workout types: lib/health/workoutTypes.ts (HK_WORKOUT_TYPES). Unlisted types
+// come through as 'other', which mapHealthType() leaves unscored.
+function hkWorkoutType(w: { workoutActivityType: unknown }): { type: string; rawName?: string } {
+    const entry = HK_WORKOUT_TYPES[w.workoutActivityType as number];
+    return entry ? { type: entry.type, rawName: entry.name } : { type: 'other' };
+}
 
 async function iosGetActivitiesToday(): Promise<HealthActivity[]> {
     try {
@@ -286,12 +239,11 @@ async function iosGetActivitiesToday(): Promise<HealthActivity[]> {
             limit: -1,
         });
         return workouts.map(w => ({
-            type: HK_WORKOUT_TYPE_MAP[w.workoutActivityType as number] ?? 'other',
+            ...hkWorkoutType(w),
             startedAt: w.startDate.toISOString(),
             durationMin: Math.round(w.duration.quantity / 60),
             distanceM: w.totalDistance ? Math.round(w.totalDistance.quantity) : undefined,
             source: iosProvenance(w),
-            rawName: HK_WORKOUT_NAME_MAP[w.workoutActivityType as number],
         }));
     } catch (e) {
         console.warn('Failed to read Apple HealthKit workouts:', e);
@@ -543,6 +495,14 @@ export async function androidRequestPermissions(): Promise<boolean> {
         } catch (e) {
             console.warn('[HealthData] Distance permission unavailable on this binary:', e);
         }
+        // HRV, for the Body tab (lib/health/dailyVitals). Same shape as Distance:
+        // READ_HEART_RATE_VARIABILITY must be in the binary's manifest before
+        // Health Connect will grant it, and on binaries without it this throws.
+        try {
+            await requestPermission([{ accessType: 'read', recordType: 'HeartRateVariabilityRmssd' }]);
+        } catch (e) {
+            console.warn('[HealthData] HRV permission unavailable on this binary:', e);
+        }
         // Background access is its own grant (see androidRequestBackgroundRead)
         // and only worth asking once the data grants exist.
         if (granted.length > 0) {
@@ -649,56 +609,33 @@ async function androidGetStepsToday(): Promise<number> {
     }
 }
 
-// Health Connect ExerciseType numeric constants
-// See: https://developer.android.com/reference/kotlin/androidx/health/connect/client/records/ExerciseSessionRecord
-const HC_EXERCISE_TYPE: Record<number, string> = {
-    2:  'dancing',         // EXERCISE_TYPE_DANCING
-    8:  'biking',          // EXERCISE_TYPE_BIKING
-    9:  'biking_stationary',
-    11: 'boot_camp',
-    14: 'calisthenics',
-    29: 'elliptical',
-    32: 'fencing',
-    37: 'gym',             // EXERCISE_TYPE_STRENGTH_TRAINING → gym
-    38: 'gymnastics',
-    39: 'handball',
-    43: 'hiit',            // EXERCISE_TYPE_HIGH_INTENSITY_INTERVAL_TRAINING
-    44: 'hiking',
-    46: 'ice_skating',
-    48: 'martial_arts',
-    50: 'paddling',
-    51: 'pilates',
-    53: 'racquetball',
-    55: 'rock_climbing',
-    56: 'rowing',
-    57: 'rowing_machine',
-    58: 'running',         // EXERCISE_TYPE_RUNNING
-    59: 'running_treadmill',
-    62: 'skiing',
-    64: 'snowboarding',
-    67: 'soccer',
-    70: 'squash',
-    71: 'stair_climbing',
-    74: 'swimming_open_water',
-    75: 'swimming_pool',
-    76: 'tennis',
-    78: 'volleyball',
-    79: 'walking',
-    80: 'weightlifting',   // EXERCISE_TYPE_WEIGHTLIFTING → gym
-    82: 'yoga',
-};
-
-function mapHCExerciseType(exerciseType: number): string {
-    return HC_EXERCISE_TYPE[exerciseType] ?? `exercise_${exerciseType}`;
+// Workout types: lib/health/workoutTypes.ts (HC_EXERCISE_TYPES), pinned to the
+// library's ExerciseType enum by its test. Unlisted types come through as
+// 'other', which mapHealthType() leaves unscored.
+function hcExerciseType(exerciseType: number): { type: string; rawName?: string; distance: boolean } {
+    const entry = HC_EXERCISE_TYPES[exerciseType];
+    return entry ? { type: entry.type, rawName: entry.name, distance: !!entry.distance } : { type: 'other', distance: false };
 }
 
-// HC types whose distance we trust from a window aggregate. Kept to activities
-// where distance IS the workout — for a gym/yoga session the same aggregate
-// would pick up incidental walking around the session and misattribute it.
-const HC_DISTANCE_TYPES = new Set([
-    'biking', 'biking_stationary', 'hiking', 'running', 'running_treadmill',
-    'walking', 'swimming_open_water', 'swimming_pool',
-]);
+type HCExerciseRecord = {
+    startTime: string;
+    endTime: string;
+    exerciseType: number;
+    metadata?: { dataOrigin?: string; device?: { type?: number } };
+};
+
+/** One Health Connect exercise session as a HealthActivity. */
+async function hcActivity(r: HCExerciseRecord): Promise<HealthActivity> {
+    const { type, rawName, distance } = hcExerciseType(r.exerciseType);
+    return {
+        type,
+        startedAt: r.startTime,
+        durationMin: Math.round((new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000),
+        distanceM: distance ? await androidDistanceForWindow(r.startTime, r.endTime) : undefined,
+        source: androidProvenance(r),
+        rawName,
+    };
+}
 
 /** Distance covered in one exercise-session window, in metres.
  *  Unlike HealthKit's per-workout totalDistance, HC ExerciseSession records
@@ -734,20 +671,7 @@ async function androidGetActivitiesToday(): Promise<HealthActivity[]> {
                 endTime: toLocalISO(new Date()),
             },
         });
-        return await Promise.all(
-            (records as Array<{ startTime: string; endTime: string; exerciseType: number; metadata?: { dataOrigin?: string; device?: { type?: number } } }>).map(async r => ({
-                type: mapHCExerciseType(r.exerciseType),
-                startedAt: r.startTime,
-                durationMin: Math.round(
-                    (new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000,
-                ),
-                distanceM: HC_DISTANCE_TYPES.has(HC_EXERCISE_TYPE[r.exerciseType])
-                    ? await androidDistanceForWindow(r.startTime, r.endTime)
-                    : undefined,
-                source: androidProvenance(r),
-                rawName: HC_EXERCISE_TYPE[r.exerciseType],
-            })),
-        );
+        return await Promise.all((records as HCExerciseRecord[]).map(hcActivity));
     } catch {
         return [];
     }
@@ -941,12 +865,11 @@ async function iosGetWeekHistory(): Promise<DayHealthSummary[]> {
                 limit: -1,
             });
             activities = workouts.map(w => ({
-                type: HK_WORKOUT_TYPE_MAP[w.workoutActivityType as number] ?? 'other',
+                ...hkWorkoutType(w),
                 startedAt: w.startDate.toISOString(),
                 durationMin: Math.round(w.duration.quantity / 60),
                 distanceM: w.totalDistance ? Math.round(w.totalDistance.quantity) : undefined,
                 source: iosProvenance(w),
-                rawName: HK_WORKOUT_NAME_MAP[w.workoutActivityType as number],
             }));
         } catch { /* ignore */ }
 
@@ -1056,18 +979,7 @@ async function androidGetWeekHistory(): Promise<DayHealthSummary[]> {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const { readRecords } = require('react-native-health-connect');
             const { records } = await readRecords('ExerciseSession', timeFilter);
-            activities = await Promise.all(
-                (records as Array<{ startTime: string; endTime: string; exerciseType: number; metadata?: { dataOrigin?: string; device?: { type?: number } } }>).map(async r => ({
-                    type: mapHCExerciseType(r.exerciseType),
-                    startedAt: r.startTime,
-                    durationMin: Math.round((new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000),
-                    distanceM: HC_DISTANCE_TYPES.has(HC_EXERCISE_TYPE[r.exerciseType])
-                        ? await androidDistanceForWindow(r.startTime, r.endTime)
-                        : undefined,
-                    source: androidProvenance(r),
-                    rawName: HC_EXERCISE_TYPE[r.exerciseType],
-                })),
-            );
+            activities = await Promise.all((records as HCExerciseRecord[]).map(hcActivity));
         } catch { /* ignore */ }
 
         // Sleep (look from previous day 6pm)
@@ -1221,7 +1133,7 @@ export function useHealthData(): HealthDataHook {
             setIsAvailable(true);
             // On iOS, initHealthKit is silent if permissions already granted.
             // This restores isAuthorized on every launch without any prompt.
-            iosRequestPermissions().then(granted => {
+            iosRequestPermissions('core').then(granted => {
                 if (granted) setIsAuthorized(true);
             });
         }
@@ -1231,7 +1143,7 @@ export function useHealthData(): HealthDataHook {
         setRequesting(true);
         try {
             const granted = Platform.OS === 'ios'
-                ? await iosRequestPermissions()
+                ? await iosRequestPermissions('all')
                 : await androidRequestPermissions();
             setIsAuthorized(granted);
             return granted;

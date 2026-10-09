@@ -15,18 +15,22 @@ const mockPlatform = { OS: 'ios' as string };
 jest.mock('react-native', () => ({ Platform: { get OS() { return mockPlatform.OS; } } }));
 
 const mockQueryStats = jest.fn();
+const mockQuerySamples = jest.fn();
 jest.mock('@kingstinct/react-native-healthkit', () => ({
     queryStatisticsForQuantity: (...args: unknown[]) => mockQueryStats(...args),
+    queryQuantitySamples: (...args: unknown[]) => mockQuerySamples(...args),
 }), { virtual: true });
 
 const mockAggregate = jest.fn();
+const mockReadRecords = jest.fn();
 const mockInitialize = jest.fn(async () => true);
 jest.mock('react-native-health-connect', () => ({
     initialize: () => mockInitialize(),
     aggregateRecord: (...args: unknown[]) => mockAggregate(...args),
+    readRecords: (...args: unknown[]) => mockReadRecords(...args),
 }), { virtual: true });
 
-import { isSessionScoped, readWindowVitals, SESSION_SCOPED_EXTRAS } from '@/lib/health/windowVitals';
+import { isSessionScoped, readWindowVitals, SESSION_SCOPED_EXTRAS, sessionExtras } from '@/lib/health/windowVitals';
 
 const FROM = Date.UTC(2026, 7, 18, 18, 0, 0);
 const TO = Date.UTC(2026, 7, 18, 19, 5, 0);
@@ -102,6 +106,64 @@ describe('Android (Health Connect)', () => {
             return { ACTIVE_CALORIES_TOTAL: { inKilocalories: 0 } };
         });
         expect(await readWindowVitals(FROM, TO)).toBeNull();
+    });
+});
+
+/**
+ * 2026-10-07 — heart-rate zones from the phone. Only when the caller passes a
+ * max heart rate, only when the window measured heart rate at all, and a failed
+ * sample read costs the zones, never the averages.
+ */
+describe('heart-rate zones', () => {
+    /** Ten minutes at `bpm`, one sample every 5 s from FROM. */
+    const tenMinutesAt = (bpm: number) => Array.from({ length: 120 }, (_, i) => ({ atMs: FROM + i * 5000, bpm }));
+
+    it('iOS: builds the zones from the window\'s samples when given a max', async () => {
+        mockQueryStats.mockImplementation(async (id: string) => id === 'HKQuantityTypeIdentifierHeartRate'
+            ? { averageQuantity: { quantity: 150 }, maximumQuantity: { quantity: 158 } }
+            : { sumQuantity: { quantity: 300 } });
+        mockQuerySamples.mockResolvedValue(tenMinutesAt(150).map(s => ({ startDate: new Date(s.atMs), quantity: s.bpm })));
+
+        const v = await readWindowVitals(FROM, FROM + 600_000, { maxHr: 190 });
+
+        expect(v?.hrZones?.map(z => z.duration_seconds)).toEqual([0, 0, 0, 600, 0, 0]);
+        const [id, opts] = mockQuerySamples.mock.calls[0] as [string, { filter: { date: { startDate: Date } }; unit: string }];
+        expect(id).toBe('HKQuantityTypeIdentifierHeartRate');
+        expect(opts.unit).toBe('count/min');
+        expect(opts.filter.date.startDate.getTime()).toBe(FROM);
+        expect(sessionExtras(v!)).toEqual({ scope: 'session', hr_zones: v!.hrZones });
+    });
+
+    it('iOS: no max, no sample read and no zones — the averages are unchanged', async () => {
+        mockQueryStats.mockResolvedValue({ averageQuantity: { quantity: 150 }, maximumQuantity: { quantity: 158 } });
+        const v = await readWindowVitals(FROM, TO);
+        expect(mockQuerySamples).not.toHaveBeenCalled();
+        expect(v?.hrZones).toBeUndefined();
+        expect(sessionExtras(v!)).toEqual({ scope: 'session' });
+    });
+
+    it('iOS: a failed sample read costs the zones, never the averages', async () => {
+        mockQueryStats.mockResolvedValue({ averageQuantity: { quantity: 150 }, maximumQuantity: { quantity: 158 } });
+        mockQuerySamples.mockRejectedValue(new Error('denied'));
+        const v = await readWindowVitals(FROM, TO, { maxHr: 190 });
+        expect(v).toMatchObject({ hrAvg: 150, hrMax: 158 });
+        expect(v?.hrZones).toBeUndefined();
+    });
+
+    it('Android: reads the samples inside the window out of the heart-rate series records', async () => {
+        mockPlatform.OS = 'android';
+        mockAggregate.mockImplementation(async ({ recordType }: { recordType: string }) => recordType === 'HeartRate'
+            ? { BPM_AVG: 150, BPM_MAX: 158, MEASUREMENTS_COUNT: 120 }
+            : { ACTIVE_CALORIES_TOTAL: { inKilocalories: 300 } });
+        const inside = tenMinutesAt(150).map(s => ({ time: new Date(s.atMs).toISOString(), beatsPerMinute: s.bpm }));
+        // A record straddling the window: its sample from before FROM must not count.
+        const straddle = { samples: [{ time: new Date(FROM - 60_000).toISOString(), beatsPerMinute: 60 }] };
+        mockReadRecords.mockResolvedValue({ records: [straddle, { samples: inside }] });
+
+        const v = await readWindowVitals(FROM, FROM + 600_000, { maxHr: 190 });
+
+        expect(mockReadRecords.mock.calls[0][0]).toBe('HeartRate');
+        expect(v?.hrZones?.map(z => z.duration_seconds)).toEqual([0, 0, 0, 600, 0, 0]);
     });
 });
 

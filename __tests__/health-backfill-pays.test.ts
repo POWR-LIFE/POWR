@@ -36,6 +36,7 @@ jest.mock('@/lib/api/activity', () => {
 jest.mock('@/lib/health/windowVitals', () => ({
     readWindowVitals: jest.fn(async () => ({ hrAvg: 150, hrMax: 172, caloriesActive: 320 })),
     SESSION_SCOPED_EXTRAS: { scope: 'session' },
+    sessionExtras: () => ({ scope: 'session' }),
 }));
 jest.mock('@/lib/pointsEvents', () => ({ emitPointsChanged: jest.fn() }));
 
@@ -172,6 +173,25 @@ describe('syncHistoricalHealthData pays the week', () => {
         });
         const result = await syncHistoricalHealthData([
             day('2026-08-28', { activities: [{ type: 'Running', startedAt: '2026-08-28T12:22:23.000Z', durationMin: 31, distanceM: 6012 }] }),
+        ]);
+        expect(mockLog).not.toHaveBeenCalled();
+        expect(result.totalPoints).toBe(0);
+    });
+
+    it('skips a workout recorded under a different type at the same start instant', async () => {
+        // 2026-10-07: the Health Connect type table was corrected, so a run that
+        // synced as gym now reads as a run. Same start instant = same workout —
+        // it must not be recorded (and paid) a second time under its new type.
+        (supabase.from as jest.Mock).mockImplementationOnce(() => {
+            const c: any = {};
+            for (const m of ['select', 'eq', 'in', 'gte', 'lt']) c[m] = jest.fn(() => c);
+            c.then = (resolve: (v: unknown) => void) => resolve({
+                data: [{ type: 'gym', started_at: '2026-08-28T12:22:23+00:00' }], error: null,
+            });
+            return c;
+        });
+        const result = await syncHistoricalHealthData([
+            day('2026-08-28', { activities: [{ type: 'running', startedAt: '2026-08-28T12:22:23.000Z', durationMin: 31, distanceM: 6012 }] }),
         ]);
         expect(mockLog).not.toHaveBeenCalled();
         expect(result.totalPoints).toBe(0);

@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ZONE_TINTS } from '@/components/progress/zoneTints';
 import { RangeDotChart, Sparkline } from '@/components/progress/Sparkline';
 import { useActivityRevision } from '@/hooks/useActivityRevision';
+import { useHrvAccessPrompt } from '@/hooks/useHrvAccessPrompt';
 import { localDateStr } from '@/lib/api/activity';
 import {
     deriveBodySignals,
@@ -78,10 +79,12 @@ const HRV_LINE_MIN_READINGS = 10;
  * only hold summaries of, so relayed rather than re-derived. We never invent
  * a percentage of our own.
  */
-export function BodyTab({ initialTrends, deviceName }: {
+export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
     initialTrends?: BodyTrends | null;
     /** The connected wearable as the user knows it ("WHOOP"); omit for phone-only. */
     deviceName?: string;
+    /** With initialTrends: asks the parent to re-fetch (after new HRV access lands rows). */
+    onTrendsStale?: () => void;
 }) {
     const [trends, setTrends] = useState<BodyTrends | null>(initialTrends ?? null);
     const [failed, setFailed] = useState(false);
@@ -97,6 +100,14 @@ export function BodyTab({ initialTrends, deviceName }: {
             setFailed(true);
         }
     }, []);
+
+    // Phone-only users who connected Apple Health before HRV was read have never
+    // been asked for it. Ask here, where HRV shows — only while there isn't
+    // enough HRV to draw, and never for a cloud wearable (Terra sends its own).
+    const hrvAccess = useHrvAccessPrompt(
+        !deviceName && !!trends && !isEmptyTrends(trends) && trends.hrv.length < 3,
+        initialTrends !== undefined ? onTrendsStale : load,
+    );
 
     // When a parent passes trends, keep in sync with its refreshes instead of
     // fetching independently — avoids a duplicate Supabase round-trip.
@@ -244,6 +255,24 @@ export function BodyTab({ initialTrends, deviceName }: {
                             dots inside the chart. */}
                         <AxisRow left={`${TREND_DAYS} days ago`} right="today" />
                     </View>
+                </>
+            )}
+
+            {!showHrv && hrvAccess.show && (
+                <>
+                    <View style={styles.tabSep} />
+                    <Text style={styles.tabSubLabel}>RECOVERY (HRV)</Text>
+                    <Pressable
+                        style={styles.insightRow}
+                        disabled={hrvAccess.busy}
+                        onPress={hrvAccess.allow}
+                        accessibilityRole="button"
+                    >
+                        <Ionicons name="pulse" size={12} color={TEAL} />
+                        <Text style={[styles.insightText, styles.insightAction]}>
+                            {hrvAccess.busy ? 'Asking Apple Health…' : 'Share your HRV from Apple Health'}
+                        </Text>
+                    </Pressable>
                 </>
             )}
 
@@ -986,6 +1015,8 @@ const styles = StyleSheet.create({
 
     insightRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
     insightText: { fontSize: 12, fontWeight: '300', color: DIM, flex: 1, lineHeight: 18 },
+    // Tappable insight text — the Movement tab's pattern, in teal: gold is POWR's alone.
+    insightAction: { color: TEAL, fontWeight: '500', textDecorationLine: 'underline' },
 
     tabSep: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
     tabSubLabel: {
