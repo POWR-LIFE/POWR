@@ -743,8 +743,10 @@ function RoomCard({ board, scorers }) {
         board.entrants != null && ['Entered', fmt(board.entrants)],
         scorers != null && ['On the board', fmt(scorers)],
         board.room && ['Points', fmt(board.room.points)],
-        scorers == null && board.state !== 'live' && ['Prizes', fmt(board.prizes?.length ?? 0)],
-        board.state === 'countdown' && ['Days to race', fmt(Math.round((new Date(board.window_end_at) - new Date(board.window_start_at)) / 86_400_000))],
+        // Never a "0" for prizes on a public screen: the tile waits until there are some.
+        scorers == null && board.state !== 'live' && board.prizes?.length > 0 && ['Prizes', fmt(board.prizes.length)],
+        // The scoring window's length, counted like the header's dates (Fri – Fri = 8).
+        board.state === 'countdown' && ['Days of racing', fmt(Math.ceil((new Date(board.window_end_at) - new Date(board.window_start_at)) / 86_400_000))],
     ].filter(Boolean);
     return (
         <div className="lb-card">
@@ -947,7 +949,6 @@ function Marquee(props) {
         if (board.lock_at && board.state !== 'revealed') push(<>Scores seal <b>{fmtWhen(board.lock_at)}</b></>);
         const reveal = revealTarget(board);
         if (reveal && board.state !== 'revealed') push(<>Winners revealed live{board.venue?.name ? <> at <b>{board.venue.name}</b></> : null} · {fmtWhen(reveal)}</>);
-        if (board.entrants) push(<><b>{fmt(board.entrants)}</b> in so far</>);
         return out;
     }, []);
 
