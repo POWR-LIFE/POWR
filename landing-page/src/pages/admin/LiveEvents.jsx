@@ -16,6 +16,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
 import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import MediaVideo from '../../components/MediaVideo';
+import LiveScreenPreview from './LiveScreenPreview';
 import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
 import { formatMemberId, normalizeMemberId } from '../../../../shared/memberId.ts';
 import {
@@ -2618,28 +2619,7 @@ function LifecyclePanel({
                         Open this link on the venue&apos;s big screen. It can only show the board — it can&apos;t reveal a hidden
                         leaderboard early. Regenerating the link stops any previously shared link from working.
                     </p>
-                    <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#AAAAAA]">Preview the screen:</span>
-                        {[
-                            ['countdown', 'Countdown'],
-                            ['live', 'Live board'],
-                            ['locked', 'Locked'],
-                            ['reveal', 'Reveal'],
-                            ['settled', 'Winners'],
-                        ].map(([state, label]) => (
-                            <a
-                                key={state}
-                                href={`https://powr.life/live/${ev.slug}?k=${ev.display_token}&preview=${state}`}
-                                target="_blank" rel="noopener noreferrer"
-                                className="inline-flex items-center h-7 px-3 rounded-lg border text-[10px] font-bold uppercase tracking-[0.15em] transition-all bg-[#F4F4F1] border-[#E6E6E1] text-[#666666] hover:text-[#1A1A1A] hover:border-[#D8D8D2]"
-                            >
-                                {label}
-                            </a>
-                        ))}
-                        <span className="text-[10px] text-[#AAAAAA]">
-                            — sample standings, works while the event is a draft. The reveal replays on refresh.
-                        </span>
-                    </div>
+                    <LiveScreenPreview ev={ev} />
                 </div>
 
                 {/* Promo page URL */}
