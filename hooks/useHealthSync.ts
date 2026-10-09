@@ -2,7 +2,8 @@ import { useEffect, useCallback, useRef } from 'react';
 import { Alert, Platform } from 'react-native';
 import { useHealthData, type DayHealthSummary } from './useHealthData';
 import { useHealthProviders } from './useHealthProviders';
-import { getProvider, verificationForProvider, isTerraProvider, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
+import { getProvider, verificationForProvider, isTerraProvider, effectiveProviderId, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
+import { useTerraPaused } from '@/hooks/useTerraPaused';
 import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
 import { verificationFromProvenance, sourceLabel } from '@/lib/health/dataSource';
 import { getInferredActivitiesForWeek } from '@/lib/health/runInference';
@@ -36,7 +37,12 @@ function sourceForProvider(id: HealthProviderId | null): 'healthkit' | 'health_c
 
 export function useHealthSync() {
   const nativeHealth = useHealthData();
-  const { activeId, disconnect } = useHealthProviders();
+  const { activeId: storedActiveId, disconnect } = useHealthProviders();
+  // A paused brand (Garmin, or every Terra brand while the Terra pause switch
+  // is on) delivers nothing — read the phone's health store in its place.
+  // Re-derived when the switch flips; the profile itself is left alone.
+  useTerraPaused();
+  const activeId = effectiveProviderId(storedActiveId);
   const isNativeProvider = !activeId || activeId === 'apple-health' || activeId === 'health-connect';
   // Terra providers are synced server-side by the terra-webhook edge function —
   // the client must never pull their data here.

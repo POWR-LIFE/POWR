@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { ActivityType } from '@/constants/activities';
+import { isTerraPaused } from '../terraPause';
 import { createNativeHealthProvider } from './nativeProvider';
 import { createSamsungHealthProvider } from './samsungHealthProvider';
 import { createTerraProvider } from './terraProvider';
@@ -113,13 +114,35 @@ export function isTerraProvider(id: HealthProviderId | null): boolean {
 }
 
 /**
- * True for a provider whose direct link is paused (see `HealthProviderMeta.paused`).
- * Accepts Terra's uppercase slugs too ('GARMIN'), as stored on terra_connections.
+ * True for a provider whose direct link is paused: Garmin's own `paused` flag
+ * (see `HealthProviderMeta.paused`), or ANY Terra brand while the Terra pause
+ * switch is on (lib/health/terraPause). Accepts Terra's uppercase slugs too
+ * ('GARMIN'), as stored on terra_connections.
  */
 export function isPausedProvider(id: string | null | undefined): boolean {
     if (!id) return false;
-    const key = id.toLowerCase();
-    return ALL_PROVIDER_META.find(m => m.id === key)?.paused === true;
+    const meta = ALL_PROVIDER_META.find(m => m.id === id.toLowerCase());
+    if (!meta) return false;
+    return meta.paused === true || (meta.transport === 'terra' && isTerraPaused());
+}
+
+/**
+ * Only the `paused` flag written into the provider list (Garmin). Paused
+ * there, a connection is dropped from the profile for good; paused by the
+ * remote switch, it is left alone so turning the switch off restores it.
+ */
+export function isStaticallyPaused(id: string | null | undefined): boolean {
+    if (!id) return false;
+    return ALL_PROVIDER_META.find(m => m.id === id.toLowerCase())?.paused === true;
+}
+
+/**
+ * The provider whose data the app should actually read. A paused brand
+ * delivers nothing, so the phone's own health store stands in for it — the
+ * profile keeps naming the brand, and lifting the pause hands back.
+ */
+export function effectiveProviderId(id: HealthProviderId | null): HealthProviderId | null {
+    return isPausedProvider(id) ? getNativeProviderId() : id;
 }
 
 /**

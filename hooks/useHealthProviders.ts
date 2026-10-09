@@ -6,6 +6,7 @@ import {
     getNativeProviderId,
     getProvider,
     isPausedProvider,
+    isStaticallyPaused,
     isTerraProvider,
     visibleProviders,
     type HealthProviderId,
@@ -15,6 +16,8 @@ import type { ConnectResult } from '@/lib/health/providers/types';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { awardBonus } from '@/lib/api/points';
 import { backfillHealthHistoryIfNeeded } from '@/lib/api/onboardingSync';
+import { refreshTerraPause } from '@/lib/health/terraPauseRemote';
+import { useTerraPaused } from '@/hooks/useTerraPaused';
 
 export type ProviderConnection = {
     connected_at?: string;
@@ -41,9 +44,13 @@ type ProfileRow = {
  *     entry with no `terra_user_id`. Such an entry can no longer sync (the direct
  *     integrations were retired), so it must read as "not connected" to prompt
  *     the user to reconnect through Terra.
- *   - paused providers (Garmin): Terra delivers nothing for them, so keeping the
- *     entry would leave native sync switched off. Dropping it lets the self-heal
- *     in `refresh` move `active` back to the phone health store.
+ *   - providers paused in the provider list (Garmin): Terra delivers nothing
+ *     for them, so keeping the entry would leave native sync switched off.
+ *     Dropping it lets the self-heal in `refresh` move `active` back to the
+ *     phone health store.
+ * Brands paused by the remote Terra switch (lib/health/terraPause) are NOT
+ * dropped: that pause must be reversible, so the profile keeps them and the
+ * sync reads the phone in their place instead (effectiveProviderId).
  * Native entries are untouched (they never carry a terra_user_id).
  */
 export function sanitizeConnections(
@@ -52,7 +59,7 @@ export function sanitizeConnections(
     const out: Record<string, ProviderConnection> = {};
     for (const [id, conn] of Object.entries(conns)) {
         if (isTerraProvider(id as HealthProviderId) && !conn?.terra_user_id) continue;
-        if (isPausedProvider(id)) continue;
+        if (isStaticallyPaused(id)) continue;
         out[id] = conn;
     }
     return out;
@@ -69,11 +76,18 @@ export function useHealthProviders() {
     const [activeId, setActiveId] = useState<HealthProviderId | null>(null);
     const [connections, setConnections] = useState<Record<string, ProviderConnection>>({});
 
+    // Re-render when the Terra pause switch flips — rows and connect routing
+    // read isPausedProvider().
+    useTerraPaused();
+
     const refresh = useCallback(async () => {
         setLoading(true);
         try {
             const user = await getSessionUser();
             if (!user) return;
+            // The pause switch decides how Terra brands read below; refresh it
+            // with the profile. Never throws, keeps the last value offline.
+            await refreshTerraPause();
             const { data } = await supabase
                 .from('profiles')
                 .select('active_health_provider, health_provider_connections')
