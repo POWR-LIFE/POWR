@@ -22,7 +22,7 @@ const mockSave = jest.fn(async (_p: Record<string, unknown>) => {});
 jest.mock('@/lib/api/activity', () => ({ saveHealthSnapshot: (p: Record<string, unknown>) => mockSave(p) }));
 
 let mockExisting: unknown[] = [];
-const mockQuery = {
+const mockQuery: Record<string, jest.Mock> = {
     select: jest.fn(() => mockQuery),
     eq: jest.fn(() => mockQuery),
     is: jest.fn(() => mockQuery),
