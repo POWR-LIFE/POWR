@@ -1,5 +1,5 @@
 import React from 'react';
-import { Callout, CodeBlock, DocsLayout, NextUp, P, Section, Step, Steps, Table } from './docsShared';
+import { Callout, CodeBlock, DocsLayout, P, Section, Step, Steps, Table } from './docsShared';
 
 // /docs/shopify — the connector, documented for a store owner rather than a
 // developer. Mirrors the portal's three-step Shopify setup flow.
@@ -25,6 +25,7 @@ export default function DocsShopify() {
             title="Connect Shopify, forget about codes"
             intro="The least work of the three methods, and the only one where single use is enforced by your store rather than trusted. Connect once, tell us which discount each reward should be based on, and every redemption mints its own fresh code — marked used the moment it’s spent at your checkout."
             toc={TOC}
+            nextNote={{ label: 'Need more control than the connector gives you?', detail: 'The API adds signed webhooks, code pushes from your own system, and just-in-time minting.' }}
         >
             <Section id="how" title="How it works">
                 <P>
@@ -270,11 +271,6 @@ value & restrictions:       cloned from your template discount`}</CodeBlock>
                 </P>
             </Section>
 
-            <NextUp
-                to="/docs/api"
-                label="Need more control than the connector gives you?"
-                detail="The API adds signed webhooks, code pushes from your own system, and just-in-time minting."
-            />
         </DocsLayout>
     );
 }

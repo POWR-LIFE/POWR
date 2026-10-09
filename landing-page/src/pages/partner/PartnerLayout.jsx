@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy, Palette } from 'lucide-react';
+import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy, Palette, BookOpen } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { methodLaterKey } from './PartnerIntegrationHub';
@@ -232,20 +232,31 @@ export function PartnerLayout({ children }) {
                 </nav>
 
                 <div className="p-6 mt-auto">
-                    {/* Support lives outside the main nav — the 8-item list above
-                        is at its laptop-viewport budget, and help belongs by the
-                        account chrome anyway. */}
-                    <Link
-                        to="/partner/support"
-                        className={`mb-3 flex items-center gap-4 px-5 py-2.5 rounded-2xl transition-all group ${
-                            location.pathname === '/partner/support'
-                                ? 'bg-[#E8D200] text-[#080808] shadow-[0_20px_50px_rgba(232,210,0,0.2)]'
-                                : 'text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]'
-                        }`}
-                    >
-                        <LifeBuoy size={18} strokeWidth={location.pathname === '/partner/support' ? 3 : 2} className={location.pathname === '/partner/support' ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
-                        <span className="text-[11px] uppercase tracking-[0.2em] font-black">Support</span>
-                    </Link>
+                    {/* Support and the guides live outside the main nav, side by
+                        side: the 8-item list above is at its laptop-viewport
+                        budget, and help belongs by the account chrome anyway. */}
+                    <div className="mb-3 grid grid-cols-2 gap-2">
+                        <Link
+                            to="/partner/support"
+                            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl transition-all group ${
+                                location.pathname === '/partner/support'
+                                    ? 'bg-[#E8D200] text-[#080808] shadow-[0_20px_50px_rgba(232,210,0,0.2)]'
+                                    : 'text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]'
+                            }`}
+                        >
+                            <LifeBuoy size={16} strokeWidth={location.pathname === '/partner/support' ? 3 : 2} className={location.pathname === '/partner/support' ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
+                            <span className="text-[10px] uppercase tracking-[0.18em] font-black">Support</span>
+                        </Link>
+                        <a
+                            href="/docs/getting-started"
+                            target="_blank"
+                            rel="noopener"
+                            className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl transition-all group text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]"
+                        >
+                            <BookOpen size={16} className="group-hover:text-[#8a7600] transition-colors" />
+                            <span className="text-[10px] uppercase tracking-[0.18em] font-black">Guides</span>
+                        </a>
+                    </div>
                     {user?.email && (
                         <div className="mb-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                             <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
