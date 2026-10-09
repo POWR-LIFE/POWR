@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
   const { data: ev } = await admin
     .from("live_events")
     .select(
-      "id, name, slug, status, window_start_at, window_end_at, lock_at, prizes, board_size, hidden, revealed_at, display_token, entry_gate_mode",
+      "id, name, slug, status, window_start_at, window_end_at, lock_at, prizes, board_size, hidden, revealed_at, display_token, entry_gate_mode, entry_gate_n, entry_gate_counting, scope, venue_partner_id, logo_url, doors_open_at, reveal_at",
     )
     .eq("slug", slug)
     .single();
@@ -106,13 +106,35 @@ Deno.serve(async (req: Request) => {
   // score-shaped exists on a draft to leak.
   const isDraft = ev.status === "draft";
 
+  // The venue's mark for the header, and how many are in. Neither is
+  // score-shaped, so both ride on every state (countdown and locked too).
+  // Entrants only means something on an opt-in event — a global one ranks
+  // everyone, joined or not.
+  const [{ data: venue }, { count: entrants }] = await Promise.all([
+    ev.venue_partner_id
+      ? admin.from("partners").select("name, logo_url, logo_bg").eq("id", ev.venue_partner_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    ev.scope === "opt_in"
+      ? admin.from("live_event_participants").select("user_id", { count: "exact", head: true })
+        .eq("event_id", ev.id).is("disqualified_at", null)
+      : Promise.resolve({ count: null }),
+  ]);
+
   const base = {
     name: ev.name,
     slug: ev.slug,
     window_start_at: ev.window_start_at,
     window_end_at: ev.window_end_at,
     lock_at: ev.lock_at,
+    doors_open_at: ev.doors_open_at,
+    reveal_at: ev.reveal_at,
     prizes: ev.prizes ?? [],
+    logo_url: ev.logo_url,
+    venue: venue ? { name: venue.name, logo_url: venue.logo_url, logo_bg: venue.logo_bg } : null,
+    entrants: entrants ?? null,
+    gate: ev.entry_gate_n > 0
+      ? { n: ev.entry_gate_n, counting: ev.entry_gate_counting, mode: ev.entry_gate_mode }
+      : null,
     generated_at: new Date().toISOString(),
   };
 
@@ -148,7 +170,10 @@ Deno.serve(async (req: Request) => {
   // server — this is the blur.
   if (effectiveLocked) return json(200, { ...base, state: "locked" });
 
-  if (isDraft || ev.status === "scheduled") return json(200, { ...base, state: "countdown" });
+  // Announced ("Coming soon") is pre-registration: a countdown, never a board.
+  if (isDraft || ev.status === "announced" || ev.status === "scheduled") {
+    return json(200, { ...base, state: "countdown" });
+  }
 
   // Live board: standings from the single scoring definition. In 'deadline'
   // gate mode the room sees everyone registered — the invite requirement is
@@ -161,10 +186,10 @@ Deno.serve(async (req: Request) => {
     console.error("event-board scores failed:", error.message);
     return json(500, { error: "scores_unavailable" });
   }
-  const top = (scores ?? [])
+  const scorers = (scores ?? [])
     .filter((r: { score: number }) => r.score > 0)
-    .sort((a: { rank: number }, b: { rank: number }) => a.rank - b.rank)
-    .slice(0, ev.board_size);
+    .sort((a: { rank: number }, b: { rank: number }) => a.rank - b.rank);
+  const top = scorers.slice(0, ev.board_size);
   const profiles = await profilesById(top.map((r: { user_id: string }) => r.user_id));
 
   // Movement since the scoring day began: previous rank per user from the
@@ -176,9 +201,41 @@ Deno.serve(async (req: Request) => {
   if (deltaErr) console.error("event-board rank deltas failed:", deltaErr.message);
   for (const d of (deltas ?? []) as { user_id: string; prev_rank: number }[]) prevRank.set(d.user_id, d.prev_rank);
 
+  // "Landing now": the latest counted credits of people on the board, from
+  // the same ledger the scores come from (so the feed can never show a
+  // workout the score didn't count). Anyone not on the board — gated out in
+  // entry mode, or below board_size — stays off the feed too. Room totals
+  // cover every scorer. A failed read degrades to no feed, never a dead board.
+  const keyOf = new Map<string, string>();
+  for (const r of top as { user_id: string }[]) keyOf.set(r.user_id, await displayKey(ev.id, r.user_id));
+  const scorerIds = new Set(scorers.map((r: { user_id: string }) => r.user_id));
+  const { data: ledger, error: ledgerErr } = await admin.rpc("_live_event_ledger", { p_event_id: ev.id });
+  if (ledgerErr) console.error("event-board ledger failed:", ledgerErr.message);
+  type LedgerRow = { tx_id: string; user_id: string; amount: number; activity: string | null; bucket: string; counted: boolean; counted_at: string | null };
+  const counted = ((ledger ?? []) as LedgerRow[]).filter((r) => r.counted && scorerIds.has(r.user_id));
+  const feedRows = counted
+    .filter((r) => r.amount > 0 && keyOf.has(r.user_id) && r.counted_at)
+    .sort((a, b) => (a.counted_at! < b.counted_at! ? 1 : -1))
+    .slice(0, 16);
+  const feed = await Promise.all(feedRows.map(async (r) => ({
+    key: await displayKey(ev.id, r.tx_id),
+    who: keyOf.get(r.user_id)!,
+    type: r.bucket === "activity" ? (r.activity ?? "session") : r.bucket,
+    points: r.amount,
+    at: r.counted_at,
+    ...(profiles.get(r.user_id) ?? { display_name: null, username: null, avatar_url: null }),
+  })));
+  const room = {
+    points: scorers.reduce((s: number, r: { score: number }) => s + r.score, 0),
+    sessions: new Set(counted.filter((r) => r.bucket === "activity").map((r) => r.tx_id)).size,
+  };
+
   return json(200, {
     ...base,
     state: "live",
+    scorers: scorers.length,
+    room,
+    feed,
     standings: await Promise.all(top.map(async (r: { rank: number; score: number; user_id: string }) => ({
       key: await displayKey(ev.id, r.user_id),
       rank: r.rank,
