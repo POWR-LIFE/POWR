@@ -35,6 +35,8 @@ import {
 import { mergeWorkouts, relateWorkouts, type WorkoutWindow } from '../_shared/sessionMerge.ts';
 import { resolveSleepSeconds } from '../_shared/sleepDuration.ts';
 import { verifyTerraSignature } from '../_shared/terraSignature.ts';
+import { isTerraPaused } from '../_shared/terraPause.ts';
+import { profileAfterDeauth } from '../_shared/terraDeauth.ts';
 import { DATA_TYPES, extractDeviceFreshness, freshnessPatch } from '../_shared/deviceFreshness.ts';
 import { activityExtras } from '../_shared/terraExtras.ts';
 
@@ -559,15 +561,10 @@ async function handleDeauth(supabase, payload): Promise<void> {
   const { data: prof } = await supabase
     .from('profiles').select('health_provider_connections, active_health_provider')
     .eq('id', userId).maybeSingle();
-  const conns = prof?.health_provider_connections ?? {};
-  const key = provider.toLowerCase();
-  delete conns[key];
-  const nextActive = prof?.active_health_provider === key
-    ? (Object.keys(conns)[0] ?? null)
-    : prof?.active_health_provider ?? null;
-  await supabase.from('profiles').update({
-    health_provider_connections: conns, active_health_provider: nextActive,
-  }).eq('id', userId);
+  const next = profileAfterDeauth(
+    prof?.health_provider_connections ?? {}, prof?.active_health_provider ?? null, provider,
+  );
+  await supabase.from('profiles').update(next).eq('id', userId);
 }
 
 /**
@@ -1378,6 +1375,9 @@ async function handleDaily(supabase, payload): Promise<void> {
 
 // ── Entry ────────────────────────────────────────────────────────────────────
 
+/** Connection lifecycle events — handled even while Terra is paused. */
+const LIFECYCLE_TYPES = new Set(['auth', 'deauth', 'access_revoked', 'connection_error', 'user_reauth']);
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
@@ -1394,6 +1394,15 @@ Deno.serve(async (req) => {
   );
 
   try {
+    // Paused (system_config 'terra_paused'): data is ignored — the app reads
+    // the phone's health store for these users instead, and taking both would
+    // pay the same workout twice. Lifecycle events still run below: switching
+    // Terra off for good (terra-deauth-all) depends on deauth landing. 200, so
+    // Terra doesn't retry what we chose to drop.
+    if (!LIFECYCLE_TYPES.has(payload.type) && await isTerraPaused(supabase)) {
+      return json({ received: true, skipped: 'terra_paused' });
+    }
+
     // Freshness stamp: a sleep/activity/body payload marks this connection as
     // recently delivered, so the terra-poll cron skips it (see
     // terra-poll/index.ts). Lifecycle events (auth/deauth) deliberately don't

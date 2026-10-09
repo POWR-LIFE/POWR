@@ -2,11 +2,14 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { viaPhoneCopy } from '@/lib/health/viaPhone';
+
 const GOLD = '#E8D200';
 const GREEN = '#4ade80';
 
 type Props = {
-    visible: boolean;
+    /** The paused wearable that was tapped (provider id + display name); null hides the sheet. */
+    brand: { id: string; name: string } | null;
     /** The phone health store (Apple Health / Health Connect) is already connected. */
     phoneConnected: boolean;
     busy?: boolean;
@@ -15,44 +18,36 @@ type Props = {
 };
 
 /**
- * Shown when a member taps Garmin while its direct link is paused (see
- * `HealthProviderMeta.paused`). Garmin Connect still writes workouts, steps and
- * sleep to Apple Health / Health Connect, so the sheet connects the phone store
- * and points at the one Garmin Connect setting that shares into it — the same
- * two-step shape as the Samsung Health sheet in onboarding.
+ * Shown when a member taps a wearable whose direct link is paused — Garmin
+ * (see `HealthProviderMeta.paused`), or any Terra brand while the Terra pause
+ * switch is on (lib/health/terraPause). The brand's own app still writes
+ * workouts, steps and sleep to Apple Health / Health Connect, so the sheet
+ * connects the phone store and points at the one setting in that app that
+ * shares into it — the same two-step shape as the Samsung Health sheet in
+ * onboarding. Words per brand: lib/health/viaPhone.
  */
-export default function GarminViaPhoneSheet({ visible, phoneConnected, busy, onConnectPhone, onClose }: Props) {
+export default function ViaPhoneSheet({ brand, phoneConnected, busy, onConnectPhone, onClose }: Props) {
     const insets = useSafeAreaInsets();
-    const android = Platform.OS === 'android';
+    const platform = Platform.OS === 'android' ? 'android' : Platform.OS === 'ios' ? 'ios' : 'web';
     // Web has no phone health store to connect (getNativeProviderId() is null),
     // so it gets the explanation without a connect action.
-    const web = Platform.OS === 'web';
-    const store = android ? 'Health Connect' : 'Apple Health';
-    const garminPath = android
-        ? 'Garmin Connect → Settings → Health Connect, then allow everything'
-        : 'Garmin Connect → More → Settings → Connected Apps → Apple Health, then allow everything';
+    const web = platform === 'web';
+    const store = platform === 'android' ? 'Health Connect' : 'Apple Health';
+    const copy = brand ? viaPhoneCopy(brand.id, brand.name, platform) : null;
 
     return (
-        <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+        <Modal visible={!!brand} animationType="slide" transparent onRequestClose={onClose}>
             <View style={styles.overlay}>
                 <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-                <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
+                {copy && <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
                     <View style={styles.handle} />
                     <View style={styles.iconRow}>
                         <View style={styles.iconWrap}>
                             <MaterialCommunityIcons name="watch-variant" size={24} color={GOLD} />
                         </View>
                     </View>
-                    <Text style={styles.title}>Garmin syncs through {web ? 'your phone' : store}</Text>
-                    {web ? (
-                        <Text style={styles.reassurance}>
-                            Our direct Garmin link is paused for now. Open POWR on your phone to connect Apple Health or Health Connect. Your Garmin data reaches POWR from there.
-                        </Text>
-                    ) : (
-                        <Text style={styles.reassurance}>
-                            Our direct Garmin link is paused for now. Your watch still earns POWR: Garmin Connect shares your workouts, steps and sleep with {store}, and POWR reads them from there.
-                        </Text>
-                    )}
+                    <Text style={styles.title}>{copy.title}</Text>
+                    <Text style={styles.reassurance}>{copy.body}</Text>
                     {!web && <View style={styles.steps}>
                         <View style={styles.stepRow}>
                             <Ionicons
@@ -63,17 +58,20 @@ export default function GarminViaPhoneSheet({ visible, phoneConnected, busy, onC
                             <View style={styles.stepInfo}>
                                 <Text style={styles.stepTitle}>1. Connect {store}</Text>
                                 <Text style={styles.stepDesc}>
-                                    {phoneConnected ? 'Connected' : 'POWR reads your Garmin data from it'}
+                                    {phoneConnected ? 'Connected' : `POWR reads your ${brand!.name} data from it`}
                                 </Text>
                             </View>
                         </View>
-                        <View style={styles.stepRow}>
-                            <Ionicons name="toggle" size={16} color={GOLD} />
-                            <View style={styles.stepInfo}>
-                                <Text style={styles.stepTitle}>2. Turn on sharing in Garmin Connect</Text>
-                                <Text style={styles.stepDesc}>{garminPath}</Text>
+                        {copy.step2 && (
+                            <View style={styles.stepRow}>
+                                <Ionicons name="toggle" size={16} color={GOLD} />
+                                <View style={styles.stepInfo}>
+                                    <Text style={styles.stepTitle}>{copy.step2.title}</Text>
+                                    <Text style={styles.stepDesc}>{copy.step2.desc}</Text>
+                                </View>
                             </View>
-                        </View>
+                        )}
+                        {copy.note && <Text style={styles.note}>{copy.note}</Text>}
                     </View>}
                     {web || phoneConnected ? (
                         <Pressable
@@ -98,7 +96,7 @@ export default function GarminViaPhoneSheet({ visible, phoneConnected, busy, onC
                             </Pressable>
                         </>
                     )}
-                </View>
+                </View>}
             </View>
         </Modal>
     );
@@ -176,6 +174,13 @@ const styles = StyleSheet.create({
         fontWeight: '300',
         color: 'rgba(255,255,255,0.4)',
         lineHeight: 16,
+    },
+    note: {
+        fontSize: 11,
+        fontWeight: '300',
+        color: 'rgba(255,255,255,0.4)',
+        lineHeight: 16,
+        paddingLeft: 28,
     },
     connectBtn: {
         height: 48,

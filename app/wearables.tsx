@@ -14,11 +14,11 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import GarminViaPhoneSheet from '@/components/GarminViaPhoneSheet';
+import ViaPhoneSheet from '@/components/ViaPhoneSheet';
 import GeometricBackground from '@/components/GeometricBackground';
 import { androidCheckAlreadyGranted, androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
-import { getNativeProviderId, HealthProviderNotImplementedError, type HealthProviderId } from '@/lib/health/providers';
+import { getNativeProviderId, HealthProviderNotImplementedError, isPausedProvider, type HealthProviderId } from '@/lib/health/providers';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -100,9 +100,9 @@ export default function WearablesScreen() {
   const wearableRows = providers.rows.filter(r => !r.meta.native);
   const connectedWearable = wearableRows.find(r => !!r.connection);
 
-  // Garmin's direct link is paused — its tile opens the sync-through-the-phone
-  // sheet instead of connecting.
-  const [showGarminSheet, setShowGarminSheet] = useState(false);
+  // A paused wearable (Garmin, or every Terra brand while the Terra pause
+  // switch is on) opens the sync-through-the-phone sheet instead of connecting.
+  const [viaPhone, setViaPhone] = useState<{ id: string; name: string } | null>(null);
   const [androidGranted, setAndroidGranted] = useState(false);
   const nativeId = getNativeProviderId();
   // Android reports the live Health Connect grant silently, so a permission
@@ -113,8 +113,8 @@ export default function WearablesScreen() {
     ? androidGranted
     : !!providers.rows.find(r => r.meta.native)?.connection;
 
-  function openGarminSheet() {
-    setShowGarminSheet(true);
+  function openViaPhone(id: string, name: string) {
+    setViaPhone({ id, name });
     if (Platform.OS === 'android') {
       androidCheckAlreadyGranted().then(setAndroidGranted).catch(() => setAndroidGranted(false));
     }
@@ -165,8 +165,8 @@ export default function WearablesScreen() {
   function handleCardPress(id: HealthProviderId, name: string) {
     const row = wearableRows.find(r => r.meta.id === id);
     if (!row) return;
-    if (row.meta.paused) {
-      openGarminSheet();
+    if (isPausedProvider(row.meta.id)) {
+      openViaPhone(row.meta.id, row.meta.name);
       return;
     }
     const connected = !!row.connection;
@@ -225,9 +225,11 @@ export default function WearablesScreen() {
 
         <View style={styles.grid}>
           {wearableRows.map(row => {
-            const connected = !!row.connection;
-            const busy = providers.busyId === row.meta.id;
             const id = row.meta.id;
+            const paused = isPausedProvider(id);
+            // A connection kept through the Terra pause isn't delivering — no tick.
+            const connected = !!row.connection && !paused;
+            const busy = providers.busyId === row.meta.id;
             const logoUrl = BRAND_LOGOS[id];
             return (
               <Pressable
@@ -248,7 +250,7 @@ export default function WearablesScreen() {
                   <BrandIcon id={id} size={Math.round(CARD_W * 0.44)} />
                 </View>
                 <Text style={styles.cardName} numberOfLines={1}>{row.meta.name}</Text>
-                {row.meta.paused && (
+                {paused && (
                   <Text style={styles.cardVia} numberOfLines={1}>VIA {phoneStore.toUpperCase()}</Text>
                 )}
                 {connected && (
@@ -266,12 +268,12 @@ export default function WearablesScreen() {
         </Text>
       </ScrollView>
 
-      <GarminViaPhoneSheet
-        visible={showGarminSheet}
+      <ViaPhoneSheet
+        brand={viaPhone}
         phoneConnected={phoneConnected}
         busy={!!nativeId && providers.busyId === nativeId}
         onConnectPhone={connectPhone}
-        onClose={() => setShowGarminSheet(false)}
+        onClose={() => setViaPhone(null)}
       />
     </View>
   );

@@ -14,6 +14,7 @@
 //   Input:  { action: 'deauth', terra_user_id }
 //   Output: { ok: true }
 import { createClient } from '@supabase/supabase-js';
+import { isTerraPaused } from '../_shared/terraPause.ts';
 
 // authenticateUser takes `resource` as a query param; the rest go in the JSON body.
 const AUTH_API = 'https://api.tryterra.co/v2/auth/authenticateUser';
@@ -64,6 +65,15 @@ Deno.serve(async (req) => {
   }
 
   // ── Connect (per-provider auth URL for POWR's native UI) ──────────────────────
+  // Paused (system_config 'terra_paused'): no new Terra connections. Current
+  // app builds route these taps to the phone's health store instead; this
+  // stops builds that predate the switch from starting a connection that
+  // would never deliver.
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  if (await isTerraPaused(admin)) {
+    return json({ error: 'terra_paused', message: 'Wearable connections are paused. Connect Apple Health or Health Connect instead.' }, 409);
+  }
+
   const resource = (body.resource ?? '').toUpperCase();
   if (!ALLOWED.has(resource)) return json({ error: 'Unsupported resource' }, 400);
 

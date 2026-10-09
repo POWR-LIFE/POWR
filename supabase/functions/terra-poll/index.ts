@@ -25,6 +25,7 @@
 // without a redeploy. Vault can: both sides read it live, so
 // `vault.update_secret` rotates the gate with no deploy and no 403 window.
 import { createClient } from '@supabase/supabase-js';
+import { isTerraPaused } from '../_shared/terraPause.ts';
 
 const DEV_ID = Deno.env.get('TERRA_DEV_ID')!;
 const API_KEY = Deno.env.get('TERRA_API_KEY')!;
@@ -66,6 +67,12 @@ Deno.serve(async (req) => {
   const token = req.headers.get('x-resolve-token') ?? '';
   const { data: valid } = await supabase.rpc('verify_resolve_token', { p_token: token });
   if (valid !== true) return new Response('forbidden', { status: 403 });
+
+  // Paused (system_config 'terra_paused'): nothing to fetch — the webhook would
+  // drop the deliveries anyway, and every request is a billed Terra event.
+  if (await isTerraPaused(supabase)) {
+    return new Response(JSON.stringify({ skipped: 'terra_paused' }), { status: 200 });
+  }
 
   // NB: a { debug_user_id } passthrough used to live here — it fetched Terra
   // with to_webhook=false and returned the RAW provider response (6000 chars of
