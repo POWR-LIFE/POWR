@@ -1,4 +1,4 @@
-import GarminViaPhoneSheet from '@/components/GarminViaPhoneSheet';
+import ViaPhoneSheet from '@/components/ViaPhoneSheet';
 import GeometricBackground from '@/components/GeometricBackground';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { androidHealthConnectStatus, useHealthData } from '@/hooks/useHealthData';
@@ -156,7 +156,7 @@ export default function OnboardingWearablesScreen() {
 
     const [showHealthConnectInstall, setShowHealthConnectInstall] = useState(false);
     const [showSamsungSheet, setShowSamsungSheet] = useState(false);
-    const [showGarminSheet, setShowGarminSheet] = useState(false);
+    const [viaPhone, setViaPhone] = useState<{ id: string; name: string } | null>(null);
     const phoneStore = Platform.OS === 'android' ? 'Health Connect' : Platform.OS === 'ios' ? 'Apple Health' : 'your phone';
     // Live grant, not the profile record — a permission revoked in system
     // settings must bring the connect button back.
@@ -188,8 +188,8 @@ export default function OnboardingWearablesScreen() {
         }
     }
 
-    async function connectPhoneForGarmin() {
-        // Garmin's direct link is paused; its data arrives via the phone store.
+    async function connectPhoneForPaused() {
+        // A paused wearable's data arrives via the phone store.
         if (Platform.OS === 'android') return connectHealthConnect();
         const result = await health.requestPermissions();
         if (!result) return;
@@ -200,10 +200,11 @@ export default function OnboardingWearablesScreen() {
     }
 
     async function handleConnect(source: WearableSource) {
-        // Garmin's direct link is paused — explain, and connect the phone store
-        // Garmin Connect shares into instead.
+        // A paused wearable (Garmin, or every Terra brand while the Terra pause
+        // switch is on) — explain, and connect the phone store its own app
+        // shares into instead.
         if (isPausedProvider(source.id)) {
-            setShowGarminSheet(true);
+            setViaPhone({ id: source.id, name: source.name });
             return;
         }
         // Samsung Health has no direct OAuth (SDK-only on Terra) — it shares data via
@@ -368,12 +369,12 @@ export default function OnboardingWearablesScreen() {
                 </View>
             </Modal>
 
-            <GarminViaPhoneSheet
-                visible={showGarminSheet}
+            <ViaPhoneSheet
+                brand={viaPhone}
                 phoneConnected={phoneConnected}
                 busy={health.requesting}
-                onConnectPhone={() => { connectPhoneForGarmin(); }}
-                onClose={() => setShowGarminSheet(false)}
+                onConnectPhone={() => { connectPhoneForPaused(); }}
+                onClose={() => setViaPhone(null)}
             />
 
             {/* Samsung Health explainer (Android) — connects via Health Connect */}

@@ -32,6 +32,7 @@ import {
 } from '@/lib/health/providers';
 import { verificationFromProvenances, summarizeSources, type HealthDataProvenance } from '@/lib/health/dataSource';
 import { getInferredRunWindowsToday } from '@/lib/health/runInference';
+import { hydrateTerraPause } from '@/lib/health/terraPause';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 export const WALKING_SYNC_TASK = 'powr-walking-sync';
@@ -253,8 +254,11 @@ async function resolveActiveProviderId(): Promise<HealthProviderId | null> {
             .single<{ active_health_provider: HealthProviderId | null }>();
         const active = data?.active_health_provider ?? null;
         // A paused provider delivers nothing, so the phone store is the source —
-        // useHealthProviders' self-heal rewrites the column, but this can run
-        // first (background task, before any screen mounts the hook).
+        // useHealthProviders' self-heal rewrites the column for Garmin, but this
+        // can run first (background task, before any screen mounts the hook),
+        // and the remote Terra pause never rewrites it. A headless start has no
+        // switch value in memory yet; load the cached one.
+        await hydrateTerraPause();
         if (!active || isPausedProvider(active)) return getNativeProviderId();
         return active;
     } catch {

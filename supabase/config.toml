@@ -402,6 +402,12 @@ verify_jwt = false
 # default (verify_jwt=true) and 403'd every poll — pin it explicitly.
 verify_jwt = false
 
+[functions.terra-deauth-all]
+# One-off switch-off step of the Terra pause: disconnects every live Terra
+# connection (dry run by default; refuses unless system_config terra_paused is
+# on). No user JWT — gated by the x-resolve-token Vault secret like terra-poll.
+verify_jwt = false
+
 [functions.notify-waitlist]
 # Invoked by the notify-slack-on-waitlist trigger via pg_net (no Supabase user
 # JWT). Security rests on the in-code gate: x-resolve-token (verify_resolve_token)

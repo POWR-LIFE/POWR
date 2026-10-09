@@ -32,6 +32,7 @@ import { bumpActivityRevision } from '@/lib/activityRevision';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchActivityHistoryTypes, fetchWeeklySleepHours, localDateStr } from '@/lib/api/activity';
 import { deriveBodySignals, fetchBodyTrends, isEmptyTrends, readinessOf, type BodyTrends } from '@/lib/api/bodyTrends';
+import { isPausedProvider } from '@/lib/health/providers';
 import { fetchProfile } from '@/lib/api/user';
 import { orderedProgressActivities, weeklyDistanceLabel, WEEKLY_STEPS_TARGET } from '@/lib/weeklyActivities';
 
@@ -310,7 +311,9 @@ export default function ProgressScreen() {
   // the same proof-or-promise rule the sleep radial uses. A brand-new
   // phone-only user sees no BODY surface until their first session or night
   // lands.
-  const cloudWearable = rows.find((row) => !!row.connection && !row.meta.native);
+  // A connection kept through the Terra pause isn't delivering — the Body tab
+  // treats that user as phone-only (their data comes from Apple Health / Health Connect).
+  const cloudWearable = rows.find((row) => !!row.connection && !row.meta.native && !isPausedProvider(row.meta.id));
   const showBody = (bodyState?.hasData ?? false) || !!cloudWearable;
   // A wearable that has gone quiet: the ring counts the days instead of
   // holding a dash, so the slide says why it is empty and changes daily.
