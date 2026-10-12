@@ -53,9 +53,11 @@ import {
   countdownParts,
   eventNightLine,
   gateProgress,
+  onStartLine,
   rankMove,
   revealMoment,
   shortDate,
+  splitStartLine,
 } from '@/lib/liveEventDisplay';
 import { getLevelInfo } from '@/constants/levels';
 
@@ -727,8 +729,16 @@ function EventBoardSection({
   // The required side of every row's referral chip — the count rides each row,
   // the requirement is one fact about the event and rides viewer.gate.
   const entries = asEntries(board.results ?? board.standings, gate?.required ?? null);
-  const top3 = entries.slice(0, 3);
-  const restRows = entries.slice(entries.length >= 3 ? 3 : 0);
+  // Live: only the race is ranked. Everyone still on zero waits on the start
+  // line under it, and the podium keeps open seats rather than putting a 0 on
+  // a medal. Frozen results are final and render exactly as settled.
+  const { racing, startLine } = isWinners
+    ? { racing: entries, startLine: [] as LeaderboardEntry[] }
+    : splitStartLine(entries);
+  const top3 = racing.slice(0, 3);
+  const showPodium = isWinners ? top3.length >= 3 : true;
+  const restRows = isWinners ? entries.slice(entries.length >= 3 ? 3 : 0) : racing.slice(3);
+  const viewerWaiting = !isWinners && onStartLine(viewer.points);
   const prizeWinners = (board.results ?? []).filter(r => r.prize_label).slice(0, 3);
 
   // Sample rows in a board preview carry sentinel ids — there is no profile
@@ -759,6 +769,7 @@ function EventBoardSection({
       {/* Your rank — server-computed; outside the visible board it still shows */}
       {viewer.rank != null && (
         <View style={{ gap: 6 }}>
+        {viewerWaiting ? <StartLineYou /> : (
         <View style={styles.eventYouBlock}>
           <View>
             <Text style={styles.eventYouLabel}>{isWinners ? 'YOUR FINAL RANK' : 'YOUR RANK'}</Text>
@@ -776,6 +787,7 @@ function EventBoardSection({
             )}
           </View>
         </View>
+        )}
         {/* Deadline-mode gate: on the board now, but the place is only kept
             if the count lands in time. Said once, under the rank it protects. */}
         {!isWinners && gate && !gate.met && gate.mode === 'deadline' && (
@@ -804,13 +816,13 @@ function EventBoardSection({
         </View>
       ) : (
         <>
-          {top3.length >= 3 && (
+          {showPodium && (
             <>
               <View style={styles.sectionRow}>
                 <Text style={styles.sectionLabel}>{isWinners ? 'WINNERS' : 'TOP 3'}</Text>
                 <View style={styles.sectionLine} />
               </View>
-              <RealPodium entries={top3} onPress={pressUser} />
+              <RealPodium entries={top3} onPress={pressUser} openSeats={!isWinners} />
             </>
           )}
 
@@ -850,8 +862,114 @@ function EventBoardSection({
               </View>
             </>
           )}
+
+          {startLine.length > 0 && <StartLineSection rows={startLine} onPress={pressUser} />}
         </>
       )}
+    </View>
+  );
+}
+
+// ─── Start line ───────────────────────────────────────────────────────────────
+// Everyone in the event who hasn't scored yet: unranked, and no "0". A column
+// of zeros made a fresh board look dead and put people at #19 for not having
+// started. Each row breathes a gold dot instead — one slow beat across the
+// group, so it reads "live, waiting for the gun". Deliberately not a spinner:
+// a spinner says the app is loading, and for someone who never trains it
+// would never finish.
+
+function useBreath() {
+  const level = useSharedValue(0.25);
+  useEffect(() => {
+    level.value = withRepeat(
+      withTiming(0.9, { duration: 1400, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    );
+  }, [level]);
+  return useAnimatedStyle(() => ({ opacity: level.value }));
+}
+
+function StartLineSection({
+  rows,
+  onPress,
+}: {
+  rows: LeaderboardEntry[];
+  onPress: (e: LeaderboardEntry) => void;
+}) {
+  const breath = useBreath();
+  return (
+    <>
+      <View style={styles.sectionRow}>
+        <Text style={styles.sectionLabel}>{`ON THE START LINE · ${rows.length}`}</Text>
+        <View style={styles.sectionLine} />
+      </View>
+      <View style={styles.eventStandings}>
+        {rows.map((entry, idx, arr) => (
+          <Pressable
+            key={entry.user_id}
+            onPress={() => onPress(entry)}
+            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          >
+            <StartLineRow entry={entry} breath={breath} />
+            {idx < arr.length - 1 && <View style={styles.rowDivider} />}
+          </Pressable>
+        ))}
+      </View>
+    </>
+  );
+}
+
+function StartLineRow({
+  entry,
+  breath,
+}: {
+  entry: LeaderboardEntry;
+  breath: ReturnType<typeof useBreath>;
+}) {
+  const initials = memberInitials(entry.display_name, entry.username);
+  return (
+    <View style={styles.leaderRow} accessibilityLabel={`${memberLabel(entry.display_name, entry.username)}, on the start line`}>
+      {/* No rank — the column stays so avatars line up with the race above. */}
+      <View style={styles.leaderRankCol}>
+        <View style={styles.leaderRankBadge} />
+      </View>
+      <View style={[styles.leaderAvatarRing, styles.startLineAvatar]}>
+        <View style={styles.leaderAvatar}>
+          {entry.avatar_url ? (
+            <Image source={{ uri: entry.avatar_url }} style={{ flex: 1 }} contentFit="cover" />
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: CARD_BG }}>
+              <Text style={{ fontSize: 15, fontWeight: '500', color: DIM }}>{initials}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+      <View style={{ flex: 1, gap: 4 }}>
+        <Text style={styles.leaderName} numberOfLines={1}>
+          {memberLabel(entry.display_name, entry.username)}
+        </Text>
+        <RowMeta entry={entry} showPro={false} />
+      </View>
+      <GateChip count={entry.gate_count} required={entry.gate_required} />
+      <View style={styles.startLineDotCol}>
+        <Animated.View style={[styles.breathDot, breath]} />
+      </View>
+    </View>
+  );
+}
+
+/** Your block when you're in but haven't scored: no "#9 · 0", just what gets
+ *  you onto the board. */
+function StartLineYou() {
+  const breath = useBreath();
+  return (
+    <View style={styles.eventYouBlock}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.eventYouLabel}>YOU’RE ON THE START LINE</Text>
+        <Text style={styles.startLineYouText}>One verified workout puts you on the board.</Text>
+      </View>
+      <Animated.View style={[styles.breathDot, styles.breathDotLg, breath]} />
     </View>
   );
 }
@@ -1177,9 +1295,13 @@ function SealedBoard({ event, preview }: { event: LiveEvent; preview: boolean })
 function RealPodium({
   entries,
   onPress,
+  openSeats = false,
 }: {
   entries: LeaderboardEntry[];
   onPress: (e: LeaderboardEntry) => void;
+  /** Live board: a place nobody has scored into yet is drawn as an open seat
+   *  rather than left blank. Off for frozen results. */
+  openSeats?: boolean;
 }) {
   const order = [entries[1], entries[0], entries[2]]; // 2nd | 1st | 3rd
   const rankOrder = [2, 1, 3] as const;
@@ -1198,10 +1320,71 @@ function RealPodium({
           The winner still reads first: bigger avatar, trophy, spinning rings. */}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
         {order.map((entry, i) => {
-          if (!entry) return <View key={i} style={{ width: COL_W }} />;
           const rank = rankOrder[i] as 1 | 2 | 3;
           const meta = META[rank];
           const isFirst = rank === 1;
+          if (!entry) {
+            if (!openSeats) return <View key={i} style={{ width: COL_W }} />;
+            // An open place: the between-events preview's empty seat — rings
+            // still turning, no face — with "Up for grabs" where the name goes
+            // and OPEN where the points would be. Never a 0 on a medal.
+            return (
+              <View
+                key={i}
+                style={{ width: COL_W, alignItems: 'center' }}
+                accessibilityLabel={`${meta.label} place, up for grabs`}
+              >
+                <View style={{ marginBottom: isFirst ? 6 : 8 }}>
+                  {isFirst ? (
+                    <Ionicons name="trophy" size={20} color={GOLD} style={{ opacity: 0.5 }} />
+                  ) : (
+                    <Text style={{ fontSize: 8, fontWeight: '700', letterSpacing: 2, color: meta.colour, opacity: 0.7 }}>
+                      {meta.label}
+                    </Text>
+                  )}
+                </View>
+                <View style={{ marginBottom: 6 }}>
+                  <PodiumAvatarRing
+                    avatarSize={meta.avatarSize}
+                    colour={meta.colour}
+                    colourSoft={meta.colourSoft}
+                    isFirst={isFirst}
+                  >
+                    <View style={{
+                      width: meta.avatarSize, height: meta.avatarSize,
+                      borderRadius: meta.avatarSize / 2,
+                      borderWidth: isFirst ? 2 : 1.5,
+                      borderColor: `${meta.colour}55`,
+                      backgroundColor: CARD_BG,
+                    }} />
+                  </PodiumAvatarRing>
+                </View>
+                <Text style={{
+                  fontSize: isFirst ? 12 : 10,
+                  fontWeight: '300',
+                  color: MUTED,
+                  marginBottom: 10,
+                }}>
+                  Up for grabs
+                </Text>
+                <LinearGradient
+                  colors={[`${meta.colour}14`, `${meta.colour}04`]}
+                  style={{
+                    width: COL_W,
+                    height: meta.platformH,
+                    borderTopLeftRadius: 8,
+                    borderTopRightRadius: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderTopWidth: 2,
+                    borderTopColor: `${meta.colour}66`,
+                  }}
+                >
+                  <Text style={{ fontSize: 8, fontWeight: '800', color: meta.colour, opacity: 0.5, letterSpacing: 2.5 }}>OPEN</Text>
+                </LinearGradient>
+              </View>
+            );
+          }
           const initials = memberInitials(entry.display_name, entry.username);
           return (
             <Pressable
@@ -2091,6 +2274,11 @@ const styles = StyleSheet.create({
   eventYouLabel: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5, marginBottom: 4 },
   eventYouRank: { fontSize: 40, fontWeight: '100', color: GOLD, letterSpacing: -2, lineHeight: 42 },
   eventYouPrize: { fontSize: 12, fontWeight: '500', color: GOLD, marginTop: 4 },
+  startLineYouText: { fontSize: 19, fontWeight: '200', color: TEXT, letterSpacing: -0.3, lineHeight: 25, paddingRight: 16 },
+  startLineAvatar: { opacity: 0.8 },
+  startLineDotCol: { width: 24, alignItems: 'flex-end', justifyContent: 'center' },
+  breathDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: GOLD },
+  breathDotLg: { width: 8, height: 8, borderRadius: 4, alignSelf: 'center' },
   // Right-hand note in ViewerPointsBlock — why there's no rank next to the
   // number. Quiet on purpose: the number is the content, this is the caption.
   // Deadline-mode caution under the rank block: the place exists, the

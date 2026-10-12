@@ -12,7 +12,7 @@ import {
     type EventLeaderboard,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
-import { eventStatusChip, isComingSoon, isVideoUrl, registrationLine, scoringLine } from '@/lib/liveEventDisplay';
+import { eventStatusChip, isComingSoon, isVideoUrl, onStartLine, registrationLine, scoringLine } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -37,7 +37,10 @@ function registeredPill(
     // A rank beats everything: in 'deadline' gate mode you're on the live
     // board from day one, so the friend count is a caution for the League
     // ticket to carry, not the headline.
-    if (event.status === 'live' && !event.is_locked && typeof board?.viewer.rank === 'number') {
+    if (
+        event.status === 'live' && !event.is_locked &&
+        typeof board?.viewer.rank === 'number' && !onStartLine(board.viewer.points)
+    ) {
         return { label: `RANK ${board.viewer.rank}`, a11y: `You're ranked ${board.viewer.rank}.` };
     }
 
@@ -66,6 +69,11 @@ function registeredPill(
     // alone before a rank exists still beats a generic "you're in".
     if (event.status === 'live' && board && !board.is_gated) {
         const { rank, points } = board.viewer;
+        // On the start line the board doesn't rank you, so neither does the
+        // pill — "RANK 9" or "0 POWR" would both read as last place.
+        if (onStartLine(points)) {
+            return { label: 'YOU’RE IN', a11y: 'You’re in — one verified workout puts you on the board.' };
+        }
         if (typeof rank === 'number') return { label: `RANK ${rank}`, a11y: `You're ranked ${rank}.` };
         if (typeof points === 'number') return { label: `${points} POWR`, a11y: `You've earned ${points} POWR.` };
     }
