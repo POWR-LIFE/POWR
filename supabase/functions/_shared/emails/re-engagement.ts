@@ -25,6 +25,12 @@ export interface ReEngagementData {
   locationGranted: boolean;
   /** Connected health source label ("Whoop", "Apple Health"…) or null. */
   wearable: string | null;
+  /**
+   * Comeback offer (lapsed only): the first N POWR they earn back count
+   * double. Absent = the email renders exactly as before — nothing sends this
+   * until Comeback is built server-side.
+   */
+  comeback?: { doubleUpTo: number; validDays: number } | null;
 }
 
 // Rough POWR per workout — same basis as the weekly's "≈ N workouts away".
@@ -143,6 +149,14 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
       : `Your first session is the one that gets things moving.`;
   }
 
+  // Comeback leads the email when it's on: the offer is the news, the balance
+  // is the reassurance underneath it.
+  const comeback = lapsed && data.comeback ? data.comeback : null;
+  if (comeback) {
+    subject = `${plainName}, your comeback counts double`;
+    preheader = `Your first ${comeback.doubleUpTo} POWR back count twice. Any session in the next ${comeback.validDays} days starts it.`;
+  }
+
   // ── Sections ───────────────────────────────────────────────────────
   const hero = `
         <tr>
@@ -151,6 +165,19 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
             <p style="margin:18px 0 0;font-size:15px;font-weight:300;color:#999999;line-height:1.7;font-family:${FONT};">${esc(bodyText)}</p>
           </td>
         </tr>`;
+
+  const comebackCard = comeback
+    ? `
+        <tr>
+          <td class="sec" style="background-color:#0a0a0a;padding:32px 40px 34px;text-align:center;border-bottom:1px solid #161616;">
+            ${sectionLabel("Comeback", GOLD)}
+            <span style="display:block;margin-top:8px;font-size:72px;font-weight:200;color:${GOLD};letter-spacing:-2px;line-height:1.05;font-family:${FONT};">2&times;</span>
+            <span style="display:block;margin-top:4px;font-size:12px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:#F2F2F2;font-family:${FONT};">Your first ${comeback.doubleUpTo} POWR back</span>
+            <span style="display:block;margin-top:14px;font-size:14px;font-weight:300;color:#999999;line-height:1.6;font-family:${FONT};">Any session in the next ${comeback.validDays} days starts it &mdash; a gym visit, a run, a walk.<br class="br-d"> No streak to rebuild first. Just the next move.</span>
+            <div style="margin-top:24px;">${ctaButton("Start my comeback", "https://powr.life/app")}</div>
+          </td>
+        </tr>`
+    : "";
 
   const balanceCard = `
         <tr>
@@ -197,22 +224,25 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
   const cta = `
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:34px 40px;text-align:center;border-bottom:1px solid #161616;">
-            ${ctaButton("Open POWR", "https://powr.life/app")}
+            ${ctaButton("Open POWR", "https://powr.life/app", comeback ? "ghost" : "primary")}
             <p style="margin:18px 0 0;font-size:12px;font-weight:300;color:#777777;line-height:1.6;font-family:${FONT};">Every move counts.</p>
           </td>
         </tr>`;
 
-  const rows = lapsed ? hero + balanceCard + waysCard + cta : hero + waysCard + balanceCard + cta;
+  const rows = lapsed ? hero + comebackCard + balanceCard + waysCard + cta : hero + waysCard + balanceCard + cta;
   const html = emailShell({ title: "POWR", preheader, rows });
 
   // ── Plain text ─────────────────────────────────────────────────────
   const rewardLines = (canRedeem ? ready : featured ? [featured] : [])
     .map((r) => `  - ${brandValueText(r)}: ${r.cost.toLocaleString()} POWR${balance >= r.cost ? " (ready)" : ` (${(r.cost - balance).toLocaleString()} to go)`}`)
     .join("\n");
+  const comebackText = comeback
+    ? `\nCOMEBACK: 2x your first ${comeback.doubleUpTo} POWR back. Any session in the next ${comeback.validDays} days starts it.\n`
+    : "";
   const text = `${headingText}
 
 ${bodyText}
-
+${comebackText}
 Balance: ${balance.toLocaleString()} POWR
 ${rewardLines}
 
