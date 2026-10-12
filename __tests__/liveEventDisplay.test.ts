@@ -5,10 +5,12 @@ import {
     gateProgress,
     inviteRewardLine,
     isComingSoon,
+    onStartLine,
     rankMove,
     registrationLine,
     revealMoment,
     scoringLine,
+    splitStartLine,
 } from '@/lib/liveEventDisplay';
 
 const realToLocaleDateString = Date.prototype.toLocaleDateString;
@@ -277,5 +279,36 @@ describe('countdownParts', () => {
 
     it('clamps at zero once the moment has passed', () => {
         expect(countdownParts(-5000)).toEqual({ total: 0, days: 0, hours: 0, minutes: 0, seconds: 0 });
+    });
+});
+
+describe('onStartLine', () => {
+    it('is zero (or below, after an adjustment) — not missing', () => {
+        expect(onStartLine(0)).toBe(true);
+        expect(onStartLine(-5)).toBe(true);
+        expect(onStartLine(1)).toBe(false);
+        expect(onStartLine(null)).toBe(false);
+        expect(onStartLine(undefined)).toBe(false);
+    });
+});
+
+describe('splitStartLine', () => {
+    it('keeps server order inside each half', () => {
+        const rows = [
+            { rank: 1, points: 40 },
+            { rank: 2, points: 13 },
+            { rank: 3, points: 0 },
+            { rank: 4, points: 0 },
+        ];
+        expect(splitStartLine(rows)).toEqual({
+            racing: [rows[0], rows[1]],
+            startLine: [rows[2], rows[3]],
+        });
+    });
+
+    it('handles a board where nobody has scored, or everybody has', () => {
+        expect(splitStartLine([{ points: 0 }, { points: 0 }]).racing).toEqual([]);
+        expect(splitStartLine([{ points: 5 }]).startLine).toEqual([]);
+        expect(splitStartLine([])).toEqual({ racing: [], startLine: [] });
     });
 });

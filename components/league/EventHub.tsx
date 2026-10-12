@@ -18,6 +18,7 @@ import {
     eventStatusChip,
     isVideoUrl,
     lastDayOf,
+    onStartLine,
     registrationLine,
     scoringLine,
 } from '@/lib/liveEventDisplay';
@@ -69,7 +70,9 @@ function statusChip(event: LiveEvent): string {
  *  vocabulary as the Home card, so a member reads the two the same way. */
 function standingPill(event: LiveEvent, board?: EventLeaderboard | null): { label: string; filled: boolean } {
     if (event.viewer.joined) {
-        const rank = event.status === 'live' && !event.is_locked ? board?.viewer.rank : undefined;
+        // Nobody is ranked from the start line — "RANK 9" on zero reads as last.
+        const live = event.status === 'live' && !event.is_locked;
+        const rank = live && !onStartLine(board?.viewer.points) ? board?.viewer.rank : undefined;
         return { label: typeof rank === 'number' ? `RANK ${rank}` : 'YOU’RE IN', filled: false };
     }
     if (event.status === 'announced') return { label: 'SOON', filled: false };
@@ -137,7 +140,8 @@ function EventHubCard({
     const pill = standingPill(event, board);
     const night = eventNightLine(event);
     const you = youLine(event, board);
-    const podium = board?.results ?? board?.standings ?? null;
+    // Live: only people who've scored take a place on the card.
+    const podium = board?.results ?? board?.standings?.filter(r => !onStartLine(r.points)) ?? null;
     const live = event.status === 'live' && !event.is_locked;
 
     // The event's own artwork, as on Home: one field that may hold a video or

@@ -231,6 +231,29 @@ export function gateProgress(
 }
 
 /**
+ * In the event, nothing scored yet. A live board doesn't rank these people —
+ * "#19 · 0" reads as last place when the truth is "hasn't started". One
+ * predicate so the board, the Home card and the hub agree on who has a rank
+ * worth showing. Missing points (not in the event) is not the start line.
+ */
+export function onStartLine(points: number | null | undefined): boolean {
+    return typeof points === 'number' && points <= 0;
+}
+
+/**
+ * A live board in two halves: the race (scored, ranked as the server ranked
+ * them) and the start line (still on zero, unranked). Server order is kept
+ * inside each half. Frozen results don't come through here — a final
+ * standings is final.
+ */
+export function splitStartLine<T extends { points: number }>(rows: T[]): { racing: T[]; startLine: T[] } {
+    const racing: T[] = [];
+    const startLine: T[] = [];
+    for (const r of rows) (onStartLine(r.points) ? startLine : racing).push(r);
+    return { racing, startLine };
+}
+
+/**
  * The one sentence that says WHEN an invite pays. Two events can answer this
  * differently on the same screen, so it must never be hardcoded at the call
  * site — see `live_events.reward_referrals_on_signup` (2026-09-03).
