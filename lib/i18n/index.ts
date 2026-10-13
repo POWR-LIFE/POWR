@@ -11,7 +11,7 @@ import { AppState } from 'react-native';
 
 import { getDeviceLocale } from '@/lib/locale';
 import { APP_DRAFT_LANGUAGES, APP_LANGUAGES, formatLocaleFor, resolveLanguage } from '@/shared/i18n';
-import { APP_NAMESPACES, APP_RESOURCES } from '@/shared/i18n/app';
+import { APP_I18N_OPTIONS } from '@/shared/i18n/app';
 
 /**
  * The app's language — which catalog is on screen, and why.
@@ -76,18 +76,7 @@ function commit(next: LanguageState): void {
   if (changed) listeners.forEach(listener => listener());
 }
 
-i18n.use(initReactI18next).init({
-  resources: APP_RESOURCES,
-  lng: state.language,
-  fallbackLng: 'en',
-  ns: [...APP_NAMESPACES],
-  defaultNS: 'common',
-  interpolation: { escapeValue: false }, // React Native renders text, not HTML
-  // A draft's untranslated "" reads as English, never as a blank label.
-  returnEmptyString: false,
-  initAsync: false, // resources are bundled, so the first render already has them
-  react: { useSuspense: false },
-});
+i18n.use(initReactI18next).init({ ...APP_I18N_OPTIONS, lng: state.language });
 
 async function readSaved(): Promise<void> {
   try {
