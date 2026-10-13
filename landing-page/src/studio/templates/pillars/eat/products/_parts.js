@@ -7,7 +7,7 @@
 import { TYPE } from '../../../../fonts';
 import { fitBlock, drawBlock, drawText, splitLines, blockBox, wrapLines, capHeight, textWidth } from '../../../../text';
 import { rule } from '../../../../shapes';
-import { productShot, isCutout, textOn, mockRect } from '../../kit';
+import { productShot, isCutout, textOn, mockRect, cutoutRect, productZoom } from '../../kit';
 import { INK, SOFT, GREY, DIM, HAIR, lift, mix, alpha, luminance, rows, num, fitPx } from '../_parts';
 
 export { INK, SOFT, GREY, DIM, HAIR, lift, mix, alpha, luminance, rows, num, fitPx, textOn };
@@ -65,11 +65,7 @@ export function productRect(e, box, { kind = 'tub', align = 'center', valign = '
     const img = e.asset('product');
     if (!img) return mockRect(box, kind, align);
     if (!isCutout(img)) return fitAspect(box, frame, { align, valign });
-    const s = Math.min(box.w / img.width, box.h / img.height);
-    const w = img.width * s;
-    const h = img.height * s;
-    const x = align === 'left' ? box.x : align === 'right' ? box.x + box.w - w : box.x + (box.w - w) / 2;
-    return { x, y: box.y + box.h - h, w, h };
+    return cutoutRect(img, box, { align, zoom: productZoom(e) });
 }
 
 /**
