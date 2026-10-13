@@ -65,7 +65,8 @@ export default function PartnerInStore() {
     const steps = [
         { label: 'Add a shop', done: sites.length > 0, hint: 'Add each shop with a pin on the map, so members see where to use your rewards.' },
         { label: 'Turn on a reward', done: inStoreRewards.length > 0, hint: 'Pick a reward and choose In store or Both.' },
-        { label: 'Set up your till', done: !scanningRewards.length || staff.length > 0, hint: 'Give each member of staff their own scan link, or open the scan page on a till tablet.' },
+        // Only staff-scan rewards need anything at the till; the other methods are done once a reward is on.
+        { label: 'Set up your till', done: inStoreRewards.length > 0 && (!scanningRewards.length || staff.length > 0), hint: 'Give each member of staff their own scan link, or open the scan page on a till tablet.' },
     ];
 
     return (
@@ -458,7 +459,7 @@ function SiteEditor({ brand, site, onClose, onSaved }) {
     const [paste, setPaste] = useState('');
     const [busy, setBusy] = useState(false);
 
-    const usePasted = (text) => {
+    const applyPasted = (text) => {
         setPaste(text);
         const c = parseCoordinates(text);
         if (c) setPin(c);
@@ -509,7 +510,7 @@ function SiteEditor({ brand, site, onClose, onSaved }) {
                 <div className="flex flex-wrap items-end gap-3 mb-4">
                     <div className="flex-1 min-w-[240px]">
                         <label htmlFor="site-paste" className={`${EYEBROW} block mb-2`}>Paste a Google Maps link (optional)</label>
-                        <input id="site-paste" className={INPUT} value={paste} onChange={e => usePasted(e.target.value)} placeholder="https://maps.google.com/… or 51.5246, -0.0786" />
+                        <input id="site-paste" className={INPUT} value={paste} onChange={e => applyPasted(e.target.value)} placeholder="https://maps.google.com/… or 51.5246, -0.0786" />
                     </div>
                     <button type="button" onClick={useHere} className={`${BTN_GHOST} !h-14 !px-5 inline-flex items-center gap-2`}><LocateFixed size={14} /> I'm in the shop now</button>
                 </div>

@@ -418,9 +418,9 @@ function Marquee() {
   return (
     <View style={styles.marquee} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Animated.View style={{ flexDirection: 'row', transform: [{ translateX: x }] }}>
-        <Text style={styles.marqueeText} onLayout={(e) => setW(e.nativeEvent.layout.width)} numberOfLines={1}>{text}</Text>
-        <Text style={styles.marqueeText} numberOfLines={1}>{text}</Text>
-        <Text style={styles.marqueeText} numberOfLines={1}>{text}</Text>
+        <Text style={styles.marqueeText} onLayout={(e) => setW(e.nativeEvent.layout.width)}>{text}</Text>
+        <Text style={styles.marqueeText}>{text}</Text>
+        <Text style={styles.marqueeText}>{text}</Text>
       </Animated.View>
     </View>
   );
@@ -662,7 +662,8 @@ const styles = StyleSheet.create({
     height: 28, overflow: 'hidden', justifyContent: 'center',
     backgroundColor: 'rgba(232,210,0,0.08)', borderTopWidth: 1, borderBottomWidth: 1, borderColor: 'rgba(232,210,0,0.2)',
   },
-  marqueeText: { fontSize: 9, fontWeight: '600', letterSpacing: 3, color: GOLD },
+  // Natural width, never shrunk or ellipsised: the loop scrolls by one copy's width.
+  marqueeText: { fontSize: 9, fontWeight: '600', letterSpacing: 3, color: GOLD, flexShrink: 0 },
 
   voucherScroll: { flexGrow: 1 },
   voucherBody: { paddingHorizontal: 24, paddingTop: 20, gap: 18 },

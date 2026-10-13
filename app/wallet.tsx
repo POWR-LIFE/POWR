@@ -337,7 +337,10 @@ export default function WalletScreen() {
 
   // In-store settings + shops for the active rewards. Online-only rewards
   // come back absent, so the common case is one cheap empty call.
-  const activeRewardIds = useMemo(() => [...new Set(active.map((e) => e.reward_id))].sort(), [active]);
+  const activeRewardIds = useMemo(
+    () => [...new Set((activeQuery.data ?? []).map((e) => e.reward_id))].sort(),
+    [activeQuery.data],
+  );
   const inStoreQuery = useQuery({
     queryKey: ['wallet', 'in-store', activeRewardIds],
     queryFn: () => fetchInStoreInfo(activeRewardIds),
