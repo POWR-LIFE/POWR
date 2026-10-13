@@ -140,7 +140,7 @@ const previewFromSubmission = (s, partnerName) => ({
 
 export default function PartnerRewards() {
     const toast = useToast();
-    const { partnerData, user } = useAuth();
+    const { partnerData, user, isAdmin, inStoreEnabled } = useAuth();
     const [rewards, setRewards] = useState([]);
     const [submissions, setSubmissions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -633,11 +633,11 @@ export default function PartnerRewards() {
                                 <>
                                     <div>
                                         <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Member redemption *</label>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div className={`grid grid-cols-1 gap-3 ${isAdmin || inStoreEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
                                             {[
                                                 ['code_pool', 'Unique code', 'POWR issues one of your codes per claim'],
                                                 ['affiliate', 'Shared link', 'Members redeem through your destination'],
-                                                ['in_store', 'In store', 'Members show a live voucher at your till. No codes needed'],
+                                                ...(isAdmin || inStoreEnabled ? [['in_store', 'In store', 'Members show a live voucher at your till. No codes needed']] : []),
                                             ].map(([value, label, detail]) => (
                                                 <button key={value} type="button" onClick={() => setForm(p => ({ ...p, delivery_method: value }))} className={`text-left p-4 rounded-2xl border transition-all ${form.delivery_method === value ? 'border-[#E8D200] bg-[#E8D200]/10' : 'border-[#E6E6E1] bg-white hover:border-[#DDD]'}`}>
                                                     <span className={`block text-[10px] font-black uppercase tracking-[0.2em] ${form.delivery_method === value ? 'text-[#8a7600]' : 'text-[#666]'}`}>{label}</span>

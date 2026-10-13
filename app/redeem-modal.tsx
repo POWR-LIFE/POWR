@@ -182,6 +182,7 @@ export default function RedeemModal() {
           : e.code === 'REDEMPTION_LIMIT_REACHED' ? "You've already claimed the maximum number of this reward."
           : e.code === 'REWARD_NOT_FOUND' ? 'Reward not found. Please go back and try again.'
           : e.code === 'PARTNER_MISCONFIGURED' ? 'This reward is not yet available. Please try again later.'
+          : e.code === 'APP_UPDATE_REQUIRED' ? 'Update POWR to use this in-store reward.'
           : `Something went wrong (${e.code}). Please try again.`
         );
       } else {

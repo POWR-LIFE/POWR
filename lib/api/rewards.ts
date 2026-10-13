@@ -61,6 +61,7 @@ export type RedemptionErrorCode =
   | 'CODE_GENERATION_FAILED'
   | 'TX_FAILED'
   | 'REDEMPTION_LIMIT_REACHED'
+  | 'APP_UPDATE_REQUIRED'
   | 'UNKNOWN';
 
 export class RedemptionError extends Error {
@@ -108,7 +109,9 @@ export async function redeemReward(rewardId: string): Promise<RedemptionResult> 
   if (!session) throw new RedemptionError('UNKNOWN', 'Not authenticated');
 
   const { data, error } = await supabase.functions.invoke('redeem-reward', {
-    body: { reward_id: rewardId },
+    // `features` tells redeem-reward this build has the in-store voucher
+    // screen; builds without it are refused in-store-only rewards.
+    body: { reward_id: rewardId, features: ['in_store_v1'] },
     headers: { Authorization: `Bearer ${session.access_token}` },
   });
 

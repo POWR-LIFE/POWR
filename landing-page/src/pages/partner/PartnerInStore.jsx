@@ -35,7 +35,7 @@ function copyText(text, toast, label = 'Copied') {
 }
 
 export default function PartnerInStore() {
-    const { partnerData } = useAuth();
+    const { partnerData, isAdmin, inStoreEnabled } = useAuth();
     const brand = partnerData?.brand_name;
     const [params, setParams] = useSearchParams();
     const tab = TABS.some(t => t.key === params.get('tab')) ? params.get('tab') : 'rewards';
@@ -68,6 +68,23 @@ export default function PartnerInStore() {
         // Only staff-scan rewards need anything at the till; the other methods are done once a reward is on.
         { label: 'Set up your till', done: inStoreRewards.length > 0 && (!scanningRewards.length || staff.length > 0), hint: 'Give each member of staff their own scan link, or open the scan page on a till tablet.' },
     ];
+
+    // Rollout switch off for this brand (the menu item is hidden too; this
+    // catches a typed URL).
+    if (!isAdmin && inStoreEnabled === undefined) {
+        return <div className="flex items-center justify-center py-32"><div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" /></div>;
+    }
+    if (!isAdmin && !inStoreEnabled) {
+        return (
+            <div className="py-16">
+                <div className="bg-white border border-[#E6E6E1] rounded-3xl py-16 px-8 text-center max-w-2xl">
+                    <Store size={28} className="text-[#E6E6E1] mx-auto mb-5" />
+                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">In store is coming soon</p>
+                    <p className="text-sm text-[#777] mt-3 max-w-md mx-auto leading-relaxed">Members will be able to use your rewards at your till with a live voucher. We'll let you know when it's ready for your shops.</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700">

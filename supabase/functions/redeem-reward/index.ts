@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
   const { data: { user }, error: authErr } = await userClient.auth.getUser(jwt);
   if (authErr || !user) return json({ error: 'Unauthorized' }, 401);
 
-  let body: { reward_id?: string };
+  let body: { reward_id?: string; features?: unknown };
   try { body = await req.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
   if (!body.reward_id) return json({ error: 'reward_id required' }, 400);
 
@@ -106,6 +106,16 @@ Deno.serve(async (req) => {
     const qaClaim = !!tester && !!reward.brand_name && typeof qaBrand === 'string'
       && reward.brand_name.trim().toLowerCase() === qaBrand.trim().toLowerCase();
     if (!qaClaim) return json({ error: 'REWARD_INACTIVE' }, 422);
+  }
+
+  // In-store-only rewards need the app's voucher screen. Older builds (1.5.1,
+  // and 1.6.0 before the update carrying it) don't send `features`, so they
+  // are refused here, before any points move, rather than sold a reward they
+  // can't open. Online + in store and till-barcode rewards still issue a code
+  // those builds can show.
+  if (reward.integration_type === 'IN_STORE'
+      && !(Array.isArray(body.features) && body.features.includes('in_store_v1'))) {
+    return json({ error: 'APP_UPDATE_REQUIRED' }, 422);
   }
 
   const partner = Array.isArray(reward.partners) ? reward.partners[0] : reward.partners;

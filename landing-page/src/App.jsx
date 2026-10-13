@@ -164,7 +164,7 @@ const GymDocsStudio = lazy(() => import('./pages/docs/gyms/GymDocsStudio'));
 const GymDocsMembers = lazy(() => import('./pages/docs/gyms/GymDocsMembers'));
 
 // --- Auth Context ---
-export const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, creatorProgramEnabled: false, placementsEnabled: false, deliveryMethod: undefined, loading: true });
+export const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, creatorProgramEnabled: false, placementsEnabled: false, inStoreEnabled: false, deliveryMethod: undefined, loading: true });
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
 const ACTING_CREATOR_KEY = 'powr_acting_creator';
@@ -221,6 +221,10 @@ export const AuthProvider = ({ children }) => {
     const [activeGymId, setActiveGymId] = useState(() => localStorage.getItem(ACTIVE_GYM_KEY));
     const [actingGym, setActingGymState] = useState(null);
     const [placementsEnabled, setPlacementsEnabled] = useState(false);
+    // In-store redemption rollout: on for the QA store and admins, off for other
+    // brands until system_config 'partner_in_store_enabled' is flipped.
+    // undefined while the brand's answer loads, so the page can wait for it.
+    const [inStoreEnabled, setInStoreEnabled] = useState(undefined);
     // Master switch from System Config. Admins see the portal regardless.
     const [creatorProgramEnabled, setCreatorProgramEnabled] = useState(false);
     const [rolesFor, setRolesFor] = useState(null);
@@ -466,6 +470,16 @@ export const AuthProvider = ({ children }) => {
         return () => { cancelled = true; };
     }, [effectiveBrandName]);
 
+    useEffect(() => {
+        setInStoreEnabled(undefined);
+        if (!effectiveBrandName) return;
+        let cancelled = false;
+        supabase.rpc('in_store_enabled_for_brand', { p_brand: effectiveBrandName })
+            .then(({ data }) => { if (!cancelled) setInStoreEnabled(data === true); },
+                  () => { if (!cancelled) setInStoreEnabled(false); });
+        return () => { cancelled = true; };
+    }, [effectiveBrandName]);
+
     // The gym the portal is showing: an admin's preview pick first, else the
     // gym the user last opened, else their first gym whose portal is on.
     const liveGyms = gymMemberships.filter(m => m.active);
@@ -493,6 +507,7 @@ export const AuthProvider = ({ children }) => {
             creatorProgramEnabled,
             rolesFor,
             placementsEnabled,
+            inStoreEnabled,
             deliveryMethod,
             updateDeliveryMethod: setDeliveryMethodState,
             loading,
