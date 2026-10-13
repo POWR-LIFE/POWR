@@ -222,6 +222,7 @@ function RootLayoutNav() {
           <Stack.Screen name="share-event" options={{ presentation: 'modal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="scan-friend" options={{ presentation: 'modal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="circle-camera" options={{ presentation: 'fullScreenModal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
+          <Stack.Screen name="in-store" options={{ presentation: 'fullScreenModal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>

@@ -36,7 +36,8 @@ export const RewardShareCard = forwardRef<View, RewardShareCardProps>(
     const logoUri = rewardLogoUri(entry.reward_image_url);
     // Without a hero shot, fall back to a heavily blurred partner logo.
     const bgUri = heroUri ?? logoUri;
-    const isAffiliate = entry.integration_type === 'AFFILIATE';
+    // Neither carries a code worth printing: an affiliate link, or an in-store voucher.
+    const isAffiliate = entry.integration_type === 'AFFILIATE' || entry.integration_type === 'IN_STORE';
     const title = entry.reward_title ?? 'Reward';
 
     // Signal readiness once every distinct remote image has loaded.
@@ -104,7 +105,7 @@ export const RewardShareCard = forwardRef<View, RewardShareCardProps>(
           <View style={[styles.codeBox, { borderRadius: 30 * s, borderWidth: Math.max(1, 2 * s), paddingVertical: 42 * s, paddingHorizontal: 36 * s, marginTop: 56 * s, gap: 16 * s }]}>
             {isAffiliate ? (
               <Text style={[styles.affiliateText, { fontSize: 30 * s, lineHeight: 42 * s }]}>
-                Discount applied automatically at checkout
+                {entry.integration_type === 'IN_STORE' ? 'Use it in store with the POWR app' : 'Discount applied automatically at checkout'}
               </Text>
             ) : (
               <>

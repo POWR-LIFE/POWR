@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy, Palette, BookOpen } from 'lucide-react';
+import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy, Palette, BookOpen, ScanLine } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { methodLaterKey } from './PartnerIntegrationHub';
@@ -111,6 +111,7 @@ const navItemsFor = (deliveryMethod) => [
     { label: 'Overview',    path: '/partner',             icon: LayoutDashboard },
     { label: 'My Rewards',  path: '/partner/rewards',     icon: Award           },
     INTEGRATION_NAV[deliveryMethod] ?? INTEGRATION_NAV_DEFAULT,
+    { label: 'In Store',    path: '/partner/in-store',    icon: ScanLine        },
     { label: "What's On",   path: '/partner/featured',    icon: CalendarDays    },
     { label: 'Placements',  path: '/partner/placements',  icon: MapPin, gated: true },
     { label: 'Studio',      path: '/partner/studio',      icon: Palette         },
@@ -126,6 +127,7 @@ const PATH_LABELS = {
     placements:    'Placements',
     studio:        'Studio',
     redemptions:   'Redemptions',
+    'in-store':    'In Store',
     integration:   'Integration',
     settings:      'Settings',
     support:       'Support',

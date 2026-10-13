@@ -1,6 +1,9 @@
 import { getSessionUser, supabase } from '@/lib/supabase';
 
-export type IntegrationType = 'POOL' | 'API_VALIDATED' | 'AFFILIATE';
+// IN_STORE: an in-store-only reward. The member opens a live voucher at the
+// till (lib/api/inStore.ts); the `code` on its redemption is a receipt id,
+// never something to show or type.
+export type IntegrationType = 'POOL' | 'API_VALIDATED' | 'AFFILIATE' | 'IN_STORE';
 
 export interface PartnerSummary {
   id: string;
@@ -166,7 +169,7 @@ export function walletEntryStatus(
   return 'ready';
 }
 
-const WALLET_COLUMNS =
+export const WALLET_COLUMNS =
   'id, reward_id, code, powr_spent, status, redeemed_at, expires_at, integration_type, reward_title, partner_name, reward_image_url, reward_hero_image_url, checkout_url';
 
 export const WALLET_HISTORY_PAGE_SIZE = 20;

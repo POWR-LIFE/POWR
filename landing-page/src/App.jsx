@@ -34,7 +34,7 @@ import {
     HeartPulse,
     SquareKanban,
 } from 'lucide-react';
-import { createContext, lazy, useContext, useEffect, useState } from 'react';
+import { createContext, lazy, Suspense, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
@@ -43,6 +43,9 @@ import PartnerPortalHome from './pages/partner/PartnerHome';
 import { PartnerLayout } from './pages/partner/PartnerLayout';
 import PartnerPortalPromoCodes from './pages/partner/PartnerPromoCodes';
 import PartnerPortalRedemptions from './pages/partner/PartnerRedemptions';
+import PartnerPortalInStore from './pages/partner/PartnerInStore';
+import PartnerStandPrint from './pages/partner/PartnerStandPrint';
+import StandLanding from './pages/StandLanding';
 import PartnerPortalRewards from './pages/partner/PartnerRewards';
 import PartnerPortalFeatured from './pages/partner/PartnerFeatured';
 import PartnerPortalPlacements from './pages/partner/PartnerPlacements';
@@ -150,6 +153,8 @@ import TermsOfService from './pages/TermsOfService';
 // Guides behind a sign-in (gym) or not open yet (Placements) are separate
 // chunks: GuideGate only loads one for a reader who may see it.
 const DocsPlacements = lazy(() => import('./pages/docs/DocsPlacements'));
+// The staff scan page carries the QR decoder (jsqr), so it loads on its own.
+const ScanPage = lazy(() => import('./pages/ScanPage'));
 const GymDocsSettings = lazy(() => import('./pages/docs/gyms/GymDocsSettings'));
 const GymDocsEvents = lazy(() => import('./pages/docs/gyms/GymDocsEvents'));
 const GymDocsDiscounts = lazy(() => import('./pages/docs/gyms/GymDocsDiscounts'));
@@ -1680,6 +1685,10 @@ export default function App() {
                     <Route path="/partner/placements" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPlacements /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/studio" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalStudio /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/redemptions" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRedemptions /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/in-store" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalInStore /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/in-store/stand/:siteId" element={<PartnerProtectedRoute><PartnerStandPrint /></PartnerProtectedRoute>} />
+                    <Route path="/scan" element={<Suspense fallback={null}><ScanPage /></Suspense>} />
+                    <Route path="/s/:code" element={<StandLanding />} />
                     <Route path="/partner/settings" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSettings /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/support" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSupport /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/integration" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationHub /></PartnerLayout></PartnerProtectedRoute>} />

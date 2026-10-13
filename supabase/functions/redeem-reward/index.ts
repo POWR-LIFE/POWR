@@ -129,7 +129,8 @@ Deno.serve(async (req) => {
 
   // Affiliate links and explicitly shared promo codes are reusable offers, so
   // return an existing active receipt instead of charging points a second time.
-  if (reward.integration_type === 'AFFILIATE' || reward.promo_code?.trim()) {
+  // An in-store reward is used up at the till, so every claim is a fresh one.
+  if (reward.integration_type !== 'IN_STORE' && (reward.integration_type === 'AFFILIATE' || reward.promo_code?.trim())) {
     const { data: existing } = await admin
       .from('redemptions')
       .select('id, code, checkout_url, expires_at, integration_type')
@@ -177,6 +178,41 @@ Deno.serve(async (req) => {
 
   // 3. Acquire a code based on integration type
   const expiresAt = new Date(Date.now() + reward.code_expiry_days * 86400_000).toISOString();
+
+  // IN_STORE: nothing to hand out now. At the till the member opens a live
+  // voucher (in_store_open_voucher) and the shop scans or swipes it. The
+  // receipt id only labels the wallet entry; it is never shown as a code.
+  if (reward.integration_type === 'IN_STORE') {
+    const receiptId = `POWR-IS-${generateToken(8)}`;
+    const { error: spendErr } = await admin.rpc('spend_points', {
+      p_user_id: user.id,
+      p_amount: reward.powr_cost,
+      p_description: `Redeemed: ${reward.title}`,
+    });
+    if (spendErr) {
+      return json({ error: String(spendErr.message).includes('INSUFFICIENT_POINTS') ? 'INSUFFICIENT_POINTS' : 'TX_FAILED' }, 422);
+    }
+    const { data: redemption, error: insErr } = await admin.from('redemptions').insert({
+      user_id: user.id,
+      reward_id: reward.id,
+      code: receiptId,
+      integration_type: 'IN_STORE',
+      powr_spent: reward.powr_cost,
+      status: 'active',
+      expires_at: expiresAt,
+      checkout_url: null,
+      ...receiptFields,
+    }).select('id').single();
+    if (insErr) console.error('[redeem-reward] in-store ledger insert failed:', insErr.message);
+    return json({
+      ok: true,
+      code: receiptId,
+      checkout_url: null,
+      expires_at: expiresAt,
+      redemption_id: redemption?.id ?? null,
+      integration_type: 'IN_STORE',
+    });
+  }
 
   // AFFILIATE: no unique code — just deduct points and return the shared URL.
   if (reward.integration_type === 'AFFILIATE') {

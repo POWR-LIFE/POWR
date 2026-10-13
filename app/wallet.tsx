@@ -1,5 +1,7 @@
 import GeometricBackground from '@/components/GeometricBackground';
+import { TillBarcode } from '@/components/rewards/TillBarcode';
 import { RewardShareCard } from '@/components/share/RewardShareCard';
+import { fetchInStoreInfo, formatDistance, sitesByDistance, type InStoreInfo } from '@/lib/api/inStore';
 import {
   fetchActiveWallet,
   fetchWalletHistory,
@@ -9,6 +11,7 @@ import {
   type WalletStatus,
 } from '@/lib/api/rewards';
 import { tracked } from '@/lib/analytics';
+import { quietFix, type QuietFix } from '@/lib/inStoreLocation';
 import { SAVE_CARD_ENABLED, cardFilename, saveCardImage } from '@/lib/saveCard';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -29,6 +32,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
@@ -75,6 +79,7 @@ function getNativeShare(): { open: (options: object) => Promise<unknown> } | nul
 function buildShareMessage(entry: WalletEntry): string {
   const title = entry.reward_title ?? 'Reward';
   const label = entry.partner_name ? `${title} at ${entry.partner_name}` : title;
+  if (entry.integration_type === 'IN_STORE') return `Here's a ${label} reward I earned with POWR. You use it in store.`;
   return entry.integration_type === 'AFFILIATE'
     ? `Here's a ${label} reward from POWR${entry.checkout_url ? `: ${entry.checkout_url}` : ''}`
     : `Here's my ${label} code from POWR: ${entry.code}${entry.checkout_url ? `\n${entry.checkout_url}` : ''}`;
@@ -92,15 +97,24 @@ function shareAsText(entry: WalletEntry): Promise<unknown> {
 
 function WalletCard({
   entry,
+  inStore,
+  fix,
   onShare,
   onSave,
+  onUseInStore,
+  onShowBarcode,
   shareBusy,
   saveBusy,
   saved,
 }: {
   entry: WalletEntry;
+  /** In-store settings + shops for this reward; absent for online-only rewards. */
+  inStore?: InStoreInfo;
+  fix: QuietFix | null;
   onShare: (entry: WalletEntry) => void;
   onSave: (entry: WalletEntry) => void;
+  onUseInStore: (entry: WalletEntry) => void;
+  onShowBarcode: (entry: WalletEntry) => void;
   shareBusy: boolean;
   saveBusy: boolean;
   /** Flashes "Saved" for a beat after an Android write lands. */
@@ -113,6 +127,15 @@ function WalletCard({
   const inactive = status !== 'ready';
   const title = entry.reward_title ?? 'Reward';
   const partner = entry.partner_name;
+  const { width: screenWidth } = useWindowDimensions();
+
+  // In store: a live voucher (staff scan / look) or the chain's till barcode.
+  // An IN_STORE entry is in-store only even if its settings have since moved.
+  const inStoreOnly = entry.integration_type === 'IN_STORE';
+  const usesVoucher = inStoreOnly || (!!inStore && inStore.check !== 'till_barcode');
+  const usesBarcode = !inStoreOnly && inStore?.check === 'till_barcode';
+  const alsoOnline = !inStoreOnly && inStore?.where === 'both';
+  const sites = useMemo(() => sitesByDistance(inStore?.sites ?? [], fix).slice(0, 3), [inStore, fix]);
 
   const copy = useCallback(() => {
     Clipboard.setStringAsync(entry.code);
@@ -160,7 +183,11 @@ function WalletCard({
         </View>
       </View>
 
-      {isAffiliate ? (
+      {inStoreOnly ? null : usesBarcode && !inactive ? (
+        <Pressable onPress={tracked('wallet_show_till_barcode', () => onShowBarcode(entry))} accessibilityRole="button" accessibilityLabel="Show the barcode full screen">
+          <TillBarcode code={entry.code} format={inStore!.barcode_format} width={screenWidth - 64} barHeight={72} />
+        </Pressable>
+      ) : isAffiliate ? (
         <View style={styles.affiliateBlock}>
           <Text style={styles.affiliateText}>Discount applied automatically at checkout.</Text>
         </View>
@@ -177,14 +204,65 @@ function WalletCard({
         </Pressable>
       )}
 
+      {(usesVoucher || usesBarcode) && (
+        <View style={[styles.inStoreBlock, alsoOnline && styles.inStoreBlockCompact]}>
+          <View style={styles.inStoreHead}>
+            <Ionicons name="storefront-outline" size={14} color={GOLD} />
+            <Text style={styles.inStoreLabel}>{alsoOnline ? 'OR USE IT IN STORE' : 'IN STORE'}</Text>
+          </View>
+          {inactive ? (
+            <Text style={styles.inStoreText}>{status === 'used' ? 'Used in store.' : 'This reward has expired.'}</Text>
+          ) : !alsoOnline ? (
+            <Text style={styles.inStoreText}>
+              {usesBarcode
+                ? 'Show the barcode at the till and staff scan it like any coupon.'
+                : `Tap Use in store when you're at the till. The voucher stays open for ${inStore?.window_minutes ?? 5} minutes.`}
+            </Text>
+          ) : null}
+          {!inactive && sites.length > 0 && (
+            <View style={styles.siteChips}>
+              {sites.map(({ site, distance, here }) => (
+                <View key={site.id} style={[styles.siteChip, here && styles.siteChipHere]}>
+                  {here && <View style={styles.hereDot} />}
+                  <Text style={[styles.siteChipText, here && { color: TEXT }]} numberOfLines={1}>
+                    {site.name}{here ? " · you're here" : distance != null ? ` · ${formatDistance(distance)}` : ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
       <Text style={styles.expiry}>{formatExpiry(entry, status)}</Text>
 
       {!inactive && (
         <View style={styles.actions}>
-          {entry.checkout_url && (
+          {usesVoucher ? (
+            <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={tracked('wallet_use_in_store', () => onUseInStore(entry))}>
+              <Ionicons name="storefront-outline" size={14} color="#0a0a0a" />
+              <Text style={styles.primaryBtnText}>Use in store</Text>
+            </Pressable>
+          ) : usesBarcode ? (
+            <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={tracked('wallet_show_till_barcode', () => onShowBarcode(entry))}>
+              <Ionicons name="barcode-outline" size={15} color="#0a0a0a" />
+              <Text style={styles.primaryBtnText}>Show at till</Text>
+            </Pressable>
+          ) : entry.checkout_url ? (
             <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={tracked('wallet_open_checkout', openCheckout)}>
               <Ionicons name="open-outline" size={14} color="#0a0a0a" />
               <Text style={styles.primaryBtnText}>Use{partner ? ` at ${partner}` : ''}</Text>
+            </Pressable>
+          ) : null}
+          {alsoOnline && entry.checkout_url && (
+            <Pressable
+              style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.7 }]}
+              onPress={tracked('wallet_open_checkout', openCheckout)}
+              accessibilityRole="button"
+              accessibilityLabel={`Use online${partner ? ` at ${partner}` : ''}`}
+            >
+              <Ionicons name="open-outline" size={14} color={DIM} />
+              <Text style={styles.secondaryBtnText}>Online</Text>
             </Pressable>
           )}
           <Pressable
@@ -256,6 +334,35 @@ export default function WalletScreen() {
   });
 
   const active = activeQuery.data ?? [];
+
+  // In-store settings + shops for the active rewards. Online-only rewards
+  // come back absent, so the common case is one cheap empty call.
+  const activeRewardIds = useMemo(() => [...new Set(active.map((e) => e.reward_id))].sort(), [active]);
+  const inStoreQuery = useQuery({
+    queryKey: ['wallet', 'in-store', activeRewardIds],
+    queryFn: () => fetchInStoreInfo(activeRewardIds),
+    enabled: activeRewardIds.length > 0,
+    staleTime: 60_000,
+  });
+  const inStoreInfo = inStoreQuery.data;
+  const hasInStore = !!inStoreInfo && Object.keys(inStoreInfo).length > 0;
+  // A quiet fix (never prompts) so the nearest shops and "you're here" show.
+  const [fix, setFix] = useState<QuietFix | null>(null);
+  useEffect(() => {
+    if (!hasInStore) return;
+    let live = true;
+    quietFix(4000).then((f) => { if (live) setFix(f); });
+    return () => { live = false; };
+  }, [hasInStore]);
+
+  const openInStore = useCallback((entry: WalletEntry) => {
+    Haptics.selectionAsync();
+    router.push({ pathname: '/in-store', params: { redemption: entry.id } });
+  }, [router]);
+  const showBarcode = useCallback((entry: WalletEntry) => {
+    Haptics.selectionAsync();
+    router.push({ pathname: '/in-store', params: { redemption: entry.id, mode: 'barcode' } });
+  }, [router]);
   // Dedupe by id: a code expiring between pages shifts offsets slightly.
   const history = useMemo(() => {
     const seen = new Set<string>();
@@ -394,8 +501,12 @@ export default function WalletScreen() {
           renderItem={({ item }) => (
             <WalletCard
               entry={item}
+              inStore={tab === 'active' ? inStoreInfo?.[item.reward_id] : undefined}
+              fix={fix}
               onShare={handleShare}
               onSave={handleSave}
+              onUseInStore={openInStore}
+              onShowBarcode={showBarcode}
               shareBusy={pendingShare?.id === item.id && pendingAction === 'share'}
               saveBusy={pendingShare?.id === item.id && pendingAction === 'save'}
               saved={savedId === item.id}
@@ -515,6 +626,23 @@ const styles = StyleSheet.create({
     borderRadius: 12, padding: 14, alignItems: 'center',
   },
   affiliateText: { fontSize: 12, fontWeight: '300', color: DIM, textAlign: 'center' },
+
+  inStoreBlock: {
+    backgroundColor: '#111', borderWidth: 1, borderColor: 'rgba(232,210,0,0.2)',
+    borderRadius: 12, padding: 14, gap: 10,
+  },
+  inStoreBlockCompact: { paddingVertical: 12, borderColor: BORDER },
+  inStoreHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  inStoreLabel: { fontSize: 9, fontWeight: '600', letterSpacing: 2, color: GOLD },
+  inStoreText: { fontSize: 13, fontWeight: '300', lineHeight: 19, color: 'rgba(255,255,255,0.72)' },
+  siteChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  siteChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%',
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  siteChipHere: { backgroundColor: 'rgba(74,222,128,0.08)', borderColor: 'rgba(74,222,128,0.3)' },
+  hereDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: GREEN },
+  siteChipText: { fontSize: 11, fontWeight: '300', color: DIM },
 
   expiry: { fontSize: 11, fontWeight: '300', color: MUTED, textAlign: 'center' },
 
