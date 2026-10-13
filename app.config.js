@@ -86,6 +86,14 @@ module.exports = {
     runtimeVersion: {
       policy: 'fingerprint',
     },
+    // iOS permission prompts per language (InfoPlist.strings in <lang>.lproj).
+    // English stays in infoPlist above and in the plugin options below. Expo
+    // writes these values unescaped, so they must never contain a straight
+    // double quote — __tests__/nativeLocales.test.ts enforces it.
+    locales: {
+      fr: './shared/i18n/fr/native.json',
+      es: './shared/i18n/es/native.json',
+    },
     plugins: [
       ...expo.plugins,
       'expo-apple-authentication',
@@ -94,10 +102,16 @@ module.exports = {
       // duplicate ACTION_SHOW_PERMISSIONS_RATIONALE intent-filter on
       // MainActivity.
       'expo-secure-store',
-      // Device language for lib/locale.ts. With no options this plugin writes
-      // nothing native — it is registered so the per-app language list
-      // (supportedLocales) has a home once there are translations to declare.
-      'expo-localization',
+      // Device language for lib/locale.ts, plus the languages the phone lists
+      // for POWR: iOS CFBundleLocalizations (system UI inside the app and the
+      // per-app language setting) and Android 13+'s locales_config. Only
+      // languages we have committed to finishing belong here: once listed, a
+      // phone offers it even while the app's own text is still a draft
+      // (see shared/i18n/index.ts). Changing this list moves the fingerprint.
+      [
+        'expo-localization',
+        { supportedLocales: { ios: ['en', 'fr', 'es'], android: ['en', 'fr', 'es'] } },
+      ],
       // Picks a profile/share-card image and nothing else. On Android 13+ this
       // goes through the system photo picker and requests NO permission, which
       // is what Google Play's Photo and Video Permissions policy requires.
