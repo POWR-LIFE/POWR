@@ -111,14 +111,14 @@ export function rewardWords(r) {
 // Product templates are built around the brand's product shot: a cut-out
 // (PNG with transparency, or a JPG on a flat background, which loadAsset keys
 // out) is staged on the dark ground under a pool of light; a shot that is
-// still a rectangle (a product on a set) is framed as a photo instead, on
-// purpose. With no upload, a drawn stand-in product carries the brand's name,
+// still a rectangle (a product on a set, or one too close to its background
+// to cut out safely) is framed as a photo instead, whole unless zoomed in. With no upload, a drawn stand-in product carries the brand's name,
 // so the template reads finished in the picker.
 
 /** The product-shot field (append with BRAND_FIELDS). Shared across templates in the editor. */
 export const PRODUCT_FIELD = {
     key: 'product', label: 'Product shot', type: 'image',
-    hint: 'A cut-out PNG looks best. A photo on plain white or black is cut out for you; anything else is framed as a photo.',
+    hint: 'A cut-out PNG looks best. A plain background is taken off for you unless the product is close to its colour; any other photo is shown whole.',
 };
 
 const cutCache = new WeakMap();
@@ -422,24 +422,21 @@ export function mockProduct(e, box, kind = 'tub', { label = '', sub = '', align 
 
 // ── Product zoom ────────────────────────────────────────────────────────
 //
-// The editor's Product zoom (look.productZoom, set on every template the
-// shot is in) — 1 is the template's own framing. A framed shot backs off
-// from filling its frame to the whole shot in view (ZOOM_MIN) and moves in
-// past it (ZOOM_MAX); a cut-out, already whole, shrinks or grows from its foot.
+// The editor's Product zoom (look.productView, set on every template the
+// shot is in) runs −1…1, and 0 — the default — always shows the whole
+// product. A framed shot: below 0 its frame shrinks (−1 is 60%), ZOOM_FILL
+// fills the frame (the sides cropped), 1 is twice as close again. A cut-out:
+// −1 is half size, 1 is 1.4× (it grows past its box; further, it runs over
+// the words).
 
-export const ZOOM_MIN = 0.5;
-export const ZOOM_MAX = 2;
+export const ZOOM_FILL = 0.5;
 
-/** The look's product zoom, clamped. */
-export const productZoom = (e) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(e.look?.productZoom) || 1));
+/** The look's product zoom, −1…1. */
+export const productZoom = (e) => Math.min(1, Math.max(-1, Number(e.look?.productView) || 0));
 
-/**
- * Where a cut-out lands in `box`: contained, standing on the box's foot,
- * zoomed from there. Zooming in grows it past its box, so only to 1.4×
- * (at ZOOM_MAX) — further, it runs over the words.
- */
-export function cutoutRect(img, box, { align = 'center', zoom = 1 } = {}) {
-    const k = zoom > 1 ? 1 + ((zoom - 1) / (ZOOM_MAX - 1)) * 0.4 : zoom;
+/** Where a cut-out lands in `box`: contained, standing on the box's foot, zoomed from there. */
+export function cutoutRect(img, box, { align = 'center', zoom = 0 } = {}) {
+    const k = zoom < 0 ? 1 + 0.5 * zoom : 1 + 0.4 * zoom;
     const s0 = Math.min(box.w / img.width, box.h / img.height);
     const w0 = img.width * s0;
     const w = w0 * k;
@@ -495,18 +492,31 @@ function edgeOf(img, side) {
 }
 
 /**
- * A rectangular shot in `r` at `zoom` (see Product zoom), clipped to r with
- * corner `radius`. Zoomed out past filling r, the room left at two sides is
- * filled with the shot's own edge run on — a studio backdrop or a table top
- * simply continues — and the shot's edge fades into it, so no seam shows.
- * Returns where the whole shot was drawn.
+ * The frame a framed shot is drawn in at `zoom`: `r`, or below 0 smaller —
+ * still standing on r's foot (valign 'bottom'), or centred in it.
  */
-export function drawFramed(ctx, img, r, zoom = 1, radius = 0) {
+export function framedRect(r, zoom = 0, valign = 'center') {
+    if (zoom >= 0) return r;
+    const k = 1 + 0.4 * Math.max(-1, zoom);
+    const y = valign === 'bottom' ? r.y + r.h * (1 - k) : valign === 'top' ? r.y : r.y + (r.h * (1 - k)) / 2;
+    return { x: r.x + (r.w * (1 - k)) / 2, y, w: r.w * k, h: r.h * k };
+}
+
+/**
+ * A rectangular shot framed in `r` at `zoom` (see Product zoom), clipped to
+ * its frame with corner `radius`. Short of filling the frame (the whole shot),
+ * the room left at two sides is filled with the shot's own edge run on — a
+ * studio backdrop or a table top simply continues — and the shot's edge
+ * fades into it, so no seam shows. Returns the frame and where the whole
+ * shot was drawn.
+ */
+export function drawFramed(ctx, img, box, zoom = 0, radius = 0, valign = 'center') {
+    const r = framedRect(box, zoom, valign);
     const cover = Math.max(r.w / img.width, r.h / img.height);
     const contain = Math.min(r.w / img.width, r.h / img.height);
-    const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
-    // Geometric between contain and cover, so each step looks the same size.
-    const s = z >= 1 ? cover * z : contain * (cover / contain) ** ((z - ZOOM_MIN) / (1 - ZOOM_MIN));
+    const z = Math.min(1, Math.max(0, zoom));
+    // Geometric from whole to filled to closer, so each step looks the same size.
+    const s = z <= ZOOM_FILL ? contain * (cover / contain) ** (z / ZOOM_FILL) : cover * 2 ** ((z - ZOOM_FILL) / (1 - ZOOM_FILL));
     const w = img.width * s;
     const h = img.height * s;
     const x = r.x + (r.w - w) / 2;
@@ -540,7 +550,7 @@ export function drawFramed(ctx, img, r, zoom = 1, radius = 0) {
         ctx.drawImage(B.fade, x, y + h - f, w, f);
     }
     ctx.restore();
-    return { x, y, w, h };
+    return { frame: r, x, y, w, h };
 }
 
 /**
@@ -548,7 +558,7 @@ export function drawFramed(ctx, img, r, zoom = 1, radius = 0) {
  * of light; a rectangle is framed as a photo) or, with none, a stand-in of
  * `kind` labelled `label`. Returns { rect, cutout, mock } and marks 'product'.
  */
-export function productShot(e, box, { kind = 'tub', label, sub = '', align = 'center', stage = true, radius = 18 } = {}) {
+export function productShot(e, box, { kind = 'tub', label, sub = '', align = 'center', valign = 'center', stage = true, radius = 18 } = {}) {
     const { ctx, u } = e;
     const img = e.asset('product');
     const name = label ?? (String(e.fields.brand ?? '').trim() || 'POWR');
@@ -569,15 +579,15 @@ export function productShot(e, box, { kind = 'tub', label, sub = '', align = 'ce
         e.mark('product', r);
         return { rect: r, cutout: true, mock: false };
     }
-    // A product on a set: framed in the box (filling it unless zoomed out), rounded, with a hairline.
-    drawFramed(ctx, img, box, productZoom(e), radius * u);
+    // A product on a set: framed in the box (all of it unless zoomed in), rounded, with a hairline.
+    const { frame } = drawFramed(ctx, img, box, productZoom(e), radius * u, valign);
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.14)';
     ctx.lineWidth = Math.max(1, 1.5 * u);
     ctx.beginPath();
-    ctx.roundRect(box.x, box.y, box.w, box.h, radius * u);
+    ctx.roundRect(frame.x, frame.y, frame.w, frame.h, radius * u);
     ctx.stroke();
     ctx.restore();
-    e.mark('product', box);
-    return { rect: box, cutout: false, mock: false };
+    e.mark('product', frame);
+    return { rect: frame, cutout: false, mock: false };
 }

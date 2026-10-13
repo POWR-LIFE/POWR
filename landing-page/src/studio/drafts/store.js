@@ -190,7 +190,9 @@ export async function saveDraft({ id = null, title, scope = {}, payload, thumb, 
             const { error } = await supabase.storage.from(BUCKET).copy(was.path, path);
             if (!error) return { ...was, path };
         }
-        const blob = await canvasBlob(a.image, 'image/png');
+        // A product that can be cut out keeps the photo as uploaded (and which
+        // way it was shown), so the choice can still be changed when it opens.
+        const blob = await canvasBlob(a.source ?? a.image, 'image/png');
         const path = `${base}/image-${token()}.png`;
         await upload(path, blob, 'image/png');
         return { path, bytes: blob.size, mime: 'image/png' };
@@ -226,7 +228,8 @@ export async function saveDraft({ id = null, title, scope = {}, payload, thumb, 
     });
     const assets = assetList.map((a) => {
         const k = keptAssets.get(a);
-        return k ? { path: k.path, name: a.name, bytes: k.bytes } : { missing: true, name: a.name };
+        if (!k) return { missing: true, name: a.name };
+        return { path: k.path, name: a.name, bytes: k.bytes, ...(a.source ? { background: 'edges', keep: a.keep } : {}) };
     });
     const slides = payload.slides.map((sl) => {
         const k = sl.media ? keptMedia.get(sl.media) : null;
@@ -361,7 +364,7 @@ export async function openDraft(id, { onProgress } = {}) {
     for (const f of state.assets) {
         if (!f.path) { assets.push(null); continue; }
         try {
-            const a = await assetWithPreview(await fetchFile(f));
+            const a = await assetWithPreview(await fetchFile(f), f.background ? { background: f.background, keep: f.keep } : undefined);
             kept.set(a, { path: f.path, bytes: f.bytes, mime: 'image/png' });
             assets.push(a);
         } catch {
