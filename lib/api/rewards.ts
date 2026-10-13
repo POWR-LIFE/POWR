@@ -73,15 +73,31 @@ export class RedemptionError extends Error {
   }
 }
 
+const REWARD_COLUMNS =
+  'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, hero_video_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
+
 export async function fetchRewards(): Promise<Reward[]> {
-  const { data, error } = await supabase
-    .from('rewards')
-    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, hero_video_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
-    .eq('active', true)
-    .order('sort_order', { ascending: true })
-    .order('powr_cost', { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map((r: any) => ({
+  // QA testers (qa_testers) also get the QA store's inactive test rewards
+  // (system_config qa_brand_name, POWR Store). Everyone else gets an empty
+  // list back, so members never see a test reward. A failure here only
+  // drops the test rewards, never the catalogue.
+  const [main, qa] = await Promise.all([
+    supabase
+      .from('rewards')
+      .select(REWARD_COLUMNS)
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+      .order('powr_cost', { ascending: true }),
+    supabase.rpc('qa_test_reward_ids'),
+  ]);
+  if (main.error) throw main.error;
+  let data: any[] = main.data ?? [];
+  const qaIds = Array.isArray(qa.data) ? (qa.data as string[]) : [];
+  if (qaIds.length) {
+    const extra = await supabase.from('rewards').select(REWARD_COLUMNS).in('id', qaIds).order('created_at', { ascending: true });
+    if (!extra.error && extra.data) data = [...data, ...extra.data];
+  }
+  return data.map((r: any) => ({
     ...r,
     partner: Array.isArray(r.partners) ? r.partners[0] : r.partners,
   })) as Reward[];

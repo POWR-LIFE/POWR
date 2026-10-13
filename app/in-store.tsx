@@ -140,7 +140,12 @@ export default function InStoreScreen() {
       if (code === 'STAND_REQUIRED') {
         setPhase('stand');
       } else if (stand && (code === 'STAND_INVALID' || code === 'STAND_OTHER_SHOP')) {
-        setStandHint(ERROR_COPY[code].body);
+        const named = err instanceof InStoreError && code === 'STAND_OTHER_SHOP' && err.rewardShop
+          ? (err.standShop
+            ? `That stand is for ${err.standShop}. This reward is for ${err.rewardShop}.`
+            : `That stand isn’t one of ${err.rewardShop}’s. Look for the POWR stand on their counter.`)
+          : null;
+        setStandHint(named ?? ERROR_COPY[code].body);
         setPhase('stand');
       } else {
         setError(code);

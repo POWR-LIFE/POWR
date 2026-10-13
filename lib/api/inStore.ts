@@ -70,19 +70,24 @@ export type InStoreErrorCode =
 
 export class InStoreError extends Error {
   code: InStoreErrorCode;
-  constructor(code: InStoreErrorCode, message?: string) {
+  /** STAND_OTHER_SHOP names both sides, e.g. "POWR Store · POWR" vs "QA InStore Test". */
+  standShop: string | null;
+  rewardShop: string | null;
+  constructor(code: InStoreErrorCode, message?: string, detail?: { stand_shop?: string; reward_shop?: string }) {
     super(message ?? code);
     this.code = code;
+    this.standShop = detail?.stand_shop ?? null;
+    this.rewardShop = detail?.reward_shop ?? null;
   }
 }
 
-type VoucherResult = { voucher?: InStoreVoucher; error?: InStoreErrorCode };
+type VoucherResult = { voucher?: InStoreVoucher; error?: InStoreErrorCode; stand_shop?: string; reward_shop?: string };
 
 async function voucherRpc(name: string, args: Record<string, unknown>): Promise<InStoreVoucher> {
   const { data, error } = await supabase.rpc(name, args);
   if (error) throw new InStoreError('UNKNOWN', error.message);
   const result = (data ?? {}) as VoucherResult;
-  if (result.error) throw new InStoreError(result.error);
+  if (result.error) throw new InStoreError(result.error, undefined, result);
   if (!result.voucher) throw new InStoreError('UNKNOWN');
   return result.voucher;
 }

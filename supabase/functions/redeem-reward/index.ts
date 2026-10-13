@@ -95,7 +95,18 @@ Deno.serve(async (req) => {
     .single();
 
   if (rErr || !reward) return json({ error: 'REWARD_NOT_FOUND' }, 404);
-  if (!reward.active) return json({ error: 'REWARD_INACTIVE' }, 422);
+  if (!reward.active) {
+    // The QA store (system_config qa_brand_name, POWR Store) keeps its test
+    // rewards inactive so no member ever sees them; accounts in qa_testers can
+    // still claim them to test every redemption path for real.
+    const [{ data: tester }, { data: qaBrand }] = await Promise.all([
+      admin.from('qa_testers').select('user_id').eq('user_id', user.id).maybeSingle(),
+      admin.rpc('qa_brand_name'),
+    ]);
+    const qaClaim = !!tester && !!reward.brand_name && typeof qaBrand === 'string'
+      && reward.brand_name.trim().toLowerCase() === qaBrand.trim().toLowerCase();
+    if (!qaClaim) return json({ error: 'REWARD_INACTIVE' }, 422);
+  }
 
   const partner = Array.isArray(reward.partners) ? reward.partners[0] : reward.partners;
 
