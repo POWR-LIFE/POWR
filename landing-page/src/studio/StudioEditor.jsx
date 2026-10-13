@@ -7,8 +7,8 @@ import { pdfFromCanvas, pdfFromPages, jpegPage, mmToPt } from './pdf';
 import { HEADLINE_FONTS } from './fonts';
 import { TINTS } from './grade';
 import { loadMedia } from './media';
-import { assetWithPreview } from './assets';
-import { isCutout, ZOOM_MIN, ZOOM_MAX } from './templates/pillars/kit';
+import { assetWithPreview, withBackground } from './assets';
+import { isCutout, ZOOM_FILL } from './templates/pillars/kit';
 import { exportVideo, EXPORT_FPS, MAX_CLIP_SECONDS } from './video';
 import { adminStudioData } from './data';
 import { saveDraft, renameDraft, signature } from './drafts/store';
@@ -70,40 +70,48 @@ const templateNames = (names) => (names.length > 4 ? `${names.length} templates`
 // Image fields shared by every template that has them (see takeAsset).
 const SHARED_ASSETS = ['logo', 'product'];
 
-// The Product zoom slider runs −1…1 with the template's own framing (zoom 1)
-// in the middle: the left half backs off to ZOOM_MIN, the right moves in to ZOOM_MAX.
-const zoomToSlider = (z) => (z < 1 ? (z - 1) / (1 - ZOOM_MIN) : (z - 1) / (ZOOM_MAX - 1));
-const sliderToZoom = (v) => (Math.abs(v) < 0.04 ? 1 : v < 0 ? 1 + v * (1 - ZOOM_MIN) : 1 + v * (ZOOM_MAX - 1));
-
 /**
- * Zoom for the product shot. A photo (not a cut-out) fills its frame, which
- * can cut the product off: left backs off until the whole photo shows, right
- * moves in. A cut-out is always whole, so it's sized instead.
+ * Zoom for the product shot, −1…1 (look.productView). The middle, where it
+ * starts, shows the whole product; left makes it smaller, right moves in —
+ * for a photo, through filling its frame (ZOOM_FILL) to closer still. Under
+ * it, when the upload had a plain background: whether to cut the product out.
  */
-function ProductZoom({ image, zoom, onChange }) {
-    const cut = isCutout(image);
-    const v = zoomToSlider(zoom);
-    const stops = cut ? [[-1, 'Smaller'], [0, 'As designed'], [1, 'Bigger']] : [[-1, 'Whole shot'], [0, 'Fill frame'], [1, 'Closer']];
-    const nudge = (d) => onChange(sliderToZoom(Math.max(-1, Math.min(1, Math.round((v + d) * 4) / 4))));
+function ProductZoom({ asset, zoom, onChange, onBackground }) {
+    const cut = isCutout(asset.image);
+    const stops = cut ? [[-1, 'Smaller'], [0, 'Whole'], [1, 'Bigger']] : [[-1, 'Smaller'], [0, 'Whole'], [ZOOM_FILL, 'Fill'], [1, 'Closer']];
+    const nudge = (d) => onChange(Math.max(-1, Math.min(1, Math.round((zoom + d) * 4) / 4)));
     const ICON = 'flex-none rounded-lg p-1 text-[#888] hover:bg-white hover:text-[#111] disabled:opacity-30 disabled:hover:bg-transparent';
     return (
         <div className="mt-2 rounded-xl bg-[#FAFAF8] px-2 py-2">
             <div className="flex items-center gap-1.5">
-                <button type="button" aria-label="Zoom out" title="Zoom out" disabled={v <= -1} onClick={() => nudge(-0.25)} className={ICON}><ZoomOut size={15} /></button>
-                <input type="range" min={-1} max={1} step={0.01} value={v} aria-label="Product zoom"
-                    onChange={(e) => onChange(sliderToZoom(Number(e.target.value)))} className="min-w-0 flex-1 accent-[#E8D200]" />
-                <button type="button" aria-label="Zoom in" title="Zoom in" disabled={v >= 1} onClick={() => nudge(0.25)} className={ICON}><ZoomIn size={15} /></button>
+                <button type="button" aria-label="Zoom out" title="Zoom out" disabled={zoom <= -1} onClick={() => nudge(-0.25)} className={ICON}><ZoomOut size={15} /></button>
+                <input type="range" min={-1} max={1} step={0.01} value={zoom} aria-label="Product zoom"
+                    onChange={(e) => { const v = Number(e.target.value); onChange(Math.abs(v) < 0.04 ? 0 : v); }} className="min-w-0 flex-1 accent-[#E8D200]" />
+                <button type="button" aria-label="Zoom in" title="Zoom in" disabled={zoom >= 1} onClick={() => nudge(0.25)} className={ICON}><ZoomIn size={15} /></button>
             </div>
-            <div className="grid grid-cols-3 px-7 text-[11px]">
-                {stops.map(([at, l], i) => (
-                    <button key={l} type="button" onClick={() => onChange(sliderToZoom(at))}
-                        className={`${['justify-self-start', 'justify-self-center', 'justify-self-end'][i]} ${Math.abs(v - at) < 0.02 ? 'font-medium text-[#111]' : 'text-[#999] hover:text-[#111]'}`}>
-                        {l}
-                    </button>
-                ))}
+            {/* Each stop sits under its place on the track (the thumb travels 8 px in from each end). */}
+            <div className="relative mx-7 h-4 text-[11px]">
+                {stops.map(([at, l]) => {
+                    const p = (at + 1) / 2;
+                    const pos = p === 0 ? { left: 0 } : p === 1 ? { right: 0 } : { left: `calc(8px + ${p} * (100% - 16px))`, transform: 'translateX(-50%)' };
+                    return (
+                        <button key={l} type="button" onClick={() => onChange(at)} style={pos}
+                            className={`absolute top-0 whitespace-nowrap ${Math.abs(zoom - at) < 0.02 ? 'font-medium text-[#111]' : 'text-[#999] hover:text-[#111]'}`}>
+                            {l}
+                        </button>
+                    );
+                })}
             </div>
+            {asset.source && (
+                <label className="mt-2 flex items-center gap-2 px-1 text-xs text-[#555]">
+                    <input type="checkbox" checked={!asset.keep} onChange={(e) => onBackground(!e.target.checked)} className="accent-[#E8D200]" />
+                    Remove the plain background
+                </label>
+            )}
             <p className="mt-1 px-1 text-[11px] text-[#999]">
-                {cut ? 'A cut-out always shows whole — this sets its size.' : 'Slide left to see the whole photo; its own background fills the gaps.'} Applies to every template.
+                {asset.source && !asset.keep ? 'Untick if any of the product has gone see-through. ' : ''}
+                {asset.source && asset.keep ? 'Kept: the product is close to its background colour, so cutting it out could lose parts of it. ' : ''}
+                Applies to every template.
             </p>
         </div>
     );
@@ -787,16 +795,17 @@ export default function StudioEditor({
         if (!file) return;
         setError(null);
         try {
-            const a = await assetWithPreview(file);
+            // A product is only cut out where its background reaches the edges.
+            const a = await assetWithPreview(file, key === 'product' ? { background: 'edges' } : undefined);
             // A partner logo or product shot is the brand's, not one post's:
             // it goes into every template that takes it.
-            const ids = SHARED_ASSETS.includes(key) ? available.filter((t) => t.fields.some((f) => f.key === key)).map((t) => t.id) : [templateId];
+            const ids = SHARED_ASSETS.includes(key) ? available.filter((t) => t.fields.some((f) => f.key === key && f.type === 'image')).map((t) => t.id) : [templateId];
             setAssets((prev) => {
                 const next = { ...prev };
                 for (const id of ids) next[id] = { ...(prev[id] ?? {}), [key]: a };
                 return next;
             });
-            if (key === 'product') setProductZoom(1);
+            if (key === 'product') setProductZoom(0);
         } catch (e) {
             setError(e.message);
         }
@@ -903,19 +912,28 @@ export default function StudioEditor({
             }
             return next;
         });
-        if (key === 'product') setProductZoom(1);
+        if (key === 'product') setProductZoom(0);
     };
 
     // Product zoom goes with the product shot, so like the shot it's set on
-    // every template that takes one (1, the template's framing, is no key at all).
-    const productTemplates = useMemo(() => available.filter((t) => t.fields.some((f) => f.key === 'product')).map((t) => t.id), [available]);
+    // every template that takes one (0, the whole product, is no key at all).
+    const productTemplates = useMemo(() => available.filter((t) => t.fields.some((f) => f.key === 'product' && f.type === 'image')).map((t) => t.id), [available]);
     const setProductZoom = (z) => setLooks((l) => {
         const next = { ...l };
         for (const id of productTemplates) {
-            const { productZoom, ...rest } = l[id] ?? {};
-            if (productZoom === undefined && z === 1) continue;
-            next[id] = z === 1 ? rest : { ...rest, productZoom: z };
+            const { productView, ...rest } = l[id] ?? {};
+            if (productView === undefined && z === 0) continue;
+            next[id] = z === 0 ? rest : { ...rest, productView: z };
         }
+        return next;
+    });
+    // Cut out, or the photo as uploaded — swapped in everywhere the shot is.
+    const setProductBackground = (keep) => setAssets((prev) => {
+        const was = prev[templateId]?.product;
+        const now = withBackground(was, keep);
+        if (!was || now === was) return prev;
+        const next = { ...prev };
+        for (const id of Object.keys(prev)) if (prev[id]?.product === was) next[id] = { ...prev[id], product: now };
         return next;
     });
 
@@ -940,7 +958,7 @@ export default function StudioEditor({
     const resetTemplate = () => {
         setFields((f) => ({ ...f, [templateId]: startingFields(template) }));
         // The product zoom belongs to the product shot, which a reset keeps.
-        setLooks((l) => ({ ...l, [templateId]: l[templateId]?.productZoom ? { productZoom: l[templateId].productZoom } : {} }));
+        setLooks((l) => ({ ...l, [templateId]: l[templateId]?.productView ? { productView: l[templateId].productView } : {} }));
     };
 
     // ── Drafts ─────────────────────────────────────────────────────────
@@ -1475,8 +1493,8 @@ export default function StudioEditor({
                                     <input value={fields[templateId][f.key]} {...fieldProps(f.key)} className={INPUT} />
                                 )}
                                 {f.hint && <p className="text-[11px] text-[#999] mt-1">{f.hint}</p>}
-                                {f.key === 'product' && assets[templateId]?.product && (
-                                    <ProductZoom image={assets[templateId].product.image} zoom={Number(look.productZoom) || 1} onChange={setProductZoom} />
+                                {f.key === 'product' && f.type === 'image' && assets[templateId]?.product && (
+                                    <ProductZoom asset={assets[templateId].product} zoom={Number(look.productView) || 0} onChange={setProductZoom} onBackground={setProductBackground} />
                                 )}
                             </div>
                         ))}
