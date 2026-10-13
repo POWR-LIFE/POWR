@@ -1,1 +1,144 @@
-{}
+{
+  "profile": {
+    "eyebrow": "TON PROFIL",
+    "headline": "Choisis ton <gold>nom.</gold>",
+    "body": "C’est comme ça que tu apparaîtras dans le classement.",
+    "avatarHint": "Ajoute une photo (facultatif)",
+    "displayName": {
+      "label": "Nom affiché",
+      "placeholder": "Ton nom"
+    },
+    "username": {
+      "label": "Nom d’utilisateur",
+      "placeholder": "pseudo",
+      "taken": "Ce nom d’utilisateur est déjà pris.",
+      "invalid": "Au moins {{min}} caractères — lettres, chiffres ou _.",
+      "rules": "Lettres minuscules, chiffres et tirets bas."
+    },
+    "invite": {
+      "label": "Code d’invitation (facultatif)",
+      "placeholder": "CODE À 8 CARACTÈRES",
+      "helper": "Tu as reçu un code ? Vous gagnerez tous les deux des POWR après ta première séance."
+    },
+    "continue": "CONTINUER",
+    "errors": {
+      "justTaken": "Ce nom d’utilisateur vient d’être pris — essaie-en un autre.",
+      "generic": "Une erreur s’est produite"
+    },
+    "photo": {
+      "title": "Photo de profil",
+      "message": "Choisis une source",
+      "take": "Prendre une photo",
+      "library": "Choisir dans la photothèque",
+      "remove": "Supprimer la photo",
+      "permissionTitle": "Autorisation requise",
+      "cameraDenied": "Autorise l’accès à l’appareil photo dans les réglages pour prendre une photo.",
+      "libraryDenied": "Autorise l’accès à tes photos dans les réglages pour en choisir une.",
+      "errorTitle": "Impossible de sélectionner la photo",
+      "errorBody": "Réessaie."
+    }
+  },
+  "activities": {
+    "eyebrow": "PRESQUE FINI",
+    "headline": "Choisis tes activités",
+    "subhead": {
+      "observed_one": "Ton appareil a déjà repéré {{labels}} — c’est coché. Ajuste si tu veux, jusqu’à {{max}}.",
+      "observed_other": "Ton appareil a déjà repéré {{labels}} — c’est coché. Ajuste si tu veux, jusqu’à {{max}}.",
+      "default": "Choisis jusqu’à {{max}} activités que tu pratiques vraiment. La salle est cochée d’office — décoche-la si ce n’est pas ton truc."
+    },
+    "hint": {
+      "pickOne": "Choisis au moins une activité",
+      "roomLeft_one": "Tu peux encore ajouter {{count}} activité — ou continuer",
+      "roomLeft_other": "Tu peux encore ajouter {{count}} activités — ou continuer"
+    },
+    "continue": "CONTINUER"
+  },
+  "picker": {
+    "searchPlaceholder": "Rechercher — padel, boxe, zumba…",
+    "noResults": "Aucun résultat pour « {{query}} » — essaie un autre nom, ou choisis le plus proche.",
+    "logTag": "MANUEL",
+    "auto": {
+      "heading": "SUIVI AUTOMATIQUE",
+      "sub": "Avec ton équipement, celles-ci sont suivies toutes seules."
+    },
+    "manual": {
+      "heading": "À SAISIR TOI-MÊME",
+      "sub": "Elles comptent aussi — saisis-les en un geste. <cta>Ajoute ta montre connectée</cta> et elles seront suivies automatiquement."
+    }
+  },
+  "gym": {
+    "eyebrow": "OÙ TU T’ENTRAÎNES",
+    "headline": "Ta <gold>salle de sport.</gold>",
+    "sub": "Choisis-la maintenant pour gagner plus vite — ou plus tard.",
+    "searchPlaceholder": "Cherche ta salle",
+    "empty": {
+      "noMatch": "Aucune salle ne correspond à ta recherche.",
+      "noneNearby": "Aucune salle trouvée près de toi — cherche-la par son nom."
+    },
+    "request": {
+      "prompt": "Ta salle n’y est pas ? <cta>Demande-la</cta>",
+      "title": "Demander une salle",
+      "sub": "Dis-nous où tu t’entraînes et on fera de notre mieux pour l’ajouter.",
+      "namePlaceholder": "Nom de la salle",
+      "locationPlaceholder": "Ville ou adresse (facultatif)",
+      "submit": "ENVOYER LA DEMANDE",
+      "sentTitle": "Merci !",
+      "sentBody": "On va regarder ça et essayer de l’ajouter."
+    },
+    "cta": {
+      "continue": "CONTINUER",
+      "skip": "PLUS TARD"
+    }
+  },
+  "achievement": {
+    "ring": {
+      "eyebrow": "JOUR",
+      "of": "sur 7"
+    },
+    "headline": "7 jours déjà dans la poche.",
+    "bonus": {
+      "label": "Gagné aujourd’hui",
+      "amount": "+20 POWR"
+    },
+    "invite": {
+      "receipt": "Code d’invitation {{code}} — vous gagnerez tous les deux des POWR après ta première séance.",
+      "title": "Tu as reçu un code d’invitation ?",
+      "titleFixing": "Vérifie ce code d’invitation",
+      "sub": "Dernière chance de le saisir — vous gagnerez tous les deux des POWR après ta première séance, et il ne pourra pas être ajouté plus tard.",
+      "subFixing": "Ce code n’a pas été reconnu — compare les 8 caractères avec le message que tu as reçu.",
+      "placeholder": "CODE D’INVITATION",
+      "paste": "COLLER LE CODE"
+    },
+    "paste": {
+      "emptyTitle": "Rien à coller",
+      "emptyBody": "Ton presse-papiers ne contient rien qui ressemble à un code d’invitation."
+    },
+    "cta": {
+      "go": "C’EST PARTI →",
+      "busy": "UN INSTANT…"
+    },
+    "alerts": {
+      "title": "Code d’invitation",
+      "continue": "Continuer",
+      "skip": "Passer",
+      "applied": {
+        "title": "Code d’invitation appliqué 🎉",
+        "body": "Vous gagnerez tous les deux des POWR dès ta première séance vérifiée. À toi de bouger !",
+        "go": "C’est parti"
+      },
+      "invalid": {
+        "title": "Code d’invitation non reconnu",
+        "body": "Vérifie les 8 caractères avec le message que tu as reçu — c’est le seul endroit où tu peux le saisir.",
+        "fix": "Corriger"
+      },
+      "selfReferral": "C’est ton propre code — partage-le plutôt autour de toi !",
+      "alreadyReferred": "Ce code d’invitation est déjà appliqué à ce compte.",
+      "notAuthenticated": "Reconnecte-toi pour appliquer ton code.",
+      "failed": {
+        "title": "Impossible d’appliquer ton code",
+        "body": "Vérifie ta connexion et réessaie — le code ne peut être appliqué que maintenant, pendant l’inscription.",
+        "retry": "Réessayer"
+      }
+    }
+  }
+}

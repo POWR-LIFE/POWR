@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { fontFamily } from '@/constants/tokens';
 
 const GOLD = '#E8D200';
@@ -13,31 +14,33 @@ const BORDER = '#222222';
  * surfaces so "enable alerts" is a picture of the payoff, not an abstract ask.
  */
 
+// Catalog keys, resolved at render. hoursAgo 0 reads as "now".
 const PREVIEWS = [
     {
         icon: 'flame',
-        title: 'Session recorded',
-        body: '48 min at your gym — +50 POWR banked.',
-        time: 'now',
+        title: 'permissions:push.session.title',
+        body: 'permissions:push.session.body',
+        hoursAgo: 0,
         unread: true,
     },
     {
         icon: 'gift',
-        title: 'Reward drop nearby',
-        body: 'A new reward just unlocked around the corner.',
-        time: '2h',
+        title: 'permissions:push.reward.title',
+        body: 'permissions:push.reward.body',
+        hoursAgo: 2,
         unread: true,
     },
     {
         icon: 'time-outline',
-        title: 'Streak at risk',
-        body: 'One session today keeps your 6-day streak alive.',
-        time: '9h',
+        title: 'permissions:push.streak.title',
+        body: 'permissions:push.streak.body',
+        hoursAgo: 9,
         unread: false,
     },
 ] as const;
 
 export default function NotificationPreviewStack() {
+    const { t } = useTranslation();
     return (
         <View style={styles.card}>
             {PREVIEWS.map((n, i) => (
@@ -48,11 +51,15 @@ export default function NotificationPreviewStack() {
                             <Ionicons name={n.icon} size={18} color={GOLD} />
                         </View>
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.title} numberOfLines={1}>{n.title}</Text>
-                            <Text style={styles.body} numberOfLines={2}>{n.body}</Text>
+                            <Text style={styles.title} numberOfLines={1}>{t(n.title)}</Text>
+                            <Text style={styles.body} numberOfLines={2}>{t(n.body)}</Text>
                         </View>
                         <View style={styles.meta}>
-                            <Text style={styles.time}>{n.time}</Text>
+                            <Text style={styles.time}>
+                                {n.hoursAgo
+                                    ? t('permissions:push.hoursAgo', { hours: n.hoursAgo })
+                                    : t('permissions:push.now')}
+                            </Text>
                             {n.unread && <View style={styles.unreadDot} />}
                         </View>
                     </View>

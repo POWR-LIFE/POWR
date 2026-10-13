@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Linking, Platform, Pressable, StyleSheet, Text, View, Alert } from 'react-native';
+import { Trans, useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import PermissionFixScreen from '@/components/PermissionFixScreen';
@@ -63,6 +64,7 @@ const NEXT_SCREEN = '/onboarding-wearables';
 export default function OnboardingPermissionBackgroundScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const [requesting, setRequesting] = useState(false);
     // The escape link stays hidden until an ask has actually failed — untouched
     // users see no way past this screen except granting "Always". (iOS deny is
@@ -125,18 +127,18 @@ export default function OnboardingPermissionBackgroundScreen() {
                 // killed — the "You're in" notification will never fire.
                 if (Platform.OS === 'ios') {
                     Alert.alert(
-                        'Enable "Always" for automatic check-ins',
-                        'To detect arrivals at partner venues when POWR is closed, set location to "Always" in Settings › Privacy & Security › Location Services › POWR.',
+                        t('permissions:background.iosAlert.title'),
+                        t('permissions:background.iosAlert.body'),
                         [
                             {
-                                text: 'Later',
+                                text: t('permissions:background.iosAlert.later'),
                                 onPress: () => {
                                     recordLocationOnboardingDeclined().catch(() => {});
                                     router.push(NEXT_SCREEN);
                                 },
                             },
                             {
-                                text: 'Open Settings',
+                                text: t('permissions:background.iosAlert.openSettings'),
                                 onPress: () => {
                                     Linking.openSettings();
                                     router.push(NEXT_SCREEN);
@@ -193,17 +195,23 @@ export default function OnboardingPermissionBackgroundScreen() {
             {/* Center content */}
             <View style={[styles.center, { paddingTop: insets.top + 60 }]}>
                 <Animated.View style={[styles.textBlock, { opacity: contentFade }]}>
-                    <Text style={styles.eyebrow}>PASSIVE TRACKING</Text>
+                    <Text style={styles.eyebrow}>{t('permissions:background.eyebrow')}</Text>
                     <Text style={styles.headline}>
-                        Earn while{'\n'}you{' '}
-                        <Text style={styles.headlineGold}>move.</Text>
+                        <Trans
+                            i18nKey="permissions:background.headline"
+                            components={{ gold: <Text style={styles.headlineGold} /> }}
+                        />
                     </Text>
                     <Text style={styles.body}>
-                        No pressing start. POWR checks you in from your pocket — even when the app is closed. That only works on{' '}
-                        <Text style={styles.bodyStrong}>
-                            {Platform.OS === 'ios' ? '“Always”' : '“Allow all the time”'}
-                        </Text>
-                        .
+                        <Trans
+                            i18nKey="permissions:background.body"
+                            values={{
+                                always: t(Platform.OS === 'ios'
+                                    ? 'permissions:background.alwaysIos'
+                                    : 'permissions:background.alwaysAndroid'),
+                            }}
+                            components={{ strong: <Text style={styles.bodyStrong} /> }}
+                        />
                     </Text>
 
                     <View style={styles.mock}>
@@ -223,10 +231,10 @@ export default function OnboardingPermissionBackgroundScreen() {
                 >
                     <Text style={styles.primaryLabel}>
                         {requesting
-                            ? 'REQUESTING...'
+                            ? t('permissions:cta.requesting')
                             : Platform.OS === 'ios'
-                              ? 'SET TO ALWAYS'
-                              : 'ALLOW ALL THE TIME'}
+                              ? t('permissions:background.cta.allowIos')
+                              : t('permissions:background.cta.allowAndroid')}
                     </Text>
                 </Pressable>
 
@@ -238,7 +246,7 @@ export default function OnboardingPermissionBackgroundScreen() {
                             router.push(NEXT_SCREEN);
                         }}
                     >
-                        <Text style={styles.skipLabel}>Continue without allowing</Text>
+                        <Text style={styles.skipLabel}>{t('permissions:background.skip')}</Text>
                     </Pressable>
                 )}
             </Animated.View>

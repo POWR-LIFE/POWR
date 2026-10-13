@@ -1,1 +1,144 @@
-{}
+{
+  "profile": {
+    "eyebrow": "YOUR PROFILE",
+    "headline": "Claim your <gold>name.</gold>",
+    "body": "This is how you'll show up on the leaderboard.",
+    "avatarHint": "Add a photo (optional)",
+    "displayName": {
+      "label": "Display name",
+      "placeholder": "Your name"
+    },
+    "username": {
+      "label": "Username",
+      "placeholder": "username",
+      "taken": "That username is taken.",
+      "invalid": "At least {{min}} characters — letters, numbers or _.",
+      "rules": "Lowercase letters, numbers and underscores."
+    },
+    "invite": {
+      "label": "Invite code (optional)",
+      "placeholder": "8-CHARACTER CODE",
+      "helper": "Got a code from a friend? You’ll both earn POWR after your first workout."
+    },
+    "continue": "CONTINUE",
+    "errors": {
+      "justTaken": "That username was just taken — try another.",
+      "generic": "Something went wrong"
+    },
+    "photo": {
+      "title": "Profile photo",
+      "message": "Choose a source",
+      "take": "Take photo",
+      "library": "Choose from library",
+      "remove": "Remove photo",
+      "permissionTitle": "Permission required",
+      "cameraDenied": "Please allow camera access in Settings to take a photo.",
+      "libraryDenied": "Please allow photo library access in Settings to choose a photo.",
+      "errorTitle": "Could not select photo",
+      "errorBody": "Please try again."
+    }
+  },
+  "activities": {
+    "eyebrow": "NEARLY THERE",
+    "headline": "Pick your movements",
+    "subhead": {
+      "observed_one": "Your device already shows {{labels}} — we’ve ticked it. Adjust if you like, up to {{max}}.",
+      "observed_other": "Your device already shows {{labels}} — we’ve ticked them. Adjust if you like, up to {{max}}.",
+      "default": "Pick up to {{max}} ways you actually move. Gym is ticked to start — tap it off if that’s not you."
+    },
+    "hint": {
+      "pickOne": "Pick at least one activity",
+      "roomLeft_one": "Room for {{count}} more activity — or continue",
+      "roomLeft_other": "Room for {{count}} more activities — or continue"
+    },
+    "continue": "CONTINUE"
+  },
+  "picker": {
+    "searchPlaceholder": "Search — padel, boxing, zumba…",
+    "noResults": "Nothing matching “{{query}}” — try another name, or pick the closest match.",
+    "logTag": "LOG",
+    "auto": {
+      "heading": "COUNTS AUTOMATICALLY",
+      "sub": "With your setup these track on their own."
+    },
+    "manual": {
+      "heading": "LOG IT YOURSELF",
+      "sub": "These count too — log them in a tap. <cta>Connect a wearable</cta> and they track automatically."
+    }
+  },
+  "gym": {
+    "eyebrow": "WHERE YOU TRAIN",
+    "headline": "Your <gold>home gym.</gold>",
+    "sub": "Set it now to earn faster — or add it later.",
+    "searchPlaceholder": "Search for your gym",
+    "empty": {
+      "noMatch": "No gyms match that search.",
+      "noneNearby": "No gyms found near you — try searching by name."
+    },
+    "request": {
+      "prompt": "Can't find your venue? <cta>Request it</cta>",
+      "title": "Request a gym",
+      "sub": "Tell us where you train and we'll work on adding it.",
+      "namePlaceholder": "Gym name",
+      "locationPlaceholder": "City or address (optional)",
+      "submit": "SEND REQUEST",
+      "sentTitle": "Thanks!",
+      "sentBody": "We'll take a look and try to add it."
+    },
+    "cta": {
+      "continue": "CONTINUE",
+      "skip": "SKIP FOR NOW"
+    }
+  },
+  "achievement": {
+    "ring": {
+      "eyebrow": "DAY",
+      "of": "of 7"
+    },
+    "headline": "7 days already locked in.",
+    "bonus": {
+      "label": "Earned today",
+      "amount": "+20 POWR"
+    },
+    "invite": {
+      "receipt": "Invite code {{code}} — you’ll both earn POWR after your first workout.",
+      "title": "Got an invite code from a friend?",
+      "titleFixing": "Check that invite code",
+      "sub": "Last chance to enter it — you’ll both earn POWR after your first workout, and it can’t be added later.",
+      "subFixing": "That one wasn’t recognised — check the 8 characters against your friend’s message.",
+      "placeholder": "INVITE CODE",
+      "paste": "PASTE FROM CLIPBOARD"
+    },
+    "paste": {
+      "emptyTitle": "Nothing to paste",
+      "emptyBody": "Your clipboard doesn't have anything that looks like an invite code."
+    },
+    "cta": {
+      "go": "LET'S GO →",
+      "busy": "ONE SEC…"
+    },
+    "alerts": {
+      "title": "Invite code",
+      "continue": "Continue",
+      "skip": "Skip",
+      "applied": {
+        "title": "Invite code applied 🎉",
+        "body": "You and your friend both earn POWR once you log your first verified workout. Time to move!",
+        "go": "Let’s go"
+      },
+      "invalid": {
+        "title": "Invite code not recognised",
+        "body": "Double-check the 8 characters against your friend’s message — this is the only place it can be entered.",
+        "fix": "Fix code"
+      },
+      "selfReferral": "That's your own code — share it with a friend instead!",
+      "alreadyReferred": "That invite code is already applied to this account.",
+      "notAuthenticated": "Please sign in again to apply your code.",
+      "failed": {
+        "title": "Couldn’t apply your code",
+        "body": "Check your connection and try again — the code can only be applied now, during sign-up.",
+        "retry": "Try again"
+      }
+    }
+  }
+}

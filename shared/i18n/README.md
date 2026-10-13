@@ -31,10 +31,11 @@ Settings → long-press the `POWR · v1.6.0 …` line at the bottom → **Transl
    ```
    The test scans the source for every `'namespace:key'` and fails if English lacks it, and fails on any `t('…')` without a namespace.
 3. Values go in as placeholders, never glued together: `t('home:steps.left', { count })` with `"{{count}} steps to go"`. Word order differs between languages, so `'You have ' + n + ' points'` can't be translated.
-4. Counts use plurals: `"points_one": "{{count}} point"`, `"points_other": "{{count}} points"`, then `t('common:points', { count })`. French says "0 point" (singular). i18next handles that.
-5. Never call `t()` at module level (outside a component or function). The string would freeze in whatever language was on screen when the file loaded.
-6. Dates and numbers: `toLocaleDateString(getFormatLocale(), …)` from `@/lib/i18n` instead of a hard-coded `'en-GB'`. English stays `en-GB`, so English output doesn't change.
-7. **English must look identical after a conversion.** A screen moved onto keys should be a no-op for English readers, which is what makes every conversion safe to ship by OTA.
+4. Styled words inside a sentence (the gold word in a headline, a tappable "Log in") use `<Trans>` with named tags: `"Unlock the\n<gold>map.</gold>"` and `<Trans i18nKey="…" components={{ gold: <Text style={…} /> }} />`. **Never name a tag after a void HTML element** (`link`, `br`, `img`, `input`, `hr`, `meta`, `source`…): the parser treats it as empty and the styling silently disappears. Use `action`, `gold`, `strong2` and so on.
+5. Counts use plurals: `"points_one": "{{count}} point"`, `"points_other": "{{count}} points"`, then `t('common:points', { count })`. French says "0 point" (singular). i18next handles that.
+6. Never call `t()` at module level (outside a component or function). The string would freeze in whatever language was on screen when the file loaded.
+7. Dates and numbers: `toLocaleDateString(getFormatLocale(), …)` from `@/lib/i18n` instead of a hard-coded `'en-GB'`. English stays `en-GB`, so English output doesn't change.
+8. **English must look identical after a conversion.** A screen moved onto keys should be a no-op for English readers, which is what makes every conversion safe to ship by OTA.
 
 A new namespace means a new file per language **and** one import per language in `app.ts`. The test fails if a file isn't registered.
 
@@ -54,6 +55,9 @@ Untranslated strings can be left as `""`. They show in English rather than blank
 - Short beats literal. French runs 15 to 30% longer than English. If a button or chip would wrap, find the shorter phrasing rather than shrinking the font.
 - Keep the energy of the English, but don't translate idioms word for word. Find what a French or Spanish speaker would actually say.
 - Numbers, dates and currency come from `Intl`. Don't hand-format "1 000" or "1.000" in a string.
+- French typography: typographic apostrophe `’` (never `'`), a no-break space (U+00A0) before `?` `!` `:` `;` and inside `« »`. Spanish: opening `¿` and `¡`, quotes `«…»`.
+- Avoid gendered forms where a neutral phrasing exists ("Tu as déjà un compte ?" rather than "Déjà inscrit ?"; "Hola de nuevo" rather than "Bienvenido").
+- Copy that imitates an OS dialog (the permission mocks) mirrors Apple's and Google's own localized wording, which uses "vous" in French. That's their voice, not ours.
 
 ## Glossary
 
@@ -80,13 +84,36 @@ Terms that stay in English are product names. Use them exactly as written, with 
 | partner gym | salle partenaire | gimnasio asociado | |
 | check-in | check-in | check-in | Understood in both. Verb: "faire un check-in" / "hacer check-in" |
 | workout | séance | entreno | Spain: *entreno* is natural, *entrenamiento* when formal |
+| gym session | séance | sesión | |
+| wearable | montre connectée | wearable | English also says "watch": that's *montre* / *reloj* |
+| Apple Health (the iOS app) | l’app Santé | la app Salud | Keep "Apple Health" where it's a provider name in a list |
+| Health Connect | Santé Connect | Health Connect | Google's own localized names |
+| primary source | source principale | fuente principal | |
+| est. (estimated points) | env. | aprox. | |
+| location | localisation (the feature) / position (the OS's word) | ubicación | |
+| partner venue | lieu partenaire | centro asociado | |
+| log (record by hand) | saisir | registrar | |
 | steps | pas | pasos | |
 | sleep | sommeil | sueño | |
 | verified | vérifié | verificado | |
 | friend | ami / amie | amigo / amiga | Avoid gendered forms where a neutral phrasing exists |
 | invite code | code d'invitation | código de invitación | |
-| Settings | Paramètres | Ajustes | |
+| Settings (POWR's own screen) | Paramètres | Ajustes | |
+| Settings (the phone's app) | Réglages (iOS) / Paramètres (Android) | Ajustes | Say "dans les réglages" when the copy covers both platforms |
 | phone | téléphone | móvil | |
+| email | e-mail | correo (electrónico) | |
+| password | mot de passe | contraseña | |
+| log in | se connecter (button: Connecte-toi) | iniciar sesión (button: Inicia sesión) | Toggle pills: Connexion / Inscription, Iniciar sesión / Registrarse |
+| sign up | s’inscrire (button: Inscris-toi) | registrarse (button: Regístrate) | |
+| Forgot password? | Mot de passe oublié ? | ¿Has olvidado tu contraseña? | |
+| username | nom d’utilisateur (placeholder « pseudo ») | nombre de usuario (placeholder "usuario") | |
+| display name | nom affiché | nombre visible | |
+| optional | facultatif | opcional | |
+| photo library | photothèque | fototeca | Apple's terms |
+| Not now | Plus tard | Ahora no | |
+| Done | Terminé | Hecho | |
+| Got it | Compris | Vale | |
+| Let's go | C’est parti | ¡Vamos! | |
 
 Add to this table whenever a new term comes up, so every screen uses the same word.
 

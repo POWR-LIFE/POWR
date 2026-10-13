@@ -4,12 +4,13 @@ import { createGymRequest } from '@/lib/api/gyms';
 import { setPreferredGym } from '@/lib/api/user';
 import { MAP_PROVIDER } from '@/lib/mapProvider';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
-import { continueLabel, displayedGyms, gymMarkerSetKey, gymMarkers, hasGymCoords, toggleSelection } from '@/lib/onboarding/gym';
+import { displayedGyms, gymMarkerSetKey, gymMarkers, hasGymCoords, toggleSelection } from '@/lib/onboarding/gym';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     Animated,
@@ -110,6 +111,7 @@ const dotStyles = StyleSheet.create({
 export default function OnboardingGymScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const mapRef = useRef<MapView>(null);
 
     const [nearby, setNearby] = useState<Partner[]>([]);
@@ -233,10 +235,10 @@ export default function OnboardingGymScreen() {
     const markerSetKey = gymMarkerSetKey(markers);
     const emptyLabel =
         searchResults !== null
-            ? 'No gyms match that search.'
+            ? t('onboarding:gym.empty.noMatch')
             : loadingNearby
                 ? null
-                : 'No gyms found near you — try searching by name.';
+                : t('onboarding:gym.empty.noneNearby');
 
     return (
         <KeyboardAvoidingView
@@ -255,11 +257,11 @@ export default function OnboardingGymScreen() {
             </Pressable>
 
             <Animated.View style={[styles.body, { paddingTop: insets.top + 64, opacity: fade }]}>
-                <Text style={styles.eyebrow}>WHERE YOU TRAIN</Text>
+                <Text style={styles.eyebrow}>{t('onboarding:gym.eyebrow')}</Text>
                 <Text style={styles.headline}>
-                    Your <Text style={styles.headlineGold}>home gym.</Text>
+                    <Trans i18nKey="onboarding:gym.headline" components={{ gold: <Text style={styles.headlineGold} /> }} />
                 </Text>
-                <Text style={styles.sub}>Set it now to earn faster — or add it later.</Text>
+                <Text style={styles.sub}>{t('onboarding:gym.sub')}</Text>
 
                 {/* Map */}
                 <View style={styles.mapWrap}>
@@ -291,7 +293,7 @@ export default function OnboardingGymScreen() {
                         style={styles.searchInput}
                         value={search}
                         onChangeText={onChangeSearch}
-                        placeholder="Search for your gym"
+                        placeholder={t('onboarding:gym.searchPlaceholder')}
                         placeholderTextColor="rgba(255,255,255,0.3)"
                         autoCapitalize="words"
                         autoCorrect={false}
@@ -347,7 +349,9 @@ export default function OnboardingGymScreen() {
                     {/* Request a gym */}
                     <Pressable style={styles.requestRow} onPress={openRequest}>
                         <Ionicons name="add-circle-outline" size={18} color={DIM} />
-                        <Text style={styles.requestText}>Can't find your venue? <Text style={styles.requestLink}>Request it</Text></Text>
+                        <Text style={styles.requestText}>
+                            <Trans i18nKey="onboarding:gym.request.prompt" components={{ cta: <Text style={styles.requestLink} /> }} />
+                        </Text>
                     </Pressable>
                 </ScrollView>
             </Animated.View>
@@ -359,7 +363,7 @@ export default function OnboardingGymScreen() {
                     style={[styles.primaryButton, savingPreferred && { opacity: 0.7 }]}
                     onPress={() => router.push(NEXT_SCREEN)}
                 >
-                    <Text style={styles.primaryLabel}>{continueLabel(selectedId)}</Text>
+                    <Text style={styles.primaryLabel}>{selectedId ? t('onboarding:gym.cta.continue') : t('onboarding:gym.cta.skip')}</Text>
                 </Pressable>
             </View>
 
@@ -370,18 +374,18 @@ export default function OnboardingGymScreen() {
                         {reqSent ? (
                             <View style={styles.sentBox}>
                                 <Ionicons name="checkmark-circle" size={42} color={GOLD} />
-                                <Text style={styles.sentTitle}>Thanks!</Text>
-                                <Text style={styles.sentBody}>We'll take a look and try to add it.</Text>
+                                <Text style={styles.sentTitle}>{t('onboarding:gym.request.sentTitle')}</Text>
+                                <Text style={styles.sentBody}>{t('onboarding:gym.request.sentBody')}</Text>
                             </View>
                         ) : (
                             <>
-                                <Text style={styles.modalTitle}>Request a gym</Text>
-                                <Text style={styles.modalSub}>Tell us where you train and we'll work on adding it.</Text>
+                                <Text style={styles.modalTitle}>{t('onboarding:gym.request.title')}</Text>
+                                <Text style={styles.modalSub}>{t('onboarding:gym.request.sub')}</Text>
                                 <TextInput
                                     style={styles.modalInput}
                                     value={reqName}
                                     onChangeText={setReqName}
-                                    placeholder="Gym name"
+                                    placeholder={t('onboarding:gym.request.namePlaceholder')}
                                     placeholderTextColor="rgba(255,255,255,0.3)"
                                     autoCapitalize="words"
                                 />
@@ -389,7 +393,7 @@ export default function OnboardingGymScreen() {
                                     style={styles.modalInput}
                                     value={reqLocation}
                                     onChangeText={setReqLocation}
-                                    placeholder="City or address (optional)"
+                                    placeholder={t('onboarding:gym.request.locationPlaceholder')}
                                     placeholderTextColor="rgba(255,255,255,0.3)"
                                     autoCapitalize="words"
                                 />
@@ -400,10 +404,10 @@ export default function OnboardingGymScreen() {
                                 >
                                     {reqSubmitting
                                         ? <ActivityIndicator color="#0a0a0a" size="small" />
-                                        : <Text style={styles.modalSubmitLabel}>SEND REQUEST</Text>}
+                                        : <Text style={styles.modalSubmitLabel}>{t('onboarding:gym.request.submit')}</Text>}
                                 </Pressable>
                                 <Pressable onPress={() => setRequestOpen(false)} hitSlop={8}>
-                                    <Text style={styles.modalCancel}>Cancel</Text>
+                                    <Text style={styles.modalCancel}>{t('common:actions.cancel')}</Text>
                                 </Pressable>
                             </>
                         )}

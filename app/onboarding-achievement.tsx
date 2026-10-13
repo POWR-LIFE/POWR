@@ -2,6 +2,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, Animated, Easing, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { clipboardMayHoldCode, readInviteCodeFromClipboard } from '@/lib/social/inviteCodePaste';
@@ -69,6 +70,7 @@ const dotStyles = StyleSheet.create({
 export default function OnboardingAchievementScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const { markOnboardingComplete } = useAuth();
     const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
 
@@ -80,7 +82,7 @@ export default function OnboardingAchievementScreen() {
     const pasteCode = async () => {
         const c = await readInviteCodeFromClipboard(Clipboard);
         if (c) setInviteCode(c);
-        else Alert.alert('Nothing to paste', "Your clipboard doesn't have anything that looks like an invite code.");
+        else Alert.alert(t('onboarding:achievement.paste.emptyTitle'), t('onboarding:achievement.paste.emptyBody'));
     };
     // A code already captured upstream (invite link, the email signup screen,
     // or the profile screen) only gets a one-line receipt here — nobody is
@@ -285,7 +287,7 @@ export default function OnboardingAchievementScreen() {
 
                         {/* Inner number + label */}
                         <View style={styles.ringInner}>
-                            <Text style={styles.dayEyebrow}>DAY</Text>
+                            <Text style={styles.dayEyebrow}>{t('onboarding:achievement.ring.eyebrow')}</Text>
                             <Animated.Text
                                 style={[
                                     styles.dayNumber,
@@ -297,7 +299,7 @@ export default function OnboardingAchievementScreen() {
                             >
                                 {displayStreak}
                             </Animated.Text>
-                            <Text style={styles.daySub}>of 7</Text>
+                            <Text style={styles.daySub}>{t('onboarding:achievement.ring.of')}</Text>
                         </View>
                     </Animated.View>
                 </Animated.View>
@@ -309,7 +311,7 @@ export default function OnboardingAchievementScreen() {
                         { opacity: contentOpacity, transform: [{ translateY: contentY }] },
                     ]}
                 >
-                    <Text style={styles.headline}>7 days already locked in.</Text>
+                    <Text style={styles.headline}>{t('onboarding:achievement.headline')}</Text>
                 </Animated.View>
 
                 {/* ── Earned today — inline ── */}
@@ -320,8 +322,8 @@ export default function OnboardingAchievementScreen() {
                     ]}
                 >
                     <View style={styles.bonusDot} />
-                    <Text style={styles.bonusLabel}>Earned today</Text>
-                    <Text style={styles.bonusAmount}>+20 POWR</Text>
+                    <Text style={styles.bonusLabel}>{t('onboarding:achievement.bonus.label')}</Text>
+                    <Text style={styles.bonusAmount}>{t('onboarding:achievement.bonus.amount')}</Text>
                 </Animated.View>
             </View>
 
@@ -334,25 +336,25 @@ export default function OnboardingAchievementScreen() {
                     <View style={styles.inviteReceipt}>
                         <Ionicons name="checkmark-circle" size={15} color={GOLD} />
                         <Text style={styles.inviteReceiptText}>
-                            Invite code {formatMemberId(carriedCode)} — you’ll both earn POWR after your first workout.
+                            {t('onboarding:achievement.invite.receipt', { code: formatMemberId(carriedCode) })}
                         </Text>
                     </View>
                 ) : (
                     <View style={styles.inviteBlock}>
                         <Text style={styles.inviteTitle}>
-                            {fixing ? 'Check that invite code' : 'Got an invite code from a friend?'}
+                            {fixing ? t('onboarding:achievement.invite.titleFixing') : t('onboarding:achievement.invite.title')}
                         </Text>
                         <Text style={styles.inviteSub}>
                             {fixing
-                                ? 'That one wasn’t recognised — check the 8 characters against your friend’s message.'
-                                : 'Last chance to enter it — you’ll both earn POWR after your first workout, and it can’t be added later.'}
+                                ? t('onboarding:achievement.invite.subFixing')
+                                : t('onboarding:achievement.invite.sub')}
                         </Text>
                         <TextInput
                             style={styles.codeInput}
-                            placeholder="INVITE CODE"
+                            placeholder={t('onboarding:achievement.invite.placeholder')}
                             placeholderTextColor="rgba(255,255,255,0.28)"
                             value={inviteCode}
-                            onChangeText={t => setInviteCode(t.toUpperCase())}
+                            onChangeText={text => setInviteCode(text.toUpperCase())}
                             autoCapitalize="characters"
                             autoCorrect={false}
                             // Vanity creator codes run to 10 chars.
@@ -360,7 +362,7 @@ export default function OnboardingAchievementScreen() {
                         />
                         {canPaste && !inviteCode && (
                             <Pressable onPress={pasteCode} style={({ pressed }) => [styles.pasteLink, pressed && { opacity: 0.7 }]} accessibilityRole="button">
-                                <Text style={styles.pasteLinkText}>PASTE FROM CLIPBOARD</Text>
+                                <Text style={styles.pasteLinkText}>{t('onboarding:achievement.invite.paste')}</Text>
                             </Pressable>
                         )}
                     </View>
@@ -407,9 +409,9 @@ export default function OnboardingAchievementScreen() {
                                 // Rewards pay on CONVERSION (first verified workout), not at
                                 // code entry — see referral_conversion_check.
                                 Alert.alert(
-                                    'Invite code applied 🎉',
-                                    'You and your friend both earn POWR once you log your first verified workout. Time to move!',
-                                    [{ text: 'Let’s go', onPress: goHome }],
+                                    t('onboarding:achievement.alerts.applied.title'),
+                                    t('onboarding:achievement.alerts.applied.body'),
+                                    [{ text: t('onboarding:achievement.alerts.applied.go'), onPress: goHome }],
                                 );
                                 return;
                             }
@@ -418,27 +420,27 @@ export default function OnboardingAchievementScreen() {
                             switch (reason) {
                                 case 'invalid_code':
                                     Alert.alert(
-                                        'Invite code not recognised',
-                                        'Double-check the 8 characters against your friend’s message — this is the only place it can be entered.',
+                                        t('onboarding:achievement.alerts.invalid.title'),
+                                        t('onboarding:achievement.alerts.invalid.body'),
                                         [
-                                            { text: 'Skip', style: 'cancel', onPress: dropCode },
-                                            { text: 'Fix code', onPress: stayAndFix },
+                                            { text: t('onboarding:achievement.alerts.skip'), style: 'cancel', onPress: dropCode },
+                                            { text: t('onboarding:achievement.alerts.invalid.fix'), onPress: stayAndFix },
                                         ],
                                     );
                                     return;
                                 case 'self_referral':
-                                    Alert.alert('Invite code', "That's your own code — share it with a friend instead!", [
-                                        { text: 'Continue', onPress: dropCode },
+                                    Alert.alert(t('onboarding:achievement.alerts.title'), t('onboarding:achievement.alerts.selfReferral'), [
+                                        { text: t('onboarding:achievement.alerts.continue'), onPress: dropCode },
                                     ]);
                                     return;
 case 'already_referred':
-    Alert.alert('Invite code', 'That invite code is already applied to this account.', [
-        { text: 'Continue', onPress: dropCode },
+    Alert.alert(t('onboarding:achievement.alerts.title'), t('onboarding:achievement.alerts.alreadyReferred'), [
+        { text: t('onboarding:achievement.alerts.continue'), onPress: dropCode },
     ]);
     return;
                                 case 'not_authenticated':
-                                    Alert.alert('Invite code', 'Please sign in again to apply your code.', [
-                                        { text: 'Continue', onPress: goHome },
+                                    Alert.alert(t('onboarding:achievement.alerts.title'), t('onboarding:achievement.alerts.notAuthenticated'), [
+                                        { text: t('onboarding:achievement.alerts.continue'), onPress: goHome },
                                     ]);
                                     return;
                                 default:
@@ -446,11 +448,11 @@ case 'already_referred':
                                     // field (and in storage if it came from a link) — let them
                                     // try again from here; skipping means it's gone for good.
                                     Alert.alert(
-                                        'Couldn’t apply your code',
-                                        'Check your connection and try again — the code can only be applied now, during sign-up.',
+                                        t('onboarding:achievement.alerts.failed.title'),
+                                        t('onboarding:achievement.alerts.failed.body'),
                                         [
-                                            { text: 'Skip', style: 'cancel', onPress: dropCode },
-                                            { text: 'Try again', onPress: stayAndFix },
+                                            { text: t('onboarding:achievement.alerts.skip'), style: 'cancel', onPress: dropCode },
+                                            { text: t('onboarding:achievement.alerts.failed.retry'), onPress: stayAndFix },
                                         ],
                                     );
                             }
@@ -459,7 +461,7 @@ case 'already_referred':
                         }
                     }}
                 >
-                    <Text style={styles.primaryLabel}>{submitting ? 'ONE SEC…' : 'LET\'S GO →'}</Text>
+                    <Text style={styles.primaryLabel}>{submitting ? t('onboarding:achievement.cta.busy') : t('onboarding:achievement.cta.go')}</Text>
                 </Pressable>
             </Animated.View>
         </View>

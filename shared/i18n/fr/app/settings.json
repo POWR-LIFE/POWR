@@ -4,7 +4,7 @@
     "title": "Langue",
     "hint": "POWR suit la langue de ton téléphone, sauf si tu en choisis une ici.",
     "phone": "Langue du téléphone",
-    "phoneUnavailable": "{{language}} n'est pas encore disponible, POWR s'affiche donc en anglais",
+    "phoneUnavailable": "{{language}} n’est pas encore disponible, POWR s’affiche donc en anglais",
     "draft": "Brouillon",
     "previewOn": {
       "title": "Aperçu des traductions activé",

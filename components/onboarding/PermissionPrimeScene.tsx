@@ -1,6 +1,7 @@
 import { fontFamily } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import PermissionPrimeMock, { PermissionMockKind } from './PermissionPrimeMock';
 import PowrPushBanner from './PowrPushBanner';
 
@@ -20,6 +21,7 @@ const GOLD = '#E8D200';
 
 /** Foreground hero: the map this permission unlocks. */
 function MapHero() {
+    const { t } = useTranslation();
     return (
         <View style={styles.hero}>
             {/* Street grid */}
@@ -42,14 +44,17 @@ function MapHero() {
                         <View style={styles.pinDot} />
                     </View>
                     <View style={styles.gymChip}>
-                        <Text style={styles.gymChipLabel}>YOUR GYM</Text>
+                        <Text style={styles.gymChipLabel}>{t('permissions:scene.yourGym')}</Text>
                     </View>
                 </View>
             </View>
 
             {/* The push this permission unlocks */}
             <View style={styles.banner}>
-                <PowrPushBanner title="Detecting Partners nearby" body="Automatic check-ins enabled." />
+                <PowrPushBanner
+                    title={t('permissions:push.detecting.title')}
+                    body={t('permissions:push.detecting.body')}
+                />
             </View>
         </View>
     );
@@ -60,13 +65,17 @@ function MapHero() {
  * closed and it still worked" moment that "Always" access buys.
  */
 function LockScreenHero() {
+    const { t } = useTranslation();
     return (
         <View style={[styles.hero, styles.lockScreen]}>
             <Ionicons name="lock-closed" size={12} color="rgba(255,255,255,0.35)" />
             <Text style={styles.lockClock}>17:03</Text>
-            <Text style={styles.lockDate}>Tuesday 7 July</Text>
+            <Text style={styles.lockDate}>{t('permissions:scene.lockDate')}</Text>
             <View style={styles.lockBanner}>
-                <PowrPushBanner title="You’re in." body="Arrival detected — session started." />
+                <PowrPushBanner
+                    title={t('permissions:push.arrival.title')}
+                    body={t('permissions:push.arrival.body')}
+                />
             </View>
         </View>
     );
@@ -74,9 +83,13 @@ function LockScreenHero() {
 
 /** Notifications hero: the single push that makes the case — points landing. */
 function NotificationHero() {
+    const { t } = useTranslation();
     return (
         <View style={[styles.hero, styles.notifHero]}>
-            <PowrPushBanner title="Session recorded" body="48 min at your gym — +50 POWR banked." />
+            <PowrPushBanner
+                title={t('permissions:push.session.title')}
+                body={t('permissions:push.session.body')}
+            />
         </View>
     );
 }

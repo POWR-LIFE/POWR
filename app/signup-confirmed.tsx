@@ -22,10 +22,12 @@
  */
 
 import GeometricBackground from '@/components/GeometricBackground';
+import i18n from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     Pressable,
@@ -42,6 +44,7 @@ type Screen = 'exchanging' | 'error';
 
 export default function SignupConfirmedScreen() {
     const router = useRouter();
+    const { t } = useTranslation();
     const { code, auth_error, auth_error_description } = useLocalSearchParams<{
         code?: string;
         auth_error?: string;
@@ -53,18 +56,20 @@ export default function SignupConfirmedScreen() {
 
     useEffect(() => {
         (async () => {
+            // i18n.t, not the hook's t: as a dependency, t would re-run this
+            // effect (and the one-time code exchange) on a language change.
             if (auth_error) {
-                const description = auth_error_description ?? 'The link is invalid or has expired.';
+                const description = auth_error_description ?? i18n.t('auth:signupConfirmed.error.invalidLink');
                 setExchangeError(
                     auth_error === 'otp_expired'
-                        ? 'This confirmation link has expired. Sign up again to get a new one.'
+                        ? i18n.t('auth:signupConfirmed.error.expired')
                         : description.replace(/\+/g, ' ')
                 );
                 setScreen('error');
                 return;
             }
             if (!code) {
-                setExchangeError('No confirmation code found in the link. Please sign up again.');
+                setExchangeError(i18n.t('auth:signupConfirmed.error.noCode'));
                 setScreen('error');
                 return;
             }
@@ -80,7 +85,7 @@ export default function SignupConfirmedScreen() {
                 // Confirmed and signed in — pick up onboarding where signup leaves off.
                 router.replace('/onboarding-permission');
             } catch (e: unknown) {
-                setExchangeError(e instanceof Error ? e.message : 'Session exchange failed.');
+                setExchangeError(e instanceof Error ? e.message : i18n.t('auth:signupConfirmed.error.exchangeFailed'));
                 setScreen('error');
             }
         })();
@@ -91,7 +96,7 @@ export default function SignupConfirmedScreen() {
             <View style={[styles.container, styles.centred]}>
                 <GeometricBackground />
                 <ActivityIndicator color={GOLD} size="large" />
-                <Text style={styles.loadingText}>Confirming your account…</Text>
+                <Text style={styles.loadingText}>{t('auth:signupConfirmed.loading')}</Text>
             </View>
         );
     }
@@ -101,18 +106,17 @@ export default function SignupConfirmedScreen() {
             <GeometricBackground />
             <View style={styles.feedbackBox}>
                 <Text style={styles.feedbackIcon}>✉</Text>
-                <Text style={styles.feedbackTitle}>Couldn&rsquo;t confirm</Text>
+                <Text style={styles.feedbackTitle}>{t('auth:signupConfirmed.title')}</Text>
                 <Text style={styles.feedbackBody}>{exchangeError}</Text>
                 <Text style={styles.feedbackHint}>
-                    Open the confirmation link on the device you signed up on — for security,
-                    it can only be completed there.
+                    {t('auth:signupConfirmed.hint')}
                 </Text>
             </View>
             <Pressable
                 style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                 onPress={() => router.replace('/auth-email?mode=signin')}
             >
-                <Text style={styles.primaryLabel}>BACK TO LOG IN</Text>
+                <Text style={styles.primaryLabel}>{t('auth:signupConfirmed.backToLogIn')}</Text>
             </Pressable>
         </View>
     );

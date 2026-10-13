@@ -9,7 +9,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
+import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Animated, AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -53,14 +55,16 @@ export type PermissionFixKind =
 type Route = 'ask' | 'settings';
 
 const isIOS = Platform.OS === 'ios';
-const ALWAYS = isIOS ? '“Always”' : '“Allow all the time”';
 
 interface Spec {
+    /** Catalog keys throughout, resolved at render. */
     eyebrow: string;
-    /** Headline split so the last words carry the gold, as on the onboarding pages. */
-    headline: [string, string];
-    /** `*text*` renders in the onboarding bodyStrong — used to name the row to tap. */
+    /** `<gold>` carries the last words, as on the onboarding pages. */
+    headline: string;
+    /** `<strong>` renders in the onboarding bodyStrong — used to name the row to tap. */
     body: string;
+    /** Translated values for the body's {{placeholders}}. */
+    values?: Record<string, string>;
     cta: string;
     /** The onboarding scene to prime with — the same component those pages use. */
     scene: PermissionMockKind;
@@ -68,23 +72,27 @@ interface Spec {
     dialog?: boolean;
 }
 
-/** Where the OS drops the user when we deep-link out, named so they can follow it. */
-const APP_SETTINGS_PATH = isIOS ? 'Settings › POWR' : 'App info › Permissions';
-
 /** Copy branches on whether the gym is relevant to THIS user — a runner who
- *  never checks in shouldn't be told about "gym trips" (see useGymRelevance). */
-function specFor(kind: PermissionFixKind, route: Route, gymRelevant = true): Spec {
-    const venue = gymRelevant ? 'gym' : 'partner venue';
+ *  never checks in shouldn't be told about "gym trips" (see useGymRelevance).
+ *  The OS names in the values (where the OS drops the user when we deep-link
+ *  out, the option to pick) come translated, since they follow the phone. */
+function specFor(kind: PermissionFixKind, route: Route, t: TFunction, gymRelevant = true): Spec {
+    const always = t(isIOS ? 'permissions:background.alwaysIos' : 'permissions:background.alwaysAndroid');
+    const locationPath = t(isIOS ? 'permissions:fix.paths.locationIos' : 'permissions:fix.paths.locationAndroid');
     switch (kind) {
         case 'location':
             return {
-                eyebrow: 'LOCATION',
-                headline: ['Unlock the\n', 'map.'],
+                eyebrow: 'permissions:location.eyebrow',
+                headline: 'permissions:location.headline',
                 body:
                     route === 'ask'
-                        ? `Partner ${gymRelevant ? 'gyms' : 'venues'} and automatic check-ins — it all starts with where you are.`
-                        : `Location is off for POWR, so sessions at partner ${gymRelevant ? 'gyms' : 'venues'} can’t be verified — and your phone won’t ask again. Turn it back on under *${APP_SETTINGS_PATH} › Location*.`,
-                cta: route === 'ask' ? (isIOS ? 'ALLOW WHILE USING' : 'ALLOW LOCATION') : 'OPEN SETTINGS',
+                        ? gymRelevant ? 'permissions:location.bodyGym' : 'permissions:location.bodyVenue'
+                        : gymRelevant ? 'permissions:location.offGym' : 'permissions:location.offVenue',
+                values: { path: locationPath },
+                cta:
+                    route === 'ask'
+                        ? isIOS ? 'permissions:location.cta.allowIos' : 'permissions:location.cta.allowAndroid'
+                        : 'permissions:cta.openSettings',
                 scene: 'location-foreground',
             };
 
@@ -92,72 +100,72 @@ function specFor(kind: PermissionFixKind, route: Route, gymRelevant = true): Spe
             // Always a settings trip — the OS won't re-prompt just to sharpen
             // accuracy. The foreground mock rings the Precise chip regardless.
             return {
-                eyebrow: 'PRECISE LOCATION',
-                headline: ['Close enough\nto ', 'count.'],
-                body: `POWR checks you’re really at the ${venue}, down to a few metres. Approximate location can’t do that, so sessions won’t count. Turn on *Precise* under *${APP_SETTINGS_PATH} › Location*.`,
-                cta: 'OPEN SETTINGS',
+                eyebrow: 'permissions:precise.eyebrow',
+                headline: 'permissions:precise.headline',
+                body: gymRelevant ? 'permissions:precise.bodyGym' : 'permissions:precise.bodyVenue',
+                values: { path: locationPath },
+                cta: 'permissions:cta.openSettings',
                 scene: 'location-foreground',
             };
 
         case 'location-background':
             return {
-                eyebrow: 'PASSIVE TRACKING',
-                headline: ['Earn while\nyou ', 'move.'],
+                eyebrow: 'permissions:background.eyebrow',
+                headline: 'permissions:background.headline',
                 body:
                     route === 'ask'
-                        ? `No pressing start. POWR checks you in from your pocket — even when the app is closed. That only works on *${ALWAYS}*.`
-                        : `Location is on, but only while you’re in the app — so every ${venue} trip with POWR closed earns nothing. Set it to *${ALWAYS}* under *${APP_SETTINGS_PATH} › Location*.`,
+                        ? 'permissions:background.body'
+                        : gymRelevant ? 'permissions:background.offGym' : 'permissions:background.offVenue',
+                values: { always, path: locationPath },
                 cta:
                     route === 'ask'
-                        ? isIOS ? 'SET TO ALWAYS' : 'ALLOW ALL THE TIME'
-                        : 'OPEN SETTINGS',
+                        ? isIOS ? 'permissions:background.cta.allowIos' : 'permissions:background.cta.allowAndroid'
+                        : 'permissions:cta.openSettings',
                 scene: 'location-background',
             };
 
         case 'location-ok':
             // Nothing is about to pop, so the hero runs without a dialog over it.
             return {
-                eyebrow: 'LOCATION',
-                headline: ['You’re all\n', 'set.'],
-                body: `POWR can see where you are and check you in automatically. Turn it off and you stop earning at ${gymRelevant ? 'geofenced venues and partner gyms' : 'partner venues'}.`,
-                cta: 'OPEN SETTINGS',
+                eyebrow: 'permissions:location.eyebrow',
+                headline: 'permissions:locationOk.headline',
+                body: gymRelevant ? 'permissions:locationOk.bodyGym' : 'permissions:locationOk.bodyVenue',
+                cta: 'permissions:cta.openSettings',
                 scene: 'location-foreground',
                 dialog: false,
             };
 
         case 'battery':
             return {
-                eyebrow: 'BACKGROUND ACTIVITY',
-                headline: ['Don’t let Android\n', 'sleep on it.'],
-                body: `POWR keeps a light watch running so it can spot ${venue} arrivals with the app closed. Battery optimisation kills that watch without telling you.`,
-                cta: 'ALLOW UNRESTRICTED',
+                eyebrow: 'permissions:battery.eyebrow',
+                headline: 'permissions:battery.headline',
+                body: gymRelevant ? 'permissions:battery.bodyGym' : 'permissions:battery.bodyVenue',
+                cta: 'permissions:battery.cta',
                 scene: 'battery',
             };
 
         case 'notifications':
             return {
-                eyebrow: 'NOTIFICATIONS',
-                headline: ['Know when\nyou ', 'earn.'],
-                body:
-                    route === 'ask'
-                        ? 'A session lands, a streak’s at risk, a reward drops nearby — you’ll know the second it happens. Every alert is yours to switch off.'
-                        : `Alerts are off for POWR at the system level, so nothing below can reach you — and your phone won’t ask again. Turn them on under *${isIOS ? 'Settings › POWR' : 'App info'} › Notifications*.`,
-                cta: route === 'ask' ? 'ENABLE ALERTS' : 'OPEN SETTINGS',
+                eyebrow: 'permissions:notifications.eyebrow',
+                headline: 'permissions:notifications.headline',
+                body: route === 'ask' ? 'permissions:notifications.body' : 'permissions:notifications.off',
+                values: {
+                    path: t(isIOS ? 'permissions:fix.paths.notificationsIos' : 'permissions:fix.paths.notificationsAndroid'),
+                },
+                cta: route === 'ask' ? 'permissions:notifications.cta' : 'permissions:cta.openSettings',
                 scene: 'notifications',
             };
     }
 }
 
 /**
- * Splits `set it to *Always*` into plain/emphasised runs, the same way the
- * onboarding background page calls out the option that matters.
+ * Renders the body with its `<strong>` runs, the same way the onboarding
+ * background page calls out the option that matters.
  */
-function BodyText({ text }: { text: string }) {
+function BodyText({ i18nKey, values }: { i18nKey: string; values?: Record<string, string> }) {
     return (
         <Text style={styles.body}>
-            {text.split('*').map((part, i) =>
-                i % 2 === 1 ? <Text key={i} style={styles.bodyStrong}>{part}</Text> : part,
-            )}
+            <Trans i18nKey={i18nKey} values={values} components={{ strong: <Text style={styles.bodyStrong} /> }} />
         </Text>
     );
 }
@@ -199,6 +207,7 @@ export default function PermissionFixScreen({
     // Hooks first — this component early-returns below.
     const gymRelevant = useGymRelevance();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const { requestPermissions } = useNotifications();
 
     const [route, setRoute] = useState<Route | null>(null);
@@ -334,7 +343,7 @@ export default function PermissionFixScreen({
 
     if (!kind || !route) return null;
 
-    const spec = specFor(kind, route, gymRelevant);
+    const spec = specFor(kind, route, t, gymRelevant);
 
     return (
         <Modal visible transparent={false} animationType="slide" onRequestClose={onClose}>
@@ -348,12 +357,11 @@ export default function PermissionFixScreen({
 
                 <View style={[styles.center, { paddingTop: insets.top + 60 }]}>
                     <Animated.View style={[styles.textBlock, { opacity: fade }]}>
-                        <Text style={styles.eyebrow}>{spec.eyebrow}</Text>
+                        <Text style={styles.eyebrow}>{t(spec.eyebrow)}</Text>
                         <Text style={styles.headline}>
-                            {spec.headline[0]}
-                            <Text style={styles.headlineGold}>{spec.headline[1]}</Text>
+                            <Trans i18nKey={spec.headline} components={{ gold: <Text style={styles.headlineGold} /> }} />
                         </Text>
-                        <BodyText text={spec.body} />
+                        <BodyText i18nKey={spec.body} values={spec.values} />
 
                         <View style={styles.mock}>
                             <PermissionPrimeScene kind={spec.scene} dialog={spec.dialog} />
@@ -367,11 +375,13 @@ export default function PermissionFixScreen({
                         onPress={handlePrimary}
                         disabled={busy}
                     >
-                        <Text style={styles.primaryLabel}>{busy ? 'REQUESTING...' : spec.cta}</Text>
+                        <Text style={styles.primaryLabel}>{busy ? t('permissions:cta.requesting') : t(spec.cta)}</Text>
                     </Pressable>
 
                     <Pressable style={styles.skipButton} onPress={onClose}>
-                        <Text style={styles.skipLabel}>{kind === 'location-ok' ? 'Done' : 'Not now'}</Text>
+                        <Text style={styles.skipLabel}>
+                            {kind === 'location-ok' ? t('permissions:fix.done') : t('permissions:fix.notNow')}
+                        </Text>
                     </Pressable>
                 </Animated.View>
             </View>
