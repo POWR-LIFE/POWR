@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Copy, Download, FilePlus2, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Send, Trash2, TriangleAlert, Upload, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Copy, Download, FilePlus2, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Send, Trash2, TriangleAlert, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { prepareStudio, renderPost, compositeLayers, fieldDefaults, COLOURWAYS } from './render';
 import { TEMPLATES, CATEGORIES, LIBRARIES, SECTIONS, templateById } from './templates';
 import { FORMATS, FORMAT_LIST, FORMAT_GROUPS, BLEED_MM } from './formats';
@@ -8,6 +8,7 @@ import { HEADLINE_FONTS } from './fonts';
 import { TINTS } from './grade';
 import { loadMedia } from './media';
 import { assetWithPreview } from './assets';
+import { isCutout, ZOOM_MIN, ZOOM_MAX } from './templates/pillars/kit';
 import { exportVideo, EXPORT_FPS, MAX_CLIP_SECONDS } from './video';
 import { adminStudioData } from './data';
 import { saveDraft, renameDraft, signature } from './drafts/store';
@@ -68,6 +69,45 @@ const templateNames = (names) => (names.length > 4 ? `${names.length} templates`
 
 // Image fields shared by every template that has them (see takeAsset).
 const SHARED_ASSETS = ['logo', 'product'];
+
+// The Product zoom slider runs −1…1 with the template's own framing (zoom 1)
+// in the middle: the left half backs off to ZOOM_MIN, the right moves in to ZOOM_MAX.
+const zoomToSlider = (z) => (z < 1 ? (z - 1) / (1 - ZOOM_MIN) : (z - 1) / (ZOOM_MAX - 1));
+const sliderToZoom = (v) => (Math.abs(v) < 0.04 ? 1 : v < 0 ? 1 + v * (1 - ZOOM_MIN) : 1 + v * (ZOOM_MAX - 1));
+
+/**
+ * Zoom for the product shot. A photo (not a cut-out) fills its frame, which
+ * can cut the product off: left backs off until the whole photo shows, right
+ * moves in. A cut-out is always whole, so it's sized instead.
+ */
+function ProductZoom({ image, zoom, onChange }) {
+    const cut = isCutout(image);
+    const v = zoomToSlider(zoom);
+    const stops = cut ? [[-1, 'Smaller'], [0, 'As designed'], [1, 'Bigger']] : [[-1, 'Whole shot'], [0, 'Fill frame'], [1, 'Closer']];
+    const nudge = (d) => onChange(sliderToZoom(Math.max(-1, Math.min(1, Math.round((v + d) * 4) / 4))));
+    const ICON = 'flex-none rounded-lg p-1 text-[#888] hover:bg-white hover:text-[#111] disabled:opacity-30 disabled:hover:bg-transparent';
+    return (
+        <div className="mt-2 rounded-xl bg-[#FAFAF8] px-2 py-2">
+            <div className="flex items-center gap-1.5">
+                <button type="button" aria-label="Zoom out" title="Zoom out" disabled={v <= -1} onClick={() => nudge(-0.25)} className={ICON}><ZoomOut size={15} /></button>
+                <input type="range" min={-1} max={1} step={0.01} value={v} aria-label="Product zoom"
+                    onChange={(e) => onChange(sliderToZoom(Number(e.target.value)))} className="min-w-0 flex-1 accent-[#E8D200]" />
+                <button type="button" aria-label="Zoom in" title="Zoom in" disabled={v >= 1} onClick={() => nudge(0.25)} className={ICON}><ZoomIn size={15} /></button>
+            </div>
+            <div className="grid grid-cols-3 px-7 text-[11px]">
+                {stops.map(([at, l], i) => (
+                    <button key={l} type="button" onClick={() => onChange(sliderToZoom(at))}
+                        className={`${['justify-self-start', 'justify-self-center', 'justify-self-end'][i]} ${Math.abs(v - at) < 0.02 ? 'font-medium text-[#111]' : 'text-[#999] hover:text-[#111]'}`}>
+                        {l}
+                    </button>
+                ))}
+            </div>
+            <p className="mt-1 px-1 text-[11px] text-[#999]">
+                {cut ? 'A cut-out always shows whole — this sets its size.' : 'Slide left to see the whole photo; its own background fills the gaps.'} Applies to every template.
+            </p>
+        </div>
+    );
+}
 
 function downloadBlob(blob, name) {
     const a = document.createElement('a');
@@ -756,6 +796,7 @@ export default function StudioEditor({
                 for (const id of ids) next[id] = { ...(prev[id] ?? {}), [key]: a };
                 return next;
             });
+            if (key === 'product') setProductZoom(1);
         } catch (e) {
             setError(e.message);
         }
@@ -851,13 +892,29 @@ export default function StudioEditor({
             setFilling(false);
         }
     };
-    const dropAsset = (key) => setAssets((prev) => {
-        const ids = SHARED_ASSETS.includes(key) ? Object.keys(prev) : [templateId];
-        const next = { ...prev };
-        for (const id of ids) {
-            if (!next[id]?.[key]) continue;
-            next[id] = { ...next[id] };
-            delete next[id][key];
+    const dropAsset = (key) => {
+        setAssets((prev) => {
+            const ids = SHARED_ASSETS.includes(key) ? Object.keys(prev) : [templateId];
+            const next = { ...prev };
+            for (const id of ids) {
+                if (!next[id]?.[key]) continue;
+                next[id] = { ...next[id] };
+                delete next[id][key];
+            }
+            return next;
+        });
+        if (key === 'product') setProductZoom(1);
+    };
+
+    // Product zoom goes with the product shot, so like the shot it's set on
+    // every template that takes one (1, the template's framing, is no key at all).
+    const productTemplates = useMemo(() => available.filter((t) => t.fields.some((f) => f.key === 'product')).map((t) => t.id), [available]);
+    const setProductZoom = (z) => setLooks((l) => {
+        const next = { ...l };
+        for (const id of productTemplates) {
+            const { productZoom, ...rest } = l[id] ?? {};
+            if (productZoom === undefined && z === 1) continue;
+            next[id] = z === 1 ? rest : { ...rest, productZoom: z };
         }
         return next;
     });
@@ -882,7 +939,8 @@ export default function StudioEditor({
     const setLook = (key, value) => setLooks((l) => ({ ...l, [templateId]: { ...(l[templateId] ?? {}), [key]: value } }));
     const resetTemplate = () => {
         setFields((f) => ({ ...f, [templateId]: startingFields(template) }));
-        setLooks((l) => ({ ...l, [templateId]: {} }));
+        // The product zoom belongs to the product shot, which a reset keeps.
+        setLooks((l) => ({ ...l, [templateId]: l[templateId]?.productZoom ? { productZoom: l[templateId].productZoom } : {} }));
     };
 
     // ── Drafts ─────────────────────────────────────────────────────────
@@ -1417,6 +1475,9 @@ export default function StudioEditor({
                                     <input value={fields[templateId][f.key]} {...fieldProps(f.key)} className={INPUT} />
                                 )}
                                 {f.hint && <p className="text-[11px] text-[#999] mt-1">{f.hint}</p>}
+                                {f.key === 'product' && assets[templateId]?.product && (
+                                    <ProductZoom image={assets[templateId].product.image} zoom={Number(look.productZoom) || 1} onChange={setProductZoom} />
+                                )}
                             </div>
                         ))}
                     </div>

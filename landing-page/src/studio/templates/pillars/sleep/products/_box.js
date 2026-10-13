@@ -9,7 +9,7 @@
  * Everything is in box units (the base is 1 wide), projected through one
  * camera, then fitted into the layout box the template hands over.
  */
-import { productShot, isCutout, mockRect } from '../../kit';
+import { productShot, isCutout, mockRect, drawFramed, productZoom } from '../../kit';
 
 // ── Scene ─────────────────────────────────────────────────────────────────
 const BW = 1;        // base width (x)
@@ -192,11 +192,7 @@ export function presentationBox(e, box, k, { kind = 'pouch', name = 'POWR' } = {
         const bd = Math.min(cw, ch) * 0.055;
         const iw = cw - bd * 2;
         const ih = ch - bd * 2.6;
-        const sr = Math.max(iw / im.width, ih / im.height);
-        const sW = iw / sr;
-        const sH = ih / sr;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(im, (im.width - sW) / 2, (im.height - sH) / 2, sW, sH, bd, bd, iw, ih);
+        drawFramed(ctx, im, { x: bd, y: bd, w: iw, h: ih }, productZoom(e));
         // The print's own light: a touch darker toward the foot of the card.
         const dim = ctx.createLinearGradient(0, 0, 0, ch);
         dim.addColorStop(0, 'rgba(0,0,0,0)');
