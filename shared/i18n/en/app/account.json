@@ -1,1 +1,231 @@
-{}
+{
+  "shared": {
+    "backToSettings": "BACK TO SETTINGS",
+    "currentPasswordRequired": "Please enter your current password.",
+    "currentPasswordIncorrect": "Current password is incorrect.",
+    "currentPassword": "CURRENT PASSWORD"
+  },
+  "editProfile": {
+    "title": "Edit Profile",
+    "save": "Save",
+    "tapToChangePhoto": "Tap to change photo",
+    "displayName": "Display Name",
+    "namePlaceholder": "Your name",
+    "nameHint": "{{length}}/40 · Shown on your profile and leaderboards",
+    "username": "Username",
+    "usernamePlaceholder": "yourhandle",
+    "usernameHint": "Letters, numbers, underscores only · {{length}}/30",
+    "email": "Email",
+    "bio": "Bio",
+    "bioPlaceholder": "Tell people about yourself…",
+    "achievements": "ACHIEVEMENTS ({{current}}/{{max}})",
+    "add": "ADD",
+    "achievementsEmpty": "Add up to 4 career highlights — e.g. PBs, podiums, titles.",
+    "coverPhoto": "Cover Photo",
+    "coverHint": "Tap to add a cover photo",
+    "gallery": "Gallery ({{current}}/{{max}})",
+    "editor": {
+      "title": "TITLE",
+      "titlePlaceholder": "Women's Pro Solo",
+      "value": "VALUE",
+      "context": "CONTEXT (OPTIONAL)",
+      "cancel": "CANCEL",
+      "save": "SAVE"
+    },
+    "photo": {
+      "permissionTitle": "Permission required",
+      "cameraBody": "Please allow camera access in Settings to take a photo.",
+      "libraryBody": "Please allow photo library access in Settings to choose a photo.",
+      "libraryBodyShort": "Please allow photo library access in Settings.",
+      "pickFailedTitle": "Could not select photo",
+      "pickFailedBody": "Please try again.",
+      "sourceTitle": "Profile photo",
+      "sourceBody": "Choose a source",
+      "take": "Take photo",
+      "library": "Choose from library",
+      "remove": "Remove photo"
+    },
+    "gallerySheet": {
+      "fullTitle": "Gallery full",
+      "fullBody": "Maximum {{max}} photos allowed.",
+      "removeTitle": "Remove photo",
+      "removeBody": "Delete this photo from your gallery?"
+    },
+    "achievement": {
+      "missingTitle": "Missing fields",
+      "missingBody": "Title and value are required.",
+      "addFailed": "Couldn’t add achievement",
+      "updateFailed": "Couldn’t update achievement",
+      "tryAgain": "Please try again",
+      "removeTitle": "Remove achievement?",
+      "removeBody": "Delete \"{{title}}\"?",
+      "deleteFailed": "Delete failed"
+    },
+    "delete": "Delete",
+    "nameRequiredTitle": "Name required",
+    "nameRequiredBody": "Please enter a display name.",
+    "uploadFailed": "Upload failed",
+    "coverUploadFailed": "Cover upload failed",
+    "saveFailed": "Save failed",
+    "somethingWentWrong": "Something went wrong"
+  },
+  "changeEmail": {
+    "error": {
+      "required": "Please enter a new email address.",
+      "invalid": "That email doesn't look right.",
+      "mismatch": "Emails don't match.",
+      "same": "That is already your email address."
+    },
+    "oauth": {
+      "title": "{{provider}} account",
+      "body": "Your POWR account is linked to {{provider}}. To change your email, update it in your {{provider}} account first, then sign in to POWR again."
+    },
+    "pending": {
+      "title": "Check both inboxes",
+      "sentTo": "We sent a confirmation link to:",
+      "old": "OLD",
+      "new": "NEW",
+      "hint": "Click both links to complete the change. Until then, keep signing in with your old email. If you ignore the emails, nothing changes.",
+      "resending": "Resending…",
+      "noEmails": "Didn't get the emails? ",
+      "resend": "Resend"
+    },
+    "headline": "Change\n<gold>email.</gold>",
+    "intro": "For your security we'll email a confirmation link to both your current and new addresses. Both must be clicked to complete the change.",
+    "currentEmail": "CURRENT EMAIL",
+    "newEmail": "NEW EMAIL",
+    "emailPlaceholder": "you@example.com",
+    "confirmEmail": "CONFIRM NEW EMAIL",
+    "confirmPlaceholder": "Re-enter new email",
+    "submit": "SEND CONFIRMATION LINKS"
+  },
+  "changePassword": {
+    "error": {
+      "newRequired": "Please enter a new password.",
+      "tooShort": "New password must be at least 6 characters.",
+      "mismatch": "Passwords don't match.",
+      "same": "New password must be different from your current one."
+    },
+    "success": {
+      "title": "Password updated",
+      "body": "Your password has been changed successfully."
+    },
+    "resetSent": {
+      "title": "Check your inbox",
+      "body": "We sent a reset link to\n<email>{{email}}</email>",
+      "hint": "Click the link in the email to set a new password, then log back in."
+    },
+    "google": {
+      "title": "Google account",
+      "body": "Your account uses Google Sign-In. To change your password, manage it through your Google account settings."
+    },
+    "headline": "Change\n<gold>password.</gold>",
+    "newPassword": "NEW PASSWORD",
+    "newPlaceholder": "Min. 6 characters",
+    "confirmPassword": "CONFIRM NEW PASSWORD",
+    "confirmPlaceholder": "Re-enter new password",
+    "submit": "UPDATE PASSWORD",
+    "sending": "Sending…",
+    "forgot": "Forgot your password? ",
+    "sendReset": "Send reset email"
+  },
+  "emailChangeConfirmed": {
+    "loading": "Confirming…",
+    "partial": {
+      "title": "One more step",
+      "body": "Thanks — that confirmation worked.",
+      "hintWithEmail": "We also sent a link to <email>{{email}}</email>. Click that one too to finish moving your POWR account.",
+      "hintNoEmail": "We also sent a link to your other inbox. Click that one too to finish moving your POWR account.",
+      "backToApp": "BACK TO APP"
+    },
+    "done": {
+      "title": "Email updated",
+      "body": "Your POWR account is now signed in as\n<email>{{email}}</email>",
+      "hint": "Use this address next time you sign in.",
+      "continue": "CONTINUE",
+      "openSettings": "Open settings",
+      "notYou": "If this wasn't you, contact support@powr.life right away."
+    }
+  },
+  "profile": {
+    "you": "You",
+    "shareMessage": "Join me on POWR – the app that rewards you for every workout! 💪\n\nUse my invite code {{code}} when you sign up and we both earn 20 POWR points free:\n{{url}}",
+    "friendsLabel": "View and add friends",
+    "qrLabel": "Show my QR code",
+    "levelPill": "LVL {{level}} · {{name}}",
+    "memberSince": "Member since {{date}}",
+    "totalXp": "TOTAL XP",
+    "xpNext": "{{current}} / {{total}} XP · {{name}} next",
+    "xpMax": "{{current}} / {{total}} XP · MAX LEVEL",
+    "statDays": "{{days}}d",
+    "stats": {
+      "streak": "Streak",
+      "bestStreak": "Best streak",
+      "sessions": "Sessions"
+    },
+    "streakUnit_one": "day",
+    "streakUnit_other": "days",
+    "streakPill": {
+      "justStarting": "JUST STARTING",
+      "showingUp": "SHOWING UP",
+      "building": "BUILDING",
+      "onARoll": "ON A ROLL",
+      "lockedIn": "LOCKED IN",
+      "relentless": "RELENTLESS",
+      "legendary": "LEGENDARY"
+    },
+    "days": {
+      "mon": "M",
+      "tue": "T",
+      "wed": "W",
+      "thu": "T",
+      "fri": "F",
+      "sat": "S",
+      "sun": "S"
+    },
+    "achievements": "Achievements",
+    "seeAll": "{{earned}} / {{total}} · See all",
+    "invite": {
+      "title": "Invite a friend",
+      "body": "Share your POWR ID — you both earn 20 POWR",
+      "share": "SHARE",
+      "copied": "Code copied to clipboard"
+    },
+    "gallery": "Gallery"
+  },
+  "inviteCode": {
+    "error": {
+      "invalidCode": "We don't recognise that code. Check the 8 characters against your friend's message — letters and numbers only, no I or O.",
+      "selfReferral": "That's your own POWR ID — share it with a friend instead.",
+      "alreadyReferred": "An invite code is already applied to this account.",
+      "windowClosed": "Invite codes can only be added in your first couple of weeks, and that window has closed.",
+      "notAuthenticated": "Please sign in again to apply your code.",
+      "network": "Couldn't reach POWR. Check your connection and try again.",
+      "nothingToPaste": "Nothing that looks like a code on your clipboard.",
+      "wrongLength": "An invite code is 8 characters long."
+    },
+    "yourFriend": "your friend",
+    "applied": {
+      "title": "Code applied",
+      "body": "You and {{name}} both earn 20 POWR once you log your first verified workout. Time to move."
+    },
+    "referred": {
+      "title": "You were invited",
+      "body": "{{name}} invited you to POWR. You both earn 20 POWR once you log your first verified workout."
+    },
+    "closed": {
+      "title": "That window has closed",
+      "body": "Invite codes can only be added in your first couple of weeks. Your own POWR ID still works for inviting friends — find it in Settings › Account."
+    },
+    "headline": "Invite\n<gold>code.</gold>",
+    "intro": "Joined on a friend's invite but never entered their code? Add it here and you'll both earn 20 POWR after your first verified workout.",
+    "field": "THEIR POWR ID",
+    "pasteLabel": "Paste code from clipboard",
+    "paste": "PASTE",
+    "daysLeft_one": "{{count}} day left to add one — a code can't be applied after that.",
+    "daysLeft_other": "{{count}} days left to add one — a code can't be applied after that.",
+    "lastDay": "Last day to add one — a code can't be applied after that.",
+    "submit": "APPLY CODE",
+    "footnote": "A POWR ID is 8 characters — your friend can find theirs in Settings › Account, or in any invite they send you."
+  }
+}

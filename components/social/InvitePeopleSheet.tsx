@@ -5,6 +5,7 @@ import {
   Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontFamily } from '@/constants/tokens';
@@ -52,6 +53,7 @@ export function InvitePeopleSheet({
   visible, onClose, friends, alreadyInIds, onInvite, search, sendRequest,
 }: InvitePeopleSheetProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const kbHeight = useKeyboardHeight();
   const scrollRef = useRef<ScrollView>(null);
   const [query, setQuery] = useState('');
@@ -75,11 +77,11 @@ export function InvitePeopleSheet({
     if (q.length < 2) { setResults([]); setSearching(false); return; }
     let cancelled = false;
     setSearching(true);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const r = await search(q);
       if (!cancelled) { setResults(r); setSearching(false); }
     }, 300);
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [query, search]);
 
   const handleInvite = async (f: Friend) => {
@@ -141,8 +143,8 @@ export function InvitePeopleSheet({
           <View style={styles.handle} />
 
           <View style={styles.titleRow}>
-            <Text style={styles.sheetTitle}>Invite people</Text>
-            <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel="Close">
+            <Text style={styles.sheetTitle}>{t('social:invite.title')}</Text>
+            <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel={t('social:shared.close')}>
               <Ionicons name="close" size={22} color={MUTED} />
             </Pressable>
           </View>
@@ -156,12 +158,12 @@ export function InvitePeopleSheet({
           >
             {/* ── 1. Invite a friend ─────────────────────────────────────── */}
             <View style={{ gap: 10 }}>
-              <Text style={styles.sectionLabel}>INVITE A FRIEND</Text>
+              <Text style={styles.sectionLabel}>{t('social:invite.inviteAFriend')}</Text>
               {invitable.length === 0 ? (
                 <Text style={styles.note}>
                   {friends.length === 0
-                    ? 'You have no friends to invite yet — search for someone new below.'
-                    : 'Everyone you can invite is already in. Add someone new below.'}
+                    ? t('social:invite.noFriends')
+                    : t('social:invite.allIn')}
                 </Text>
               ) : (
                 <View style={styles.card}>
@@ -178,10 +180,10 @@ export function InvitePeopleSheet({
                           onPress={() => handleInvite(f)}
                           disabled={inviting.has(f.id)}
                           accessibilityRole="button"
-                          accessibilityLabel={`Invite ${f.displayName}`}
+                          accessibilityLabel={t('social:shared.inviteName', { name: f.displayName })}
                         >
                           <Ionicons name="add" size={14} color="#0a0a0a" />
-                          <Text style={styles.primaryBtnText}>{inviting.has(f.id) ? 'Inviting…' : 'Invite'}</Text>
+                          <Text style={styles.primaryBtnText}>{inviting.has(f.id) ? t('social:invite.inviting') : t('social:invite.invite')}</Text>
                         </Pressable>
                       </View>
                     </View>
@@ -190,20 +192,20 @@ export function InvitePeopleSheet({
               )}
               {invited.size > 0 && (
                 <Text style={styles.doneNote}>
-                  {invited.size === 1 ? 'Invite sent.' : `${invited.size} invites sent.`} They’ll get a notification to join.
+                  {t('social:invite.sent', { count: invited.size })} {t('social:invite.willNotify')}
                 </Text>
               )}
             </View>
 
             {/* ── 2. Not friends yet? ────────────────────────────────────── */}
             <View style={{ gap: 10 }}>
-              <Text style={styles.sectionLabel}>NOT FRIENDS YET?</Text>
+              <Text style={styles.sectionLabel}>{t('social:invite.notFriendsYet')}</Text>
               <View style={styles.searchWrap}>
                 <Ionicons name="search" size={16} color={MUTED} />
                 <TextInput
                   value={query}
                   onChangeText={setQuery}
-                  placeholder="Search by username"
+                  placeholder={t('social:shared.searchByUsername')}
                   placeholderTextColor={MUTED}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -212,7 +214,7 @@ export function InvitePeopleSheet({
                   onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
                 />
                 {query.length > 0 && (
-                  <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
+                  <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel={t('social:shared.clearSearch')}>
                     <Ionicons name="close-circle" size={16} color={MUTED} />
                   </Pressable>
                 )}
@@ -220,14 +222,14 @@ export function InvitePeopleSheet({
 
               {query.trim().length === 0 ? (
                 <Text style={styles.note}>
-                  Find someone new by username. They’ll need to accept your friend request before you can invite them.
+                  {t('social:invite.searchIntro')}
                 </Text>
               ) : query.trim().length < 2 ? (
-                <Text style={styles.note}>Type at least 2 characters to search.</Text>
+                <Text style={styles.note}>{t('social:shared.typeMore')}</Text>
               ) : searching ? (
-                <Text style={styles.note}>Searching…</Text>
+                <Text style={styles.note}>{t('social:shared.searching')}</Text>
               ) : results.length === 0 ? (
-                <Text style={styles.note}>No one found for “{query.trim()}”.</Text>
+                <Text style={styles.note}>{t('social:shared.noResults', { query: query.trim() })}</Text>
               ) : (
                 <View style={styles.card}>
                   {results.map((f, i) => (
@@ -239,16 +241,16 @@ export function InvitePeopleSheet({
                           <Text style={styles.userHandle} numberOfLines={1}>@{f.username}</Text>
                         </View>
                         {requested.has(f.id) ? (
-                          <Text style={styles.requestedText}>Requested</Text>
+                          <Text style={styles.requestedText}>{t('social:shared.requested')}</Text>
                         ) : (
                           <Pressable
                             style={styles.ghostBtn}
                             onPress={() => handleRequest(f)}
                             accessibilityRole="button"
-                            accessibilityLabel={`Add ${f.displayName}`}
+                            accessibilityLabel={t('social:shared.addName', { name: f.displayName })}
                           >
                             <Ionicons name="person-add" size={13} color={GOLD} />
-                            <Text style={styles.ghostBtnText}>Add</Text>
+                            <Text style={styles.ghostBtnText}>{t('social:shared.add')}</Text>
                           </Pressable>
                         )}
                       </View>
@@ -259,7 +261,7 @@ export function InvitePeopleSheet({
 
               {requested.size > 0 && (
                 <Text style={styles.doneNote}>
-                  Request sent. Once they accept, you can invite them into this challenge.
+                  {t('social:invite.requestSent')}
                 </Text>
               )}
             </View>

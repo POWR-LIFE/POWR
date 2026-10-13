@@ -2,6 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { fontFamily } from '@/constants/tokens';
 import { durationLabel } from '@/hooks/useSharedChallenges';
@@ -45,6 +46,7 @@ export interface OpenChallengeCardProps {
  */
 export function OpenChallengeCard({ challenge, busy, onTake }: OpenChallengeCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
+  const { t } = useTranslation();
   const tierColor = TIER_COLOR[challenge.template.tier] ?? GOLD;
   const avatar = challenge.creatorAvatar;
   const initial = (challenge.creatorName || '?').trim().charAt(0).toUpperCase();
@@ -56,7 +58,7 @@ export function OpenChallengeCard({ challenge, busy, onTake }: OpenChallengeCard
       style={({ pressed }) => [styles.card, pressed && !busy && { opacity: 0.95 }, busy && { opacity: 0.6 }]}
       accessibilityRole="button"
       accessibilityState={{ busy: !!busy }}
-      accessibilityLabel={`Take ${challenge.creatorName}'s ${challenge.template.title} challenge`}
+      accessibilityLabel={t('social:openCard.takeA11y', { name: challenge.creatorName, title: challenge.template.title })}
     >
       {/* Who posted it. A stranger gets a first name and a face — never a
           username, a level or a history (see get_open_challenges). */}
@@ -76,13 +78,13 @@ export function OpenChallengeCard({ challenge, busy, onTake }: OpenChallengeCard
           <View style={styles.whoText}>
             <Text style={styles.name} numberOfLines={1}>{challenge.creatorName}</Text>
             <Text style={styles.waiting} numberOfLines={1}>
-              {challenge.slotsLeft > 1 ? `${challenge.slotsLeft} spots open` : 'waiting for someone'}
+              {challenge.slotsLeft > 1 ? t('social:openCard.spotsOpen', { slots: challenge.slotsLeft }) : t('social:openCard.waiting')}
             </Text>
           </View>
         </View>
         <View style={styles.points}>
           <Text style={styles.pointsValue}>+{challenge.basePoints}</Text>
-          <Text style={styles.pointsLabel}>pts</Text>
+          <Text style={styles.pointsLabel}>{t('social:shared.pts')}</Text>
         </View>
       </View>
 
@@ -116,7 +118,7 @@ export function OpenChallengeCard({ challenge, busy, onTake }: OpenChallengeCard
             <ActivityIndicator size="small" color={GOLD} />
           ) : (
             <>
-              <Text style={styles.ctaText}>Take it</Text>
+              <Text style={styles.ctaText}>{t('social:openCard.takeIt')}</Text>
               <Ionicons name="arrow-forward" size={14} color={GOLD} />
             </>
           )}

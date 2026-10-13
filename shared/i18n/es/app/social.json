@@ -1,1 +1,494 @@
-{}
+{
+  "shared": {
+    "close": "Cerrar",
+    "you": "Tú",
+    "aFriend": "Alguien",
+    "loading": "Cargando…",
+    "done": "Hecho",
+    "viewProfile": "Ver el perfil de {{name}}",
+    "viewFriends": "Ver amigos",
+    "scanFriendCode": "Escanear un código de amigo",
+    "clearSearch": "Borrar búsqueda",
+    "searchByUsername": "Buscar por usuario",
+    "typeMore": "Escribe al menos 2 caracteres.",
+    "searching": "Buscando…",
+    "noResults": "No hay resultados para «{{query}}».",
+    "requested": "Solicitado",
+    "add": "Añadir",
+    "addName": "Añadir a {{name}}",
+    "inviteName": "Invitar a {{name}}",
+    "addFriend": "Añadir a amigos",
+    "acceptRequest": "Aceptar solicitud",
+    "shareLink": "Compartir enlace",
+    "couldntJoin": "No te has podido unir",
+    "couldntDecline": "No se ha podido rechazar",
+    "pts": "pts",
+    "removeFriend": {
+      "title": "¿Eliminar a {{name}}?",
+      "body": "Se quitará de tu lista de amigos. Los retos que compartís siguen en marcha y podéis volver a añadiros cuando queráis.",
+      "confirm": "Eliminar"
+    },
+    "tier": {
+      "easy": "Fácil",
+      "medium": "Medio",
+      "hard": "Difícil"
+    }
+  },
+  "friends": {
+    "title": "AMIGOS",
+    "showMyCode": "Mostrar mi código",
+    "searchPlaceholder": "Añadir por usuario",
+    "searchResults": "RESULTADOS",
+    "requests": "SOLICITUDES · {{total}}",
+    "wantsToConnect": "@{{username}} · quiere conectar contigo",
+    "acceptName": "Aceptar a {{name}}",
+    "declineName": "Rechazar a {{name}}",
+    "friendsCount": "AMIGOS · {{total}}",
+    "empty": "Aún no tienes amigos — busca por usuario para añadir.",
+    "removeName": "Eliminar a {{name}}",
+    "pending": "PENDIENTES · {{total}}",
+    "sent": "Enviada"
+  },
+  "addFriend": {
+    "title": "AÑADIR A AMIGOS",
+    "fallbackName": "Miembro de POWR",
+    "notFound": {
+      "title": "No encontramos a esa persona",
+      "body": "Puede que el código no sea válido o esté caducado. Pídele que te vuelva a enseñar su código."
+    },
+    "connected": {
+      "title": "¡Hecho!",
+      "body": "Ya podéis hacer retos en equipo."
+    },
+    "sent": {
+      "title": "Solicitud enviada",
+      "body": "Se lo haremos saber — conectaréis en cuanto acepte."
+    },
+    "self": {
+      "title": "Eres tú",
+      "body": "Este es tu propio código — compártelo para que te escaneen."
+    },
+    "already": {
+      "title": "Ya estáis en contacto",
+      "body": "Esta persona ya está en tu lista de amigos de POWR."
+    },
+    "pending": {
+      "title": "Solicitud pendiente",
+      "body": "Ya le has enviado una solicitud — esperando su respuesta."
+    }
+  },
+  "scanFriend": {
+    "title": "ESCANEAR CÓDIGO",
+    "notPowr": "Eso no es un código de POWR — vuelve a escanear su código.",
+    "hint": "Apunta a un código de POWR",
+    "denied": {
+      "title": "Necesitamos acceso a la cámara",
+      "body": "POWR necesita la cámara para escanear el código de un amigo. Puedes activarla en Ajustes o añadir amigos por usuario.",
+      "allow": "Permitir cámara",
+      "openSettings": "Abrir Ajustes",
+      "byUsername": "Añadir por usuario"
+    }
+  },
+  "myQr": {
+    "title": "MI CÓDIGO",
+    "shareMessage": "Añádeme en POWR 💪\n{{link}}",
+    "loadError": "No se ha podido cargar tu código. Inténtalo de nuevo en un momento.",
+    "caption": "Pide a un amigo que lo escanee para conectar en POWR — y haced retos en equipo.",
+    "shareA11y": "Compartir tu código",
+    "copyA11y": "Copiar enlace",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "scanInstead": "Escanear un código en su lugar"
+  },
+  "join": {
+    "missingCode": "A este enlace de invitación le falta el código.",
+    "failed": "Algo ha fallado al unirte a este reto.",
+    "goHome": "Ir al inicio",
+    "joining": "Uniéndote al reto…"
+  },
+  "challenges": {
+    "title": "RETOS",
+    "takeFailed": "No has podido aceptar este reto",
+    "atCap": "Estás en {{open}} de {{cap}} retos — termina o deja uno para empezar otro.",
+    "tabs": {
+      "parallel": {
+        "label": "En paralelo",
+        "sub": "Cada cual hace su parte."
+      },
+      "pooled": {
+        "label": "Total de equipo",
+        "sub": "Sumad esfuerzos hacia un objetivo común."
+      }
+    },
+    "bonusLine": "Todo el mundo gana un bonus que crece cuando termina todo el grupo.",
+    "board": {
+      "title": "Retos abiertos",
+      "hint": "Quien lo acepte primero, compite"
+    },
+    "emptyParallel": "Ahora mismo no hay retos en paralelo.",
+    "emptyPooled": "Ahora mismo no hay retos de total de equipo."
+  },
+  "openBoard": {
+    "waiting_one": "{{count}} miembro espera rival",
+    "waiting_other": "{{count}} miembros esperan rival",
+    "waitingBody": "Acepta uno y compites contra esa persona de verdad. Solo ve tu nombre y tu foto, nada más.",
+    "waitingCta": "Ver retos",
+    "beFirst": {
+      "title": "Publica el primer reto",
+      "body": "Publica un reto y cualquier miembro de POWR podrá aceptarlo. El reloj empieza cuando alguien lo hace, así competís la misma semana.",
+      "cta": "Publicar uno"
+    },
+    "pitch": {
+      "title": "¿Aún no tienes a quién retar?",
+      "body": "Publica un reto que cualquier miembro de POWR pueda aceptar y mira los suyos. Solo se ve tu nombre y tu foto.",
+      "cta": "Activar el tablón"
+    }
+  },
+  "openCard": {
+    "takeA11y": "Aceptar el reto {{title}} de {{name}}",
+    "spotsOpen": "{{slots}} plazas libres",
+    "waiting": "espera rival",
+    "takeIt": "Aceptar"
+  },
+  "templateCard": {
+    "pitch": "Tú & {{who}} — terminad a la vez: +{{each}} extra por persona",
+    "a11y": "Retar a amigos a {{title}}",
+    "noCrew": "¿Aún sin equipo? Empieza en solitario contra la liebre — supera el ritmo y llévate los puntos.",
+    "racePacer": "Competir con la liebre",
+    "challengeFriends": "Retar a amigos"
+  },
+  "create": {
+    "title": "Retar a amigos",
+    "backToInvites": "Volver a invitaciones",
+    "addAFriend": "Añadir amigos",
+    "plate": {
+      "title": "Estás al completo",
+      "body": "Estás en {{open}} de {{cap}} retos. Termina tu parte — o deja uno — para aceptar otro.",
+      "leaveName": "Dejar {{title}}",
+      "leave": "Dejar",
+      "gotIt": "Vale"
+    },
+    "searchIntro": "Busca gente por usuario y envía una solicitud de amistad. Entrará en tu lista de invitaciones cuando la acepte.",
+    "requestSentNote": "Solicitud enviada — cuando la acepte, aparecerá en tu lista de invitaciones.",
+    "challenge": "Reto",
+    "pickChallenge": "Elige un reto",
+    "runsNow": "Dura {{duration}} — el reloj empieza ya",
+    "runsWhenAllIn": "Dura {{duration}} — el reloj empieza cuando esté todo el grupo",
+    "inviteFriends": "Invitar amigos",
+    "selected": "Selección: {{selected}}/{{max}}",
+    "noFriends": "Aún no tienes amigos — busca abajo para añadir uno o comparte un enlace para invitar a quien quieras.",
+    "notOnTogether": "{{name}} ha desactivado En equipo",
+    "off": "Inactivo",
+    "shareLinkA11y": "Invitar con un enlace",
+    "link": "Enlace",
+    "addByUsernameA11y": "Añadir a alguien por usuario",
+    "board": {
+      "title": "Publicar en el tablón abierto",
+      "body": "Cualquier miembro de POWR puede aceptarlo — quien lo haga primero compite contigo. Verá tu nombre y tu foto."
+    },
+    "summary": {
+      "friends_one": "{{count}} amigo · grupo de {{size}}",
+      "friends_other": "{{count}} amigos · grupo de {{size}}",
+      "waiting": "Esperando rival — empezaréis en cuanto lo acepte",
+      "solo": "En solitario — invita amigos cuando quieras para ganar bonus",
+      "needsFriend": "Un total de equipo necesita al menos un amigo"
+    },
+    "bonusEach": "+{{bonus}} por persona si acabáis todos",
+    "bonusEachMax": "+{{bonus}} por persona si acabáis todos (máx.)",
+    "send": {
+      "posting": "Publicando…",
+      "starting": "Empezando…",
+      "sending": "Enviando…",
+      "post": "Publicar en el tablón",
+      "solo": "Empezar en solitario",
+      "invites": "Enviar invitaciones"
+    },
+    "timing": {
+      "board": "Empieza cuando alguien lo acepte, así competís con el mismo reloj.",
+      "solo": "Empieza en cuanto toques — competirás contra la liebre.",
+      "group": "Empieza en cuanto se una alguien — todo lo que hagas desde ahora cuenta."
+    },
+    "shareMessage": "Te reto en POWR: «{{title}}» — {{goal}}. {{url}}",
+    "shareMessageDuration": "Te reto en POWR: «{{title}}» — {{goal}} en {{duration}}. {{url}}"
+  },
+  "invite": {
+    "title": "Invitar a gente",
+    "inviteAFriend": "INVITAR AMIGOS",
+    "noFriends": "Aún no tienes amigos a quienes invitar — busca a alguien nuevo abajo.",
+    "allIn": "Todo el mundo que puedes invitar ya está dentro. Añade a alguien nuevo abajo.",
+    "inviting": "Invitando…",
+    "invite": "Invitar",
+    "sent_one": "Invitación enviada.",
+    "sent_other": "{{count}} invitaciones enviadas.",
+    "willNotify": "Recibirán una notificación para unirse.",
+    "notFriendsYet": "¿NO ESTÁ EN TUS AMIGOS?",
+    "searchIntro": "Busca a alguien nuevo por usuario. Tendrá que aceptar tu solicitud de amistad antes de que puedas invitarle.",
+    "requestSent": "Solicitud enviada. Cuando la acepte, podrás invitarle a este reto."
+  },
+  "countdown": {
+    "ended": "Terminado",
+    "left": "quedan {{time}}",
+    "toAcceptSuffix": " para aceptar",
+    "daysHours": "{{d}} d {{h}} h",
+    "hoursMinutes": "{{h}} h {{m}} min",
+    "minutesSeconds": "{{m}} min {{s}} s",
+    "seconds": "{{s}} s"
+  },
+  "detail": {
+    "header": "EN EQUIPO",
+    "headerMissing": "RETO",
+    "loadError": {
+      "title": "No se ha podido cargar este reto",
+      "body": "Comprueba tu conexión y vuelve a intentarlo.",
+      "retry": "Reintentar"
+    },
+    "missing": {
+      "title": "Reto no disponible",
+      "body": "Puede que haya terminado o se haya cancelado.",
+      "back": "Volver"
+    },
+    "state": {
+      "done": "Hecho",
+      "invited": "Pendiente",
+      "declined": "Ha rechazado"
+    },
+    "today": "Hoy · {{value}}",
+    "poolSteps": "{{total}} / {{target}} pasos",
+    "outcome": {
+      "notJoined": "Este reto terminó antes de que te unieras.",
+      "cancelledPaid": "Cancelado antes del final — te quedas con lo que ya habías ganado.",
+      "cancelled": "Reto cancelado antes de terminar.",
+      "expiredPooled": "Se acabó el tiempo antes de que el grupo llegara al objetivo.",
+      "expired": "Se acabó el tiempo — nadie terminó este reto.",
+      "wonWith_one": "Tú y {{count}} persona más habéis terminado. +{{points}} ganados.",
+      "wonWith_other": "Tú y {{count}} personas más habéis terminado. +{{points}} ganados.",
+      "wonSolo": "Has terminado. +{{points}} ganados.",
+      "lostPooled": "Esta vez el grupo llegó al objetivo sin ti.",
+      "lost": "Se acabó el tiempo — {{finished}} de {{total}} han terminado. Esta vez no ha podido ser.",
+      "lostNobody": "Se acabó el tiempo — nadie terminó este reto."
+    },
+    "pace": "Unos {{amount}} al día y lo tienes.",
+    "pacePooled": "Unos {{amount}} al día entre todo el grupo y lo tenéis.",
+    "leave": {
+      "titleCreator": "¿Cancelar el reto?",
+      "title": "¿Dejar el reto?",
+      "bodyCreator": "Esto termina «{{title}}» para todo el mundo. No se puede deshacer.",
+      "bodyLast": "Saldrás de «{{title}}». Como no queda nadie más, termina para todo el mundo.",
+      "body": "Saldrás de «{{title}}». Los demás siguen.",
+      "keep": "Mantener el reto",
+      "stay": "Seguir dentro",
+      "cancelChallenge": "Cancelar el reto",
+      "leave": "Salir",
+      "leaveChallenge": "Dejar el reto",
+      "cancelFailed": "No se ha podido cancelar",
+      "leaveFailed": "No se ha podido salir"
+    },
+    "share": {
+      "plain": "Únete a mi reto de POWR «{{title}}» — {{goal}}. {{url}}",
+      "plainDuration": "Únete a mi reto de POWR «{{title}}» — {{goal}} en {{duration}}. {{url}}",
+      "invite": "Únete a mi reto de POWR «{{title}}» — {{goal}}. Toca para unirte: {{url}}",
+      "inviteDuration": "Únete a mi reto de POWR «{{title}}» — {{goal}} en {{duration}}. Toca para unirte: {{url}}",
+      "resultA11y": "Compartir el resultado del reto",
+      "inviteA11y": "Compartir la invitación al reto",
+      "linkA11y": "Compartir el enlace del reto",
+      "result": "Compartir resultado"
+    },
+    "inCount": "{{total}} dentro",
+    "ended": "Terminado",
+    "cancelled": "Cancelado",
+    "notStarted": "Sin empezar",
+    "remain": {
+      "label": "POR HACER",
+      "done": "Hecho",
+      "targetHit": "objetivo cumplido",
+      "goalIn": "tu parte está hecha",
+      "toGo": "por hacer",
+      "toGoUnit": "{{unit}} por hacer",
+      "timeLeft": "tiempo restante",
+      "startsOnceIn": "empieza cuando haya suficientes",
+      "selfDone": "Ya has terminado — tu bonus sigue creciendo a medida que terminan los demás."
+    },
+    "pool": {
+      "label": "TOTAL DEL GRUPO",
+      "hit": "Objetivo cumplido — cada participante gana +{{base}}.",
+      "hitBonus": "Objetivo cumplido — cada participante gana +{{base}} más hasta +{{max}} de bonus.",
+      "cancelled": "Cancelado antes de que el grupo llegara.",
+      "live": "Suma al total para ganar. Cada participante gana +{{base}}, y el bonus crece con cada persona que aporta — hasta +{{max}}."
+    },
+    "points": {
+      "label": "TUS PUNTOS",
+      "base": "base",
+      "bonus": "bonus",
+      "bankedCancelled": "Abonados cuando terminaste tu parte, antes de la cancelación.",
+      "final": "Definitivo — abonados al cerrarse el reto.",
+      "friendsDone_one": "{{count}} persona ha terminado — tu bonus crece con cada una.",
+      "friendsDone_other": "{{count}} personas han terminado — tu bonus crece con cada una.",
+      "grows": "Tu bonus crece cada vez que alguien termina.",
+      "upTo": "Hasta {{points}} si todo el mundo termina."
+    },
+    "contributors": "APORTACIONES",
+    "participants": "PARTICIPANTES",
+    "doneCount": "<green>{{finished}}</green><plain> de {{total}} han terminado</plain>",
+    "pacer": {
+      "name": "Liebre",
+      "a11yAhead": "Liebre al {{pct}} por ciento — vas por delante",
+      "a11yBehind": "Liebre al {{pct}} por ciento — la liebre va por delante",
+      "youAhead": "Vas por delante",
+      "pacerAhead": "Va por delante"
+    },
+    "invitePrompt": "{{name}} te ha invitado. Terminad a la vez y ganad <gold>hasta +{{max}} de bonus</gold>.",
+    "underway": "Este reto ya está en marcha — te unirías con <time></time> por delante.",
+    "accept": "Aceptar el reto",
+    "joining": "Uniéndote…",
+    "declineA11y": "Rechazar el reto",
+    "declining": "Rechazando…",
+    "decline": "Rechazar",
+    "invitePeopleA11y": "Invitar a gente a este reto",
+    "invitePeople": "Invitar a gente"
+  },
+  "activity": {
+    "title": "ACTIVIDAD",
+    "ignore": "Ignorar",
+    "ignoreA11y": "Ignorar: {{title}}",
+    "actionA11y": "{{action}}: {{title}}",
+    "remove": "Eliminar",
+    "removeA11y": "Eliminar: {{label}}",
+    "timeAgo": {
+      "now": "ahora",
+      "minutes": "{{n}} min",
+      "hours": "{{n}} h",
+      "days": "{{n}} d",
+      "weeks": "{{n}} sem",
+      "months_one": "{{count}} mes",
+      "months_other": "{{count}} meses"
+    },
+    "empty": {
+      "title": "Estás al día",
+      "body": "Aquí aparecerán las solicitudes de amistad, las invitaciones a retos y tu actividad reciente."
+    },
+    "needsYou": "PENDIENTES",
+    "friendRequest": "@{{username}} · te ha enviado una solicitud de amistad",
+    "accept": "Aceptar",
+    "challengeInvite": "{{name}} te ha invitado · {{goal}}",
+    "join": "Unirme",
+    "recent": "RECIENTE"
+  },
+  "profile": {
+    "error": {
+      "title": "Algo ha fallado",
+      "body": "No hemos podido actualizarlo ahora — inténtalo de nuevo."
+    },
+    "thisPerson": "esta persona",
+    "unknown": "Sin nombre",
+    "level": "NIV. {{level}} · {{name}}",
+    "achievementCount": "{{earned}} / {{total}} logros",
+    "achievements": "LOGROS",
+    "theirPts": "SUS PTS",
+    "vsYou": "VS TI",
+    "yourPts": "TUS PTS",
+    "activity30d": "ACTIVIDAD · ÚLTIMOS 30 DÍAS",
+    "gallery": "GALERÍA",
+    "declineRequest": "Rechazar solicitud",
+    "friendsTapToRemove": "Amigos — toca para eliminar",
+    "friends": "Amigos",
+    "joined": "Miembro desde {{date}}",
+    "monthYear": "{{month}} {{year}}",
+    "months": {
+      "jan": "ene",
+      "feb": "feb",
+      "mar": "mar",
+      "apr": "abr",
+      "may": "may",
+      "jun": "jun",
+      "jul": "jul",
+      "aug": "ago",
+      "sep": "sept",
+      "oct": "oct",
+      "nov": "nov",
+      "dec": "dic"
+    },
+    "someone": "Alguien",
+    "mutual": "Amigos en común: {{names}}",
+    "mutualMore": "Amigos en común: {{names}} +{{more}}",
+    "friendCount_one": "{{count}} amigo",
+    "friendCount_other": "{{count}} amigos",
+    "friendsSince": "Amigos desde {{date}}",
+    "challengesTogether_one": "{{count}} reto en común",
+    "challengesTogether_other": "{{count}} retos en común",
+    "dayStreak": "DÍAS DE RACHA",
+    "best": "récord: {{n}}",
+    "ptsWeek": "{{points}} PTS / 7 D",
+    "sessions30d": "SESIONES · 30 D"
+  },
+  "units": {
+    "qualifyingDays_one": "día válido",
+    "qualifyingDays_other": "días válidos",
+    "steps_one": "paso",
+    "steps_other": "pasos",
+    "checkIns_one": "check-in",
+    "checkIns_other": "check-ins",
+    "runs_one": "carrera",
+    "runs_other": "carreras",
+    "rides_one": "salida en bici",
+    "rides_other": "salidas en bici",
+    "sessions_one": "sesión",
+    "sessions_other": "sesiones",
+    "qualifyingCheckIns_one": "check-in válido",
+    "qualifyingCheckIns_other": "check-ins válidos",
+    "qualifyingRuns_one": "carrera válida",
+    "qualifyingRuns_other": "carreras válidas",
+    "qualifyingRides_one": "salida en bici válida",
+    "qualifyingRides_other": "salidas en bici válidas",
+    "qualifyingSessions_one": "sesión válida",
+    "qualifyingSessions_other": "sesiones válidas",
+    "activityTypes_one": "tipo de actividad",
+    "activityTypes_other": "tipos de actividad",
+    "activityCombos_one": "combo de actividades",
+    "activityCombos_other": "combos de actividades"
+  },
+  "milestone": {
+    "anyTime_one": "Haz {{steps}} pasos en {{count}} día.",
+    "anyTime_other": "Haz {{steps}} pasos en {{count}} días.",
+    "morning_one": "Haz {{steps}} pasos antes de las 9:00 en {{count}} día.",
+    "morning_other": "Haz {{steps}} pasos antes de las 9:00 en {{count}} días.",
+    "midday_one": "Haz {{steps}} pasos entre las 12:00 y las 14:00 en {{count}} día.",
+    "midday_other": "Haz {{steps}} pasos entre las 12:00 y las 14:00 en {{count}} días.",
+    "evening_one": "Haz {{steps}} pasos después de las 18:00 en {{count}} día.",
+    "evening_other": "Haz {{steps}} pasos después de las 18:00 en {{count}} días."
+  },
+  "share": {
+    "categoryLabel": "En equipo"
+  },
+  "category": {
+    "all": "Todo",
+    "fallback": "Actividad"
+  },
+  "duration": {
+    "weeks_one": "{{count}} semana",
+    "weeks_other": "{{count}} semanas",
+    "days_one": "{{count}} día",
+    "days_other": "{{count}} días",
+    "hours": "{{hours}} h"
+  },
+  "remaining": {
+    "notStarted": "Sin empezar",
+    "ended": "Terminado",
+    "minutes_one": "queda {{count}} min",
+    "minutes_other": "quedan {{count}} min",
+    "hours_one": "queda {{count}} h",
+    "hours_other": "quedan {{count}} h",
+    "days_one": "queda {{count}} d",
+    "days_other": "quedan {{count}} d"
+  },
+  "errors": {
+    "respond": {
+      "accept": "No se ha podido unirte a este reto. Revisa tu conexión y vuelve a intentarlo.",
+      "decline": "No se ha podido rechazar esta invitación. Revisa tu conexión y vuelve a intentarlo.",
+      "leave": "No se ha podido salir de este reto. Revisa tu conexión y vuelve a intentarlo.",
+      "dismiss": "No se ha podido quitar este reto. Revisa tu conexión y vuelve a intentarlo.",
+      "cancel": "No se ha podido cancelar este reto. Revisa tu conexión y vuelve a intentarlo."
+    },
+    "create": "No se ha podido crear el reto"
+  },
+  "fallbackTitle": "Reto"
+}

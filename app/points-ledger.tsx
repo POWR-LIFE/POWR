@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActivityIcon } from '@/components/ActivityIcon';
@@ -23,6 +24,7 @@ import {
   fetchTransactionHistory,
   type PointTransaction,
 } from '@/lib/api/points';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import {
   buildLedgerFilters,
   findLedgerFilter,
@@ -61,13 +63,13 @@ function formatSectionTitle(dateKey: string): string {
   yesterday.setDate(today.getDate() - 1);
   const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
-  if (target.getTime() === today.getTime()) return 'Today';
-  if (target.getTime() === yesterday.getTime()) return 'Yesterday';
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (target.getTime() === today.getTime()) return i18n.t('points:ledger.today');
+  if (target.getTime() === yesterday.getTime()) return i18n.t('points:ledger.yesterday');
+  return d.toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString(getFormatLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatAmount(amount: number): string {
@@ -146,12 +148,13 @@ function SummaryCard({
   totalEarned: number;
   scoped: { count: number; net: number; label: string } | null;
 }) {
+  const { t } = useTranslation();
   const left = scoped
-    ? { value: scoped.count.toLocaleString(), label: `${scoped.label} Entries` }
-    : { value: balance.toLocaleString(), label: 'Balance' };
+    ? { value: scoped.count.toLocaleString(), label: t('points:ledger.summary.scopedEntries', { label: scoped.label }) }
+    : { value: balance.toLocaleString(), label: t('points:ledger.summary.balance') };
   const right = scoped
     ? { value: formatSigned(scoped.net), label: 'POWR' }
-    : { value: totalEarned.toLocaleString(), label: 'Total Earned' };
+    : { value: totalEarned.toLocaleString(), label: t('points:ledger.summary.totalEarned') };
 
   return (
     <View style={styles.summaryCard}>
@@ -200,44 +203,65 @@ function TxIcon({ tx }: { tx: PointTransaction }) {
   );
 }
 
+/**
+ * The label a row falls back to when it carries no description of its own —
+ * LEDGER_TYPE_META's fallbackLabel, in the member's language (the English
+ * values match it).
+ */
+const TYPE_FALLBACK_KEY: Record<PointTransaction['type'], string> = {
+  earn: 'points:ledger.typeFallback.earn',
+  bonus: 'points:ledger.typeFallback.bonus',
+  streak: 'points:ledger.typeFallback.streak',
+  adjustment: 'points:ledger.typeFallback.adjustment',
+  redeem: 'points:ledger.typeFallback.redeem',
+  penalty: 'points:ledger.typeFallback.penalty',
+};
+
+function typeFallback(tx: PointTransaction): string {
+  return i18n.t(TYPE_FALLBACK_KEY[tx.type] ?? 'points:ledger.typeFallback.earn');
+}
+
+// tx.description is written by the server (point_transactions.description) and
+// renders as stored.
 function txLabel(tx: PointTransaction): string {
   if (tx.activity_type) {
     const config = ACTIVITIES[tx.activity_type as ActivityType];
-    return config?.label ?? tx.description ?? (TYPE_META[tx.type]?.fallbackLabel ?? 'Activity');
+    return config?.label ?? tx.description ?? typeFallback(tx);
   }
-  return tx.description ?? (TYPE_META[tx.type]?.fallbackLabel ?? 'Activity');
+  return tx.description ?? typeFallback(tx);
 }
 
 function TxBadges({ tx }: { tx: PointTransaction }) {
+  const { t } = useTranslation();
   const badges: { label: string; color: string; bg: string }[] = [];
 
   if (isTogether(tx)) {
-    badges.push({ label: 'TOGETHER', color: GOLD, bg: GOLD + '22' });
+    badges.push({ label: t('points:ledger.badge.together'), color: GOLD, bg: GOLD + '22' });
   }
 
   if (tx.type === 'streak') {
-    badges.push({ label: 'STREAK', color: ORANGE, bg: ORANGE + '22' });
+    badges.push({ label: t('points:ledger.badge.streak'), color: ORANGE, bg: ORANGE + '22' });
   } else if (tx.type === 'bonus') {
     // Vault releases are matured deposits landing on the spendable balance —
     // badge them distinctly from ordinary bonuses.
     badges.push(tx.source === 'vault_release'
-      ? { label: 'VAULT', color: GOLD, bg: GOLD + '22' }
-      : { label: 'BONUS', color: GOLD, bg: GOLD + '22' });
+      ? { label: t('points:ledger.badge.vault'), color: GOLD, bg: GOLD + '22' }
+      : { label: t('points:ledger.badge.bonus'), color: GOLD, bg: GOLD + '22' });
   } else if (tx.type === 'earn') {
     const isUpgrade = tx.description?.toLowerCase().includes('upgrade');
     if (isUpgrade) {
       // upgrade-gym-tier writes "gym session upgrade (Xmin)" where X is the
       // admin-tunable threshold; fall back to the historical 40.
       const mins = tx.description?.match(/\((\d+)\s*min\)/i)?.[1] ?? '40';
-      badges.push({ label: `+${mins} MIN`, color: '#6EC6FF', bg: '#6EC6FF22' });
+      badges.push({ label: t('points:ledger.badge.minutes', { minutes: mins }), color: '#6EC6FF', bg: '#6EC6FF22' });
     } else if (tx.multiplier > 1) {
       const label = `×${tx.multiplier % 1 === 0 ? tx.multiplier.toFixed(0) : tx.multiplier.toFixed(1)}`;
       badges.push({ label, color: ORANGE, bg: ORANGE + '22' });
     }
   } else if (tx.type === 'adjustment') {
-    badges.push({ label: 'ADJ', color: DIM, bg: 'rgba(255,255,255,0.08)' });
+    badges.push({ label: t('points:ledger.badge.adjustment'), color: DIM, bg: 'rgba(255,255,255,0.08)' });
   } else if (tx.type === 'penalty') {
-    badges.push({ label: 'PENALTY', color: RED, bg: RED + '22' });
+    badges.push({ label: t('points:ledger.badge.penalty'), color: RED, bg: RED + '22' });
   }
 
   if (badges.length === 0) return null;
@@ -323,6 +347,7 @@ function LevelUpRow({
   isLast: boolean;
   onShare: () => void;
 }) {
+  const { t } = useTranslation();
   const name = LEVELS.find((l) => l.level === event.level)?.name ?? '';
   return (
     <Pressable
@@ -341,11 +366,11 @@ function LevelUpRow({
       <View style={styles.txBody}>
         <View style={styles.txLabelRow}>
           <Text style={styles.txLabel} numberOfLines={1}>
-            {`Level ${event.level} — ${name}`}
+            {t('points:ledger.levelUpRow', { level: event.level, name })}
           </Text>
           <View style={styles.badgeRow}>
             <View style={[styles.badge, { backgroundColor: GOLD + '22' }]}>
-              <Text style={[styles.badgeText, { color: GOLD }]}>LEVEL UP</Text>
+              <Text style={[styles.badgeText, { color: GOLD }]}>{t('points:ledger.badge.levelUp')}</Text>
             </View>
           </View>
         </View>
@@ -363,6 +388,7 @@ function LevelUpRow({
 export default function PointsLedgerScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
 
   const [transactions, setTransactions] = useState<PointTransaction[]>([]);
   const [balance, setBalance] = useState(0);
@@ -385,7 +411,7 @@ export default function PointsLedgerScreen() {
         setTotalEarned(summary.totalEarned);
         setVaultPending(summary.vaultPending);
       } catch {
-        setError('Could not load history.');
+        setError(i18n.t('points:ledger.loadError'));
       } finally {
         setLoading(false);
       }
@@ -440,7 +466,7 @@ export default function PointsLedgerScreen() {
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>Points History</Text>
+        <Text style={styles.headerTitle}>{t('points:ledger.title')}</Text>
         <View style={styles.headerAction}>
           {!loading && !error && canFilter && (
             <LedgerFilterChip active={activeFilter} onPress={() => setSheetOpen(true)} />
@@ -507,7 +533,7 @@ export default function PointsLedgerScreen() {
             }
             ListEmptyComponent={
               <View style={styles.centered}>
-                <Text style={styles.statusText}>No transactions yet.</Text>
+                <Text style={styles.statusText}>{t('points:ledger.empty')}</Text>
               </View>
             }
             contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 40 }]}

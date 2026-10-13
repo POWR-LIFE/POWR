@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { fontFamily } from '@/constants/tokens';
 
@@ -73,6 +74,7 @@ export function shouldShowOpenBoardPrompt({
  */
 export function OpenBoardPrompt({ optedIn, teaserCount, boardCount, hasCrew, onEnable, onPost }: OpenBoardPromptProps) {
   const [busy, setBusy] = useState(false);
+  const { t } = useTranslation();
 
   if (!shouldShowOpenBoardPrompt({ optedIn, teaserCount, boardCount, hasCrew })) return null;
 
@@ -92,18 +94,18 @@ export function OpenBoardPrompt({ optedIn, teaserCount, boardCount, hasCrew, onE
   };
 
   const title = waiting
-    ? `${teaserCount} ${teaserCount === 1 ? 'member is' : 'members are'} waiting for a challenger`
+    ? t('social:openBoard.waiting', { count: teaserCount })
     : beFirst
-      ? 'Be first on the board'
-      : 'No one to challenge yet?';   // only reached when they genuinely have nobody
+      ? t('social:openBoard.beFirst.title')
+      : t('social:openBoard.pitch.title');   // only reached when they genuinely have nobody
 
   const body = waiting
-    ? 'Take one on and you race them for real. They see your first name and photo — nothing else.'
+    ? t('social:openBoard.waitingBody')
     : beFirst
-      ? 'Post a challenge and any POWR member can take it. The clock starts when someone does, so you both race the same week.'
-      : 'Post a challenge any POWR member can take, and see theirs. Your first name and photo, nothing else.';
+      ? t('social:openBoard.beFirst.body')
+      : t('social:openBoard.pitch.body');
 
-  const cta = waiting ? 'Show me' : beFirst ? 'Post one' : 'Turn on the board';
+  const cta = waiting ? t('social:openBoard.waitingCta') : beFirst ? t('social:openBoard.beFirst.cta') : t('social:openBoard.pitch.cta');
 
   return (
     <Pressable

@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { ACCENT, ACCENT_SOFT, MUTED } from './potTokens';
 
@@ -71,6 +72,7 @@ export function VaultReadout({
   loading = false,
   sealed = null,
 }: VaultReadoutProps) {
+  const { t } = useTranslation();
   // Type scale, as fractions of the glass.
   const u = (f: number) => Math.round(diameter * f);
   const boxWidth = diameter * 0.8;
@@ -82,13 +84,13 @@ export function VaultReadout({
        number as a distance. */
     return (
       <View style={[styles.stack, { width: boxWidth }]}>
-        <Text style={[styles.label, { fontSize: u(0.072) }]}>SEALED</Text>
+        <Text style={[styles.label, { fontSize: u(0.072) }]}>{t('rewards:vault.readout.sealed')}</Text>
         <Text style={[styles.sealedFigure, { fontSize: u(0.165) }]}>
-          LEVEL {sealed.minLevel}
+          {t('rewards:vault.readout.level', { level: sealed.minLevel })}
         </Text>
         {sealed.toGo > 0 && (
           <Text style={[styles.sealedUnit, { fontSize: u(0.058) }]} numberOfLines={1}>
-            {sealed.toGo.toLocaleString()} POWR TO GO
+            {t('rewards:vault.readout.toGo', { amount: sealed.toGo.toLocaleString() })}
           </Text>
         )}
       </View>
@@ -102,7 +104,7 @@ export function VaultReadout({
   if (!amount) {
     return (
       <View style={[styles.stack, { width: boxWidth }]}>
-        <Text style={[styles.empty, { fontSize: u(0.155) }]}>EMPTY</Text>
+        <Text style={[styles.empty, { fontSize: u(0.155) }]}>{t('rewards:vault.readout.empty')}</Text>
       </View>
     );
   }
@@ -112,7 +114,7 @@ export function VaultReadout({
   return (
     <View style={[styles.stack, { width: boxWidth }]}>
       <Text style={[styles.label, { fontSize: u(0.072) }]}>
-        {ready ? 'MATURED' : 'IN THE VAULT'}
+        {ready ? t('rewards:vault.readout.matured') : t('rewards:vault.readout.inTheVault')}
       </Text>
       <Text style={[styles.figure, { fontSize: figureSize(text, boxWidth, u(0.3)) }]}>
         {text}

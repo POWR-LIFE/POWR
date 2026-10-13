@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
 import { LevelIcon } from '@/components/LevelIcon';
@@ -102,6 +103,7 @@ export function VaultPotDoor({
   countdownTo = null,
   sealedGap = null,
 }: VaultPotDoorProps) {
+  const { t } = useTranslation();
   const portholeSize = size * PORTHOLE_FRAC;
   const glowSize = size * GLOW_FRAC;
   const cx = size * CENTRE.cx;
@@ -255,7 +257,7 @@ export function VaultPotDoor({
           <Text style={[styles.chamberValue, { fontSize: size * 0.13 }]}>
             +{releasedAmount.toLocaleString()}
           </Text>
-          <Text style={[styles.chamberUnit, { fontSize: size * 0.035 }]}>POINTS RELEASED</Text>
+          <Text style={[styles.chamberUnit, { fontSize: size * 0.035 }]}>{t('rewards:vault.hero.pointsReleased')}</Text>
         </Animated.View>
       )}
 

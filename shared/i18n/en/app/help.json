@@ -1,1 +1,118 @@
-{}
+{
+  "title": "Help Centre",
+  "tabs": {
+    "faq": "FAQ",
+    "contact": "Contact Us",
+    "tickets": "My Tickets"
+  },
+  "categories": {
+    "pointsRewards": "Points & Rewards",
+    "account": "Account & Profile",
+    "healthSync": "Health & Sync",
+    "gymCheckin": "Gym Check-in",
+    "challenges": "Challenges",
+    "technical": "Technical Issue",
+    "feedback": "Feedback / Other"
+  },
+  "faq": {
+    "points": {
+      "label": "Points & Rewards",
+      "earn": {
+        "q": "How do I earn POWR Points?",
+        "a": "Points are awarded for verified physical activity — gym check-ins at partner venues, walking steps tracked by your phone or wearable, logged workouts, and completing weekly challenges."
+      },
+      "expire": {
+        "q": "Do points expire?",
+        "a": "Points may expire if your account is inactive for 12 consecutive months. As long as you stay active, your points are safe."
+      },
+      "redeem": {
+        "q": "How do I redeem a reward?",
+        "a": "Go to the Discover tab, find a reward you want, and tap Redeem. Your points will be deducted and a unique code will be shown. Present this to the partner business."
+      },
+      "transfer": {
+        "q": "Can I transfer points to someone else?",
+        "a": "Points are tied to your account and cannot be transferred or sold. Each user earns and redeems their own points."
+      }
+    },
+    "gym": {
+      "label": "Gym & Check-ins",
+      "howItWorks": {
+        "q": "How do gym check-ins work?",
+        "a": "When you arrive at a partner gym, POWR uses your location to detect the visit and automatically awards points. Make sure Location permission is enabled in Settings → Connections."
+      },
+      "noPoints": {
+        "q": "I visited the gym but didn't get points — why?",
+        "a": "Check that Location Services is set to \"While Using\" for POWR (Settings → Connections). Also make sure the gym is a listed POWR partner. If the issue persists, log a manual session or contact us."
+      },
+      "perDay": {
+        "q": "How many gym check-in points can I earn per day?",
+        "a": "You can earn points for one gym check-in per day. Additional visits on the same day won't award duplicate points."
+      }
+    },
+    "health": {
+      "label": "Health & Sync",
+      "sources": {
+        "q": "Which health sources are supported?",
+        "a": "On iOS we read from Apple Health. On Android we use Google Health Connect. You can also connect Fitbit or WHOOP for richer data such as heart rate and sleep."
+      },
+      "stepsNotSyncing": {
+        "q": "My steps are not syncing — what should I do?",
+        "a": "Check that your health source is connected under Settings → On your phone or Wearables. Also ensure POWR has the correct permissions in your device's Privacy or Health settings."
+      },
+      "noWearable": {
+        "q": "Can I use POWR without a wearable?",
+        "a": "Yes. Your phone tracks steps and workouts natively via Apple Health or Google Health Connect — no wearable required."
+      },
+      "battery": {
+        "q": "Will POWR drain my battery?",
+        "a": "POWR is designed to be efficient. Health data is synced in batches rather than continuously. Location is only used briefly during a gym check-in."
+      }
+    },
+    "account": {
+      "label": "Account & Privacy",
+      "changeEmail": {
+        "q": "How do I change my email or password?",
+        "a": "Go to Settings → Account. Tap Email to update your address, or Change Password to update it directly in the app. If you've forgotten your current password, tap \"Send reset email\" on the Change Password screen."
+      },
+      "healthShared": {
+        "q": "Is my health data shared with partners?",
+        "a": "No. Your health data is never shared with partner businesses. We only share the minimum information required to fulfil a reward you choose to redeem (e.g. a redemption code)."
+      },
+      "deleteAccount": {
+        "q": "How do I delete my account?",
+        "a": "Go to Settings, scroll to the bottom, and tap Delete account. This permanently removes your profile and all associated data within 30 days."
+      },
+      "leaderboard": {
+        "q": "How do I opt out of the leaderboard?",
+        "a": "Go to Settings → Privacy and toggle off \"Show on leaderboard\". Your activity will remain private and you'll be removed from all rankings."
+      }
+    },
+    "stillStuck": "Still stuck? Use the Contact Us tab and we'll get back to you."
+  },
+  "contact": {
+    "whatHelp": "WHAT CAN WE HELP WITH?",
+    "subject": "SUBJECT",
+    "subjectPlaceholder": "Brief summary of your issue",
+    "message": "MESSAGE",
+    "messagePlaceholder": "Describe what happened and any steps you've already tried…",
+    "send": "Send Message",
+    "responseTime": "We typically respond within one business day.",
+    "errorTitle": "Error",
+    "errorBody": "Could not send your message. Please try again.",
+    "sentTitle": "Message sent",
+    "sentBody": "We'll get back to you within one business day."
+  },
+  "tickets": {
+    "title": "YOUR SUPPORT TICKETS",
+    "emptyTitle": "No tickets yet",
+    "emptyHint": "Messages you send will appear here.",
+    "status": {
+      "open": "Open",
+      "inProgress": "In Progress",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "supportName": "POWR Support",
+    "awaiting": "Awaiting response…"
+  }
+}

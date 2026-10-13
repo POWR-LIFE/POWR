@@ -1,1 +1,231 @@
-{}
+{
+  "shared": {
+    "backToSettings": "RETOUR AUX PARAMÈTRES",
+    "currentPasswordRequired": "Saisis ton mot de passe actuel.",
+    "currentPasswordIncorrect": "Le mot de passe actuel est incorrect.",
+    "currentPassword": "MOT DE PASSE ACTUEL"
+  },
+  "editProfile": {
+    "title": "Modifier le profil",
+    "save": "Enregistrer",
+    "tapToChangePhoto": "Touche pour changer de photo",
+    "displayName": "Nom affiché",
+    "namePlaceholder": "Ton nom",
+    "nameHint": "{{length}}/40 · Affiché sur ton profil et dans les classements",
+    "username": "Nom d’utilisateur",
+    "usernamePlaceholder": "tonpseudo",
+    "usernameHint": "Lettres, chiffres et tirets bas uniquement · {{length}}/30",
+    "email": "E-mail",
+    "bio": "Bio",
+    "bioPlaceholder": "Parle un peu de toi…",
+    "achievements": "PALMARÈS ({{current}}/{{max}})",
+    "add": "AJOUTER",
+    "achievementsEmpty": "Ajoute jusqu’à 4 temps forts de ta carrière — records perso, podiums, titres…",
+    "coverPhoto": "Photo de couverture",
+    "coverHint": "Touche pour ajouter une photo de couverture",
+    "gallery": "Galerie ({{current}}/{{max}})",
+    "editor": {
+      "title": "TITRE",
+      "titlePlaceholder": "Pro Solo Femmes",
+      "value": "VALEUR",
+      "context": "CONTEXTE (FACULTATIF)",
+      "cancel": "ANNULER",
+      "save": "ENREGISTRER"
+    },
+    "photo": {
+      "permissionTitle": "Autorisation requise",
+      "cameraBody": "Autorise l’accès à l’appareil photo dans les réglages pour prendre une photo.",
+      "libraryBody": "Autorise l’accès à la photothèque dans les réglages pour choisir une photo.",
+      "libraryBodyShort": "Autorise l’accès à la photothèque dans les réglages.",
+      "pickFailedTitle": "Impossible de sélectionner la photo",
+      "pickFailedBody": "Réessaie.",
+      "sourceTitle": "Photo de profil",
+      "sourceBody": "Choisis une source",
+      "take": "Prendre une photo",
+      "library": "Choisir dans la photothèque",
+      "remove": "Supprimer la photo"
+    },
+    "gallerySheet": {
+      "fullTitle": "Galerie pleine",
+      "fullBody": "{{max}} photos maximum.",
+      "removeTitle": "Supprimer la photo",
+      "removeBody": "Supprimer cette photo de ta galerie ?"
+    },
+    "achievement": {
+      "missingTitle": "Champs manquants",
+      "missingBody": "Le titre et la valeur sont obligatoires.",
+      "addFailed": "Impossible d’ajouter ce résultat",
+      "updateFailed": "Impossible de modifier ce résultat",
+      "tryAgain": "Réessaie",
+      "removeTitle": "Supprimer ce résultat ?",
+      "removeBody": "Supprimer « {{title}} » ?",
+      "deleteFailed": "Échec de la suppression"
+    },
+    "delete": "Supprimer",
+    "nameRequiredTitle": "Nom requis",
+    "nameRequiredBody": "Saisis un nom affiché.",
+    "uploadFailed": "Échec de l’envoi",
+    "coverUploadFailed": "Échec de l’envoi de la couverture",
+    "saveFailed": "Échec de l’enregistrement",
+    "somethingWentWrong": "Un problème est survenu"
+  },
+  "changeEmail": {
+    "error": {
+      "required": "Saisis une nouvelle adresse e-mail.",
+      "invalid": "Cette adresse e-mail ne semble pas valide.",
+      "mismatch": "Les adresses ne correspondent pas.",
+      "same": "C’est déjà ton adresse e-mail."
+    },
+    "oauth": {
+      "title": "Compte {{provider}}",
+      "body": "Ton compte POWR est lié à {{provider}}. Pour changer d’e-mail, modifie-le d’abord dans ton compte {{provider}}, puis reconnecte-toi à POWR."
+    },
+    "pending": {
+      "title": "Vérifie tes deux boîtes mail",
+      "sentTo": "Nous avons envoyé un lien de confirmation à :",
+      "old": "ANCIEN",
+      "new": "NOUVEAU",
+      "hint": "Clique sur les deux liens pour finaliser le changement. D’ici là, continue à te connecter avec ton ancienne adresse. Si tu ignores ces e-mails, rien ne change.",
+      "resending": "Renvoi…",
+      "noEmails": "Tu n’as rien reçu ? ",
+      "resend": "Renvoyer"
+    },
+    "headline": "Changer\n<gold>d’e-mail.</gold>",
+    "intro": "Pour ta sécurité, on enverra un lien de confirmation à ton adresse actuelle et à la nouvelle. Il faut cliquer sur les deux pour finaliser le changement.",
+    "currentEmail": "E-MAIL ACTUEL",
+    "newEmail": "NOUVEL E-MAIL",
+    "emailPlaceholder": "toi@exemple.com",
+    "confirmEmail": "CONFIRMER LE NOUVEL E-MAIL",
+    "confirmPlaceholder": "Ressaisis le nouvel e-mail",
+    "submit": "ENVOYER LES LIENS"
+  },
+  "changePassword": {
+    "error": {
+      "newRequired": "Saisis un nouveau mot de passe.",
+      "tooShort": "Le nouveau mot de passe doit contenir au moins 6 caractères.",
+      "mismatch": "Les mots de passe ne correspondent pas.",
+      "same": "Le nouveau mot de passe doit être différent de l’actuel."
+    },
+    "success": {
+      "title": "Mot de passe modifié",
+      "body": "Ton mot de passe a bien été modifié."
+    },
+    "resetSent": {
+      "title": "Vérifie ta boîte mail",
+      "body": "Nous avons envoyé un lien de réinitialisation à\n<email>{{email}}</email>",
+      "hint": "Clique sur le lien dans l’e-mail pour choisir un nouveau mot de passe, puis reconnecte-toi."
+    },
+    "google": {
+      "title": "Compte Google",
+      "body": "Ton compte utilise la connexion Google. Pour changer ton mot de passe, passe par les paramètres de ton compte Google."
+    },
+    "headline": "Changer de\n<gold>mot de passe.</gold>",
+    "newPassword": "NOUVEAU MOT DE PASSE",
+    "newPlaceholder": "6 caractères minimum",
+    "confirmPassword": "CONFIRMER LE MOT DE PASSE",
+    "confirmPlaceholder": "Ressaisis le nouveau mot de passe",
+    "submit": "MODIFIER LE MOT DE PASSE",
+    "sending": "Envoi…",
+    "forgot": "Mot de passe oublié ? ",
+    "sendReset": "Réinitialiser par e-mail"
+  },
+  "emailChangeConfirmed": {
+    "loading": "Confirmation…",
+    "partial": {
+      "title": "Encore une étape",
+      "body": "Merci — c’est confirmé.",
+      "hintWithEmail": "On a aussi envoyé un lien à <email>{{email}}</email>. Clique aussi sur celui-là pour finaliser le transfert de ton compte POWR.",
+      "hintNoEmail": "On a aussi envoyé un lien à ton autre boîte mail. Clique aussi sur celui-là pour finaliser le transfert de ton compte POWR.",
+      "backToApp": "RETOUR À L’APP"
+    },
+    "done": {
+      "title": "E-mail modifié",
+      "body": "Ton compte POWR est maintenant connecté avec\n<email>{{email}}</email>",
+      "hint": "Utilise cette adresse la prochaine fois que tu te connectes.",
+      "continue": "CONTINUER",
+      "openSettings": "Ouvrir les paramètres",
+      "notYou": "Si ce n’était pas toi, contacte immédiatement support@powr.life."
+    }
+  },
+  "profile": {
+    "you": "Toi",
+    "shareMessage": "Rejoins-moi sur POWR – l’app qui te récompense pour chaque séance ! 💪\n\nUtilise mon code d’invitation {{code}} à l’inscription et on gagne tous les deux 20 points POWR offerts :\n{{url}}",
+    "friendsLabel": "Voir et ajouter des amis",
+    "qrLabel": "Afficher mon code QR",
+    "levelPill": "NIV. {{level}} · {{name}}",
+    "memberSince": "Membre depuis {{date}}",
+    "totalXp": "XP TOTAL",
+    "xpNext": "{{current}} / {{total}} XP · prochain : {{name}}",
+    "xpMax": "{{current}} / {{total}} XP · NIVEAU MAX",
+    "statDays": "{{days}} j",
+    "stats": {
+      "streak": "Série",
+      "bestStreak": "Meilleure série",
+      "sessions": "Séances"
+    },
+    "streakUnit_one": "jour",
+    "streakUnit_other": "jours",
+    "streakPill": {
+      "justStarting": "ÇA COMMENCE",
+      "showingUp": "AU RENDEZ-VOUS",
+      "building": "EN PROGRESSION",
+      "onARoll": "BONNE LANCÉE",
+      "lockedIn": "À FOND",
+      "relentless": "INARRÊTABLE",
+      "legendary": "LÉGENDAIRE"
+    },
+    "days": {
+      "mon": "L",
+      "tue": "M",
+      "wed": "M",
+      "thu": "J",
+      "fri": "V",
+      "sat": "S",
+      "sun": "D"
+    },
+    "achievements": "Succès",
+    "seeAll": "{{earned}} / {{total}} · Tout voir",
+    "invite": {
+      "title": "Invite tes potes",
+      "body": "Partage ton POWR ID — vous gagnez tous les deux 20 POWR",
+      "share": "PARTAGER",
+      "copied": "Code copié dans le presse-papiers"
+    },
+    "gallery": "Galerie"
+  },
+  "inviteCode": {
+    "error": {
+      "invalidCode": "On ne reconnaît pas ce code. Vérifie les 8 caractères dans le message reçu — uniquement des lettres et des chiffres, sans I ni O.",
+      "selfReferral": "C’est ton propre POWR ID — partage-le plutôt avec quelqu’un d’autre.",
+      "alreadyReferred": "Un code d’invitation est déjà appliqué à ce compte.",
+      "windowClosed": "Les codes d’invitation ne peuvent être ajoutés que pendant tes deux premières semaines, et ce délai est passé.",
+      "notAuthenticated": "Reconnecte-toi pour appliquer ton code.",
+      "network": "Impossible de joindre POWR. Vérifie ta connexion et réessaie.",
+      "nothingToPaste": "Rien qui ressemble à un code dans ton presse-papiers.",
+      "wrongLength": "Un code d’invitation fait 8 caractères."
+    },
+    "yourFriend": "la personne qui t’a envoyé le code",
+    "applied": {
+      "title": "Code appliqué",
+      "body": "Toi et {{name}}, vous gagnez tous les deux 20 POWR dès que tu enregistres ta première séance vérifiée. À toi de bouger."
+    },
+    "referred": {
+      "title": "Invitation enregistrée",
+      "body": "{{name}} t’a fait découvrir POWR. Vous gagnez tous les deux 20 POWR dès que tu enregistres ta première séance vérifiée."
+    },
+    "closed": {
+      "title": "Le délai est passé",
+      "body": "Les codes d’invitation ne peuvent être ajoutés que pendant tes deux premières semaines. Ton propre POWR ID marche toujours pour inviter tes potes — tu le trouveras dans Paramètres › Compte."
+    },
+    "headline": "Code\n<gold>d’invitation.</gold>",
+    "intro": "Tu as rejoint POWR grâce à une invitation sans saisir le code ? Ajoute-le ici et vous gagnerez tous les deux 20 POWR après ta première séance vérifiée.",
+    "field": "SON POWR ID",
+    "pasteLabel": "Coller le code depuis le presse-papiers",
+    "paste": "COLLER",
+    "daysLeft_one": "Plus que {{count}} jour pour en ajouter un — ensuite, aucun code ne pourra être appliqué.",
+    "daysLeft_other": "Plus que {{count}} jours pour en ajouter un — ensuite, aucun code ne pourra être appliqué.",
+    "lastDay": "Dernier jour pour en ajouter un — ensuite, aucun code ne pourra être appliqué.",
+    "submit": "APPLIQUER LE CODE",
+    "footnote": "Un POWR ID fait 8 caractères — la personne qui t’invite le trouve dans Paramètres › Compte, ou dans toute invitation qu’elle t’envoie."
+  }
+}

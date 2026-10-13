@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -27,6 +28,7 @@ function friendLink(referralCode: string): string {
 export default function MyQrScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -51,7 +53,7 @@ export default function MyQrScreen() {
     ? {
         id: profile.id,
         username: profile.username ?? '',
-        displayName: profile.display_name ?? profile.username ?? 'You',
+        displayName: profile.display_name ?? profile.username ?? t('social:shared.you'),
         avatarUrl: profile.avatar_url,
         status: 'accepted',
       }
@@ -62,7 +64,7 @@ export default function MyQrScreen() {
     Haptics.selectionAsync();
     try {
       await Share.share({
-        message: `Add me on POWR 💪\n${link}`,
+        message: t('social:myQr.shareMessage', { link }),
         url: link,
       });
     } catch {
@@ -82,8 +84,8 @@ export default function MyQrScreen() {
     <View style={[styles.screen, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 }]}>
       <View style={styles.header}>
         <View style={styles.headerBtn} />
-        <Text style={styles.headerTitle}>MY CODE</Text>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Close">
+        <Text style={styles.headerTitle}>{t('social:myQr.title')}</Text>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('social:shared.close')}>
           <Ionicons name="close" size={22} color={SECONDARY} />
         </Pressable>
       </View>
@@ -92,7 +94,7 @@ export default function MyQrScreen() {
         {loading ? (
           <ActivityIndicator color={GOLD} />
         ) : !code || !me ? (
-          <Text style={styles.errorLine}>Couldn’t load your code. Try again in a moment.</Text>
+          <Text style={styles.errorLine}>{t('social:myQr.loadError')}</Text>
         ) : (
           <>
             <View style={styles.identity}>
@@ -105,24 +107,22 @@ export default function MyQrScreen() {
               <QRCode value={link!} size={232} color="#0a0a0a" backgroundColor="#FFFFFF" />
             </View>
 
-            <Text style={styles.caption}>
-              Have a friend scan this to connect on POWR — then you can take on challenges together.
-            </Text>
+            <Text style={styles.caption}>{t('social:myQr.caption')}</Text>
 
             <View style={styles.actions}>
-              <Pressable style={styles.shareBtn} onPress={handleShare} accessibilityRole="button" accessibilityLabel="Share your code">
+              <Pressable style={styles.shareBtn} onPress={handleShare} accessibilityRole="button" accessibilityLabel={t('social:myQr.shareA11y')}>
                 <Ionicons name="share-outline" size={16} color="#0a0a0a" />
-                <Text style={styles.shareBtnText}>Share link</Text>
+                <Text style={styles.shareBtnText}>{t('social:shared.shareLink')}</Text>
               </Pressable>
-              <Pressable style={styles.copyBtn} onPress={handleCopy} accessibilityRole="button" accessibilityLabel="Copy link">
+              <Pressable style={styles.copyBtn} onPress={handleCopy} accessibilityRole="button" accessibilityLabel={t('social:myQr.copyA11y')}>
                 <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={16} color={copied ? GOLD : SECONDARY} />
-                <Text style={[styles.copyBtnText, copied && { color: GOLD }]}>{copied ? 'Copied' : 'Copy'}</Text>
+                <Text style={[styles.copyBtnText, copied && { color: GOLD }]}>{copied ? t('social:myQr.copied') : t('social:myQr.copy')}</Text>
               </Pressable>
             </View>
 
-            <Pressable style={styles.scanLink} onPress={() => router.push('/scan-friend')} accessibilityRole="button" accessibilityLabel="Scan a friend's code">
+            <Pressable style={styles.scanLink} onPress={() => router.push('/scan-friend')} accessibilityRole="button" accessibilityLabel={t('social:shared.scanFriendCode')}>
               <Ionicons name="scan-outline" size={16} color={SECONDARY} />
-              <Text style={styles.scanLinkText}>Scan a friend’s code instead</Text>
+              <Text style={styles.scanLinkText}>{t('social:myQr.scanInstead')}</Text>
             </Pressable>
           </>
         )}

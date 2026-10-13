@@ -6,6 +6,7 @@ import * as Clipboard from 'expo-clipboard';
 import { clipboardMayHoldCode, readInviteCodeFromClipboard } from '@/lib/social/inviteCodePaste';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -47,18 +48,20 @@ type EntryState = {
     referrer_name?: string;
 };
 
+// process_referral's error codes → catalog keys, resolved when shown.
 const MESSAGES: Record<string, string> = {
-    invalid_code:      "We don't recognise that code. Check the 8 characters against your friend's message — letters and numbers only, no I or O.",
-    self_referral:     "That's your own POWR ID — share it with a friend instead.",
-    already_referred:  'An invite code is already applied to this account.',
-    window_closed:     'Invite codes can only be added in your first couple of weeks, and that window has closed.',
-    not_authenticated: 'Please sign in again to apply your code.',
-    network:           "Couldn't reach POWR. Check your connection and try again.",
+    invalid_code:      'account:inviteCode.error.invalidCode',
+    self_referral:     'account:inviteCode.error.selfReferral',
+    already_referred:  'account:inviteCode.error.alreadyReferred',
+    window_closed:     'account:inviteCode.error.windowClosed',
+    not_authenticated: 'account:inviteCode.error.notAuthenticated',
+    network:           'account:inviteCode.error.network',
 };
 
 export default function InviteCodeScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
 
     const [state, setState]     = useState<EntryState | null>(null);
     const [code, setCode]       = useState('');
@@ -90,7 +93,7 @@ export default function InviteCodeScreen() {
     }, []);
     const pasteCode = async () => {
         const c = await readInviteCodeFromClipboard(Clipboard);
-        if (!c) { setError("Nothing that looks like a code on your clipboard."); return; }
+        if (!c) { setError(t('account:inviteCode.error.nothingToPaste')); return; }
         setCode(c);
         setError(null);
     };
@@ -101,7 +104,7 @@ export default function InviteCodeScreen() {
 
         const normalized = normalizeMemberId(code);
         if (!normalized || normalized.length !== 8) {
-            setError('An invite code is 8 characters long.');
+            setError(t('account:inviteCode.error.wrongLength'));
             return;
         }
 
@@ -118,10 +121,10 @@ export default function InviteCodeScreen() {
                 // process_referral returns the referrer's id, not their name;
                 // read the state back so the receipt can say who it was.
                 const { data: after } = await supabase.rpc('referral_entry_state');
-                setApplied((after as EntryState)?.referrer_name ?? 'your friend');
+                setApplied((after as EntryState)?.referrer_name ?? t('account:inviteCode.yourFriend'));
                 return;
             }
-            setError(MESSAGES[rpcErr ? 'network' : (result?.error ?? 'network')] ?? MESSAGES.network);
+            setError(t(MESSAGES[rpcErr ? 'network' : (result?.error ?? 'network')] ?? MESSAGES.network));
         } finally {
             setBusy(false);
         }
@@ -135,16 +138,16 @@ export default function InviteCodeScreen() {
                 <GeometricBackground />
                 <View style={styles.feedbackBox}>
                     <Ionicons name="checkmark-circle" size={38} color={GOLD} />
-                    <Text style={styles.feedbackTitle}>Code applied</Text>
+                    <Text style={styles.feedbackTitle}>{t('account:inviteCode.applied.title')}</Text>
                     <Text style={styles.feedbackBody}>
-                        You and {applied} both earn 20 POWR once you log your first verified workout. Time to move.
+                        {t('account:inviteCode.applied.body', { name: applied })}
                     </Text>
                 </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.back()}
                 >
-                    <Text style={styles.primaryLabel}>BACK TO SETTINGS</Text>
+                    <Text style={styles.primaryLabel}>{t('account:shared.backToSettings')}</Text>
                 </Pressable>
             </View>
         );
@@ -174,19 +177,19 @@ export default function InviteCodeScreen() {
                         color={state.referred ? GOLD : DIM}
                     />
                     <Text style={styles.feedbackTitle}>
-                        {state.referred ? 'You were invited' : 'That window has closed'}
+                        {state.referred ? t('account:inviteCode.referred.title') : t('account:inviteCode.closed.title')}
                     </Text>
                     <Text style={styles.feedbackBody}>
                         {state.referred
-                            ? `${state.referrer_name} invited you to POWR. You both earn 20 POWR once you log your first verified workout.`
-                            : 'Invite codes can only be added in your first couple of weeks. Your own POWR ID still works for inviting friends — find it in Settings › Account.'}
+                            ? t('account:inviteCode.referred.body', { name: state.referrer_name })
+                            : t('account:inviteCode.closed.body')}
                     </Text>
                 </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.back()}
                 >
-                    <Text style={styles.primaryLabel}>BACK TO SETTINGS</Text>
+                    <Text style={styles.primaryLabel}>{t('account:shared.backToSettings')}</Text>
                 </Pressable>
             </View>
         );
@@ -217,24 +220,26 @@ export default function InviteCodeScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <Text style={styles.headline}>
-                    {'Invite\n'}
-                    <Text style={styles.headlineGold}>code.</Text>
+                    <Trans
+                        i18nKey="account:inviteCode.headline"
+                        components={{ gold: <Text style={styles.headlineGold} /> }}
+                    />
                 </Text>
 
                 <Text style={styles.intro}>
-                    Joined on a friend's invite but never entered their code? Add it here and you'll both earn 20 POWR after your first verified workout.
+                    {t('account:inviteCode.intro')}
                 </Text>
 
                 <View style={styles.form}>
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>THEIR POWR ID</Text>
+                        <Text style={styles.fieldLabel}>{t('account:inviteCode.field')}</Text>
                         <View style={[styles.inputContainer, focused && styles.inputFocused]}>
                             <TextInput
                                 style={styles.input}
                                 placeholder="ABCD 2345"
                                 placeholderTextColor="rgba(255,255,255,0.22)"
                                 value={code}
-                                onChangeText={t => { setCode(t.toUpperCase()); setError(null); }}
+                                onChangeText={text => { setCode(text.toUpperCase()); setError(null); }}
                                 onFocus={() => setFocused(true)}
                                 onBlur={() => setFocused(false)}
                                 autoCapitalize="characters"
@@ -247,17 +252,17 @@ export default function InviteCodeScreen() {
                                     onPress={pasteCode}
                                     style={({ pressed }) => [styles.pasteButton, pressed && { opacity: 0.7 }]}
                                     accessibilityRole="button"
-                                    accessibilityLabel="Paste code from clipboard"
+                                    accessibilityLabel={t('account:inviteCode.pasteLabel')}
                                 >
                                     <Ionicons name="clipboard-outline" size={13} color={GOLD} />
-                                    <Text style={styles.pasteText}>PASTE</Text>
+                                    <Text style={styles.pasteText}>{t('account:inviteCode.paste')}</Text>
                                 </Pressable>
                             )}
                         </View>
                         <Text style={styles.helper}>
                             {daysLeft > 0
-                                ? `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left to add one — a code can't be applied after that.`
-                                : "Last day to add one — a code can't be applied after that."}
+                                ? t('account:inviteCode.daysLeft', { count: daysLeft })
+                                : t('account:inviteCode.lastDay')}
                         </Text>
                     </View>
 
@@ -274,11 +279,11 @@ export default function InviteCodeScreen() {
                     >
                         {busy
                             ? <ActivityIndicator color="#0a0a0a" size="small" />
-                            : <Text style={styles.primaryLabel}>APPLY CODE</Text>}
+                            : <Text style={styles.primaryLabel}>{t('account:inviteCode.submit')}</Text>}
                     </Pressable>
 
                     <Text style={styles.footnote}>
-                        A POWR ID is 8 characters — your friend can find theirs in Settings › Account, or in any invite they send you.
+                        {t('account:inviteCode.footnote')}
                     </Text>
                 </View>
             </ScrollView>

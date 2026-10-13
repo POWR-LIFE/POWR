@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     Alert,
@@ -50,6 +51,7 @@ export default function EditProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [displayName, setDisplayName] = useState('');
@@ -105,10 +107,10 @@ export default function EditProfileScreen() {
 
       if (perm.status !== 'granted') {
         Alert.alert(
-          'Permission required',
+          t('account:editProfile.photo.permissionTitle'),
           source === 'camera'
-            ? 'Please allow camera access in Settings to take a photo.'
-            : 'Please allow photo library access in Settings to choose a photo.'
+            ? t('account:editProfile.photo.cameraBody')
+            : t('account:editProfile.photo.libraryBody')
         );
         return;
       }
@@ -139,23 +141,23 @@ export default function EditProfileScreen() {
       }
     } catch (e) {
       console.warn('[EditProfile] Image picker error:', e);
-      Alert.alert('Could not select photo', 'Please try again.');
+      Alert.alert(t('account:editProfile.photo.pickFailedTitle'), t('account:editProfile.photo.pickFailedBody'));
     }
   }
 
   function showPhotoOptions() {
-    Alert.alert('Profile photo', 'Choose a source', [
-      { text: 'Take photo', onPress: () => pickImage('camera') },
-      { text: 'Choose from library', onPress: () => pickImage('library') },
-      ...(avatarUri ? [{ text: 'Remove photo', style: 'destructive' as const, onPress: () => { setAvatarUri(null); setAvatarChanged(true); } }] : []),
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('account:editProfile.photo.sourceTitle'), t('account:editProfile.photo.sourceBody'), [
+      { text: t('account:editProfile.photo.take'), onPress: () => pickImage('camera') },
+      { text: t('account:editProfile.photo.library'), onPress: () => pickImage('library') },
+      ...(avatarUri ? [{ text: t('account:editProfile.photo.remove'), style: 'destructive' as const, onPress: () => { setAvatarUri(null); setAvatarChanged(true); } }] : []),
+      { text: t('common:actions.cancel'), style: 'cancel' },
     ]);
   }
 
   async function pickCover() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow photo library access in Settings.');
+      Alert.alert(t('account:editProfile.photo.permissionTitle'), t('account:editProfile.photo.libraryBodyShort'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -172,12 +174,12 @@ export default function EditProfileScreen() {
 
   async function pickGalleryPhoto() {
     if (gallery.length >= MAX_GALLERY) {
-      Alert.alert('Gallery full', `Maximum ${MAX_GALLERY} photos allowed.`);
+      Alert.alert(t('account:editProfile.gallerySheet.fullTitle'), t('account:editProfile.gallerySheet.fullBody', { max: MAX_GALLERY }));
       return;
     }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow photo library access in Settings.');
+      Alert.alert(t('account:editProfile.photo.permissionTitle'), t('account:editProfile.photo.libraryBodyShort'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -190,7 +192,7 @@ export default function EditProfileScreen() {
     setGalleryUploading(true);
     const { photo, error } = await uploadGalleryPhoto(result.assets[0].uri);
     if (error || !photo) {
-      Alert.alert('Upload failed', error ?? 'Something went wrong');
+      Alert.alert(t('account:editProfile.uploadFailed'), error ?? t('account:editProfile.somethingWentWrong'));
     } else {
       setGallery(prev => [...prev, photo]);
     }
@@ -198,10 +200,10 @@ export default function EditProfileScreen() {
   }
 
   async function removeGalleryPhoto(photoId: string, url: string) {
-    Alert.alert('Remove photo', 'Delete this photo from your gallery?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('account:editProfile.gallerySheet.removeTitle'), t('account:editProfile.gallerySheet.removeBody'), [
+      { text: t('common:actions.cancel'), style: 'cancel' },
       {
-        text: 'Delete', style: 'destructive',
+        text: t('account:editProfile.delete'), style: 'destructive',
         onPress: async () => {
           const { error } = await deleteGalleryPhoto(photoId, url);
           if (!error) setGallery(prev => prev.filter(p => p.id !== photoId));
@@ -231,7 +233,7 @@ export default function EditProfileScreen() {
     const title = achForm.title.trim();
     const value = achForm.value.trim();
     if (!title || !value) {
-      Alert.alert('Missing fields', 'Title and value are required.');
+      Alert.alert(t('account:editProfile.achievement.missingTitle'), t('account:editProfile.achievement.missingBody'));
       return;
     }
     setAchSaving(true);
@@ -239,14 +241,14 @@ export default function EditProfileScreen() {
       if (editingAchId === 'new') {
         const { achievement, error } = await createAchievement(achForm);
         if (error || !achievement) {
-          Alert.alert('Couldn’t add achievement', error ?? 'Please try again');
+          Alert.alert(t('account:editProfile.achievement.addFailed'), error ?? t('account:editProfile.achievement.tryAgain'));
           return;
         }
         setAchievements(prev => [...prev, achievement]);
       } else if (editingAchId) {
         const { error } = await updateAchievement(editingAchId, achForm);
         if (error) {
-          Alert.alert('Couldn’t update achievement', error);
+          Alert.alert(t('account:editProfile.achievement.updateFailed'), error);
           return;
         }
         setAchievements(prev => prev.map(a =>
@@ -262,13 +264,13 @@ export default function EditProfileScreen() {
   }
 
   function confirmDeleteAchievement(a: Achievement) {
-    Alert.alert('Remove achievement?', `Delete "${a.title}"?`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('account:editProfile.achievement.removeTitle'), t('account:editProfile.achievement.removeBody', { title: a.title }), [
+      { text: t('common:actions.cancel'), style: 'cancel' },
       {
-        text: 'Delete', style: 'destructive',
+        text: t('account:editProfile.delete'), style: 'destructive',
         onPress: async () => {
           const { error } = await deleteAchievement(a.id);
-          if (error) { Alert.alert('Delete failed', error); return; }
+          if (error) { Alert.alert(t('account:editProfile.achievement.deleteFailed'), error); return; }
           setAchievements(prev => prev.filter(x => x.id !== a.id));
         },
       },
@@ -282,7 +284,7 @@ export default function EditProfileScreen() {
     const trimmedUsername = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
 
     if (!trimmedName) {
-      Alert.alert('Name required', 'Please enter a display name.');
+      Alert.alert(t('account:editProfile.nameRequiredTitle'), t('account:editProfile.nameRequiredBody'));
       return;
     }
 
@@ -298,7 +300,7 @@ export default function EditProfileScreen() {
         if (avatarUri) {
           const { url, error: uploadErr } = await uploadAvatar(avatarUri);
           if (uploadErr) {
-            Alert.alert('Upload failed', uploadErr);
+            Alert.alert(t('account:editProfile.uploadFailed'), uploadErr);
             return;
           }
           updates.avatar_url = url;
@@ -309,7 +311,7 @@ export default function EditProfileScreen() {
 
       const { error } = await updateProfile(updates);
       if (error) {
-        Alert.alert('Save failed', error);
+        Alert.alert(t('account:editProfile.saveFailed'), error);
         return;
       }
 
@@ -321,7 +323,7 @@ export default function EditProfileScreen() {
         if (coverUri) {
           const { url: covUrl, error: covErr } = await uploadCover(coverUri);
           if (covErr) {
-            Alert.alert('Cover upload failed', covErr);
+            Alert.alert(t('account:editProfile.coverUploadFailed'), covErr);
             return;
           }
           proUpdates.cover_url = covUrl;
@@ -332,14 +334,14 @@ export default function EditProfileScreen() {
       if (Object.keys(proUpdates).length > 0) {
         const { error: proErr } = await updateProProfile(proUpdates);
         if (proErr) {
-          Alert.alert('Save failed', proErr);
+          Alert.alert(t('account:editProfile.saveFailed'), proErr);
           return;
         }
       }
 
       router.back();
     } catch (err: any) {
-      Alert.alert('Save failed', err?.message ?? 'Something went wrong');
+      Alert.alert(t('account:editProfile.saveFailed'), err?.message ?? t('account:editProfile.somethingWentWrong'));
     } finally {
       setSaving(false);
     }
@@ -356,7 +358,7 @@ export default function EditProfileScreen() {
         <Pressable style={styles.headerBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>Edit Profile</Text>
+        <Text style={styles.headerTitle}>{t('account:editProfile.title')}</Text>
         <Pressable
           style={[styles.headerBtn, styles.saveBtn, saving && styles.saveBtnDisabled]}
           onPress={handleSave}
@@ -366,7 +368,7 @@ export default function EditProfileScreen() {
           {saving ? (
             <ActivityIndicator size="small" color="#0a0a0a" />
           ) : (
-            <Text style={styles.saveBtnText}>Save</Text>
+            <Text style={styles.saveBtnText}>{t('account:editProfile.save')}</Text>
           )}
         </Pressable>
       </View>
@@ -401,11 +403,11 @@ export default function EditProfileScreen() {
                 <Ionicons name="camera" size={14} color={TEXT} />
               </View>
             </Pressable>
-            <Text style={styles.avatarHint}>Tap to change photo</Text>
+            <Text style={styles.avatarHint}>{t('account:editProfile.tapToChangePhoto')}</Text>
           </View>
 
           {/* ── Fields ─────────────────────────────────────────── */}
-          <SectionLabel label="Display Name" />
+          <SectionLabel label={t('account:editProfile.displayName')} />
           <View style={[
             styles.inputWrap,
             focusedField === 'name' && styles.inputWrapFocused,
@@ -415,7 +417,7 @@ export default function EditProfileScreen() {
               style={styles.input}
               value={displayName}
               onChangeText={setDisplayName}
-              placeholder="Your name"
+              placeholder={t('account:editProfile.namePlaceholder')}
               placeholderTextColor={MUTED}
               autoCorrect={false}
               maxLength={40}
@@ -428,9 +430,9 @@ export default function EditProfileScreen() {
               </Pressable>
             )}
           </View>
-          <Text style={styles.fieldHint}>{displayName.length}/40 · Shown on your profile and leaderboards</Text>
+          <Text style={styles.fieldHint}>{t('account:editProfile.nameHint', { length: displayName.length })}</Text>
 
-          <SectionLabel label="Username" />
+          <SectionLabel label={t('account:editProfile.username')} />
           <View style={[
             styles.inputWrap,
             focusedField === 'username' && styles.inputWrapFocused,
@@ -439,8 +441,8 @@ export default function EditProfileScreen() {
             <TextInput
               style={styles.input}
               value={username}
-              onChangeText={(t) => setUsername(t.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-              placeholder="yourhandle"
+              onChangeText={(text) => setUsername(text.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+              placeholder={t('account:editProfile.usernamePlaceholder')}
               placeholderTextColor={MUTED}
               autoCorrect={false}
               autoCapitalize="none"
@@ -454,10 +456,10 @@ export default function EditProfileScreen() {
               </Pressable>
             )}
           </View>
-          <Text style={styles.fieldHint}>Letters, numbers, underscores only · {username.length}/30</Text>
+          <Text style={styles.fieldHint}>{t('account:editProfile.usernameHint', { length: username.length })}</Text>
 
           {/* ── Email — links to dedicated change flow ───────────── */}
-          <SectionLabel label="Email" />
+          <SectionLabel label={t('account:editProfile.email')} />
           <Pressable
             style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
             onPress={() => router.push('/change-email')}
@@ -468,7 +470,7 @@ export default function EditProfileScreen() {
           </Pressable>
 
           {/* ── Bio ────────────────────────────────────────── */}
-          <SectionLabel label="Bio" />
+          <SectionLabel label={t('account:editProfile.bio')} />
           <View style={[
             styles.inputWrap, styles.bioWrap,
             focusedField === 'bio' && styles.inputWrapFocused,
@@ -476,8 +478,8 @@ export default function EditProfileScreen() {
             <TextInput
               style={[styles.input, styles.bioInput]}
               value={bio}
-              onChangeText={(t) => setBio(t.slice(0, 2000))}
-              placeholder="Tell people about yourself…"
+              onChangeText={(text) => setBio(text.slice(0, 2000))}
+              placeholder={t('account:editProfile.bioPlaceholder')}
               placeholderTextColor={MUTED}
               multiline
               numberOfLines={8}
@@ -492,17 +494,17 @@ export default function EditProfileScreen() {
           {profile?.is_pro && (
             <>
               <View style={styles.achLabelRow}>
-                <Text style={styles.sectionLabel}>ACHIEVEMENTS ({achievements.length}/{MAX_ACHIEVEMENTS})</Text>
+                <Text style={styles.sectionLabel}>{t('account:editProfile.achievements', { current: achievements.length, max: MAX_ACHIEVEMENTS })}</Text>
                 {achievements.length < MAX_ACHIEVEMENTS && editingAchId !== 'new' && (
                   <Pressable onPress={startNewAchievement} style={styles.achAddBtn} hitSlop={6}>
                     <Ionicons name="add" size={14} color={GOLD} />
-                    <Text style={styles.achAddBtnText}>ADD</Text>
+                    <Text style={styles.achAddBtnText}>{t('account:editProfile.add')}</Text>
                   </Pressable>
                 )}
               </View>
 
               {achievements.length === 0 && editingAchId !== 'new' && (
-                <Text style={styles.fieldHint}>Add up to 4 career highlights — e.g. PBs, podiums, titles.</Text>
+                <Text style={styles.fieldHint}>{t('account:editProfile.achievementsEmpty')}</Text>
               )}
 
               {achievements.map(a => (
@@ -546,14 +548,14 @@ export default function EditProfileScreen() {
           {/* ── Cover photo (Pro users) ────────────────────────── */}
           {profile?.is_pro && (
             <>
-              <SectionLabel label="Cover Photo" />
+              <SectionLabel label={t('account:editProfile.coverPhoto')} />
               <Pressable style={styles.coverWrap} onPress={pickCover}>
                 {coverUri ? (
                   <Image source={{ uri: coverUri }} style={styles.coverImage} contentFit="cover" />
                 ) : (
                   <View style={styles.coverPlaceholder}>
                     <Ionicons name="image-outline" size={28} color={MUTED} />
-                    <Text style={styles.coverHint}>Tap to add a cover photo</Text>
+                    <Text style={styles.coverHint}>{t('account:editProfile.coverHint')}</Text>
                   </View>
                 )}
                 {coverUri && (
@@ -572,7 +574,7 @@ export default function EditProfileScreen() {
           {/* ── Gallery (Pro users) ────────────────────────────── */}
           {profile?.is_pro && (
             <>
-              <SectionLabel label={`Gallery (${gallery.length}/${MAX_GALLERY})`} />
+              <SectionLabel label={t('account:editProfile.gallery', { current: gallery.length, max: MAX_GALLERY })} />
               <View style={styles.galleryGrid}>
                 {gallery.map((photo) => (
                   <View key={photo.id} style={styles.galleryThumbWrap}>
@@ -619,36 +621,37 @@ function AchievementEditor({
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.achEditor}>
       <View style={styles.achEditorField}>
-        <Text style={styles.achEditorLabel}>TITLE</Text>
+        <Text style={styles.achEditorLabel}>{t('account:editProfile.editor.title')}</Text>
         <TextInput
           style={styles.achEditorInput}
           value={form.title}
-          onChangeText={t => setForm({ ...form, title: t.slice(0, 60) })}
-          placeholder="Women's Pro Solo"
+          onChangeText={text => setForm({ ...form, title: text.slice(0, 60) })}
+          placeholder={t('account:editProfile.editor.titlePlaceholder')}
           placeholderTextColor={MUTED}
           maxLength={60}
         />
       </View>
       <View style={styles.achEditorField}>
-        <Text style={styles.achEditorLabel}>VALUE</Text>
+        <Text style={styles.achEditorLabel}>{t('account:editProfile.editor.value')}</Text>
         <TextInput
           style={styles.achEditorInput}
           value={form.value}
-          onChangeText={t => setForm({ ...form, value: t.slice(0, 40) })}
+          onChangeText={text => setForm({ ...form, value: text.slice(0, 40) })}
           placeholder="01:09:30"
           placeholderTextColor={MUTED}
           maxLength={40}
         />
       </View>
       <View style={styles.achEditorField}>
-        <Text style={styles.achEditorLabel}>CONTEXT (OPTIONAL)</Text>
+        <Text style={styles.achEditorLabel}>{t('account:editProfile.editor.context')}</Text>
         <TextInput
           style={styles.achEditorInput}
           value={form.context ?? ''}
-          onChangeText={t => setForm({ ...form, context: t.slice(0, 60) })}
+          onChangeText={text => setForm({ ...form, context: text.slice(0, 60) })}
           placeholder="Toulouse · 2024"
           placeholderTextColor={MUTED}
           maxLength={60}
@@ -656,10 +659,10 @@ function AchievementEditor({
       </View>
       <View style={styles.achEditorActions}>
         <Pressable onPress={onCancel} style={styles.achCancelBtn} hitSlop={6}>
-          <Text style={styles.achCancelText}>CANCEL</Text>
+          <Text style={styles.achCancelText}>{t('account:editProfile.editor.cancel')}</Text>
         </Pressable>
         <Pressable onPress={onSave} disabled={saving} style={[styles.achSaveBtn, saving && { opacity: 0.5 }]} hitSlop={6}>
-          {saving ? <ActivityIndicator size="small" color="#0a0a0a" /> : <Text style={styles.achSaveText}>SAVE</Text>}
+          {saving ? <ActivityIndicator size="small" color="#0a0a0a" /> : <Text style={styles.achSaveText}>{t('account:editProfile.editor.save')}</Text>}
         </Pressable>
       </View>
     </View>

@@ -12,6 +12,7 @@ import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type 
 import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
 import { fetchVaultContents } from '@/lib/api/vault';
 import { tracked } from '@/lib/analytics';
+import i18n from '@/lib/i18n';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -20,6 +21,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Image,
@@ -55,6 +57,13 @@ const DIM     = 'rgba(255,255,255,0.55)';
 
 type Category = 'ALL' | 'EAT' | 'MOVE' | 'MIND' | 'SLEEP';
 const CATEGORIES: Category[] = ['ALL', 'EAT', 'MOVE', 'MIND', 'SLEEP'];
+const CATEGORY_LABEL: Record<Category, string> = {
+  ALL: 'rewards:catalogue.category.all',
+  EAT: 'rewards:catalogue.category.eat',
+  MOVE: 'rewards:catalogue.category.move',
+  MIND: 'rewards:catalogue.category.mind',
+  SLEEP: 'rewards:catalogue.category.sleep',
+};
 
 interface Reward {
   id: string;
@@ -94,7 +103,9 @@ function formatDiscountValue(value: number): string {
 function getRewardDisplayValue(reward: Pick<ApiReward, 'discount_type' | 'discount_value' | 'value_label'>): string | undefined {
   if (reward.discount_type && reward.discount_value != null) {
     const amount = formatDiscountValue(Number(reward.discount_value));
-    return reward.discount_type === 'percentage' ? `${amount}% off` : `£${amount} off`;
+    return reward.discount_type === 'percentage'
+      ? i18n.t('rewards:discount.percentOff', { amount })
+      : i18n.t('rewards:discount.amountOff', { amount });
   }
   return reward.value_label ?? undefined;
 }
@@ -148,6 +159,7 @@ function apiRewardToUI(r: ApiReward): Reward {
 export default function SpendScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const [activeCategory, setActiveCategory] = useState<Category>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { balance, todayEarned, loading, refresh: refreshPoints } = usePoints();
@@ -325,7 +337,7 @@ export default function SpendScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <GeometricBackground />
       <View style={styles.header}>
-        <Text style={styles.title}>Rewards</Text>
+        <Text style={styles.title}>{t('rewards:catalogue.title')}</Text>
         <View style={styles.headerActions}>
           <Pressable
             style={styles.walletBtn}
@@ -373,7 +385,7 @@ export default function SpendScreen() {
                 }}
               >
                 <Text style={[styles.catTabLabel, active && styles.catTabLabelActive]}>
-                  {cat}
+                  {t(CATEGORY_LABEL[cat])}
                 </Text>
                 {active && <View style={styles.catTabIndicator} />}
               </Pressable>
@@ -403,16 +415,16 @@ export default function SpendScreen() {
         ) : !catalogueLoaded && catalogueError ? (
           <View style={styles.keepMovingCenterWrap}>
             <Ionicons name="cloud-offline-outline" size={26} color={MUTED} />
-            <Text style={styles.catalogueStatusText}>Couldn&apos;t load rewards.</Text>
+            <Text style={styles.catalogueStatusText}>{t('rewards:catalogue.loadError')}</Text>
             <Pressable style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]} onPress={loadRewards}>
-              <Text style={styles.retryBtnText}>Try again</Text>
+              <Text style={styles.retryBtnText}>{t('rewards:catalogue.retry')}</Text>
             </Pressable>
           </View>
         ) : sorted.length === 0 ? (
           // Empty category — MIND/SLEEP style teaser until rewards land there.
           <View style={styles.keepMovingCenterWrap}>
             {activeCategory === 'ALL' ? (
-              <Text style={styles.catalogueStatusText}>New rewards coming soon.</Text>
+              <Text style={styles.catalogueStatusText}>{t('rewards:catalogue.comingSoon')}</Text>
             ) : (
               <KeepMovingUnlockCard />
             )}
@@ -466,6 +478,7 @@ interface BalanceCardProps {
 
 function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const vaultEnabled = useVaultAccess();
   // Pre-launch: outside the rollout with a launch scheduled, the door shows
@@ -487,17 +500,17 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
     <View style={styles.balanceCard}>
       <View style={styles.balanceRow}>
         <View style={styles.balanceLeft}>
-          <Text style={styles.metaLabel}>Available balance</Text>
+          <Text style={styles.metaLabel}>{t('rewards:balance.label')}</Text>
           <View style={styles.balanceNumberRow}>
             <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
               {displayBalance.toLocaleString()}
             </Text>
-            <Text style={styles.balanceUnit}>Points</Text>
+            <Text style={styles.balanceUnit}>{t('rewards:balance.unit')}</Text>
           </View>
           {todayEarned > 0 && (
             <View style={styles.todayBadgeUnder}>
               <View style={styles.todayDot} />
-              <Text style={styles.todayBadgeText}>+{todayEarned} today</Text>
+              <Text style={styles.todayBadgeText}>{t('rewards:balance.today', { amount: todayEarned })}</Text>
             </View>
           )}
         </View>
@@ -513,8 +526,8 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
             sublabel={
               comingSoon
                 ? launchInMs > 86400000
-                  ? `IN ${Math.floor(launchInMs / 86400000)}D`
-                  : 'TODAY'
+                  ? t('rewards:vaultWidget.inDays', { days: Math.floor(launchInMs / 86400000) })
+                  : t('rewards:vaultWidget.today')
                 : undefined
             }
             onPress={() => {
@@ -540,6 +553,7 @@ interface FeaturedProps {
 }
 
 function FeaturedCard({ featured, afford, balance, placement, onRedeem }: FeaturedProps) {
+  const { t } = useTranslation();
   const pts = featured.powr_cost;
   const ptsNeeded = pts - balance;
   const progress = Math.min(balance / pts, 1);
@@ -568,20 +582,26 @@ function FeaturedCard({ featured, afford, balance, placement, onRedeem }: Featur
         />
 
         <View style={styles.featuredPointsBlock}>
-          <Text style={styles.featuredPtsNum}>{pts} <Text style={styles.featuredPtsUnit}>points</Text></Text>
+          <Text style={styles.featuredPtsNum}>
+            <Trans
+              i18nKey="rewards:featured.points"
+              values={{ points: pts }}
+              components={{ unit: <Text style={styles.featuredPtsUnit} /> }}
+            />
+          </Text>
         </View>
 
         {placement && (
           placement.paid ? (
             // Paid = a brand bought this slot → clear "AD" disclosure.
             <View style={styles.featuredAdTag}>
-              <Text style={styles.featuredAdTagText}>AD</Text>
+              <Text style={styles.featuredAdTagText}>{t('rewards:placement.ad')}</Text>
             </View>
           ) : (
             // First-party curation → just the useful "nearby" signal.
             <View style={styles.featuredZoneBadge}>
               <Ionicons name="location" size={10} color="#0a0a0a" />
-              <Text style={styles.featuredZoneBadgeText}>NEARBY NOW</Text>
+              <Text style={styles.featuredZoneBadgeText}>{t('rewards:placement.nearbyNow')}</Text>
             </View>
           )
         )}
@@ -608,15 +628,15 @@ function FeaturedCard({ featured, afford, balance, placement, onRedeem }: Featur
             ) : <View />}
             {afford === 'can' ? (
               <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={tracked('reward_redeem_start', onRedeem)}>
-                <Text style={styles.redeemPrimaryText}>Redeem</Text>
+                <Text style={styles.redeemPrimaryText}>{t('rewards:featured.redeem')}</Text>
                 <Ionicons name="arrow-forward" size={13} color="#0a0a0a" />
               </Pressable>
             ) : afford === 'close' ? (
-              <Text style={styles.closeText}>{ptsNeeded} pts away</Text>
+              <Text style={styles.closeText}>{t('rewards:card.ptsAway', { points: ptsNeeded })}</Text>
             ) : (
               <View style={styles.lockedBlock}>
                 <Ionicons name="lock-closed" size={11} color={MUTED} />
-                <Text style={styles.lockedText}>{ptsNeeded.toLocaleString()} pts</Text>
+                <Text style={styles.lockedText}>{t('rewards:featured.lockedPts', { points: ptsNeeded.toLocaleString() })}</Text>
               </View>
             )}
           </View>
@@ -642,6 +662,7 @@ interface RewardCardProps {
 }
 
 function RewardCard({ reward, placement, afford, balance, expanded, activeCount, capReached, onToggle, onRedeem, onViewWallet }: RewardCardProps) {
+  const { t } = useTranslation();
   const ptsNeeded = reward.pts - balance;
   const progress = Math.min(balance / reward.pts, 1);
   const isLocked = afford === 'locked';
@@ -716,12 +737,12 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
           {placement && (
             placement.paid ? (
               <View style={styles.placementAdTag}>
-                <Text style={styles.placementAdText}>AD</Text>
+                <Text style={styles.placementAdText}>{t('rewards:placement.ad')}</Text>
               </View>
             ) : (
               <View style={styles.placementPill}>
                 <Ionicons name="location" size={9} color={GOLD} />
-                <Text style={styles.placementPillText}>NEARBY</Text>
+                <Text style={styles.placementPillText}>{t('rewards:placement.nearby')}</Text>
               </View>
             )
           )}
@@ -751,7 +772,7 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
               <Text style={[styles.rewardPts, isLocked && styles.rewardPtsLocked]}>
                 {reward.pts}
               </Text>
-              <Text style={[styles.rewardPtsUnit, isLocked && styles.rewardPtsLocked]}>pts</Text>
+              <Text style={[styles.rewardPtsUnit, isLocked && styles.rewardPtsLocked]}>{t('rewards:card.ptsUnit')}</Text>
             </>
           )}
           <Ionicons
@@ -779,7 +800,7 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
 
               {reward.partnerBlurb && (
                 <View style={styles.aboutBlock}>
-                  <Text style={styles.expandedLabel}>About {reward.brandName.toUpperCase()}</Text>
+                  <Text style={styles.expandedLabel}>{t('rewards:card.about', { brand: reward.brandName.toUpperCase() })}</Text>
                   <Text style={styles.expandedBlurb}>{reward.partnerBlurb}</Text>
                 </View>
               )}
@@ -794,7 +815,7 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
               style={({ pressed }) => [styles.redeemInlineBtn, { backgroundColor: 'rgba(74,222,128,0.12)', borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)' }, pressed && { opacity: 0.85 }]}
             >
               <Ionicons name="wallet-outline" size={14} color="#4ade80" />
-              <Text style={[styles.redeemInlineBtnText, { color: '#4ade80' }]}>In your wallet · View</Text>
+              <Text style={[styles.redeemInlineBtnText, { color: '#4ade80' }]}>{t('rewards:card.inWallet')}</Text>
             </Pressable>
           ) : afford === 'can' ? (
             <>
@@ -810,7 +831,11 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
                 ]}
               >
                 <Ionicons name="gift-outline" size={14} color="#000" />
-                <Text style={styles.redeemInlineBtnText}>{activeCount > 0 ? 'Redeem again' : 'Redeem'} for {reward.pts} pts</Text>
+                <Text style={styles.redeemInlineBtnText}>
+                  {activeCount > 0
+                    ? t('rewards:card.redeemAgainFor', { points: reward.pts })
+                    : t('rewards:card.redeemFor', { points: reward.pts })}
+                </Text>
               </Pressable>
               {activeCount > 0 && (
                 <Pressable
@@ -818,7 +843,7 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
                   style={({ pressed }) => [styles.walletLink, pressed && { opacity: 0.7 }]}
                 >
                   <Ionicons name="wallet-outline" size={12} color="#4ade80" />
-                  <Text style={styles.walletLinkText}>{activeCount} in your wallet</Text>
+                  <Text style={styles.walletLinkText}>{t('rewards:card.walletCount', { amount: activeCount })}</Text>
                   <Ionicons name="chevron-forward" size={11} color="#4ade80" />
                 </Pressable>
               )}
@@ -829,7 +854,9 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
             <View style={styles.lockedBlock}>
               <Ionicons name="lock-closed" size={10} color={MUTED} />
               <Text style={styles.lockedText}>
-                {ptsNeeded.toLocaleString()} pts {afford === 'close' ? 'away' : 'needed'}
+                {afford === 'close'
+                  ? t('rewards:card.ptsAway', { points: ptsNeeded.toLocaleString() })
+                  : t('rewards:card.ptsNeeded', { points: ptsNeeded.toLocaleString() })}
               </Text>
             </View>
           )}
@@ -840,7 +867,7 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
                 onPress={() => reward.url && Linking.openURL(reward.url)}
                 style={({ pressed }) => [styles.partnerLink, pressed && { opacity: 0.7 }]}
               >
-                <Text style={[styles.partnerLinkText, { color: brand }]}>Visit partner</Text>
+                <Text style={[styles.partnerLinkText, { color: brand }]}>{t('rewards:card.visitPartner')}</Text>
                 <Ionicons name="open-outline" size={13} color={brand} />
               </Pressable>
             )}
@@ -852,6 +879,7 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
 }
 
 function KeepMovingUnlockCard() {
+  const { t } = useTranslation();
   return (
     <View style={styles.keepMovingCard}>
       <View style={styles.keepMovingRingWrap}>
@@ -874,7 +902,7 @@ function KeepMovingUnlockCard() {
       </View>
 
       <View style={styles.keepMovingTextWrap}>
-        <Text style={styles.keepMovingTitle}>Keep moving to unlock</Text>
+        <Text style={styles.keepMovingTitle}>{t('rewards:catalogue.keepMoving')}</Text>
       </View>
     </View>
   );

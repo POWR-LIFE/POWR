@@ -12,6 +12,7 @@ import { clearDeviceWakeTicket, ensureDeviceWakeTicket, readStoredSession } from
 import { claimDevice, confirmDeviceTransfer, getDeviceId } from '@/lib/deviceLock';
 import { reportLocationPermission } from '@/lib/locationPermission';
 import { reportUserCountry } from '@/lib/country';
+import i18n from '@/lib/i18n';
 import { reportUserLanguage } from '@/lib/i18n/reportLanguage';
 import TransferDeviceSheet from '@/components/TransferDeviceSheet';
 
@@ -583,18 +584,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 router.replace('/onboarding');
                 if (wasDeviceLocked && lockReason === 'rate_limited') {
                     Alert.alert(
-                        'Too many device changes',
-                        'You’ve moved your POWR account between devices several times recently. To move it again, contact support and we’ll help you switch.',
+                        i18n.t('auth:signedOut.rateLimited.title'),
+                        i18n.t('auth:signedOut.rateLimited.body'),
                     );
                 } else if (wasDeviceLocked) {
                     Alert.alert(
-                        'This device is linked to another account',
-                        'This phone is already tied to a different POWR account. Sign in with that account to continue. If you need to move this device to a new account, contact support.',
+                        i18n.t('auth:signedOut.otherAccount.title'),
+                        i18n.t('auth:signedOut.otherAccount.body'),
                     );
                 } else if (wasForced) {
                     Alert.alert(
-                        'Signed out',
-                        'You signed in on another device. POWR allows one device at a time, so you were signed out here. Sign in again to keep using this device.',
+                        i18n.t('auth:signedOut.title'),
+                        i18n.t('auth:signedOut.otherDevice.body'),
                     );
                 } else if (sessionDead) {
                     // The server retired this device's session out from under it —
@@ -602,8 +603,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     // sign-in (its watcher kick never reaches a runtime that was
                     // closed at the time). Say so, without asserting which cause.
                     Alert.alert(
-                        'Signed out',
-                        'Your session on this device is no longer valid — usually because the account was signed in on another device. Sign in again to keep using POWR here.',
+                        i18n.t('auth:signedOut.title'),
+                        i18n.t('auth:signedOut.sessionEnded.body'),
                     );
                 }
             }
@@ -696,7 +697,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     AppleAuthentication.AppleAuthenticationScope.EMAIL,
                 ],
             });
-            if (!credential.identityToken) return { error: 'No identity token returned from Apple' };
+            if (!credential.identityToken) return { error: i18n.t('auth:errors.noIdentityToken') };
             const { error } = await supabase.auth.signInWithIdToken({
                 provider: 'apple',
                 token: credential.identityToken,
@@ -707,7 +708,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (e: unknown) {
             // ERR_REQUEST_CANCELED = user dismissed the sheet — not an error
             if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return { error: null };
-            return { error: e instanceof Error ? e.message : 'Unknown error' };
+            return { error: e instanceof Error ? e.message : i18n.t('auth:errors.unknown') };
         }
     };
 
@@ -722,7 +723,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 options: { redirectTo, skipBrowserRedirect: true },
             });
             if (error) return { error: error.message };
-            if (!data.url) return { error: 'No OAuth URL returned' };
+            if (!data.url) return { error: i18n.t('auth:errors.noOAuthUrl') };
 
             const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
             if (result.type === 'success') {
@@ -738,7 +739,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // result.type === 'cancel' means user closed browser — not an error
             return { error: null };
         } catch (e: unknown) {
-            return { error: e instanceof Error ? e.message : 'Unknown error' };
+            return { error: e instanceof Error ? e.message : i18n.t('auth:errors.unknown') };
         }
     };
 

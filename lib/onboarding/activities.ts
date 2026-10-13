@@ -12,9 +12,11 @@ import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import {
     CATALOG_BY_SLUG,
     genericEntryForBucket,
+    selectionLabel,
     toSelection,
     type ActivitySelection,
 } from '@/constants/activityCatalog';
+import i18n from '@/lib/i18n';
 
 /** Gym starts ticked for everyone (opt-out, not opt-in — Jamie's call). */
 export const DEFAULT_SELECTIONS: ActivitySelection[] = [toSelection(CATALOG_BY_SLUG.gym)];
@@ -60,10 +62,27 @@ export function preselectFromObserved(
     return out;
 }
 
-/** "running and cycling" / "running, cycling and swimming" for the subhead. */
+/**
+ * "running and cycling" / "running, cycling and swimming" for the subhead, in
+ * the language on screen. Hermes has no Intl.ListFormat, so the joiners come
+ * from the catalog (activities:list.*).
+ */
 export function observedLabelList(selections: ActivitySelection[], observed: Record<string, number>): string {
-    const labels = selections.filter(s => (observed[s.bucket] ?? 0) > 0).map(s => s.label.toLowerCase());
+    const labels = selections.filter(s => (observed[s.bucket] ?? 0) > 0).map(s => selectionLabel(s).toLowerCase());
     if (labels.length === 0) return '';
     if (labels.length === 1) return labels[0];
-    return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+    if (labels.length === 2) return i18n.t('activities:list.pair', { first: labels[0], second: labels[1] });
+    return i18n.t('activities:list.last', {
+        rest: labels.slice(0, -1).join(i18n.t('activities:list.separator')),
+        last: labels[labels.length - 1],
+    });
+}
+
+/**
+ * How many activities observedLabelList names — the count its subhead plural
+ * should use (it/them, lo/los). Testing that list for " and " only works in
+ * English.
+ */
+export function observedPickCount(selections: ActivitySelection[], observed: Record<string, number>): number {
+    return selections.filter(s => (observed[s.bucket] ?? 0) > 0).length;
 }

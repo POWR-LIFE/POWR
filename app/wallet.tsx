@@ -9,6 +9,7 @@ import {
   type WalletStatus,
 } from '@/lib/api/rewards';
 import { tracked } from '@/lib/analytics';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { SAVE_CARD_ENABLED, cardFilename, saveCardImage } from '@/lib/saveCard';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +20,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   FlatList,
@@ -43,18 +45,21 @@ const DIM    = 'rgba(255,255,255,0.5)';
 const GREEN  = '#4ade80';
 const BORDER = 'rgba(255,255,255,0.08)';
 
+// `label` is a translation key, resolved at render.
 const STATUS_META: Record<WalletStatus, { label: string; color: string }> = {
-  ready:   { label: 'Ready',   color: GREEN },
-  used:    { label: 'Used',    color: DIM },
-  expired: { label: 'Expired', color: MUTED },
+  ready:   { label: 'rewards:wallet.status.ready',   color: GREEN },
+  used:    { label: 'rewards:wallet.status.used',    color: DIM },
+  expired: { label: 'rewards:wallet.status.expired', color: MUTED },
 };
 
 function formatExpiry(entry: WalletEntry, status: WalletStatus): string {
-  if (status === 'used') return 'Already used';
-  if (!entry.expires_at) return 'No expiry';
+  if (status === 'used') return i18n.t('rewards:wallet.expiry.used');
+  if (!entry.expires_at) return i18n.t('rewards:wallet.expiry.none');
   const d = new Date(entry.expires_at);
-  const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  return status === 'expired' ? `Expired ${date}` : `Valid until ${date}`;
+  const date = d.toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
+  return status === 'expired'
+    ? i18n.t('rewards:wallet.expiry.expired', { date })
+    : i18n.t('rewards:wallet.expiry.validUntil', { date });
 }
 
 /**
@@ -73,11 +78,19 @@ function getNativeShare(): { open: (options: object) => Promise<unknown> } | nul
 
 /** Share text with the code spelled out, so recipients can copy-paste it. */
 function buildShareMessage(entry: WalletEntry): string {
-  const title = entry.reward_title ?? 'Reward';
-  const label = entry.partner_name ? `${title} at ${entry.partner_name}` : title;
-  return entry.integration_type === 'AFFILIATE'
-    ? `Here's a ${label} reward from POWR${entry.checkout_url ? `: ${entry.checkout_url}` : ''}`
-    : `Here's my ${label} code from POWR: ${entry.code}${entry.checkout_url ? `\n${entry.checkout_url}` : ''}`;
+  const title = entry.reward_title ?? i18n.t('rewards:wallet.rewardFallback');
+  const label = entry.partner_name
+    ? i18n.t('rewards:wallet.shareMessage.label', { title, partner: entry.partner_name })
+    : title;
+  const url = entry.checkout_url;
+  if (entry.integration_type === 'AFFILIATE') {
+    return url
+      ? i18n.t('rewards:wallet.shareMessage.affiliateWithLink', { label, url })
+      : i18n.t('rewards:wallet.shareMessage.affiliate', { label });
+  }
+  return url
+    ? i18n.t('rewards:wallet.shareMessage.codeWithLink', { label, code: entry.code, url })
+    : i18n.t('rewards:wallet.shareMessage.code', { label, code: entry.code });
 }
 
 /** Plain-text share, used as fallback when image capture/sharing fails. */
@@ -106,12 +119,13 @@ function WalletCard({
   /** Flashes "Saved" for a beat after an Android write lands. */
   saved: boolean;
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const status = walletEntryStatus(entry);
   const meta = STATUS_META[status];
   const isAffiliate = entry.integration_type === 'AFFILIATE';
   const inactive = status !== 'ready';
-  const title = entry.reward_title ?? 'Reward';
+  const title = entry.reward_title ?? t('rewards:wallet.rewardFallback');
   const partner = entry.partner_name;
 
   const copy = useCallback(() => {
@@ -156,22 +170,24 @@ function WalletCard({
         </View>
         <View style={[styles.statusChip, { borderColor: meta.color + '40', backgroundColor: meta.color + '14' }]}>
           <View style={[styles.statusDot, { backgroundColor: meta.color }]} />
-          <Text style={[styles.statusChipText, { color: meta.color }]}>{meta.label}</Text>
+          <Text style={[styles.statusChipText, { color: meta.color }]}>{t(meta.label)}</Text>
         </View>
       </View>
 
       {isAffiliate ? (
         <View style={styles.affiliateBlock}>
-          <Text style={styles.affiliateText}>Discount applied automatically at checkout.</Text>
+          <Text style={styles.affiliateText}>{t('rewards:wallet.affiliate')}</Text>
         </View>
       ) : (
         <Pressable style={styles.codeBlock} onPress={inactive ? undefined : tracked('wallet_copy_code', copy)} disabled={inactive}>
-          <Text style={styles.codeLabel}>CODE</Text>
+          <Text style={styles.codeLabel}>{t('rewards:wallet.code')}</Text>
           <Text style={[styles.codeText, inactive && { color: DIM }]}>{entry.code}</Text>
           {!inactive && (
             <View style={styles.copyRow}>
               <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={12} color={copied ? GREEN : MUTED} />
-              <Text style={[styles.copyLabel, copied && { color: GREEN }]}>{copied ? 'Copied' : 'Tap to copy'}</Text>
+              <Text style={[styles.copyLabel, copied && { color: GREEN }]}>
+                {copied ? t('rewards:wallet.copied') : t('rewards:wallet.tapToCopy')}
+              </Text>
             </View>
           )}
         </Pressable>
@@ -184,7 +200,9 @@ function WalletCard({
           {entry.checkout_url && (
             <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={tracked('wallet_open_checkout', openCheckout)}>
               <Ionicons name="open-outline" size={14} color="#0a0a0a" />
-              <Text style={styles.primaryBtnText}>Use{partner ? ` at ${partner}` : ''}</Text>
+              <Text style={styles.primaryBtnText}>
+                {partner ? t('rewards:wallet.useAt', { partner }) : t('rewards:wallet.use')}
+              </Text>
             </Pressable>
           )}
           <Pressable
@@ -197,7 +215,7 @@ function WalletCard({
             ) : (
               <>
                 <Ionicons name="share-outline" size={14} color={DIM} />
-                <Text style={styles.secondaryBtnText}>Share</Text>
+                <Text style={styles.secondaryBtnText}>{t('rewards:wallet.share')}</Text>
               </>
             )}
           </Pressable>
@@ -208,7 +226,7 @@ function WalletCard({
               onPress={tracked('wallet_save_reward', () => onSave(entry))}
               disabled={shareBusy || saveBusy}
               accessibilityRole="button"
-              accessibilityLabel={saved ? 'Saved' : 'Save image'}
+              accessibilityLabel={saved ? t('rewards:wallet.saved') : t('rewards:wallet.saveImage')}
             >
               {saveBusy ? (
                 <ActivityIndicator size="small" color={DIM} />
@@ -230,6 +248,7 @@ type WalletTab = 'active' | 'history';
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const [tab, setTab] = useState<WalletTab>('active');
   const [pendingShare, setPendingShare] = useState<WalletEntry | null>(null);
   const [pendingAction, setPendingAction] = useState<'share' | 'save'>('share');
@@ -273,7 +292,7 @@ export default function WalletScreen() {
 
   const visibleQuery = tab === 'active' ? activeQuery : historyQuery;
   const loading = visibleQuery.isPending;
-  const error = visibleQuery.isError ? 'Could not load your wallet.' : null;
+  const error = visibleQuery.isError ? t('rewards:wallet.loadError') : null;
   const loadingMore = historyQuery.isFetchingNextPage;
 
   const loadMoreHistory = useCallback(() => {
@@ -326,7 +345,7 @@ export default function WalletScreen() {
         await Clipboard.setStringAsync(message);
         await Sharing.shareAsync(uri, {
           mimeType: 'image/png',
-          dialogTitle: 'Share reward',
+          dialogTitle: t('rewards:wallet.shareDialogTitle'),
           UTI: 'public.png',
         });
       } else {
@@ -338,7 +357,7 @@ export default function WalletScreen() {
       shareReadyRef.current = null;
       setPendingShare(null);
     }
-  }, [captureEntry]);
+  }, [captureEntry, t]);
 
   /** Keep the card image — Android writes to the member's chosen folder, iOS goes via the sheet's Save Image. */
   const handleSave = useCallback(async (entry: WalletEntry) => {
@@ -368,15 +387,19 @@ export default function WalletScreen() {
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>Wallet</Text>
+        <Text style={styles.headerTitle}>{t('rewards:wallet.title')}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       <View style={styles.tabBar}>
-        {(['active', 'history'] as WalletTab[]).map((t) => (
-          <Pressable key={t} style={[styles.tabBtn, tab === t && styles.tabBtnActive]} onPress={() => setTab(t)}>
-            <Text style={[styles.tabLabel, tab === t && styles.tabLabelActive]}>
-              {t === 'active' ? `Active${active.length ? ` (${active.length})` : ''}` : 'History'}
+        {(['active', 'history'] as WalletTab[]).map((tabKey) => (
+          <Pressable key={tabKey} style={[styles.tabBtn, tab === tabKey && styles.tabBtnActive]} onPress={() => setTab(tabKey)}>
+            <Text style={[styles.tabLabel, tab === tabKey && styles.tabLabelActive]}>
+              {tabKey === 'active'
+                ? active.length
+                  ? t('rewards:wallet.tabs.activeCount', { n: active.length })
+                  : t('rewards:wallet.tabs.active')
+                : t('rewards:wallet.tabs.history')}
             </Text>
           </Pressable>
         ))}
@@ -414,14 +437,14 @@ export default function WalletScreen() {
             tab === 'active' ? (
               <View style={styles.centered}>
                 <Ionicons name="gift-outline" size={28} color={MUTED} />
-                <Text style={styles.statusText}>No active rewards.</Text>
+                <Text style={styles.statusText}>{t('rewards:wallet.emptyActive')}</Text>
                 <Pressable style={({ pressed }) => [styles.browseBtn, pressed && { opacity: 0.85 }]} onPress={() => router.back()}>
-                  <Text style={styles.browseBtnText}>Browse rewards</Text>
+                  <Text style={styles.browseBtnText}>{t('rewards:wallet.browse')}</Text>
                 </Pressable>
               </View>
             ) : (
               <View style={styles.centered}>
-                <Text style={styles.statusText}>Nothing here yet.</Text>
+                <Text style={styles.statusText}>{t('rewards:wallet.emptyHistory')}</Text>
               </View>
             )
           }

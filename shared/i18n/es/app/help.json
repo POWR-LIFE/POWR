@@ -1,1 +1,118 @@
-{}
+{
+  "title": "Centro de ayuda",
+  "tabs": {
+    "faq": "FAQ",
+    "contact": "Contacto",
+    "tickets": "Mis consultas"
+  },
+  "categories": {
+    "pointsRewards": "Puntos y recompensas",
+    "account": "Cuenta y perfil",
+    "healthSync": "Salud y sincronización",
+    "gymCheckin": "Check-in en el gimnasio",
+    "challenges": "Retos",
+    "technical": "Problema técnico",
+    "feedback": "Comentarios / Otro"
+  },
+  "faq": {
+    "points": {
+      "label": "Puntos y recompensas",
+      "earn": {
+        "q": "¿Cómo gano puntos POWR?",
+        "a": "Los puntos premian la actividad física verificada: check-ins en gimnasios asociados, pasos que registra tu móvil o tu wearable, entrenos registrados y retos semanales completados."
+      },
+      "expire": {
+        "q": "¿Caducan los puntos?",
+        "a": "Los puntos pueden caducar si tu cuenta está inactiva durante 12 meses seguidos. Mientras sigas moviéndote, tus puntos están a salvo."
+      },
+      "redeem": {
+        "q": "¿Cómo canjeo una recompensa?",
+        "a": "Ve a la pestaña Descubrir, busca la recompensa que quieras y toca Canjear. Se descontarán tus puntos y verás un código único. Enséñaselo al negocio asociado."
+      },
+      "transfer": {
+        "q": "¿Puedo pasarle mis puntos a otra persona?",
+        "a": "Los puntos están ligados a tu cuenta y no se pueden transferir ni vender. Cada persona gana y canjea sus propios puntos."
+      }
+    },
+    "gym": {
+      "label": "Gimnasio y check-ins",
+      "howItWorks": {
+        "q": "¿Cómo funcionan los check-ins en el gimnasio?",
+        "a": "Cuando llegas a un gimnasio asociado, POWR usa tu ubicación para detectar la visita y te da los puntos automáticamente. Asegúrate de que el permiso de ubicación está activado en Ajustes → Conexiones."
+      },
+      "noPoints": {
+        "q": "Fui al gimnasio pero no recibí puntos. ¿Por qué?",
+        "a": "Comprueba que la localización está en «Al usar la app» para POWR (Ajustes → Conexiones). Comprueba también que el gimnasio es un centro asociado de POWR. Si el problema sigue, registra la sesión a mano o contacta con nosotros."
+      },
+      "perDay": {
+        "q": "¿Cuántos check-ins en el gimnasio dan puntos al día?",
+        "a": "Ganas puntos por un check-in en el gimnasio al día. Las visitas extra del mismo día no suman puntos de nuevo."
+      }
+    },
+    "health": {
+      "label": "Salud y sincronización",
+      "sources": {
+        "q": "¿Qué fuentes de salud son compatibles?",
+        "a": "En iOS leemos los datos de la app Salud. En Android usamos Health Connect de Google. También puedes conectar Fitbit o WHOOP para tener datos más completos, como la frecuencia cardíaca y el sueño."
+      },
+      "stepsNotSyncing": {
+        "q": "Mis pasos no se sincronizan. ¿Qué hago?",
+        "a": "Comprueba que tu fuente de salud está conectada en Ajustes → En tu móvil o Wearables. Comprueba también que POWR tiene los permisos correctos en los ajustes de Privacidad o Salud de tu dispositivo."
+      },
+      "noWearable": {
+        "q": "¿Puedo usar POWR sin wearable?",
+        "a": "Sí. Tu móvil registra tus pasos y entrenos por sí solo a través de la app Salud o Health Connect de Google; no necesitas wearable."
+      },
+      "battery": {
+        "q": "¿POWR me gastará la batería?",
+        "a": "POWR está pensada para consumir poco. Los datos de salud se sincronizan por lotes, no de forma continua. La ubicación solo se usa un momento durante el check-in en el gimnasio."
+      }
+    },
+    "account": {
+      "label": "Cuenta y privacidad",
+      "changeEmail": {
+        "q": "¿Cómo cambio mi correo o mi contraseña?",
+        "a": "Ve a Ajustes → Cuenta. Toca Correo para cambiar tu dirección, o Cambiar contraseña para cambiarla directamente en la app. Si has olvidado tu contraseña actual, toca «Restablecer por correo» en la pantalla Cambiar contraseña."
+      },
+      "healthShared": {
+        "q": "¿Se comparten mis datos de salud con los partners?",
+        "a": "No. Tus datos de salud nunca se comparten con los negocios asociados. Solo compartimos lo mínimo necesario para darte una recompensa que decidas canjear (por ejemplo, un código de canje)."
+      },
+      "deleteAccount": {
+        "q": "¿Cómo elimino mi cuenta?",
+        "a": "Ve a Ajustes, baja hasta el final y toca Eliminar cuenta. Tu perfil y todos sus datos se eliminan para siempre en un plazo de 30 días."
+      },
+      "leaderboard": {
+        "q": "¿Cómo dejo de salir en la clasificación?",
+        "a": "Ve a Ajustes → Privacidad y desactiva «Aparecer en la clasificación». Tu actividad seguirá siendo privada y tu nombre desaparecerá de todas las clasificaciones."
+      }
+    },
+    "stillStuck": "¿Sigues con problemas? Usa la pestaña Contacto y te responderemos."
+  },
+  "contact": {
+    "whatHelp": "¿EN QUÉ PODEMOS AYUDARTE?",
+    "subject": "ASUNTO",
+    "subjectPlaceholder": "Resume tu problema en pocas palabras",
+    "message": "MENSAJE",
+    "messagePlaceholder": "Cuéntanos qué ha pasado y qué has probado ya…",
+    "send": "Enviar mensaje",
+    "responseTime": "Solemos responder en un día laborable.",
+    "errorTitle": "Error",
+    "errorBody": "No hemos podido enviar tu mensaje. Inténtalo de nuevo.",
+    "sentTitle": "Mensaje enviado",
+    "sentBody": "Te responderemos en un día laborable."
+  },
+  "tickets": {
+    "title": "TUS CONSULTAS DE SOPORTE",
+    "emptyTitle": "Aún no hay consultas",
+    "emptyHint": "Aquí verás los mensajes que envíes.",
+    "status": {
+      "open": "Abierta",
+      "inProgress": "En curso",
+      "resolved": "Resuelta",
+      "closed": "Cerrada"
+    },
+    "supportName": "Soporte de POWR",
+    "awaiting": "Esperando respuesta…"
+  }
+}

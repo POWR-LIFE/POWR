@@ -14,5 +14,253 @@
       "title": "Translation preview off",
       "body": "POWR is back to the languages that are ready."
     }
+  },
+  "main": {
+    "title": "Settings",
+    "section": {
+      "account": "Account",
+      "affiliate": "Affiliate",
+      "points": "Points",
+      "activityFocus": "Activity Focus",
+      "onYourPhone": "On your phone",
+      "wearables": "Wearables",
+      "connections": "Connections",
+      "notifications": "Notifications",
+      "email": "Email",
+      "social": "Social",
+      "privacy": "Privacy",
+      "admin": "Admin",
+      "support": "Support"
+    },
+    "account": {
+      "editProfile": "Edit Profile",
+      "email": "Email",
+      "changePassword": "Change Password",
+      "powrIdHint": "Quote it if we ever need to find you · also your invite code",
+      "copied": "Copied",
+      "invitedBy": "Invited by",
+      "invitedByHint": "You both earn 20 POWR after your first verified workout",
+      "haveInviteCode": "Have an invite code?",
+      "inviteDaysLeft": "Add a friend's code in your first days — {{days}} left",
+      "inviteLastDay": "Last day to add a friend's code"
+    },
+    "affiliate": {
+      "row": "Affiliate",
+      "hint": "Your code, link, signups and rewards"
+    },
+    "points": {
+      "logManually": "Log Activity Manually",
+      "history": "Points History"
+    },
+    "activityFocus": "Activity Focus",
+    "health": {
+      "phoneHint": "Steps and workouts your phone tracks. Garmin and Samsung devices sync automatically.",
+      "wearablesHint": "Richer data — sleep, heart rate, verified workouts.",
+      "connectedDevice": "Connected Device",
+      "noneConnected": "None connected",
+      "connectHint": "Connect a health source to verify workouts and earn points from walking & sleep."
+    },
+    "connections": {
+      "location": "Location",
+      "locationHintGyms": "Verify sessions at partner gyms",
+      "locationHintVenues": "Verify sessions at partner venues",
+      "background": "Background location",
+      "backgroundHint": "Check you in while POWR is closed",
+      "battery": "Background activity",
+      "batteryHint": "Stop Android sleeping the check-in watch",
+      "status": {
+        "denied": "Denied",
+        "notSetUp": "Not set up",
+        "approximate": "Approximate",
+        "enabled": "Enabled",
+        "always": "Always",
+        "allTheTime": "All the time",
+        "whileUsing": "While using",
+        "off": "Off"
+      },
+      "locationRequiredGyms": "Location is required to earn points at geofenced venues and partner gyms.",
+      "locationRequiredVenues": "Location is required to earn points at partner venues.",
+      "backgroundMissing": "Without background location POWR can only check you in while the app is open."
+    },
+    "notifications": {
+      "offBanner": "<strong>Notifications are off.</strong> Gym check-ins and reward alerts won’t reach you, and the switches below do nothing until you turn them on.",
+      "turnOn": "Turn on notifications",
+      "showMeHow": "Show me how",
+      "gymCheckIn": "Gym check-in alerts",
+      "rewards": "Reward alerts",
+      "workoutSync": "Workout sync",
+      "workoutSyncHint": "When a wearable workout lands and earns POWR",
+      "streak": "Streak alerts",
+      "streakHint": "Evening warning when your streak's at risk, and rescue offers",
+      "levelUp": "Level ups",
+      "dailyNudges": "Daily nudges",
+      "dailyNudgesHint": "Step-goal reminders and the odd get-moving prompt — never more than one a day",
+      "nearby": "Nearby rewards",
+      "nearbyHint": "A nudge when a reward is boosted where you are",
+      "friends": "Friend activity",
+      "friendsHint": "Friend requests and shared-challenge updates",
+      "news": "Product news",
+      "newsHint": "Occasional announcements about new features and rewards"
+    },
+    "email": {
+      "weekly": "Weekly summary",
+      "weeklyHint": "Your week's points, workouts and rank, every Monday"
+    },
+    "social": {
+      "together": "Together challenges",
+      "togetherHint": "Take on challenges with friends from your home screen",
+      "openBoard": "Open challenge board",
+      "openBoardHint": "Post challenges any POWR member can take, and see theirs. They see your first name and photo.",
+      "boardAlerts": "Board alerts",
+      "boardAlertsHint": "Tell me when someone posts a challenge I could take"
+    },
+    "privacy": {
+      "shareActivity": "Share activity",
+      "shareActivityHint": "Friends can see your workouts",
+      "gymBoards": "Show me on gym boards",
+      "gymBoardsHint": "Your name and points on the leaderboard at gyms you train at: the app, their screens and Gym Clash. Off, you still earn.",
+      "gymVisits": "Let gyms see my visits",
+      "gymVisitsHint": "Gyms you train at see when you were in, so they can notice if you stop coming. Never your other training, health data or where you are.",
+      "shareWithGym": "Share with {{gym}}",
+      "shareWithGymHint": "Your gym also sees the rest of your training: runs, rides, home workouts, how often and when. Never your sleep, heart rate or where you are."
+    },
+    "admin": {
+      "partners": "Manage Partners",
+      "athletes": "Athlete Applications",
+      "challenges": "Manage Challenges"
+    },
+    "support": {
+      "permissions": "Permissions & Setup",
+      "permissionsHint": "Fix location, notifications & health access",
+      "updates": "Check for updates",
+      "updatesHint": "You're on v{{version}}",
+      "helpCentre": "Help Centre",
+      "terms": "Terms of Service",
+      "privacy": "Privacy Policy"
+    },
+    "signOut": "Sign out",
+    "deleteAccount": "Delete account",
+    "deleteAlert": {
+      "title": "Delete Account",
+      "body": "This will permanently delete your account and all associated data. This cannot be undone.",
+      "confirm": "Delete",
+      "supportTitle": "Contact Support",
+      "supportBody": "Please email support to complete account deletion. You will now be signed out."
+    },
+    "changeFailed": {
+      "title": "Couldn’t change that",
+      "body": "Try again in a moment."
+    }
+  },
+  "providers": {
+    "status": {
+      "primary": "Primary",
+      "connected": "Connected",
+      "notConnected": "Not connected"
+    },
+    "healthConnectHint": "Pixel Watch, Galaxy Watch & more",
+    "notConnected": "{{name}} not connected",
+    "permissionNotGranted": "Permission was not granted. You can enable it in Health Connect settings.",
+    "permissionNotGrantedAllow": "Permission was not granted. You can allow it in Health Connect settings.",
+    "openHealthConnect": "Open Health Connect",
+    "couldNotStart": "We could not start the connection. Please try again.",
+    "comingSoon": "{{name}} coming soon",
+    "notAvailable": "This integration is not available yet.",
+    "connectionFailed": "Connection failed",
+    "setPrimary": "Set as primary source",
+    "disconnect": "Disconnect",
+    "disconnectTitle": "Disconnect {{name}}?",
+    "disconnectNative": "POWR will stop reading from this source. To fully revoke access, also turn off permission in your phone settings.",
+    "disconnectCloud": "POWR will stop reading from this source and clear stored credentials.",
+    "disconnectDevice": "POWR will stop reading from this device and clear stored credentials.",
+    "isPrimary": "This is your primary source.",
+    "switchTitle": "Switch to {{name}}?",
+    "switchBody": "You can only connect one device at a time. This will disconnect {{current}}.",
+    "switchConfirm": "Switch to {{name}}"
+  },
+  "wearables": {
+    "title": "Wearables",
+    "hint": "Connect one device to verify workouts and earn bonus points. You can switch at any time — only one can be active.",
+    "footer": "More devices sync automatically via Apple Health or Health Connect — connect those from the health sources section in Settings."
+  },
+  "activityPreferences": {
+    "title": "Activity Focus",
+    "headline": "What's your\n<gold>focus?</gold>",
+    "bodyWithDevices": "Pick up to {{max}}. We'll auto-track what your devices support.",
+    "bodyNoDevices": "Pick up to {{max}}. Most need manual logging without a wearable.",
+    "pickOne": "Pick at least one activity",
+    "roomFor_one": "Room for {{count}} more activity",
+    "roomFor_other": "Room for {{count}} more activities",
+    "saving": "SAVING...",
+    "save": "SAVE"
+  },
+  "permissionsHelp": {
+    "title": "Permissions & Setup",
+    "intro": "POWR needs a few permissions to earn for you automatically. Here's what each one does and how to fix it if it's switched off.",
+    "status": {
+      "ok": "Enabled",
+      "limited": "Limited",
+      "off": "Off",
+      "unknown": "Manage"
+    },
+    "openSettings": "Open Settings",
+    "location": {
+      "title": "Location",
+      "whyGym": "Detects when you arrive at a partner gym and earns points at geofenced venues — even while POWR is closed.",
+      "whyVenue": "Detects when you arrive at a partner venue and earns points at geofenced venues — even while POWR is closed.",
+      "ios": {
+        "step1": "Tap Open Settings below to jump to POWR's settings",
+        "step2": "Tap Location",
+        "step3": "Choose \"Always\" (turn on Precise Location too)"
+      },
+      "android": {
+        "step1": "Tap Open Settings below to open POWR's app info",
+        "step2": "Tap Permissions › Location",
+        "step3": "Choose \"Allow all the time\" and \"Precise\""
+      },
+      "noteIosGym": "Location is on, but not set to \"Always\" — POWR can't detect gym arrivals when it's closed. If you don't see \"Always\" yet, choose \"While Using the App\" first, then come back.",
+      "noteIosVenue": "Location is on, but not set to \"Always\" — POWR can't detect venue arrivals when it's closed. If you don't see \"Always\" yet, choose \"While Using the App\" first, then come back.",
+      "noteAndroidGym": "Location is on, but not \"Allow all the time\" — POWR can't detect gym arrivals when it's closed.",
+      "noteAndroidVenue": "Location is on, but not \"Allow all the time\" — POWR can't detect venue arrivals when it's closed."
+    },
+    "battery": {
+      "title": "Background activity",
+      "whyGym": "Lets POWR keep detecting gym arrivals when the app is fully closed. Without it, Android can sleep the app and miss check-ins.",
+      "whyVenue": "Lets POWR keep detecting venue arrivals when the app is fully closed. Without it, Android can sleep the app and miss check-ins.",
+      "step1": "Tap Open Settings below",
+      "step2": "Allow POWR to ignore battery optimisation",
+      "step3": "Or set Battery to \"Unrestricted\" on POWR's app page"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "whyGym": "Confirms gym check-ins, tells you when points land, and alerts you to rewards you can claim.",
+      "whyVenue": "Confirms sessions, tells you when points land, and alerts you to rewards you can claim.",
+      "ios": {
+        "step1": "Open Settings, then Notifications",
+        "step2": "Find POWR in the list",
+        "step3": "Turn on Allow Notifications"
+      },
+      "android": {
+        "step1": "Open Settings, then Apps › POWR",
+        "step2": "Tap Notifications",
+        "step3": "Turn notifications on"
+      }
+    },
+    "health": {
+      "why": "Reads your steps, workouts and sleep so they can be verified and turned into points — no wearable required.",
+      "ios": {
+        "step1": "Open the Health app",
+        "step2": "Tap your profile photo (top-right), then Privacy › Apps",
+        "step3": "Tap POWR and turn on the categories you want to share"
+      },
+      "android": {
+        "step1": "Tap Open Health Connect below",
+        "step2": "Go to App permissions › POWR",
+        "step3": "Allow read access for Steps, Workouts and Sleep"
+      },
+      "openAppleHealth": "Open Apple Health",
+      "openHealthConnect": "Open Health Connect"
+    },
+    "footer": "Changed a setting? Return here and the status above will update. Still stuck? Use the Help Centre to contact us."
   }
 }

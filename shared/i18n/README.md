@@ -114,6 +114,26 @@ Terms that stay in English are product names. Use them exactly as written, with 
 | Done | Terminé | Hecho | |
 | Got it | Compris | Vale | |
 | Let's go | C’est parti | ¡Vamos! | |
+| achievements | succès | logros | |
+| LVL (level badge) | NIV. | NIV. | |
+| level up | NOUVEAU NIVEAU | NUEVO NIVEL | Badge wording |
+| level names ("Touching Grass"…) | translated as jokes | translated as jokes | Keys under points:levels.*; the reviewer signs off each one |
+| tier (Recruit / Athlete / Elite / Legend) | RECRUE / ATHLÈTE / ÉLITE / LÉGENDE | RECLUTA / ATLETA / ÉLITE / LEYENDA | |
+| balance | solde | saldo | |
+| daily cap | plafond quotidien | límite diario | |
+| vest / matured (Vault) | mûrir / arrivé à terme | madurar / madurado | Vault is masculine: le Vault, el Vault |
+| Activity Focus | Activités phares | Actividades principales | |
+| Help Centre | Centre d’aide | Centro de ayuda | |
+| Support (settings section) | Assistance | Ayuda | "soporte" in Spanish body text |
+| Together (challenge feature) | Ensemble | En equipo | |
+| Pacer | lièvre | liebre | The running term |
+| open board | tableau ouvert | tablón abierto | |
+| friend request | demande d’ami | solicitud de amistad | |
+| Gym (activity chip) | Salle | Gym | Full name elsewhere: Salle de sport / Gimnasio |
+| Running (activity chip) | Course | Correr | Full name: Course à pied |
+| Strength training | Musculation | Fuerza | |
+| Mountain biking | VTT | BTT | |
+| Hiking | Randonnée | Senderismo | |
 
 Add to this table whenever a new term comes up, so every screen uses the same word.
 
