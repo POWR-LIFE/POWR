@@ -129,7 +129,8 @@ export default function RedeemModal() {
 
       // Affiliate links and configured shared promo codes are reusable receipts.
       // Showing the active receipt avoids charging points again for the same offer.
-      if ((full.integration_type === 'AFFILIATE' || full.promo_code?.trim()) && active[0]?.code) {
+      // An in-store reward is used up at the till, so every claim is fresh.
+      if (full.integration_type !== 'IN_STORE' && (full.integration_type === 'AFFILIATE' || full.promo_code?.trim()) && active[0]?.code) {
         setCode(active[0].code);
         setExpiresAt(active[0].expires_at ?? null);
         setCheckoutUrl(active[0].checkout_url ?? full.url ?? full.partner?.checkout_url_template ?? null);
@@ -181,6 +182,7 @@ export default function RedeemModal() {
           : e.code === 'REDEMPTION_LIMIT_REACHED' ? "You've already claimed the maximum number of this reward."
           : e.code === 'REWARD_NOT_FOUND' ? 'Reward not found. Please go back and try again.'
           : e.code === 'PARTNER_MISCONFIGURED' ? 'This reward is not yet available. Please try again later.'
+          : e.code === 'APP_UPDATE_REQUIRED' ? 'Update POWR to use this in-store reward.'
           : `Something went wrong (${e.code}). Please try again.`
         );
       } else {
@@ -230,6 +232,7 @@ export default function RedeemModal() {
           alreadyRedeemed={alreadyRedeemed}
           onCopy={handleCopy}
           onOpenCheckout={handleOpenCheckout}
+          onOpenWallet={() => router.replace('/wallet')}
           onDone={() => router.back()}
         />
       )}
@@ -392,6 +395,7 @@ interface SuccessProps {
   alreadyRedeemed: boolean;
   onCopy: () => void;
   onOpenCheckout: () => void;
+  onOpenWallet: () => void;
   onDone: () => void;
 }
 
@@ -401,7 +405,7 @@ function formatExpiry(expiresAt: string | null): string {
   return `Valid until ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · Show to staff or enter at checkout`;
 }
 
-function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRedeemed, onCopy, onOpenCheckout, onDone }: SuccessProps) {
+function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRedeemed, onCopy, onOpenCheckout, onOpenWallet, onDone }: SuccessProps) {
   const partnerLabel = reward.partner && reward.partner.toUpperCase() !== reward.title.toUpperCase() ? reward.partner : null;
 
   return (
@@ -448,7 +452,21 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
           </View>
         )}
 
-        {reward.integrationType === 'AFFILIATE' ? (
+        {reward.integrationType === 'IN_STORE' ? (
+          <>
+            <Text style={styles.codeLabel}>USE IT IN STORE</Text>
+            <Text style={styles.affiliateHint}>
+              It’s in your wallet. When you’re at the till{partnerLabel ? ` at ${partnerLabel}` : ''}, tap Use in store and staff scan it.
+            </Text>
+            <Pressable
+              style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
+              onPress={tracked('redeem_open_wallet_in_store', onOpenWallet)}
+            >
+              <Ionicons name="wallet-outline" size={16} color="#0a0a0a" />
+              <Text style={styles.confirmBtnText}>Go to wallet</Text>
+            </Pressable>
+          </>
+        ) : reward.integrationType === 'AFFILIATE' ? (
           <>
             <Text style={styles.affiliateHint}>Your discount is applied automatically at checkout.</Text>
             {checkoutUrl && (

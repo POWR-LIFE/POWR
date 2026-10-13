@@ -4,6 +4,7 @@ import { Gift, TrendingUp, BarChart3, ChevronRight, Check, Copy } from 'lucide-r
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
+import InStoreReport from './InStoreReport';
 
 const fmt = (n) => (n ?? 0).toLocaleString();
 
@@ -266,6 +267,9 @@ export default function PartnerRedemptions() {
                             <div className="text-[10px] uppercase tracking-[0.3em] text-[#BBB] font-black mt-1">live</div>
                         </div>
                     </div>
+
+                    {/* In store: opened, confirmed, swiped, by shop. Renders nothing without in-store activity. */}
+                    <InStoreReport brand={brand} days={range} />
 
                     {/* By reward breakdown */}
                     {byReward.length > 0 && (

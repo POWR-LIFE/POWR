@@ -134,7 +134,7 @@ export default function PartnerPromoCodes() {
             return;
         }
         const eligible = (data ?? []).filter(
-            r => r.reward_kind !== 'physical' && r.integration_type !== 'AFFILIATE'
+            r => r.reward_kind !== 'physical' && r.integration_type !== 'AFFILIATE' && r.integration_type !== 'IN_STORE'
         );
         setRewards(eligible);
 

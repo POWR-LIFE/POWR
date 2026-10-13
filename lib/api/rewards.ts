@@ -1,6 +1,9 @@
 import { getSessionUser, supabase } from '@/lib/supabase';
 
-export type IntegrationType = 'POOL' | 'API_VALIDATED' | 'AFFILIATE';
+// IN_STORE: an in-store-only reward. The member opens a live voucher at the
+// till (lib/api/inStore.ts); the `code` on its redemption is a receipt id,
+// never something to show or type.
+export type IntegrationType = 'POOL' | 'API_VALIDATED' | 'AFFILIATE' | 'IN_STORE';
 
 export interface PartnerSummary {
   id: string;
@@ -58,6 +61,7 @@ export type RedemptionErrorCode =
   | 'CODE_GENERATION_FAILED'
   | 'TX_FAILED'
   | 'REDEMPTION_LIMIT_REACHED'
+  | 'APP_UPDATE_REQUIRED'
   | 'UNKNOWN';
 
 export class RedemptionError extends Error {
@@ -70,15 +74,31 @@ export class RedemptionError extends Error {
   }
 }
 
+const REWARD_COLUMNS =
+  'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, hero_video_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
+
 export async function fetchRewards(): Promise<Reward[]> {
-  const { data, error } = await supabase
-    .from('rewards')
-    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, hero_video_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
-    .eq('active', true)
-    .order('sort_order', { ascending: true })
-    .order('powr_cost', { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map((r: any) => ({
+  // QA testers (qa_testers) also get the QA store's inactive test rewards
+  // (system_config qa_brand_name, POWR Store). Everyone else gets an empty
+  // list back, so members never see a test reward. A failure here only
+  // drops the test rewards, never the catalogue.
+  const [main, qa] = await Promise.all([
+    supabase
+      .from('rewards')
+      .select(REWARD_COLUMNS)
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+      .order('powr_cost', { ascending: true }),
+    supabase.rpc('qa_test_reward_ids'),
+  ]);
+  if (main.error) throw main.error;
+  let data: any[] = main.data ?? [];
+  const qaIds = Array.isArray(qa.data) ? (qa.data as string[]) : [];
+  if (qaIds.length) {
+    const extra = await supabase.from('rewards').select(REWARD_COLUMNS).in('id', qaIds).order('created_at', { ascending: true });
+    if (!extra.error && extra.data) data = [...data, ...extra.data];
+  }
+  return data.map((r: any) => ({
     ...r,
     partner: Array.isArray(r.partners) ? r.partners[0] : r.partners,
   })) as Reward[];
@@ -89,7 +109,9 @@ export async function redeemReward(rewardId: string): Promise<RedemptionResult> 
   if (!session) throw new RedemptionError('UNKNOWN', 'Not authenticated');
 
   const { data, error } = await supabase.functions.invoke('redeem-reward', {
-    body: { reward_id: rewardId },
+    // `features` tells redeem-reward this build has the in-store voucher
+    // screen; builds without it are refused in-store-only rewards.
+    body: { reward_id: rewardId, features: ['in_store_v1'] },
     headers: { Authorization: `Bearer ${session.access_token}` },
   });
 
@@ -166,7 +188,7 @@ export function walletEntryStatus(
   return 'ready';
 }
 
-const WALLET_COLUMNS =
+export const WALLET_COLUMNS =
   'id, reward_id, code, powr_spent, status, redeemed_at, expires_at, integration_type, reward_title, partner_name, reward_image_url, reward_hero_image_url, checkout_url';
 
 export const WALLET_HISTORY_PAGE_SIZE = 20;

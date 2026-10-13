@@ -35,7 +35,7 @@ const num = (v) => {
 // see the circle the app actually enforces sitting on the real building. Drag the
 // gold ring (or click the map) to move the node; `onMove` receives the new
 // coordinates and the parent owns the state as before.
-export default function GeofenceMap({ lat, lng, radius, label, readOnly = false, onMove, height = 320 }) {
+export default function GeofenceMap({ lat, lng, radius, label, readOnly = false, onMove, height = 320, approach = true }) {
     const elRef = useRef(null);
     const searchRef = useRef(null);
     const mapRef = useRef(null);
@@ -56,8 +56,9 @@ export default function GeofenceMap({ lat, lng, radius, label, readOnly = false,
     })();
     const radiusM = num(radius) ?? 25;
     // Only draw the wake ring when it's genuinely wider than the fence, otherwise
-    // it just traces the gold circle and reads as a rendering glitch.
-    const showApproach = radiusM < APPROACH_RADIUS_M;
+    // it just traces the gold circle and reads as a rendering glitch. Shop sites
+    // for in-store rewards have no wake ring at all (approach={false}).
+    const showApproach = approach && radiusM < APPROACH_RADIUS_M;
 
     // Frame the node: fit whichever ring is the outer one, so the fence fills the
     // viewport instead of being a speck at whatever zoom the map opened on.

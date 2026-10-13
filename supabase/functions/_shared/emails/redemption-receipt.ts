@@ -29,7 +29,9 @@ function formatDate(iso: string): string {
 export function redemptionReceiptEmail(data: RedemptionReceiptData): { subject: string; html: string; text: string } {
   const plainName = data.name?.trim().split(" ")[0] || "there";
   const brand = data.brand?.trim() || null;
-  const isLink = data.integrationType === "AFFILIATE" || !data.code;
+  // In store: nothing to copy. The member opens a live voucher at the till.
+  const isInStore = data.integrationType === "IN_STORE";
+  const isLink = !isInStore && (data.integrationType === "AFFILIATE" || !data.code);
   const offer = [brand, data.valueLabel?.trim()].filter(Boolean).join(" · ") || data.rewardTitle;
   const expires = data.expiresAt ? formatDate(data.expiresAt) : null;
   // Reward titles are often just the brand or the discount ("HUEL", "£15 off"),
@@ -39,10 +41,12 @@ export function redemptionReceiptEmail(data: RedemptionReceiptData): { subject: 
   // Only a checkout link built around the code actually applies it.
   const linkApplies = !!(data.checkoutUrl && data.code && data.checkoutUrl.includes(data.code));
 
-  const subject = isLink
+  const subject = isLink || isInStore
     ? `Your ${brand ?? "POWR"} reward is ready`
     : `Your ${brand ?? "POWR"} code: ${data.code}`;
-  const preheader = isLink
+  const preheader = isInStore
+    ? `${offer} — show it at the till${expires ? ` by ${expires}` : ""}.`
+    : isLink
     ? `${offer} — your link is inside${expires ? `, valid until ${expires}` : ""}.`
     : `${offer} — use it at checkout${expires ? ` by ${expires}` : ""}.`;
 
@@ -64,7 +68,10 @@ export function redemptionReceiptEmail(data: RedemptionReceiptData): { subject: 
           </td>
         </tr>`;
 
-  const codeBlock = isLink
+  const codeBlock = isInStore
+    ? `
+            <p style="margin:0;font-size:14px;font-weight:300;color:#aaaaaa;line-height:1.6;font-family:${FONT};">When you're at the till${brand ? ` at ${esc(brand)}` : ""}, open your POWR wallet and tap <strong style="font-weight:600;color:#dddddd;">Use in store</strong>. Staff scan the voucher on your phone and that's it.</p>`
+    : isLink
     ? `
             <p style="margin:0 0 20px;font-size:14px;font-weight:300;color:#aaaaaa;line-height:1.6;font-family:${FONT};">Your reward is applied through your POWR link &mdash; no code to copy.</p>
             ${data.checkoutUrl ? ctaButton(`Shop ${esc(brand ?? "now")}`, data.checkoutUrl) : ""}`
@@ -86,7 +93,7 @@ export function redemptionReceiptEmail(data: RedemptionReceiptData): { subject: 
   const codeCard = `
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:32px 40px;text-align:center;border-bottom:1px solid #161616;">
-            ${sectionLabel(isLink ? "Your link" : "Your code")}
+            ${sectionLabel(isInStore ? "Use it in store" : isLink ? "Your link" : "Your code")}
             <div style="margin-top:16px;">${codeBlock}</div>
             ${expires ? `<p style="margin:18px 0 0;font-size:12px;font-weight:500;color:#999999;font-family:${FONT};">Valid until ${expires}</p>` : ""}
           </td>
@@ -126,7 +133,7 @@ export function redemptionReceiptEmail(data: RedemptionReceiptData): { subject: 
 
 ${offer}${showTitle ? `\n${data.rewardTitle}` : ""}
 
-${isLink ? `Your link: ${data.checkoutUrl ?? "open your wallet in the app"}` : `Your code: ${data.code}\nEnter it at checkout${data.checkoutUrl ? `: ${data.checkoutUrl}` : "."}`}${expires ? `\nValid until ${expires}` : ""}
+${isInStore ? `Use it in store: at the till, open your POWR wallet and tap Use in store. Staff scan the voucher on your phone.` : isLink ? `Your link: ${data.checkoutUrl ?? "open your wallet in the app"}` : `Your code: ${data.code}\nEnter it at checkout${data.checkoutUrl ? `: ${data.checkoutUrl}` : "."}`}${expires ? `\nValid until ${expires}` : ""}
 
 POWR spent: ${data.powrSpent.toLocaleString()}${data.balanceAfter != null ? `\nBalance now: ${Math.max(0, data.balanceAfter).toLocaleString()}` : ""}
 

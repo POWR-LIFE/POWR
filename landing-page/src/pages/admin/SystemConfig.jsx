@@ -101,7 +101,7 @@ const GROUPS = [
     {
         id: 'partner', title: 'Partner Portal', icon: Store, accent: '#EC4899',
         blurb: 'Feature flags for the brand-facing partner portal.',
-        keys: ['partner_placements_enabled'],
+        keys: ['partner_placements_enabled', 'partner_in_store_enabled'],
     },
     {
         id: 'creators', title: 'Affiliate Programme', icon: Sparkles, accent: '#E8D200',
@@ -144,6 +144,7 @@ const LABELS = {
     latest_ios_version: 'Latest App Store version',
     latest_android_version: 'Latest Play Store version',
     partner_placements_enabled: 'Self-serve placements',
+    partner_in_store_enabled: 'In-store redemption for brands',
     creator_program_enabled: 'Affiliate programme live',
     creator_invite_threshold: 'Earned invite: converted referrals needed',
     creator_invite_window_days: 'Earned invite: counting window (0 = all time)',
