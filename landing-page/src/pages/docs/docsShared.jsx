@@ -8,7 +8,7 @@ import React, { Suspense, useEffect } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
     Award, BadgePercent, CalendarDays, Code2, Compass, Gift, Lock, MapPin, Palette, PartyPopper,
-    Rocket, Settings, Settings2, Store, Ticket, Tv, Users,
+    Rocket, ScanLine, Settings, Settings2, Store, Ticket, Tv, Users,
 } from 'lucide-react';
 import { useAuth } from '../../App';
 import SHOTS from './shots.json';
@@ -42,6 +42,7 @@ const PARTNER_GROUPS = [
     { title: 'Delivering codes', guides: [
         { path: '/docs', label: 'How codes flow', icon: Compass },
         ...METHOD_GUIDES,
+        { path: '/docs/in-store', label: 'In store', icon: ScanLine },
     ] },
     { title: 'Getting seen', guides: [
         { path: '/docs/whats-on', label: 'What’s On', icon: CalendarDays },
