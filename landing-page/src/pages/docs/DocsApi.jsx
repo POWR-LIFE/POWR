@@ -38,8 +38,9 @@ expired    → the code lapsed before being claimed`}</CodeBlock>
                 <P>
                     The REST API moves codes in (<code className="font-mono">POST /codes</code>) and confirms usage
                     (<code className="font-mono">POST /reconcile</code>). Webhooks push the other direction — we notify
-                    your system on <code className="font-mono">code.assigned</code>, <code className="font-mono">code.used</code> and{' '}
-                    <code className="font-mono">pool.low</code>. Base URL:
+                    your system on <code className="font-mono">code.assigned</code>, <code className="font-mono">code.used</code>,{' '}
+                    <code className="font-mono">pool.low</code>, and for <Link to="/docs/in-store" className="font-bold text-[#8a7600] hover:underline">in-store rewards</Link>{' '}
+                    <code className="font-mono">voucher.confirmed</code> and <code className="font-mono">voucher.swiped</code>. Base URL:
                 </P>
                 <CodeBlock>{BASE}</CodeBlock>
                 <Callout tone="note" title="Two ways to supply codes">
@@ -63,7 +64,9 @@ expired    → the code lapsed before being claimed`}</CodeBlock>
                     </Step>
                     <Step n="2" title="Add a webhook endpoint">
                         Register an https URL to receive <code className="font-mono">code.assigned</code>,{' '}
-                        <code className="font-mono">code.used</code> and <code className="font-mono">pool.low</code>.
+                        <code className="font-mono">code.used</code> and <code className="font-mono">pool.low</code> (plus{' '}
+                        <code className="font-mono">voucher.confirmed</code> and <code className="font-mono">voucher.swiped</code> if
+                        members use your rewards in store).
                         Each endpoint gets its own signing secret — verify every delivery against it.
                     </Step>
                     <Step n="3" title="Supply codes">
@@ -242,6 +245,21 @@ expired    → the code lapsed before being claimed`}</CodeBlock>
                         A reward’s available stock dipped to your configured threshold (at most once per reward per
                         24h). <code className="font-mono">data</code>: brand_name, reward_id, reward_title, available,
                         threshold. React by pushing a fresh batch to <code className="font-mono">POST /codes</code>.
+                    </Param>
+                    <Param name="voucher.confirmed" type="event">
+                        In store: your staff scanned a member’s live voucher at the till (on powr.life/scan, or signed in
+                        to the portal). <code className="font-mono">data</code>: brand_name, voucher_id, redemption_id,
+                        reward_id, reward_title, site (id, name, stand_code), opened_at, confirmed_at, confirmed_by
+                        (<code className="font-mono">staff</code> or <code className="font-mono">manager</code>), staff_name,
+                        spend_pence (when staff entered the spend), at_shop, and code for rewards that also have an
+                        online code. Fields with no value are left out. For a reward with a code,{' '}
+                        <code className="font-mono">code.used</code> fires as well.
+                    </Param>
+                    <Param name="voucher.swiped" type="event">
+                        In store: staff swiped the voucher on the member’s phone instead of scanning it. The member was
+                        shown the reward but your till didn’t confirm it, so it never marks a code used.{' '}
+                        <code className="font-mono">data</code>: brand_name, voucher_id, redemption_id, reward_id,
+                        reward_title, site, opened_at, swiped_at, at_shop.
                     </Param>
                     <Param name="webhook.test" type="event">
                         Sent by the portal’s Test button.

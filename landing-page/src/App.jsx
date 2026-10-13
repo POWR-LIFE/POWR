@@ -61,6 +61,7 @@ import DocsOverview from './pages/docs/DocsOverview';
 import DocsPromoCodes from './pages/docs/DocsPromoCodes';
 import DocsShopify from './pages/docs/DocsShopify';
 import DocsApi from './pages/docs/DocsApi';
+import DocsInStore from './pages/docs/DocsInStore';
 import { GuideGate } from './pages/docs/docsShared';
 import DocsGettingStarted from './pages/docs/DocsGettingStarted';
 import DocsRewards from './pages/docs/DocsRewards';
@@ -1714,6 +1715,7 @@ export default function App() {
                     <Route path="/docs/promo-codes" element={<DocsPromoCodes />} />
                     <Route path="/docs/shopify" element={<DocsShopify />} />
                     <Route path="/docs/api" element={<DocsApi />} />
+                    <Route path="/docs/in-store" element={<DocsInStore />} />
                     <Route path="/docs/getting-started" element={<DocsGettingStarted />} />
                     <Route path="/docs/rewards" element={<DocsRewards />} />
                     <Route path="/docs/whats-on" element={<DocsWhatsOn />} />
