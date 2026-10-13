@@ -88,11 +88,18 @@ describe('server languages', () => {
       }),
     };
     const ids = Array.from({ length: 450 }, (_, i) => `u${i}`);
-    const map = await languagesFor(client as any, ids);
+    const map = await languagesFor(client as any, ids, ['en', 'fr']);
     expect(calls.map(c => c.length)).toEqual([200, 200, 50]);
     expect(map.size).toBe(450);
-    expect(map.get('u1')).toBe(serverLanguage('fr'));
+    expect(map.get('u1')).toBe('fr');
     expect(map.get('u2')).toBe('en');
+  });
+
+  it('does not touch the database while English is the only live language', async () => {
+    const client = { from: jest.fn() };
+    const map = await languagesFor(client as any, ['a', 'b', 'a'], ['en']);
+    expect(client.from).not.toHaveBeenCalled();
+    expect([...map.entries()]).toEqual([['a', 'en'], ['b', 'en']]);
   });
 });
 

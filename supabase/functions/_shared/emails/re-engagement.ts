@@ -6,7 +6,9 @@
 // Leads with what they already have (balance, rewards in reach), then the
 // no-effort ways back in. Never guilt, never hustle — see POWR_Brand_Narrative.
 
+import { tEmail } from "../i18n/index.ts";
 import { ctaButton, emailShell, esc, FONT, GOLD, optimizeImage, sectionLabel } from "./layout.ts";
+import { BR_DESKTOP, firstNameOf, fmtNum, rewardValueLabel } from "./member-copy.ts";
 import type { WeeklyRewardTile } from "./weekly-summary.ts";
 
 export interface ReEngagementData {
@@ -34,25 +36,25 @@ function sessionsAway(cost: number, balance: number): number {
   return Math.max(1, Math.ceil(Math.max(0, cost - balance) / POINTS_PER_SESSION));
 }
 
-function brandValue(r: WeeklyRewardTile): string {
-  const v = (r.valueLabel ?? "").trim();
+function brandValue(r: WeeklyRewardTile, lang: string): string {
+  const v = rewardValueLabel((r.valueLabel ?? "").trim(), lang);
   return v ? `${esc(r.brand)}${r.brand ? " &middot; " : ""}${esc(v)}` : esc(r.brand ?? r.title);
 }
 
-function brandValueText(r: WeeklyRewardTile): string {
-  const v = (r.valueLabel ?? "").trim();
-  return v ? `${r.brand ?? ""}${r.brand ? " · " : ""}${v}` : (r.brand ?? r.title ?? "a reward");
+function brandValueText(r: WeeklyRewardTile, lang: string): string {
+  const v = rewardValueLabel((r.valueLabel ?? "").trim(), lang);
+  return v ? `${r.brand ?? ""}${r.brand ? " · " : ""}${v}` : (r.brand ?? r.title ?? tEmail(lang, "reengagement.aReward"));
 }
 
-function rewardRow(r: WeeklyRewardTile, balance: number): string {
+function rewardRow(r: WeeklyRewardTile, balance: number, lang: string): string {
   const logoSrc = r.image ?? r.hero ?? null;
   const logo = logoSrc
-    ? `<img src="${esc(optimizeImage(logoSrc, { width: 100, height: 100, resize: "contain" }))}" alt="${esc(r.brand ?? "Reward")}" style="display:block;max-width:28px;max-height:28px;width:auto;height:auto;margin:0 auto;">`
+    ? `<img src="${esc(optimizeImage(logoSrc, { width: 100, height: 100, resize: "contain" }))}" alt="${esc(r.brand ?? tEmail(lang, "common.reward"))}" style="display:block;max-width:28px;max-height:28px;width:auto;height:auto;margin:0 auto;">`
     : `<span style="display:block;font-size:14px;font-weight:700;color:#666666;font-family:${FONT};">${esc((r.brand ?? "?").trim().charAt(0).toUpperCase())}</span>`;
   const ready = balance >= r.cost;
   const status = ready
-    ? `&#10003; Ready to redeem`
-    : `${(r.cost - balance).toLocaleString()} POWR to go &middot; about ${sessionsAway(r.cost, balance)} sessions`;
+    ? `&#10003; ${tEmail(lang, "reengagement.rowReady")}`
+    : tEmail(lang, "reengagement.toGoHtml", { amount: fmtNum(r.cost - balance, lang), count: sessionsAway(r.cost, balance) });
   return `
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:10px;background-color:#0c0c0c;border:1px solid #1c1c1c;border-radius:12px;">
               <tr>
@@ -62,11 +64,11 @@ function rewardRow(r: WeeklyRewardTile, balance: number): string {
                   </table>
                 </td>
                 <td valign="middle" style="padding:10px 12px;">
-                  <span style="display:block;font-size:13px;font-weight:500;color:#e8e8e8;font-family:${FONT};">${brandValue(r)}</span>
+                  <span style="display:block;font-size:13px;font-weight:500;color:#e8e8e8;font-family:${FONT};">${brandValue(r, lang)}</span>
                   <span style="display:block;margin-top:2px;font-size:11px;font-weight:${ready ? 700 : 300};color:${ready ? GOLD : "#888888"};font-family:${FONT};">${status}</span>
                 </td>
                 <td align="right" valign="middle" style="padding:10px 14px 10px 0;white-space:nowrap;">
-                  <span style="font-size:13px;font-weight:700;color:${GOLD};font-family:${FONT};">${r.cost.toLocaleString()} POWR</span>
+                  <span style="font-size:13px;font-weight:700;color:${GOLD};font-family:${FONT};">${fmtNum(r.cost, lang)} POWR</span>
                 </td>
               </tr>
             </table>`;
@@ -89,8 +91,8 @@ function wayRow(done: boolean, title: string, sub: string, isLast: boolean): str
             </table>`;
 }
 
-export function reEngagementEmail(data: ReEngagementData): { subject: string; html: string; text: string } {
-  const plainName = data.name?.trim().split(" ")[0] || "there";
+export function reEngagementEmail(data: ReEngagementData, lang = "en"): { subject: string; html: string; text: string } {
+  const plainName = firstNameOf(data.name, lang);
   const firstName = esc(plainName);
   const balance = Math.max(0, Math.round(data.balance));
   const ready = data.rewardsReady.slice(0, 3);
@@ -107,40 +109,42 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
   let bodyText: string;
 
   if (lapsed) {
-    const earned = data.lifetimeEarned.toLocaleString();
+    const earned = fmtNum(data.lifetimeEarned, lang);
     if (data.stage === 1) {
       subject = canRedeem
-        ? `${plainName}, your ${balance.toLocaleString()} POWR is ready to spend`
-        : `${plainName}, your ${balance.toLocaleString()} POWR is still here`;
-      headingText = `Still yours, ${plainName}.`;
-      headingHtml = `Still yours,&nbsp;${firstName}.`;
-      bodyText = `You've earned ${earned} POWR so far — every bit of it still in your balance. Whenever you pick things back up, it keeps building from here.`;
+        ? tEmail(lang, "reengagement.lapsed1.subjectReady", { name: plainName, balance: fmtNum(balance, lang) })
+        : tEmail(lang, "reengagement.lapsed1.subject", { name: plainName, balance: fmtNum(balance, lang) });
+      headingText = tEmail(lang, "reengagement.lapsed1.heading", { name: plainName });
+      headingHtml = tEmail(lang, "reengagement.lapsed1.headingHtml", { name: firstName });
+      bodyText = tEmail(lang, "reengagement.lapsed1.body", { earned });
     } else {
-      subject = `${plainName}, pick up where you left off`;
-      headingText = `Pick up where you left off.`;
-      headingHtml = `Pick up where<br class="br-d"> you left off.`;
-      bodyText = `${data.daysAway} days since your last session. The ${earned} POWR you earned hasn't gone anywhere, and your next session counts the moment it's logged.`;
+      subject = tEmail(lang, "reengagement.lapsed2.subject", { name: plainName });
+      headingText = tEmail(lang, "reengagement.lapsed2.heading");
+      headingHtml = tEmail(lang, "reengagement.lapsed2.headingHtml", { br: BR_DESKTOP });
+      bodyText = tEmail(lang, "reengagement.lapsed2.body", { count: data.daysAway, earned });
     }
     preheader = canRedeem
-      ? `Enough for ${brandValueText(ready[0])} right now.`
+      ? tEmail(lang, "reengagement.lapsedPreheader.ready", { reward: brandValueText(ready[0], lang) })
       : featured
-        ? `${(featured.cost - balance).toLocaleString()} POWR from ${brandValueText(featured)}.`
-        : `Everything you've earned is still in your balance.`;
+        ? tEmail(lang, "reengagement.lapsedPreheader.closest", { amount: fmtNum(featured.cost - balance, lang), reward: brandValueText(featured, lang) })
+        : tEmail(lang, "reengagement.lapsedPreheader.none");
   } else {
     if (data.stage === 1) {
-      subject = `${plainName}, you already move. Let it count.`;
-      headingText = `You already move. Let it count.`;
-      headingHtml = `You already move.<br><em style="font-style:italic;color:${GOLD};">Let it count.</em>`;
-      bodyText = `Nothing's been logged yet — so the gym visits, runs and walks you're already doing aren't earning. Your first session changes that.`;
+      subject = tEmail(lang, "reengagement.new1.subject", { name: plainName });
+      const line1 = tEmail(lang, "reengagement.new1.heading1");
+      const line2 = tEmail(lang, "reengagement.new1.heading2");
+      headingText = `${line1} ${line2}`;
+      headingHtml = `${line1}<br><em style="font-style:italic;color:${GOLD};">${line2}</em>`;
+      bodyText = tEmail(lang, "reengagement.new1.body");
     } else {
-      subject = `${plainName}, your first rewards are a few sessions away`;
-      headingText = `Your first reward is closer than it looks.`;
-      headingHtml = `Your first reward<br class="br-d"> is closer than it looks.`;
-      bodyText = `You joined POWR ${data.daysAway} days ago. One session gets your balance moving — from there, rewards come into reach fast.`;
+      subject = tEmail(lang, "reengagement.new2.subject", { name: plainName });
+      headingText = tEmail(lang, "reengagement.new2.heading");
+      headingHtml = tEmail(lang, "reengagement.new2.headingHtml", { br: BR_DESKTOP });
+      bodyText = tEmail(lang, "reengagement.new2.body", { count: data.daysAway });
     }
     preheader = featured
-      ? `${balance.toLocaleString()} POWR already banked. ${brandValueText(featured)} is about ${sessionsAway(featured.cost, balance)} sessions away.`
-      : `Your first session is the one that gets things moving.`;
+      ? tEmail(lang, "reengagement.newPreheader.closest", { balance: fmtNum(balance, lang), reward: brandValueText(featured, lang), count: sessionsAway(featured.cost, balance) })
+      : tEmail(lang, "reengagement.newPreheader.none");
   }
 
   // ── Sections ───────────────────────────────────────────────────────
@@ -155,17 +159,17 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
   const balanceCard = `
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:30px 40px;border-bottom:1px solid #161616;">
-            ${sectionLabel(canRedeem ? "Ready to redeem" : "Your balance")}
-            <span style="display:block;margin-top:10px;font-size:30px;font-weight:200;color:#F2F2F2;letter-spacing:-1px;line-height:1.15;font-family:${FONT};"><span style="color:${GOLD};">${balance.toLocaleString()} POWR</span> in your balance</span>
+            ${sectionLabel(canRedeem ? tEmail(lang, "common.readyToRedeem") : tEmail(lang, "reengagement.yourBalance"))}
+            <span style="display:block;margin-top:10px;font-size:30px;font-weight:200;color:#F2F2F2;letter-spacing:-1px;line-height:1.15;font-family:${FONT};">${tEmail(lang, "common.inYourBalanceHtml", { amount: `<span style="color:${GOLD};">${fmtNum(balance, lang)} POWR</span>` })}</span>
             <span style="display:block;margin-top:8px;font-size:14px;font-weight:300;color:#999999;line-height:1.5;font-family:${FONT};">${
               canRedeem
-                ? `Enough for ${data.rewardsReady.length === 1 ? "a reward" : `${data.rewardsReady.length} rewards`} right now. Earned, not given &mdash; spend it.`
+                ? tEmail(lang, "common.enoughHtml", { count: data.rewardsReady.length })
                 : featured
-                  ? `Your next reward is in reach.`
-                  : `Every session adds to it.`
+                  ? tEmail(lang, "reengagement.nextInReach")
+                  : tEmail(lang, "reengagement.everySession")
             }</span>
-            ${canRedeem ? ready.map((r) => rewardRow(r, balance)).join("") : featured ? rewardRow(featured, balance) : ""}
-            ${canRedeem ? `<div style="margin-top:22px;">${ctaButton("Redeem a reward", "https://powr.life/app?to=rewards", "ghost")}</div>` : ""}
+            ${canRedeem ? ready.map((r) => rewardRow(r, balance, lang)).join("") : featured ? rewardRow(featured, balance, lang) : ""}
+            ${canRedeem ? `<div style="margin-top:22px;">${ctaButton(tEmail(lang, "common.redeemReward"), "https://powr.life/app?to=rewards", "ghost")}</div>` : ""}
           </td>
         </tr>`;
 
@@ -173,23 +177,23 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
   const ways: { done: boolean; title: string; sub: string }[] = [
     {
       done: data.locationGranted,
-      title: data.locationGranted ? "Gym visits count on their own" : "Turn on location",
-      sub: data.locationGranted ? "Walk in, train, walk out — the visit is logged for you." : "So your gym visits log themselves, no tapping start.",
+      title: data.locationGranted ? tEmail(lang, "reengagement.ways.locationOn") : tEmail(lang, "reengagement.ways.locationOff"),
+      sub: data.locationGranted ? tEmail(lang, "reengagement.ways.locationOnSub") : tEmail(lang, "reengagement.ways.locationOffSub"),
     },
     {
       done: !!data.wearable,
-      title: data.wearable ? `Workouts sync from ${data.wearable}` : "Connect a wearable",
-      sub: data.wearable ? "Anything you record there lands in POWR." : "Apple Health, Whoop, Garmin, Oura & more.",
+      title: data.wearable ? tEmail(lang, "reengagement.ways.wearableOn", { wearable: data.wearable }) : tEmail(lang, "reengagement.ways.wearableOff"),
+      sub: data.wearable ? tEmail(lang, "reengagement.ways.wearableOnSub") : tEmail(lang, "reengagement.ways.wearableOffSub"),
     },
   ];
   // Steps only reach POWR through a connected health source.
   if (data.wearable) {
-    ways.push({ done: true, title: "Walks count too", sub: "Your daily steps earn, whatever else the week looks like." });
+    ways.push({ done: true, title: tEmail(lang, "reengagement.ways.walks"), sub: tEmail(lang, "reengagement.ways.walksSub") });
   }
   const waysCard = `
         <tr>
           <td class="sec" style="background-color:#080808;padding:28px 40px 12px;border-bottom:1px solid #111111;">
-            ${sectionLabel(lapsed ? "The easy way back" : "How your first points land", "#777777")}
+            ${sectionLabel(lapsed ? tEmail(lang, "reengagement.waysTitleLapsed") : tEmail(lang, "reengagement.waysTitleNew"), "#777777")}
             <div style="margin-top:6px;">${ways.map((w, i) => wayRow(w.done, w.title, w.sub, i === ways.length - 1)).join("")}</div>
           </td>
         </tr>`;
@@ -197,30 +201,34 @@ export function reEngagementEmail(data: ReEngagementData): { subject: string; ht
   const cta = `
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:34px 40px;text-align:center;border-bottom:1px solid #161616;">
-            ${ctaButton("Open POWR", "https://powr.life/app")}
-            <p style="margin:18px 0 0;font-size:12px;font-weight:300;color:#777777;line-height:1.6;font-family:${FONT};">Every move counts.</p>
+            ${ctaButton(tEmail(lang, "common.openPowr"), "https://powr.life/app")}
+            <p style="margin:18px 0 0;font-size:12px;font-weight:300;color:#777777;line-height:1.6;font-family:${FONT};">${tEmail(lang, "common.everyMoveCounts")}</p>
           </td>
         </tr>`;
 
   const rows = lapsed ? hero + balanceCard + waysCard + cta : hero + waysCard + balanceCard + cta;
-  const html = emailShell({ title: "POWR", preheader, rows });
+  const html = emailShell({ title: "POWR", preheader, rows, lang });
 
   // ── Plain text ─────────────────────────────────────────────────────
   const rewardLines = (canRedeem ? ready : featured ? [featured] : [])
-    .map((r) => `  - ${brandValueText(r)}: ${r.cost.toLocaleString()} POWR${balance >= r.cost ? " (ready)" : ` (${(r.cost - balance).toLocaleString()} to go)`}`)
+    .map((r) => `  - ${tEmail(lang, "reengagement.text.rewardLine", {
+      reward: brandValueText(r, lang),
+      cost: fmtNum(r.cost, lang),
+      status: balance >= r.cost ? tEmail(lang, "reengagement.text.ready") : tEmail(lang, "reengagement.text.toGo", { amount: fmtNum(r.cost - balance, lang) }),
+    })}`)
     .join("\n");
   const text = `${headingText}
 
 ${bodyText}
 
-Balance: ${balance.toLocaleString()} POWR
+${tEmail(lang, "reengagement.text.balance", { amount: fmtNum(balance, lang) })}
 ${rewardLines}
 
 ${ways.map((w) => `  [${w.done ? "x" : " "}] ${w.title} — ${w.sub}`).join("\n")}
 
-Open POWR: https://powr.life/app
+${tEmail(lang, "common.text.openPowr", { url: "https://powr.life/app" })}
 
-Every move counts.
+${tEmail(lang, "common.everyMoveCounts")}
 — POWR`;
 
   return { subject, html, text };

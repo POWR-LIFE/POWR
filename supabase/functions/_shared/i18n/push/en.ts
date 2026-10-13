@@ -1,6 +1,400 @@
 // Push notification copy (en). Conventions: shared/i18n/README.md at the repo root.
+//
+// Composed by _shared/pushCopy.ts (send-push-notification), _shared/eventPushCopy.ts
+// (event pushes, also previewed in the gym portal) and _shared/exitPushSwitch.ts
+// (the beacon's walk-out banner). English is the source: these strings are the
+// pushes exactly as they have always gone out, so change one only on purpose.
+//
+// Server-side conventions on top of the app's:
+//   - {{count}} only picks the plural form (_one / _other). The number itself
+//     always has its own placeholder ({{days}}, {{points}}, {{number}}…), so it
+//     is formatted for the language. Where English never changes with the
+//     count, _one and _other are identical so other languages can agree.
+//   - {{quoted}} is a challenge or reward name already inside the language's
+//     quotation marks (common.quoted). Don't add quotes around it.
+//   - Lock-screen titles cut off at ~40 characters: keep them short.
 import type { Catalog } from "../t.ts";
 
-const push: Catalog = {};
+const push: Catalog = {
+  common: {
+    // How a challenge or reward name is quoted, in every push.
+    quoted: '"{{title}}"',
+    theEvent: "The event",
+    someone: "Someone",
+    yourFriend: "Your friend",
+    aFriend: "A friend",
+    aChallenge: "a challenge",
+    yourChallenge: "Your challenge",
+    yourChallengeLower: "your challenge",
+  },
+  // Weekly-board progress ("3/4 runs"); {{count}} is the target.
+  progress: {
+    steps_one: "{{progress}}/{{target}} steps",
+    steps_other: "{{progress}}/{{target}} steps",
+    km_one: "{{progress}}/{{target}} km",
+    km_other: "{{progress}}/{{target}} km",
+    days_one: "{{progress}}/{{target}} days",
+    days_other: "{{progress}}/{{target}} days",
+    categories_one: "{{progress}}/{{target}} categories",
+    categories_other: "{{progress}}/{{target}} categories",
+    checkIns_one: "{{progress}}/{{target}} check-ins",
+    checkIns_other: "{{progress}}/{{target}} check-ins",
+    runs_one: "{{progress}}/{{target}} runs",
+    runs_other: "{{progress}}/{{target}} runs",
+    rides_one: "{{progress}}/{{target}} rides",
+    rides_other: "{{progress}}/{{target}} rides",
+    sessions_one: "{{progress}}/{{target}} sessions",
+    sessions_other: "{{progress}}/{{target}} sessions",
+  },
+  // What's left in a pooled challenge ("1,200 steps").
+  units: {
+    steps_one: "{{value}} steps",
+    steps_other: "{{value}} steps",
+    km_one: "{{value}} km",
+    km_other: "{{value}} km",
+    mi_one: "{{value}} mi",
+    mi_other: "{{value}} mi",
+    checkIns_one: "{{value}} check-ins",
+    checkIns_other: "{{value}} check-ins",
+    runs_one: "{{value}} runs",
+    runs_other: "{{value}} runs",
+    rides_one: "{{value}} rides",
+    rides_other: "{{value}} rides",
+    sessions_one: "{{value}} sessions",
+    sessions_other: "{{value}} sessions",
+  },
+  // The end of "…and unlocks {{when}}." in vaultBanked / vaultGranted.
+  vault: {
+    unlocksOn: "on {{date}}",
+    unlocksLater: "once it vests",
+  },
+  dailyReminder: {
+    title: "Time to move 💪",
+    body: "Every step earns POWR. Log your activity and keep the streak alive.",
+  },
+  streakAtRisk: {
+    title_one: "Your {{days}}-day streak is at risk 🔥",
+    title_other: "Your {{days}}-day streak is at risk 🔥",
+    body: "Log any activity before midnight to keep it alive.",
+  },
+  weeklyChallengeExpiry: {
+    title: "Last day ⏳",
+    fallbackName: "Weekly Challenge",
+    bodyProgress: "{{quoted}} ends tonight — you're at {{progress}}.",
+    bodyProgressPoints: "{{quoted}} ends tonight — you're at {{progress}}. +{{points}} pts if you land it.",
+    body: "{{quoted}} expires in 24 hours. Don't miss your bonus POWR points.",
+  },
+  challengeWithinReach: {
+    title: "Within reach 🎯",
+    fallbackName: "Your weekly challenge",
+    body: "{{quoted}} is at {{progress}} — finish it.",
+    bodyPoints: "{{quoted}} is at {{progress}} — finish it for +{{points}} pts.",
+    bodyNearly: "{{quoted}} is at nearly done — finish it.",
+    bodyNearlyPoints: "{{quoted}} is at nearly done — finish it for +{{points}} pts.",
+  },
+  rewardUnlocked: {
+    title: "New reward unlocked 🎁",
+    titleMany_one: "{{number}} rewards unlocked 🎁",
+    titleMany_other: "{{number}} rewards unlocked 🎁",
+    body: "You've unlocked {{quoted}}. It's ready when you are.",
+    bodyNoName: "You've unlocked \"a reward\". It's ready when you are.",
+    bodyMany_one: "You've earned your way to {{number}} rewards — take your pick.",
+    bodyMany_other: "You've earned your way to {{number}} rewards — take your pick.",
+  },
+  checkInReminder: {
+    body: "You're in. Every minute counts.",
+  },
+  locationPermissionLost: {
+    titleGym: "Your gym check-ins are paused",
+    titleVenue: "Automatic check-ins are paused",
+    bodyWhileUsing: "Location is set to While Using, so POWR can't check you in automatically. Set it to Always and every visit counts again.",
+    bodyGym: "POWR can't see your gym visits right now — location access is off for the app. Takes 30 seconds to turn back on.",
+    bodyVenue: "POWR can't see when you're at a partner venue right now — location access is off for the app. Takes 30 seconds to turn back on.",
+  },
+  pointsMilestone: {
+    titleReach: "Reward within reach",
+    title_one: "{{points}} POWR points 🏆",
+    title_other: "{{points}} POWR points 🏆",
+    bodyReach: "You're close. {{points}} pts to unlock your {{reward}} reward.",
+    bodyReachNext: "You're close. {{points}} pts to unlock your next reward.",
+    body: "All earned. Check your rewards — something new might be waiting.",
+  },
+  inactivityNudge: {
+    day3: {
+      title: "We miss you 👋",
+      body: "It's been 3 days. Even a short walk earns POWR points.",
+    },
+    day7: {
+      title: "Your streak is waiting to be rebuilt 🔄",
+      body: "7 days away — jump back in and start earning again.",
+    },
+    fallback: {
+      title: "Ready to get back on track?",
+      body: "Log any activity today and start your next streak.",
+    },
+  },
+  sleepTargetMet: {
+    title: "Sleep goal reached 🌙",
+    body_one: "{{hours}}h of sleep earned you {{points}} POWR point.",
+    body_other: "{{hours}}h of sleep earned you {{points}} POWR points.",
+  },
+  sessionCompleted: {
+    titleEarned: "Session recorded 🔥",
+    title: "Session complete 🔥",
+    points: "+{{points}} pts",
+    streak: "Day {{streak}} streak",
+    fallback: "Your session counted.",
+  },
+  sessionUpgraded: {
+    title: "Bonus unlocked 🔓",
+    points: "+{{points}} pts",
+    bonus: "{{minutes}}-min bonus",
+  },
+  wearableSessionRecorded: {
+    title: "Workout synced ⌚",
+    synced: "Workout synced",
+    syncedLabel: "{{label}} synced",
+    syncedMany_one: "{{number}} workouts synced",
+    syncedMany_other: "{{number}} workouts synced",
+    body: "{{what}}. No phone needed, it just counted.",
+    bodyPoints_one: "{{what}} · +{{points}} POWR points. No phone needed, it just counted.",
+    bodyPoints_other: "{{what}} · +{{points}} POWR points. No phone needed, it just counted.",
+  },
+  creatorInviteEligible: {
+    title: "You're bringing people in 🙌",
+    body_one: "{{number}} people you invited have logged their first verified workout. Want to become a POWR Affiliate? Open the app to find out more.",
+    body_other: "{{number}} people you invited have logged their first verified workout. Want to become a POWR Affiliate? Open the app to find out more.",
+  },
+  creatorInviteApproved: {
+    title: "You're a POWR Affiliate ✨",
+    body: "Your code, link, signups and rewards are ready — find Affiliate under Settings.",
+  },
+  affiliateMilestone: {
+    title: "You've reached {{label}} 🎁",
+    fallbackLabel: "a step",
+    shipsAddress: "{{reward}} is yours. Add your delivery address and we'll send it.",
+    shipsInTouch: "{{reward}} is yours. We'll be in touch about delivery.",
+    bankedToo: "+{{points}} POWR banked too.",
+    banked: "+{{points}} POWR banked. Next step's already counting.",
+    reached: "Step reached — nice work.",
+  },
+  eventResultsRevealed: {
+    title: "{{event}}: the results are in 🏆",
+    rank: "You finished #{{rank}}.",
+    rankPrize: "You finished #{{rank}} — {{prize}}.",
+    partnerCode: "A thank-you code from {{brand}} is in your Wallet.",
+    seeBoard: "See the final board.",
+    noRank: "The final leaderboard is up — see where everyone finished.",
+  },
+  eventRankDaily: {
+    titleFirst: "{{event}}: you're in 1st 👑",
+    titleRank: "{{event}}: you're #{{rank}} today",
+    titleNoRank: "{{event}}: today's board is in",
+    points: "{{points}} POWR.",
+    pointsUp_one: "{{points}} POWR — up {{places}} today.",
+    pointsUp_other: "{{points}} POWR — up {{places}} today.",
+    pointsDown_one: "{{points}} POWR — down {{places}} today.",
+    pointsDown_other: "{{points}} POWR — down {{places}} today.",
+    leadClear: "{{lead}} POWR clear of #2 — keep it.",
+    keepIt: "Keep it.",
+    behind: "{{gap}} POWR behind #{{above}} — today counts.",
+    todayCounts: "Today counts.",
+    bodyNoRank: "See where you stand on the leaderboard.",
+  },
+  eventGateReminder: {
+    titleSignups_one: "{{event}}: {{remaining}} more signup to go 🎟️",
+    titleSignups_other: "{{event}}: {{remaining}} more signups to go 🎟️",
+    titleConversions_one: "{{event}}: {{remaining}} more friend workout to go 🎟️",
+    titleConversions_other: "{{event}}: {{remaining}} more friend workouts to go 🎟️",
+    progressSignups_one: "{{done}} of {{required}} friends have signed up with your code.",
+    progressSignups_other: "{{done}} of {{required}} friends have signed up with your code.",
+    progressConversions_one: "{{done}} of {{required}} invited friends have logged their first verified workout.",
+    progressConversions_other: "{{done}} of {{required}} invited friends have logged their first verified workout.",
+    unlockBy: "Hitting {{required}} by {{day}} unlocks the leaderboard.",
+    unlock: "Hitting {{required}} unlocks the leaderboard.",
+    keepBy: "Hitting {{required}} by {{day}} keeps your place in the final standings.",
+    keep: "Hitting {{required}} keeps your place in the final standings.",
+  },
+  affiliateConversion: {
+    title: "A signup just converted 💪",
+    body: "Someone from your link logged their first verified workout.",
+    bodyPoints: "Someone from your link logged their first verified workout — +{{points}} POWR.",
+    next_one: "{{remaining}} to go until {{next}}.",
+    next_other: "{{remaining}} to go until {{next}}.",
+  },
+  levelUp: {
+    title: "Level {{level}} reached 🏅",
+    body: "You're now {{name}}. Every session got you here — keep going.",
+    bodyNoName: "You've leveled up. Every session got you here — keep going.",
+  },
+  streakLost: {
+    title_one: "Your {{days}}-day streak ended 💔",
+    title_other: "Your {{days}}-day streak ended 💔",
+    body: "Win it back: {{requirement}} in the next {{hours}}h restores the whole streak.",
+    sessionsFallback_one: "{{sessions}} sessions",
+    sessionsFallback_other: "{{sessions}} sessions",
+    // The rescue's requirement; English sends it ready-made from the sweep.
+    requirement: {
+      gymSessions_one: "{{n}} gym session",
+      gymSessions_other: "{{n}} gym sessions",
+      activeDays_one: "{{n}} active day",
+      activeDays_other: "{{n}} active days",
+      steps_one: "{{n}} steps",
+      steps_other: "{{n}} steps",
+      sessions_one: "{{n}} session",
+      sessions_other: "{{n}} sessions",
+    },
+  },
+  streakRescued: {
+    title: "Streak saved 🔥",
+    body: "You did the work — your streak is back on Day {{streak}}. Protect it tonight.",
+    bodyNoDay: "You did the work — your streak is restored.",
+  },
+  vaultUnlocked: {
+    title: "Vault unlocked ⚡",
+    body: "+{{points}} POWR just vested into your balance. Spend it on something good.",
+  },
+  vaultReady: {
+    title: "Your Vault is ready 🔓",
+    body: "{{points}} POWR has finished vesting — hold the dial to unlock it.",
+    bodyNoPoints: "Your Vault is ready — hold the dial to unlock it.",
+  },
+  vaultBanked: {
+    title: "Banked in your Vault 🏦",
+    body: "+{{points}} POWR went past today's cap, so it's banked. It already counts toward your level, and unlocks {{when}}.",
+    bodyReason: "+{{points}} POWR from your {{reason}} went past today's cap, so it's banked. It already counts toward your level, and unlocks {{when}}.",
+  },
+  vaultGranted: {
+    titleReady: "A POWR drop landed ⚡",
+    titleBanked: "POWR banked in your Vault 🏦",
+    bodyReady: "{{points}} POWR is waiting in your Vault. Hold the dial to unlock it.",
+    bodyBanked: "{{points}} POWR just landed in your Vault. It's already counting toward your level, and unlocks {{when}}.",
+  },
+  friendRequest: {
+    title: "New friend request 👋",
+    body: "{{name}} wants to team up on POWR.",
+  },
+  friendAccepted: {
+    title: "You're connected 🤝",
+    body: "{{name}} accepted your friend request. Take on a challenge together.",
+  },
+  challengeInvite: {
+    title: "{{name}} invited you 🤜🤛",
+    body: "Take on {{quoted}} together — tap to join.",
+  },
+  challengeAccepted: {
+    title: "{{name}} is in 🤜🤛",
+    body: "{{name}} accepted {{quoted}}.",
+    // (The ". —" is how this has always read in English.)
+    bodyCount: "{{name}} accepted {{quoted}}. — {{accepted}} of {{total}} in so far.",
+  },
+  challengeStarted: {
+    title: "Challenge on 🔥",
+    bodyPartial: "{{quoted}} has started with {{joined}} of {{roster}} in — the others can still join. Get your part done.",
+    bodyAll: "{{quoted}} has started — everyone's in. Get your part done.",
+    body: "{{quoted}} has started. Get your part done.",
+  },
+  challengeFriendFinished: {
+    title: "{{name}} finished their part 💪",
+    body: "They're done with {{quoted}}. Finish yours to lock in the group bonus.",
+  },
+  challengePoolMilestone: {
+    titleNearly: "Almost there 🔥",
+    titleHalf: "Halfway there 🏁",
+    bodyNearly: "Your group's nearly cracked {{quoted}} — just {{remaining}} left in the pool.",
+    bodyHalf: "Your group's hit {{pct}}% of {{quoted}} — {{remaining}} to go together.",
+  },
+  challengeCompleted: {
+    title: "Challenge complete 🎉",
+    body: "{{quoted}} done — +{{total}} POWR.",
+    bodyBonus: "{{quoted}} done — +{{total}} POWR (incl. +{{bonus}} together bonus).",
+  },
+  challengeEnded: {
+    titleCancelled: "Challenge cancelled",
+    title: "Challenge over",
+    cancelled: "{{quoted}} was cancelled before it finished.",
+    poolMissed: "{{quoted}} ended — the group came up short of the target this time.",
+    missedCount_one: "{{quoted}} finished without you — {{finishers}} of {{roster}} made it.",
+    missedCount_other: "{{quoted}} finished without you — {{finishers}} of {{roster}} made it.",
+    missed: "{{quoted}} finished without you this time.",
+    solo: "{{quoted}} ended — time ran out on this one.",
+    nobody: "{{quoted}} ended — nobody finished this one.",
+  },
+  challengeOpenUnclaimed: {
+    title: "Running solo now",
+    body: "Nobody took {{quoted}} off the board this time — it's running as a solo challenge, and it still counts.",
+  },
+  challengeOpenPosted: {
+    title: "New on the board 👋",
+    body: "{{name}} posted {{quoted}} — take it on and you race them.",
+  },
+  challengeExpiring: {
+    title: "Challenge ending soon ⏰",
+    body: "{{quoted}} ends in {{hours}}h — finish your part to earn the group bonus.",
+  },
+  // gym-visit-beacon's walk-out banner (admin overrides: exitPushSwitch.ts).
+  gymSessionComplete: {
+    title: "Session complete 💪",
+    yourGym: "your gym",
+    body: "{{gym}} · {{minutes}} min",
+    bodyPoints: "{{gym}} · {{minutes}} min · +{{points}} pts today",
+  },
+  // _shared/eventPushCopy.ts — also rendered (in English) by the gym portal.
+  event: {
+    activities: {
+      gym: "gym sessions",
+      running: "runs",
+      cycling: "rides",
+      swimming: "swims",
+      hiit: "HIIT workouts",
+      yoga: "yoga sessions",
+      sports: "sports sessions",
+      dance: "dance sessions",
+      walking: "walks",
+    },
+    counts: {
+      venue: "Every session at {{gym}} counts",
+      any: "Every verified workout counts",
+      // {{list}} is a run of activities.* — the line's first letter is
+      // capitalised after translation.
+      picked: "{{list}} count",
+      list: "{{head}} and {{last}}",
+    },
+    announced: {
+      titleAt: "New at {{gym}}: {{name}}",
+      title: "New: {{name}}",
+      fallbackName: "A new event",
+      starts: "Starts {{day}}.",
+      onNow: "On now.",
+      prize: "{{prize}} for 1st.",
+      tapToJoin: "Tap to join.",
+    },
+    kickoff: {
+      title: "{{name}}: it's on 🏁",
+      bodyUntil: "{{counts}} until {{day}}. The board is open.",
+      body: "{{counts}}. The board is open.",
+    },
+    quietNudge: {
+      titleGym: "{{gym}}: your spot’s still here",
+      title: "Your spot’s still here",
+      sinceWeeks: "It’s been {{weeks}} weeks.",
+      sinceAWhile: "It’s been a while.",
+      body: "{{since}} One check-in and you’re back on the board.",
+    },
+    onPowr: {
+      titleGym: "{{gym}} is on POWR",
+      title: "Your gym is on POWR",
+      body: "The team there can now see when you check in, so they can look out for you. Rather they didn’t? Settings, then Privacy.",
+    },
+    doorsOpen: {
+      title: "{{name}}: finale night is tonight",
+      timeAtGym: "Doors open {{time}} at {{gym}}.",
+      time: "Doors open {{time}}.",
+      tonightAtGym: "Doors open tonight at {{gym}}.",
+      tonight: "Doors open tonight.",
+      bonus: "Check in with POWR when you arrive for +{{bonus}} POWR.",
+    },
+  },
+};
 
 export default push;

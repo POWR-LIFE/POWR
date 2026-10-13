@@ -42,4 +42,7 @@ Per-function sample options:
 
 The `email-previews` function is the other route: it has its own key and a
 hard-coded recipient allowlist, and renders the welcome / weekly / level-up
-set without going through the real functions.
+set without going through the real functions. Add `?lang=fr` or `?lang=es` to
+its URL to get the member emails (welcome, weekly, level-up, re-engagement,
+receipt) in that language, drafts included — the way to review a translation
+before it goes live.

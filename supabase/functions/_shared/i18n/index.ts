@@ -14,7 +14,7 @@ import emailFr from "./email/fr.ts";
 import pushEn from "./push/en.ts";
 import pushEs from "./push/es.ts";
 import pushFr from "./push/fr.ts";
-import { serverLanguage } from "./languages.ts";
+import { SERVER_LANGUAGES } from "./languages.ts";
 import { makeT } from "./t.ts";
 
 export { previewLanguage, SERVER_DRAFT_LANGUAGES, SERVER_LANGUAGES, serverLanguage } from "./languages.ts";
@@ -45,14 +45,24 @@ type ProfilesClient = {
  * Never throws: a failed read means English for those users, never a lost
  * push or email.
  */
-export async function languagesFor(supabase: ProfilesClient, userIds: string[]): Promise<Map<string, string>> {
+export async function languagesFor(
+  supabase: ProfilesClient,
+  userIds: string[],
+  live: readonly string[] = SERVER_LANGUAGES,
+): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const ids = [...new Set(userIds.filter(Boolean))];
+  // While English is the only language we send, every answer is "en": skip the
+  // read entirely, so shipping this costs the database nothing.
+  if (!live.some((lang) => lang !== "en")) {
+    for (const id of ids) out.set(id, "en");
+    return out;
+  }
   for (let i = 0; i < ids.length; i += 200) {
     const chunk = ids.slice(i, i + 200);
     try {
       const { data } = await supabase.from("profiles").select("id, language").in("id", chunk);
-      for (const row of data ?? []) out.set(row.id, serverLanguage(row.language));
+      for (const row of data ?? []) out.set(row.id, row.language && live.includes(row.language) ? row.language : "en");
     } catch {
       // English for this chunk.
     }

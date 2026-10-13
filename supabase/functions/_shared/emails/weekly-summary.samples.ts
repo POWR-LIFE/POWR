@@ -1,7 +1,7 @@
 // Representative weekly-summary payloads for design QA — one per shape the email
 // takes in the wild, so a preview run shows every branch, not just the best case.
 // Used by send-weekly-summary { sample: true } and the email-previews rig.
-import type { WeeklyRewardTile, WeeklySummaryData } from "./weekly-summary.ts";
+import { formatWeekLabel, levelFor, type WeeklyRewardTile, type WeeklySummaryData } from "./weekly-summary.ts";
 
 const IMG = "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/";
 const HERO = `${IMG}reward-images/heroes/1780820340343-3z0403.jpeg`;
@@ -98,3 +98,18 @@ export const WEEKLY_SAMPLES: Record<WeeklySampleId, WeeklySummaryData> = {
     level: { level: 1, name: "Touching Grass", tierLabel: "Recruit", tierColor: "#999999", totalEarned: 104, levelAt: 0, nextName: "Cardio Goblin", nextAt: 500, imageUrl: `${LEVEL_ART}touching-grass-1.png?v=20260711` },
   },
 };
+
+/**
+ * A sample as a member reading `lang` would get it: the week label and level
+ * names in that language (gym, reward and challenge names stay as stored).
+ * English is the sample exactly as written above.
+ */
+export function weeklySample(id: WeeklySampleId, lang = "en"): WeeklySummaryData {
+  const sample = WEEKLY_SAMPLES[id];
+  if (lang === "en") return sample;
+  return {
+    ...sample,
+    weekLabel: formatWeekLabel(new Date(Date.UTC(2026, 8, 7)), new Date(Date.UTC(2026, 8, 14)), lang),
+    level: sample.level ? { ...levelFor(sample.level.totalEarned, lang), imageUrl: sample.level.imageUrl } : sample.level,
+  };
+}
