@@ -31,13 +31,22 @@ const store = {
     set: (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
 
+// A staff token anywhere in a pasted link or the address bar: #k=… is what
+// the portal hands out (fragments never reach a server log), ?k=… covers
+// apps that drop the fragment when they open a link.
+const tokenFrom = (text) => /(?:^|[#?&])k=([0-9a-f]{32})(?:&|$)/i.exec(text ?? '')?.[1]?.toLowerCase()
+    ?? (/^\s*([0-9a-f]{32})\s*$/i.exec(text ?? '')?.[1]?.toLowerCase() ?? null);
+
 function readToken() {
-    const m = /(?:^|[#&])k=([0-9a-f]{32})(?:&|$)/i.exec(window.location.hash || '');
-    if (m) {
-        store.set(TOKEN_KEY, m[1].toLowerCase());
+    const fromUrl = tokenFrom(window.location.hash) ?? tokenFrom(window.location.search);
+    if (fromUrl) {
+        store.set(TOKEN_KEY, fromUrl);
         // Drop the token from the address bar so it isn't shared by accident.
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
-        return m[1].toLowerCase();
+        const rest = new URLSearchParams(window.location.search);
+        rest.delete('k');
+        const qs = rest.toString();
+        window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+        return fromUrl;
     }
     return store.get(TOKEN_KEY);
 }
@@ -248,6 +257,8 @@ export default function ScanPage() {
     const [typed, setTyped] = useState('');
     const [today, setToday] = useState(null);
     const [kioskMode, setKioskMode] = useState('show'); // show | scan
+    const [pasted, setPasted] = useState('');
+    const [pasteError, setPasteError] = useState(null);
 
     useEffect(() => { document.title = 'POWR · Scan'; }, []);
 
@@ -255,6 +266,7 @@ export default function ScanPage() {
         if (authLoading) return;
         if (!token && !user) { setSessionError('signed_out'); return; }
         let cancelled = false;
+        setSessionError(null);
         scanSession(token).then((s) => {
             if (cancelled) return;
             setSession(s);
@@ -262,7 +274,12 @@ export default function ScanPage() {
             const remembered = store.get(SITE_KEY);
             const pick = [remembered, s.staff?.site_id, s.sites[0]?.id].find(id => id && s.sites.some(x => x.id === id));
             setSiteId(pick ?? null);
-        }).catch((err) => { if (!cancelled) setSessionError(err.message); });
+        }).catch((err) => {
+            if (cancelled) return;
+            // A link that was revoked or replaced. Pasting a new one swaps it.
+            if (token) { setSessionError('link_revoked'); return; }
+            setSessionError(user ? 'not_partner' : err.message);
+        });
         return () => { cancelled = true; };
     }, [token, user, authLoading]);
 
@@ -348,18 +365,41 @@ export default function ScanPage() {
         setSessionError(user ? null : 'signed_out');
     };
 
+    const openPastedLink = (e) => {
+        e.preventDefault();
+        const t = tokenFrom(pasted.trim());
+        if (!t) { setPasteError('That doesn\u2019t look like a scan link. It ends in #k= and a long code.'); return; }
+        setPasteError(null);
+        setPasted('');
+        store.set(TOKEN_KEY, t);
+        setToken(t);
+    };
+
     // ── Gates ──
     if (sessionError) {
+        const why = sessionError === 'signed_out'
+            ? 'Open the scan link your manager sent you. It signs this phone in for scanning.'
+            : sessionError === 'not_partner'
+                ? `You\u2019re signed in as ${user?.email ?? 'someone'}, which isn\u2019t a partner login, so it can\u2019t scan. Open your scan link, or sign in with your partner login.`
+                : sessionError === 'link_revoked'
+                    ? 'This scan link no longer works. Ask your manager for a new one.'
+                    : sessionError;
         return (
             <Shell>
                 <div className="max-w-md mx-auto text-center py-20 px-6">
                     <div className="text-[22px] font-black tracking-wide mb-8">POWR</div>
                     <h1 className="text-3xl font-light tracking-tight mb-4">Scan POWR rewards</h1>
-                    <p className="text-[15px] text-[#555] leading-relaxed mb-8">
-                        {sessionError === 'signed_out'
-                            ? 'Open the scan link your manager sent you. It signs this phone in for scanning.'
-                            : sessionError}
-                    </p>
+                    <p className="text-[15px] text-[#555] leading-relaxed mb-8">{why}</p>
+                    <form onSubmit={openPastedLink} className="text-left flex flex-col gap-2 mb-10">
+                        <label htmlFor="paste-link" className="text-[9px] font-black tracking-[0.2em] text-[#888]">HAVE A SCAN LINK? PASTE IT HERE</label>
+                        <div className="flex gap-2">
+                            <input id="paste-link" value={pasted} onChange={e => setPasted(e.target.value)} placeholder="https://powr.life/scan#k=…"
+                                autoComplete="off" spellCheck={false}
+                                className="flex-1 min-w-0 h-12 px-4 rounded-2xl border border-[#E6E6E1] bg-white text-[14px] outline-none focus:border-[#E8D200]" />
+                            <button type="submit" className="h-12 px-5 rounded-full bg-[#1A1A1A] text-[#E8D200] text-[10px] font-black uppercase tracking-[0.15em]">Open</button>
+                        </div>
+                        {pasteError && <p className="text-[12px] text-[#A93A08]">{pasteError}</p>}
+                    </form>
                     <Link to="/partner/login" className="text-[11px] font-black uppercase tracking-[0.2em] text-[#6b5c00] underline">Manager? Sign in to the partner portal</Link>
                 </div>
             </Shell>
