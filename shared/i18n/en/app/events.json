@@ -1,1 +1,405 @@
-{}
+{
+  "display": {
+    "scoringStarts": "Scoring starts {{date}}",
+    "scoringEnds": "Scoring ends {{date}}",
+    "registrationOpensSoon": "Registration opens soon",
+    "registrationOpensOn": "Registration opens {{date}}",
+    "chip": {
+      "comingSoon": "COMING SOON",
+      "liveNow": "LIVE NOW",
+      "scoringToday": "SCORING TODAY",
+      "scoringTomorrow": "SCORING TOMORROW",
+      "scoringInDays": "SCORING IN {{days}} DAYS"
+    },
+    "consent": "By registering, your name and email are shared with {{venue}} to arrange your booking.",
+    "inviteRewardOnSignup": "You get +{{points}} POWR the moment a friend joins with your code. They earn their +{{points}} on their first verified workout.",
+    "inviteRewardOnWorkout": "You each get +{{points}} POWR when a friend joins with your code and logs their first verified workout."
+  },
+  "invite": {
+    "message": "Join me for {{event}} on POWR 💪",
+    "codeWithBonus": "Sign up with my code {{code}} — we both earn +{{points}} POWR after your first workout.",
+    "code": "Sign up with my code {{code}}.",
+    "joinMe": "Join me on POWR. {{codeLine}}",
+    "shareA11y": "Share your invite link",
+    "share": "SHARE",
+    "copyA11y": "Copy your invite code and link",
+    "cardA11y": "Share the event as a card"
+  },
+  "prizeShare": {
+    "place": {
+      "one": "{{rank}}st",
+      "two": "{{rank}}nd",
+      "few": "{{rank}}rd",
+      "other": "{{rank}}th"
+    },
+    "message": "{{place}} prize at {{event}}: {{prize}} 🏆",
+    "join": "Join me on POWR and it could be yours."
+  },
+  "gateStrip": {
+    "met": "{{have}}/{{required}} friends in · your place is secured",
+    "keepPlace": "{{have}}/{{required}} friends in · keep your place",
+    "keepPlaceBy": "{{have}}/{{required}} friends in · keep your place by {{date}}",
+    "unlocks": "{{have}}/{{required}} friends in · unlocks the board",
+    "unlocksBy": "{{have}}/{{required}} friends in · unlocks the board by {{date}}",
+    "a11y": "{{text}}. Opens your ticket.",
+    "ticket": "TICKET",
+    "invite": "INVITE"
+  },
+  "status": {
+    "comingSoon": "Coming soon · registration opens soon",
+    "comingSoonOn": "Coming soon · registration opens {{date}}",
+    "startsToday": "Starts today · only points earned that week count",
+    "startsTomorrow": "Starts tomorrow · only points earned that week count",
+    "startsInDays": "Starts in {{days}} days · only points earned that week count",
+    "liveNow": "Live now — ends {{date}}",
+    "sealed": "Scores sealed 🔒 — revealed live at the final",
+    "winners": "Winners announced"
+  },
+  "shareCardA11y": "Share {{event}} as a card",
+  "header": {
+    "scoring": "Scoring {{range}}",
+    "venueA11y": "{{venue}}. Opens the map.",
+    "venueAddressA11y": "{{venue}}, {{address}}. Opens the map.",
+    "nightA11y": "Event night: {{night}}",
+    "nightLabel": "EVENT",
+    "comingSoon": "Coming soon",
+    "registerA11y": "Register for {{event}}",
+    "join": "JOIN THE WEEK"
+  },
+  "hub": {
+    "section": {
+      "live": "LIVE NOW",
+      "upcoming": "UPCOMING",
+      "results": "RESULTS"
+    },
+    "fact": {
+      "liveNow": "Live now — ends {{date}}",
+      "sealed": "Scores sealed — revealed at the final",
+      "winners": "Winners announced"
+    },
+    "chip": {
+      "liveNow": "LIVE NOW",
+      "sealed": "SEALED",
+      "results": "RESULTS",
+      "preview": "PREVIEW · {{status}}"
+    },
+    "pill": {
+      "rank": "RANK {{rank}}",
+      "youreIn": "YOU’RE IN",
+      "soon": "SOON",
+      "register": "REGISTER",
+      "view": "VIEW"
+    },
+    "you": {
+      "finished": "You finished #{{rank}}",
+      "points": "You · {{points}} pts this week"
+    },
+    "cardA11y": {
+      "lead": "{{event}}. {{fact}}.",
+      "night": "Event night {{night}}.",
+      "open": "Tap to open."
+    },
+    "more": {
+      "a11y": "More to come. New venues are joining POWR. You'll see them here first.",
+      "eyebrow": "COMING SOON",
+      "title": "More to come.",
+      "line": "New venues are joining POWR. You'll see them here first."
+    },
+    "backA11y": "Back to all events"
+  },
+  "sharePanel": {
+    "pitch": {
+      "announced": "Registration opens soon — get your friends ready. Your invite code goes with it.",
+      "scheduled": "Bring your friends in before scoring starts. Your invite code goes with it.",
+      "live": "Still time to bring friends in. Your invite code goes with it.",
+      "over": "Show people what happened. Your invite code goes with it."
+    },
+    "label": "SHARE THE EVENT",
+    "card": "SHARE CARD",
+    "linkA11y": "Send a link to {{event}}",
+    "link": "SEND LINK",
+    "code": "Your code <value>{{code}}</value> travels with both.",
+    "preview": "Preview — friends can open this event once it's public."
+  },
+  "ticket": {
+    "friendFallback": "A friend",
+    "state": {
+      "countsWorkout": "Counts — first workout done",
+      "countsSignup": "Counts — signed up with your code",
+      "joinedBefore": "Joined before this event",
+      "needsWorkout": "Needs their first verified workout"
+    },
+    "eyebrow": {
+      "ticket": "YOUR TICKET",
+      "invite": "INVITE FRIENDS"
+    },
+    "met": {
+      "keepPlace": "Your place in the final standings is secured",
+      "onBoard": "You’re on the leaderboard",
+      "milestone": "Milestone earned"
+    },
+    "countLabel": {
+      "conversions": "friends with a verified workout",
+      "signups": "friends signed up with your code"
+    },
+    "explainer": {
+      "keepPlace": "{{required}} friends keeps your place in the final standings · +{{points}} POWR each",
+      "keepPlaceBy": "{{required}} friends by {{date}} keeps your place in the final standings · +{{points}} POWR each",
+      "onBoard": "{{required}} friends puts you on the leaderboard · +{{points}} POWR each",
+      "milestone": "+{{bonus}} more at {{n}} friends."
+    },
+    "qrA11y": "Show the event QR code",
+    "friendsTotal_one": "{{count}} friend",
+    "friendsTotal_other": "{{count}} friends",
+    "friendsCount_one": "{{count}} of {{total}} counts here",
+    "friendsCount_other": "{{count}} of {{total}} count here",
+    "showFewer": "SHOW FEWER",
+    "showAll": "SHOW ALL {{n}}",
+    "rulesHideA11y": "Hide the event rules",
+    "rulesShowA11y": "Show the event rules",
+    "rules": "EVENT RULES"
+  },
+  "booking": {
+    "bookedWith": "Booked with {{venue}}",
+    "bookedWithVenue": "Booked with the venue",
+    "bookA11y": "Book your place with {{venue}}",
+    "bookA11yVenue": "Book your place with the venue",
+    "book": "BOOK YOUR PLACE",
+    "syncHint": "Already booked? It’ll show here once {{venue}}’s list syncs.",
+    "syncHintVenue": "Already booked? It’ll show here once the venue’s list syncs."
+  },
+  "preview": {
+    "segments": {
+      "board": "LEADERBOARD",
+      "events": "EVENTS"
+    },
+    "board": {
+      "eyebrow": "GLOBAL LEADERBOARD",
+      "light": "Every move.",
+      "bold": "One board.",
+      "line": "Weekly podiums and all-time rankings, open to everyone on POWR. Coming soon.",
+      "statLabel": "YOU BRING",
+      "statUnit": "POINTS ALL TIME",
+      "statLine": "Already counted. You start where you stand.",
+      "pillars": {
+        "weekly": "WEEKLY PODIUMS",
+        "ladder": "ALL-TIME LADDER",
+        "tiers": "STANDARD & PRO"
+      }
+    },
+    "podiumA11y": "Podium, seats not yet taken",
+    "events": {
+      "eyebrow": "LIVE EVENTS",
+      "light": "One week to score.",
+      "bold": "One night to win.",
+      "line": "The next event is in the works. Registration opens here first.",
+      "beats": {
+        "register": {
+          "title": "Register",
+          "line": "In the app. Your place on the board opens with it."
+        },
+        "score": {
+          "title": "Score for a week",
+          "line": "Everyone starts level. Only points earned inside the window count."
+        },
+        "reveal": {
+          "title": "Revealed live",
+          "line": "Scores seal before the night. Winners are announced at the venue."
+        }
+      },
+      "crewLine": "Friends you bring count on event week. Your code works now.",
+      "qrA11y": "Show your POWR QR code"
+    }
+  },
+  "podium": {
+    "first": "1ST",
+    "second": "2ND",
+    "third": "3RD",
+    "champion": "CHAMPION",
+    "openSeatA11y": "{{place}} place, up for grabs",
+    "upForGrabs": "Up for grabs",
+    "open": "OPEN"
+  },
+  "prizes": {
+    "rank": {
+      "first": "1ST",
+      "second": "2ND",
+      "third": "3RD",
+      "nth": "{{rank}}TH"
+    },
+    "a11y": "{{rank}} prize: {{prize}}",
+    "eyebrow": "THE PRIZES",
+    "shareAllA11y": "Share the prizes",
+    "share": "SHARE",
+    "openA11y": "{{rank}} prize: {{prize}}. Opens larger.",
+    "closeA11y": "Close",
+    "shareA11y": "Share {{rank}} prize"
+  },
+  "register": {
+    "errorTitle": "Couldn’t register",
+    "errorBody": "Something went wrong — please try again.",
+    "resetErrorTitle": "Couldn’t reset",
+    "closeA11y": "Close",
+    "eyebrow": "LIVE EVENT",
+    "youreIn": "You’re in",
+    "rules": "THE RULES",
+    "rulesMore": "+{{n}} more once you’re in",
+    "note": "Everyone starts from zero — only points earned during the event window count.",
+    "noteGate": "Everyone starts from zero — only points earned during the event window count. To get on the leaderboard, {{required}} friends need to sign up with your code — your share link is next.",
+    "registerA11y": "Register for the event",
+    "registering": "REGISTERING…",
+    "countMeIn": "COUNT ME IN",
+    "notNow": "Not now",
+    "ticketEyebrow": "YOUR TICKET TO THE BOARD",
+    "crewEyebrow": "BRING YOUR CREW",
+    "recruit": "{{required}} friends signing up with your code puts you on the leaderboard. {{reward}}",
+    "recruitConversions": "{{required}} friends signing up with your code and logging their first verified workout puts you on the leaderboard. {{reward}}",
+    "qrA11y": "Show the full-screen event QR code",
+    "bookingSoon": "Your booking link with {{venue}} lands here soon.",
+    "resetA11y": "Reset test registration",
+    "resetting": "RESETTING…",
+    "reset": "RESET TEST REGISTRATION",
+    "done": "Done"
+  },
+  "shareScreen": {
+    "publishError": "Could not publish your card.",
+    "shareError": "Could not share your card.",
+    "saveError": "Could not save your card.",
+    "event": {
+      "postDialog": "Post the event",
+      "title": "Share event",
+      "missing": "This event isn’t available to share."
+    },
+    "prize": {
+      "postDialog": "Post the prize",
+      "title": "Share prize",
+      "missing": "This prize isn’t available to share."
+    },
+    "closeA11y": "Close",
+    "share": "Share",
+    "post": "Post",
+    "save": "Save",
+    "helperSave": "Share sends a tappable link preview. Post shares the image to TikTok, Instagram and more. Save keeps the image on your phone.",
+    "helper": "Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more."
+  },
+  "qr": {
+    "fallbackName": "the event",
+    "title": "EVENT INVITE",
+    "closeA11y": "Close",
+    "error": "Couldn’t load the event link. Try again in a moment.",
+    "eyebrow": "LIVE EVENT",
+    "caption": "Scanning this opens {{event}} in POWR.",
+    "captionCode": "Scanning this opens {{event}} in POWR — invites count towards your code {{code}}.",
+    "shareA11y": "Share the event link",
+    "share": "Share link",
+    "copyA11y": "Copy the invite code and link",
+    "copied": "Copied",
+    "copy": "Copy",
+    "card": "Share as a card"
+  },
+  "shareCard": {
+    "eyebrow": "LIVE EVENT",
+    "night": "THE NIGHT",
+    "where": "WHERE",
+    "scoring": "SCORING",
+    "signUp": "SIGN-UP",
+    "opensSoon": "Opens soon",
+    "opensOn": "Opens {{date}}",
+    "joinWithCode": "JOIN ME WITH CODE",
+    "joinOnPowr": "JOIN ME ON POWR",
+    "prize": "{{rank}} PRIZE"
+  },
+  "league": {
+    "title": "League",
+    "standard": "STANDARD",
+    "pro": "PRO",
+    "weekly": "WEEKLY",
+    "allTime": "ALL TIME",
+    "loading": "Loading…",
+    "noEntries": "No entries yet",
+    "segments": {
+      "board": "LEADERBOARD",
+      "event": "EVENT"
+    },
+    "nearYou": "NEAR YOU",
+    "rankOf": "of {{total}}",
+    "ptsAllTime": "PTS ALL TIME",
+    "gapUp": "<num>{{gap}}</num><plain> pts to catch </plain><name>{{name}}</name>",
+    "gapDown": "<num>{{gap}}</num><plain> pts ahead of </plain><name>{{name}}</name>",
+    "champion": "<bold>CHAMPION</bold><plain> — nobody to catch</plain>",
+    "them": "them"
+  },
+  "board": {
+    "top3": "TOP 3",
+    "standings": "STANDINGS",
+    "ptsThisWeek": "PTS THIS WEEK",
+    "previewEmpty": "No board before the window opens — this is exactly what a real user sees pre-event. Pick a state above to walk the rest of the flow.",
+    "gate": {
+      "unlockNote": "Unlocks the board at {{required}} friends",
+      "quiet": "Leaderboard unlocks at {{required}} friends",
+      "title": "{{have}} of {{required}} friends in",
+      "subConversions": "The leaderboard unlocks when {{required}} friends sign up with your code and log their first verified workout — share it above.",
+      "sub": "The leaderboard unlocks when {{required}} friends sign up with your code — share it above."
+    },
+    "sealedNote": "Counted and sealed — your rank is revealed at the final",
+    "previewChip": "BOARD PREVIEW",
+    "previewChipSample": "BOARD PREVIEW · SAMPLE DATA",
+    "resultsIn": "The results are in.",
+    "yourFinalRank": "YOUR FINAL RANK",
+    "yourRank": "YOUR RANK",
+    "keepPlace_one": "Bring {{n}} more friend to keep this place in the final standings.",
+    "keepPlace_other": "Bring {{n}} more friends to keep this place in the final standings.",
+    "keepPlaceBy_one": "Bring {{n}} more friend by {{date}} to keep this place in the final standings.",
+    "keepPlaceBy_other": "Bring {{n}} more friends by {{date}} to keep this place in the final standings.",
+    "notInFinal": {
+      "signups": "Not in the final standings — {{required}} friends were needed, and {{made}} made it.",
+      "signupsBy": "Not in the final standings — {{required}} friends were needed by {{date}}, and {{made}} made it.",
+      "conversions": "Not in the final standings — {{required}} friends with a verified workout were needed, and {{made}} made it.",
+      "conversionsBy": "Not in the final standings — {{required}} friends with a verified workout were needed by {{date}}, and {{made}} made it."
+    },
+    "empty": "No points on the board yet — first verified workout opens the scoring.",
+    "winners": "WINNERS",
+    "finalStandings": "FINAL STANDINGS",
+    "startLine": {
+      "label": "ON THE START LINE · {{n}}",
+      "rowA11y": "{{name}}, on the start line",
+      "you": "YOU’RE ON THE START LINE",
+      "youLine": "One verified workout puts you on the board."
+    },
+    "pts": "PTS",
+    "youSuffix": " (You)",
+    "level": "LVL {{level}}",
+    "today": "+{{points}} TODAY"
+  },
+  "previewSwitcher": {
+    "auto": "AUTO",
+    "gated": "GATED",
+    "live": "LIVE",
+    "sealed": "SEALED",
+    "winners": "WINNERS",
+    "label": "PREVIEW · BOARD STATE",
+    "a11y": "Preview the {{state}} board state"
+  },
+  "sealed": {
+    "reveal": "THE REVEAL",
+    "liveAt": "Live at {{venue}}",
+    "liveAtFinal": "Live at the final",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "inDays": "In {{days}} days",
+    "anyMoment": "Any moment now",
+    "units": {
+      "days": "DAYS",
+      "hours": "HRS",
+      "minutes": "MIN",
+      "seconds": "SEC"
+    },
+    "a11yDays": "Reveal in {{days}} days, {{hours}} hours and {{minutes}} minutes",
+    "a11yHours": "Reveal in {{hours}} hours, {{minutes}} minutes and {{seconds}} seconds",
+    "revealIn": "REVEAL IN",
+    "eyebrow": "SCORES SEALED",
+    "title": "Winners revealed live at the final",
+    "divider": "THE BOARD",
+    "foot": "Every point is already counted. Nobody sees the board until the reveal."
+  }
+}

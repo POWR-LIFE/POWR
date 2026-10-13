@@ -1,1 +1,114 @@
-{}
+{
+  "distance": {
+    "miles": "{{distance}} mi",
+    "underMiles": "< {{distance}} mi"
+  },
+  "hours": {
+    "closedToday": "Fermé aujourd’hui",
+    "today": "Aujourd’hui {{open}} – {{close}}"
+  },
+  "eta": {
+    "minutes": "{{minutes}} min",
+    "hours": "{{hours}} h",
+    "hoursMinutes": "{{hours}} h {{minutes}} min"
+  },
+  "map": {
+    "loadingArea": "Chargement de la zone…",
+    "loadingMap": "Chargement de la carte…",
+    "emptyArea": "Pas encore de partenaire dans cette zone"
+  },
+  "route": {
+    "summary": "{{eta}} • {{distance}} km",
+    "loading": "Chargement de l’itinéraire à pied…",
+    "startWalk": "Démarrer",
+    "clear": "Effacer"
+  },
+  "location": {
+    "offBanner": "<strong>Localisation désactivée.</strong> Active-la pour les distances, les itinéraires et les check-ins automatiques.",
+    "backgroundBanner": "<strong>Check-ins automatiques désactivés.</strong> Règle la position sur {{always}} pour que tes visites comptent même quand l’app est fermée.",
+    "alwaysIos": "« Toujours »",
+    "alwaysAndroid": "« Toujours autoriser »"
+  },
+  "filters": {
+    "openNow": "Ouvert",
+    "visited": "Visités",
+    "filters": "Filtres",
+    "title": "Filtres",
+    "reset": "Réinitialiser",
+    "maxDistance": "DISTANCE MAX.",
+    "any": "Toutes",
+    "showResults_one": "Voir {{count}} résultat",
+    "showResults_other": "Voir {{count}} résultats"
+  },
+  "sort": {
+    "title": "Trier par",
+    "nearest": "Plus proches",
+    "points": "Plus de points",
+    "az": "A–Z"
+  },
+  "list": {
+    "searchPlaceholder": "Cherche une salle, un cours…",
+    "count_one": "{{count}} PARTENAIRE · {{sort}}",
+    "count_other": "{{count}} PARTENAIRES · {{sort}}",
+    "empty": "Aucun partenaire ne correspond à tes filtres",
+    "clearFilters": "Effacer les filtres",
+    "sessionActive": "Séance en cours",
+    "openNow": "Ouvert",
+    "closed": "Fermé",
+    "requestTitle": "Ta salle n’y est pas ?",
+    "requestBody": "Demande-la et on s’occupe de l’ajouter à POWR."
+  },
+  "partner": {
+    "openNow": "Ouvert",
+    "closed": "Fermé",
+    "homeGym": "Ma salle",
+    "setHomeGym": "Définir comme ma salle",
+    "directions": "Itinéraire",
+    "bookSession": "Réserver une séance",
+    "viewProfile": "Voir le profil"
+  },
+  "walkNav": {
+    "routeFallback": "Itinéraire",
+    "summary": "{{eta}} • {{distance}} km à pied",
+    "walkingRoute": "Itinéraire à pied",
+    "next": "Ensuite",
+    "recenter": "Recentrer",
+    "overview": "Aperçu",
+    "endRoute": "Terminer"
+  },
+  "steps": {
+    "title": "Itinéraire à pied",
+    "destination": "Vers {{name}}",
+    "loading": "Chargement des étapes…",
+    "empty": "Pas encore d’étapes détaillées.",
+    "done": "Terminé"
+  },
+  "request": {
+    "sentTitle": "Merci !",
+    "sentBody": "On va regarder ça et essayer de l’ajouter.",
+    "title": "Demander une salle",
+    "body": "Dis-nous où tu t’entraînes et on s’occupe de l’ajouter.",
+    "namePlaceholder": "Nom de la salle",
+    "locationPlaceholder": "Ville ou adresse (facultatif)",
+    "send": "Envoyer la demande"
+  },
+  "web": {
+    "title": "Découvrir",
+    "subtitle": "Les partenaires sportifs près de toi",
+    "mapUnavailable": "Carte disponible sur iOS et Android",
+    "nearest": "PARTENAIRES LES PLUS PROCHES",
+    "pts": "+{{points}} pts",
+    "category": {
+      "all": "Tout",
+      "gym": "Salle",
+      "yoga": "Yoga",
+      "pilates": "Pilates",
+      "cycling": "Vélo",
+      "running": "Course"
+    },
+    "status": {
+      "openNow": "Ouvert",
+      "opens8am": "Ouvre à 8 h"
+    }
+  }
+}

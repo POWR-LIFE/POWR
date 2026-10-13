@@ -1,1 +1,121 @@
-{}
+{
+  "home": {
+    "title": "Affiliate",
+    "openPortal": "Open the full portal",
+    "loadError": "Couldn’t load your affiliate numbers.",
+    "retry": "TRY AGAIN",
+    "notInTitle": "Not on the programme yet",
+    "notInBody": "The affiliate programme is invite-only. If you’ve been told you’re in, make sure you’re signed in with the same account.",
+    "status": {
+      "active": "ACTIVE",
+      "paused": "PAUSED",
+      "terminated": "TERMINATED"
+    },
+    "pausedBody": "Your link still works, but new signups aren’t earning right now. Get in touch and we’ll sort it.",
+    "portalBody": "Daily taps, every signup, your QR code, the rewards ledger and your delivery address — and you’re already signed in."
+  },
+  "stats": {
+    "eyebrow": "LAST 30 DAYS",
+    "linkTaps": "LINK TAPS",
+    "signups": "SIGNUPS",
+    "converted": "CONVERTED",
+    "points": "POINTS",
+    "allTime": "all time"
+  },
+  "ladder": {
+    "eyebrow": "THE LADDER",
+    "signupsCaps_one": "{{count}} SIGNUPS",
+    "signupsCaps_other": "{{count}} SIGNUPS",
+    "convertedCaps_one": "{{count}} CONVERTED SIGNUPS",
+    "convertedCaps_other": "{{count}} CONVERTED SIGNUPS",
+    "signups_one": "{{count}} signups",
+    "signups_other": "{{count}} signups",
+    "converted_one": "{{count}} converted signups",
+    "converted_other": "{{count}} converted signups"
+  },
+  "earnings": {
+    "eyebrow": "RECENT EARNINGS",
+    "allTime": "{{points}} PTS ALL TIME",
+    "fullLedger": "FULL LEDGER IN THE PORTAL"
+  },
+  "ready": {
+    "eyebrow": "GET AFFILIATE-READY",
+    "withRequired": "{{title}} · required",
+    "termsFirst": "Accept the terms first.",
+    "terms": {
+      "title": "Accept the affiliate terms",
+      "sub": "Fair play and how to label your posts. Two minutes."
+    },
+    "profile": {
+      "title": "Add a photo and a line about you",
+      "sub": "It’s what people see when they tap your link."
+    },
+    "share": {
+      "title": "Share your link once",
+      "sub": "Story, bio, group chat — anywhere counts."
+    }
+  },
+  "code": {
+    "eyebrow": "YOUR CODE",
+    "copyYourCode": "Copy your code",
+    "copied": "COPIED",
+    "tapToCopy": "TAP TO COPY",
+    "share": "SHARE YOUR LINK",
+    "copyCode": "Copy code",
+    "locked": "ACCEPT THE TERMS TO START SHARING",
+    "foot": "Say the code out loud in videos — on iPhone the App Store can’t carry it through an install."
+  },
+  "next": {
+    "eyebrow": "NEXT UP",
+    "allReached": "EVERY STEP REACHED",
+    "cleared": "You’ve cleared the ladder.",
+    "moreSignups_one": "more signup",
+    "moreSignups_other": "more signups",
+    "moreConverted_one": "more converted signup",
+    "moreConverted_other": "more converted signups",
+    "withWorth": "{{more}} · worth {{value}}",
+    "keepGoing": "Every conversion still earns points. Keep going.",
+    "goalPoints": "{{goal}} · +{{points}} pts"
+  },
+  "rung": {
+    "reached": "REACHED",
+    "here": "YOU’RE HERE",
+    "pts": "PTS",
+    "progress_one": "{{basis}} of {{goal}} · {{count}} to go",
+    "progress_other": "{{basis}} of {{goal}} · {{count}} to go",
+    "addAddress": "Add your address so we can send this",
+    "parcel": {
+      "owed": "Being sorted",
+      "approved": "Approved — packing",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "cancelled": "Cancelled"
+    }
+  },
+  "profile": {
+    "title": "Your link page",
+    "ledeWithLink": "This is what someone sees when they tap your link — {{url}}. A face and a line turn a code into a person.",
+    "lede": "This is what someone sees when they tap your link. A face and a line turn a code into a person.",
+    "namePlaceholder": "Your name",
+    "bioPlaceholder": "One line about you",
+    "join": "JOIN POWR WITH {{code}}",
+    "yourCode": "YOUR CODE",
+    "photo": "PHOTO",
+    "useMyPhoto": "USE MY POWR PHOTO",
+    "remove": "REMOVE",
+    "photoHint": "Add a photo to your POWR profile first (Settings › Edit Profile) and it’ll appear here.",
+    "displayName": "DISPLAY NAME",
+    "bio": "ONE LINE ABOUT YOU",
+    "bioExample": "Coach at Iron Works, marathon addict, here to get you moving",
+    "saveError": "Couldn’t save — try again.",
+    "save": "SAVE"
+  },
+  "terms": {
+    "title": "Affiliate terms",
+    "eyebrow": "POWR AFFILIATE PROGRAMME · {{version}}",
+    "saveError": "Couldn’t save that — try again.",
+    "agree": "I’VE READ THESE — I AGREE"
+  },
+  "shareText": "Get paid to train. Download POWR and use my code {{code}} — {{link}}",
+  "nextRewardFallback": "Next reward"
+}

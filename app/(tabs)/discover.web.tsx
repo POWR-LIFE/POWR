@@ -4,6 +4,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   ScrollView,
@@ -13,6 +14,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { getFormatLocale } from '@/lib/i18n';
 
 const GOLD    = '#E8D200';
 const BG      = '#1E1E1E';
@@ -25,14 +28,32 @@ const DIM     = 'rgba(255,255,255,0.5)';
 type Category = 'All' | 'Gym' | 'Yoga' | 'Pilates' | 'Cycling' | 'Running';
 const CATEGORIES: Category[] = ['All', 'Gym', 'Yoga', 'Pilates', 'Cycling', 'Running'];
 
+/** Chip labels. A category without one (HIIT) shows as written. */
+const CATEGORY_LABELS: Record<string, string> = {
+  All:     'discover:web.category.all',
+  Gym:     'discover:web.category.gym',
+  Yoga:    'discover:web.category.yoga',
+  Pilates: 'discover:web.category.pilates',
+  Cycling: 'discover:web.category.cycling',
+  Running: 'discover:web.category.running',
+};
+
+// `status` is a translation key; `miles` is formatted on screen.
 const PARTNERS = [
-  { id: '1', name: 'Third Space Chelsea', category: 'Gym',  status: 'Open now',  area: 'Chelsea', pts: 50, distance: '0.2 mi', logoText: 'THIRD\nSPACE', logoLight: true  },
-  { id: '2', name: "Barry's Bootcamp",    category: 'HIIT', status: 'Open now',  area: 'Euston',  pts: 40, distance: '0.4 mi', logoText: "BARRY'S",     logoLight: false },
-  { id: '3', name: 'Triyoga Camden',      category: 'Yoga', status: 'Opens 8am', area: 'Camden',  pts: 30, distance: '0.7 mi', logoText: 'tri\nyoga',   logoLight: true  },
+  { id: '1', name: 'Third Space Chelsea', category: 'Gym',  status: 'discover:web.status.openNow',  area: 'Chelsea', pts: 50, miles: 0.2, logoText: 'THIRD\nSPACE', logoLight: true  },
+  { id: '2', name: "Barry's Bootcamp",    category: 'HIIT', status: 'discover:web.status.openNow',  area: 'Euston',  pts: 40, miles: 0.4, logoText: "BARRY'S",     logoLight: false },
+  { id: '3', name: 'Triyoga Camden',      category: 'Yoga', status: 'discover:web.status.opens8am', area: 'Camden',  pts: 30, miles: 0.7, logoText: 'tri\nyoga',   logoLight: true  },
 ];
+
+/** toFixed(1), written with the decimal mark of the language on screen ("1.2" / "1,2"). */
+function fixed1(n: number): string {
+  const mark = (1.5).toLocaleString(getFormatLocale()).replace(/\d/g, '') || '.';
+  return n.toFixed(1).replace('.', mark);
+}
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [activeCategory, setActiveCategory] = useState<Category>('All');
   const [search, setSearch] = useState('');
 
@@ -43,14 +64,14 @@ export default function DiscoverScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Discover</Text>
-        <Text style={styles.subtitle}>Fitness partners near you</Text>
+        <Text style={styles.title}>{t('discover:web.title')}</Text>
+        <Text style={styles.subtitle}>{t('discover:web.subtitle')}</Text>
       </View>
 
       {/* Map not available on web */}
       <View style={styles.mapPlaceholder}>
         <Ionicons name="map-outline" size={28} color={MUTED} />
-        <Text style={styles.mapPlaceholderText}>Map available on iOS & Android</Text>
+        <Text style={styles.mapPlaceholderText}>{t('discover:web.mapUnavailable')}</Text>
       </View>
 
       <ScrollView
@@ -62,7 +83,7 @@ export default function DiscoverScreen() {
         <View style={styles.searchBar}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search gyms, classes..."
+            placeholder={t('discover:list.searchPlaceholder')}
             placeholderTextColor={MUTED}
             value={search}
             onChangeText={setSearch}
@@ -79,13 +100,13 @@ export default function DiscoverScreen() {
                 style={[styles.categoryChip, active && styles.categoryChipActive]}
                 onPress={() => setActiveCategory(cat)}
               >
-                <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>{cat}</Text>
+                <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>{t(CATEGORY_LABELS[cat])}</Text>
               </Pressable>
             );
           })}
         </ScrollView>
 
-        <Text style={styles.sectionLabel}>NEAREST PARTNERS</Text>
+        <Text style={styles.sectionLabel}>{t('discover:web.nearest')}</Text>
 
         {filtered.map((partner) => (
           <Pressable key={partner.id} style={({ pressed }) => [styles.partnerRow, pressed && { opacity: 0.8 }]}>
@@ -96,11 +117,13 @@ export default function DiscoverScreen() {
             </View>
             <View style={styles.partnerInfo}>
               <Text style={styles.partnerName}>{partner.name}</Text>
-              <Text style={styles.partnerMeta}>{partner.category} · {partner.status} · {partner.area}</Text>
+              <Text style={styles.partnerMeta}>
+                {CATEGORY_LABELS[partner.category] ? t(CATEGORY_LABELS[partner.category]) : partner.category} · {t(partner.status)} · {partner.area}
+              </Text>
             </View>
             <View style={styles.partnerRight}>
-              <Text style={styles.partnerPts}>+{partner.pts} pts</Text>
-              <Text style={styles.partnerDistance}>{partner.distance}</Text>
+              <Text style={styles.partnerPts}>{t('discover:web.pts', { points: partner.pts })}</Text>
+              <Text style={styles.partnerDistance}>{t('discover:distance.miles', { distance: fixed1(partner.miles) })}</Text>
             </View>
           </Pressable>
         ))}

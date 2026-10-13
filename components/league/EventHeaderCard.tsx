@@ -4,10 +4,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { EventLockup } from '@/components/events/EventLockup';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import type { LiveEvent } from '@/lib/api/liveEvents';
+import i18n from '@/lib/i18n';
 import {
     eventDateRange,
     eventNightLine,
@@ -15,6 +17,7 @@ import {
     isVideoUrl,
     lastDayOf,
     registrationLine,
+    registrationOpensOn,
 } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
@@ -24,22 +27,30 @@ const DIM = 'rgba(255,255,255,0.5)';
 
 /** One line on where the event is up to — shared with the compact board header. */
 export function eventStatusLine(event: LiveEvent): string {
-    if (isComingSoon(event)) return `Coming soon · ${registrationLine(event).replace(/^Registration/, 'registration')}`;
+    if (isComingSoon(event)) {
+        const date = registrationOpensOn(event);
+        return date
+            ? i18n.t('events:status.comingSoonOn', { date })
+            : i18n.t('events:status.comingSoon');
+    }
     if (event.status === 'scheduled') {
         const days = Math.max(
             0,
             Math.ceil((new Date(event.window_start_at).getTime() - Date.now()) / 86_400_000),
         );
-        const when = days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
-        return `Starts ${when} · only points earned that week count`;
+        return days === 0
+            ? i18n.t('events:status.startsToday')
+            : days === 1
+                ? i18n.t('events:status.startsTomorrow')
+                : i18n.t('events:status.startsInDays', { days });
     }
     if (event.status === 'live' && !event.is_locked) {
-        return `Live now — ends ${lastDayOf(event.window_end_at)}`;
+        return i18n.t('events:status.liveNow', { date: lastDayOf(event.window_end_at) });
     }
     if (event.is_locked && !event.revealed_at) {
-        return 'Scores sealed 🔒 — revealed live at the final';
+        return i18n.t('events:status.sealed');
     }
-    return 'Winners announced';
+    return i18n.t('events:status.winners');
 }
 
 /**
@@ -112,6 +123,7 @@ export function EventHeaderCard({
     onRegister: () => void;
 }) {
     const router = useRouter();
+    const { t } = useTranslation();
 
     // Discover keys a venue on its partners UUID and needs somewhere to point
     // the camera, so the location row is only a link when BOTH arrived in the
@@ -189,7 +201,7 @@ export function EventHeaderCard({
                         }}
                         hitSlop={8}
                         accessibilityRole="button"
-                        accessibilityLabel={`Share ${event.name} as a card`}
+                        accessibilityLabel={t('events:shareCardA11y', { event: event.name })}
                     >
                         <Ionicons name="share-social-outline" size={15} color={TEXT} />
                     </Pressable>
@@ -208,7 +220,7 @@ export function EventHeaderCard({
             <View style={styles.meta}>
                 <MetaRow
                     icon="calendar-outline"
-                    text={`Scoring ${eventDateRange(event)}`}
+                    text={t('events:header.scoring', { range: eventDateRange(event) })}
                 />
                 {venue?.name && (
                     <MetaRow
@@ -225,14 +237,18 @@ export function EventHeaderCard({
                                 }
                                 : undefined
                         }
-                        a11y={`${venue.name}${venue.address ? `, ${venue.address}` : ''}. Opens the map.`}
+                        a11y={
+                            venue.address
+                                ? t('events:header.venueAddressA11y', { venue: venue.name, address: venue.address })
+                                : t('events:header.venueA11y', { venue: venue.name })
+                        }
                     />
                 )}
                 {night && (
-                    <View style={styles.metaRow} accessibilityLabel={`Event night: ${night}`}>
+                    <View style={styles.metaRow} accessibilityLabel={t('events:header.nightA11y', { night })}>
                         <Ionicons name="flag" size={13} color={GOLD} style={styles.metaIcon} />
                         <Text style={styles.nightText} numberOfLines={1}>
-                            <Text style={styles.nightLabel}>EVENT </Text>
+                            <Text style={styles.nightLabel}>{`${t('events:header.nightLabel')} `}</Text>
                             {night}
                         </Text>
                     </View>
@@ -241,7 +257,7 @@ export function EventHeaderCard({
 
             {/* Coming soon: the held bar below already says when registration
                 opens, so the line names the state and nothing more. */}
-            <Text style={styles.statusLine}>{isComingSoon(event) ? 'Coming soon' : eventStatusLine(event)}</Text>
+            <Text style={styles.statusLine}>{isComingSoon(event) ? t('events:header.comingSoon') : eventStatusLine(event)}</Text>
 
 
             {canJoin && (
@@ -252,9 +268,9 @@ export function EventHeaderCard({
                         onRegister();
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Register for ${event.name}`}
+                    accessibilityLabel={t('events:header.registerA11y', { event: event.name })}
                 >
-                    <Text style={styles.joinBtnText}>JOIN THE WEEK</Text>
+                    <Text style={styles.joinBtnText}>{t('events:header.join')}</Text>
                 </Pressable>
             )}
 

@@ -70,7 +70,7 @@
     "skip": "Continuer sans alertes"
   },
   "fix": {
-    "notNow": "Pas maintenant",
+    "notNow": "Plus tard",
     "done": "Terminé",
     "paths": {
       "locationIos": "Réglages › POWR › Position",

@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dimensions, FlatList, StyleSheet, Text, View } from 'react-native';
 import Animated, {
     Extrapolate,
@@ -47,6 +48,7 @@ interface RadialCarouselProps {
 }
 
 export function RadialCarousel({ data, activeIndex, onChange, onPointsInfo }: RadialCarouselProps) {
+  const { t } = useTranslation();
   const scrollX = useSharedValue(0);
   const flatListRef = useRef<FlatList<RadialData>>(null);
   // Keep activeIndex in a shared value so the worklet always sees the latest value
@@ -127,8 +129,8 @@ export function RadialCarousel({ data, activeIndex, onChange, onPointsInfo }: Ra
         <View style={styles.pointsPanel} pointerEvents={onPointsInfo ? 'box-none' : 'none'}>
           <Text style={styles.pointsNum} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{activePoints}</Text>
           <View style={styles.pointsLblRow} pointerEvents="box-none">
-            <Text style={styles.pointsLbl}>{`POWR\nEARNED`}</Text>
-            {onPointsInfo && <PointsInfoDot onPress={onPointsInfo} label="How you earned this POWR" />}
+            <Text style={styles.pointsLbl}>{t('progress:radial.powrEarned')}</Text>
+            {onPointsInfo && <PointsInfoDot onPress={onPointsInfo} label={t('progress:radial.howEarned')} />}
           </View>
         </View>
       )}

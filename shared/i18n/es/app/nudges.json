@@ -1,1 +1,179 @@
-{}
+{
+  "actions": {
+    "share": "Compartir",
+    "runItBack": "Repetir"
+  },
+  "healthGap": {
+    "exercisePermission": {
+      "title": "Activa el seguimiento de entrenos",
+      "body": "POWR ve tus pasos, pero no tus entrenos. Permite el acceso a los entrenos para ganar puntos con tus carreras, salidas en bici y más.",
+      "cta": "Permitir acceso"
+    },
+    "workoutsMissing": {
+      "title": "¿Te faltan entrenos?",
+      "bodyAndroid": "Tu wearable registra actividad, pero los entrenos no llegan. En Garmin Connect → Ajustes → Health Connect, activa Actividades.",
+      "ctaAndroid": "Abrir Health Connect",
+      "bodyIos": "Tu wearable registra actividad, pero POWR no ve tus entrenos. Activa Entrenamientos para POWR en la app Salud.",
+      "ctaIos": "Abrir ajustes de Salud"
+    }
+  },
+  "setupHealth": {
+    "title": "Los check-ins no funcionan",
+    "bodyGym": "POWR ha intentado hacerte el check-in desde el bolsillo y no ha podido: la ubicación en segundo plano está desactivada, así que tus visitas al gimnasio con la app cerrada no suman nada.",
+    "bodyVenue": "POWR ha intentado hacerte el check-in desde el bolsillo y no ha podido: la ubicación en segundo plano está desactivada, así que tus visitas a centros asociados con la app cerrada no suman nada.",
+    "cta": "ARREGLAR"
+  },
+  "wearableChip": {
+    "fallbackName": "Wearable",
+    "a11y": "{{name}}, {{sync}}. Abrir wearables."
+  },
+  "healthPrime": {
+    "eyebrow": "CONTEO DE PASOS",
+    "headline": {
+      "reconnect": "Tus pasos ya\n<gold>no cuentan.</gold>",
+      "settings": "A un botón\n<gold>de ganar.</gold>",
+      "connect": "Cada paso\n<gold>suma.</gold>"
+    },
+    "body": {
+      "reconnectIos": "La app Salud ya no comparte datos con POWR: sus permisos pueden desactivarse al reinstalar o actualizar. Tu móvil sigue contando cada paso; POWR simplemente no los ve. Vuelve a conectarla y lo que camines hoy volverá a sumar.",
+      "reconnectAndroid": "Health Connect ya no comparte datos con POWR: sus permisos pueden desactivarse al reinstalar o actualizar. Tu móvil sigue contando cada paso; POWR simplemente no los ve. Vuelve a conectarlo y lo que camines hoy volverá a sumar.",
+      "settingsIos": "POWR necesita permiso de lectura en la app Salud para contar tus pasos. Actívalo en la app Salud y todo seguirá justo donde lo dejaste.",
+      "settingsAndroid": "POWR necesita permiso de lectura en Health Connect para contar tus pasos. Actívalo en Health Connect y todo seguirá justo donde lo dejaste.",
+      "connectIos": "Tu móvil ya cuenta cada paso que das. Conecta la app Salud y se convertirán en puntos POWR automáticamente: sin registrar nada, sin check-ins, solo caminando.",
+      "connectAndroid": "Tu móvil ya cuenta cada paso que das. Conecta Health Connect y se convertirán en puntos POWR automáticamente: sin registrar nada, sin check-ins, solo caminando."
+    },
+    "path": {
+      "ios": "Salud › Perfil › Apps › POWR",
+      "android": "Health Connect › Permisos de aplicaciones › POWR"
+    },
+    "tierPts": "+{{points}} pts",
+    "cta": {
+      "settings": "ABRIR AJUSTES DE SALUD",
+      "reconnect": "VOLVER A CONECTAR"
+    }
+  },
+  "locationPrime": {
+    "eyebrow": "UBICACIÓN EN SEGUNDO PLANO",
+    "eyebrowVenue": "ESTÁS EN {{venue}}",
+    "headline": "Gana sin\n<gold>mover un dedo.</gold>",
+    "headlineVenue": "Esta visita no\n<gold>contará sola.</gold>",
+    "body": {
+      "venueAsk": "POWR sabe que estás en {{venue}} solo porque la app está abierta. Con «Mientras se usa la app» no puede hacerte el check-in desde el bolsillo: cámbialo a {{always}} y cada visita contará, empezando por esta.",
+      "venueSettings": "Cambia la ubicación de POWR a {{always}} en Ajustes y te hará el check-in en {{venue}} automáticamente, incluso con la app cerrada.",
+      "askGym": "POWR solo puede hacerte el check-in desde el bolsillo con {{always}}. Ahora mismo está en «Mientras se usa la app», así que cada visita al gimnasio con la app cerrada no te suma nada.",
+      "askVenue": "POWR solo puede hacerte el check-in desde el bolsillo con {{always}}. Ahora mismo está en «Mientras se usa la app», así que cada visita a un centro asociado con la app cerrada no te suma nada.",
+      "settings": "Cambia la ubicación de POWR a {{always}} en Ajustes y te hará el check-in automáticamente, incluso con la app cerrada."
+    },
+    "path": "Ajustes › POWR › Ubicación › Siempre"
+  },
+  "notificationPrime": {
+    "headline": "Ganando en\n<gold>silencio.</gold>",
+    "bodyAsk": "Has sumado sesiones con las alertas desactivadas: cada ganancia llegó sin hacer ruido. Actívalas y entérate al momento cuando una sesión cuenta, salvas una racha o cae una recompensa.",
+    "bodyDenied": "Las notificaciones de POWR están desactivadas en el sistema. Actívalas en Ajustes y no vuelvas a enterarte tarde."
+  },
+  "levelUp": {
+    "kicker": {
+      "max": "NIVEL MÁXIMO",
+      "tier": "NUEVO RANGO — {{tier}}",
+      "standard": "NUEVO NIVEL"
+    },
+    "level": "NIVEL",
+    "toNext": "<pts>{{points}}</pts> pts para {{name}}",
+    "apex": "La cima. No queda nada por desbloquear.",
+    "continue": "Continuar"
+  },
+  "transfer": {
+    "eyebrow": "TRASLADA TU CUENTA",
+    "headline": "Trae POWR\n<gold>a este móvil.</gold>",
+    "body": "Tu cuenta de POWR está configurada en {{device}}. Pásala a este móvil para seguir ganando: se cerrará la sesión en {{device}}. Solo un móvil a la vez.",
+    "bodyLastSeen": "Tu cuenta de POWR está configurada en {{device}} (última actividad: {{when}}). Pásala a este móvil para seguir ganando: se cerrará la sesión en {{device}}. Solo un móvil a la vez.",
+    "device": {
+      "ios": "tu otro iPhone",
+      "android": "tu otro Android",
+      "other": "otro dispositivo"
+    },
+    "lastSeen": {
+      "recently": "hace poco",
+      "today": "hoy",
+      "yesterday": "ayer",
+      "daysAgo": "hace {{days}} días"
+    },
+    "moving": "TRASLADANDO…",
+    "confirm": "PASAR A ESTE MÓVIL",
+    "notNow": "Ahora no"
+  },
+  "crash": {
+    "eyebrow": "ALGO HA FALLADO",
+    "headline": "No ha cargado.",
+    "headlineGold": "Nos encargamos.",
+    "body": "El problema se ha registrado y nos ha llegado. Tus puntos y tu racha están intactos.",
+    "terminal": "Cierra POWR y vuelve a abrirlo.",
+    "retry": "REINTENTAR",
+    "caption": "¿Sigue sin funcionar? Cierra POWR y vuelve a abrirlo."
+  },
+  "friendPulse": {
+    "just": {
+      "gym": "{{name}} acaba de entrenar en el gimnasio.",
+      "running": "{{name}} acaba de salir a correr.",
+      "cycling": "{{name}} acaba de salir en bici.",
+      "other": "{{name}} acaba de hacer un entreno."
+    },
+    "recent": {
+      "gym": "{{name}} ha entrenado en el gimnasio hace un rato.",
+      "running": "{{name}} ha salido a correr hace un rato.",
+      "cycling": "{{name}} ha salido en bici hace un rato.",
+      "other": "{{name}} ha hecho un entreno hace un rato."
+    },
+    "a11y": "{{headline}} Rétale.",
+    "active": "Ha entrenado hoy",
+    "dismiss": "Descartar sugerencia",
+    "sub": "Lanza un reto en equipo.",
+    "subBonus": "Lanza un reto en equipo: si lo termináis, os lleváis +{{bonus}} extra por persona.",
+    "cta": "Reta a {{name}}"
+  },
+  "challengeCard": {
+    "outcome": {
+      "cancelled": "Cancelado antes de terminar",
+      "expiredPooled": "Se acabó el tiempo — objetivo no alcanzado",
+      "expiredSolo": "Se acabó el tiempo — no has terminado",
+      "expired": "Se acabó el tiempo — nadie ha terminado",
+      "won": "Has terminado  ·  +{{points}} ganados",
+      "lostPooled": "El grupo llegó al objetivo sin ti",
+      "lost": "Se acabó — esta vez no has terminado"
+    },
+    "waiting": {
+      "start": "Esperando para empezar",
+      "one": "Esperando a {{name}}",
+      "many": "{{total}} invitaciones pendientes"
+    },
+    "clearA11y": "Quitar {{title}} de inicio",
+    "invite": "<from>{{name}}</from><plain> te ha invitado</plain><bonus>  ·  +{{bonus}} de bonus</bonus>",
+    "freeSlot": "Libera un hueco",
+    "rematchA11y": "Repetir {{title}}",
+    "groupTotal": "Total del grupo",
+    "youFinished": "Has terminado",
+    "yourPart": "Tu parte",
+    "today": "<label>Hoy </label>{{value}}",
+    "pacerAhead": "La liebre va delante",
+    "bonus": "+{{bonus}} de bonus"
+  },
+  "celebration": {
+    "title": "{{title}} — hecho en equipo.",
+    "titleSettled": "{{title}} — misión cumplida.",
+    "subtitle": {
+      "settledWith_one": "Tú y {{count}} persona más habéis terminado — bonus sumado",
+      "settledWith_other": "Tú y {{count}} personas más habéis terminado — bonus sumado",
+      "settledSolo": "Reto completado — puntos sumados",
+      "with_one": "Tú y {{count}} persona más habéis terminado en equipo",
+      "with_other": "Tú y {{count}} personas más habéis terminado en equipo",
+      "solo": "Has terminado — tu bonus crece con cada persona que acaba"
+    },
+    "base": "{{points}} de base",
+    "baseBonus": "{{points}} de base<bonus>  +{{bonus}} de bonus de grupo</bonus>",
+    "total": "Saldo total <num>{{points}} pts</num>"
+  },
+  "openBoard": {
+    "takeFailed": "No se ha podido aceptar ese reto",
+    "fallbackCreator": "Un miembro de POWR"
+  }
+}

@@ -1,1 +1,526 @@
-{}
+{
+  "loading": "Loading…",
+  "days": {
+    "short": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    },
+    "initial": {
+      "mon": "M",
+      "tue": "T",
+      "wed": "W",
+      "thu": "T",
+      "fri": "F",
+      "sat": "S",
+      "sun": "S"
+    },
+    "tick": {
+      "mon": "Mo",
+      "tue": "Tu",
+      "wed": "We",
+      "thu": "Th",
+      "fri": "Fr",
+      "sat": "Sa",
+      "sun": "Su"
+    }
+  },
+  "months": {
+    "short": {
+      "jan": "Jan",
+      "feb": "Feb",
+      "mar": "Mar",
+      "apr": "Apr",
+      "may": "May",
+      "jun": "Jun",
+      "jul": "Jul",
+      "aug": "Aug",
+      "sep": "Sep",
+      "oct": "Oct",
+      "nov": "Nov",
+      "dec": "Dec"
+    },
+    "full": {
+      "jan": "January",
+      "feb": "February",
+      "mar": "March",
+      "apr": "April",
+      "may": "May",
+      "jun": "June",
+      "jul": "July",
+      "aug": "August",
+      "sep": "September",
+      "oct": "October",
+      "nov": "November",
+      "dec": "December"
+    }
+  },
+  "dates": {
+    "monthDay": "{{month}} {{day}}"
+  },
+  "period": {
+    "D": "D",
+    "W": "W",
+    "M": "M"
+  },
+  "units": {
+    "h": "{{h}}h",
+    "hm": "{{h}}h {{m}}m",
+    "m": "{{m}}m",
+    "min": "{{m}} min",
+    "pt": "{{points}}pt",
+    "steps": "{{steps}} steps",
+    "bpm": "{{value}} bpm",
+    "kcal": "{{value}} kcal"
+  },
+  "chart": {
+    "seeEarned": "{{day}} — see what you earned",
+    "less": "Less",
+    "more": "More",
+    "avg": "avg {{value}}"
+  },
+  "metric": {
+    "powrEarned": "POWR EARNED",
+    "today": "today",
+    "thisDay": "this day",
+    "thisWeek": "THIS WEEK",
+    "dayByDay": "DAY BY DAY",
+    "fromThisWeek": "from this week",
+    "fromThatWeek": "from that week",
+    "bestDay": "BEST DAY",
+    "previousDays": "PREVIOUS DAYS"
+  },
+  "screen": {
+    "title": "Progress",
+    "overview": "ACTIVITY OVERVIEW",
+    "breakdown": "BREAKDOWN",
+    "bodyTab": "BODY"
+  },
+  "radial": {
+    "steps": "steps",
+    "thisWeek": "THIS WEEK",
+    "activityThisWeek": "{{activity}} THIS WEEK",
+    "activitySessions": "{{activity}} SESSIONS",
+    "avgSleep": "AVG SLEEP",
+    "daysQuiet": "{{days}}d",
+    "sinceLastReading": "SINCE LAST READING",
+    "readiness": "READINESS",
+    "powrEarned": "POWR\nEARNED",
+    "howEarned": "How you earned this POWR"
+  },
+  "empty": {
+    "title": "Your progress starts here",
+    "bodyConnected": "Your first gym visit, walk or workout lands here as a radial, with a full day, week and month breakdown behind it.",
+    "bodyNotConnected": "Connect Apple Health, Health Connect or a wearable and every gym visit, walk and workout shows up here automatically.",
+    "logSession": "Log a session",
+    "connectWearable": "Connect a wearable",
+    "logManually": "Or log a session manually"
+  },
+  "detail": {
+    "category": {
+      "movement": "Movement",
+      "workouts": "Workouts",
+      "sleep": "Sleep"
+    },
+    "empty": {
+      "movement": "No movement sessions yet.",
+      "workouts": "No workouts sessions yet.",
+      "sleep": "No sleep sessions yet."
+    },
+    "emptyHint": "Get moving to start tracking here.",
+    "thisWeek": "This week",
+    "stats": {
+      "sessions": "Sessions",
+      "avgDuration": "Avg duration",
+      "pointsEarned": "Points earned"
+    },
+    "recent": "Recent",
+    "points": "+{{points}} pts"
+  },
+  "movement": {
+    "healthRequesting": "Requesting Health access…",
+    "healthEnable": "Enable Health access to track steps",
+    "stepsToGoal": "{{steps}} steps to today's goal",
+    "startMoving": "Start moving to track today's steps",
+    "todaysSteps": "TODAY'S STEPS",
+    "steps": "STEPS",
+    "goalDay": "/ {{goal}} goal",
+    "goalSteps": "/ {{goal}} steps",
+    "goalWeek": "/ 70k goal",
+    "goalAvg": "/ 10k goal",
+    "howEarned": "How you earned this walking POWR",
+    "nextTier": "{{steps}} steps to next tier ({{threshold}})",
+    "past5Days": "PAST 5 DAYS",
+    "today": "TODAY",
+    "weekTotal": "WEEK TOTAL",
+    "bestDay": "Best day: {{day}} — {{steps}} steps",
+    "loadingMonth": "Loading monthly walking data...",
+    "noDataThisMonth": "No walking data this month.",
+    "noDataIn": "No walking data in {{month}}.",
+    "noDataHint": "Steps will appear once synced from Health.",
+    "avgPerDay": "AVG STEPS / DAY"
+  },
+  "workouts": {
+    "howEarned": "How you earned this {{activity}} POWR",
+    "day": {
+      "noneToday": "No {{activity}} session today.",
+      "noneOnDay": "No {{activity}} session on this day.",
+      "noneTodayHint": "Complete a session to see your daily stats.",
+      "noneOnDayHint": "Nothing was logged on this date.",
+      "todays": "TODAY'S {{activity}}",
+      "sessions_one": "session · {{duration}}",
+      "sessions_other": "sessions · {{duration}}",
+      "sessionsCounted_one": "{{count}} session · {{duration}}",
+      "sessionsCounted_other": "{{count}} sessions · {{duration}}",
+      "greatToday": "Great {{activity}} session today.",
+      "great": "Great {{activity}} session.",
+      "loggedToday": "{{activity}} session logged — keep the momentum going.",
+      "logged": "{{activity}} session logged.",
+      "recentDays": "RECENT DAYS"
+    },
+    "week": {
+      "distance": "{{activity}} DISTANCE",
+      "sessions": "{{activity}} SESSIONS",
+      "ofFive": "{{sessions}} of 5 sessions",
+      "goal": "/ 5 goal",
+      "streak": "{{days}} day streak — keep it going!",
+      "activeThis_one": "{{count}} day active this week.",
+      "activeThis_other": "{{count}} days active this week.",
+      "activeThat_one": "{{count}} day active that week.",
+      "activeThat_other": "{{count}} days active that week.",
+      "outstanding": "Outstanding {{activity}} week.",
+      "solidThis": "Solid effort — keep going to hit your goal.",
+      "solidThat": "Solid week of training.",
+      "moreToGo": "{{sessions}} more sessions to hit your target.",
+      "thatWeek": "{{sessions}} of 5 sessions that week."
+    },
+    "month": {
+      "loading": "Loading monthly data...",
+      "noneThisMonth": "No {{activity}} sessions this month.",
+      "noneIn": "No {{activity}} sessions in {{month}}.",
+      "noneHint": "Sessions will appear here once logged.",
+      "totalDistance": "TOTAL DISTANCE",
+      "totalSessions": "TOTAL SESSIONS",
+      "sessionsThisMonth_one": "{{count}} session this month",
+      "sessionsThisMonth_other": "{{count}} sessions this month",
+      "sessionsIn_one": "{{count}} session in {{month}}",
+      "sessionsIn_other": "{{count}} sessions in {{month}}",
+      "thisMonth": "this month",
+      "inMonth": "in {{month}}",
+      "longestVisit": "LONGEST VISIT"
+    }
+  },
+  "sleep": {
+    "expired": "Wearable connection expired",
+    "expiredHint": "Reconnect your wearable in Settings to resume sleep tracking.",
+    "notTracked": "No sleep recorded in the last 30 days.",
+    "notTrackedHint": "Wear your device to bed and your nights will land here.",
+    "noDataLastNight": "No sleep data for last night.",
+    "noDataFor": "No sleep data for {{day}}.",
+    "syncHint": "Sleep will appear once synced from your wearable.",
+    "recentNights": "RECENT NIGHTS",
+    "previousNights": "PREVIOUS NIGHTS",
+    "totalSleep": "TOTAL SLEEP",
+    "goal": "/ 8h goal",
+    "bedtimeWake": "BEDTIME / WAKE",
+    "stages": "SLEEP STAGES",
+    "stage": {
+      "deep": "Deep {{duration}}",
+      "rem": "REM {{duration}}",
+      "light": "Light {{duration}}"
+    },
+    "noStages": "Stage breakdown unavailable",
+    "dayGood": "Great recovery night. Keep it consistent.",
+    "dayShort": "{{duration}} below target — try an earlier bedtime.",
+    "avgNight": "AVG / NIGHT",
+    "avgBedtime": "AVG BEDTIME",
+    "bedtimeGoal": "goal: 10:30pm",
+    "nightly": "NIGHTLY SLEEP",
+    "bestNight": "Best night: {{day}} — {{duration}}",
+    "weekConnect": "Connect a wearable to track your sleep automatically.",
+    "weekGood": "Good recovery. Keep your sleep schedule consistent.",
+    "weekShort": "You're {{duration}} below target — aim for an earlier bedtime.",
+    "loadingMonth": "Loading monthly sleep data...",
+    "noDataThisMonth": "No sleep data this month.",
+    "noDataIn": "No sleep data in {{month}}.",
+    "bestNightLabel": "BEST NIGHT"
+  },
+  "readiness": {
+    "word": {
+      "primed": "Primed",
+      "easy": "Easy",
+      "rest": "Rest"
+    },
+    "reason": {
+      "recovery": "recovery {{score}}%",
+      "heartSaysRest": "heart says rest",
+      "hrvLow": "HRV below your usual",
+      "shortNight": "short night",
+      "bigDay": "big day yesterday",
+      "goodToPush": "good to push",
+      "quiet": "no readings for {{days}} days",
+      "needsSignals": "needs sleep or resting HR",
+      "noRecent": "no recent readings"
+    }
+  },
+  "body": {
+    "failed": "Couldn't load your trends.",
+    "failedHint": "Pull to refresh and try again.",
+    "empty": "No body data yet.",
+    "emptyHint": "Resting heart rate, sleep and training load appear here as your device syncs them.",
+    "slept": "slept {{duration}}",
+    "yourDevice": "Your device",
+    "load": {
+      "title": "TRAINING LOAD · LAST {{days}} DAYS",
+      "ofExercise": "of exercise",
+      "none": "no workouts tracked this week",
+      "levelWithUsual": "level with your usual week",
+      "vsUsual": "{{delta}} vs your usual week",
+      "kcal": "{{kcal}} kcal burned",
+      "hard": "{{duration}} at hard effort",
+      "avg": "avg {{duration}}"
+    },
+    "effort": {
+      "title": "EFFORT MIX · THIS WEEK",
+      "raised": "at raised heart rate",
+      "peak": "peak heart rate {{bpm}} bpm",
+      "light": "light effort",
+      "hard": "hard",
+      "max": "max"
+    },
+    "rhr": {
+      "title": "RESTING HEART RATE · {{days}} DAYS",
+      "unitWhen": "bpm · {{when}}",
+      "tip": "lower is fitter"
+    },
+    "hrv": {
+      "title": "RECOVERY (HRV) · {{days}} DAYS",
+      "unitWhen": "ms · {{when}}",
+      "tip": "higher is fresher",
+      "prompt": {
+        "title": "RECOVERY (HRV)",
+        "asking": "Asking Apple Health…",
+        "share": "Share your HRV from Apple Health"
+      }
+    },
+    "sleep": {
+      "title": "SLEEP · LAST {{nights}} NIGHTS",
+      "avgPerNight": "avg per night this week",
+      "noNights": "no nights in the last 7 days",
+      "sharpen": "trends sharpen as more nights land",
+      "lastRecorded": "last night recorded {{when}}",
+      "short": "{{duration}} short of {{goal}}h this week",
+      "onGoal": "on your {{goal}}h goal this week",
+      "deepRem": "{{pct}}% deep + REM",
+      "efficiency": "{{pct}}% efficient"
+    },
+    "axis": {
+      "daysAgo": "{{days}} days ago",
+      "today": "today",
+      "nightsAgo": "{{nights}} nights ago",
+      "lastNight": "last night"
+    },
+    "legend": {
+      "typicalRange": "your typical range",
+      "average": "average",
+      "goal": "{{goal}}h goal",
+      "goalMet": "goal met",
+      "shortOfGoal": "short of goal",
+      "minutesTrained": "minutes trained",
+      "hardEffort": "hard effort",
+      "averageDay": "your average day"
+    },
+    "quiet": {
+      "label": "{{device}} · QUIET FOR {{days}} DAYS",
+      "device": "Device",
+      "title": "No readings since {{when}}",
+      "aWhileBack": "a while back",
+      "wearNamedBaselines": "Wear your {{device}} tonight and your readiness is back by morning, read against your usual below.",
+      "wearBaselines": "Wear your device tonight and your readiness is back by morning, read against your usual below.",
+      "wearNamed": "Wear your {{device}} tonight and your trends start again from the morning.",
+      "wear": "Wear your device tonight and your trends start again from the morning.",
+      "syncNamed": "Been wearing it? Open the {{device}} app to sync.",
+      "sync": "Been wearing it? Open its app to sync."
+    },
+    "baselines": {
+      "title": "YOUR USUAL · BEFORE THE GAP",
+      "rhr": "RESTING HR",
+      "hrv": "HRV",
+      "sleep": "SLEEP",
+      "fromReadings_one": "from {{count}} reading",
+      "fromReadings_other": "from {{count}} readings",
+      "fromNights_one": "from {{count}} night",
+      "fromNights_other": "from {{count}} nights"
+    },
+    "delta": {
+      "stale": "no reading since {{when}} — waiting on your device",
+      "noBaseline": "{{tip}} — a few more days and you'll see how this compares to your usual",
+      "vsAverage": "{{delta}} vs your average — {{tip}}",
+      "level": "level",
+      "value": "{{sign}}{{value}} {{unit}}"
+    },
+    "signals": {
+      "readiness": "READINESS",
+      "yesterday": "YESTERDAY",
+      "lastNight": "LAST NIGHT",
+      "noData": "No data",
+      "bigDay": "Big day",
+      "restDay": "Rest day",
+      "trained": "Trained",
+      "noTraining": "no training",
+      "exercise": "{{duration}} of exercise",
+      "notTracked": "Not tracked",
+      "wearToBed": "wear your device to bed",
+      "notSynced": "Not synced",
+      "waiting": "waiting on your device",
+      "shortNight": "Short night",
+      "aBitShort": "A bit short",
+      "rested": "Rested",
+      "recovery": "{{pct}}% recovery · {{advice}}",
+      "basisOnly": "{{basis}} only · {{advice}}",
+      "advice": {
+        "push": "good day to push",
+        "goLight": "go light today",
+        "easy": "take it easy today"
+      },
+      "adviceShort": {
+        "push": "push",
+        "goLight": "go light",
+        "easy": "take it easy"
+      }
+    },
+    "basis": {
+      "sleep": "sleep",
+      "hrv": "HRV",
+      "rhr": "resting HR"
+    },
+    "when": {
+      "today": "today",
+      "yesterday": "yesterday"
+    },
+    "insight": {
+      "hrv": "HRV",
+      "rhr": "resting HR",
+      "vital": "{{label}} {{value}} {{unit}}",
+      "vitalVsUsual": "{{vital}} (your usual {{usual}})",
+      "slept": "Slept {{duration}}",
+      "advice": {
+        "push": "Good day to push.",
+        "steady": "Train, but keep it steady.",
+        "rest": "Rest or go very light today."
+      },
+      "provider": "{{who}} scores this morning's recovery {{score}}%. {{advice}}",
+      "providerWithEvidence": "{{who}} scores this morning's recovery {{score}}% — {{evidence}}. {{advice}}",
+      "rhrElevated": "Resting heart rate is {{delta}} above your usual — worth keeping today steadier.",
+      "hrvLow": "HRV is {{value}} ms against your usual {{usual}} — your body is still working on something. Keep today easy.",
+      "shortNight": "Short night ({{duration}}) — an easy session will do more for you than a hard one today.",
+      "bigDay": "Big day yesterday ({{duration}} of training) — recovery is part of the work.",
+      "ordinary": "{{evidence}} — nothing out of the ordinary. Good day to push.",
+      "night": "Slept {{duration}} last night.",
+      "nightWaiting_one": "Slept {{duration}} last night. {{basis}} hasn't synced yet, so this is a read from sleep alone.",
+      "nightWaiting_other": "Slept {{duration}} last night. {{basis}} haven't synced yet, so this is a read from sleep alone.",
+      "rhrBelow": "Resting heart rate is {{bpm}} bpm below your average — good day to push.",
+      "rhrAbove": "Resting heart rate is {{bpm}} bpm above your average — good day to push.",
+      "rhrOnAverage": "Resting heart rate is right on your average — good day to push.",
+      "rhrFirst": "Resting heart rate {{bpm}} bpm {{when}}. A few more days and you'll see how that compares to your usual.",
+      "hrvVsUsual": "HRV {{value}} ms against your usual {{usual}} — good day to push.",
+      "hrvFirst": "HRV {{value}} ms {{when}}. A few more nights and you'll see how that compares to your usual.",
+      "trained": "Trained {{active}} of the last {{days}} days ({{duration}}).",
+      "needsSignals": "Readiness needs sleep, HRV, or resting heart rate from your device.",
+      "noRecent": "No recent sleep, HRV, or heart-rate reading to judge recovery.",
+      "lastRhr": "Last resting HR reading was {{days}} days ago.",
+      "default": "Your trends build here as your device syncs — the more days, the sharper the picture."
+    }
+  },
+  "sheet": {
+    "eyebrow": "WHERE IT CAME FROM",
+    "failed": "Couldn't load your breakdown. Pull to refresh and try again.",
+    "earnedNothing": "EARNED NOTHING",
+    "unpaidNote": "A session earns nothing if it's below the minimum, if the day's cap is already met, or if the same time is already counted by a check-in or your device.",
+    "vitalsPrompt": "Heart rate and calories show here when a wearable tracks the session.",
+    "close": "Close",
+    "today": "Today",
+    "previousDay": "Previous day, {{date}}",
+    "nextDay": "Next day, {{date}}",
+    "noEarlierDay": "No earlier day on this chart",
+    "noLaterDay": "No later day on this chart",
+    "tile": {
+      "speed": "SPEED",
+      "pace": "PACE",
+      "time": "TIME",
+      "steps": "STEPS",
+      "distance": "DISTANCE",
+      "avgHr": "AVG HR",
+      "maxHr": "MAX HR",
+      "active": "ACTIVE",
+      "climb": "CLIMB",
+      "power": "POWER",
+      "laps": "LAPS",
+      "hard": "HARD",
+      "hrv": "HRV",
+      "deep": "DEEP",
+      "rem": "REM",
+      "light": "LIGHT"
+    },
+    "noun": {
+      "checkIn": "check-in",
+      "checkInFor": "{{duration}} check-in",
+      "tracked": "tracked session",
+      "trackedFor": "{{duration}} tracked session",
+      "synced": "synced session",
+      "syncedFor": "{{duration}} synced session",
+      "manual": "manual log",
+      "manualFor": "{{duration}} manual log",
+      "session": "session",
+      "sessionFor": "{{duration}} session"
+    },
+    "summary": {
+      "nothingToday": "Nothing earned from {{activity}} today.",
+      "nothingThatDay": "Nothing earned from {{activity}} that day.",
+      "nothingThisWeek": "Nothing earned from {{activity}} this week.",
+      "nothingPeriod": "Nothing earned from {{activity}} in this period.",
+      "walking": "Earned in steps as your daily total passed each tier.",
+      "sleep": "Earned from your nightly sleep, scaled by how restorative it was.",
+      "allFrom": "All of it from {{day}}'s {{session}}.",
+      "across": "Across {{sessions}} sessions — most from {{day}}'s {{session}}.",
+      "streak": "Includes a streak bonus."
+    },
+    "source": {
+      "checkIn": "Gym check-in",
+      "checkInWith": "Gym check-in · {{provider}}",
+      "wearable": "Wearable",
+      "health": "Phone health",
+      "manual": "Manual log",
+      "tracked": "Tracked"
+    },
+    "rules": {
+      "cap": "Up to {{cap}} POWR a day from {{activity}}.",
+      "gymDwell": "Stay {{dwell}} minutes to earn a check-in, {{upgrade}} to reach the higher tier.",
+      "streak": "Consecutive active days multiply what a check-in pays.",
+      "hiit": "A class earns the same as a gym session: {{minimum}} minutes to qualify, {{upgrade}} to reach the higher tier.",
+      "minimum": "Sessions under {{minimum}} minutes don't earn.",
+      "walkingTiers": "Points step up as the day's total passes {{tiers}} steps.",
+      "manual": "Manual logs earn 80% of a tracked session, one a day."
+    }
+  },
+  "verify": {
+    "unavailable": "Not available",
+    "stepsFound": "{{steps}} steps found today",
+    "stepsShort": "Only {{steps}} steps found",
+    "workoutFound": "{{minutes}} min workout found today",
+    "workoutMissing": "No matching workout found (looking for ~{{minutes}} min)"
+  },
+  "lookback": {
+    "thisMonth": "This Month",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "thisWeek": "This Week",
+    "shortDate": "{{month}} {{day}}{{year}}",
+    "sameMonthRange": "{{month}} {{startDay}}{{year}} – {{endDay}}",
+    "monthYear": "{{month}}{{year}}"
+  }
+}

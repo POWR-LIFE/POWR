@@ -1,6 +1,7 @@
 import type { ActivityType } from '@/constants/activities';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -109,6 +110,7 @@ const CIRCLE_R = 32;
 const CIRCLE_SW = 5;
 
 function ActivityCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () => void }) {
+  const { t } = useTranslation();
   const isGetReady = !!data.isGetReady;
   const pct = isGetReady ? 0.2 : Math.min(data.pct, 1);
   const circ = 2 * Math.PI * CIRCLE_R;
@@ -117,8 +119,8 @@ function ActivityCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () 
     ? (OVERFLOW_COLOURS[data.colour] ?? data.colour)
     : data.colour;
   const ringTrackColour = isGetReady ? `${data.colour}30` : 'rgba(255,255,255,0.07)';
-  const countText = isGetReady ? 'GET READY' : `${formatCount(data)}${data.overachieving ? ' ✓' : ''}`;
-  const encourageText = isGetReady ? (data.hintText ?? 'Opens this day') : null;
+  const countText = isGetReady ? t('home:rings.getReady') : `${formatCount(data)}${data.overachieving ? ' ✓' : ''}`;
+  const encourageText = isGetReady ? (data.hintText ?? t('home:rings.opensThisDay')) : null;
   const encourageOpacity = isGetReady ? 1 : 0;
   const IconComp = data.iconLib === 'material-community' ? MaterialCommunityIcons : Ionicons;
 
@@ -155,7 +157,7 @@ function ActivityCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () 
       {/* Always render to keep height constant — invisible when not applicable */}
       {data.isBonus ? (
         <Text style={[circleStyles.encourage, { color: 'rgba(255,255,255,0.35)', opacity: 1 }]}>
-          DETECTED
+          {t('home:rings.detected')}
         </Text>
       ) : encourageText !== null ? (
         <Text style={[circleStyles.encourage, { color: data.colour, opacity: encourageOpacity }]}>

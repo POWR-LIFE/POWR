@@ -1,1 +1,113 @@
-{}
+{
+  "stats": {
+    "title": {
+      "checkIn": "Share check-in",
+      "session": "Share session",
+      "challenge": "Share challenge",
+      "level": "Share your level",
+      "streak": "Share your streak"
+    },
+    "background": {
+      "cover": "My Photo",
+      "level": "My Level",
+      "gallery": "Gallery"
+    },
+    "photoSheet": {
+      "title": "My photo",
+      "take": "Take photo",
+      "library": "Choose from library",
+      "profile": "Use profile photo"
+    },
+    "actions": {
+      "share": "Share",
+      "post": "Post",
+      "save": "Save"
+    },
+    "postDialogTitle": "Post your workout",
+    "helper": "Share sends a tappable link preview. Post shares the image to TikTok, Instagram and more. Save keeps the image on your phone.",
+    "helperNoSave": "Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more.",
+    "errors": {
+      "noSession": "No session specified.",
+      "checkIn": "Could not load this check-in.",
+      "level": "Could not load your level.",
+      "noChallenge": "No challenge specified.",
+      "challenge": "Could not load this challenge.",
+      "stats": "Could not load your stats.",
+      "photoAccess": "Photo library access is required to use your own photo.",
+      "photo": "Could not get that photo. Please try again.",
+      "publish": "Could not publish your card.",
+      "share": "Could not share your card.",
+      "save": "Could not save your card."
+    }
+  },
+  "card": {
+    "levelEyebrow": "LEVEL {{level}}",
+    "member": "POWR Member",
+    "status": {
+      "checkedIn": "Checked In",
+      "logged": "Logged",
+      "challengeComplete": "Challenge Complete",
+      "levelUp": "Level Up",
+      "startStreak": "Start Your Streak",
+      "warmingUp": "Warming Up",
+      "building": "Building",
+      "onARoll": "On a Roll",
+      "onFire": "On Fire",
+      "unstoppable": "Unstoppable",
+      "legendary": "Legendary"
+    },
+    "stats": {
+      "session": "SESSION",
+      "total": "TOTAL",
+      "earned": "EARNED",
+      "streak": "STREAK",
+      "level": "LEVEL",
+      "lifetime": "LIFETIME",
+      "thisMonth": "THIS MONTH",
+      "challengeEarned": "Earned",
+      "challengeStreak": "Streak"
+    },
+    "units": {
+      "min": "min",
+      "pts": "pts",
+      "visits_one": "visits",
+      "visits_other": "visits",
+      "days_one": "days",
+      "days_other": "days",
+      "sessions_one": "sessions",
+      "sessions_other": "sessions"
+    },
+    "date_one": "{{count}}st {{month}} {{year}}",
+    "date_two": "{{count}}nd {{month}} {{year}}",
+    "date_few": "{{count}}rd {{month}} {{year}}",
+    "date_other": "{{count}}th {{month}} {{year}}"
+  },
+  "headline": {
+    "checkInAtDetail": "Checked in at {{venue}} on POWR — {{detail}}.",
+    "checkInAt": "Checked in at {{venue}} on POWR.",
+    "checkInDetail": "Checked in on POWR — {{detail}}.",
+    "checkIn": "Checked in on POWR.",
+    "minutes": "{{minutes}} min",
+    "points": "+{{points}} pts",
+    "streakDay": "Day {{day}} of my streak.",
+    "challenge": "Challenge complete on POWR: {{title}} (+{{points}} pts).",
+    "levelUp": "Just hit Level {{level}} — {{name}} — on POWR.",
+    "levelUpPast": "Hit Level {{level}} — {{name}} — on POWR.",
+    "streakMonth": "{{streak}} on POWR — {{sessions}}.",
+    "month": "{{sessions}} on POWR.",
+    "streakDays_one": "{{count}}-day streak",
+    "streakDays_other": "{{count}}-day streak",
+    "sessionsThisMonth_one": "{{count}} sessions this month",
+    "sessionsThisMonth_other": "{{count}} sessions this month"
+  },
+  "link": {
+    "title": "{{who}} — Level {{level}}, {{name}}",
+    "member": "A POWR member",
+    "subtitle": "{{headline}} Tap to get POWR and earn rewards for every workout."
+  },
+  "saveNotice": {
+    "saved": "Saved to your Photos.",
+    "sheet": "Tap “Save Image” in the sheet to keep it.",
+    "unavailable": "Saving isn’t available on this device."
+  }
+}

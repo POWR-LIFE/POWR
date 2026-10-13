@@ -1,1 +1,35 @@
-{}
+{
+  "tabs": {
+    "home": "Home",
+    "progress": "Progress",
+    "league": "League",
+    "spend": "Spend",
+    "discover": "Discover"
+  },
+  "healthCallback": {
+    "connecting": "Connecting…",
+    "connectingSamsung": "Connecting Samsung Health…",
+    "connected": "Connected!",
+    "failed": "Connection failed — tap back to retry.",
+    "noUserId": "no user_id in redirect",
+    "samsungReturned": "Samsung Health returned: {{error}}",
+    "missingCode": "Missing authorization code",
+    "stateMismatch": "State mismatch or empty token response",
+    "exchangeFailed": "Token exchange failed"
+  },
+  "circleCamera": {
+    "close": "Close",
+    "title": "MY PHOTO",
+    "deniedTitle": "Camera access needed",
+    "deniedBody": "POWR needs your camera to take a photo for your card. You can enable it in Settings, or pick one from your library instead.",
+    "allow": "Allow camera",
+    "openSettings": "Open settings",
+    "hint": "What’s inside the circle goes on your card",
+    "takePhoto": "Take photo",
+    "flip": "Flip camera"
+  },
+  "modal": {
+    "title": "This is a modal",
+    "home": "Go to home screen"
+  }
+}

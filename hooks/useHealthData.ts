@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { classifyProvenance, type HealthDataProvenance } from '@/lib/health/dataSource';
 import { HC_EXERCISE_TYPES, HK_WORKOUT_TYPES } from '@/lib/health/workoutTypes';
+import i18n from '@/lib/i18n';
 
 function toLocalISO(d: Date): string {
     return d.toISOString();
@@ -1086,8 +1087,8 @@ const UNAVAILABLE: HealthDataHook = {
     getHeartRateToday: async () => null,
     getCaloriesToday: async () => null,
     getWeekHistory: async () => [],
-    verifyWalking: async () => ({ verified: false, actualValue: 0, detail: 'Not available' }),
-    verifyWorkout: async () => ({ verified: false, actualValue: 0, detail: 'Not available' }),
+    verifyWalking: async () => ({ verified: false, actualValue: 0, detail: i18n.t('progress:verify.unavailable') }),
+    verifyWorkout: async () => ({ verified: false, actualValue: 0, detail: i18n.t('progress:verify.unavailable') }),
 };
 
 /**
@@ -1184,8 +1185,8 @@ export function useHealthData(): HealthDataHook {
             verified,
             actualValue: actual,
             detail: verified
-                ? `${actual.toLocaleString()} steps found today`
-                : `Only ${actual.toLocaleString()} steps found`,
+                ? i18n.t('progress:verify.stepsFound', { steps: actual.toLocaleString() })
+                : i18n.t('progress:verify.stepsShort', { steps: actual.toLocaleString() }),
         };
     }, [getStepsToday]);
 
@@ -1197,8 +1198,8 @@ export function useHealthData(): HealthDataHook {
             verified: !!match,
             actualValue: match?.durationMin ?? 0,
             detail: match
-                ? `${match.durationMin} min workout found today`
-                : `No matching workout found (looking for ~${durationMinutes} min)`,
+                ? i18n.t('progress:verify.workoutFound', { minutes: match.durationMin })
+                : i18n.t('progress:verify.workoutMissing', { minutes: durationMinutes }),
         };
     }, [getActivitiesToday]);
 

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useMemo, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -122,6 +123,7 @@ export function SharedChallengeCelebration({
   onShare,
   onRematch,
 }: SharedChallengeCelebrationProps) {
+  const { t } = useTranslation();
   const { template, participants } = challenge;
   const finishers = participants.filter((p) => p.completed || p.isSelf);
   const coCompleters = participants.filter((p) => !p.isSelf && p.completed).length;
@@ -185,19 +187,18 @@ export function SharedChallengeCelebration({
   const actionsStyle = useAnimatedStyle(() => ({ opacity: actionsA.value, transform: [{ translateY: (1 - actionsA.value) * 12 }] }));
 
   const others = coCompleters;
-  const friendWord = others === 1 ? 'friend' : 'friends';
   // Settled copy has to stop promising a bonus that can no longer grow — the
   // clock is done and the points are already in the balance.
   const title = settled
-    ? `${template.title} — that's a wrap.`
-    : `${template.title} — done together.`;
+    ? t('nudges:celebration.titleSettled', { title: template.title })
+    : t('nudges:celebration.title', { title: template.title });
   const subtitle = settled
     ? others > 0
-      ? `You + ${others} ${friendWord} finished — bonus banked`
-      : 'You finished it — points banked'
+      ? t('nudges:celebration.subtitle.settledWith', { count: others })
+      : t('nudges:celebration.subtitle.settledSolo')
     : others > 0
-      ? `You + ${others} ${friendWord} finished together`
-      : 'You finished — bonus grows as friends finish';
+      ? t('nudges:celebration.subtitle.with', { count: others })
+      : t('nudges:celebration.subtitle.solo');
 
   return (
     <View style={styles.overlay}>
@@ -233,12 +234,17 @@ export function SharedChallengeCelebration({
       <Animated.View style={[styles.ptsBlock, ptsStyle]}>
         <View style={styles.ptsWrap}>
           <Text style={styles.ptsValue}>{count.toLocaleString()}</Text>
-          <Text style={styles.ptsUnit}>pts</Text>
+          <Text style={styles.ptsUnit}>{t('social:shared.pts')}</Text>
         </View>
         <Text style={styles.ptsBreakdown}>
-          {breakdown.base} base
-          {breakdown.bonus > 0 && (
-            <Text style={styles.ptsBonus}>{`  +${breakdown.bonus} group bonus`}</Text>
+          {breakdown.bonus > 0 ? (
+            <Trans
+              i18nKey="nudges:celebration.baseBonus"
+              values={{ points: breakdown.base, bonus: breakdown.bonus }}
+              components={{ bonus: <Text style={styles.ptsBonus} /> }}
+            />
+          ) : (
+            t('nudges:celebration.base', { points: breakdown.base })
           )}
         </Text>
       </Animated.View>
@@ -248,10 +254,11 @@ export function SharedChallengeCelebration({
         {/* Settled awards were banked by the cron before this screen ever
             loaded, so the fetched balance already contains them — adding the
             breakdown again would show the user a total they don't have. */}
-        Total balance{' '}
-        <Text style={styles.totalNum}>
-          {(settled ? totalBalance : totalBalance + breakdown.total).toLocaleString()} pts
-        </Text>
+        <Trans
+          i18nKey="nudges:celebration.total"
+          values={{ points: (settled ? totalBalance : totalBalance + breakdown.total).toLocaleString() }}
+          components={{ num: <Text style={styles.totalNum} /> }}
+        />
       </Animated.Text>
 
       <Animated.View style={[styles.actions, actionsStyle]}>
@@ -259,16 +266,16 @@ export function SharedChallengeCelebration({
           <>
             <Pressable style={[styles.btnDone, styles.btnDoneRow]} onPress={onRematch}>
               <Ionicons name="refresh" size={14} color="#0a0a0a" />
-              <Text style={styles.btnDoneText}>Run it back</Text>
+              <Text style={styles.btnDoneText}>{t('nudges:actions.runItBack')}</Text>
             </Pressable>
             <Pressable style={styles.btnGhost} onPress={onDone}>
-              <Text style={styles.btnGhostText}>Done</Text>
+              <Text style={styles.btnGhostText}>{t('social:shared.done')}</Text>
             </Pressable>
             <Pressable
               style={styles.btnIcon}
               onPress={onShare}
               accessibilityRole="button"
-              accessibilityLabel="Share"
+              accessibilityLabel={t('nudges:actions.share')}
             >
               <Ionicons name="share-outline" size={15} color={MUTED} />
             </Pressable>
@@ -276,11 +283,11 @@ export function SharedChallengeCelebration({
         ) : (
           <>
             <Pressable style={styles.btnDone} onPress={onDone}>
-              <Text style={styles.btnDoneText}>Done</Text>
+              <Text style={styles.btnDoneText}>{t('social:shared.done')}</Text>
             </Pressable>
             <Pressable style={styles.btnShare} onPress={onShare}>
               <Ionicons name="share-outline" size={14} color={MUTED} />
-              <Text style={styles.btnShareText}>Share</Text>
+              <Text style={styles.btnShareText}>{t('nudges:actions.share')}</Text>
             </Pressable>
           </>
         )}

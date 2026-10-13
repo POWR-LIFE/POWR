@@ -1,10 +1,12 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import { fontFamily } from '@/constants/tokens';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { challengeBonusConfig, groupBonus } from '@/lib/social/bonus';
 import { pacerState } from '@/lib/social/pacer';
 import { isTerminal } from '@/lib/social/status';
@@ -54,7 +56,7 @@ function momentumText(m: { current: number; target: number; unit: string }): str
   if (m.unit === 'distance_m') {
     return `${(m.current / 1000).toFixed(1)} / ${(m.target / 1000).toFixed(1)} km`;
   }
-  const sep = (n: number) => Math.round(n).toLocaleString('en-US');
+  const sep = (n: number) => Math.round(n).toLocaleString(getFormatLocale());
   return `${sep(m.current)} / ${sep(m.target)}`;
 }
 
@@ -64,7 +66,7 @@ function poolText(pool: { target: number; total: number; unit: string }): string
     const div = pool.unit === 'mi' ? 1609.34 : 1000;
     return `${(pool.total / div).toFixed(1)} / ${Math.round(pool.target / div)} ${pool.unit}`;
   }
-  if (pool.unit === 'steps') return `${fmtNum(pool.total)} / ${fmtNum(pool.target)} steps`;
+  if (pool.unit === 'steps') return i18n.t('social:detail.poolSteps', { total: fmtNum(pool.total), target: fmtNum(pool.target) });
   return `${Math.round(pool.total)} / ${Math.round(pool.target)} ${pool.unit}`;
 }
 
@@ -92,6 +94,7 @@ export interface SharedChallengeCardProps {
  * detail screen (app/shared-challenge.tsx), one tap away.
  */
 export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPress, onAccept, onDecline, onDismiss, onRematch }: SharedChallengeCardProps) {
+  const { t } = useTranslation();
   const { template, participants } = challenge;
   // The settled card's job (show the outcome, share it) is done once you've
   // seen it — the (X) lets you clear it before the 3-day auto-expiry. Losses
@@ -141,19 +144,19 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
   const outcomeLine = !terminal
     ? null
     : challenge.status === 'cancelled'
-      ? 'Cancelled before it finished'
+      ? t('nudges:challengeCard.outcome.cancelled')
       : challenge.status === 'expired'
         ? (pooled
-          ? 'Time ran out — target missed'
+          ? t('nudges:challengeCard.outcome.expiredPooled')
           /* A solo run has no "nobody" — it was only ever you. */
-          : participants.length === 1 ? 'Time ran out — you didn’t finish' : 'Time ran out — nobody finished')
+          : participants.length === 1 ? t('nudges:challengeCard.outcome.expiredSolo') : t('nudges:challengeCard.outcome.expired'))
         : wonIt
-          ? `You finished  ·  +${template.basePoints + liveBonus} earned`
+          ? t('nudges:challengeCard.outcome.won', { points: template.basePoints + liveBonus })
           : pooled
             /* Pooled settles the instant the group hits target, often with time
                still on the clock, so "time's up" would be wrong here. */
-            ? 'The group hit the target without you'
-            : 'Time’s up — you didn’t finish this one';
+            ? t('nudges:challengeCard.outcome.lostPooled')
+            : t('nudges:challengeCard.outcome.lost');
 
   // Timer rule: read "has it started?" off the CLOCK, not the roster. A
   // challenge can now go active with unanswered invites still on it (the accept
@@ -166,10 +169,10 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
   const forming = !running;
   const waitingLabel =
     invitedOthers.length === 0
-      ? 'Waiting to start'
+      ? t('nudges:challengeCard.waiting.start')
       : invitedOthers.length === 1
-        ? `Waiting on ${invitedOthers[0].friend.displayName.split(' ')[0]}`
-        : `Waiting on ${invitedOthers.length} to accept`;
+        ? t('nudges:challengeCard.waiting.one', { name: invitedOthers[0].friend.displayName.split(' ')[0] })
+        : t('nudges:challengeCard.waiting.many', { total: invitedOthers.length });
 
   // Mount entry — fade + rise, staggered by index (matches the solo card feel).
   const enter = useSharedValue(0);
@@ -208,7 +211,7 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
             {!(terminal && !selfPaid) && (
               <View style={styles.points}>
                 <Text style={styles.pointsValue}>+{template.basePoints}</Text>
-                <Text style={styles.pointsLabel}>pts</Text>
+                <Text style={styles.pointsLabel}>{t('social:shared.pts')}</Text>
               </View>
             )}
             {dismissible && (
@@ -217,7 +220,7 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
                 style={styles.dismissBtn}
                 onPress={() => { Haptics.selectionAsync(); onDismiss?.(challenge); }}
                 accessibilityRole="button"
-                accessibilityLabel={`Clear ${template.title} from home`}
+                accessibilityLabel={t('nudges:challengeCard.clearA11y', { title: template.title })}
               >
                 <Ionicons name="close" size={14} color={MUTED} />
               </Pressable>
@@ -240,29 +243,31 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
         {isPendingInvite && !terminal ? (
           <>
             <Text style={styles.inviteLine} numberOfLines={1}>
-              <Text style={styles.inviteFrom}>{challenge.pendingInviteFromName ?? 'A friend'}</Text>
-              <Text> invited you</Text>
-              <Text style={styles.inviteBonus}>{`  ·  +${groupBonus(others.length)} bonus`}</Text>
+              <Trans
+                i18nKey="nudges:challengeCard.invite"
+                values={{ name: challenge.pendingInviteFromName ?? t('social:shared.aFriend'), bonus: groupBonus(others.length) }}
+                components={{ from: <Text style={styles.inviteFrom} />, plain: <Text />, bonus: <Text style={styles.inviteBonus} /> }}
+              />
             </Text>
             <View style={styles.inviteActions}>
               {atCap ? (
                 <View style={styles.acceptLocked}>
                   <Ionicons name="lock-closed" size={12} color={MUTED} />
-                  <Text style={styles.acceptLockedText}>Free a slot to join</Text>
+                  <Text style={styles.acceptLockedText}>{t('nudges:challengeCard.freeSlot')}</Text>
                 </View>
               ) : (
                 <Pressable
                   style={styles.acceptBtn}
                   onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onAccept?.(challenge); }}
                 >
-                  <Text style={styles.acceptText}>Accept</Text>
+                  <Text style={styles.acceptText}>{t('social:activity.accept')}</Text>
                 </Pressable>
               )}
               <Pressable
                 style={styles.declineBtn}
                 onPress={() => { Haptics.selectionAsync(); onDecline?.(challenge); }}
               >
-                <Text style={styles.declineText}>Decline</Text>
+                <Text style={styles.declineText}>{t('social:detail.decline')}</Text>
               </Pressable>
             </View>
           </>
@@ -288,10 +293,10 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
                 style={styles.rematchBtn}
                 onPress={() => { Haptics.selectionAsync(); onRematch(challenge); }}
                 accessibilityRole="button"
-                accessibilityLabel={`Run ${template.title} back`}
+                accessibilityLabel={t('nudges:challengeCard.rematchA11y', { title: template.title })}
               >
                 <Ionicons name="refresh" size={13} color={GOLD} />
-                <Text style={styles.rematchText}>Run it back</Text>
+                <Text style={styles.rematchText}>{t('nudges:actions.runItBack')}</Text>
               </Pressable>
             )}
           </View>
@@ -301,7 +306,11 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
             <View style={styles.progressBlock}>
               <View style={styles.progressMeta}>
                 <Text style={styles.progressLabel} numberOfLines={1}>
-                  {forming ? waitingLabel : pooled ? 'Group total' : selfDone ? 'You finished' : 'Your part'}
+                  {forming
+                    ? waitingLabel
+                    : pooled
+                      ? t('nudges:challengeCard.groupTotal')
+                      : selfDone ? t('nudges:challengeCard.youFinished') : t('nudges:challengeCard.yourPart')}
                 </Text>
                 {!forming && (
                   <Text style={[styles.progressPct, selfDone && { color: GREEN }]}>
@@ -314,8 +323,11 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
               </View>
               {!forming && showMomentum && (
                 <Text style={styles.momentumLine} numberOfLines={1}>
-                  <Text style={styles.momentumLabel}>Today </Text>
-                  {momentumText(mom!)}
+                  <Trans
+                    i18nKey="nudges:challengeCard.today"
+                    values={{ value: momentumText(mom!) }}
+                    components={{ label: <Text style={styles.momentumLabel} /> }}
+                  />
                 </Text>
               )}
               {!forming && pacer && (
@@ -323,10 +335,10 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
                   <View style={styles.progressMeta}>
                     <View style={styles.pacerLabelRow}>
                       <Ionicons name="flash" size={9} color={SECONDARY} />
-                      <Text style={styles.pacerLabel}>Pacer</Text>
+                      <Text style={styles.pacerLabel}>{t('social:detail.pacer.name')}</Text>
                     </View>
                     <Text style={[styles.pacerStatus, pacer.ahead ? { color: GOLD } : { color: SECONDARY }]}>
-                      {pacer.ahead ? "You're ahead" : 'Pacer’s ahead'}
+                      {pacer.ahead ? t('social:detail.pacer.youAhead') : t('nudges:challengeCard.pacerAhead')}
                     </Text>
                   </View>
                   <View style={styles.track}>
@@ -338,7 +350,7 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
 
             {/* Bonus + the timer (live countdown once running, else "waiting on N") */}
             <View style={styles.footer}>
-              {liveBonus > 0 ? <Text style={styles.footerBonus}>+{liveBonus} bonus</Text> : <View />}
+              {liveBonus > 0 ? <Text style={styles.footerBonus}>{t('nudges:challengeCard.bonus', { bonus: liveBonus })}</Text> : <View />}
               {running ? (
                 <Countdown
                   endsAt={challenge.endsAt!}
@@ -352,11 +364,11 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
                   {challenge.acceptBy ? (
                     <Countdown
                       endsAt={challenge.acceptBy}
-                      suffix=" to accept"
+                      suffix={t('social:countdown.toAcceptSuffix')}
                       style={[styles.timeText, { color: MUTED }]}
                     />
                   ) : (
-                    <Text style={[styles.timeText, { color: MUTED }]}>Not started</Text>
+                    <Text style={[styles.timeText, { color: MUTED }]}>{t('social:remaining.notStarted')}</Text>
                   )}
                 </View>
               ) : (

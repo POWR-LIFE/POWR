@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     Animated,
     Modal,
@@ -24,6 +25,7 @@ import {
 } from '@/lib/api/pointsBreakdown';
 import { sleepDayWindow } from '@/lib/api/activity';
 import { getGymDwellMinutes, getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { rangeLabel, type LookbackPeriod } from '@/lib/progressLookback';
 import { distanceParts, formatDistance, paceParts, speedParts } from '@/lib/units';
 
@@ -87,6 +89,7 @@ export default function PointsBreakdownSheet({
     days?: Date[];
     onDayChange?: (day: Date) => void;
 }) {
+    const { t } = useTranslation();
     const config = ACTIVITIES[type];
     const [data, setData] = useState<PointsBreakdown | null>(null);
     const [failed, setFailed] = useState(false);
@@ -160,11 +163,11 @@ export default function PointsBreakdownSheet({
     if (!visible) return null;
 
     const groups = data ? groupBySession(data.rows) : [];
-    const whenLabel = day
-        ? (isSameLocalDay(day, new Date()) ? 'today' : 'that day')
+    const when: SummaryWhen = day
+        ? (isSameLocalDay(day, new Date()) ? 'today' : 'thatDay')
         : period === 'D' ? 'today'
-        : period === 'W' ? 'this week'
-        : 'in this period';
+        : period === 'W' ? 'thisWeek'
+        : 'period';
 
     // Walking and sleep are daily AGGREGATES, not discrete efforts: a day
     // routinely carries a second zero-point session (a trust-0.85 companion to
@@ -205,7 +208,7 @@ export default function PointsBreakdownSheet({
                     <View style={styles.dragHeader} {...panHandlers}>
                         <View style={styles.handle} />
 
-                        <Text style={styles.eyebrow}>WHERE IT CAME FROM</Text>
+                        <Text style={styles.eyebrow}>{t('progress:sheet.eyebrow')}</Text>
                         <Text style={styles.headline}>
                             {config.label}{' '}
                             <Text style={styles.headlineGold}>
@@ -241,7 +244,7 @@ export default function PointsBreakdownSheet({
                     <View style={styles.dragHeader} {...panHandlers}>
                         {/* Hold the slot while loading so the sheet doesn't jump. */}
                         <Text style={styles.summary}>
-                            {(data && !stale) || failed ? summaryLine(type, whenLabel, data, groups) : ' '}
+                            {(data && !stale) || failed ? summaryLine(type, when, data, groups) : ' '}
                         </Text>
                     </View>
 
@@ -252,11 +255,11 @@ export default function PointsBreakdownSheet({
                     >
                         {failed && (
                             <Text style={styles.stateText}>
-                                Couldn&apos;t load your breakdown. Pull to refresh and try again.
+                                {t('progress:sheet.failed')}
                             </Text>
                         )}
 
-                        {!failed && !data && <Text style={styles.stateText}>Loading…</Text>}
+                        {!failed && !data && <Text style={styles.stateText}>{t('progress:loading')}</Text>}
 
                         {groups.map(group => (
                             <View key={group.sessionId} style={styles.group}>
@@ -302,7 +305,7 @@ export default function PointsBreakdownSheet({
 
                         {unpaid.length > 0 && (
                             <View style={styles.group}>
-                                <Text style={styles.groupDate}>EARNED NOTHING</Text>
+                                <Text style={styles.groupDate}>{t('progress:sheet.earnedNothing')}</Text>
                                 {unpaid.map(s => (
                                     <View key={s.id} style={styles.ledgerRow}>
                                         <Ionicons name="remove" size={11} color={MUTED} />
@@ -317,9 +320,7 @@ export default function PointsBreakdownSheet({
                                     </View>
                                 ))}
                                 <Text style={styles.unpaidNote}>
-                                    A session earns nothing if it&apos;s below the minimum, if the
-                                    day&apos;s cap is already met, or if the same time is already
-                                    counted by a check-in or your device.
+                                    {t('progress:sheet.unpaidNote')}
                                 </Text>
                             </View>
                         )}
@@ -329,8 +330,7 @@ export default function PointsBreakdownSheet({
                             version of THIS session. */}
                         {showVitalsPrompt(type, groups) && (
                             <Text style={styles.vitalsPrompt}>
-                                Heart rate and calories show here when a wearable tracks
-                                the session.
+                                {t('progress:sheet.vitalsPrompt')}
                             </Text>
                         )}
 
@@ -349,9 +349,9 @@ export default function PointsBreakdownSheet({
                         onPress={dismiss}
                         hitSlop={{ top: 8, bottom: 8, left: 24, right: 24 }}
                         accessibilityRole="button"
-                        accessibilityLabel="Close"
+                        accessibilityLabel={t('progress:sheet.close')}
                     >
-                        <Text style={styles.closeLabel}>Close</Text>
+                        <Text style={styles.closeLabel}>{t('progress:sheet.close')}</Text>
                     </Pressable>
                 </Animated.View>
             </View>
@@ -377,6 +377,14 @@ function DayStepArrow({
     target: Date | null;
     onPress: (day: Date) => void;
 }) {
+    const { t } = useTranslation();
+    const label = target
+        ? direction === 'back'
+            ? t('progress:sheet.previousDay', { date: formatFullDate(target) })
+            : t('progress:sheet.nextDay', { date: formatFullDate(target) })
+        : direction === 'back'
+            ? t('progress:sheet.noEarlierDay')
+            : t('progress:sheet.noLaterDay');
     return (
         <Pressable
             onPress={target ? () => onPress(target) : undefined}
@@ -385,9 +393,7 @@ function DayStepArrow({
             style={({ pressed }) => [styles.dayStepArrow, pressed && { opacity: 0.5 }]}
             accessibilityRole="button"
             accessibilityState={{ disabled: !target }}
-            accessibilityLabel={target
-                ? `${direction === 'back' ? 'Previous' : 'Next'} day, ${formatFullDate(target)}`
-                : `No ${direction === 'back' ? 'earlier' : 'later'} day on this chart`}
+            accessibilityLabel={label}
         >
             <Ionicons
                 name={direction === 'back' ? 'chevron-back' : 'chevron-forward'}
@@ -595,14 +601,14 @@ function paceTile(
     const base = { key: 'pace', icon: 'speedometer-outline' as const };
 
     if (type === 'cycling') {
-        return { ...base, label: 'SPEED', ...speedParts(kmh, type) };
+        return { ...base, label: i18n.t('progress:sheet.tile.speed'), ...speedParts(kmh, type) };
     }
     if (type === 'swimming') {
         // Swimmers read per-100m, not per-km.
-        return { ...base, label: 'PACE', value: clockFromSeconds(360 / kmh), unit: '/100m' };
+        return { ...base, label: i18n.t('progress:sheet.tile.pace'), value: clockFromSeconds(360 / kmh), unit: '/100m' };
     }
     const pace = paceParts(kmh, type);
-    return { ...base, label: 'PACE', value: clockFromSeconds(pace.secondsPerUnit), unit: pace.unit };
+    return { ...base, label: i18n.t('progress:sheet.tile.pace'), value: clockFromSeconds(pace.secondsPerUnit), unit: pace.unit };
 }
 
 /**
@@ -648,37 +654,37 @@ function sessionStats(
     const { vitals } = session;
 
     const duration: StatTile | null = session.durationMin > 0
-        ? { key: 'time', icon: 'time-outline', label: 'TIME', value: formatDuration(session.durationMin) }
+        ? { key: 'time', icon: 'time-outline', label: i18n.t('progress:sheet.tile.time'), value: formatDuration(session.durationMin) }
         : null;
 
     const steps: StatTile | null = session.steps && session.steps > 0
-        ? { key: 'steps', icon: 'footsteps-outline', label: 'STEPS', value: session.steps.toLocaleString() }
+        ? { key: 'steps', icon: 'footsteps-outline', label: i18n.t('progress:sheet.tile.steps'), value: session.steps.toLocaleString() }
         : null;
 
     const distance: StatTile | null = session.distanceM && session.distanceM > 0
         ? {
             key: 'distance',
             icon: 'navigate-outline',
-            label: 'DISTANCE',
+            label: i18n.t('progress:sheet.tile.distance'),
             ...distanceParts(session.distanceM, type),
         }
         : null;
 
     const hrAvg: StatTile | null = vitals?.hrAvg != null && vitals.hrAvg > 0
-        ? { key: 'hr', icon: 'heart', label: 'AVG HR', value: `${Math.round(vitals.hrAvg)}`, unit: 'bpm', tint: HEART }
+        ? { key: 'hr', icon: 'heart', label: i18n.t('progress:sheet.tile.avgHr'), value: `${Math.round(vitals.hrAvg)}`, unit: 'bpm', tint: HEART }
         : null;
 
     // Its own tile rather than a "avg · 167 max" suffix, so both read at tile
     // size. Terra sends no max for most providers, so this is usually absent.
     const hrMax: StatTile | null = vitals?.hrMax != null && vitals.hrMax > 0
-        ? { key: 'hrmax', icon: 'heart', label: 'MAX HR', value: `${Math.round(vitals.hrMax)}`, unit: 'bpm', tint: HEART }
+        ? { key: 'hrmax', icon: 'heart', label: i18n.t('progress:sheet.tile.maxHr'), value: `${Math.round(vitals.hrMax)}`, unit: 'bpm', tint: HEART }
         : null;
 
     const calories: StatTile | null = vitals?.caloriesActive != null && vitals.caloriesActive > 0
         ? {
             key: 'kcal',
             icon: 'flame-outline',
-            label: 'ACTIVE',
+            label: i18n.t('progress:sheet.tile.active'),
             value: Math.round(vitals.caloriesActive).toLocaleString(),
             unit: 'kcal',
         }
@@ -692,26 +698,26 @@ function sessionStats(
     const x = vitals?.extras ?? {};
 
     const elevation: StatTile | null = x.elevationGainM != null && x.elevationGainM >= 1
-        ? { key: 'elev', icon: 'trending-up-outline', label: 'CLIMB', value: `${Math.round(x.elevationGainM)}`, unit: 'm' }
+        ? { key: 'elev', icon: 'trending-up-outline', label: i18n.t('progress:sheet.tile.climb'), value: `${Math.round(x.elevationGainM)}`, unit: 'm' }
         : null;
 
     const power: StatTile | null = x.avgWatts != null && x.avgWatts > 0
-        ? { key: 'power', icon: 'flash-outline', label: 'POWER', value: `${Math.round(x.avgWatts)}`, unit: 'w' }
+        ? { key: 'power', icon: 'flash-outline', label: i18n.t('progress:sheet.tile.power'), value: `${Math.round(x.avgWatts)}`, unit: 'w' }
         : null;
 
     const laps: StatTile | null = x.swimLaps != null && x.swimLaps > 0
-        ? { key: 'laps', icon: 'repeat-outline', label: 'LAPS', value: `${Math.round(x.swimLaps)}` }
+        ? { key: 'laps', icon: 'repeat-outline', label: i18n.t('progress:sheet.tile.laps'), value: `${Math.round(x.swimLaps)}` }
         : null;
 
     const hardMinutes: StatTile | null = x.highIntensityMin != null && x.highIntensityMin > 0
-        ? { key: 'hard', icon: 'pulse-outline', label: 'HARD', value: `${Math.round(x.highIntensityMin)}`, unit: 'min' }
+        ? { key: 'hard', icon: 'pulse-outline', label: i18n.t('progress:sheet.tile.hard'), value: `${Math.round(x.highIntensityMin)}`, unit: 'min' }
         : null;
 
     // Workout-window HRV (avg RMSSD). Rare — only some providers send it — but
     // it was being stored and thrown away, and the people whose device measures
     // it are exactly the people who look for it.
     const hrv: StatTile | null = x.hrvRmssd != null && x.hrvRmssd > 0
-        ? { key: 'hrv', icon: 'pulse-outline', label: 'HRV', value: `${Math.round(x.hrvRmssd)}`, unit: 'ms' }
+        ? { key: 'hrv', icon: 'pulse-outline', label: i18n.t('progress:sheet.tile.hrv'), value: `${Math.round(x.hrvRmssd)}`, unit: 'ms' }
         : null;
 
     // Sleep stages, shown in the same h/m form as duration so the four read as
@@ -734,9 +740,9 @@ function sessionStats(
         kcal: calories,
         hard: hardMinutes,
         hrv,
-        deep: stage('deep', 'DEEP', vitals?.sleepDeepH),
-        rem: stage('rem', 'REM', vitals?.sleepRemH),
-        light: stage('light', 'LIGHT', vitals?.sleepLightH),
+        deep: stage('deep', i18n.t('progress:sheet.tile.deep'), vitals?.sleepDeepH),
+        rem: stage('rem', i18n.t('progress:sheet.tile.rem'), vitals?.sleepRemH),
+        light: stage('light', i18n.t('progress:sheet.tile.light'), vitals?.sleepLightH),
     };
 
     return (TILES_BY_ACTIVITY[type] ?? ['time'])
@@ -748,9 +754,9 @@ function sessionStats(
 function vitalsMetrics(vitals: SessionVitals | null): string[] {
     if (!vitals) return [];
     const out: string[] = [];
-    if (vitals.hrAvg != null && vitals.hrAvg > 0) out.push(`${Math.round(vitals.hrAvg)} bpm`);
+    if (vitals.hrAvg != null && vitals.hrAvg > 0) out.push(i18n.t('progress:units.bpm', { value: Math.round(vitals.hrAvg) }));
     if (vitals.caloriesActive != null && vitals.caloriesActive > 0) {
-        out.push(`${Math.round(vitals.caloriesActive).toLocaleString()} kcal`);
+        out.push(i18n.t('progress:units.kcal', { value: Math.round(vitals.caloriesActive).toLocaleString() }));
     }
     return out;
 }
@@ -827,23 +833,23 @@ function isSameLocalDay(a: Date, b: Date): boolean {
 
 /** "Friday 24 July" — the header when the sheet is pinned to one day. */
 function formatFullDate(d: Date): string {
-    if (isSameLocalDay(d, new Date())) return 'Today';
-    return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (isSameLocalDay(d, new Date())) return i18n.t('progress:sheet.today');
+    return d.toLocaleDateString(getFormatLocale(), { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 function formatSessionDate(iso: string): string {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    return d.toLocaleDateString(getFormatLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 function formatDuration(mins: number): string {
     if (mins >= 60) {
         const h = Math.floor(mins / 60);
         const m = mins % 60;
-        return m > 0 ? `${h}h ${m}m` : `${h}h`;
+        return m > 0 ? i18n.t('progress:units.hm', { h, m }) : i18n.t('progress:units.h', { h });
     }
-    return `${mins}m`;
+    return i18n.t('progress:units.m', { m: mins });
 }
 
 /**
@@ -862,7 +868,7 @@ function sessionMetrics(
 ): string[] {
     const duration = session.durationMin > 0 ? formatDuration(session.durationMin) : null;
     const steps = session.steps && session.steps > 0
-        ? `${session.steps.toLocaleString()} steps`
+        ? i18n.t('progress:units.steps', { steps: session.steps.toLocaleString() })
         : null;
     const distance = session.distanceM && session.distanceM > 0
         ? formatDistance(session.distanceM, type)
@@ -874,16 +880,29 @@ function sessionMetrics(
     return parts.filter((p): p is string => p !== null);
 }
 
-/** Sentence-case noun for prose, vs verificationLabel's chip-style title. */
-function sourceNoun(verification: string): string {
+/**
+ * Sentence-case noun for prose, vs verificationLabel's chip-style title —
+ * "check-in", or "45m check-in" with its duration. Whole phrases per source,
+ * so each language can put the duration where it belongs.
+ */
+function sourceNoun(verification: string, durationMin: number): string {
+    const duration = durationMin > 0 ? formatDuration(durationMin) : null;
     switch (verification) {
-        case 'geofence': return 'check-in';
-        case 'wearable': return 'tracked session';
-        case 'health':   return 'synced session';
-        case 'manual':   return 'manual log';
-        default:         return 'session';
+        case 'geofence':
+            return duration ? i18n.t('progress:sheet.noun.checkInFor', { duration }) : i18n.t('progress:sheet.noun.checkIn');
+        case 'wearable':
+            return duration ? i18n.t('progress:sheet.noun.trackedFor', { duration }) : i18n.t('progress:sheet.noun.tracked');
+        case 'health':
+            return duration ? i18n.t('progress:sheet.noun.syncedFor', { duration }) : i18n.t('progress:sheet.noun.synced');
+        case 'manual':
+            return duration ? i18n.t('progress:sheet.noun.manualFor', { duration }) : i18n.t('progress:sheet.noun.manual');
+        default:
+            return duration ? i18n.t('progress:sheet.noun.sessionFor', { duration }) : i18n.t('progress:sheet.noun.session');
     }
 }
+
+/** Which span the sheet's summary line speaks for. */
+type SummaryWhen = 'today' | 'thatDay' | 'thisWeek' | 'period';
 
 /**
  * The at-a-glance line under the total: what this number is, in one sentence,
@@ -898,39 +917,43 @@ function sourceNoun(verification: string): string {
  */
 function summaryLine(
     type: ActivityType,
-    when: string,
+    when: SummaryWhen,
     data: PointsBreakdown | null,
     groups: SessionGroup[],
 ): string {
     const config = ACTIVITIES[type];
-    const name = config.label.toLowerCase();
+    const activity = config.label.toLowerCase();
 
     // Just state the absence — the rules block directly below already answers
     // "what would earn me some", and saying it twice reads as padding.
     if (!data || data.total <= 0 || groups.length === 0) {
-        return `Nothing earned from ${name} ${when}.`;
+        switch (when) {
+            case 'today':    return i18n.t('progress:sheet.summary.nothingToday', { activity });
+            case 'thatDay':  return i18n.t('progress:sheet.summary.nothingThatDay', { activity });
+            case 'thisWeek': return i18n.t('progress:sheet.summary.nothingThisWeek', { activity });
+            default:         return i18n.t('progress:sheet.summary.nothingPeriod', { activity });
+        }
     }
 
     // Walking and sleep are daily aggregates; "a session" is meaningless there.
     if (type === 'walking') {
-        return 'Earned in steps as your daily total passed each tier.';
+        return i18n.t('progress:sheet.summary.walking');
     }
     if (type === 'sleep') {
-        return 'Earned from your nightly sleep, scaled by how restorative it was.';
+        return i18n.t('progress:sheet.summary.sleep');
     }
 
     const total = (g: SessionGroup) => g.rows.reduce((s, r) => s + r.amount, 0);
     const top = groups.reduce((best, g) => (total(g) > total(best) ? g : best), groups[0]);
-    const day = new Date(top.startedAt).toLocaleDateString('en-GB', { weekday: 'long' });
-    const dur = top.durationMin > 0 ? `${formatDuration(top.durationMin)} ` : '';
-    const noun = sourceNoun(top.verification);
+    const day = new Date(top.startedAt).toLocaleDateString(getFormatLocale(), { weekday: 'long' });
+    const session = sourceNoun(top.verification, top.durationMin);
 
     const lead = groups.length === 1
-        ? `All of it from ${day}'s ${dur}${noun}.`
-        : `Across ${groups.length} sessions — most from ${day}'s ${dur}${noun}.`;
+        ? i18n.t('progress:sheet.summary.allFrom', { day, session })
+        : i18n.t('progress:sheet.summary.across', { sessions: groups.length, day, session });
 
     return data.rows.some(r => r.kind === 'streak')
-        ? `${lead} Includes a streak bonus.`
+        ? `${lead} ${i18n.t('progress:sheet.summary.streak')}`
         : lead;
 }
 
@@ -943,14 +966,18 @@ function verificationLabel(verification: string, source?: string | null): string
     // A check-in verified the session; the wearable only measured it. Keep both
     // on the chip so the user knows what counted AND which app to compare the
     // numbers against — "Whoop" alone would misstate what was paid.
-    if (verification === 'geofence') return source ? `Gym check-in · ${providerLabel(source)}` : 'Gym check-in';
+    if (verification === 'geofence') {
+        return source
+            ? i18n.t('progress:sheet.source.checkInWith', { provider: providerLabel(source) })
+            : i18n.t('progress:sheet.source.checkIn');
+    }
     if (source) return providerLabel(source);
     switch (verification) {
-        case 'geofence': return 'Gym check-in';
-        case 'wearable': return 'Wearable';
-        case 'health':   return 'Phone health';
-        case 'manual':   return 'Manual log';
-        default:         return 'Tracked';
+        case 'geofence': return i18n.t('progress:sheet.source.checkIn');
+        case 'wearable': return i18n.t('progress:sheet.source.wearable');
+        case 'health':   return i18n.t('progress:sheet.source.health');
+        case 'manual':   return i18n.t('progress:sheet.source.manual');
+        default:         return i18n.t('progress:sheet.source.tracked');
     }
 }
 
@@ -963,41 +990,42 @@ function verificationLabel(verification: string, source?: string | null): string
  */
 function rulesFor(type: ActivityType): string[] {
     const config = ACTIVITIES[type];
-    const lines: string[] = [`Up to ${config.dailyCap} POWR a day from ${config.label.toLowerCase()}.`];
+    const lines: string[] = [
+        i18n.t('progress:sheet.rules.cap', { cap: config.dailyCap, activity: config.label.toLowerCase() }),
+    ];
 
     if (type === 'gym') {
         lines.push(
-            `Stay ${getGymDwellMinutes()} minutes to earn a check-in, ` +
-            `${getGymUpgradeMinutes()} to reach the higher tier.`,
+            i18n.t('progress:sheet.rules.gymDwell', { dwell: getGymDwellMinutes(), upgrade: getGymUpgradeMinutes() }),
         );
         // Streaks count ANY verified session day (hooks/useStreak.ts,
         // _shared/streak.ts) — not gym days specifically.
-        lines.push('Consecutive active days multiply what a check-in pays.');
+        lines.push(i18n.t('progress:sheet.rules.streak'));
     } else if (type === 'hiit') {
         // Strength lane: HIIT pays exactly what a gym session pays, off its own
         // 20-min entry. Say so plainly — this is the surface where the old
         // 7/9/10 ladder made classes look like the lesser activity.
         lines.push(
-            `A class earns the same as a gym session: ${config.minDuration} minutes to qualify, ` +
-            `${getGymUpgradeMinutes()} to reach the higher tier.`,
+            i18n.t('progress:sheet.rules.hiit', { minimum: config.minDuration, upgrade: getGymUpgradeMinutes() }),
         );
         // NO multiplier line here. Streak multipliers are paid by claim-points,
         // which only ever fires for a geofence check-in — and a check-in always
         // writes type 'gym' whatever the venue. So a HIIT session never receives
         // one, and promising it here would be a claim the ledger can't keep.
     } else if (config.minDuration > 0) {
-        lines.push(`Sessions under ${config.minDuration} minutes don't earn.`);
+        lines.push(i18n.t('progress:sheet.rules.minimum', { minimum: config.minDuration }));
     }
 
     if (type === 'walking') {
-        lines.push('Points step up as the day\'s total passes 4,000 / 6,000 / 8,000 / 10,000 steps.');
+        const tiers = [4000, 6000, 8000, 10000].map(n => n.toLocaleString(getFormatLocale())).join(' / ');
+        lines.push(i18n.t('progress:sheet.rules.walkingTiers', { tiers }));
     }
 
     // Only for types the manual-log picker actually offers. Dance and sleep have
     // no branch in its calcBasePoints, so they were removed from the picker —
     // promising them an 80% manual rate here would be the same phantom promise.
     if (type !== 'sleep' && type !== 'dance') {
-        lines.push('Manual logs earn 80% of a tracked session, one a day.');
+        lines.push(i18n.t('progress:sheet.rules.manual'));
     }
     return lines;
 }

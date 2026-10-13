@@ -1,1 +1,405 @@
-{}
+{
+  "display": {
+    "scoringStarts": "Les points comptent dès le {{date}}",
+    "scoringEnds": "Les points comptent jusqu’au {{date}}",
+    "registrationOpensSoon": "Inscriptions bientôt ouvertes",
+    "registrationOpensOn": "Inscriptions dès le {{date}}",
+    "chip": {
+      "comingSoon": "BIENTÔT",
+      "liveNow": "EN DIRECT",
+      "scoringToday": "POINTS DÈS AUJOURD’HUI",
+      "scoringTomorrow": "POINTS DÈS DEMAIN",
+      "scoringInDays": "POINTS DANS {{days}} JOURS"
+    },
+    "consent": "En t’inscrivant, ton nom et ton e-mail sont partagés avec {{venue}} pour organiser ta réservation.",
+    "inviteRewardOnSignup": "Tu reçois +{{points}} POWR dès que quelqu’un s’inscrit avec ton code. Tes amis reçoivent leurs +{{points}} à leur première séance vérifiée.",
+    "inviteRewardOnWorkout": "Vous recevez chacun +{{points}} POWR quand quelqu’un s’inscrit avec ton code et fait sa première séance vérifiée."
+  },
+  "invite": {
+    "message": "Rejoins-moi pour {{event}} sur POWR 💪",
+    "codeWithBonus": "Inscris-toi avec mon code {{code}} — on gagne chacun +{{points}} POWR après ta première séance.",
+    "code": "Inscris-toi avec mon code {{code}}.",
+    "joinMe": "Rejoins-moi sur POWR. {{codeLine}}",
+    "shareA11y": "Partager ton lien d’invitation",
+    "share": "PARTAGER",
+    "copyA11y": "Copier ton code et ton lien d’invitation",
+    "cardA11y": "Partager l’événement en image"
+  },
+  "prizeShare": {
+    "place": {
+      "one": "{{rank}}er",
+      "two": "{{rank}}e",
+      "few": "{{rank}}e",
+      "other": "{{rank}}e"
+    },
+    "message": "{{place}} prix à {{event}} : {{prize}} 🏆",
+    "join": "Rejoins-moi sur POWR, il pourrait être à toi."
+  },
+  "gateStrip": {
+    "met": "{{have}}/{{required}} amis inscrits · ta place est assurée",
+    "keepPlace": "{{have}}/{{required}} amis inscrits · garde ta place",
+    "keepPlaceBy": "{{have}}/{{required}} amis inscrits · garde ta place d’ici le {{date}}",
+    "unlocks": "{{have}}/{{required}} amis inscrits · débloque le classement",
+    "unlocksBy": "{{have}}/{{required}} amis inscrits · débloque le classement d’ici le {{date}}",
+    "a11y": "{{text}}. Ouvre ton billet.",
+    "ticket": "BILLET",
+    "invite": "INVITER"
+  },
+  "status": {
+    "comingSoon": "Bientôt · inscriptions à venir",
+    "comingSoonOn": "Bientôt · inscriptions dès le {{date}}",
+    "startsToday": "Ça commence aujourd’hui · seuls les points de la semaine comptent",
+    "startsTomorrow": "Ça commence demain · seuls les points de la semaine comptent",
+    "startsInDays": "Ça commence dans {{days}} jours · seuls les points de la semaine comptent",
+    "liveNow": "En direct — fin le {{date}}",
+    "sealed": "Scores sous scellés 🔒 — révélés en direct à la finale",
+    "winners": "Résultats annoncés"
+  },
+  "shareCardA11y": "Partager {{event}} en image",
+  "header": {
+    "scoring": "Points : {{range}}",
+    "venueA11y": "{{venue}}. Ouvre la carte.",
+    "venueAddressA11y": "{{venue}}, {{address}}. Ouvre la carte.",
+    "nightA11y": "Soirée de l’événement : {{night}}",
+    "nightLabel": "SOIRÉE",
+    "comingSoon": "Bientôt",
+    "registerA11y": "S’inscrire à {{event}}",
+    "join": "PARTICIPER"
+  },
+  "hub": {
+    "section": {
+      "live": "EN DIRECT",
+      "upcoming": "À VENIR",
+      "results": "RÉSULTATS"
+    },
+    "fact": {
+      "liveNow": "En direct — fin le {{date}}",
+      "sealed": "Scores sous scellés — révélés à la finale",
+      "winners": "Résultats annoncés"
+    },
+    "chip": {
+      "liveNow": "EN DIRECT",
+      "sealed": "SCELLÉ",
+      "results": "RÉSULTATS",
+      "preview": "APERÇU · {{status}}"
+    },
+    "pill": {
+      "rank": "RANG {{rank}}",
+      "youreIn": "TU Y ES",
+      "soon": "BIENTÔT",
+      "register": "S’INSCRIRE",
+      "view": "VOIR"
+    },
+    "you": {
+      "finished": "Place finale : #{{rank}}",
+      "points": "Toi · {{points}} pts cette semaine"
+    },
+    "cardA11y": {
+      "lead": "{{event}}. {{fact}}.",
+      "night": "Soirée de l’événement : {{night}}.",
+      "open": "Touche pour ouvrir."
+    },
+    "more": {
+      "a11y": "D’autres arrivent. De nouveaux lieux rejoignent POWR. Tu les verras ici en premier.",
+      "eyebrow": "BIENTÔT",
+      "title": "D’autres arrivent.",
+      "line": "De nouveaux lieux rejoignent POWR. Tu les verras ici en premier."
+    },
+    "backA11y": "Retour à tous les événements"
+  },
+  "sharePanel": {
+    "pitch": {
+      "announced": "Inscriptions bientôt ouvertes — préviens tes amis. Ton code d’invitation part avec.",
+      "scheduled": "Fais venir tes amis avant que les points comptent. Ton code d’invitation part avec.",
+      "live": "Il est encore temps de faire venir tes amis. Ton code d’invitation part avec.",
+      "over": "Montre ce qui s’est passé. Ton code d’invitation part avec."
+    },
+    "label": "PARTAGER L’ÉVÉNEMENT",
+    "card": "PARTAGER",
+    "linkA11y": "Envoyer un lien vers {{event}}",
+    "link": "ENVOYER",
+    "code": "Ton code <value>{{code}}</value> est inclus dans les deux.",
+    "preview": "Aperçu — tes amis pourront ouvrir cet événement une fois qu’il sera public."
+  },
+  "ticket": {
+    "friendFallback": "Quelqu’un",
+    "state": {
+      "countsWorkout": "Compte — première séance faite",
+      "countsSignup": "Compte — inscription avec ton code",
+      "joinedBefore": "Inscription avant cet événement",
+      "needsWorkout": "Doit faire sa première séance vérifiée"
+    },
+    "eyebrow": {
+      "ticket": "TON BILLET",
+      "invite": "INVITE TES AMIS"
+    },
+    "met": {
+      "keepPlace": "Ta place au classement final est assurée",
+      "onBoard": "Tu es au classement",
+      "milestone": "Palier atteint"
+    },
+    "countLabel": {
+      "conversions": "amis avec une séance vérifiée",
+      "signups": "amis inscrits avec ton code"
+    },
+    "explainer": {
+      "keepPlace": "{{required}} amis gardent ta place au classement final · +{{points}} POWR chacun",
+      "keepPlaceBy": "{{required}} amis d’ici le {{date}} gardent ta place au classement final · +{{points}} POWR chacun",
+      "onBoard": "{{required}} amis te font entrer au classement · +{{points}} POWR chacun",
+      "milestone": "+{{bonus}} de plus à {{n}} amis."
+    },
+    "qrA11y": "Afficher le QR code de l’événement",
+    "friendsTotal_one": "{{count}} ami",
+    "friendsTotal_other": "{{count}} amis",
+    "friendsCount_one": "{{count}} sur {{total}} compte ici",
+    "friendsCount_other": "{{count}} sur {{total}} comptent ici",
+    "showFewer": "VOIR MOINS",
+    "showAll": "VOIR LES {{n}}",
+    "rulesHideA11y": "Masquer le règlement de l’événement",
+    "rulesShowA11y": "Afficher le règlement de l’événement",
+    "rules": "RÈGLEMENT"
+  },
+  "booking": {
+    "bookedWith": "Réservé auprès de {{venue}}",
+    "bookedWithVenue": "Réservé auprès du lieu",
+    "bookA11y": "Réserver ta place auprès de {{venue}}",
+    "bookA11yVenue": "Réserver ta place auprès du lieu",
+    "book": "RÉSERVE TA PLACE",
+    "syncHint": "Tu as déjà réservé ? Ça s’affichera ici dès que la liste de {{venue}} sera synchronisée.",
+    "syncHintVenue": "Tu as déjà réservé ? Ça s’affichera ici dès que la liste du lieu sera synchronisée."
+  },
+  "preview": {
+    "segments": {
+      "board": "CLASSEMENT",
+      "events": "ÉVÉNEMENTS"
+    },
+    "board": {
+      "eyebrow": "CLASSEMENT GÉNÉRAL",
+      "light": "Chaque mouvement.",
+      "bold": "Un seul classement.",
+      "line": "Podiums hebdo et classement historique, ouverts à tout POWR. Bientôt.",
+      "statLabel": "TU APPORTES",
+      "statUnit": "POINTS AU TOTAL",
+      "statLine": "Déjà comptés. Tu pars de là où tu en es.",
+      "pillars": {
+        "weekly": "PODIUMS HEBDO",
+        "ladder": "CLASSEMENT HISTORIQUE",
+        "tiers": "STANDARD & PRO"
+      }
+    },
+    "podiumA11y": "Podium, places pas encore prises",
+    "events": {
+      "eyebrow": "ÉVÉNEMENTS LIVE",
+      "light": "Une semaine pour marquer.",
+      "bold": "Une soirée pour gagner.",
+      "line": "Le prochain événement se prépare. Les inscriptions ouvrent ici en premier.",
+      "beats": {
+        "register": {
+          "title": "Inscris-toi",
+          "line": "Dans l’app. Ta place au classement s’ouvre avec."
+        },
+        "score": {
+          "title": "Une semaine de points",
+          "line": "Tout le monde part à égalité. Seuls les points gagnés pendant la période comptent."
+        },
+        "reveal": {
+          "title": "Révélé en direct",
+          "line": "Les scores sont scellés avant la soirée. Les résultats sont annoncés sur place."
+        }
+      },
+      "crewLine": "Les amis que tu fais venir comptent pendant la semaine de l’événement. Ton code marche déjà.",
+      "qrA11y": "Afficher ton QR code POWR"
+    }
+  },
+  "podium": {
+    "first": "1ER",
+    "second": "2E",
+    "third": "3E",
+    "champion": "N° 1",
+    "openSeatA11y": "{{place}} place, à prendre",
+    "upForGrabs": "À prendre",
+    "open": "LIBRE"
+  },
+  "prizes": {
+    "rank": {
+      "first": "1ER",
+      "second": "2E",
+      "third": "3E",
+      "nth": "{{rank}}E"
+    },
+    "a11y": "{{rank}} prix : {{prize}}",
+    "eyebrow": "LES PRIX",
+    "shareAllA11y": "Partager les prix",
+    "share": "PARTAGER",
+    "openA11y": "{{rank}} prix : {{prize}}. S’ouvre en grand.",
+    "closeA11y": "Fermer",
+    "shareA11y": "Partager le {{rank}} prix"
+  },
+  "register": {
+    "errorTitle": "Inscription impossible",
+    "errorBody": "Un problème est survenu — réessaie.",
+    "resetErrorTitle": "Réinitialisation impossible",
+    "closeA11y": "Fermer",
+    "eyebrow": "ÉVÉNEMENT LIVE",
+    "youreIn": "Tu y es",
+    "rules": "LE RÈGLEMENT",
+    "rulesMore": "+{{n}} autres après ton inscription",
+    "note": "Tout le monde part de zéro — seuls les points gagnés pendant l’événement comptent.",
+    "noteGate": "Tout le monde part de zéro — seuls les points gagnés pendant l’événement comptent. Pour entrer au classement, {{required}} amis doivent s’inscrire avec ton code — ton lien de partage arrive juste après.",
+    "registerA11y": "S’inscrire à l’événement",
+    "registering": "INSCRIPTION…",
+    "countMeIn": "J’EN SUIS",
+    "notNow": "Plus tard",
+    "ticketEyebrow": "TON BILLET POUR LE CLASSEMENT",
+    "crewEyebrow": "RAMÈNE TA BANDE",
+    "recruit": "{{required}} amis inscrits avec ton code te font entrer au classement. {{reward}}",
+    "recruitConversions": "{{required}} amis inscrits avec ton code qui font leur première séance vérifiée te font entrer au classement. {{reward}}",
+    "qrA11y": "Afficher le QR code de l’événement en plein écran",
+    "bookingSoon": "Ton lien de réservation chez {{venue}} arrive bientôt ici.",
+    "resetA11y": "Réinitialiser l’inscription de test",
+    "resetting": "RÉINITIALISATION…",
+    "reset": "RÉINITIALISER L’INSCRIPTION TEST",
+    "done": "Terminé"
+  },
+  "shareScreen": {
+    "publishError": "Impossible de publier ta carte.",
+    "shareError": "Impossible de partager ta carte.",
+    "saveError": "Impossible d’enregistrer ta carte.",
+    "event": {
+      "postDialog": "Publier l’événement",
+      "title": "Partager l’événement",
+      "missing": "Cet événement ne peut pas être partagé."
+    },
+    "prize": {
+      "postDialog": "Publier le prix",
+      "title": "Partager le prix",
+      "missing": "Ce prix ne peut pas être partagé."
+    },
+    "closeA11y": "Fermer",
+    "share": "Partager",
+    "post": "Publier",
+    "save": "Enregistrer",
+    "helperSave": "Partager envoie un aperçu de lien cliquable. Publier partage l’image sur TikTok, Instagram et plus. Enregistrer garde l’image sur ton téléphone.",
+    "helper": "Partager envoie un aperçu de lien cliquable. Publier partage l’image sur TikTok, Instagram, X, Threads et plus."
+  },
+  "qr": {
+    "fallbackName": "l’événement",
+    "title": "INVITATION",
+    "closeA11y": "Fermer",
+    "error": "Impossible de charger le lien de l’événement. Réessaie dans un instant.",
+    "eyebrow": "ÉVÉNEMENT LIVE",
+    "caption": "Scanner ce code ouvre {{event}} dans POWR.",
+    "captionCode": "Scanner ce code ouvre {{event}} dans POWR — les invitations comptent pour ton code {{code}}.",
+    "shareA11y": "Partager le lien de l’événement",
+    "share": "Partager le lien",
+    "copyA11y": "Copier le code et le lien d’invitation",
+    "copied": "Copié",
+    "copy": "Copier",
+    "card": "Partager en image"
+  },
+  "shareCard": {
+    "eyebrow": "ÉVÉNEMENT LIVE",
+    "night": "LA SOIRÉE",
+    "where": "OÙ",
+    "scoring": "POINTS",
+    "signUp": "INSCRIPTION",
+    "opensSoon": "Ouverture bientôt",
+    "opensOn": "Ouverture le {{date}}",
+    "joinWithCode": "REJOINS-MOI AVEC LE CODE",
+    "joinOnPowr": "REJOINS-MOI SUR POWR",
+    "prize": "{{rank}} PRIX"
+  },
+  "league": {
+    "title": "Ligue",
+    "standard": "STANDARD",
+    "pro": "PRO",
+    "weekly": "HEBDO",
+    "allTime": "GÉNÉRAL",
+    "loading": "Chargement…",
+    "noEntries": "Personne pour l’instant",
+    "segments": {
+      "board": "CLASSEMENT",
+      "event": "ÉVÉNEMENT"
+    },
+    "nearYou": "AUTOUR DE TOI",
+    "rankOf": "sur {{total}}",
+    "ptsAllTime": "PTS AU TOTAL",
+    "gapUp": "<num>{{gap}}</num><plain> pts pour rattraper </plain><name>{{name}}</name>",
+    "gapDown": "<num>{{gap}}</num><plain> pts d’avance sur </plain><name>{{name}}</name>",
+    "champion": "<bold>N° 1</bold><plain> — personne à rattraper</plain>",
+    "them": "quelqu’un"
+  },
+  "board": {
+    "top3": "TOP 3",
+    "standings": "CLASSEMENT",
+    "ptsThisWeek": "PTS CETTE SEMAINE",
+    "previewEmpty": "Pas de classement avant l’ouverture de la période — c’est exactement ce que voit un vrai membre avant l’événement. Choisis un état ci-dessus pour parcourir la suite.",
+    "gate": {
+      "unlockNote": "Débloque le classement à {{required}} amis",
+      "quiet": "Le classement se débloque à {{required}} amis",
+      "title": "{{have}} sur {{required}} amis inscrits",
+      "subConversions": "Le classement se débloque quand {{required}} amis s’inscrivent avec ton code et font leur première séance vérifiée — partage-le ci-dessus.",
+      "sub": "Le classement se débloque quand {{required}} amis s’inscrivent avec ton code — partage-le ci-dessus."
+    },
+    "sealedNote": "Compté et scellé — ton rang sera révélé à la finale",
+    "previewChip": "APERÇU DU CLASSEMENT",
+    "previewChipSample": "APERÇU DU CLASSEMENT · DONNÉES FICTIVES",
+    "resultsIn": "Les résultats sont tombés.",
+    "yourFinalRank": "TON RANG FINAL",
+    "yourRank": "TON RANG",
+    "keepPlace_one": "Fais venir {{n}} ami de plus pour garder cette place au classement final.",
+    "keepPlace_other": "Fais venir {{n}} amis de plus pour garder cette place au classement final.",
+    "keepPlaceBy_one": "Fais venir {{n}} ami de plus d’ici le {{date}} pour garder cette place au classement final.",
+    "keepPlaceBy_other": "Fais venir {{n}} amis de plus d’ici le {{date}} pour garder cette place au classement final.",
+    "notInFinal": {
+      "signups": "Pas dans le classement final — il fallait {{required}} amis, et {{made}} ont suivi.",
+      "signupsBy": "Pas dans le classement final — il fallait {{required}} amis d’ici le {{date}}, et {{made}} ont suivi.",
+      "conversions": "Pas dans le classement final — il fallait {{required}} amis avec une séance vérifiée, et {{made}} ont suivi.",
+      "conversionsBy": "Pas dans le classement final — il fallait {{required}} amis avec une séance vérifiée d’ici le {{date}}, et {{made}} ont suivi."
+    },
+    "empty": "Aucun point au classement pour l’instant — la première séance vérifiée lance les scores.",
+    "winners": "PALMARÈS",
+    "finalStandings": "CLASSEMENT FINAL",
+    "startLine": {
+      "label": "SUR LA LIGNE DE DÉPART · {{n}}",
+      "rowA11y": "{{name}}, sur la ligne de départ",
+      "you": "TU ES SUR LA LIGNE DE DÉPART",
+      "youLine": "Une séance vérifiée et tu entres au classement."
+    },
+    "pts": "PTS",
+    "youSuffix": " (toi)",
+    "level": "NIV. {{level}}",
+    "today": "+{{points}} AUJ."
+  },
+  "previewSwitcher": {
+    "auto": "AUTO",
+    "gated": "BLOQUÉ",
+    "live": "EN DIRECT",
+    "sealed": "SCELLÉ",
+    "winners": "RÉSULTATS",
+    "label": "APERÇU · ÉTAT DU CLASSEMENT",
+    "a11y": "Prévisualiser l’état « {{state}} » du classement"
+  },
+  "sealed": {
+    "reveal": "LA RÉVÉLATION",
+    "liveAt": "En direct à {{venue}}",
+    "liveAtFinal": "En direct à la finale",
+    "today": "Aujourd’hui",
+    "tomorrow": "Demain",
+    "inDays": "Dans {{days}} jours",
+    "anyMoment": "D’un instant à l’autre",
+    "units": {
+      "days": "JOURS",
+      "hours": "HEURES",
+      "minutes": "MIN",
+      "seconds": "SEC"
+    },
+    "a11yDays": "Révélation dans {{days}} jours, {{hours}} heures et {{minutes}} minutes",
+    "a11yHours": "Révélation dans {{hours}} heures, {{minutes}} minutes et {{seconds}} secondes",
+    "revealIn": "RÉVÉLATION DANS",
+    "eyebrow": "SCORES SCELLÉS",
+    "title": "Résultats révélés en direct à la finale",
+    "divider": "LE CLASSEMENT",
+    "foot": "Chaque point est déjà compté. Personne ne voit le classement avant la révélation."
+  }
+}

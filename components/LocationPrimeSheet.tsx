@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
@@ -50,6 +51,7 @@ const BORDER = '#222222';
  */
 export default function LocationPrimeSheet() {
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const { user } = useAuth();
     const gymRelevant = useGymRelevance();
     const { activeGeofence } = useActiveGeofence();
@@ -244,7 +246,7 @@ export default function LocationPrimeSheet() {
 
     if (mode === 'hidden') return null;
 
-    const alwaysLabel = Platform.OS === 'ios' ? '“Always”' : '“Allow all the time”';
+    const alwaysLabel = Platform.OS === 'ios' ? t('permissions:background.alwaysIos') : t('permissions:background.alwaysAndroid');
 
     return (
         <Modal visible transparent animationType="slide" onRequestClose={dismiss}>
@@ -254,27 +256,29 @@ export default function LocationPrimeSheet() {
                     <View style={styles.handle} />
 
                     <Text style={styles.eyebrow}>
-                        {venue ? `YOU’RE AT ${venue.partnerName.toUpperCase()}` : 'BACKGROUND LOCATION'}
+                        {venue
+                            ? t('nudges:locationPrime.eyebrowVenue', { venue: venue.partnerName.toUpperCase() })
+                            : t('nudges:locationPrime.eyebrow')}
                     </Text>
                     {venue ? (
                         <Text style={styles.headline}>
-                            This visit won’t{'\n'}
-                            <Text style={styles.headlineGold}>count by itself.</Text>
+                            <Trans i18nKey="nudges:locationPrime.headlineVenue" components={{ gold: <Text style={styles.headlineGold} /> }} />
                         </Text>
                     ) : (
                         <Text style={styles.headline}>
-                            Earning while{'\n'}
-                            <Text style={styles.headlineGold}>you sit still.</Text>
+                            <Trans i18nKey="nudges:locationPrime.headline" components={{ gold: <Text style={styles.headlineGold} /> }} />
                         </Text>
                     )}
                     <Text style={styles.body}>
                         {venue
                             ? mode === 'ask'
-                                ? `POWR can see you’re at ${venue.partnerName} only because the app is open. On “While Using” it can’t check you in from your pocket — set it to ${alwaysLabel} and every visit counts, starting with this one.`
-                                : `Set POWR’s location to ${alwaysLabel} in Settings and it’ll check you in at ${venue.partnerName} automatically — even with the app closed.`
+                                ? t('nudges:locationPrime.body.venueAsk', { venue: venue.partnerName, always: alwaysLabel })
+                                : t('nudges:locationPrime.body.venueSettings', { venue: venue.partnerName, always: alwaysLabel })
                             : mode === 'ask'
-                                ? `POWR can only check you in from your pocket on ${alwaysLabel}. Right now it’s set to “While Using”, so every ${gymRelevant ? 'trip to the gym' : 'visit to a partner venue'} with the app closed is earning you nothing.`
-                                : `Set POWR’s location to ${alwaysLabel} in Settings and it’ll check you in automatically — even with the app closed.`}
+                                ? gymRelevant
+                                    ? t('nudges:locationPrime.body.askGym', { always: alwaysLabel })
+                                    : t('nudges:locationPrime.body.askVenue', { always: alwaysLabel })
+                                : t('nudges:locationPrime.body.settings', { always: alwaysLabel })}
                     </Text>
 
                     {mode === 'ask' ? (
@@ -283,7 +287,7 @@ export default function LocationPrimeSheet() {
                         </View>
                     ) : (
                         <Text style={styles.settingsPath}>
-                            Settings › POWR › Location › Always
+                            {t('nudges:locationPrime.path')}
                         </Text>
                     )}
 
@@ -294,17 +298,17 @@ export default function LocationPrimeSheet() {
                     >
                         <Text style={styles.primaryLabel}>
                             {busy
-                                ? 'REQUESTING...'
+                                ? t('permissions:cta.requesting')
                                 : mode === 'ask'
                                   ? Platform.OS === 'ios'
-                                      ? 'SET TO ALWAYS'
-                                      : 'ALLOW ALL THE TIME'
-                                  : 'OPEN SETTINGS'}
+                                      ? t('permissions:background.cta.allowIos')
+                                      : t('permissions:background.cta.allowAndroid')
+                                  : t('permissions:cta.openSettings')}
                         </Text>
                     </Pressable>
 
                     <Pressable style={styles.skipButton} onPress={dismiss}>
-                        <Text style={styles.skipLabel}>Not now</Text>
+                        <Text style={styles.skipLabel}>{t('permissions:fix.notNow')}</Text>
                     </Pressable>
                 </View>
             </View>

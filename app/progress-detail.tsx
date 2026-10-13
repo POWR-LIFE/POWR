@@ -2,10 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import GeometricBackground from '@/components/GeometricBackground';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchRecentSessions, type ActivitySession } from '@/lib/api/activity';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { formatDistance } from '@/lib/units';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -24,7 +26,10 @@ type CategoryKey = 'movement' | 'workouts' | 'sleep';
 
 interface CategoryConfig {
   key: CategoryKey;
+  /** Translation key of the screen title. */
   label: string;
+  /** Translation key of the no-sessions line. */
+  empty: string;
   colour: string;
   types: string[];    // activity_session.type values that belong here
   unit: string;
@@ -34,7 +39,8 @@ interface CategoryConfig {
 const CATEGORY_CONFIG: Record<CategoryKey, CategoryConfig> = {
   movement: {
     key: 'movement',
-    label: 'Movement',
+    label: 'progress:detail.category.movement',
+    empty: 'progress:detail.empty.movement',
     colour: '#4ade80',
     types: ['running', 'cycling', 'walking', 'sports', 'swimming'],
     unit: 'sessions',
@@ -42,7 +48,8 @@ const CATEGORY_CONFIG: Record<CategoryKey, CategoryConfig> = {
   },
   workouts: {
     key: 'workouts',
-    label: 'Workouts',
+    label: 'progress:detail.category.workouts',
+    empty: 'progress:detail.empty.workouts',
     colour: GOLD,
     types: ['gym', 'hiit', 'yoga', 'pilates'],
     unit: 'sessions',
@@ -50,7 +57,8 @@ const CATEGORY_CONFIG: Record<CategoryKey, CategoryConfig> = {
   },
   sleep: {
     key: 'sleep',
-    label: 'Sleep',
+    label: 'progress:detail.category.sleep',
+    empty: 'progress:detail.empty.sleep',
     colour: '#818cf8',
     types: ['sleep'],
     unit: 'hrs avg',
@@ -58,19 +66,26 @@ const CATEGORY_CONFIG: Record<CategoryKey, CategoryConfig> = {
   },
 };
 
-const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const DAY_INITIAL_KEYS = [
+  'progress:days.initial.mon', 'progress:days.initial.tue', 'progress:days.initial.wed',
+  'progress:days.initial.thu', 'progress:days.initial.fri', 'progress:days.initial.sat',
+  'progress:days.initial.sun',
+] as const;
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDuration(sec: number): string {
   const m = Math.round(sec / 60);
-  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m`.replace(' 0m', '') : `${m}m`;
+  if (m < 60) return i18n.t('progress:units.m', { m });
+  return m % 60 === 0
+    ? i18n.t('progress:units.h', { h: Math.floor(m / 60) })
+    : i18n.t('progress:units.hm', { h: Math.floor(m / 60), m: m % 60 });
 }
 
 function sessionDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return d.toLocaleDateString(getFormatLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 function sessionPoints(s: ActivitySession): number {
@@ -80,6 +95,7 @@ function sessionPoints(s: ActivitySession): number {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProgressDetailScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { category } = useLocalSearchParams<{ category: CategoryKey }>();
@@ -120,7 +136,7 @@ export default function ProgressDetailScreen() {
         </Pressable>
         <View style={styles.headerCenter}>
           <View style={[styles.headerDot, { backgroundColor: config.colour }]} />
-          <Text style={styles.title}>{config.label}</Text>
+          <Text style={styles.title}>{t(config.label)}</Text>
         </View>
         <View style={{ width: 36 }} />
       </View>
@@ -132,7 +148,7 @@ export default function ProgressDetailScreen() {
       >
         {/* ── Weekly activity chart ────────────────────────────── */}
         <View style={styles.chartCard}>
-          <Text style={styles.chartTitle}>This week</Text>
+          <Text style={styles.chartTitle}>{t('progress:detail.thisWeek')}</Text>
           <View style={styles.barChart}>
             {weekBars.map((count, i) => {
               const isToday = i === TODAY_INDEX;
@@ -150,7 +166,7 @@ export default function ProgressDetailScreen() {
                     ]}
                   />
                   <Text style={[styles.barLabel, isToday && { color: config.colour }]}>
-                    {DAY_LABELS[i]}
+                    {t(DAY_INITIAL_KEYS[i])}
                   </Text>
                 </View>
               );
@@ -160,26 +176,26 @@ export default function ProgressDetailScreen() {
 
         {/* ── Stats row ────────────────────────────────────────── */}
         <View style={styles.statsRow}>
-          <StatBlock label="Sessions" value={String(totalSessions)} />
+          <StatBlock label={t('progress:detail.stats.sessions')} value={String(totalSessions)} />
           <View style={styles.statDivider} />
-          <StatBlock label="Avg duration" value={avgDuration ? `${avgDuration}m` : '—'} />
+          <StatBlock label={t('progress:detail.stats.avgDuration')} value={avgDuration ? t('progress:units.m', { m: avgDuration }) : '—'} />
           <View style={styles.statDivider} />
-          <StatBlock label="Points earned" value={totalPoints > 0 ? String(totalPoints) : '—'} gold />
+          <StatBlock label={t('progress:detail.stats.pointsEarned')} value={totalPoints > 0 ? String(totalPoints) : '—'} gold />
         </View>
 
         {/* ── Recent sessions ──────────────────────────────────── */}
-        <Text style={styles.sectionLabel}>Recent</Text>
+        <Text style={styles.sectionLabel}>{t('progress:detail.recent')}</Text>
 
         {loading && (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Loading…</Text>
+            <Text style={styles.emptyText}>{t('progress:loading')}</Text>
           </View>
         )}
 
         {!loading && sessions.length === 0 && (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No {config.label.toLowerCase()} sessions yet.</Text>
-            <Text style={styles.emptyHint}>Get moving to start tracking here.</Text>
+            <Text style={styles.emptyText}>{t(config.empty)}</Text>
+            <Text style={styles.emptyHint}>{t('progress:detail.emptyHint')}</Text>
           </View>
         )}
 
@@ -194,11 +210,12 @@ export default function ProgressDetailScreen() {
 // ─── Session row ──────────────────────────────────────────────────────────────
 
 function SessionRow({ session, colour }: { session: ActivitySession; colour: string }) {
+  const { t } = useTranslation();
   const pts    = sessionPoints(session);
   // Walking rows are daily step buckets — duration_sec is 0 by design, so steps
   // are the stat. Timed sessions show distance/duration alongside when present.
   const parts = [
-    session.steps ? `${session.steps.toLocaleString()} steps` : null,
+    session.steps ? t('progress:units.steps', { steps: session.steps.toLocaleString() }) : null,
     session.distance_m ? formatDistance(session.distance_m, session.type) : null,
     session.duration_sec > 0 ? formatDuration(session.duration_sec) : null,
   ].filter((p): p is string => p != null);
@@ -212,7 +229,7 @@ function SessionRow({ session, colour }: { session: ActivitySession; colour: str
         <Text style={styles.sessionType}>{label}</Text>
         <Text style={styles.sessionMeta}>{sessionDate(session.started_at)} · {detail}</Text>
       </View>
-      {pts > 0 && <Text style={styles.sessionPts}>+{pts} pts</Text>}
+      {pts > 0 && <Text style={styles.sessionPts}>{t('progress:detail.points', { points: pts })}</Text>}
     </View>
   );
 }

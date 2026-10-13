@@ -134,6 +134,25 @@ Terms that stay in English are product names. Use them exactly as written, with 
 | Strength training | Musculation | Fuerza | |
 | Mountain biking | VTT | BTT | |
 | Hiking | Randonnée | Senderismo | |
+| Tabs: Home / Progress / League / Spend / Discover | Accueil / Progrès / Ligue / Échanger / Découvrir | Inicio / Progreso / Liga / Canjear / Descubrir | |
+| readiness | forme | forma | |
+| resting heart rate / HRV | FC au repos / VFC | FC en reposo / VFC | |
+| sleep stages: deep / REM / light | profond / paradoxal / léger | profundo / REM / ligero | |
+| training load | charge d’entraînement | carga de entreno | |
+| pace / climb / laps | allure / dénivelé / longueurs | ritmo / desnivel / largos | |
+| streak rescue | sauvetage | rescate | |
+| weekly recap | bilan | resumen | |
+| Get Directions | Itinéraire | Cómo llegar | Google Maps' own wording |
+| Open now / Closed | Ouvert / Fermé | Abierto / Cerrado | |
+| LIVE NOW | EN DIRECT | EN DIRECTO | |
+| ticket (event entry) | billet | entrada | |
+| start line | ligne de départ | línea de salida | |
+| Up for grabs | À prendre | En juego | |
+| champion (podium) | N° 1 | N.º 1 | Gender-neutral |
+| signup (affiliate) | inscription | registro | |
+| Saved to your Photos | Image enregistrée dans Photos | Imagen guardada en Fotos | |
+| Android notification channels: General / Streak Alerts / Rewards | Général / Alertes de série / Récompenses | General / Alertas de racha / Recompensas | |
+| times of day | 24-hour "22:30" | 24-hour "22:30" | English keeps "10:30pm" |
 
 Add to this table whenever a new term comes up, so every screen uses the same word.
 

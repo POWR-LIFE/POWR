@@ -1,6 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NotificationPreviewStack from '@/components/onboarding/NotificationPreviewStack';
@@ -34,6 +35,7 @@ const BORDER = '#222222';
  */
 export default function NotificationPrimeSheet() {
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const { user } = useAuth();
     const { requestPermissions, pushRecoveryPrimePending } = useNotifications();
     const { activeGeofence } = useActiveGeofence();
@@ -136,15 +138,14 @@ export default function NotificationPrimeSheet() {
                 <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
                     <View style={styles.handle} />
 
-                    <Text style={styles.eyebrow}>NOTIFICATIONS</Text>
+                    <Text style={styles.eyebrow}>{t('permissions:notifications.eyebrow')}</Text>
                     <Text style={styles.headline}>
-                        Earning in{'\n'}
-                        <Text style={styles.headlineGold}>silence.</Text>
+                        <Trans i18nKey="nudges:notificationPrime.headline" components={{ gold: <Text style={styles.headlineGold} /> }} />
                     </Text>
                     <Text style={styles.body}>
                         {mode === 'ask'
-                            ? 'You’ve banked sessions with alerts off — every payout landed without a sound. Turn them on and know the second a session counts, a streak’s saved or a reward drops.'
-                            : 'Notifications are switched off for POWR at the system level. Flip them on in Settings and never find out late again.'}
+                            ? t('nudges:notificationPrime.bodyAsk')
+                            : t('nudges:notificationPrime.bodyDenied')}
                     </Text>
 
                     {mode === 'ask' ? (
@@ -156,8 +157,8 @@ export default function NotificationPrimeSheet() {
                         // platforms — the hint names the row to tap from there.
                         <Text style={styles.settingsPath}>
                             {Platform.OS === 'ios'
-                                ? 'Settings › POWR › Notifications'
-                                : 'App info › Notifications'}
+                                ? t('permissions:fix.paths.notificationsIos')
+                                : t('permissions:fix.paths.notificationsAndroid')}
                         </Text>
                     )}
 
@@ -167,12 +168,16 @@ export default function NotificationPrimeSheet() {
                         disabled={busy}
                     >
                         <Text style={styles.primaryLabel}>
-                            {busy ? 'REQUESTING...' : mode === 'ask' ? 'ENABLE ALERTS' : 'OPEN SETTINGS'}
+                            {busy
+                                ? t('permissions:cta.requesting')
+                                : mode === 'ask'
+                                    ? t('permissions:notifications.cta')
+                                    : t('permissions:cta.openSettings')}
                         </Text>
                     </Pressable>
 
                     <Pressable style={styles.skipButton} onPress={dismiss}>
-                        <Text style={styles.skipLabel}>Not now</Text>
+                        <Text style={styles.skipLabel}>{t('permissions:fix.notNow')}</Text>
                     </Pressable>
                 </View>
             </View>

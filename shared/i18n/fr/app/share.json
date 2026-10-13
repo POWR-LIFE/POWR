@@ -1,1 +1,111 @@
-{}
+{
+  "stats": {
+    "title": {
+      "checkIn": "Partager le check-in",
+      "session": "Partager la séance",
+      "challenge": "Partager le défi",
+      "level": "Partager ton niveau",
+      "streak": "Partager ta série"
+    },
+    "background": {
+      "cover": "Ma photo",
+      "level": "Mon niveau",
+      "gallery": "Galerie"
+    },
+    "photoSheet": {
+      "title": "Ma photo",
+      "take": "Prendre une photo",
+      "library": "Choisir dans la photothèque",
+      "profile": "Utiliser ma photo de profil"
+    },
+    "actions": {
+      "share": "Partager",
+      "post": "Publier",
+      "save": "Enregistrer"
+    },
+    "postDialogTitle": "Publie ta séance",
+    "helper": "Partager envoie un lien avec aperçu. Publier partage l’image sur TikTok, Instagram et ailleurs. Enregistrer la garde sur ton téléphone.",
+    "helperNoSave": "Partager envoie un lien avec aperçu. Publier partage l’image sur TikTok, Instagram, X, Threads et ailleurs.",
+    "errors": {
+      "noSession": "Aucune séance indiquée.",
+      "checkIn": "Impossible de charger ce check-in.",
+      "level": "Impossible de charger ton niveau.",
+      "noChallenge": "Aucun défi indiqué.",
+      "challenge": "Impossible de charger ce défi.",
+      "stats": "Impossible de charger tes stats.",
+      "photoAccess": "L’accès à ta photothèque est nécessaire pour utiliser ta propre photo.",
+      "photo": "Impossible de récupérer cette photo. Réessaie.",
+      "publish": "Impossible de publier ta carte.",
+      "share": "Impossible de partager ta carte.",
+      "save": "Impossible d’enregistrer ta carte."
+    }
+  },
+  "card": {
+    "levelEyebrow": "NIVEAU {{level}}",
+    "member": "Membre POWR",
+    "status": {
+      "checkedIn": "Check-in validé",
+      "logged": "Séance enregistrée",
+      "challengeComplete": "Défi réussi",
+      "levelUp": "Nouveau niveau",
+      "startStreak": "Lance ta série",
+      "warmingUp": "Échauffement",
+      "building": "Ça monte",
+      "onARoll": "Sur ta lancée",
+      "onFire": "En feu",
+      "unstoppable": "Inarrêtable",
+      "legendary": "Légendaire"
+    },
+    "stats": {
+      "session": "SÉANCE",
+      "total": "TOTAL",
+      "earned": "GAGNÉ",
+      "streak": "SÉRIE",
+      "level": "NIVEAU",
+      "lifetime": "CUMULÉ",
+      "thisMonth": "CE MOIS-CI",
+      "challengeEarned": "Gagné",
+      "challengeStreak": "Série"
+    },
+    "units": {
+      "min": "min",
+      "pts": "pts",
+      "visits_one": "visite",
+      "visits_other": "visites",
+      "days_one": "jour",
+      "days_other": "jours",
+      "sessions_one": "séance",
+      "sessions_other": "séances"
+    },
+    "date_one": "{{count}}er {{month}} {{year}}",
+    "date_other": "{{count}} {{month}} {{year}}"
+  },
+  "headline": {
+    "checkInAtDetail": "Check-in fait à {{venue}} sur POWR — {{detail}}.",
+    "checkInAt": "Check-in fait à {{venue}} sur POWR.",
+    "checkInDetail": "Check-in fait sur POWR — {{detail}}.",
+    "checkIn": "Check-in fait sur POWR.",
+    "minutes": "{{minutes}} min",
+    "points": "+{{points}} pts",
+    "streakDay": "Jour {{day}} de ma série.",
+    "challenge": "Défi réussi sur POWR : {{title}} (+{{points}} pts).",
+    "levelUp": "Je viens d’atteindre le niveau {{level}} — {{name}} — sur POWR.",
+    "levelUpPast": "Niveau {{level}} atteint — {{name}} — sur POWR.",
+    "streakMonth": "{{streak}} sur POWR — {{sessions}}.",
+    "month": "{{sessions}} sur POWR.",
+    "streakDays_one": "Série de {{count}} jour",
+    "streakDays_other": "Série de {{count}} jours",
+    "sessionsThisMonth_one": "{{count}} séance ce mois-ci",
+    "sessionsThisMonth_other": "{{count}} séances ce mois-ci"
+  },
+  "link": {
+    "title": "{{who}} — Niveau {{level}}, {{name}}",
+    "member": "Membre POWR",
+    "subtitle": "{{headline}} Touche pour télécharger POWR et gagner des récompenses à chaque séance."
+  },
+  "saveNotice": {
+    "saved": "Image enregistrée dans Photos.",
+    "sheet": "Touche « Enregistrer l’image » dans le menu pour la garder.",
+    "unavailable": "L’enregistrement n’est pas disponible sur cet appareil."
+  }
+}

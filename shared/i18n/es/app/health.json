@@ -134,5 +134,26 @@
         "android": "Fitbit → tu perfil → Ajustes → Health Connect → Sincronizar con Health Connect"
       }
     }
+  },
+  "wearableStatus": {
+    "sync": {
+      "noData": "aún sin datos",
+      "justNow": "sincronizado ahora mismo",
+      "hours_one": "sincronizado hace {{count}} h",
+      "hours_other": "sincronizado hace {{count}} h",
+      "yesterday": "sincronizado ayer",
+      "days_one": "sincronizado hace {{count}} d",
+      "days_other": "sincronizado hace {{count}} d"
+    },
+    "silent": {
+      "unnamed": "Tu wearable",
+      "sinceConnected": "{{name}} no ha enviado datos a POWR desde que lo conectaste.",
+      "sinceDays_one": "{{name}} no ha enviado datos a POWR en {{count}} día.",
+      "sinceDays_other": "{{name}} no ha enviado datos a POWR en {{count}} días.",
+      "title": "Revisa la conexión de {{name}}",
+      "titleUnnamed": "Revisa la conexión de tu wearable",
+      "body": "{{since}} Si lo has llevado puesto, volver a conectarlo suele solucionarlo.",
+      "cta": "Revisar conexión"
+    }
   }
 }

@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import * as Sharing from 'expo-sharing';
 import {
   ActionSheetIOS,
@@ -23,6 +24,7 @@ import { ShareCard } from '@/components/share/ShareCard';
 import { trackEvent, tracked } from '@/lib/analytics';
 import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
 import { awaitCirclePhoto, type CirclePhoto } from '@/lib/circlePhoto';
+import i18n from '@/lib/i18n';
 import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, fetchLevelUpSummary, publishShareCard, type ShareSummary } from '@/lib/api/share';
 import { SAVE_CARD_ENABLED, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
 
@@ -45,10 +47,11 @@ const OG_IMAGE_HEIGHT = 1280;
 type Mode   = 'check-in' | 'streak' | 'challenge' | 'level-up';
 type BgMode = 'cover' | 'level' | 'gallery';
 
+/** `label` is a translation key, resolved at render. */
 const BG_OPTIONS: { key: BgMode; icon: React.ComponentProps<typeof Ionicons>['name']; label: string }[] = [
-  { key: 'cover',   icon: 'person-circle-outline', label: 'My Photo'  },
-  { key: 'level',   icon: 'ribbon-outline',        label: 'My Level'  },
-  { key: 'gallery', icon: 'images-outline',        label: 'Gallery'   },
+  { key: 'cover',   icon: 'person-circle-outline', label: 'share:stats.background.cover'   },
+  { key: 'level',   icon: 'ribbon-outline',        label: 'share:stats.background.level'   },
+  { key: 'gallery', icon: 'images-outline',        label: 'share:stats.background.gallery' },
 ];
 
 /** A circular icon button with a label beneath, à la the TikTok "send to" row. */
@@ -81,6 +84,7 @@ function ActionButton({ icon, label, onPress, loading, disabled, primary }: {
 export default function ShareStatsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ mode?: string; sessionId?: string; challenge?: string; historical?: string; asOf?: string }>();
   const mode: Mode =
     params.mode === 'check-in' ? 'check-in'
@@ -104,32 +108,32 @@ export default function ShareStatsScreen() {
 
   useEffect(() => {
     if (mode === 'check-in') {
-      if (!params.sessionId) { setLoadError('No session specified.'); return; }
+      if (!params.sessionId) { setLoadError(i18n.t('share:stats.errors.noSession')); return; }
       fetchCheckInSummary(params.sessionId, { historical: params.historical === '1' })
         .then(setSummary)
-        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load this check-in.'));
+        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : i18n.t('share:stats.errors.checkIn')));
     } else if (mode === 'level-up') {
       // asOf = a past level-up from the points-history row; absent = the live one
       const asOf = params.asOf ? new Date(params.asOf) : undefined;
       fetchLevelUpSummary(asOf && Number.isFinite(asOf.getTime()) ? { asOf } : undefined)
         .then(setSummary)
-        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load your level.'));
+        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : i18n.t('share:stats.errors.level')));
     } else if (mode === 'challenge') {
-      if (!params.challenge) { setLoadError('No challenge specified.'); return; }
+      if (!params.challenge) { setLoadError(i18n.t('share:stats.errors.noChallenge')); return; }
       let challenge;
       try {
         challenge = JSON.parse(params.challenge);
       } catch {
-        setLoadError('Could not load this challenge.');
+        setLoadError(i18n.t('share:stats.errors.challenge'));
         return;
       }
       fetchChallengeSummary(challenge)
         .then(setSummary)
-        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load this challenge.'));
+        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : i18n.t('share:stats.errors.challenge')));
     } else {
       fetchAutoSummary()
         .then(setSummary)
-        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load your stats.'));
+        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : i18n.t('share:stats.errors.stats')));
     }
   }, [mode, params.sessionId, params.challenge, params.historical, params.asOf]);
 
@@ -144,7 +148,7 @@ export default function ShareStatsScreen() {
   async function pickFromGallery() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      setLoadError('Photo library access is required to use your own photo.');
+      setLoadError(t('share:stats.errors.photoAccess'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -185,7 +189,7 @@ export default function ShareStatsScreen() {
       }
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (perm.status !== 'granted') {
-        setNotice('Photo library access is required to use your own photo.');
+        setNotice(t('share:stats.errors.photoAccess'));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -202,7 +206,7 @@ export default function ShareStatsScreen() {
       }
     } catch (e) {
       console.warn('[ShareStats] photo picker error:', e);
-      setNotice('Could not get that photo. Please try again.');
+      setNotice(t('share:stats.errors.photo'));
     }
   }
 
@@ -215,12 +219,12 @@ export default function ShareStatsScreen() {
   function showPhotoSheet() {
     const hasAvatar = !!summary?.profile.avatarUrl;
     const actions: { label: string; onPress?: () => void; cancel?: boolean }[] = [
-      { label: 'Take photo',           onPress: () => pickPhoto('camera') },
-      { label: 'Choose from library',  onPress: () => pickPhoto('library') },
+      { label: t('share:stats.photoSheet.take'),     onPress: () => pickPhoto('camera') },
+      { label: t('share:stats.photoSheet.library'),  onPress: () => pickPhoto('library') },
     ];
-    if (photoUri && hasAvatar) actions.push({ label: 'Use profile photo', onPress: () => { setPhotoUri(null); setPhotoCrop(null); } });
+    if (photoUri && hasAvatar) actions.push({ label: t('share:stats.photoSheet.profile'), onPress: () => { setPhotoUri(null); setPhotoCrop(null); } });
     if (Platform.OS === 'ios') {
-      actions.push({ label: 'Cancel', cancel: true });
+      actions.push({ label: t('common:actions.cancel'), cancel: true });
       ActionSheetIOS.showActionSheetWithOptions(
         {
           options: actions.map(a => a.label),
@@ -230,9 +234,9 @@ export default function ShareStatsScreen() {
         i => actions[i]?.onPress?.(),
       );
     } else {
-      if (actions.length < 3) actions.push({ label: 'Cancel', cancel: true });
+      if (actions.length < 3) actions.push({ label: t('common:actions.cancel'), cancel: true });
       Alert.alert(
-        'My photo',
+        t('share:stats.photoSheet.title'),
         undefined,
         actions.map(a => ({ text: a.label, onPress: a.onPress, style: a.cancel ? 'cancel' : 'default' })),
         { cancelable: true },
@@ -295,7 +299,7 @@ export default function ShareStatsScreen() {
       const shareUrl = await publishShareCard(summary, uri);
       await Share.share({ message: buildShareMessage(summary, shareUrl) });
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not publish your card.');
+      setLoadError(e instanceof Error ? e.message : t('share:stats.errors.publish'));
     } finally {
       setBusy(null);
     }
@@ -318,9 +322,9 @@ export default function ShareStatsScreen() {
     setNotice(null);
     try {
       const uri = await captureFullRes();
-      await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: 'Post your workout' });
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: t('share:stats.postDialogTitle') });
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not share your card.');
+      setLoadError(e instanceof Error ? e.message : t('share:stats.errors.share'));
     } finally {
       setBusy(null);
     }
@@ -341,17 +345,17 @@ export default function ShareStatsScreen() {
       setNotice(saveCardNotice(result));
     } catch (e) {
       setNotice(null);
-      setLoadError(e instanceof Error ? e.message : 'Could not save your card.');
+      setLoadError(e instanceof Error ? e.message : t('share:stats.errors.save'));
     } finally {
       setBusy(null);
     }
   }
 
   const headerTitle =
-    mode === 'check-in' ? (params.historical === '1' ? 'Share session' : 'Share check-in')
-    : mode === 'challenge' ? 'Share challenge'
-    : mode === 'level-up' ? 'Share your level'
-    : 'Share your streak';
+    mode === 'check-in' ? (params.historical === '1' ? t('share:stats.title.session') : t('share:stats.title.checkIn'))
+    : mode === 'challenge' ? t('share:stats.title.challenge')
+    : mode === 'level-up' ? t('share:stats.title.level')
+    : t('share:stats.title.streak');
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom + 16 }]}>
@@ -407,7 +411,7 @@ export default function ShareStatsScreen() {
                   color={isActive ? GOLD : DIM}
                 />
                 <Text style={[styles.pickerLabel, isActive && styles.pickerLabelActive]}>
-                  {opt.label}
+                  {t(opt.label)}
                 </Text>
               </Pressable>
             );
@@ -422,7 +426,7 @@ export default function ShareStatsScreen() {
           <View style={styles.actionRow}>
             <ActionButton
               icon="paper-plane"
-              label="Share"
+              label={t('share:stats.actions.share')}
               onPress={tracked('share_stats_send', handleShare)}
               loading={busy === 'share'}
               disabled={busy !== null}
@@ -430,7 +434,7 @@ export default function ShareStatsScreen() {
             />
             <ActionButton
               icon="share-social-outline"
-              label="Post"
+              label={t('share:stats.actions.post')}
               onPress={tracked('share_stats_post', handlePost)}
               loading={busy === 'post'}
               disabled={busy !== null}
@@ -438,7 +442,7 @@ export default function ShareStatsScreen() {
             {SAVE_CARD_ENABLED && (
               <ActionButton
                 icon="download-outline"
-                label="Save"
+                label={t('share:stats.actions.save')}
                 onPress={tracked('share_stats_save', handleSave)}
                 loading={busy === 'save'}
                 disabled={busy !== null}
@@ -447,8 +451,8 @@ export default function ShareStatsScreen() {
           </View>
           <Text style={styles.helperText}>
             {notice ?? (SAVE_CARD_ENABLED
-              ? 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram and more. Save keeps the image on your phone.'
-              : 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more.')}
+              ? t('share:stats.helper')
+              : t('share:stats.helperNoSave'))}
           </Text>
         </View>
       )}

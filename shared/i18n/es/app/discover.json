@@ -1,1 +1,114 @@
-{}
+{
+  "distance": {
+    "miles": "{{distance}} mi",
+    "underMiles": "< {{distance}} mi"
+  },
+  "hours": {
+    "closedToday": "Hoy cerrado",
+    "today": "Hoy {{open}} – {{close}}"
+  },
+  "eta": {
+    "minutes": "{{minutes}} min",
+    "hours": "{{hours}} h",
+    "hoursMinutes": "{{hours}} h {{minutes}} min"
+  },
+  "map": {
+    "loadingArea": "Cargando esta zona…",
+    "loadingMap": "Cargando el mapa…",
+    "emptyArea": "Aún no hay centros asociados en esta zona"
+  },
+  "route": {
+    "summary": "{{eta}} • {{distance}} km",
+    "loading": "Cargando la ruta a pie…",
+    "startWalk": "Iniciar",
+    "clear": "Borrar"
+  },
+  "location": {
+    "offBanner": "<strong>La ubicación está desactivada.</strong> Actívala para ver distancias, indicaciones y hacer check-in automático.",
+    "backgroundBanner": "<strong>El check-in automático está desactivado.</strong> Pon la ubicación en {{always}} para que tus visitas cuenten con la app cerrada.",
+    "alwaysIos": "«Siempre»",
+    "alwaysAndroid": "«Permitir todo el tiempo»"
+  },
+  "filters": {
+    "openNow": "Abierto",
+    "visited": "Visitados",
+    "filters": "Filtros",
+    "title": "Filtros",
+    "reset": "Restablecer",
+    "maxDistance": "DISTANCIA MÁX.",
+    "any": "Cualquiera",
+    "showResults_one": "Ver {{count}} resultado",
+    "showResults_other": "Ver {{count}} resultados"
+  },
+  "sort": {
+    "title": "Ordenar por",
+    "nearest": "Más cerca",
+    "points": "Más puntos",
+    "az": "A–Z"
+  },
+  "list": {
+    "searchPlaceholder": "Busca gimnasios, clases…",
+    "count_one": "{{count}} CENTRO · {{sort}}",
+    "count_other": "{{count}} CENTROS · {{sort}}",
+    "empty": "Ningún centro coincide con tus filtros",
+    "clearFilters": "Borrar filtros",
+    "sessionActive": "Sesión en curso",
+    "openNow": "Abierto",
+    "closed": "Cerrado",
+    "requestTitle": "¿No encuentras tu centro?",
+    "requestBody": "Solicítalo y trabajaremos para añadirlo a POWR."
+  },
+  "partner": {
+    "openNow": "Abierto",
+    "closed": "Cerrado",
+    "homeGym": "Mi gimnasio",
+    "setHomeGym": "Marcar como mi gimnasio",
+    "directions": "Cómo llegar",
+    "bookSession": "Reservar sesión",
+    "viewProfile": "Ver perfil"
+  },
+  "walkNav": {
+    "routeFallback": "Ruta",
+    "summary": "{{eta}} • {{distance}} km a pie",
+    "walkingRoute": "Ruta a pie",
+    "next": "Siguiente",
+    "recenter": "Centrar",
+    "overview": "Vista general",
+    "endRoute": "Finalizar"
+  },
+  "steps": {
+    "title": "Indicaciones a pie",
+    "destination": "Hacia {{name}}",
+    "loading": "Cargando indicaciones…",
+    "empty": "Aún no hay indicaciones detalladas.",
+    "done": "Hecho"
+  },
+  "request": {
+    "sentTitle": "¡Gracias!",
+    "sentBody": "Le echaremos un vistazo e intentaremos añadirlo.",
+    "title": "Solicitar un gimnasio",
+    "body": "Dinos dónde entrenas y trabajaremos para añadirlo.",
+    "namePlaceholder": "Nombre del gimnasio",
+    "locationPlaceholder": "Ciudad o dirección (opcional)",
+    "send": "Enviar solicitud"
+  },
+  "web": {
+    "title": "Descubrir",
+    "subtitle": "Centros deportivos cerca de ti",
+    "mapUnavailable": "Mapa disponible en iOS y Android",
+    "nearest": "CENTROS MÁS CERCANOS",
+    "pts": "+{{points}} pts",
+    "category": {
+      "all": "Todo",
+      "gym": "Gym",
+      "yoga": "Yoga",
+      "pilates": "Pilates",
+      "cycling": "Ciclismo",
+      "running": "Correr"
+    },
+    "status": {
+      "openNow": "Abierto",
+      "opens8am": "Abre a las 8:00"
+    }
+  }
+}

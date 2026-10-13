@@ -1,1 +1,179 @@
-{}
+{
+  "actions": {
+    "share": "Share",
+    "runItBack": "Run it back"
+  },
+  "healthGap": {
+    "exercisePermission": {
+      "title": "Turn on workout tracking",
+      "body": "POWR can see your steps but not your workouts. Allow workout access to earn points for runs, rides and more.",
+      "cta": "Allow access"
+    },
+    "workoutsMissing": {
+      "title": "Missing your workouts?",
+      "bodyAndroid": "Your wearable is logging activity, but workouts aren’t coming through. In Garmin Connect → Settings → Health Connect, turn on Activities.",
+      "ctaAndroid": "Open Health Connect",
+      "bodyIos": "Your wearable is logging activity, but POWR can’t see your workouts. Enable Workouts for POWR in Apple Health.",
+      "ctaIos": "Open Health settings"
+    }
+  },
+  "setupHealth": {
+    "title": "Check-ins aren’t running",
+    "bodyGym": "POWR tried to check you in from your pocket and couldn’t — background location is switched off, so gym trips with the app closed earn nothing.",
+    "bodyVenue": "POWR tried to check you in from your pocket and couldn’t — background location is switched off, so visits to partner venues with the app closed earn nothing.",
+    "cta": "FIX IT"
+  },
+  "wearableChip": {
+    "fallbackName": "Wearable",
+    "a11y": "{{name}}, {{sync}}. Open wearables."
+  },
+  "healthPrime": {
+    "eyebrow": "STEP TRACKING",
+    "headline": {
+      "reconnect": "Your steps\n<gold>stopped counting.</gold>",
+      "settings": "One switch\n<gold>from earning.</gold>",
+      "connect": "Every step,\n<gold>banked.</gold>"
+    },
+    "body": {
+      "reconnectIos": "Apple Health is no longer sharing with POWR — its permissions can switch off after a reinstall or update. Your phone is still counting every step; POWR just can't see them. Reconnect and today's walking starts earning again.",
+      "reconnectAndroid": "Health Connect is no longer sharing with POWR — its permissions can switch off after a reinstall or update. Your phone is still counting every step; POWR just can't see them. Reconnect and today's walking starts earning again.",
+      "settingsIos": "POWR needs read access in Apple Health to count your steps. Flip it on in the Health app and this picks up right where you left off.",
+      "settingsAndroid": "POWR needs read access in Health Connect to count your steps. Flip it on in Health Connect and this picks up right where you left off.",
+      "connectIos": "Your phone already counts every step you take. Connect Apple Health and they turn into POWR points automatically — no logging, no check-ins, just walking.",
+      "connectAndroid": "Your phone already counts every step you take. Connect Health Connect and they turn into POWR points automatically — no logging, no check-ins, just walking."
+    },
+    "path": {
+      "ios": "Health › Profile › Apps › POWR",
+      "android": "Health Connect › App permissions › POWR"
+    },
+    "tierPts": "+{{points}} pts",
+    "cta": {
+      "settings": "OPEN HEALTH SETTINGS",
+      "reconnect": "RECONNECT"
+    }
+  },
+  "locationPrime": {
+    "eyebrow": "BACKGROUND LOCATION",
+    "eyebrowVenue": "YOU’RE AT {{venue}}",
+    "headline": "Earning while\n<gold>you sit still.</gold>",
+    "headlineVenue": "This visit won’t\n<gold>count by itself.</gold>",
+    "body": {
+      "venueAsk": "POWR can see you’re at {{venue}} only because the app is open. On “While Using” it can’t check you in from your pocket — set it to {{always}} and every visit counts, starting with this one.",
+      "venueSettings": "Set POWR’s location to {{always}} in Settings and it’ll check you in at {{venue}} automatically — even with the app closed.",
+      "askGym": "POWR can only check you in from your pocket on {{always}}. Right now it’s set to “While Using”, so every trip to the gym with the app closed is earning you nothing.",
+      "askVenue": "POWR can only check you in from your pocket on {{always}}. Right now it’s set to “While Using”, so every visit to a partner venue with the app closed is earning you nothing.",
+      "settings": "Set POWR’s location to {{always}} in Settings and it’ll check you in automatically — even with the app closed."
+    },
+    "path": "Settings › POWR › Location › Always"
+  },
+  "notificationPrime": {
+    "headline": "Earning in\n<gold>silence.</gold>",
+    "bodyAsk": "You’ve banked sessions with alerts off — every payout landed without a sound. Turn them on and know the second a session counts, a streak’s saved or a reward drops.",
+    "bodyDenied": "Notifications are switched off for POWR at the system level. Flip them on in Settings and never find out late again."
+  },
+  "levelUp": {
+    "kicker": {
+      "max": "MAX LEVEL",
+      "tier": "NEW TIER — {{tier}}",
+      "standard": "LEVEL UP"
+    },
+    "level": "LEVEL",
+    "toNext": "<pts>{{points}}</pts> pts to {{name}}",
+    "apex": "Top of the mountain. Nothing left to unlock.",
+    "continue": "Continue"
+  },
+  "transfer": {
+    "eyebrow": "MOVE YOUR ACCOUNT",
+    "headline": "Bring POWR\n<gold>to this phone.</gold>",
+    "body": "Your POWR account is set up on {{device}}. Move it here to keep earning — {{device}} will be signed out. Only one phone at a time.",
+    "bodyLastSeen": "Your POWR account is set up on {{device}} (last active {{when}}). Move it here to keep earning — {{device}} will be signed out. Only one phone at a time.",
+    "device": {
+      "ios": "your other iPhone",
+      "android": "your other Android",
+      "other": "another device"
+    },
+    "lastSeen": {
+      "recently": "recently",
+      "today": "today",
+      "yesterday": "yesterday",
+      "daysAgo": "{{days}} days ago"
+    },
+    "moving": "MOVING…",
+    "confirm": "MOVE TO THIS PHONE",
+    "notNow": "Not now"
+  },
+  "crash": {
+    "eyebrow": "SOMETHING BROKE",
+    "headline": "That didn’t load.",
+    "headlineGold": "We’ve got it.",
+    "body": "The problem was recorded and sent to us. Your points and your streak are untouched.",
+    "terminal": "Close POWR and open it again.",
+    "retry": "TRY AGAIN",
+    "caption": "Still stuck? Close POWR and open it again."
+  },
+  "friendPulse": {
+    "just": {
+      "gym": "{{name}} just did a gym session.",
+      "running": "{{name}} just did a run.",
+      "cycling": "{{name}} just did a ride.",
+      "other": "{{name}} just did a workout."
+    },
+    "recent": {
+      "gym": "{{name}} recently did a gym session.",
+      "running": "{{name}} recently did a run.",
+      "cycling": "{{name}} recently did a ride.",
+      "other": "{{name}} recently did a workout."
+    },
+    "a11y": "{{headline}} Challenge them",
+    "active": "Active today",
+    "dismiss": "Dismiss suggestion",
+    "sub": "Take on a challenge together.",
+    "subBonus": "Take on a challenge together — finish it and you both earn +{{bonus}} on top.",
+    "cta": "Challenge {{name}}"
+  },
+  "challengeCard": {
+    "outcome": {
+      "cancelled": "Cancelled before it finished",
+      "expiredPooled": "Time ran out — target missed",
+      "expiredSolo": "Time ran out — you didn’t finish",
+      "expired": "Time ran out — nobody finished",
+      "won": "You finished  ·  +{{points}} earned",
+      "lostPooled": "The group hit the target without you",
+      "lost": "Time’s up — you didn’t finish this one"
+    },
+    "waiting": {
+      "start": "Waiting to start",
+      "one": "Waiting on {{name}}",
+      "many": "Waiting on {{total}} to accept"
+    },
+    "clearA11y": "Clear {{title}} from home",
+    "invite": "<from>{{name}}</from><plain> invited you</plain><bonus>  ·  +{{bonus}} bonus</bonus>",
+    "freeSlot": "Free a slot to join",
+    "rematchA11y": "Run {{title}} back",
+    "groupTotal": "Group total",
+    "youFinished": "You finished",
+    "yourPart": "Your part",
+    "today": "<label>Today </label>{{value}}",
+    "pacerAhead": "Pacer’s ahead",
+    "bonus": "+{{bonus}} bonus"
+  },
+  "celebration": {
+    "title": "{{title}} — done together.",
+    "titleSettled": "{{title}} — that's a wrap.",
+    "subtitle": {
+      "settledWith_one": "You + {{count}} friend finished — bonus banked",
+      "settledWith_other": "You + {{count}} friends finished — bonus banked",
+      "settledSolo": "You finished it — points banked",
+      "with_one": "You + {{count}} friend finished together",
+      "with_other": "You + {{count}} friends finished together",
+      "solo": "You finished — bonus grows as friends finish"
+    },
+    "base": "{{points}} base",
+    "baseBonus": "{{points}} base<bonus>  +{{bonus}} group bonus</bonus>",
+    "total": "Total balance <num>{{points}} pts</num>"
+  },
+  "openBoard": {
+    "takeFailed": "Couldn’t take that challenge",
+    "fallbackCreator": "A POWR member"
+  }
+}

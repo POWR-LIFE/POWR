@@ -1,10 +1,12 @@
+import { t as translate } from 'i18next';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 /**
  * What a member sees when a render error takes the tree down.
  *
- * IT IMPORTS ONE MODULE: react-native. No GeometricBackground (which drags
+ * IT IMPORTS TWO MODULES: react-native, and the bare i18next library for its
+ * copy (see copy() below). No GeometricBackground (which drags
  * expo-linear-gradient and react-native-svg in), no image asset, no safe-area
  * hook, no animation, no context, no data. There is no error boundary above
  * this component — it IS the boundary's fallback — so anything that throws in
@@ -33,6 +35,26 @@ const FONT_BOLD = 'Outfit_700Bold';
  *  that admits it. */
 const MAX_RETRIES = 2;
 
+/**
+ * The member's language when the catalogs are up, the English literal when
+ * they aren't. Read through bare i18next — pure JS, nothing native, and the
+ * same instance lib/i18n initialises at the top of app/_layout — never through
+ * lib/i18n (AsyncStorage, expo-localization) or useTranslation (no hook that
+ * could misbehave here). Before init t() returns undefined, a missing key comes
+ * back as the key (namespace stripped), and anything that throws lands in the
+ * catch: each of those falls back to English, so this can't take the screen
+ * down.
+ */
+function copy(key: string, english: string): string {
+  try {
+    const text = translate(key);
+    const bare = key.slice(key.indexOf(':') + 1);
+    return typeof text === 'string' && text !== '' && text !== key && text !== bare ? text : english;
+  } catch {
+    return english;
+  }
+}
+
 type Props = {
   error?: unknown;
   onRetry?: () => void;
@@ -53,23 +75,23 @@ export default function CrashRecoveryScreen({ onRetry }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.eyebrow}>SOMETHING BROKE</Text>
+      <Text style={styles.eyebrow}>{copy('nudges:crash.eyebrow', 'SOMETHING BROKE')}</Text>
       <Text style={styles.headline}>
-        That didn&rsquo;t load.{'\n'}
-        <Text style={styles.headlineGold}>We&rsquo;ve got it.</Text>
+        {copy('nudges:crash.headline', 'That didn’t load.')}{'\n'}
+        <Text style={styles.headlineGold}>{copy('nudges:crash.headlineGold', 'We’ve got it.')}</Text>
       </Text>
       <Text style={styles.body}>
-        The problem was recorded and sent to us. Your points and your streak are untouched.
+        {copy('nudges:crash.body', 'The problem was recorded and sent to us. Your points and your streak are untouched.')}
       </Text>
 
       {exhausted ? (
-        <Text style={styles.terminal}>Close POWR and open it again.</Text>
+        <Text style={styles.terminal}>{copy('nudges:crash.terminal', 'Close POWR and open it again.')}</Text>
       ) : (
         <>
           <Pressable style={styles.primaryButton} onPress={handleRetry} accessibilityRole="button">
-            <Text style={styles.primaryLabel}>TRY AGAIN</Text>
+            <Text style={styles.primaryLabel}>{copy('nudges:crash.retry', 'TRY AGAIN')}</Text>
           </Pressable>
-          <Text style={styles.caption}>Still stuck? Close POWR and open it again.</Text>
+          <Text style={styles.caption}>{copy('nudges:crash.caption', 'Still stuck? Close POWR and open it again.')}</Text>
         </>
       )}
     </View>

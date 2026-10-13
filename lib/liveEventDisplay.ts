@@ -1,4 +1,5 @@
 import type { LiveEvent } from '@/lib/api/liveEvents';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 
 /**
  * Shared display formatting for live-event surfaces (home card, register
@@ -6,8 +7,17 @@ import type { LiveEvent } from '@/lib/api/liveEvents';
  * reads — especially the half-open [start, end) boundary.
  */
 
+/**
+ * The locale event dates are written in. English keeps the phone's own format
+ * (undefined), exactly as it always has; any other language on screen writes
+ * its dates in that language, even on an English phone.
+ */
+function dateLocale(): string | undefined {
+    return i18n.language === 'en' ? undefined : getFormatLocale();
+}
+
 export function shortDate(iso: string): string {
-    return new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    return new Date(iso).toLocaleDateString(dateLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 /** The window is half-open [start, end) — show the last day people can score, not the boundary. */
@@ -33,8 +43,8 @@ export function scoringLine(
     event: Pick<LiveEvent, 'status' | 'window_start_at' | 'window_end_at'>,
 ): string {
     return event.status === 'scheduled' || event.status === 'announced'
-        ? `Scoring starts ${shortDate(event.window_start_at)}`
-        : `Scoring ends ${lastDayOf(event.window_end_at)}`;
+        ? i18n.t('events:display.scoringStarts', { date: shortDate(event.window_start_at) })
+        : i18n.t('events:display.scoringEnds', { date: lastDayOf(event.window_end_at) });
 }
 
 /** A Coming soon event. One predicate so no surface tests the raw status. */
@@ -49,9 +59,21 @@ export function isComingSoon(event: Pick<LiveEvent, 'status'>): boolean {
  * the past would read as "you missed it".
  */
 export function registrationLine(event: Pick<LiveEvent, 'registration_opens_at'>): string {
+    const date = registrationOpensOn(event);
+    return date
+        ? i18n.t('events:display.registrationOpensOn', { date })
+        : i18n.t('events:display.registrationOpensSoon');
+}
+
+/**
+ * The day in [[registrationLine]], or null where it says "soon". Exposed so a
+ * surface that words it differently (a status line, a card's fact) still opens
+ * on the same day.
+ */
+export function registrationOpensOn(event: Pick<LiveEvent, 'registration_opens_at'>): string | null {
     const at = event.registration_opens_at;
-    if (!at || new Date(at).getTime() <= Date.now()) return 'Registration opens soon';
-    return `Registration opens ${shortDate(at)}`;
+    if (!at || new Date(at).getTime() <= Date.now()) return null;
+    return shortDate(at);
 }
 
 /** Local wall-clock as a flyer writes it: "6pm", "6:30pm". */
@@ -151,7 +173,7 @@ export function eventNightLine(
 ): string | null {
     if (!event.doors_open_at) return null;
     const from = new Date(event.doors_open_at);
-    const day = from.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    const day = from.toLocaleDateString(dateLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
     const dateOnly = isDateOnly(from);
 
     const to = event.doors_close_at ? new Date(event.doors_close_at) : null;
@@ -179,12 +201,12 @@ export function eventNightLine(
  * at the wrong date in the same way the bare start date was.
  */
 export function eventStatusChip(event: Pick<LiveEvent, 'status' | 'window_start_at'>): string {
-    if (event.status === 'announced') return 'COMING SOON';
-    if (event.status !== 'scheduled') return 'LIVE NOW';
+    if (event.status === 'announced') return i18n.t('events:display.chip.comingSoon');
+    if (event.status !== 'scheduled') return i18n.t('events:display.chip.liveNow');
     const days = Math.max(0, Math.ceil((new Date(event.window_start_at).getTime() - Date.now()) / 86_400_000));
-    if (days === 0) return 'SCORING TODAY';
-    if (days === 1) return 'SCORING TOMORROW';
-    return `SCORING IN ${days} DAYS`;
+    if (days === 0) return i18n.t('events:display.chip.scoringToday');
+    if (days === 1) return i18n.t('events:display.chip.scoringTomorrow');
+    return i18n.t('events:display.chip.scoringInDays', { days });
 }
 
 /** Promo media is one URL that may be a video or a still — route by extension. */
@@ -200,7 +222,7 @@ export function isVideoUrl(url: string | null | undefined): boolean {
  */
 export function consentLine(event: Pick<LiveEvent, 'venue'>): string | null {
     if (!event.venue?.name) return null;
-    return `By registering, your name and email are shared with ${event.venue.name} to arrange your booking.`;
+    return i18n.t('events:display.consent', { venue: event.venue.name });
 }
 
 /**
@@ -267,8 +289,8 @@ export function splitStartLine<T extends { points: number }>(rows: T[]): { racin
 export function inviteRewardLine(
     event: Pick<LiveEvent, 'invite_bonus_points' | 'reward_referrals_on_signup'>,
 ): string {
-    const n = event.invite_bonus_points;
+    const points = event.invite_bonus_points;
     return event.reward_referrals_on_signup
-        ? `You get +${n} POWR the moment a friend joins with your code. They earn their +${n} on their first verified workout.`
-        : `You each get +${n} POWR when a friend joins with your code and logs their first verified workout.`;
+        ? i18n.t('events:display.inviteRewardOnSignup', { points })
+        : i18n.t('events:display.inviteRewardOnWorkout', { points });
 }

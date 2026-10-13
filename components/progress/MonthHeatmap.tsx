@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { localDateStr } from '@/lib/api/activity';
@@ -9,7 +10,12 @@ const TEXT = '#F2F2F2';
 const MUTED = 'rgba(255,255,255,0.25)';
 const DIM = 'rgba(255,255,255,0.45)';
 
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+/** Weekday initials across the grid header, Monday first. */
+const DAY_INITIAL_KEYS = [
+    'progress:days.initial.mon', 'progress:days.initial.tue', 'progress:days.initial.wed',
+    'progress:days.initial.thu', 'progress:days.initial.fri', 'progress:days.initial.sat',
+    'progress:days.initial.sun',
+] as const;
 
 /**
  * One day in the month grid. `date` is a LOCAL date key (see localDateStr) —
@@ -52,14 +58,15 @@ export function MonthHeatmap({
     /** One tap opens that day's breakdown; there is no deselect. */
     onSelect: (date: string) => void;
 }) {
+    const { t } = useTranslation();
     const today = localDateStr(new Date());
 
     return (
         <>
             <View style={styles.heatmapRow}>
-                {DAY_LABELS.map(d => (
-                    <View key={d} style={styles.heatmapCellCompact}>
-                        <Text style={styles.heatmapHeaderText}>{d.charAt(0)}</Text>
+                {DAY_INITIAL_KEYS.map(key => (
+                    <View key={key} style={styles.heatmapCellCompact}>
+                        <Text style={styles.heatmapHeaderText}>{t(key)}</Text>
                     </View>
                 ))}
             </View>
@@ -86,7 +93,7 @@ export function MonthHeatmap({
                                     onPress: () => onSelect(cell.date),
                                     hitSlop: 6,
                                     accessibilityRole: 'button',
-                                    accessibilityLabel: `${cell.date} — see what you earned`,
+                                    accessibilityLabel: t('progress:chart.seeEarned', { day: cell.date }),
                                 } : {})}
                             >
                                 <View style={[
@@ -120,13 +127,14 @@ export function MonthHeatmap({
 
 /** The Less▪▪▪More scale, shown under ramps that have more than two stops. */
 export function HeatmapLegend({ colours }: { colours: string[] }) {
+    const { t } = useTranslation();
     return (
         <View style={styles.heatmapLegend}>
-            <Text style={styles.heatmapLegendLabel}>Less</Text>
+            <Text style={styles.heatmapLegendLabel}>{t('progress:chart.less')}</Text>
             {colours.map((c, i) => (
                 <View key={i} style={[styles.heatmapLegendDot, { backgroundColor: c }]} />
             ))}
-            <Text style={styles.heatmapLegendLabel}>More</Text>
+            <Text style={styles.heatmapLegendLabel}>{t('progress:chart.more')}</Text>
         </View>
     );
 }

@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import enDiscover from '../shared/i18n/en/app/discover.json';
+
 /**
  * Discover's location handling is a READ-only surface with two banner tiers:
  *  - foreground missing  → "Location is off"           → PermissionFixScreen 'location'
@@ -37,7 +39,10 @@ describe('discover.tsx location tiers', () => {
 
     it('renders both banner tiers with the primed screen kind driven by one state', () => {
         expect(src).toMatch(/<PermissionFixScreen kind=\{locationFix\}/);
-        expect(src).toMatch(/Automatic check-ins are off\./);
-        expect(src).toMatch(/Location is off\./);
+        // The copy lives in the catalog; the screen renders it by key.
+        expect(src).toMatch(/i18nKey="discover:location\.backgroundBanner"/);
+        expect(src).toMatch(/i18nKey="discover:location\.offBanner"/);
+        expect(enDiscover.location.backgroundBanner).toMatch(/Automatic check-ins are off\./);
+        expect(enDiscover.location.offBanner).toMatch(/Location is off\./);
     });
 });
