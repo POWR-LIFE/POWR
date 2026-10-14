@@ -82,7 +82,13 @@
     "copied": "Copié",
     "tapToCopy": "Touche pour copier",
     "useCodeAt": "Utiliser chez {{name}}",
-    "done": "Terminé"
+    "done": "Terminé",
+    "inStore": {
+      "label": "À UTILISER EN MAGASIN",
+      "hint": "Elle est dans ton portefeuille. Une fois en caisse, touche « Utiliser en magasin » et le personnel scanne ton bon.",
+      "hintAt": "Elle est dans ton portefeuille. Une fois en caisse chez {{partner}}, touche « Utiliser en magasin » et le personnel scanne ton bon.",
+      "goToWallet": "Ouvrir le portefeuille"
+    }
   },
   "wallet": {
     "title": "Portefeuille",
@@ -124,6 +130,23 @@
       "code": "Voici mon code POWR pour {{label}} : {{code}}",
       "codeWithLink": "Voici mon code POWR pour {{label}} : {{code}}\n{{url}}",
       "inStore": "J’ai gagné cette récompense avec POWR : {{label}}. Elle s’utilise en magasin."
+    },
+    "inStore": {
+      "label": "EN MAGASIN",
+      "orInStore": "OU UTILISE-LA EN MAGASIN",
+      "used": "Utilisée en magasin.",
+      "expired": "Cette récompense a expiré.",
+      "barcodeHint": "Montre le code-barres en caisse, le personnel le scanne comme n’importe quel coupon.",
+      "voucherHint_one": "Touche « Utiliser en magasin » une fois en caisse. Le bon reste ouvert {{count}} minute.",
+      "voucherHint_other": "Touche « Utiliser en magasin » une fois en caisse. Le bon reste ouvert {{count}} minutes.",
+      "siteHere": "{{site}} · tu es ici",
+      "siteDistance": "{{site}} · {{distance}}",
+      "barcodeA11y": "Afficher le code-barres en plein écran",
+      "use": "Utiliser en magasin",
+      "showAtTill": "Montrer en caisse",
+      "online": "En ligne",
+      "useOnline": "Utiliser en ligne",
+      "useOnlineAt": "Utiliser en ligne chez {{partner}}"
     }
   },
   "shareCard": {

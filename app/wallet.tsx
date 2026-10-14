@@ -80,6 +80,12 @@ function getNativeShare(): { open: (options: object) => Promise<unknown> } | nul
   }
 }
 
+/** "0.3 mi" / "350 m", written with the decimal mark of the language on screen ("0,3 mi"). */
+function siteDistance(metres: number): string {
+  const mark = (1.5).toLocaleString(getFormatLocale()).replace(/\d/g, '') || '.';
+  return formatDistance(metres).replace('.', mark);
+}
+
 /** Share text with the code spelled out, so recipients can copy-paste it. */
 function buildShareMessage(entry: WalletEntry): string {
   const title = entry.reward_title ?? i18n.t('rewards:wallet.rewardFallback');
@@ -198,7 +204,7 @@ function WalletCard({
       </View>
 
       {inStoreOnly ? null : usesBarcode && !inactive ? (
-        <Pressable onPress={tracked('wallet_show_till_barcode', () => onShowBarcode(entry))} accessibilityRole="button" accessibilityLabel="Show the barcode full screen">
+        <Pressable onPress={tracked('wallet_show_till_barcode', () => onShowBarcode(entry))} accessibilityRole="button" accessibilityLabel={t('rewards:wallet.inStore.barcodeA11y')}>
           <TillBarcode code={entry.code} format={inStore!.barcode_format} width={screenWidth - 64} barHeight={72} />
         </Pressable>
       ) : isAffiliate ? (
@@ -224,15 +230,15 @@ function WalletCard({
         <View style={[styles.inStoreBlock, alsoOnline && styles.inStoreBlockCompact]}>
           <View style={styles.inStoreHead}>
             <Ionicons name="storefront-outline" size={14} color={GOLD} />
-            <Text style={styles.inStoreLabel}>{alsoOnline ? 'OR USE IT IN STORE' : 'IN STORE'}</Text>
+            <Text style={styles.inStoreLabel}>{alsoOnline ? t('rewards:wallet.inStore.orInStore') : t('rewards:wallet.inStore.label')}</Text>
           </View>
           {inactive ? (
-            <Text style={styles.inStoreText}>{status === 'used' ? 'Used in store.' : 'This reward has expired.'}</Text>
+            <Text style={styles.inStoreText}>{status === 'used' ? t('rewards:wallet.inStore.used') : t('rewards:wallet.inStore.expired')}</Text>
           ) : !alsoOnline ? (
             <Text style={styles.inStoreText}>
               {usesBarcode
-                ? 'Show the barcode at the till and staff scan it like any coupon.'
-                : `Tap Use in store when you're at the till. The voucher stays open for ${inStore?.window_minutes ?? 5} minutes.`}
+                ? t('rewards:wallet.inStore.barcodeHint')
+                : t('rewards:wallet.inStore.voucherHint', { count: inStore?.window_minutes ?? 5 })}
             </Text>
           ) : null}
           {!inactive && sites.length > 0 && (
@@ -241,7 +247,11 @@ function WalletCard({
                 <View key={site.id} style={[styles.siteChip, here && styles.siteChipHere]}>
                   {here && <View style={styles.hereDot} />}
                   <Text style={[styles.siteChipText, here && { color: TEXT }]} numberOfLines={1}>
-                    {site.name}{here ? " · you're here" : distance != null ? ` · ${formatDistance(distance)}` : ''}
+                    {here
+                      ? t('rewards:wallet.inStore.siteHere', { site: site.name })
+                      : distance != null
+                        ? t('rewards:wallet.inStore.siteDistance', { site: site.name, distance: siteDistance(distance) })
+                        : site.name}
                   </Text>
                 </View>
               ))}
@@ -257,12 +267,12 @@ function WalletCard({
           {usesVoucher ? (
             <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={tracked('wallet_use_in_store', () => onUseInStore(entry))}>
               <Ionicons name="storefront-outline" size={14} color="#0a0a0a" />
-              <Text style={styles.primaryBtnText}>Use in store</Text>
+              <Text style={styles.primaryBtnText}>{t('rewards:wallet.inStore.use')}</Text>
             </Pressable>
           ) : usesBarcode ? (
             <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={tracked('wallet_show_till_barcode', () => onShowBarcode(entry))}>
               <Ionicons name="barcode-outline" size={15} color="#0a0a0a" />
-              <Text style={styles.primaryBtnText}>Show at till</Text>
+              <Text style={styles.primaryBtnText}>{t('rewards:wallet.inStore.showAtTill')}</Text>
             </Pressable>
           ) : entry.checkout_url ? (
             <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={tracked('wallet_open_checkout', openCheckout)}>
@@ -277,10 +287,10 @@ function WalletCard({
               style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.7 }]}
               onPress={tracked('wallet_open_checkout', openCheckout)}
               accessibilityRole="button"
-              accessibilityLabel={`Use online${partner ? ` at ${partner}` : ''}`}
+              accessibilityLabel={partner ? t('rewards:wallet.inStore.useOnlineAt', { partner }) : t('rewards:wallet.inStore.useOnline')}
             >
               <Ionicons name="open-outline" size={14} color={DIM} />
-              <Text style={styles.secondaryBtnText}>Online</Text>
+              <Text style={styles.secondaryBtnText}>{t('rewards:wallet.inStore.online')}</Text>
             </Pressable>
           )}
           <Pressable

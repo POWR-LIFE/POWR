@@ -82,7 +82,13 @@
     "copied": "Copied",
     "tapToCopy": "Tap to copy",
     "useCodeAt": "Use code at {{name}}",
-    "done": "Done"
+    "done": "Done",
+    "inStore": {
+      "label": "USE IT IN STORE",
+      "hint": "It’s in your wallet. When you’re at the till, tap Use in store and staff scan it.",
+      "hintAt": "It’s in your wallet. When you’re at the till at {{partner}}, tap Use in store and staff scan it.",
+      "goToWallet": "Go to wallet"
+    }
   },
   "wallet": {
     "title": "Wallet",
@@ -124,6 +130,23 @@
       "code": "Here's my {{label}} code from POWR: {{code}}",
       "codeWithLink": "Here's my {{label}} code from POWR: {{code}}\n{{url}}",
       "inStore": "Here's a {{label}} reward I earned with POWR. You use it in store."
+    },
+    "inStore": {
+      "label": "IN STORE",
+      "orInStore": "OR USE IT IN STORE",
+      "used": "Used in store.",
+      "expired": "This reward has expired.",
+      "barcodeHint": "Show the barcode at the till and staff scan it like any coupon.",
+      "voucherHint_one": "Tap Use in store when you're at the till. The voucher stays open for {{count}} minute.",
+      "voucherHint_other": "Tap Use in store when you're at the till. The voucher stays open for {{count}} minutes.",
+      "siteHere": "{{site}} · you're here",
+      "siteDistance": "{{site}} · {{distance}}",
+      "barcodeA11y": "Show the barcode full screen",
+      "use": "Use in store",
+      "showAtTill": "Show at till",
+      "online": "Online",
+      "useOnline": "Use online",
+      "useOnlineAt": "Use online at {{partner}}"
     }
   },
   "shareCard": {

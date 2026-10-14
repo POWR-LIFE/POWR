@@ -19,6 +19,7 @@ import enEvents from './en/app/events.json';
 import enHealth from './en/app/health.json';
 import enHelp from './en/app/help.json';
 import enHome from './en/app/home.json';
+import enInStore from './en/app/inStore.json';
 import enNotifications from './en/app/notifications.json';
 import enNudges from './en/app/nudges.json';
 import enOnboarding from './en/app/onboarding.json';
@@ -40,6 +41,7 @@ import esEvents from './es/app/events.json';
 import esHealth from './es/app/health.json';
 import esHelp from './es/app/help.json';
 import esHome from './es/app/home.json';
+import esInStore from './es/app/inStore.json';
 import esNotifications from './es/app/notifications.json';
 import esNudges from './es/app/nudges.json';
 import esOnboarding from './es/app/onboarding.json';
@@ -61,6 +63,7 @@ import frEvents from './fr/app/events.json';
 import frHealth from './fr/app/health.json';
 import frHelp from './fr/app/help.json';
 import frHome from './fr/app/home.json';
+import frInStore from './fr/app/inStore.json';
 import frNotifications from './fr/app/notifications.json';
 import frNudges from './fr/app/nudges.json';
 import frOnboarding from './fr/app/onboarding.json';
@@ -95,6 +98,7 @@ export const APP_NAMESPACES = [
   'share',
   'affiliate',
   'notifications',
+  'inStore',
 ] as const;
 export type AppNamespace = (typeof APP_NAMESPACES)[number];
 
@@ -121,6 +125,7 @@ export const APP_RESOURCES = {
     share: enShare,
     affiliate: enAffiliate,
     notifications: enNotifications,
+    inStore: enInStore,
   },
   fr: {
     common: frCommon,
@@ -144,6 +149,7 @@ export const APP_RESOURCES = {
     share: frShare,
     affiliate: frAffiliate,
     notifications: frNotifications,
+    inStore: frInStore,
   },
   es: {
     common: esCommon,
@@ -167,6 +173,7 @@ export const APP_RESOURCES = {
     share: esShare,
     affiliate: esAffiliate,
     notifications: esNotifications,
+    inStore: esInStore,
   },
 } satisfies Record<string, Partial<Record<AppNamespace, object>>>;
 

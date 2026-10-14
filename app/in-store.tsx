@@ -12,6 +12,7 @@ import {
 } from '@/lib/api/inStore';
 import type { WalletEntry } from '@/lib/api/rewards';
 import { tracked } from '@/lib/analytics';
+import { getFormatLocale } from '@/lib/i18n';
 import { quietFix, type QuietFix } from '@/lib/inStoreLocation';
 import { codeStep, formatTypedCode, parseInStoreScan, voucherQrPayload, voucherTypedCode } from '@/shared/inStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +22,7 @@ import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Animated,
@@ -63,18 +65,19 @@ const CARD = 'rgba(40,40,40,0.85)';
 
 type Phase = 'loading' | 'stand' | 'voucher' | 'swiped' | 'confirmed' | 'closed' | 'error' | 'barcode';
 
+// Translation keys, resolved at render.
 const ERROR_COPY: Record<InStoreErrorCode, { title: string; body: string }> = {
-  ALREADY_USED: { title: 'Already used', body: 'This reward has been used. It’s in your wallet history.' },
-  EXPIRED: { title: 'Reward expired', body: 'This reward passed its use-by date.' },
-  NOT_ACTIVE: { title: 'Not available', body: 'This reward is no longer in your wallet.' },
-  NOT_FOUND: { title: 'Not found', body: 'We couldn’t find this reward in your wallet.' },
-  NOT_IN_STORE: { title: 'Not an in-store reward', body: 'This one isn’t set up for use in store any more. Use it from your wallet.' },
-  NOT_SIGNED_IN: { title: 'Signed out', body: 'Sign in again to use your reward.' },
-  STAND_REQUIRED: { title: 'Scan the stand', body: 'Scan the POWR stand on the counter.' },
-  STAND_OTHER_SHOP: { title: 'Different shop', body: 'That stand belongs to a different shop.' },
-  STAND_INVALID: { title: 'Stand not recognised', body: 'That stand has been replaced. Ask staff for the new one.' },
-  CLOSED: { title: 'Voucher closed', body: 'Open it again when you’re at the till.' },
-  UNKNOWN: { title: 'Couldn’t open the voucher', body: 'Check your connection and try again.' },
+  ALREADY_USED: { title: 'inStore:errors.alreadyUsed.title', body: 'inStore:errors.alreadyUsed.body' },
+  EXPIRED: { title: 'inStore:errors.expired.title', body: 'inStore:errors.expired.body' },
+  NOT_ACTIVE: { title: 'inStore:errors.notActive.title', body: 'inStore:errors.notActive.body' },
+  NOT_FOUND: { title: 'inStore:errors.notFound.title', body: 'inStore:errors.notFound.body' },
+  NOT_IN_STORE: { title: 'inStore:errors.notInStore.title', body: 'inStore:errors.notInStore.body' },
+  NOT_SIGNED_IN: { title: 'inStore:errors.notSignedIn.title', body: 'inStore:errors.notSignedIn.body' },
+  STAND_REQUIRED: { title: 'inStore:errors.standRequired.title', body: 'inStore:errors.standRequired.body' },
+  STAND_OTHER_SHOP: { title: 'inStore:errors.standOtherShop.title', body: 'inStore:errors.standOtherShop.body' },
+  STAND_INVALID: { title: 'inStore:errors.standInvalid.title', body: 'inStore:errors.standInvalid.body' },
+  CLOSED: { title: 'inStore:errors.closed.title', body: 'inStore:errors.closed.body' },
+  UNKNOWN: { title: 'inStore:errors.unknown.title', body: 'inStore:errors.unknown.body' },
 };
 
 const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
@@ -85,11 +88,25 @@ const hms = (ms: number) => {
 const initials = (label: string) =>
   label.split(/\s+/).map((p) => p.replace(/[^A-Za-z0-9\u00C0-\u024F]/g, '').charAt(0)).join('').slice(0, 2).toUpperCase() || 'P';
 
+// The server's own English: member_label falls back to this, and member_since
+// is Postgres to_char(…, 'Mon YYYY'), whose month names are always English.
+const SERVER_MEMBER_FALLBACK = 'POWR member';
+const SERVER_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Oct 2025" as the server wrote it in English; other languages get their own month name. */
+function memberSinceLabel(raw: string, language: string): string {
+  const m = /^([A-Za-z]{3}) (\d{4})$/.exec(raw.trim());
+  const month = m ? SERVER_MONTHS.indexOf(m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase()) : -1;
+  if (language === 'en' || !m || month < 0) return raw;
+  return new Date(Number(m[2]), month, 1).toLocaleDateString(getFormatLocale(), { month: 'short', year: 'numeric' });
+}
+
 export default function InStoreScreen() {
   const { redemption, mode } = useLocalSearchParams<{ redemption: string; mode?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState<InStoreErrorCode>('UNKNOWN');
@@ -142,10 +159,10 @@ export default function InStoreScreen() {
       } else if (stand && (code === 'STAND_INVALID' || code === 'STAND_OTHER_SHOP')) {
         const named = err instanceof InStoreError && code === 'STAND_OTHER_SHOP' && err.rewardShop
           ? (err.standShop
-            ? `That stand is for ${err.standShop}. This reward is for ${err.rewardShop}.`
-            : `That stand isn’t one of ${err.rewardShop}’s. Look for the POWR stand on their counter.`)
+            ? t('inStore:stand.otherShopNamed', { standShop: err.standShop, rewardShop: err.rewardShop })
+            : t('inStore:stand.notRewardShop', { shop: err.rewardShop }))
           : null;
-        setStandHint(named ?? ERROR_COPY[code].body);
+        setStandHint(named ?? t(ERROR_COPY[code].body));
         setPhase('stand');
       } else {
         setError(code);
@@ -154,7 +171,7 @@ export default function InStoreScreen() {
     } finally {
       setBusy(false);
     }
-  }, [redemption, applyVoucher]);
+  }, [redemption, applyVoucher, t]);
 
   useEffect(() => {
     let live = true;
@@ -188,12 +205,12 @@ export default function InStoreScreen() {
   useEffect(() => {
     if (phase !== 'voucher' || !voucher) return;
     const id = voucher.voucher_id;
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       inStoreVoucherStatus(id).then((v) => {
         if (v.status !== 'open' || v.closed) applyVoucher(v);
       }).catch(() => {});
     }, 2500);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, [phase, voucher, applyVoucher]);
 
   const swipe = useCallback(async () => {
@@ -215,7 +232,7 @@ export default function InStoreScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
-        <Pressable onPress={close} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close" hitSlop={8}>
+        <Pressable onPress={close} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel={t('inStore:close')} hitSlop={8}>
           <Ionicons name="close" size={22} color={TEXT} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>{shopLine || entry?.partner_name || ''}</Text>
@@ -223,7 +240,7 @@ export default function InStoreScreen() {
       </View>
 
       {phase === 'loading' && (
-        <View style={styles.centered}><ActivityIndicator color={GOLD} /><Text style={styles.dimText}>Opening your voucher…</Text></View>
+        <View style={styles.centered}><ActivityIndicator color={GOLD} /><Text style={styles.dimText}>{t('inStore:loading')}</Text></View>
       )}
 
       {phase === 'stand' && (
@@ -245,10 +262,15 @@ export default function InStoreScreen() {
         <Outcome
           icon="checkmark"
           tone={GREEN}
-          label="RECORDED"
-          title={voucher.reward_title ?? entry?.reward_title ?? 'Reward'}
-          body={`Staff swiped it at ${voucher.swiped_at ? hms(Date.parse(voucher.swiped_at)) : 'the till'}. Enjoy it.`}
-          rows={[voucher.site_name ? ['SHOP', voucher.site_name] : null, ['CHECKED BY', 'Staff swipe']]}
+          label={t('inStore:outcome.recorded')}
+          title={voucher.reward_title ?? entry?.reward_title ?? t('inStore:rewardFallback')}
+          body={voucher.swiped_at
+            ? t('inStore:outcome.swipedAt', { time: hms(Date.parse(voucher.swiped_at)) })
+            : t('inStore:outcome.swipedAtTill')}
+          rows={[
+            voucher.site_name ? [t('inStore:outcome.shop'), voucher.site_name] : null,
+            [t('inStore:outcome.checkedBy'), t('inStore:outcome.staffSwipe')],
+          ]}
           onDone={close}
         />
       )}
@@ -257,13 +279,15 @@ export default function InStoreScreen() {
         <Outcome
           icon="checkmark"
           tone={GREEN}
-          label="CONFIRMED"
-          title={voucher.reward_title ?? entry?.reward_title ?? 'Reward'}
-          body={`${voucher.brand_name ?? 'The shop'} scanned your voucher.`}
+          label={t('inStore:outcome.confirmed')}
+          title={voucher.reward_title ?? entry?.reward_title ?? t('inStore:rewardFallback')}
+          body={voucher.brand_name
+            ? t('inStore:outcome.scanned', { shop: voucher.brand_name })
+            : t('inStore:outcome.scannedNoName')}
           rows={[
-            voucher.confirm_site_name ?? voucher.site_name ? ['SHOP', (voucher.confirm_site_name ?? voucher.site_name) as string] : null,
-            voucher.confirmed_at ? ['TIME', hms(Date.parse(voucher.confirmed_at)).slice(0, 5)] : null,
-            ['CHECKED BY', voucher.confirmed_by === 'manager' ? 'Manager scan' : 'Staff scan'],
+            voucher.confirm_site_name ?? voucher.site_name ? [t('inStore:outcome.shop'), (voucher.confirm_site_name ?? voucher.site_name) as string] : null,
+            voucher.confirmed_at ? [t('inStore:outcome.time'), hms(Date.parse(voucher.confirmed_at)).slice(0, 5)] : null,
+            [t('inStore:outcome.checkedBy'), voucher.confirmed_by === 'manager' ? t('inStore:outcome.managerScan') : t('inStore:outcome.staffScan')],
           ]}
           onDone={close}
         />
@@ -272,28 +296,28 @@ export default function InStoreScreen() {
       {phase === 'closed' && (
         <View style={styles.centeredPad}>
           <Ionicons name="time-outline" size={40} color={MUTED} />
-          <Text style={styles.outcomeTitle}>Voucher closed</Text>
-          <Text style={styles.outcomeBody}>Your reward is still in your wallet. Open it again when you’re at the till.</Text>
+          <Text style={styles.outcomeTitle}>{t('inStore:closed.title')}</Text>
+          <Text style={styles.outcomeBody}>{t('inStore:closed.body')}</Text>
           <Pressable style={({ pressed }) => [styles.primaryBtn, styles.wide, pressed && { opacity: 0.85 }]} disabled={busy}
             onPress={tracked('in_store_reopen', () => open())}>
-            {busy ? <ActivityIndicator color="#0a0a0a" /> : <Text style={styles.primaryBtnText}>Open again</Text>}
+            {busy ? <ActivityIndicator color="#0a0a0a" /> : <Text style={styles.primaryBtnText}>{t('inStore:closed.openAgain')}</Text>}
           </Pressable>
-          <Pressable onPress={close} style={styles.textBtn}><Text style={styles.textBtnText}>Not now</Text></Pressable>
+          <Pressable onPress={close} style={styles.textBtn}><Text style={styles.textBtnText}>{t('inStore:closed.notNow')}</Text></Pressable>
         </View>
       )}
 
       {phase === 'error' && (
         <View style={styles.centeredPad}>
           <Ionicons name="alert-circle-outline" size={40} color={MUTED} />
-          <Text style={styles.outcomeTitle}>{ERROR_COPY[error].title}</Text>
-          <Text style={styles.outcomeBody}>{ERROR_COPY[error].body}</Text>
+          <Text style={styles.outcomeTitle}>{t(ERROR_COPY[error].title)}</Text>
+          <Text style={styles.outcomeBody}>{t(ERROR_COPY[error].body)}</Text>
           {error === 'UNKNOWN' ? (
             <Pressable style={({ pressed }) => [styles.primaryBtn, styles.wide, pressed && { opacity: 0.85 }]} disabled={busy}
               onPress={() => { setPhase('loading'); void open(); }}>
-              <Text style={styles.primaryBtnText}>Try again</Text>
+              <Text style={styles.primaryBtnText}>{t('inStore:errors.tryAgain')}</Text>
             </Pressable>
           ) : null}
-          <Pressable onPress={close} style={styles.textBtn}><Text style={styles.textBtnText}>Back to wallet</Text></Pressable>
+          <Pressable onPress={close} style={styles.textBtn}><Text style={styles.textBtnText}>{t('inStore:errors.backToWallet')}</Text></Pressable>
         </View>
       )}
 
@@ -319,11 +343,12 @@ function LiveVoucher({
   onSwipe: () => void;
   onExpired: () => void;
 }) {
+  const { t, i18n } = useTranslation();
   const [now, setNow] = useState(() => Date.now() + offsetRef.current);
   const expiredFired = useRef(false);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now() + offsetRef.current), 250);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now() + offsetRef.current), 250);
+    return () => clearInterval(timer);
   }, [offsetRef]);
 
   const leftMs = Math.max(0, Date.parse(voucher.expires_at) - now);
@@ -338,6 +363,7 @@ function LiveVoucher({
   const qrIn = stepSeconds - (Math.floor(now / 1000) % stepSeconds);
   const leftS = Math.ceil(leftMs / 1000);
   const showQr = voucher.check === 'staff_scan';
+  const memberName = voucher.member_label === SERVER_MEMBER_FALLBACK ? t('inStore:voucher.memberFallback') : voucher.member_label;
 
   return (
     <ScrollView contentContainerStyle={styles.voucherScroll} bounces={false}>
@@ -345,23 +371,27 @@ function LiveVoucher({
       <View style={styles.voucherBody}>
         <View style={styles.memberRow}>
           <Pulse>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{initials(voucher.member_label)}</Text></View>
+            <View style={styles.avatar}><Text style={styles.avatarText}>{initials(memberName)}</Text></View>
           </Pulse>
           <View style={{ flex: 1, gap: 3 }}>
-            <Text style={styles.memberName} numberOfLines={1}>{voucher.member_label}</Text>
-            {voucher.member_since ? <Text style={styles.memberMeta}>POWR MEMBER SINCE {voucher.member_since.toUpperCase()}</Text> : null}
+            <Text style={styles.memberName} numberOfLines={1}>{memberName}</Text>
+            {voucher.member_since ? (
+              <Text style={styles.memberMeta}>
+                {t('inStore:voucher.memberSince', { since: memberSinceLabel(voucher.member_since, i18n.language).toUpperCase() })}
+              </Text>
+            ) : null}
           </View>
         </View>
 
-        <Text style={styles.rewardTitle} numberOfLines={2}>{voucher.reward_title ?? 'Your reward'}</Text>
+        <Text style={styles.rewardTitle} numberOfLines={2}>{voucher.reward_title ?? t('inStore:yourReward')}</Text>
 
         {showQr ? (
           <View style={styles.qrWrap}>
-            <View style={styles.qrCard} accessible accessibilityLabel={`Voucher code ${typed}`}>
+            <View style={styles.qrCard} accessible accessibilityLabel={t('inStore:voucher.codeA11y', { code: typed })}>
               <QRCode value={payload} size={196} color="#0a0a0a" backgroundColor="#FFFFFF" />
             </View>
             <View style={styles.qrMeta}>
-              <Text style={styles.metaLabel}>NEW CODE IN {qrIn}S</Text>
+              <Text style={styles.metaLabel}>{t('inStore:voucher.newCodeIn', { count: qrIn })}</Text>
               <Text style={styles.typedCode}>{typed}</Text>
             </View>
           </View>
@@ -371,11 +401,11 @@ function LiveVoucher({
 
         <View style={styles.timeRow}>
           <View style={styles.timeTile}>
-            <Text style={styles.metaLabel}>TIME NOW</Text>
+            <Text style={styles.metaLabel}>{t('inStore:voucher.timeNow')}</Text>
             <Text style={styles.timeValue}>{hms(now)}</Text>
           </View>
           <View style={styles.timeTile}>
-            <Text style={styles.metaLabel}>CLOSES IN</Text>
+            <Text style={styles.metaLabel}>{t('inStore:voucher.closesIn')}</Text>
             <Text style={[styles.timeValue, { color: GOLD }]}>{Math.floor(leftS / 60)}:{pad(leftS % 60)}</Text>
           </View>
         </View>
@@ -383,7 +413,7 @@ function LiveVoucher({
 
       <View style={styles.swipeArea}>
         <Text style={styles.swipeNote}>
-          {showQr ? 'No scanner at the till? Staff can swipe instead.' : 'Staff: check the time is moving, then swipe.'}
+          {showQr ? t('inStore:voucher.swipeNoteQr') : t('inStore:voucher.swipeNoteLook')}
         </Text>
         <SwipeToRedeem disabled={busy} onComplete={onSwipe} />
       </View>
@@ -392,6 +422,7 @@ function LiveVoucher({
 }
 
 function LiveClock({ now }: { now: number }) {
+  const { t } = useTranslation();
   const sheen = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(Animated.timing(sheen, { toValue: 1, duration: 2400, easing: Easing.linear, useNativeDriver: true }));
@@ -403,13 +434,14 @@ function LiveClock({ now }: { now: number }) {
       <Animated.View pointerEvents="none" style={[styles.sheen, {
         transform: [{ translateX: sheen.interpolate({ inputRange: [0, 1], outputRange: [-160, 420] }) }, { skewX: '-18deg' }],
       }]} />
-      <Text style={styles.metaLabel}>LIVE TIME · CHECK IT MOVES</Text>
+      <Text style={styles.metaLabel}>{t('inStore:voucher.liveTime')}</Text>
       <Text style={styles.lookClock}>{hms(now)}</Text>
     </View>
   );
 }
 
 function Marquee() {
+  const { t } = useTranslation();
   const x = useRef(new Animated.Value(0)).current;
   const [w, setW] = useState(0);
   useEffect(() => {
@@ -419,7 +451,7 @@ function Marquee() {
     loop.start();
     return () => loop.stop();
   }, [w, x]);
-  const text = 'LIVE VOUCHER · POWR · LIVE VOUCHER · POWR · LIVE VOUCHER · POWR · ';
+  const text = t('inStore:voucher.marquee').repeat(3);
   return (
     <View style={styles.marquee} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Animated.View style={{ flexDirection: 'row', transform: [{ translateX: x }] }}>
@@ -452,6 +484,7 @@ function Pulse({ children }: { children: React.ReactNode }) {
 const KNOB = 48;
 
 function SwipeToRedeem({ onComplete, disabled }: { onComplete: () => void; disabled: boolean }) {
+  const { t } = useTranslation();
   const [trackW, setTrackW] = useState(0);
   const x = useRef(new Animated.Value(0)).current;
   const nudge = useRef(new Animated.Value(0)).current;
@@ -494,12 +527,12 @@ function SwipeToRedeem({ onComplete, disabled }: { onComplete: () => void; disab
       onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
       accessible
       accessibilityRole="adjustable"
-      accessibilityLabel="Staff: swipe to redeem"
-      accessibilityHint="Double-tap to redeem this reward now"
+      accessibilityLabel={t('inStore:voucher.swipeA11y')}
+      accessibilityHint={t('inStore:voucher.swipeA11yHint')}
       accessibilityActions={[{ name: 'activate' }]}
       onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'activate') finish(); }}
     >
-      <Text style={styles.swipeText}>STAFF: SWIPE TO REDEEM</Text>
+      <Text style={styles.swipeText}>{t('inStore:voucher.swipe')}</Text>
       <Animated.View {...pan.panHandlers} style={[styles.swipeKnob, { transform: [{ translateX: Animated.add(x, nudge) }] }]}>
         <Ionicons name="arrow-forward" size={20} color="#0a0a0a" />
       </Animated.View>
@@ -522,6 +555,7 @@ function StandScanner({
   onStand: (standCode: string, key: string) => void;
   onHint: (h: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const [permission, requestPermission] = useCameraPermissions();
   const locked = useRef(false);
 
@@ -540,26 +574,28 @@ function StandScanner({
       return;
     }
     locked.current = true;
-    onHint('That’s not a POWR stand. Look for the POWR QR on the counter.');
+    onHint(t('inStore:stand.notAStand'));
     setTimeout(() => { locked.current = false; }, 2200);
-  }, [busy, onStand, onHint]);
+  }, [busy, onStand, onHint, t]);
 
   return (
     <ScrollView contentContainerStyle={styles.standScroll} bounces={false}>
-      <Text style={styles.stepLabel}>STEP 1 OF 2</Text>
+      <Text style={styles.stepLabel}>{t('inStore:stand.step', { step: 1, total: 2 })}</Text>
       <Text style={styles.standTitle}>
-        <Text style={{ fontWeight: '200' }}>Scan the stand </Text>
-        <Text style={{ fontWeight: '700', color: GOLD }}>at the till</Text>
+        <Trans
+          i18nKey="inStore:stand.title"
+          components={{ light: <Text style={{ fontWeight: '200' }} />, gold: <Text style={{ fontWeight: '700', color: GOLD }} /> }}
+        />
       </Text>
-      <Text style={styles.standBody}>{brand ? `${brand} asks for this` : 'The shop asks for this'}, so your voucher only opens inside the shop.</Text>
+      <Text style={styles.standBody}>{brand ? t('inStore:stand.bodyBrand', { brand }) : t('inStore:stand.body')}</Text>
 
       <View style={styles.viewfinder}>
         {permission?.granted ? (
           <CameraView style={StyleSheet.absoluteFill} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={onScan} />
         ) : permission && !permission.canAskAgain ? (
           <View style={styles.permBox}>
-            <Text style={styles.dimText}>Camera access is off for POWR.</Text>
-            <Pressable onPress={() => Linking.openSettings()} style={styles.ghostBtn}><Text style={styles.ghostBtnText}>Open settings</Text></Pressable>
+            <Text style={styles.dimText}>{t('inStore:stand.cameraOff')}</Text>
+            <Pressable onPress={() => Linking.openSettings()} style={styles.ghostBtn}><Text style={styles.ghostBtnText}>{t('inStore:stand.openSettings')}</Text></Pressable>
           </View>
         ) : (
           <View style={styles.permBox}><ActivityIndicator color={GOLD} /></View>
@@ -568,8 +604,8 @@ function StandScanner({
         {busy && <View style={styles.viewfinderBusy}><ActivityIndicator color={GOLD} /></View>}
       </View>
 
-      {hint ? <Text style={styles.standHint}>{hint}</Text> : <Text style={styles.dimTextCenter}>Point at the QR on the counter.</Text>}
-      <Text style={styles.dimTextCenter}>No stand on the counter? Ask a member of staff.</Text>
+      {hint ? <Text style={styles.standHint}>{hint}</Text> : <Text style={styles.dimTextCenter}>{t('inStore:stand.point')}</Text>}
+      <Text style={styles.dimTextCenter}>{t('inStore:stand.noStand')}</Text>
     </ScrollView>
   );
 }
@@ -587,6 +623,7 @@ function Outcome({
   rows: ([string, string] | null)[];
   onDone: () => void;
 }) {
+  const { t } = useTranslation();
   const pop = useRef(new Animated.Value(0.6)).current;
   useEffect(() => {
     Animated.spring(pop, { toValue: 1, useNativeDriver: true, bounciness: 10 }).start();
@@ -610,41 +647,48 @@ function Outcome({
           ))}
         </View>
       )}
-      <Text style={styles.dimTextCenter}>It’s in your wallet history now.</Text>
+      <Text style={styles.dimTextCenter}>{t('inStore:outcome.inHistory')}</Text>
       <View style={{ flex: 1 }} />
       <Pressable style={({ pressed }) => [styles.primaryBtn, styles.wide, pressed && { opacity: 0.85 }]} onPress={onDone}>
-        <Text style={styles.primaryBtnText}>Done</Text>
+        <Text style={styles.primaryBtnText}>{t('inStore:done')}</Text>
       </Pressable>
     </ScrollView>
   );
 }
 
 function BarcodeView({ entry, info, onDone }: { entry: WalletEntry; info: InStoreInfo | null; onDone: () => void }) {
+  const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const expires = entry.expires_at
-    ? new Date(entry.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    ? new Date(entry.expires_at).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
   return (
     <ScrollView contentContainerStyle={styles.outcomeScroll} bounces={false}>
-      <Text style={styles.stepLabel}>SHOW AT THE TILL</Text>
+      <Text style={styles.stepLabel}>{t('inStore:barcode.showAtTill')}</Text>
       <Text style={[styles.standTitle, { textAlign: 'center' }]}>
-        <Text style={{ fontWeight: '200' }}>{entry.reward_title ?? 'Your reward'}</Text>
+        <Text style={{ fontWeight: '200' }}>{entry.reward_title ?? t('inStore:yourReward')}</Text>
       </Text>
-      {entry.partner_name ? <Text style={styles.outcomeBody}>Staff at {entry.partner_name} scan it like any other coupon.</Text> : null}
+      {entry.partner_name ? <Text style={styles.outcomeBody}>{t('inStore:barcode.staffAt', { shop: entry.partner_name })}</Text> : null}
       <View style={{ marginTop: 20 }}>
         <TillBarcode code={entry.code} format={info?.barcode_format ?? 'code128'} width={width - 48} />
       </View>
       <View style={styles.brightRow}>
         <Ionicons name="sunny-outline" size={16} color={DIM} />
-        <Text style={styles.dimText}>Turn your screen brightness up if the till can’t read it.</Text>
+        <Text style={styles.dimText}>{t('inStore:barcode.brightness')}</Text>
       </View>
       <View style={styles.rowsCard}>
-        <View style={[styles.row, styles.rowDivider]}><Text style={styles.metaLabel}>USES</Text><Text style={styles.rowValue}>One</Text></View>
-        <View style={styles.row}><Text style={styles.metaLabel}>USE BY</Text><Text style={styles.rowValue}>{expires ?? 'No expiry'}</Text></View>
+        <View style={[styles.row, styles.rowDivider]}>
+          <Text style={styles.metaLabel}>{t('inStore:barcode.uses')}</Text>
+          <Text style={styles.rowValue}>{t('inStore:barcode.one')}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.metaLabel}>{t('inStore:barcode.useBy')}</Text>
+          <Text style={styles.rowValue}>{expires ?? t('inStore:barcode.noExpiry')}</Text>
+        </View>
       </View>
       <View style={{ flex: 1 }} />
       <Pressable style={({ pressed }) => [styles.ghostBtn, styles.wide, pressed && { opacity: 0.7 }]} onPress={onDone}>
-        <Text style={styles.ghostBtnText}>Done</Text>
+        <Text style={styles.ghostBtnText}>{t('inStore:done')}</Text>
       </Pressable>
     </ScrollView>
   );

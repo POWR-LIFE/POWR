@@ -463,16 +463,18 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
 
         {reward.integrationType === 'IN_STORE' ? (
           <>
-            <Text style={styles.codeLabel}>USE IT IN STORE</Text>
+            <Text style={styles.codeLabel}>{t('rewards:redeem.inStore.label')}</Text>
             <Text style={styles.affiliateHint}>
-              It’s in your wallet. When you’re at the till{partnerLabel ? ` at ${partnerLabel}` : ''}, tap Use in store and staff scan it.
+              {partnerLabel
+                ? t('rewards:redeem.inStore.hintAt', { partner: partnerLabel })
+                : t('rewards:redeem.inStore.hint')}
             </Text>
             <Pressable
               style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
               onPress={tracked('redeem_open_wallet_in_store', onOpenWallet)}
             >
               <Ionicons name="wallet-outline" size={16} color="#0a0a0a" />
-              <Text style={styles.confirmBtnText}>Go to wallet</Text>
+              <Text style={styles.confirmBtnText}>{t('rewards:redeem.inStore.goToWallet')}</Text>
             </Pressable>
           </>
         ) : reward.integrationType === 'AFFILIATE' ? (

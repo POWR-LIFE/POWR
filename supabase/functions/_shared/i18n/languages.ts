@@ -9,10 +9,10 @@
 // can actually send.
 
 /** Languages pushes and emails go out in. */
-export const SERVER_LANGUAGES: readonly string[] = ["en"];
+export const SERVER_LANGUAGES: readonly string[] = ["en", "fr", "es"];
 
 /** Translated but not yet sent to anyone — previewable in email-previews. */
-export const SERVER_DRAFT_LANGUAGES: readonly string[] = ["fr", "es"];
+export const SERVER_DRAFT_LANGUAGES: readonly string[] = [];
 
 /** The language to send to someone whose profiles.language is `preferred`. */
 export function serverLanguage(preferred: string | null | undefined): string {

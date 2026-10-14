@@ -83,6 +83,8 @@ Terms that stay in English are product names. Use them exactly as written, with 
 | voucher (in-store) | bon | vale | |
 | staff (shop staff) | personnel / l’équipe | personal | |
 | scan | scanner | escanear | |
+| stand (the shop's counter QR) | présentoir | expositor | "Scan the stand" = "Scanne le présentoir" / "Escanea el expositor" |
+| swipe (staff swipe-to-redeem) | glisser pour valider | deslizar para canjear | Lines addressed to shop staff use the French infinitive ("Personnel : glisser…"), never tu |
 | wallet | portefeuille | cartera | |
 | challenge | défi | reto | |
 | leaderboard | classement | clasificación | |

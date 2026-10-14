@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Svg, { Rect } from 'react-native-svg';
@@ -21,12 +22,13 @@ export function TillBarcode({
   width: number;
   barHeight?: number;
 }) {
+  const { t } = useTranslation();
   const barcode = useMemo(() => tillBarcode(code, format), [code, format]);
 
   if (format === 'qr' || !barcode) {
     const size = Math.min(width, 240);
     return (
-      <View style={[styles.card, { width }]} accessible accessibilityLabel={`QR code ${code}`}>
+      <View style={[styles.card, { width }]} accessible accessibilityLabel={t('inStore:barcode.qrA11y', { code })}>
         <QRCode value={code} size={size - 32} color="#0a0a0a" backgroundColor="#FFFFFF" />
         <Text style={styles.digits}>{code}</Text>
       </View>
@@ -48,13 +50,14 @@ export function TillBarcode({
   const guardExtra = barcode.format === 'ean13' ? 10 : 0;
 
   return (
-    <View style={[styles.card, { width }]} accessible accessibilityLabel={`Barcode ${barcode.text}`}>
+    <View style={[styles.card, { width }]} accessible accessibilityLabel={t('inStore:barcode.barcodeA11y', { code: barcode.text })}>
       <Svg width={width - 32} height={barHeight + guardExtra}>
         {bars.map((b, i) => (
           <Rect key={i} x={b.x} y={0} width={b.w} height={b.guard ? barHeight + guardExtra : barHeight} fill="#0a0a0a" />
         ))}
       </Svg>
       <Text style={styles.digits}>{barcode.text}</Text>
+      {/* Symbology names, the same in every language. */}
       <Text style={styles.format}>{barcode.format === 'ean13' ? 'EAN-13' : 'CODE 128'}</Text>
     </View>
   );

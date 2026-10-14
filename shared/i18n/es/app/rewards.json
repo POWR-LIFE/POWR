@@ -82,7 +82,13 @@
     "copied": "Copiado",
     "tapToCopy": "Toca para copiar",
     "useCodeAt": "Usar código en {{name}}",
-    "done": "Hecho"
+    "done": "Hecho",
+    "inStore": {
+      "label": "ÚSALA EN TIENDA",
+      "hint": "Ya está en tu cartera. Cuando estés en caja, toca «Usar en tienda» y el personal escanea tu vale.",
+      "hintAt": "Ya está en tu cartera. Cuando estés en la caja de {{partner}}, toca «Usar en tienda» y el personal escanea tu vale.",
+      "goToWallet": "Ir a la cartera"
+    }
   },
   "wallet": {
     "title": "Cartera",
@@ -124,6 +130,23 @@
       "code": "Este es mi código de POWR para {{label}}: {{code}}",
       "codeWithLink": "Este es mi código de POWR para {{label}}: {{code}}\n{{url}}",
       "inStore": "He ganado esta recompensa con POWR: {{label}}. Se usa en tienda."
+    },
+    "inStore": {
+      "label": "EN TIENDA",
+      "orInStore": "O ÚSALA EN TIENDA",
+      "used": "Usada en tienda.",
+      "expired": "Esta recompensa ha caducado.",
+      "barcodeHint": "Enseña el código de barras en caja y el personal lo escanea como cualquier cupón.",
+      "voucherHint_one": "Toca «Usar en tienda» cuando estés en caja. El vale queda abierto {{count}} minuto.",
+      "voucherHint_other": "Toca «Usar en tienda» cuando estés en caja. El vale queda abierto {{count}} minutos.",
+      "siteHere": "{{site}} · estás aquí",
+      "siteDistance": "{{site}} · {{distance}}",
+      "barcodeA11y": "Ver el código de barras a pantalla completa",
+      "use": "Usar en tienda",
+      "showAtTill": "Enseñar en caja",
+      "online": "Online",
+      "useOnline": "Usar online",
+      "useOnlineAt": "Usar online en {{partner}}"
     }
   },
   "shareCard": {
