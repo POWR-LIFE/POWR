@@ -1,0 +1,266 @@
+{
+  "errors": {
+    "generic": "Se ha producido un error"
+  },
+  "copy": {
+    "button": "Copiar",
+    "linkCopied": "Enlace copiado",
+    "failed": "No se ha podido copiar. Seleccione el texto y cópielo."
+  },
+  "where": {
+    "online": {
+      "label": "Online",
+      "blurb": "Un código o un enlace para su web. Funciona desde hoy."
+    },
+    "inStore": {
+      "label": "En tienda",
+      "blurb": "Un vale en directo que los miembros enseñan en su caja."
+    },
+    "both": {
+      "label": "Ambos",
+      "blurb": "Una sola recompensa. Los miembros la usan como prefieran."
+    }
+  },
+  "check": {
+    "staffScan": {
+      "label": "Escaneo del personal",
+      "blurb": "El personal escanea el vale en powr.life/scan, desde cualquier móvil o una tablet en caja.",
+      "reports": "Confirmado"
+    },
+    "look": {
+      "label": "Comprobar la pantalla",
+      "blurb": "El personal comprueba el vale en directo y lo desliza en el móvil del miembro. No hay nada que configurar.",
+      "reports": "Mostrado, sin confirmar"
+    },
+    "tillBarcode": {
+      "label": "Código de barras en caja",
+      "blurb": "Los miembros enseñan uno de sus propios códigos de barras y su caja lo escanea. Para cadenas.",
+      "reports": "Confirmado con su informe de caja"
+    }
+  },
+  "describe": {
+    "onlineOnly": "Solo online",
+    "both": "Online + en tienda",
+    "inStore": "En tienda"
+  },
+  "time": {
+    "justNow": "ahora mismo",
+    "minutesAgo": "hace {{count}} min",
+    "hoursAgo": "hace {{count}} h",
+    "yesterday": "ayer",
+    "daysAgo_one": "hace {{count}} día",
+    "daysAgo_other": "hace {{count}} días"
+  },
+  "comingSoon": {
+    "title": "El canje en tienda llega pronto",
+    "body": "Los miembros podrán usar sus recompensas en su caja con un vale en directo. Le avisaremos cuando esté listo para sus tiendas."
+  },
+  "page": {
+    "eyebrow": "En tienda",
+    "title": "Sus tiendas",
+    "intro": "Los miembros canjean sus puntos por una recompensa y luego enseñan un vale en directo en su caja. Cambia cada pocos segundos, así que una captura de pantalla no sirve.",
+    "loadFailed": "No se han podido cargar sus tiendas",
+    "loadFailedBody": "{{error}} No ha cambiado nada en su cuenta."
+  },
+  "steps": {
+    "addShop": "Añadir una tienda",
+    "addShopHint": "Añada cada tienda con un marcador en el mapa, para que los miembros vean dónde usar sus recompensas.",
+    "turnOn": "Activar una recompensa",
+    "turnOnHint": "Elija una recompensa y seleccione En tienda o Ambos.",
+    "till": "Preparar la caja",
+    "tillHint": "Dé a cada persona del personal su propio enlace de escaneo, o abra la página de escaneo en una tablet de caja.",
+    "done": "Todo listo. Los miembros pueden usar sus recompensas en caja."
+  },
+  "tabs": {
+    "label": "En tienda",
+    "rewards": "Recompensas",
+    "sites": "Tiendas",
+    "staff": "Personal",
+    "scan": "Página de escaneo"
+  },
+  "rewards": {
+    "emptyTitle": "Aún no hay recompensas",
+    "emptyBody": "Primero cree una recompensa. Elija «En tienda» como forma de entrega y aparecerá aquí, lista para configurar.",
+    "create": "Crear una recompensa",
+    "notLive": "Inactiva",
+    "inStore": "En tienda",
+    "recommended": "Recomendado",
+    "reports": "En los informes: {{outcome}}"
+  },
+  "editor": {
+    "memberSteps": {
+      "claim": "Canjea sus puntos por la recompensa.",
+      "openAtTill": "En su caja, la abre y toca «Usar en tienda».",
+      "scanStand": "Escanea el expositor de POWR de su mostrador.",
+      "showForScan": "Enseña el vale en directo. Su personal lo escanea.",
+      "showForSwipe": "Enseña el vale en directo. Su personal lo comprueba y lo desliza.",
+      "showBarcode": "Enseña su código de barras. Su caja lo escanea.",
+      "orOnline": "O usa el código al pagar en su web.",
+      "online": "Usa el código al pagar en su web."
+    },
+    "needs": {
+      "scanPage": "powr.life/scan abierto en un móvil, o una tablet en caja",
+      "ownLink": "Un enlace de escaneo propio, desde la pestaña Personal",
+      "look": "Conocer la oferta y deslizar el vale en el móvil del miembro",
+      "barcode": "Nada nuevo. Su caja ya acepta estos códigos.",
+      "stand": "Un expositor de POWR impreso en cada mostrador (pestaña Tiendas)",
+      "online": "Nada. Todo ocurre al pagar en su web."
+    },
+    "pickShop": "Elija al menos una tienda, o todas.",
+    "saved": "Guardado. Los miembros ven el cambio al momento.",
+    "savedOnline": "Guardado. Esta recompensa es solo online.",
+    "whereTitle": "¿Dónde pueden usarla los miembros?",
+    "switchToInStore": "Los miembros dejarán de recibir un código para esta recompensa y enseñarán un vale en directo en su caja. Los códigos ya canjeados siguen funcionando.",
+    "onlineNeedsCodes": "Para usarla online hacen falta códigos. Cárguelos en Códigos promocionales antes de que los miembros la canjeen online.",
+    "checkTitle": "¿Cómo la comprueba su tienda?",
+    "barcodeType": "Tipo de código de barras que lee su caja",
+    "barcodeHelp": "Suba sus códigos en Códigos promocionales. Para confirmar cuáles se han usado, suba la lista de códigos usados de su caja en Códigos promocionales › Conciliar.",
+    "goPromoCodes": "Ir a Códigos promocionales",
+    "standLabel": "Los miembros escanean primero su expositor QR",
+    "standDetail": "Demuestra que el miembro está en la tienda antes de que se abra el vale. Imprima un expositor para cada tienda en la pestaña Tiendas.",
+    "spendLabel": "Pedir el importe al personal",
+    "spendDetail": "El personal puede anotar lo que ha gastado el miembro, para que vea lo que aporta la oferta. Es opcional.",
+    "windowLabel": "El vale queda abierto",
+    "minutes_one": "{{count}} minuto",
+    "minutes_other": "{{count}} minutos",
+    "windowHint": "Abrirlo no lo gasta. Si se acaba el tiempo, el miembro simplemente lo vuelve a abrir.",
+    "shopsTitle": "¿Qué tiendas?",
+    "noShops": "Aún no ha añadido ninguna tienda. <add>Añada una en Tiendas</add> para que los miembros vean dónde usarla.",
+    "allShops": "Todas las tiendas, incluidas las que añada más adelante",
+    "memberTitle": "Qué hace el miembro",
+    "staffTitle": "Qué necesita su personal"
+  },
+  "sites": {
+    "rotateConfirm": "¿Crear un expositor nuevo para {{name}}? El expositor que imprimió dejará de funcionar, así que imprima el nuevo y cámbielo enseguida.",
+    "rotated": "Nuevo expositor listo para imprimir",
+    "add": "Añadir una tienda",
+    "emptyTitle": "Aún no hay tiendas",
+    "emptyBody": "Añada cada tienda con su marcador en el mapa. Los miembros ven qué tiendas aceptan sus recompensas, y cada tienda tiene su propio expositor de mostrador.",
+    "noAddress": "Sin dirección",
+    "lastScan": "Último escaneo {{when}}",
+    "swipesNoScans": "Deslizados, aún sin escaneos",
+    "noVisits": "Aún sin visitas",
+    "mapPin": "Marcador en el mapa",
+    "pinSet": "Colocado",
+    "radius": "Los miembros a menos de {{radius}} m cuentan como dentro de la tienda.",
+    "edit": "Editar tienda",
+    "qrStand": "Expositor QR",
+    "standSize": "A5, para el mostrador. Único para esta tienda.",
+    "print": "Imprimir expositor",
+    "replaceTitle": "Sustituir un expositor perdido o copiado",
+    "newStand": "Nuevo expositor",
+    "rewardsHere": "Recompensas aquí",
+    "inStoreCount_one": "{{count}} en tienda",
+    "inStoreCount_other": "{{count}} en tienda",
+    "noneYet": "Ninguna todavía",
+    "turnOnHint": "Active una recompensa en la pestaña Recompensas."
+  },
+  "siteEditor": {
+    "noGeolocation": "Este navegador no puede compartir su ubicación.",
+    "locationFailed": "No se ha podido obtener su ubicación. Coloque el marcador en el mapa.",
+    "needName": "Ponga un nombre a la tienda",
+    "needPin": "Coloque un marcador en el mapa para esta tienda",
+    "added": "Tienda añadida",
+    "saved": "Tienda guardada",
+    "removeConfirm": "¿Eliminar {{name}}? Los miembros dejarán de verla y su expositor dejará de funcionar.",
+    "removed": "Tienda eliminada",
+    "addTitle": "Añadir una tienda",
+    "editTitle": "Editar {{name}}",
+    "name": "Nombre de la tienda",
+    "namePlaceholder": "p. ej., Malasaña",
+    "address": "Dirección",
+    "addressPlaceholder": "Calle, código postal",
+    "paste": "Pegar un enlace de Google Maps (opcional)",
+    "pastePlaceholder": "https://maps.google.com/… o 51.5246, -0.0786",
+    "useHere": "Estoy en la tienda ahora",
+    "mapLabel": "Tienda",
+    "radiusLabel": "Cuenta como dentro de la tienda a menos de",
+    "pinAt": "Marcador en {{lat}}, {{lng}}",
+    "pinHint": "Busque, haga clic en el mapa o pegue un enlace para colocar el marcador.",
+    "add": "Añadir tienda",
+    "save": "Guardar tienda",
+    "remove": "Eliminar tienda"
+  },
+  "staff": {
+    "needName": "Añada su nombre",
+    "reissueConfirm": "¿Crear un enlace nuevo para {{name}}? Su enlace anterior dejará de funcionar.",
+    "revokeConfirm": "¿Quitar a {{name}}? Su enlace de escaneo dejará de funcionar al momento.",
+    "removed": "Acceso de {{name}} eliminado",
+    "intro": "Cada persona tiene su propio enlace de escaneo. Lo abre una vez en su móvil y este lo recuerda. Un enlace de escaneo solo sirve para comprobar y confirmar vales: sin informes ni ajustes. Cada escaneo queda asociado a una persona y a una tienda.",
+    "name": "Nombre",
+    "namePlaceholder": "p. ej., Lucía",
+    "usualShop": "Tienda habitual",
+    "anyShop": "Cualquier tienda",
+    "make": "Crear enlace de escaneo",
+    "linkFor": "Enlace de escaneo de {{name}}",
+    "linkOnce": "Envíeselo ahora. Por seguridad, solo se muestra una vez; puede crear uno nuevo cuando quiera.",
+    "hideLink": "Ocultar enlace",
+    "listTitle": "Personal con enlace de escaneo",
+    "nobody": "Nadie todavía. Los usuarios con sesión iniciada en el portal siempre pueden escanear desde powr.life/scan.",
+    "lastScan": "Último escaneo {{when}}",
+    "openedNoScans": "Enlace abierto, aún sin escaneos",
+    "notOpened": "Enlace aún sin abrir",
+    "newLink": "Nuevo enlace",
+    "remove": "Quitar"
+  },
+  "scanTab": {
+    "phone": "En un móvil",
+    "phoneBody": "Cada persona del personal abre su enlace de escaneo una vez y listo. También puede abrirlo aquí mientras tenga la sesión iniciada.",
+    "openScanPage": "Abrir página de escaneo",
+    "tablet": "En una tablet en caja",
+    "tabletBody": "El modo quiosco hace dos cosas. Muestra un QR que cambia cada 30 segundos para que lo escaneen los miembros, y escanea sus vales con la cámara frontal. También muestra el recuento del día.",
+    "openKiosk": "Abrir modo quiosco"
+  },
+  "report": {
+    "loadFailed": "Ahora mismo no se han podido cargar las cifras en tienda.",
+    "title": "En tienda",
+    "outcome": {
+      "confirmed": "Confirmado",
+      "swiped": "Deslizado, sin confirmar",
+      "closed": "Cerrado sin usar",
+      "open": "Abierto ahora"
+    },
+    "tip": "{{label}} · {{n}} de {{total}} · {{pct}}",
+    "segmentA11y": "{{label}}: {{n}} de {{total}}, {{pct}}",
+    "opened": "Abiertos en caja",
+    "openedSub": "Recompensas que los miembros abrieron en sus tiendas",
+    "confirmed": "Confirmados",
+    "confirmedSub": "{{pct}} de los abiertos · escaneados por el personal",
+    "swiped": "Deslizados, sin confirmar",
+    "swipedSub": "Mostrados y deslizados, nunca escaneados",
+    "spend": "Gasto registrado",
+    "spendSub_one": "En {{count}} visita · media {{average}}",
+    "spendSub_other": "En {{count}} visitas · media {{average}}",
+    "spendNone": "El personal puede añadir el importe al escanear",
+    "breakdown_one": "Qué pasó con el vale abierto",
+    "breakdown_other": "Qué pasó con los {{count}} vales abiertos",
+    "byShop": "Por tienda",
+    "columns": {
+      "shop": "Tienda",
+      "opened": "Abiertos",
+      "confirmed": "Confirmados",
+      "swiped": "Solo deslizados",
+      "closed": "Cerrados sin usar",
+      "rate": "Tasa de confirmación",
+      "spend": "Gasto"
+    },
+    "latest": "Lo último en tienda",
+    "scannedBy": "escaneado por {{name}}",
+    "swipedOnPhone": "deslizado en el móvil del miembro",
+    "footnote": "Confirmado significa que su personal escaneó el vale. Deslizado significa que el personal lo deslizó en el móvil del miembro: lo contamos, pero no demuestra que se aplicara el descuento.",
+    "barcodes": "Códigos de barras de caja: <strong>{{issued}}</strong> entregados, <strong>{{used}}</strong> confirmados con su informe de caja.",
+    "barcodesReconcile": "Suba su lista de códigos usados en Códigos promocionales › Conciliar para actualizar esta cifra."
+  },
+  "stand": {
+    "docTitle": "Expositor de POWR · {{name}}",
+    "gone": "Esta tienda se ha eliminado o pertenece a otra marca.",
+    "print": "Imprimir",
+    "printHint": "A5, vertical. Use cartulina gruesa si puede.",
+    "headline": "¿Tienes una recompensa POWR?",
+    "headlineBold": "Escanea aquí, en caja.",
+    "stepOpen": "Abre POWR",
+    "stepWallet": "Cartera",
+    "stepUse": "Usar en tienda",
+    "footer": "EXPOSITOR {{code}} · POWR.LIFE"
+  }
+}

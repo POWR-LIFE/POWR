@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { ArrowLeft, ArrowRight, Calendar, Check, Lock, Moon, Plus, Smartphone, Upload, X } from 'lucide-react';
 import { useAuth } from '../../App';
+import i18n from '../../lib/i18n';
+import { serverErrorText } from '../../lib/serverErrors';
 import { useToast } from '../../lib/toast';
 import { Page, Card, Micro, PageTitle, Spinner, Empty, INPUT, LABEL, BTN_GOLD, BTN_GHOST, fmtNum } from '../../components/portal/ui';
 import {
@@ -10,12 +13,12 @@ import {
 } from './venueApi';
 import { BrandTile } from './VenuePartners';
 import {
-    ACTIVITIES, fmtDay, fmtDayTime, fromLocalInput, isVideo, isoDay, lastDay, lengthLabel, statusKey, toLocalInput, whatCounts, withGym,
+    ACTIVITIES, activityLabel, fmtDay, fmtDayTime, fromLocalInput, isVideo, isoDay, lastDay, lengthLabel, statusKey, toLocalInput, ukClock,
+    whatCounts, withGym,
 } from './eventUi';
 import { Preview as PushPreview, STANDINGS_HOURS, Switch } from './EventPushes';
 import { usePackage } from './packages';
 import { hourLabel, ordinal } from '../../../../shared/gymBoard.ts';
-import { ukTime } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
 import EventAppPreview from '../../components/EventAppPreview';
 
@@ -29,14 +32,25 @@ import EventAppPreview from '../../components/EventAppPreview';
 
 const DAY = 86_400_000;
 
+// title and hint are keys, translated where the rail renders them.
 const STEPS = [
-    { key: 'format',  title: 'Format',  hint: 'The kind of event' },
-    { key: 'when',    title: 'When',    hint: 'Name, dates, reveal' },
-    { key: 'scoring', title: 'Scoring', hint: 'What counts' },
-    { key: 'prizes',  title: 'Prizes',  hint: 'What they win' },
-    { key: 'promote', title: 'Promote', hint: 'Look and reach' },
-    { key: 'review',  title: 'Review',  hint: 'Check and save' },
+    { key: 'format',  title: 'venueEventBuilder:steps.format.title',  hint: 'venueEventBuilder:steps.format.hint' },
+    { key: 'when',    title: 'venueEventBuilder:steps.when.title',    hint: 'venueEventBuilder:steps.when.hint' },
+    { key: 'scoring', title: 'venueEventBuilder:steps.scoring.title', hint: 'venueEventBuilder:steps.scoring.hint' },
+    { key: 'prizes',  title: 'venueEventBuilder:steps.prizes.title',  hint: 'venueEventBuilder:steps.prizes.hint' },
+    { key: 'promote', title: 'venueEventBuilder:steps.promote.title', hint: 'venueEventBuilder:steps.promote.hint' },
+    { key: 'review',  title: 'venueEventBuilder:steps.review.title',  hint: 'venueEventBuilder:steps.review.hint' },
 ];
+
+/** An hour on the clock: "6pm" in English, "18:00" in French and Spanish (as ukClock). */
+function hourText(h) {
+    return (i18n.language || 'en') === 'en' ? hourLabel(h) : `${String(h).padStart(2, '0')}:00`;
+}
+
+/** A prize's place: "1st" … "5th" (the server takes five at most). */
+function placeText(n) {
+    return n >= 1 && n <= 5 ? i18n.t(`venueEventBuilder:prizes.places.${n}`) : ordinal(n);
+}
 
 // Once an event has started only its words and pictures can change
 // (gym_update_event), and the partner code, which goes out at the reveal;
@@ -200,50 +214,52 @@ function suggestedReveal(preview) {
 
 /** What stops a step from being done, in words; null when it's fine. */
 function checkStep(key, v, tpl, ctx) {
-    if (!tpl || !v) return key === 'format' ? 'Pick a format to start' : null;
+    if (!tpl || !v) return key === 'format' ? i18n.t('venueEventBuilder:problems.pickFormat') : null;
     switch (key) {
     case 'when': {
         const name = v.name.trim();
-        if (name.length < 3) return 'Give the event a name';
-        if (name.length > 48) return 'Keep the name to 48 characters';
+        if (name.length < 3) return i18n.t('venueEventBuilder:problems.nameShort');
+        if (name.length > 48) return i18n.t('venueEventBuilder:problems.nameLong');
         if (!ctx.datesLocked) {
-            if (!v.start_date) return 'Pick the first day';
-            if (v.start_date < isoDay(new Date())) return 'The first day can’t be in the past';
-            if (v.start_date > isoDay(new Date(Date.now() + 89 * DAY))) return 'Pick a first day in the next 90 days';
+            if (!v.start_date) return i18n.t('venueEventBuilder:problems.pickFirstDay');
+            if (v.start_date < isoDay(new Date())) return i18n.t('venueEventBuilder:problems.firstDayPast');
+            if (v.start_date > isoDay(new Date(Date.now() + 89 * DAY))) return i18n.t('venueEventBuilder:problems.firstDayFar');
         }
         if (v.reveal.mode === 'at') {
-            if (!v.reveal.at) return 'Pick when the winners are revealed';
+            if (!v.reveal.at) return i18n.t('venueEventBuilder:problems.pickReveal');
             const lock = ctx.lockAt;
             if (lock) {
                 const at = new Date(fromLocalInput(v.reveal.at)).getTime();
                 const l = new Date(lock).getTime();
                 if (at < l || at > l + 7 * DAY) {
-                    return `Reveal between ${fmtDayTime(lock)} and ${fmtDayTime(new Date(l + 7 * DAY).toISOString())}`;
+                    return i18n.t('venueEventBuilder:problems.revealWindow', {
+                        from: fmtDayTime(lock), to: fmtDayTime(new Date(l + 7 * DAY).toISOString()),
+                    });
                 }
             }
         }
         return null;
     }
     case 'scoring':
-        if (v.scoring === 'pick' && !v.activities.length) return 'Pick at least one activity';
+        if (v.scoring === 'pick' && !v.activities.length) return i18n.t('venueEventBuilder:problems.pickActivity');
         return null;
     case 'prizes': {
         const named = v.prizes.filter(p => p.label.trim());
-        if (!named.length) return 'Add at least one prize';
-        if (named.some(p => p.label.trim().length < 2)) return 'Give each prize a name of 2 characters or more';
-        if (v.prizes.some(p => !p.label.trim() && p.image_url)) return 'Give each prize photo a name';
+        if (!named.length) return i18n.t('venueEventBuilder:problems.addPrize');
+        if (named.some(p => p.label.trim().length < 2)) return i18n.t('venueEventBuilder:problems.prizeNameShort');
+        if (v.prizes.some(p => !p.label.trim() && p.image_url)) return i18n.t('venueEventBuilder:problems.prizePhotoName');
         if (v.partner_on) {
-            if (!v.partner_reward_id) return 'Pick the partner brand, or switch the partner code off';
+            if (!v.partner_reward_id) return i18n.t('venueEventBuilder:problems.pickPartner');
             // A brand already saved on the event stays, even if its codes have since run low.
             const pick = ctx.partners?.find(d => d.reward_id === v.partner_reward_id);
-            if (ctx.partners && !pick?.event_ok && v.partner_reward_id !== ctx.savedPartner) return 'That brand has no codes to give right now. Pick another';
+            if (ctx.partners && !pick?.event_ok && v.partner_reward_id !== ctx.savedPartner) return i18n.t('venueEventBuilder:problems.partnerNoCodes');
         }
         return null;
     }
     case 'promote': {
         const b = v.booking_url.trim();
-        if (b && !/^https:\/\/\S+\.\S+$/.test(b)) return 'A booking link starts with https://';
-        if (b.toLowerCase().includes('{email}')) return 'A booking link can’t ask for members’ email addresses';
+        if (b && !/^https:\/\/\S+\.\S+$/.test(b)) return i18n.t('venueEventBuilder:problems.bookingHttps');
+        if (b.toLowerCase().includes('{email}')) return i18n.t('venueEventBuilder:problems.bookingEmail');
         return null;
     }
     default:
@@ -254,11 +270,12 @@ function checkStep(key, v, tpl, ctx) {
 // ─── Pieces ────────────────────────────────────────────────────────────────
 
 function StepRail({ current, problems, reachable, onJump, formatLocked }) {
+    const { t } = useTranslation();
     const refs = useRef([]);
     // On a phone the rail scrolls sideways; keep the current step in view.
     useEffect(() => { refs.current[current]?.scrollIntoView?.({ block: 'nearest', inline: 'center' }); }, [current]);
     return (
-        <nav aria-label="Steps" className="lg:sticky lg:top-6">
+        <nav aria-label={t('venueEventBuilder:steps.aria')} className="lg:sticky lg:top-6">
             <ol className="flex lg:flex-col gap-1.5 overflow-x-auto -mx-5 px-5 sm:mx-0 sm:px-0" style={{ scrollbarWidth: 'none' }}>
                 {STEPS.map((s, i) => {
                     const on = i === current;
@@ -279,8 +296,8 @@ function StepRail({ current, problems, reachable, onJump, formatLocked }) {
                                     {locked ? <Lock size={11} /> : done ? <Check size={13} /> : i + 1}
                                 </span>
                                 <span className="min-w-0">
-                                    <span className={`block text-[11px] font-black uppercase tracking-[0.15em] ${on ? 'text-[#1A1A1A]' : can ? 'text-[#666]' : 'text-[#C4C4C0]'}`}>{s.title}</span>
-                                    <span className="hidden lg:block text-[11px] text-[#AAAAAA] mt-0.5">{s.hint}</span>
+                                    <span className={`block text-[11px] font-black uppercase tracking-[0.15em] ${on ? 'text-[#1A1A1A]' : can ? 'text-[#666]' : 'text-[#C4C4C0]'}`}>{t(s.title)}</span>
+                                    <span className="hidden lg:block text-[11px] text-[#AAAAAA] mt-0.5">{t(s.hint)}</span>
                                 </span>
                             </button>
                         </li>
@@ -301,11 +318,12 @@ function StepHead({ title, sub }) {
 }
 
 function Field({ label, optional, hint, children }) {
+    const { t } = useTranslation();
     return (
         <div>
             <div className={LABEL}>
                 {label}
-                {optional && <span className="normal-case tracking-normal font-bold text-[#CCCCCC]"> · optional</span>}
+                {optional && <span className="normal-case tracking-normal font-bold text-[#CCCCCC]">{` · ${t('venueEventBuilder:field.optional')}`}</span>}
             </div>
             {children}
             {hint && <p className="text-[11px] text-[#AAAAAA] leading-relaxed mt-2.5 max-w-2xl">{hint}</p>}
@@ -352,19 +370,20 @@ function Choice({ on, title, body, onPick, disabled, children }) {
 }
 
 function UploadButton({ accept, maxMb, prefix, onUploaded, onBusy, disabled, children }) {
+    const { t } = useTranslation();
     const toast = useToast();
     const [busy, setBusy] = useState(false);
     const onFile = async (e) => {
         const file = e.target.files?.[0];
         e.target.value = '';
         if (!file) return;
-        if (file.size > maxMb * 1024 * 1024) { toast.error(`Keep it under ${maxMb} MB`); return; }
+        if (file.size > maxMb * 1024 * 1024) { toast.error(t('venueEventBuilder:upload.tooBig', { mb: maxMb })); return; }
         setBusy(true);
         onBusy(1);
         try {
             onUploaded(await uploadPublicImage('reward-images', file, prefix));
         } catch (err) {
-            toast.error(err.message ?? 'Upload failed');
+            toast.error(serverErrorText(err, t('venueEventBuilder:upload.failed')));
         } finally {
             setBusy(false);
             onBusy(-1);
@@ -373,7 +392,7 @@ function UploadButton({ accept, maxMb, prefix, onUploaded, onBusy, disabled, chi
     const off = busy || disabled;
     return (
         <label className={`${BTN_GHOST} h-10 px-5 cursor-pointer ${off ? 'opacity-40 pointer-events-none' : ''}`}>
-            <Upload size={13} /> {busy ? 'Uploading…' : children}
+            <Upload size={13} /> {busy ? t('venueEventBuilder:upload.uploading') : children}
             <input type="file" accept={accept} className="hidden" onChange={onFile} disabled={off} />
         </label>
     );
@@ -389,20 +408,21 @@ function RemoveButton({ label, onClick, disabled }) {
 }
 
 function Schedule({ preview, error, finale, gymName }) {
+    const { t } = useTranslation();
     const box = 'p-4 sm:p-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-[12px]';
     if (error) return <div className={`${box} text-[#B91C1C]`}>{error}</div>;
-    if (!preview?.window_start_at) return <div className={`${box} text-[#999]`}>Pick the first day to see every date.</div>;
+    if (!preview?.window_start_at) return <div className={`${box} text-[#999]`}>{t('venueEventBuilder:schedule.pickFirstDay')}</div>;
     return (
         <div className={`${box} space-y-2`}>
-            <div className="flex items-center gap-2"><Calendar size={13} className="text-[#8a7600] shrink-0" /><span className="font-bold">Scoring {fmtDay(preview.window_start_at)} → {lastDay(preview.window_end_at)}</span></div>
+            <div className="flex items-center gap-2"><Calendar size={13} className="text-[#8a7600] shrink-0" /><span className="font-bold">{t('venueEventBuilder:schedule.scoring', { from: fmtDay(preview.window_start_at), to: lastDay(preview.window_end_at) })}</span></div>
             {finale && preview.doors_open_at && (
                 <div className="flex items-center gap-2">
                     <Moon size={13} className="text-[#8a7600] shrink-0" />
-                    <span className="font-bold">Finale night {fmtDay(preview.doors_open_at)}, {ukTime(preview.doors_open_at)}–{ukTime(preview.doors_close_at)}</span>
-                    <span className="text-[#999] hidden sm:inline">at {gymName}</span>
+                    <span className="font-bold">{t('venueEventBuilder:schedule.finale', { day: fmtDay(preview.doors_open_at), from: ukClock(preview.doors_open_at), to: ukClock(preview.doors_close_at) })}</span>
+                    <span className="text-[#999] hidden sm:inline">{t('venueEventBuilder:schedule.atGym', { gym: gymName })}</span>
                 </div>
             )}
-            <div className="text-[#999] pl-5">The board seals at midnight after the last day. Members can join until then.</div>
+            <div className="text-[#999] pl-5">{t('venueEventBuilder:schedule.seals')}</div>
         </div>
     );
 }
@@ -420,6 +440,7 @@ function Rules({ rules, muted }) {
 }
 
 function ReviewRow({ label, onEdit, children }) {
+    const { t } = useTranslation();
     return (
         <div className="py-5 first:pt-0 last:pb-0 flex gap-4">
             <div className="flex-1 min-w-0">
@@ -428,7 +449,7 @@ function ReviewRow({ label, onEdit, children }) {
             </div>
             {onEdit && (
                 <button type="button" onClick={onEdit} className="shrink-0 h-8 text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600]">
-                    Change
+                    {t('venueEventBuilder:actions.change')}
                 </button>
             )}
         </div>
@@ -442,6 +463,7 @@ export default function VenueEventBuilder() {
     const [params] = useSearchParams();
     const fromId = id ? null : params.get('from');
     const { gym, isAdmin } = useAuth();
+    const { t } = useTranslation();
     const toast = useToast();
     const navigate = useNavigate();
     const { pkg } = usePackage();
@@ -477,21 +499,22 @@ export default function VenueEventBuilder() {
             source ? fetchEventPushes(source).catch(() => null) : null,
             fetchPartnerDiscounts(gym.partner_id).catch(() => null),
         ])
-            .then(([t, p, summary, ev, pushes, discounts]) => {
+            .then(([tpls, p, summary, ev, pushes, discounts]) => {
                 if (!alive) return;
-                setTemplates(t);
+                setTemplates(tpls);
                 setPresets(p);
                 setPartners(Array.isArray(discounts) ? discounts : null);
                 setPartnersError(!Array.isArray(discounts));
                 setTrusted(!!summary?.portal?.trusted);
                 if (ev) {
-                    const tpl = t.find(x => x.key === ev.template_key);
+                    const tpl = tpls.find(x => x.key === ev.template_key);
                     const k = statusKey(ev);
+                    // Keys, so the words follow the language if it changes while this shows.
                     if (id) {
-                        if (!ev.editable) { setLoadError('Only the gym that runs this event can change it.'); return; }
-                        if (k === 'pending') { setLoadError('It’s with POWR for a quick check. Pull it back from the event page to change it.'); return; }
-                        if (!['draft', 'rejected', 'scheduled', 'live'].includes(k)) { setLoadError('This event has finished, so it can’t change. Run it again as a new event.'); return; }
-                        if (!tpl) { setLoadError('This kind of event is no longer offered. Contact POWR to change it.'); return; }
+                        if (!ev.editable) { setLoadError({ key: 'venueEventBuilder:load.notYours' }); return; }
+                        if (k === 'pending') { setLoadError({ key: 'venueEventBuilder:load.pending' }); return; }
+                        if (!['draft', 'rejected', 'scheduled', 'live'].includes(k)) { setLoadError({ key: 'venueEventBuilder:load.finished' }); return; }
+                        if (!tpl) { setLoadError({ key: 'venueEventBuilder:load.noFormat' }); return; }
                     }
                     if (tpl) {
                         const value = fromEvent(ev, tpl, pushes, !!id);
@@ -505,7 +528,7 @@ export default function VenueEventBuilder() {
                 // A new event: pick up one this tab didn't finish.
                 try {
                     const saved = JSON.parse(sessionStorage.getItem(draftKey(gym.partner_id)) ?? 'null');
-                    const tpl = saved && t.find(x => x.key === saved.tplKey);
+                    const tpl = saved && tpls.find(x => x.key === saved.tplKey);
                     if (!source && tpl && saved.v) {
                         setTplKey(tpl.key);
                         setV({ ...blankValue(tpl), ...saved.v });
@@ -514,11 +537,11 @@ export default function VenueEventBuilder() {
                     }
                 } catch { /* no storage: start fresh */ }
             })
-            .catch(err => { if (alive) setLoadError(err.message); });
+            .catch(err => { if (alive) setLoadError(serverErrorText(err)); });
         return () => { alive = false; };
     }, [id, fromId, gym.partner_id]);
 
-    const tpl = useMemo(() => templates?.find(t => t.key === tplKey) ?? null, [templates, tplKey]);
+    const tpl = useMemo(() => templates?.find(x => x.key === tplKey) ?? null, [templates, tplKey]);
     const ev = orig?.ev ?? null;
     const started = !!ev && !(ev.status === 'draft' || (ev.status === 'scheduled' && new Date(ev.window_start_at) > new Date()));
     const can = (field) => !started || LIVE_EDITABLE.includes(field);
@@ -551,12 +574,12 @@ export default function VenueEventBuilder() {
     useEffect(() => {
         if (!previewKey || !tplKey) return undefined;
         const n = ++seq.current;
-        const t = setTimeout(() => {
+        const timer = setTimeout(() => {
             previewGymEvent(gym.partner_id, tplKey, JSON.parse(previewKey))
                 .then(p => { if (seq.current === n) { setPreview(p); setPreviewError(null); } })
-                .catch(err => { if (seq.current === n) setPreviewError(err.message); });
+                .catch(err => { if (seq.current === n) setPreviewError(serverErrorText(err)); });
         }, 250);
-        return () => clearTimeout(t);
+        return () => clearTimeout(timer);
     }, [previewKey, tplKey, gym.partner_id]);
 
     // A reveal time the gym hasn't typed follows the dates.
@@ -568,8 +591,8 @@ export default function VenueEventBuilder() {
 
     if (loadError) {
         return (
-            <Empty title="Can’t open this event" action={<Link to={id ? `/venue/events/${id}` : '/venue/events'} className={BTN_GHOST}>Back</Link>}>
-                {loadError}
+            <Empty title={t('venueEventBuilder:load.title')} action={<Link to={id ? `/venue/events/${id}` : '/venue/events'} className={BTN_GHOST}>{t('common:actions.back')}</Link>}>
+                {loadError.key ? t(loadError.key) : loadError}
             </Empty>
         );
     }
@@ -596,10 +619,10 @@ export default function VenueEventBuilder() {
         setError(null);
         rootRef.current?.scrollIntoView({ block: 'start' });
     };
-    const pickFormat = (t) => {
+    const pickFormat = (next) => {
         if (id) return;
-        setTplKey(t.key);
-        setV(prev => (tplKey === t.key ? prev : switchFormat(prev, t)));
+        setTplKey(next.key);
+        setV(prev => (tplKey === next.key ? prev : switchFormat(prev, next)));
     };
     const startOver = () => {
         try { sessionStorage.removeItem(draftKey(gym.partner_id)); } catch { /* ignore */ }
@@ -629,7 +652,7 @@ export default function VenueEventBuilder() {
                 saved = await createGymEvent(gym.partner_id, tpl.key, fields);
             }
         } catch (err) {
-            setError(err.message);
+            setError(serverErrorText(err));
             setSaving(null);
             return;
         }
@@ -639,21 +662,21 @@ export default function VenueEventBuilder() {
         const later = [];
         const patch = pushChanges(v.pushes, orig ? orig.pushes : blankValue(tpl).pushes, tpl);
         if (Object.keys(patch).length) {
-            try { await setEventPush(saved.id, patch); } catch (err) { later.push(`the notifications weren’t saved (${err.message})`); }
+            try { await setEventPush(saved.id, patch); } catch (err) { later.push(t('venueEventBuilder:save.notificationsFailed', { error: serverErrorText(err) })); }
         }
         const revealAt = v.reveal.mode === 'at' && v.reveal.at ? fromLocalInput(v.reveal.at) : null;
         if (!sameInstant(revealAt, saved.reveal_at)) {
-            try { await scheduleGymReveal(saved.id, revealAt); } catch (err) { later.push(`the reveal time wasn’t saved (${err.message})`); }
+            try { await scheduleGymReveal(saved.id, revealAt); } catch (err) { later.push(t('venueEventBuilder:save.revealFailed', { error: serverErrorText(err) })); }
         }
         let published = null;
         if (publish) {
-            try { published = await publishGymEvent(saved.id); } catch (err) { later.push(`it isn’t published yet: ${err.message}`); }
+            try { published = await publishGymEvent(saved.id); } catch (err) { later.push(t('venueEventBuilder:save.publishFailed', { error: serverErrorText(err) })); }
         }
         if (!orig) { try { sessionStorage.removeItem(draftKey(gym.partner_id)); } catch { /* ignore */ } }
 
-        if (later.length) toast.error(`Saved, but ${later.join('; ')}`);
-        else if (published) toast.success(statusKey(published) === 'pending' ? 'Sent to POWR for a quick check' : 'Published. Your members can see it now');
-        else toast.success(orig ? 'Saved' : 'Draft saved');
+        if (later.length) toast.error(t('venueEventBuilder:save.partial', { problems: later.join(t('venueEventBuilder:save.separator')) }));
+        else if (published) toast.success(statusKey(published) === 'pending' ? t('venueEventBuilder:save.sentForCheck') : t('venueEventBuilder:save.published'));
+        else toast.success(orig ? t('venueEventBuilder:save.saved') : t('venueEventBuilder:save.draftSaved'));
         navigate(`/venue/events/${saved.id}`);
     };
 
@@ -662,6 +685,8 @@ export default function VenueEventBuilder() {
     const presetOptions = tpl ? presets.filter(p => tpl.allowed_presets.includes(p.key)) : [];
     const preset = presets.find(p => p.key === v?.points_preset_key);
     const firstPrize = v?.prizes.find(p => p.label.trim())?.label.trim() ?? '';
+    // Feeds the push previews, which show what members get: English until
+    // they follow the member's language (eventPushCopy's lang).
     const pushPayload = v && {
         event_name: v.name.trim() || 'Your event',
         gym_name: gym.name,
@@ -676,32 +701,36 @@ export default function VenueEventBuilder() {
     const lockedNote = started && (
         <div className="flex items-start gap-3 mb-8 p-4 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] text-[12px] text-[#666] leading-relaxed">
             <Lock size={14} className="text-[#8a7600] mt-0.5 shrink-0" />
-            It’s under way, so only the name, headline, logo, picture and booking link can change, plus the partner code, the notifications and when the winners are revealed.
+            {t('venueEventBuilder:lockedNote')}
         </div>
     );
 
     const formatStep = (
         <>
-            <StepHead title={id ? 'The format' : 'What kind of event?'} sub={id ? 'The format is set once an event is saved. Run it again as a new event to pick another.' : 'Pick a format. You choose how long it runs, what counts and more in the next steps.'} />
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4" role="radiogroup" aria-label="Format">
-                {templates.map(t => {
-                    const on = t.key === tplKey;
-                    const days = t.day_choices?.length
-                        ? `${lengthLabel(Math.min(...t.day_choices))} to ${lengthLabel(Math.max(...t.day_choices))}`
-                        : lengthLabel(t.duration_days);
+            <StepHead
+                title={id ? t('venueEventBuilder:format.titleEdit') : t('venueEventBuilder:format.titleNew')}
+                sub={id ? t('venueEventBuilder:format.subEdit') : t('venueEventBuilder:format.subNew')}
+            />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4" role="radiogroup" aria-label={t('venueEventBuilder:steps.format.title')}>
+                {/* The format's name and blurb come from event_templates, as stored. */}
+                {templates.map(tp => {
+                    const on = tp.key === tplKey;
+                    const days = tp.day_choices?.length
+                        ? t('venueEventBuilder:format.dayRange', { min: lengthLabel(Math.min(...tp.day_choices)), max: lengthLabel(Math.max(...tp.day_choices)) })
+                        : lengthLabel(tp.duration_days);
                     return (
                         <button
-                            key={t.key} type="button" role="radio" aria-checked={on} disabled={!!id && !on} onClick={() => pickFormat(t)}
+                            key={tp.key} type="button" role="radio" aria-checked={on} disabled={!!id && !on} onClick={() => pickFormat(tp)}
                             className={`text-left rounded-3xl border p-6 transition-all disabled:opacity-40 ${on ? 'border-[#E8D200] bg-[#E8D200]/[0.06]' : 'border-[#E6E6E1] bg-white hover:border-[#E8D200]/50'}`}
                         >
                             <div className="flex items-center justify-between gap-3 mb-3">
-                                <Micro gold={on}>{days}{t.night_start_hour != null ? ' + finale night' : ''}</Micro>
+                                <Micro gold={on}>{tp.night_start_hour != null ? t('venueEventBuilder:format.withFinale', { days }) : days}</Micro>
                                 {on && <Check size={16} className="text-[#8a7600]" />}
                             </div>
-                            <div className="text-xl font-light tracking-tight text-[#1A1A1A]">{t.name}</div>
-                            <p className="text-[12px] text-[#888] leading-relaxed mt-2">{withGym(t.blurb, gym.name)}</p>
+                            <div className="text-xl font-light tracking-tight text-[#1A1A1A]">{tp.name}</div>
+                            <p className="text-[12px] text-[#888] leading-relaxed mt-2">{withGym(tp.blurb, gym.name)}</p>
                             <p className="text-[11px] font-bold text-[#8a7600] mt-4">
-                                {t.count_venue_only ? `Counts sessions at ${gym.name}` : 'Counts any verified workout'}. You can change this.
+                                {tp.count_venue_only ? t('venueEventBuilder:format.countsVenue', { gym: gym.name }) : t('venueEventBuilder:format.countsAll')}
                             </p>
                         </button>
                     );
@@ -712,53 +741,55 @@ export default function VenueEventBuilder() {
 
     const whenStep = v && tpl && (
         <>
-            <StepHead title="Name and dates" sub="The first day starts at midnight. Every other date follows from the choices here." />
+            <StepHead title={t('venueEventBuilder:when.title')} sub={t('venueEventBuilder:when.sub')} />
             {lockedNote}
             <div className="space-y-8">
-                <Field label="Event name">
-                    <input className={INPUT} aria-label="Event name" value={v.name} maxLength={48} disabled={!can('name')}
-                        onChange={e => set({ name: e.target.value })} placeholder={`${gym.name} October Clash`} />
+                <Field label={t('venueEventBuilder:when.name')}>
+                    <input className={INPUT} aria-label={t('venueEventBuilder:when.name')} value={v.name} maxLength={48} disabled={!can('name')}
+                        onChange={e => set({ name: e.target.value })} placeholder={t('venueEventBuilder:when.namePlaceholder', { gym: gym.name })} />
                 </Field>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <Field label="First day">
-                        <input type="date" aria-label="First day" className={`${INPUT} max-w-xs`} value={v.start_date} disabled={!can('start_date')}
+                    <Field label={t('venueEventBuilder:when.firstDay')}>
+                        <input type="date" aria-label={t('venueEventBuilder:when.firstDay')} className={`${INPUT} max-w-xs`} value={v.start_date} disabled={!can('start_date')}
                             min={isoDay(new Date())} max={isoDay(new Date(Date.now() + 89 * DAY))}
                             onChange={e => set({ start_date: e.target.value })} />
                     </Field>
                     {tpl.day_choices?.length > 0 && (
-                        <Field label="How long">
-                            <Chips label="How long" value={v.duration_days} disabled={!can('duration_days')} onChange={d => set({ duration_days: d })}
+                        <Field label={t('venueEventBuilder:when.howLong')}>
+                            <Chips label={t('venueEventBuilder:when.howLong')} value={v.duration_days} disabled={!can('duration_days')} onChange={d => set({ duration_days: d })}
                                 options={tpl.day_choices.map(d => [d, lengthLabel(d)])} />
                         </Field>
                     )}
                 </div>
                 {finale && tpl.night_hour_choices?.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <Field label="Finale night starts">
-                            <Chips label="Finale night starts" value={v.night_start_hour} disabled={!can('night')} onChange={h => set({ night_start_hour: h })}
-                                options={tpl.night_hour_choices.map(h => [h, hourLabel(h)])} />
+                        <Field label={t('venueEventBuilder:when.nightStarts')}>
+                            <Chips label={t('venueEventBuilder:when.nightStarts')} value={v.night_start_hour} disabled={!can('night')} onChange={h => set({ night_start_hour: h })}
+                                options={tpl.night_hour_choices.map(h => [h, hourText(h)])} />
                         </Field>
-                        <Field label="And lasts">
-                            <Chips label="Finale night length" value={v.night_hours} disabled={!can('night')} onChange={n => set({ night_hours: n })}
-                                options={tpl.night_length_choices.map(n => [n, `${n} hours`])} />
+                        <Field label={t('venueEventBuilder:when.nightLasts')}>
+                            <Chips label={t('venueEventBuilder:when.nightLengthAria')} value={v.night_hours} disabled={!can('night')} onChange={n => set({ night_hours: n })}
+                                options={tpl.night_length_choices.map(n => [n, t('venueEventBuilder:when.hours', { count: n })])} />
                         </Field>
                     </div>
                 )}
                 <Schedule preview={preview} error={previewError} finale={finale} gymName={gym.name} />
 
-                <Field label="Revealing the winners">
-                    <div className="space-y-3" role="radiogroup" aria-label="Revealing the winners">
+                <Field label={t('venueEventBuilder:reveal.label')}>
+                    <div className="space-y-3" role="radiogroup" aria-label={t('venueEventBuilder:reveal.label')}>
                         <Choice
                             on={v.reveal.mode === 'manual'} onPick={() => set({ reveal: { ...v.reveal, mode: 'manual' } })}
-                            title="I’ll reveal them"
-                            body={`Press Reveal from your phone${finale ? ' on the finale night' : ''} or the portal. The app and your screen flip together. If nobody does, POWR reveals them about ${Math.round(((tpl.settle_grace_hours ?? 12) + (tpl.auto_reveal_after_hours ?? 72)) / 24)} days after the board seals.`}
+                            title={t('venueEventBuilder:reveal.manualTitle')}
+                            body={t(finale ? 'venueEventBuilder:reveal.manualBodyFinale' : 'venueEventBuilder:reveal.manualBody', {
+                                count: Math.round(((tpl.settle_grace_hours ?? 12) + (tpl.auto_reveal_after_hours ?? 72)) / 24),
+                            })}
                         />
                         <Choice
                             on={v.reveal.mode === 'at'}
                             onPick={() => set({ reveal: { mode: 'at', at: v.reveal.at || suggestedReveal(preview), auto: !v.reveal.at } })}
-                            title="At a set time" body="Pick a time after the board seals and within a week of it."
+                            title={t('venueEventBuilder:reveal.atTitle')} body={t('venueEventBuilder:reveal.atBody')}
                         >
-                            <input type="datetime-local" aria-label="Reveal time" className={`${INPUT} max-w-xs`} value={v.reveal.at}
+                            <input type="datetime-local" aria-label={t('venueEventBuilder:reveal.timeAria')} className={`${INPUT} max-w-xs`} value={v.reveal.at}
                                 min={lockAt ? toLocalInput(lockAt) : undefined}
                                 max={lockAt ? toLocalInput(new Date(new Date(lockAt).getTime() + 7 * DAY).toISOString()) : undefined}
                                 onChange={e => set({ reveal: { mode: 'at', at: e.target.value, auto: false } })} />
@@ -771,20 +802,21 @@ export default function VenueEventBuilder() {
 
     const scoringStep = v && tpl && (
         <>
-            <StepHead title="What counts" sub="Members score points for verified activity. Choose which activity moves this board." />
+            <StepHead title={t('venueEventBuilder:scoring.title')} sub={t('venueEventBuilder:scoring.sub')} />
             {lockedNote}
             <div className="space-y-8">
-                <div className="space-y-3" role="radiogroup" aria-label="What counts">
+                <div className="space-y-3" role="radiogroup" aria-label={t('venueEventBuilder:scoring.title')}>
                     <Choice on={v.scoring === 'all'} disabled={!can('scoring')} onPick={() => set({ scoring: 'all' })}
-                        title="Every verified workout"
-                        body="Anything members do, anywhere: gym check-ins, and workouts from their watch or phone." />
+                        title={t('venueEventBuilder:scoring.allTitle')}
+                        body={t('venueEventBuilder:scoring.allBody')} />
                     <Choice on={v.scoring === 'venue'} disabled={!can('scoring')} onPick={() => set({ scoring: 'venue' })}
-                        title={`Only sessions at ${gym.name}`}
-                        body="Members check in with POWR when they arrive. The hardest to game, and footfall you can see." />
+                        title={t('venueEventBuilder:scoring.venueTitle', { gym: gym.name })}
+                        body={t('venueEventBuilder:scoring.venueBody')} />
                     <Choice on={v.scoring === 'pick'} disabled={!can('scoring')} onPick={() => set({ scoring: 'pick' })}
-                        title="Pick the activities" body="Choose what counts, like running and cycling for a run club.">
-                        <div className="flex flex-wrap gap-2" role="group" aria-label="Activities">
-                            {ACTIVITIES.map(([k, label]) => {
+                        title={t('venueEventBuilder:scoring.pickTitle')} body={t('venueEventBuilder:scoring.pickBody')}>
+                        <div className="flex flex-wrap gap-2" role="group" aria-label={t('venueEventBuilder:scoring.activitiesAria')}>
+                            {ACTIVITIES.map(([k]) => {
+                                const label = activityLabel(k);
                                 const on = v.activities.includes(k);
                                 return (
                                     <button key={k} type="button" aria-pressed={on} disabled={!can('scoring')}
@@ -798,45 +830,47 @@ export default function VenueEventBuilder() {
                             })}
                         </div>
                         {v.activities.includes('walking') && (
-                            <p className="text-[11px] text-[#B45309] font-bold mt-3">Walking includes everyone’s daily steps, so it can outweigh workouts.</p>
+                            <p className="text-[11px] text-[#B45309] font-bold mt-3">{t('venueEventBuilder:scoring.walkingNote')}</p>
                         )}
                     </Choice>
                 </div>
-                <p className="text-[11px] text-[#AAAAAA] -mt-4">Workouts typed in by hand never count. POWR checks everything else.</p>
+                <p className="text-[11px] text-[#AAAAAA] -mt-4">{t('venueEventBuilder:scoring.manualNote')}</p>
 
                 {tpl.board_choices?.length > 0 && (
-                    <Field label="Leaderboard" hint="How many places show on the board in the app and on your screen.">
-                        <Chips label="Leaderboard size" value={v.board_size} disabled={!can('board_size')} onChange={n => set({ board_size: n })}
-                            options={tpl.board_choices.map(n => [n, `Top ${n}`])} />
+                    <Field label={t('venueEventBuilder:scoring.board')} hint={t('venueEventBuilder:scoring.boardHint')}>
+                        <Chips label={t('venueEventBuilder:scoring.boardAria')} value={v.board_size} disabled={!can('board_size')} onChange={n => set({ board_size: n })}
+                            options={tpl.board_choices.map(n => [n, t('venueEventBuilder:scoring.top', { n })])} />
                     </Field>
                 )}
 
+                {/* The presets' labels and blurbs come from the database, as stored. */}
                 {presetOptions.length > 1 && (
-                    <Field label="Finale night bonus" hint={`${preset?.blurb ?? ''} POWR pays it to members who joined and check in at ${gym.name} on the night.`}>
-                        <Chips label="Finale night bonus" value={v.points_preset_key} disabled={!can('points_preset_key')} onChange={k => set({ points_preset_key: k })}
+                    <Field label={t('venueEventBuilder:scoring.bonus')} hint={t('venueEventBuilder:scoring.bonusHint', { blurb: preset?.blurb ?? '', gym: gym.name })}>
+                        <Chips label={t('venueEventBuilder:scoring.bonus')} value={v.points_preset_key} disabled={!can('points_preset_key')} onChange={k => set({ points_preset_key: k })}
                             options={presetOptions.map(p => [p.key, p.label])} />
                     </Field>
                 )}
 
-                <Field label="Rules">
+                {/* The rules themselves are the server's (gym_preview_event), as members read them in the app. */}
+                <Field label={t('venueEventBuilder:scoring.rules')}>
                     <div className="p-4 sm:p-5 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1]">
-                        <Micro className="mb-3">Written for you from your choices</Micro>
+                        <Micro className="mb-3">{t('venueEventBuilder:scoring.rulesWritten')}</Micro>
                         {v.scoring === 'pick' && !v.activities.length
-                            ? <p className="text-[12px] text-[#999]">Pick an activity to see them.</p>
+                            ? <p className="text-[12px] text-[#999]">{t('venueEventBuilder:scoring.rulesPick')}</p>
                             : <Rules rules={preview?.house_rules ?? []} muted />}
                     </div>
                     <div className="mt-5 space-y-2">
                         {v.own_rules.map((r, i) => (
                             <div key={i} className="flex items-center gap-2">
-                                <input className={INPUT} aria-label={`Your rule ${i + 1}`} value={r} maxLength={200} disabled={!can('rules')}
+                                <input className={INPUT} aria-label={t('venueEventBuilder:scoring.ownRuleAria', { n: i + 1 })} value={r} maxLength={200} disabled={!can('rules')}
                                     onChange={e => set({ own_rules: v.own_rules.map((x, j) => (j === i ? e.target.value : x)) })}
-                                    placeholder="A rule of your own" />
-                                <RemoveButton label="Remove rule" disabled={!can('rules')} onClick={() => set({ own_rules: v.own_rules.filter((_, j) => j !== i) })} />
+                                    placeholder={t('venueEventBuilder:scoring.ownRulePlaceholder')} />
+                                <RemoveButton label={t('venueEventBuilder:scoring.removeRule')} disabled={!can('rules')} onClick={() => set({ own_rules: v.own_rules.filter((_, j) => j !== i) })} />
                             </div>
                         ))}
                         {can('rules') && v.own_rules.length < 8 && (
                             <button type="button" onClick={() => set({ own_rules: [...v.own_rules, ''] })} className={`${BTN_GHOST} h-10 px-5`}>
-                                <Plus size={13} /> Add a rule of your own
+                                <Plus size={13} /> {t('venueEventBuilder:scoring.addRule')}
                             </button>
                         )}
                     </div>
@@ -852,18 +886,18 @@ export default function VenueEventBuilder() {
             ? { ...ev.partner_reward, reward_id: savedPartner } : null);
     const prizesStep = v && tpl && (
         <>
-            <StepHead title="Prizes" sub="1st place first. You give these out: winners show their POWR ID at the front desk." />
+            <StepHead title={t('venueEventBuilder:steps.prizes.title')} sub={t('venueEventBuilder:prizes.sub')} />
             {lockedNote}
             <div className="space-y-4">
                 {v.prizes.map((p, i) => (
                     <div key={i} className="p-4 sm:p-5 rounded-2xl border border-[#E6E6E1] bg-white">
                         <div className="flex items-center gap-3">
-                            <span className="w-10 text-[12px] font-black text-[#8a7600] shrink-0">{ordinal(i + 1)}</span>
-                            <input className={INPUT} aria-label={`${ordinal(i + 1)} prize`} value={p.label} maxLength={60} disabled={!can('prizes')}
-                                placeholder={['A free month', 'A PT session', 'Gym merch'][i] ?? 'Prize'}
+                            <span className="w-10 text-[12px] font-black text-[#8a7600] shrink-0">{placeText(i + 1)}</span>
+                            <input className={INPUT} aria-label={t('venueEventBuilder:prizes.prizeAria', { place: placeText(i + 1) })} value={p.label} maxLength={60} disabled={!can('prizes')}
+                                placeholder={i < 3 ? t(`venueEventBuilder:prizes.placeholders.${i + 1}`) : t('venueEventBuilder:prizes.placeholders.other')}
                                 onChange={e => setPrize(i, { label: e.target.value })} />
                             {v.prizes.length > 1 && (
-                                <RemoveButton label={`Remove ${ordinal(i + 1)} prize`} disabled={!can('prizes')}
+                                <RemoveButton label={t('venueEventBuilder:prizes.remove', { place: placeText(i + 1) })} disabled={!can('prizes')}
                                     onClick={() => set({ prizes: v.prizes.filter((_, j) => j !== i) })} />
                             )}
                         </div>
@@ -872,27 +906,29 @@ export default function VenueEventBuilder() {
                                 <>
                                     <img src={storageImage(p.image_url, 160)} alt="" className="w-14 h-14 rounded-xl object-cover border border-[#E6E6E1]" />
                                     <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
-                                        onUploaded={url => setPrize(i, { image_url: url })}>Change</UploadButton>
-                                    <RemoveButton label="Remove photo" disabled={!can('prizes')} onClick={() => setPrize(i, { image_url: null })} />
+                                        onUploaded={url => setPrize(i, { image_url: url })}>{t('venueEventBuilder:actions.change')}</UploadButton>
+                                    <RemoveButton label={t('venueEventBuilder:prizes.removePhoto')} disabled={!can('prizes')} onClick={() => setPrize(i, { image_url: null })} />
                                 </>
                             ) : (
                                 <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('prizes')}
-                                    onUploaded={url => setPrize(i, { image_url: url })}>Add a photo</UploadButton>
+                                    onUploaded={url => setPrize(i, { image_url: url })}>{t('venueEventBuilder:prizes.addPhoto')}</UploadButton>
                             )}
                         </div>
                     </div>
                 ))}
                 {can('prizes') && v.prizes.length < 5 && (
                     <button type="button" onClick={() => set({ prizes: [...v.prizes, { label: '', image_url: null }] })} className={`${BTN_GHOST} h-10 px-5`}>
-                        <Plus size={13} /> Add a prize
+                        <Plus size={13} /> {t('venueEventBuilder:prizes.add')}
                     </button>
                 )}
                 <p className="text-[11px] text-[#AAAAAA] leading-relaxed">
-                    Photos show with the prizes in the app, on the share page and on your screen. Buying prizes?{' '}
-                    <Link to="/venue/partners" target="_blank" rel="noopener" className="font-bold underline underline-offset-2">
-                        <span className="text-[#8a7600]">Your partner discounts</span>
-                    </Link>{' '}
-                    get you the price POWR members pay.
+                    <Trans
+                        i18nKey="venueEventBuilder:prizes.photosNote"
+                        components={{
+                            partners: <Link to="/venue/partners" target="_blank" rel="noopener" className="font-bold underline underline-offset-2" />,
+                            gold: <span className="text-[#8a7600]" />,
+                        }}
+                    />
                 </p>
             </div>
 
@@ -900,13 +936,13 @@ export default function VenueEventBuilder() {
             <div className="mt-10 pt-8 border-t border-[#F0F0EC]">
                 <div className="flex items-start gap-4">
                     <div className="flex-1 min-w-0">
-                        <Micro gold>Optional</Micro>
-                        <div className="text-[16px] font-bold text-[#1A1A1A] mt-2 leading-snug">A partner code for everyone who takes part</div>
+                        <Micro gold>{t('venueEventBuilder:partner.optional')}</Micro>
+                        <div className="text-[16px] font-bold text-[#1A1A1A] mt-2 leading-snug">{t('venueEventBuilder:partner.title')}</div>
                         <p className="text-[12px] text-[#777] leading-relaxed mt-1.5 max-w-xl">
-                            When you reveal the winners, everyone who scored gets a discount code from the POWR partner you pick. It lands in their Wallet in the app.
+                            {t('venueEventBuilder:partner.body')}
                         </p>
                     </div>
-                    <Switch label="A partner code for everyone who takes part" on={v.partner_on} disabled={!can('partner_code')}
+                    <Switch label={t('venueEventBuilder:partner.title')} on={v.partner_on} disabled={!can('partner_code')}
                         onChange={on => set({ partner_on: on })} />
                 </div>
                 {v.partner_on && (
@@ -914,13 +950,14 @@ export default function VenueEventBuilder() {
                         {partners === null ? (
                             partnersError ? (
                                 <p className="text-[12px] text-[#666] leading-relaxed">
-                                    The partner brands couldn’t load just now.{' '}
-                                    <button type="button" onClick={reloadPartners} className="font-bold text-[#8a7600] underline underline-offset-2">Try again</button>
+                                    {t('venueEventBuilder:partner.loadFailed')}{' '}
+                                    <button type="button" onClick={reloadPartners} className="font-bold text-[#8a7600] underline underline-offset-2">{t('common:actions.retry')}</button>
                                 </p>
                             ) : <Spinner className="py-6" />
                         ) : eventBrands.length === 0 ? (
                             <p className="text-[12px] text-[#666] leading-relaxed">
-                                No partner has codes to give right now.
+                                {t('venueEventBuilder:partner.none')}
+                                {/* Admin only, so English. */}
                                 {isAdmin && (
                                     <> Add codes to a reward in the admin Rewards page and it shows here.{' '}
                                         <Link to="/admin/rewards" className="font-bold underline underline-offset-2"><span className="text-[#8a7600]">Open Rewards</span></Link>
@@ -929,7 +966,7 @@ export default function VenueEventBuilder() {
                             </p>
                         ) : (
                             <>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Partner brand">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label={t('venueEventBuilder:partner.aria')}>
                                     {eventBrands.map(d => {
                                         const on = d.reward_id === v.partner_reward_id;
                                         return (
@@ -940,7 +977,9 @@ export default function VenueEventBuilder() {
                                                 <span className="flex-1 min-w-0">
                                                     <span className="block text-[13px] font-bold text-[#1A1A1A] truncate">{d.label}</span>
                                                     <span className="block text-[11px] text-[#888] truncate">
-                                                        {d.kind === 'shared' ? 'One code for everyone' : d.available ? `${fmtNum(d.available)} codes left` : 'No codes left right now'}
+                                                        {d.kind === 'shared'
+                                                            ? t('venueEventBuilder:partner.shared')
+                                                            : d.available ? t('venueEventBuilder:partner.codesLeft', { count: d.available, n: fmtNum(d.available) }) : t('venueEventBuilder:partner.noneLeft')}
                                                     </span>
                                                 </span>
                                                 {on && <Check size={15} className="text-[#8a7600] shrink-0" />}
@@ -949,8 +988,7 @@ export default function VenueEventBuilder() {
                                     })}
                                 </div>
                                 <p className="text-[11px] text-[#AAAAAA] leading-relaxed mt-3">
-                                    One each, for everyone still in the event with points. If the codes run short, the top of the board get theirs first.
-                                    Say so in your headline, so members know it’s coming.
+                                    {t('venueEventBuilder:partner.note')}
                                 </p>
                             </>
                         )}
@@ -961,64 +999,65 @@ export default function VenueEventBuilder() {
     );
 
     const pushRows = v && tpl && [
-        { key: 'announce', title: 'Announcement', type: 'event_announced', detail: 'To your members and recent visitors who haven’t joined. Once, in the daytime, after you publish.' },
-        { key: 'kickoff', title: 'Day one', type: 'event_kickoff', detail: 'To everyone who’s joined, the morning scoring starts.' },
-        ...(finale ? [{ key: 'doors', title: 'Finale night', type: 'event_doors_open', detail: 'To everyone who’s joined, the morning of the finale.' }] : []),
+        { key: 'announce', title: t('venueEventBuilder:pushes.announce.title'), type: 'event_announced', detail: t('venueEventBuilder:pushes.announce.detail') },
+        { key: 'kickoff', title: t('venueEventBuilder:pushes.kickoff.title'), type: 'event_kickoff', detail: t('venueEventBuilder:pushes.kickoff.detail') },
+        ...(finale ? [{ key: 'doors', title: t('venueEventBuilder:pushes.doors.title'), type: 'event_doors_open', detail: t('venueEventBuilder:pushes.doors.detail') }] : []),
     ];
 
     const promoteStep = v && tpl && (
         <>
-            <StepHead title="Promote it" sub="How it looks, who sees it, and the notifications POWR sends for you." />
+            <StepHead title={t('venueEventBuilder:promote.title')} sub={t('venueEventBuilder:promote.sub')} />
             {lockedNote}
             <div className="space-y-10">
-                <Field label="Logo" optional hint="Shown on the event’s card in the app. A wide logo on a transparent background works best.">
+                <Field label={t('venueEventBuilder:promote.logo')} optional hint={t('venueEventBuilder:promote.logoHint')}>
                     <div className="flex flex-wrap items-center gap-3">
                         {v.logo_url && (
                             <span className="inline-flex items-center px-4 py-2.5 rounded-xl bg-[#141414] border border-[#E6E6E1]">
-                                <img src={storageImage(v.logo_url, 200)} alt="Event logo" className="h-8 w-24 object-contain" />
+                                <img src={storageImage(v.logo_url, 200)} alt={t('venueEventBuilder:promote.logoAlt')} className="h-8 w-24 object-contain" />
                             </span>
                         )}
                         <UploadButton accept="image/*" maxMb={5} prefix={prefix} onBusy={onBusy} disabled={!can('logo')}
-                            onUploaded={url => set({ logo_url: url })}>{v.logo_url ? 'Change' : 'Upload a logo'}</UploadButton>
-                        {v.logo_url && <RemoveButton label="Remove logo" disabled={!can('logo')} onClick={() => set({ logo_url: null, logo_only: false })} />}
+                            onUploaded={url => set({ logo_url: url })}>{v.logo_url ? t('venueEventBuilder:actions.change') : t('venueEventBuilder:promote.uploadLogo')}</UploadButton>
+                        {v.logo_url && <RemoveButton label={t('venueEventBuilder:promote.removeLogo')} disabled={!can('logo')} onClick={() => set({ logo_url: null, logo_only: false })} />}
                     </div>
                     {v.logo_url && (
                         <label className="flex items-center justify-between gap-4 mt-4 max-w-md">
-                            <span className="text-[13px] text-[#1A1A1A]">Show the logo instead of the name</span>
-                            <Switch label="Show the logo instead of the name" on={v.logo_only} disabled={!can('logo')} onChange={on => set({ logo_only: on })} />
+                            <span className="text-[13px] text-[#1A1A1A]">{t('venueEventBuilder:promote.logoOnly')}</span>
+                            <Switch label={t('venueEventBuilder:promote.logoOnly')} on={v.logo_only} disabled={!can('logo')} onChange={on => set({ logo_only: on })} />
                         </label>
                     )}
                 </Field>
 
-                <Field label="Headline" optional hint="One line under the name, in the app and on share cards.">
-                    <input className={INPUT} aria-label="Headline" value={v.promo_headline} maxLength={80} disabled={!can('promo_headline')}
-                        onChange={e => set({ promo_headline: e.target.value })} placeholder="Most sessions in October wins a free month" />
+                <Field label={t('venueEventBuilder:promote.headline')} optional hint={t('venueEventBuilder:promote.headlineHint')}>
+                    <input className={INPUT} aria-label={t('venueEventBuilder:promote.headline')} value={v.promo_headline} maxLength={80} disabled={!can('promo_headline')}
+                        onChange={e => set({ promo_headline: e.target.value })} placeholder={t('venueEventBuilder:promote.headlinePlaceholder')} />
                 </Field>
 
-                <Field label="Picture or video" optional hint="The big picture on the event’s card in the app and on share cards. A short video plays silently.">
+                <Field label={t('venueEventBuilder:promote.media')} optional hint={t('venueEventBuilder:promote.mediaHint')}>
                     <div className="flex flex-wrap items-center gap-3">
                         {v.promo_media_url && (isVideo(v.promo_media_url)
                             ? <video src={v.promo_media_url} muted playsInline className="h-20 aspect-video rounded-xl object-cover border border-[#E6E6E1] bg-black" />
                             : <img src={storageImage(v.promo_media_url, 320)} alt="" className="h-20 aspect-video rounded-xl object-cover border border-[#E6E6E1]" />)}
                         <UploadButton accept="image/*,video/mp4,video/webm,video/quicktime" maxMb={80} prefix={prefix} onBusy={onBusy} disabled={!can('promo_media_url')}
-                            onUploaded={url => set({ promo_media_url: url })}>{v.promo_media_url ? 'Change' : 'Upload'}</UploadButton>
-                        {v.promo_media_url && <RemoveButton label="Remove picture" disabled={!can('promo_media_url')} onClick={() => set({ promo_media_url: null })} />}
+                            onUploaded={url => set({ promo_media_url: url })}>{v.promo_media_url ? t('venueEventBuilder:actions.change') : t('venueEventBuilder:promote.upload')}</UploadButton>
+                        {v.promo_media_url && <RemoveButton label={t('venueEventBuilder:promote.removeMedia')} disabled={!can('promo_media_url')} onClick={() => set({ promo_media_url: null })} />}
                     </div>
                 </Field>
 
-                <Field label="Booking link" optional hint="If members book a place on your own system, link it here and the app shows a Book button. {name} fills in their name.">
-                    <input className={INPUT} aria-label="Booking link" value={v.booking_url} maxLength={300} disabled={!can('booking_url')} inputMode="url"
+                <Field label={t('venueEventBuilder:promote.booking')} optional hint={t('venueEventBuilder:promote.bookingHint')}>
+                    <input className={INPUT} aria-label={t('venueEventBuilder:promote.booking')} value={v.booking_url} maxLength={300} disabled={!can('booking_url')} inputMode="url"
                         onChange={e => set({ booking_url: e.target.value })} placeholder="https://" />
                 </Field>
 
                 {tpl.radius_choices?.length > 0 && (
-                    <Field label="Who sees it in the app" hint={`Your members and anyone who’s trained at ${gym.name} lately always see it. Anyone can join from your QR code or link.`}>
-                        <Chips label="Who sees it" value={v.audience_radius_km ?? null} disabled={!can('audience_radius_km')} onChange={km => set({ audience_radius_km: km })}
-                            options={[[null, 'Just my members'], ...tpl.radius_choices.map(km => [km, `Also within ${km} km`])]} />
+                    <Field label={t('venueEventBuilder:promote.audience')} hint={t('venueEventBuilder:promote.audienceHint', { gym: gym.name })}>
+                        <Chips label={t('venueEventBuilder:promote.audienceAria')} value={v.audience_radius_km ?? null} disabled={!can('audience_radius_km')} onChange={km => set({ audience_radius_km: km })}
+                            options={[[null, t('venueEventBuilder:promote.justMembers')], ...tpl.radius_choices.map(km => [km, t('venueEventBuilder:promote.withinKm', { km })])]} />
                     </Field>
                 )}
 
-                <Field label="Notifications" hint="POWR writes every word and sends them at the right moment. Nothing goes out until the event is published, and members can turn notifications off.">
+                {/* The previews under each switch are what members get, so they stay English for now (see pushPayload). */}
+                <Field label={t('venueEventBuilder:promote.notifications')} hint={t('venueEventBuilder:promote.notificationsHint')}>
                     <div className="divide-y divide-[#F0F0EC] border-y border-[#F0F0EC]">
                         {pushRows.map(r => (
                             <div key={r.key} className="py-5">
@@ -1034,16 +1073,16 @@ export default function VenueEventBuilder() {
                         ))}
                         <div className="py-5 flex items-start gap-4">
                             <div className="flex-1 min-w-0">
-                                <div className="text-[13px] font-bold text-[#1A1A1A]">Daily standings</div>
-                                <p className="text-[12px] text-[#888] leading-relaxed mt-1">Each member’s own rank and points, and how far they are from the place above. Only while the board is live.</p>
+                                <div className="text-[13px] font-bold text-[#1A1A1A]">{t('venueEventBuilder:promote.standings')}</div>
+                                <p className="text-[12px] text-[#888] leading-relaxed mt-1">{t('venueEventBuilder:promote.standingsBody')}</p>
                             </div>
                             <select
-                                aria-label="Daily standings time" value={v.pushes.rank_at ?? ''}
+                                aria-label={t('venueEventBuilder:promote.standingsAria')} value={v.pushes.rank_at ?? ''}
                                 onChange={e => set({ pushes: { ...v.pushes, rank_at: e.target.value || null } })}
                                 className="h-11 pl-4 pr-8 shrink-0 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[12px] font-bold text-[#1A1A1A] focus:outline-none focus:border-[#E8D200]/60"
                             >
-                                <option value="">Off</option>
-                                {STANDINGS_HOURS.map(h => <option key={h} value={`${String(h).padStart(2, '0')}:00`}>{hourLabel(h)}</option>)}
+                                <option value="">{t('venueEventBuilder:promote.off')}</option>
+                                {STANDINGS_HOURS.map(h => <option key={h} value={`${String(h).padStart(2, '0')}:00`}>{hourText(h)}</option>)}
                             </select>
                         </div>
                     </div>
@@ -1056,48 +1095,53 @@ export default function VenueEventBuilder() {
     const reviewStep = v && tpl && (
         <>
             <StepHead
-                title="Check it over"
-                sub={id ? 'Save to update it everywhere it shows.' : 'Nothing goes out until you publish. You can save it as a draft and come back.'}
+                title={t('venueEventBuilder:review.title')}
+                sub={id ? t('venueEventBuilder:review.subEdit') : t('venueEventBuilder:review.subNew')}
             />
             {/* Single column: at xl the phone sits in the page's side column, so a second column here stayed empty. */}
             <div className="grid grid-cols-1 gap-10 items-start">
                 <div className="divide-y divide-[#F0F0EC]">
-                    <ReviewRow label="Format" onEdit={id ? null : () => go(0)}>{tpl.name}</ReviewRow>
-                    <ReviewRow label="When" onEdit={() => go(1)}>
+                    <ReviewRow label={t('venueEventBuilder:steps.format.title')} onEdit={id ? null : () => go(0)}>{tpl.name}</ReviewRow>
+                    <ReviewRow label={t('venueEventBuilder:steps.when.title')} onEdit={() => go(1)}>
                         <div className="font-bold">{v.name.trim()}</div>
-                        {preview?.window_start_at && <div>Scoring {fmtDay(preview.window_start_at)} → {lastDay(preview.window_end_at)}</div>}
-                        {preview?.doors_open_at && <div>Finale night {fmtDay(preview.doors_open_at)}, {ukTime(preview.doors_open_at)}–{ukTime(preview.doors_close_at)}</div>}
+                        {preview?.window_start_at && <div>{t('venueEventBuilder:schedule.scoring', { from: fmtDay(preview.window_start_at), to: lastDay(preview.window_end_at) })}</div>}
+                        {preview?.doors_open_at && <div>{t('venueEventBuilder:schedule.finale', { day: fmtDay(preview.doors_open_at), from: ukClock(preview.doors_open_at), to: ukClock(preview.doors_close_at) })}</div>}
                         <div className="text-[#888]">
-                            {v.reveal.mode === 'at' && v.reveal.at ? `Winners revealed automatically ${fmtDayTime(fromLocalInput(v.reveal.at))}` : 'You reveal the winners'}
+                            {v.reveal.mode === 'at' && v.reveal.at
+                                ? t('venueEventBuilder:review.revealAuto', { at: fmtDayTime(fromLocalInput(v.reveal.at)) })
+                                : t('venueEventBuilder:review.revealManual')}
                         </div>
                     </ReviewRow>
-                    <ReviewRow label="What counts" onEdit={() => go(2)}>
+                    <ReviewRow label={t('venueEventBuilder:scoring.title')} onEdit={() => go(2)}>
                         <div>{whatCounts({ count_venue_only: v.scoring === 'venue', included_activities: v.scoring === 'pick' ? v.activities : null }, gym.name)}</div>
-                        <div className="text-[#888]">Top {v.board_size} on the board{preset?.attendance_bonus_points ? ` · +${preset.attendance_bonus_points} POWR for coming to the finale night` : ''}</div>
+                        <div className="text-[#888]">
+                            {t('venueEventBuilder:review.boardTop', { n: v.board_size })}
+                            {preset?.attendance_bonus_points ? ` · ${t('venueEventBuilder:review.finaleBonus', { points: preset.attendance_bonus_points })}` : ''}
+                        </div>
                     </ReviewRow>
-                    <ReviewRow label="Prizes" onEdit={() => go(3)}>
+                    <ReviewRow label={t('venueEventBuilder:steps.prizes.title')} onEdit={() => go(3)}>
                         <ol className="space-y-1.5">
                             {v.prizes.filter(p => p.label.trim()).map((p, i) => (
                                 <li key={i} className="flex items-center gap-3">
-                                    <span className="w-9 text-[11px] font-black text-[#BBBBBB]">{ordinal(i + 1)}</span>
+                                    <span className="w-9 text-[11px] font-black text-[#BBBBBB]">{placeText(i + 1)}</span>
                                     {p.image_url && <img src={storageImage(p.image_url, 80)} alt="" className="w-7 h-7 rounded-lg object-cover" />}
                                     <span>{p.label.trim()}</span>
                                 </li>
                             ))}
                         </ol>
                         {v.partner_on && partnerPick && (
-                            <div className="mt-2 text-[#888]">Plus a {partnerPick.label} code for everyone who scores, in their Wallet at the reveal</div>
+                            <div className="mt-2 text-[#888]">{t('venueEventBuilder:review.partnerCode', { brand: partnerPick.label })}</div>
                         )}
                     </ReviewRow>
-                    <ReviewRow label="Promote" onEdit={() => go(4)}>
-                        <div>{v.audience_radius_km ? `Your members, recent visitors and anyone within ${v.audience_radius_km} km` : 'Your members and recent visitors'}</div>
+                    <ReviewRow label={t('venueEventBuilder:steps.promote.title')} onEdit={() => go(4)}>
+                        <div>{v.audience_radius_km ? t('venueEventBuilder:review.audienceKm', { km: v.audience_radius_km }) : t('venueEventBuilder:review.audience')}</div>
                         <div className="text-[#888]">
-                            {pushesOn.length ? `Notifications: ${pushesOn.join(', ')}` : 'No one-off notifications'}
-                            {v.pushes.rank_at ? `, daily standings at ${hourLabel(Number(v.pushes.rank_at.slice(0, 2)))}` : ''}
+                            {pushesOn.length ? t('venueEventBuilder:review.notifications', { list: pushesOn.join(', ') }) : t('venueEventBuilder:review.noNotifications')}
+                            {v.pushes.rank_at ? t('venueEventBuilder:review.standingsAt', { time: hourText(Number(v.pushes.rank_at.slice(0, 2))) }) : ''}
                         </div>
-                        {v.booking_url.trim() && <div className="text-[#888] truncate">Booking: {v.booking_url.trim()}</div>}
+                        {v.booking_url.trim() && <div className="text-[#888] truncate">{t('venueEventBuilder:review.booking', { url: v.booking_url.trim() })}</div>}
                     </ReviewRow>
-                    <ReviewRow label="Rules" onEdit={() => go(2)}>
+                    <ReviewRow label={t('venueEventBuilder:scoring.rules')} onEdit={() => go(2)}>
                         <Rules rules={preview?.rules ?? []} />
                     </ReviewRow>
                 </div>
@@ -1115,15 +1159,15 @@ export default function VenueEventBuilder() {
     return (
         <Page>
             <Link to={id ? `/venue/events/${id}` : '/venue/events'} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black">
-                <ArrowLeft size={13} className="text-[#BBBBBB]" /><span className="text-[#BBBBBB] hover:text-[#8a7600]">{id ? 'Back to the event' : 'Events'}</span>
+                <ArrowLeft size={13} className="text-[#BBBBBB]" /><span className="text-[#BBBBBB] hover:text-[#8a7600]">{id ? t('venueEventBuilder:page.backToEvent') : t('venueEventBuilder:page.events')}</span>
             </Link>
             <div ref={rootRef} className="scroll-mt-24">
                 <PageTitle
-                    eyebrow={id ? 'Edit event' : fromId ? 'Run it again' : 'New event'}
-                    title={v?.name.trim() || (tpl ? tpl.name : 'New event')}
+                    eyebrow={id ? t('venueEventBuilder:page.edit') : fromId ? t('venueEventBuilder:page.again') : t('venueEventBuilder:page.new')}
+                    title={v?.name.trim() || (tpl ? tpl.name : t('venueEventBuilder:page.new'))}
                     right={restored && !id ? (
                         <button type="button" onClick={startOver} className="text-[10px] uppercase tracking-[0.25em] font-black text-[#AAAAAA] hover:text-[#8a7600]">
-                            Start over
+                            {t('venueEventBuilder:actions.startOver')}
                         </button>
                     ) : null}
                 />
@@ -1136,7 +1180,7 @@ export default function VenueEventBuilder() {
                     {previewEvent && step > 0 && cur !== 'review' && (
                         <div className="xl:hidden">
                             <button type="button" onClick={() => setShowPhone(s => !s)} aria-expanded={showPhone} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] font-black text-[#8a7600]">
-                                <Smartphone size={13} /> {showPhone ? 'Hide the app preview' : 'See it in the app'}
+                                <Smartphone size={13} /> {showPhone ? t('venueEventBuilder:page.hidePhone') : t('venueEventBuilder:page.showPhone')}
                             </button>
                             {showPhone && <div className="mt-5"><EventAppPreview event={previewEvent} venue={previewVenue} pageTheme="light" /></div>}
                         </div>
@@ -1147,42 +1191,42 @@ export default function VenueEventBuilder() {
                     <div className="flex flex-wrap items-center gap-3">
                         {step > 0 && (
                             <button type="button" onClick={() => go(step - 1)} className={BTN_GHOST} disabled={!!saving}>
-                                <ArrowLeft size={13} /> Back
+                                <ArrowLeft size={13} /> {t('common:actions.back')}
                             </button>
                         )}
                         {step < last && (
                             <button type="button" onClick={() => go(step + 1)} disabled={!!problem || !!uploading || !!saving} className={BTN_GOLD}>
-                                Next: {STEPS[step + 1].title} <ArrowRight size={14} />
+                                {t('venueEventBuilder:actions.next', { step: t(STEPS[step + 1].title) })} <ArrowRight size={14} />
                             </button>
                         )}
                         {step < last && id && (
                             <button type="button" onClick={() => save(false)} disabled={!!uploading || !!saving} className={BTN_GHOST}>
-                                {saving === 'save' ? 'Saving…' : 'Save changes'}
+                                {saving === 'save' ? t('common:actions.saving') : t('venueEventBuilder:actions.saveChanges')}
                             </button>
                         )}
                         {step === last && (
                             <>
                                 <button type="button" onClick={() => save(false)} disabled={!!uploading || !!saving}
                                     className={id && !isDraft ? BTN_GOLD : BTN_GHOST}>
-                                    {saving === 'save' ? 'Saving…' : id ? 'Save changes' : 'Save as a draft'}
+                                    {saving === 'save' ? t('common:actions.saving') : id ? t('venueEventBuilder:actions.saveChanges') : t('venueEventBuilder:actions.saveDraft')}
                                 </button>
                                 {isDraft && (canPublish ? (
                                     <button type="button" onClick={() => save(true)} disabled={!!uploading || !!saving} className={BTN_GOLD}>
-                                        {saving === 'publish' ? 'Working…' : trusted ? 'Publish' : 'Send to POWR'}
+                                        {saving === 'publish' ? t('venueEventBuilder:actions.working') : trusted ? t('venueEventBuilder:actions.publish') : t('venueEventBuilder:actions.sendToPowr')}
                                     </button>
                                 ) : (
-                                    <Link to="/venue/package" className="text-[10px] uppercase tracking-[0.25em] font-black text-[#8a7600]">Publishing needs Clash+</Link>
+                                    <Link to="/venue/package" className="text-[10px] uppercase tracking-[0.25em] font-black text-[#8a7600]">{t('venueEventBuilder:actions.needsClashPlus')}</Link>
                                 ))}
                             </>
                         )}
                         {problem && step < last && <span className="text-[11px] font-bold text-[#B45309]">{problem}</span>}
-                        {uploading > 0 && <span className="text-[11px] font-bold text-[#888]">Uploading…</span>}
+                        {uploading > 0 && <span className="text-[11px] font-bold text-[#888]">{t('venueEventBuilder:upload.uploading')}</span>}
                     </div>
                     {step === last && isDraft && canPublish && (
                         <p className="text-[11px] text-[#AAAAAA] leading-relaxed max-w-2xl">
                             {trusted
-                                ? 'Publishing puts it in front of your members straight away.'
-                                : 'Your first event gets a quick check from POWR before it goes out, usually within a day.'}
+                                ? t('venueEventBuilder:publish.trusted')
+                                : t('venueEventBuilder:publish.check')}
                         </p>
                     )}
                 </div>

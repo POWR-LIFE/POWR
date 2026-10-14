@@ -1,0 +1,261 @@
+{
+  "days": {
+    "sun": "Dim",
+    "mon": "Lun",
+    "tue": "Mar",
+    "wed": "Mer",
+    "thu": "Jeu",
+    "fri": "Ven",
+    "sat": "Sam"
+  },
+  "activities": {
+    "walking": "marche",
+    "running": "course",
+    "cycling": "vélo",
+    "swimming": "natation",
+    "gym": "salle",
+    "hiit": "HIIT",
+    "sports": "sports",
+    "yoga": "yoga",
+    "dance": "danse",
+    "sleep": "sommeil"
+  },
+  "status": {
+    "draft": "Brouillon",
+    "pending_review": "En examen",
+    "scheduled": "Programmée",
+    "live": "Active",
+    "paused": "En pause",
+    "ended": "Terminée",
+    "rejected": "À modifier"
+  },
+  "map": {
+    "map": "Plan",
+    "satellite": "Satellite"
+  },
+  "calendar": {
+    "prevMonth": "Mois précédent",
+    "nextMonth": "Mois suivant",
+    "requestedTitle": "{{label}} — demandée"
+  },
+  "geofence": {
+    "unavailable": "Carte indisponible — {{error}}",
+    "searchPlaceholder": "CHERCHEZ UN LIEU OU UNE ADRESSE POUR PLACER LE REPÈRE…",
+    "noCoordinates": "Aucune coordonnée pour ce point",
+    "placePrompt": "Cherchez ci-dessus ou cliquez sur la carte pour placer ce point",
+    "switchToMap": "Passer en vue plan",
+    "switchToSatellite": "Passer en vue satellite",
+    "recentre": "Recentrer sur le périmètre",
+    "fence": "Périmètre de check-in · {{radius}} m",
+    "wakeRing": "Zone de réveil · {{radius}} m",
+    "dragHint": "Faites glisser l’anneau doré pour ajuster"
+  },
+  "gridMap": {
+    "tooLarge": "Zone trop grande — zoomez un peu et réessayez",
+    "loopTooSmall": "Tracez une boucle plus grande, ou zoomez pour des cases plus fines",
+    "loadFailed": "Impossible de charger la carte",
+    "loadFailedHelp": "{{error}}. Activez « Maps JavaScript API » et ajoutez ce domaine à la liste des référents autorisés de la clé dans Google Cloud Console.",
+    "modes": {
+      "pan": "Déplacer",
+      "paint": "Peindre",
+      "draw": "Dessiner",
+      "erase": "Effacer"
+    },
+    "lassoHint": "Faites glisser pour tracer une zone — les cases à l’intérieur se remplissent",
+    "searchPlaceholder": "Chercher un lieu ou une adresse…",
+    "myLocation": "Ma position",
+    "zoomIn": "Zoomez pour sélectionner des cases"
+  },
+  "explainer": {
+    "eyebrow": "Comment ça marche",
+    "title": "Votre récompense, en pleine rue.",
+    "intro": "Un emplacement, c’est un morceau du monde réel. Les membres qui s’y trouvent voient votre offre passer en tête de leurs récompenses — au moment précis où ils sont à l’endroit qui compte pour vous.",
+    "beats": {
+      "paint": {
+        "title": "Peignez le terrain",
+        "copy": "Dessinez directement sur la carte — une rue commerçante, le parc où tout le monde court, les pâtés de maisons autour d’une salle de sport. Puis choisissez les jours et les heures de diffusion."
+      },
+      "walkIn": {
+        "title": "Un membre entre dans la zone",
+        "copy": "Quand un membre POWR se trouve physiquement dans vos cases pendant ces heures, son téléphone le sait. Pas de balise, pas de scan, rien à faire de son côté."
+      },
+      "leads": {
+        "title": "Votre récompense passe en tête",
+        "copy": "Votre offre passe devant tout le monde — directement en haut de ses récompenses, à la place vedette, au prix de points déjà gagnés."
+      }
+    },
+    "reportsBack": "Chaque campagne a son bilan",
+    "funnel": {
+      "seen": "Vues",
+      "seenSub": "dans l’app",
+      "visited": "Visites",
+      "visitedSub": "dans vos cases",
+      "pushed": "Push",
+      "pushedSub": "notifications",
+      "redeemed": "Échanges",
+      "redeemedSub": "points dépensés"
+    },
+    "oneBrand": "<lead>Une marque par case.</lead> Tant que votre campagne occupe une case sur un créneau horaire, aucune autre marque ne peut la réserver.",
+    "mapAlt": "Une carte du centre de Londres avec six cases peintes en doré, et une case déjà réservée par une autre marque, en rouge.",
+    "mapBadge": "6 cases · lun–ven · 6h–10h",
+    "booked": "Réservée"
+  },
+  "featured": {
+    "eyebrow": "Récompenses à la une",
+    "title": "À l’affiche",
+    "intro": "La récompense mise en avant en haut de l’écran Récompenses de POWR. Votre marque est entourée — cliquez sur un jour libre pour demander une semaine.",
+    "requestWeek": "Demander une semaine",
+    "featuredNow": "À la une en ce moment",
+    "you": "Vous",
+    "yourWindows": "Vos semaines à la une",
+    "noReward": {
+      "title": "Une semaine à la une nécessite une récompense active",
+      "body": "La carte à la une envoie les membres directement vers une offre qu’ils peuvent obtenir : il en faut donc une active avant de demander un créneau. <action>Créer une récompense</action>."
+    },
+    "loadingCalendar": "Chargement du calendrier…",
+    "calendarHint": "Cliquez sur un jour libre pour demander cette semaine · les bandes en pointillés sont des demandes, pas des réservations",
+    "yourRequests": "Vos demandes",
+    "awaitingCount_one": "{{count}} en attente d’examen",
+    "awaitingCount_other": "{{count}} en attente d’examen",
+    "withdraw": "Retirer",
+    "requestedNotConfirmed": "Demandée · non confirmée",
+    "withdrawRequest": "Retirer la demande",
+    "rewardFallback": "Récompense",
+    "requestedLabel": "{{title}} (demandée)",
+    "status": {
+      "pending": "En attente d’examen",
+      "approved": "Confirmée",
+      "declined": "Pas cette fois",
+      "withdrawn": "Retirée"
+    },
+    "form": {
+      "subtitle": "L’équipe POWR confirme chaque créneau",
+      "reward": "Récompense à mettre en avant",
+      "selectReward": "— Choisir une récompense —",
+      "from": "Début",
+      "until": "Fin",
+      "quickFill": "Remplissage rapide — semaine du",
+      "alreadyBooked": "Déjà réservée",
+      "taken": "{{date}} · prise",
+      "note": "Quelque chose à nous signaler ? <muted>(facultatif)</muted>",
+      "notePlaceholder": "Une date de lancement, une campagne en cours, pourquoi cette semaine compte…",
+      "holdsNothing": "Une seule récompense est à la une à la fois : une demande ne réserve donc rien. Nous la confirmerons ici, et vous verrez la semaine passer en plein sur le calendrier.",
+      "sending": "Envoi…",
+      "send": "Envoyer la demande"
+    },
+    "toast": {
+      "loadFailed": "Une partie de cette page n’a pas pu se charger — actualisez la page",
+      "needReward": "Ajoutez d’abord une récompense active — une semaine à la une doit renvoyer vers une offre que les membres peuvent obtenir",
+      "pickReward": "Choisissez la récompense à mettre en avant",
+      "endAfterStart": "La date de fin doit être postérieure à la date de début",
+      "passed": "Choisissez une période qui n’est pas déjà passée",
+      "overlap": "Une partie de cette période est déjà réservée — choisissez des dates libres sur le calendrier",
+      "duplicate": "Vous avez déjà une demande en cours sur ces dates",
+      "sendFailed": "Impossible d’envoyer cette demande — veuillez réessayer",
+      "sent": "Demande envoyée — l’équipe POWR la confirmera ou reviendra vers vous",
+      "withdrawFailed": "Impossible de retirer cette demande",
+      "withdrawn": "Demande retirée"
+    }
+  },
+  "placements": {
+    "eyebrow": "Boosts géolocalisés",
+    "title": "Emplacements",
+    "intro": "Mettez en avant l’une de vos récompenses auprès des membres présents dans un lieu, aux heures qui comptent.",
+    "hideHow": "Masquer",
+    "showHow": "Fonctionnement des emplacements",
+    "newPlacement": "Nouvel emplacement",
+    "noReward": {
+      "title": "D’abord, il vous faut une récompense active",
+      "body": "Un emplacement met toujours en avant une récompense que vous proposez déjà. Mettez-en une en ligne, puis revenez peindre sa zone.",
+      "cta": "Voir mes récompenses"
+    },
+    "ready": {
+      "title": "À vous de jouer",
+      "body": "Choisissez une récompense, peignez la zone où elle doit briller, réglez les horaires. Vous pouvez enregistrer un brouillon et revenir plus tard.",
+      "cta": "Créer votre premier emplacement"
+    },
+    "rewardFallback": "Récompense",
+    "squares_one": "{{count}} case",
+    "squares_other": "{{count}} cases",
+    "anyDay": "tous les jours",
+    "statsTitle": "Vues · Visites · Push · Échanges",
+    "revise": "Corriger",
+    "continue": "Continuer",
+    "reviewing": "En cours d’examen par POWR",
+    "managed": "Géré par POWR",
+    "steps": {
+      "offer": "Offre",
+      "offerDetail": "Choisir la récompense",
+      "place": "Lieu et horaires",
+      "placeDetail": "Définir où et quand",
+      "review": "Audience et envoi",
+      "reviewDetail": "Confirmer votre plan"
+    },
+    "form": {
+      "back": "Retour aux emplacements",
+      "editTitle": "Modifier la campagne",
+      "newTitle": "Nouvelle campagne",
+      "subtitle": "Préparez un brouillon étape par étape, puis envoyez-le à POWR pour examen",
+      "delete": "Supprimer",
+      "saveDraft": "Enregistrer le brouillon",
+      "coverage": "Zone couverte",
+      "clear": "Tout effacer",
+      "legend": {
+        "selected": "Sélectionnée",
+        "booked": "Réservée (ces horaires)",
+        "requested": "Demandée par une autre marque"
+      },
+      "yourOffer": "Votre offre",
+      "summary": "Récapitulatif de la campagne",
+      "startTitle": "Commencez par la récompense membre.",
+      "untitled": "Campagne sans titre",
+      "startBody": "Choisissez la récompense à montrer aux membres POWR à proximité. Vous pouvez enregistrer et revenir avant de choisir un lieu.",
+      "reviewBody": "Vérifiez vos choix ci-dessous. Une fois envoyée, la campagne reste désactivée jusqu’à son examen par l’équipe POWR.",
+      "summaryReward": "Récompense",
+      "summaryArea": "Zone",
+      "summaryTiming": "Calendrier",
+      "notChosen": "Non défini",
+      "selectedSquares_one": "{{count}} case sélectionnée",
+      "selectedSquares_other": "{{count}} cases sélectionnées",
+      "dateRange": "{{start}} → {{end}}",
+      "open": "Sans limite",
+      "alwaysOn": "Toujours active",
+      "campaignName": "Nom de la campagne *",
+      "campaignNamePlaceholder": "ex. Lancement du studio ce week-end",
+      "campaignNameHint": "Visible uniquement par votre équipe, pour retrouver vos campagnes plus facilement.",
+      "reward": "Récompense *",
+      "chooseReward": "Choisir une récompense…",
+      "inactive": "{{title}} (inactive)",
+      "rewardsLoading": "Vérification de vos récompenses actives…",
+      "rewardsError": "Impossible de charger vos récompenses — actualisez la page pour réessayer.",
+      "noRewards": "Vous n’avez encore aucune récompense active — ajoutez-en une dans Mes récompenses.",
+      "runDates": "Dates de diffusion <muted>(vide = toujours active)</muted>",
+      "dateTo": "au",
+      "days": "Jours <muted>(aucun = tous les jours)</muted>",
+      "certainHours": "Seulement à certaines heures",
+      "hourTo": "à",
+      "whoSees": "Qui la voit <muted>(aucune = tout le monde à proximité)</muted>",
+      "whoSeesHint": "Ciblez les membres selon les activités qui les intéressent.",
+      "showAtMost": "Afficher au maximum <muted>(par membre / jour)</muted>",
+      "noLimit": "Aucune limite",
+      "beta": "Ce programme est en bêta. Envoyer votre campagne pour examen ne la met jamais en ligne automatiquement ; l’équipe POWR confirme d’abord la disponibilité et la date de lancement.",
+      "saving": "Enregistrement…",
+      "saveContinue": "Enregistrer et continuer",
+      "sending": "Envoi…",
+      "submit": "Envoyer pour examen"
+    },
+    "toast": {
+      "loadFailed": "Impossible de charger les emplacements",
+      "chooseReward": "Choisissez la récompense à placer",
+      "nameCampaign": "Donnez un nom à cette campagne pour la retrouver plus tard",
+      "paintOne": "Peignez au moins une case sur la carte",
+      "endBeforeStart": "La date de fin est antérieure à la date de début",
+      "cellConflict": "Certaines cases sont déjà réservées sur ces horaires (en rouge). Effacez-les et réessayez.",
+      "draftSaved": "Brouillon enregistré",
+      "submitted": "Campagne envoyée pour examen",
+      "confirmRemove": "Supprimer cet emplacement ?",
+      "deleteFailed": "Échec de la suppression",
+      "removed": "Emplacement supprimé"
+    }
+  }
+}

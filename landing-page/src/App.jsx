@@ -38,6 +38,8 @@ import { createContext, lazy, Suspense, useContext, useEffect, useState } from '
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
+import { useTranslation } from 'react-i18next';
+import { serverErrorText } from './lib/serverErrors';
 
 import PartnerPortalHome from './pages/partner/PartnerHome';
 import { PartnerLayout } from './pages/partner/PartnerLayout';
@@ -567,6 +569,7 @@ const PATH_LABELS = {
 
 // --- Partner Login ---
 const PartnerLogin = () => {
+    const { t } = useTranslation();
     const navigate = useNavigate();
     const { isAdmin, isPartner, user } = useAuth();
     const [email, setEmail] = useState('');
@@ -584,14 +587,14 @@ const PartnerLogin = () => {
         e.preventDefault();
         setLoading(true);
         setError(null);
-        setStatus('Authenticating...');
+        setStatus(t('brandShell:login.authenticating'));
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
-            setError(error.message);
+            setError(serverErrorText(error));
             setStatus(null);
             setLoading(false);
         } else {
-            setStatus('Loading your portal...');
+            setStatus(t('brandShell:login.loadingPortal'));
         }
     };
 
@@ -601,24 +604,24 @@ const PartnerLogin = () => {
                 <div className="flex justify-center mb-8">
                     <img src="/powr-logo-black.png" alt="POWR" className="h-12" />
                 </div>
-                <h2 className="text-2xl font-light text-center mb-2 tracking-tight">Partner Portal</h2>
-                <p className="text-center text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-8">Manage your rewards</p>
+                <h2 className="text-2xl font-light text-center mb-2 tracking-tight">{t('brandShell:portalName')}</h2>
+                <p className="text-center text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-8">{t('brandShell:login.tagline')}</p>
                 <form onSubmit={handleLogin} className="space-y-6">
                     <div>
-                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Email address</label>
+                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">{t('brandShell:auth.emailAddress')}</label>
                         <input type="email" className="w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]" value={email} onChange={e => setEmail(e.target.value)} required />
                     </div>
                     <div>
-                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Password</label>
+                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">{t('brandShell:auth.password')}</label>
                         <input type="password" className="w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]" value={password} onChange={e => setPassword(e.target.value)} required />
                     </div>
                     {error && <div className="text-red-400 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-lg">{error}</div>}
                     {status && <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-lg animate-pulse">{status}</div>}
                     <button type="submit" disabled={loading} className="w-full h-12 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-lg hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-50">
-                        {loading ? 'Processing...' : 'Sign In'}
+                        {loading ? t('brandShell:login.processing') : t('brandShell:auth.signIn')}
                     </button>
                     <div className="text-center pt-2">
-                        <Link to="/" className="text-[10px] uppercase tracking-widest text-[#AAAAAA] hover:text-[#8a7600] transition-colors">Back to home</Link>
+                        <Link to="/" className="text-[10px] uppercase tracking-widest text-[#AAAAAA] hover:text-[#8a7600] transition-colors">{t('brandShell:login.backHome')}</Link>
                     </div>
                 </form>
             </div>
@@ -870,6 +873,7 @@ const LegacyDevelopersRedirect = () => {
 // --- Partner Protected Route ---
 // Admins are allowed in too: they can preview the portal as any partner.
 const PartnerProtectedRoute = ({ children }) => {
+    const { t } = useTranslation();
     const { user, isPartner, isAdmin, loading } = useAuth();
     const location = useLocation();
 
@@ -877,7 +881,7 @@ const PartnerProtectedRoute = ({ children }) => {
         <div className="min-h-screen bg-[#F4F4F1] flex items-center justify-center fixed inset-0 z-[100]">
             <div className="flex flex-col items-center gap-4">
                 <div className="w-8 h-8 border-2 border-[#E8D200] border-t-transparent rounded-full animate-spin" />
-                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">Loading portal...</p>
+                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">{t('brandShell:loadingPortal')}</p>
             </div>
         </div>
     );
@@ -959,6 +963,7 @@ const CreatorProtectedRoute = ({ children }) => {
 // Waits for roles to resolve for THIS user, like the affiliate route, so a
 // fresh sign-in isn't bounced to the login page mid-lookup.
 const GymProtectedRoute = ({ children }) => {
+    const { t } = useTranslation();
     const { user, isGymStaff, isAdmin, loading, rolesFor } = useAuth();
     const location = useLocation();
 
@@ -966,7 +971,7 @@ const GymProtectedRoute = ({ children }) => {
         <div className="min-h-screen bg-[#F4F4F1] flex items-center justify-center fixed inset-0 z-[100]">
             <div className="flex flex-col items-center gap-4">
                 <div className="w-8 h-8 border-2 border-[#E8D200] border-t-transparent rounded-full animate-spin" />
-                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">Loading portal...</p>
+                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">{t('venueShell:loadingPortal')}</p>
             </div>
         </div>
     );

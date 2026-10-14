@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { callPartnerApi, DOCS_PATHS, fetchMethodStatuses } from '../../lib/partnerApi';
+import { serverErrorText } from '../../lib/serverErrors';
 import { DELIVERY_METHODS } from './integrationShared';
 
 // Permanent opt-out of the first-run auto-redirect (per brand); the chooser
@@ -12,6 +14,7 @@ export const methodLaterKey = (brandName) =>
     `powr-partner-method-later:${String(brandName ?? '').trim().toLowerCase()}`;
 
 export default function PartnerIntegrationHub() {
+    const { t } = useTranslation();
     const toast = useToast();
     const navigate = useNavigate();
     const { partnerData, deliveryMethod, updateDeliveryMethod } = useAuth();
@@ -53,14 +56,14 @@ export default function PartnerIntegrationHub() {
     const choose = async (method) => {
         if (deliveryMethod === method.id) { navigate(method.path); return; }
         if (deliveryMethod && !window.confirm(
-            `Switch your delivery method to ${method.label}? Nothing is deleted — your existing setup keeps working and you can switch back anytime.`
+            t('brandIntegration:hub.confirmSwitch', { method: t(method.labelKey) })
         )) return;
         setChoosing(method.id);
         try {
             await callPartnerApi('set_integration', brand, { delivery_method: method.id });
             updateDeliveryMethod(method.id);
             navigate(method.path);
-        } catch (err) { toast.error(err.message); }
+        } catch (err) { toast.error(serverErrorText(err)); }
         setChoosing(null);
     };
 
@@ -76,16 +79,14 @@ export default function PartnerIntegrationHub() {
                 <div className="flex items-center gap-3 mb-5">
                     <div className="h-[1px] w-10 bg-[#E8D200]"></div>
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">
-                        {firstRun ? 'One decision to get started' : 'Integration'}
+                        {firstRun ? t('brandIntegration:hub.eyebrowFirstRun') : t('brandIntegration:hub.eyebrow')}
                     </span>
                 </div>
                 <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-4 max-w-2xl">
-                    {firstRun ? 'How will you deliver rewards to members?' : 'Delivery method'}
+                    {firstRun ? t('brandIntegration:hub.titleFirstRun') : t('brandIntegration:hub.title')}
                 </h1>
                 <p className="text-[12px] text-[#999] leading-relaxed max-w-xl">
-                    {firstRun
-                        ? 'When a member redeems one of your rewards, POWR hands them a code. Pick how those codes reach us — you can change this at any time.'
-                        : 'How codes reach members when they redeem your rewards. Switching is non-destructive — existing setup keeps working.'}
+                    {firstRun ? t('brandIntegration:hub.introFirstRun') : t('brandIntegration:hub.intro')}
                 </p>
             </header>
 
@@ -101,7 +102,7 @@ export default function PartnerIntegrationHub() {
                             }`}>
                             {current && (
                                 <span className="absolute -top-3 left-8 text-[9px] uppercase tracking-[0.3em] font-black text-[#080808] bg-[#E8D200] rounded-full px-4 py-1.5">
-                                    Current method
+                                    {t('brandIntegration:hub.current')}
                                 </span>
                             )}
                             <div className="flex items-center justify-between mb-6">
@@ -110,8 +111,8 @@ export default function PartnerIntegrationHub() {
                                 </div>
                                 <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#CCC]">{`0${index + 1}`}</span>
                             </div>
-                            <h2 className="text-2xl font-light tracking-tighter text-[#1A1A1A] mb-3">{method.label}</h2>
-                            <p className="text-[12px] text-[#999] leading-relaxed mb-4 flex-0">{method.tagline}</p>
+                            <h2 className="text-2xl font-light tracking-tighter text-[#1A1A1A] mb-3">{t(method.labelKey)}</h2>
+                            <p className="text-[12px] text-[#999] leading-relaxed mb-4 flex-0">{t(method.taglineKey)}</p>
                             {/* Read before you commit — the guide answers "is this me?"
                                 without making the partner pick a method to find out.
                                 Colour sits on the span: style.css's unlayered
@@ -119,17 +120,17 @@ export default function PartnerIntegrationHub() {
                             <a href={DOCS_PATHS[method.id]} target="_blank" rel="noreferrer"
                                 className="self-start mb-6 group/guide">
                                 <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#BBB] group-hover/guide:text-[#8a7600] transition-colors">
-                                    Read the guide →
+                                    {t('brandIntegration:hub.readGuide')}
                                 </span>
                             </a>
 
                             <div className="space-y-2.5 mb-8">
-                                {method.beats.map(beat => (
+                                {method.beatKeys.map(beat => (
                                     <div key={beat} className="flex items-center gap-3">
                                         <span className="h-5 w-5 rounded-full bg-[#E8D200]/10 border border-[#E8D200]/20 flex items-center justify-center shrink-0">
                                             <Check size={10} className="text-[#8a7600]" />
                                         </span>
-                                        <span className="text-[11px] text-[#666] font-bold">{beat}</span>
+                                        <span className="text-[11px] text-[#666] font-bold">{t(beat)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -151,14 +152,17 @@ export default function PartnerIntegrationHub() {
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between gap-3">
-                                    <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#BBB]">Best for<br /><span className="text-[#666]">{method.bestFor}</span></span>
+                                    <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#BBB]">{t('brandIntegration:hub.bestFor')}<br /><span className="text-[#666]">{t(method.bestForKey)}</span></span>
                                     <button type="button" disabled={!!choosing} onClick={() => choose(method)}
                                         className={`flex items-center gap-2 h-11 px-6 text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all disabled:opacity-50 ${
                                             current
                                                 ? 'bg-[#1A1A1A] text-white hover:bg-[#333]'
                                                 : 'bg-[#E8D200] text-[#080808] hover:brightness-95'
                                         }`}>
-                                        {choosing === method.id ? 'Saving…' : current ? 'Open setup' : firstRun ? `Choose ${method.label}` : 'Switch'}
+                                        {choosing === method.id ? t('common:actions.saving')
+                                            : current ? t('brandIntegration:hub.openSetup')
+                                            : firstRun ? t('brandIntegration:hub.choose', { method: t(method.labelKey) })
+                                            : t('brandIntegration:hub.switch')}
                                         {current ? <ChevronRight size={13} /> : <ArrowRight size={13} />}
                                     </button>
                                 </div>
@@ -172,7 +176,7 @@ export default function PartnerIntegrationHub() {
                 <div className="mt-12 text-center">
                     <button type="button" onClick={decideLater}
                         className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] hover:text-[#8a7600] font-black transition-colors">
-                        Not sure yet? Decide later — you can pick a method anytime from the sidebar
+                        {t('brandIntegration:hub.decideLater')}
                     </button>
                 </div>
             )}

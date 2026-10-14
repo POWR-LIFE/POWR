@@ -192,7 +192,7 @@ Same files, same rules as the app, with these differences:
 - **Live list:** `PORTAL_LANGUAGES` / `PORTAL_DRAFT_LANGUAGES` in `index.ts`. `__tests__/portalI18n.test.ts` holds the portals to the same checks as the app.
 - **Preview:** add `?lang=fr` (or `es`) to any portal URL. It sticks for the tab; `?lang=off` clears it. The sidebar then shows a Language picker.
 - **Using a key:** `const { t } = useTranslation();` then `t('venueHome:week.title')`. Outside React (helpers, toasts), `import i18n from '…/lib/i18n'` and call `i18n.t(…)` inside the function, never at module level. Module-level arrays (nav items, option lists) hold keys, translated where they render.
-- **Dates and numbers:** `formatLocale()` from `lib/i18n` instead of `'en-GB'` (English stays en-GB). Money stays in pounds (`£`), formatted with `Intl.NumberFormat(formatLocale(), { style: 'currency', currency: 'GBP' })` where code already formats it, or left as is where it's a fixed price string.
+- **Dates and numbers:** `formatLocale()` from `lib/i18n` instead of `'en-GB'` (English stays en-GB). Money stays in pounds: `Intl.NumberFormat(formatLocale(), { style: 'currency', currency: 'GBP', currencyDisplay: 'narrowSymbol' })` (without `narrowSymbol` French prints "12,50 £GB" and Spanish "12,50 GBP"). Fixed price strings inside a sentence stay as written.
 - **Server errors:** show them with `serverErrorText(error)` from `lib/serverErrors` instead of `error.message`. English is unchanged; known messages get their own words in the `serverErrors` namespace.
 - **Stays English:** admin-only UI (the "view portal as" pickers, admin preview banners), legal text, brand-written and POWR-staff-written text, CSV headers that are parsed back on upload, and anything sent to the server.
 - **Where text appears to members** (app previews inside the portal, push previews): it follows the **member's** language, not the owner's. Until those previews are wired to a member language, keep them English and say so in a comment.
@@ -201,6 +201,7 @@ Same files, same rules as the app, with these differences:
 
 - **French: "vous".** Gym owners and brands are businesses. Polite, direct, short. Buttons and menu items use the infinitive or a noun (*Enregistrer*, *Paramètres*); sentences addressed to the reader use *vous* (*Ajoutez votre logo*).
 - **Spanish: "usted", Spain Spanish.** Buttons in the infinitive (*Guardar*), sentences with *usted* (*Añada su logotipo*). No spaced dashes, same as the app.
+- **Shoppers and members get *tu/tú*,** as in the app: the printed counter stand, the kiosk's QR panel, `/s/:code`, and anything printed for a gym's members (join posters: use the infinitive, *Scanner pour participer* / *Escanear para unirse*).
 - Keep POWR's energy, lose the slang. Short beats complete: French runs 15–30% longer, and the sidebar is 288 px.
 
 ### Portal glossary
@@ -229,6 +230,35 @@ Same files, same rules as the app, with these differences:
 | in store, till, voucher, stand | en magasin, caisse, bon, présentoir | en tienda, caja, vale, expositor | as in the app |
 | check-in | check-in | check-in | as in the app |
 | sign in / sign out | se connecter / se déconnecter | iniciar sesión / cerrar sesión | |
+| member (partner portal, in a shop) | membre | miembro | *socio* is a gym's member; brands and shops say *miembro* |
+| POWR members (in general) | membres POWR | miembros de POWR | |
+| What's On | À l’affiche | En cartel | Partner nav |
+| My Rewards | Mes récompenses | Mis recompensas | Partner nav |
+| Support (nav) | Aide | Ayuda | Page title *Assistance* / *Soporte* |
+| delivery method | méthode de distribution | método de entrega | |
+| code pool | réserve de codes | reserva de códigos | |
+| mint (codes) | générer | generar | JIT = *génération à la demande* / *generación bajo demanda* |
+| live (reward in the app) | en ligne | publicada | |
+| listing | fiche | ficha | |
+| submission / review (POWR approval) | proposition / validation | propuesta / revisión | |
+| reconcile | rapprocher | conciliar | |
+| batch | lot | lote | |
+| template | modèle | plantilla | |
+| draft | brouillon | borrador | |
+| upload | importer | subir | |
+| API key | clé API | clave de API | webhook, endpoint unchanged |
+| board (event leaderboard), daily standings | classement, classement du jour | clasificación, clasificación diaria | |
+| the reveal (winners) | le dévoilement / dévoiler | la revelación / revelar | |
+| prize | lot | premio | Step "Prizes" = *Lots* / *Premios* |
+| finale night | soirée finale | noche final | |
+| sealed | scellé | sellado | |
+| partner code | code partenaire | código de marca | |
+| front desk | accueil | recepción | |
+| drifting / slipping (retention) | décrocher / ralentir | alejarse / aflojar | |
+| nudge | relance | aviso | |
+| backup date (Clash Night) | date de secours | fecha alternativa | |
+| kiosk mode | mode borne | modo quiosco | |
+| times | 18:00 | 18:00 | English keeps "6pm"; French and Spanish use the 24-hour clock |
 
 ## Server: pushes and emails
 

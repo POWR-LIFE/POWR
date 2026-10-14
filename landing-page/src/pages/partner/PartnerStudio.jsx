@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../App';
 import StudioEditor from '../../studio/StudioEditor';
 import DraftsPanel from '../../studio/drafts/DraftsPanel';
@@ -11,9 +12,10 @@ import { loadTrending } from '../../studio/trending';
 // Trending ones too), grade and exports, filled from the brand's own rewards
 // (studio/brandData.js). Photos and clips stay on the device until a post is
 // downloaded, or saved as a draft (kept in the brand's own storage folder).
-const MODES = [['post', 'One post'], ['drafts', 'Drafts']];
+const MODES = [['post', 'brandShell:studio.modes.post'], ['drafts', 'brandShell:studio.modes.drafts']]; // labels are keys
 
 export default function PartnerStudio() {
+    const { t } = useTranslation();
     const { partnerData } = useAuth();
     const brand = partnerData.brand_name;
     const [params, setParams] = useSearchParams();
@@ -60,22 +62,22 @@ export default function PartnerStudio() {
     }
 
     const blurb = mode === 'drafts'
-        ? 'Posts saved to finish later. Open one to carry on where it was left — every slide, photo or clip, the words and the look.'
+        ? t('brandShell:studio.blurb.drafts')
         : rewards.length
-            ? 'Pick a template, add a photo or video, and it’s filled from your reward: the offer, points, logo and colour. Save a draft to finish it later.'
-            : 'Pick a template, add a photo or video, and upload your logo under Words. Once your reward is live, its offer, points and colour fill in too.';
+            ? t('brandShell:studio.blurb.withReward')
+            : t('brandShell:studio.blurb.noReward');
     const intro = (
         <div className="px-1 pb-1">
             <div className="flex items-center gap-3 mb-4">
                 <div className="h-[1px] w-12 bg-[#E8D200]" />
-                <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Studio</span>
+                <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">{t('brandShell:studio.eyebrow')}</span>
             </div>
-            <h1 className="text-4xl font-light tracking-tighter text-[#1A1A1A] leading-[1.05]">Posts for {partnerData.name}</h1>
+            <h1 className="text-4xl font-light tracking-tighter text-[#1A1A1A] leading-[1.05]">{t('brandShell:studio.title', { brand: partnerData.name })}</h1>
             <div className="mt-4 inline-flex rounded-xl bg-[#EAEAE5] p-1">
                 {MODES.map(([id, label]) => (
                     <button key={id} type="button" onClick={() => choose(id)}
                         className={`rounded-lg px-3 py-1.5 text-[13px] transition-colors ${mode === id ? 'bg-white font-semibold text-[#111] shadow-sm' : 'text-[#666] hover:text-[#111]'}`}>
-                        {label}
+                        {t(label)}
                         {id === 'drafts' && dr.count > 0 && (
                             <span className={`ml-1.5 rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${mode === id ? 'bg-[#FFFBE0] text-[#111]' : 'bg-black/5 text-[#666]'}`}>{dr.count}</span>
                         )}

@@ -7,6 +7,11 @@ describe('gymTeam', () => {
     expect(isPersonalTrainer('  Personal Trainer ')).toBe(true);
     expect(isPersonalTrainer('PT')).toBe(true);
     expect(isPersonalTrainer('Coach')).toBe(false);
+    // The French and Spanish portals' personal-trainer chip.
+    expect(isPersonalTrainer('Coach sportif')).toBe(true);
+    expect(isPersonalTrainer('Entrenador personal')).toBe(true);
+    expect(isPersonalTrainer('Entrenadora personal')).toBe(true);
+    expect(isPersonalTrainer('Entrenadora')).toBe(false);
   });
 
   it('keeps the old heading and lines while everyone is a trainer', () => {

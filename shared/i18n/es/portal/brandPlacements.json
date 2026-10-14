@@ -1,0 +1,261 @@
+{
+  "days": {
+    "sun": "Dom",
+    "mon": "Lun",
+    "tue": "Mar",
+    "wed": "Mié",
+    "thu": "Jue",
+    "fri": "Vie",
+    "sat": "Sáb"
+  },
+  "activities": {
+    "walking": "caminar",
+    "running": "correr",
+    "cycling": "ciclismo",
+    "swimming": "natación",
+    "gym": "gimnasio",
+    "hiit": "HIIT",
+    "sports": "deportes",
+    "yoga": "yoga",
+    "dance": "baile",
+    "sleep": "sueño"
+  },
+  "status": {
+    "draft": "Borrador",
+    "pending_review": "En revisión",
+    "scheduled": "Programada",
+    "live": "Activa",
+    "paused": "En pausa",
+    "ended": "Finalizada",
+    "rejected": "Requiere cambios"
+  },
+  "map": {
+    "map": "Mapa",
+    "satellite": "Satélite"
+  },
+  "calendar": {
+    "prevMonth": "Mes anterior",
+    "nextMonth": "Mes siguiente",
+    "requestedTitle": "{{label}} (solicitada)"
+  },
+  "geofence": {
+    "unavailable": "Mapa no disponible: {{error}}",
+    "searchPlaceholder": "BUSQUE UN LOCAL O UNA DIRECCIÓN PARA COLOCAR EL PIN…",
+    "noCoordinates": "Este punto no tiene coordenadas",
+    "placePrompt": "Busque arriba o haga clic en el mapa para colocar este punto",
+    "switchToMap": "Cambiar a mapa",
+    "switchToSatellite": "Cambiar a satélite",
+    "recentre": "Centrar en el perímetro",
+    "fence": "Perímetro de check-in · {{radius}} m",
+    "wakeRing": "Zona de activación · {{radius}} m",
+    "dragHint": "Arrastre el anillo dorado para ajustar"
+  },
+  "gridMap": {
+    "tooLarge": "Zona demasiado grande. Acerque un poco el mapa e inténtelo de nuevo",
+    "loopTooSmall": "Dibuje un contorno más grande o acerque el mapa para tener casillas más pequeñas",
+    "loadFailed": "No se ha podido cargar el mapa",
+    "loadFailedHelp": "{{error}}. Active «Maps JavaScript API» y añada este dominio a la lista de referentes permitidos de la clave en Google Cloud Console.",
+    "modes": {
+      "pan": "Mover",
+      "paint": "Pintar",
+      "draw": "Dibujar",
+      "erase": "Borrar"
+    },
+    "lassoHint": "Arrastre para dibujar una zona: las casillas de dentro se rellenan",
+    "searchPlaceholder": "Buscar un lugar o una dirección…",
+    "myLocation": "Mi ubicación",
+    "zoomIn": "Acerque el mapa para seleccionar casillas"
+  },
+  "explainer": {
+    "eyebrow": "Cómo funciona",
+    "title": "Su recompensa, esperando en la calle.",
+    "intro": "Una posición compra un trozo del mundo real. Los miembros que estén dentro ven su oferta en primer lugar entre sus recompensas, justo cuando se encuentran en el sitio que a usted le interesa.",
+    "beats": {
+      "paint": {
+        "title": "Pinte el terreno",
+        "copy": "Dibuje directamente sobre el mapa: una calle comercial, el parque donde todo el mundo corre, las manzanas alrededor de un gimnasio. Después elija los días y las horas en que debe estar activa."
+      },
+      "walkIn": {
+        "title": "Un miembro entra en la zona",
+        "copy": "Cuando un miembro de POWR está físicamente dentro de sus casillas en esas horas, su móvil lo sabe. Sin balizas, sin escanear, sin que tenga que hacer nada."
+      },
+      "leads": {
+        "title": "Su recompensa va primero",
+        "copy": "Su oferta se salta la cola: directa a lo más alto de sus recompensas, en el espacio principal, con un precio en puntos que ya ha ganado."
+      }
+    },
+    "reportsBack": "Cada campaña rinde cuentas",
+    "funnel": {
+      "seen": "Vistas",
+      "seenSub": "en la app",
+      "visited": "Visitas",
+      "visitedSub": "en sus casillas",
+      "pushed": "Push",
+      "pushedSub": "notificaciones",
+      "redeemed": "Canjes",
+      "redeemedSub": "puntos gastados"
+    },
+    "oneBrand": "<lead>Una marca por casilla.</lead> Mientras su campaña ocupa una casilla en una franja horaria, ninguna otra marca puede reservarla.",
+    "mapAlt": "Un mapa del centro de Londres con seis casillas pintadas de dorado y una casilla que otra marca ya ha reservado, en rojo.",
+    "mapBadge": "6 casillas · lun–vie · 6–10 h",
+    "booked": "Reservada"
+  },
+  "featured": {
+    "eyebrow": "Recompensas destacadas",
+    "title": "En cartel",
+    "intro": "La recompensa destacada en la parte superior de la pantalla de recompensas de POWR. Su marca aparece resaltada: haga clic en un día libre para solicitar una semana.",
+    "requestWeek": "Solicitar una semana",
+    "featuredNow": "Destacada ahora",
+    "you": "Su marca",
+    "yourWindows": "Sus semanas destacadas",
+    "noReward": {
+      "title": "Una semana destacada necesita una recompensa activa",
+      "body": "La tarjeta destacada lleva a los miembros directamente a una oferta que pueden canjear, así que necesita una activa antes de solicitar una franja. <action>Crear una recompensa</action>."
+    },
+    "loadingCalendar": "Cargando calendario…",
+    "calendarHint": "Haga clic en un día libre para solicitar esa semana · las bandas discontinuas son solicitudes, no reservas",
+    "yourRequests": "Sus solicitudes",
+    "awaitingCount_one": "{{count}} pendiente de revisión",
+    "awaitingCount_other": "{{count}} pendientes de revisión",
+    "withdraw": "Retirar",
+    "requestedNotConfirmed": "Solicitada · sin confirmar",
+    "withdrawRequest": "Retirar solicitud",
+    "rewardFallback": "Recompensa",
+    "requestedLabel": "{{title}} (solicitada)",
+    "status": {
+      "pending": "Pendiente de revisión",
+      "approved": "Confirmada",
+      "declined": "Esta vez no",
+      "withdrawn": "Retirada"
+    },
+    "form": {
+      "subtitle": "El equipo de POWR confirma cada franja",
+      "reward": "Recompensa que quiere destacar",
+      "selectReward": "Seleccione una recompensa",
+      "from": "Desde",
+      "until": "Hasta",
+      "quickFill": "Relleno rápido: semana del",
+      "alreadyBooked": "Ya reservada",
+      "taken": "{{date}} · ocupada",
+      "note": "¿Algo que debamos saber? <muted>(opcional)</muted>",
+      "notePlaceholder": "Una fecha de lanzamiento, una campaña en marcha, por qué importa esta semana…",
+      "holdsNothing": "Solo se destaca una recompensa a la vez, así que una solicitud no reserva nada. La confirmaremos aquí y verá la semana en color sólido en el calendario.",
+      "sending": "Enviando…",
+      "send": "Enviar solicitud"
+    },
+    "toast": {
+      "loadFailed": "Parte de esta página no se ha podido cargar. Actualice la página",
+      "needReward": "Primero añada una recompensa activa: una semana destacada tiene que llevar a algo que los miembros puedan canjear",
+      "pickReward": "Elija la recompensa que quiere destacar",
+      "endAfterStart": "La fecha de fin tiene que ser posterior a la de inicio",
+      "passed": "Elija un periodo que no haya pasado ya",
+      "overlap": "Parte de ese periodo ya está reservado. Elija fechas que el calendario muestre como libres",
+      "duplicate": "Ya tiene una solicitud abierta en esas fechas",
+      "sendFailed": "No se ha podido enviar la solicitud. Inténtelo de nuevo",
+      "sent": "Solicitud enviada. El equipo de POWR la confirmará o se pondrá en contacto con usted",
+      "withdrawFailed": "No se ha podido retirar la solicitud",
+      "withdrawn": "Solicitud retirada"
+    }
+  },
+  "placements": {
+    "eyebrow": "Impulsos por ubicación",
+    "title": "Posiciones",
+    "intro": "Impulse una de sus recompensas entre los miembros que estén en un lugar, en las horas que importan.",
+    "hideHow": "Ocultar",
+    "showHow": "Cómo funcionan las posiciones",
+    "newPlacement": "Nueva posición",
+    "noReward": {
+      "title": "Antes de nada: necesita una recompensa activa",
+      "body": "Una posición siempre impulsa una recompensa que ya ofrece. Active una y vuelva para pintar su zona.",
+      "cta": "Ir a mis recompensas"
+    },
+    "ready": {
+      "title": "Cuando quiera",
+      "body": "Elija una recompensa, pinte la zona donde debe destacar y elija las horas. Puede guardar un borrador y volver más tarde.",
+      "cta": "Crear su primera posición"
+    },
+    "rewardFallback": "Recompensa",
+    "squares_one": "{{count}} casilla",
+    "squares_other": "{{count}} casillas",
+    "anyDay": "cualquier día",
+    "statsTitle": "Vistas · Visitas · Push · Canjes",
+    "revise": "Corregir",
+    "continue": "Continuar",
+    "reviewing": "POWR lo está revisando",
+    "managed": "Gestionado por POWR",
+    "steps": {
+      "offer": "Oferta",
+      "offerDetail": "Elegir la recompensa",
+      "place": "Lugar y horario",
+      "placeDetail": "Definir dónde y cuándo",
+      "review": "Público y revisión",
+      "reviewDetail": "Confirmar su plan"
+    },
+    "form": {
+      "back": "Volver a posiciones",
+      "editTitle": "Editar campaña",
+      "newTitle": "Nueva campaña",
+      "subtitle": "Prepare un borrador por etapas y envíelo a POWR para su revisión",
+      "delete": "Eliminar",
+      "saveDraft": "Guardar borrador",
+      "coverage": "Zona de cobertura",
+      "clear": "Borrar todo",
+      "legend": {
+        "selected": "Seleccionada",
+        "booked": "Reservada (estas horas)",
+        "requested": "Solicitada por otra marca"
+      },
+      "yourOffer": "Su oferta",
+      "summary": "Resumen de la campaña",
+      "startTitle": "Empiece por la recompensa para los miembros.",
+      "untitled": "Campaña sin título",
+      "startBody": "Elija la recompensa que quiere mostrar a los miembros de POWR cercanos. Puede guardar y volver antes de elegir un lugar.",
+      "reviewBody": "Revise sus elecciones abajo. Una vez enviada, la campaña sigue desactivada hasta que el equipo de POWR la haya revisado.",
+      "summaryReward": "Recompensa",
+      "summaryArea": "Zona",
+      "summaryTiming": "Fechas",
+      "notChosen": "Sin elegir",
+      "selectedSquares_one": "{{count}} casilla seleccionada",
+      "selectedSquares_other": "{{count}} casillas seleccionadas",
+      "dateRange": "{{start}} → {{end}}",
+      "open": "Sin límite",
+      "alwaysOn": "Siempre activa",
+      "campaignName": "Nombre de la campaña *",
+      "campaignNamePlaceholder": "p. ej., Lanzamiento del estudio el fin de semana",
+      "campaignNameHint": "Solo lo ve su equipo y sirve para encontrar las campañas más fácilmente.",
+      "reward": "Recompensa *",
+      "chooseReward": "Elegir una recompensa…",
+      "inactive": "{{title}} (inactiva)",
+      "rewardsLoading": "Comprobando qué recompensas tiene activas…",
+      "rewardsError": "No se han podido cargar sus recompensas. Actualice la página para volver a intentarlo.",
+      "noRewards": "Aún no tiene recompensas activas. Añada una primero en Mis recompensas.",
+      "runDates": "Fechas <muted>(vacío = siempre activa)</muted>",
+      "dateTo": "a",
+      "days": "Días <muted>(ninguno = todos los días)</muted>",
+      "certainHours": "Solo en ciertas horas",
+      "hourTo": "a",
+      "whoSees": "Quién la ve <muted>(ninguna = todos los que estén cerca)</muted>",
+      "whoSeesHint": "Llegue a los miembros según las actividades que les interesan.",
+      "showAtMost": "Mostrar como máximo <muted>(por miembro / día)</muted>",
+      "noLimit": "Sin límite",
+      "beta": "Este programa está en fase beta. Enviar su campaña a revisión nunca la activa automáticamente; el equipo de POWR confirma antes la disponibilidad y la fecha de lanzamiento.",
+      "saving": "Guardando…",
+      "saveContinue": "Guardar y continuar",
+      "sending": "Enviando…",
+      "submit": "Enviar a revisión"
+    },
+    "toast": {
+      "loadFailed": "No se han podido cargar las posiciones",
+      "chooseReward": "Elija qué recompensa quiere colocar",
+      "nameCampaign": "Ponga un nombre a esta campaña para encontrarla más tarde",
+      "paintOne": "Pinte al menos una casilla en el mapa",
+      "endBeforeStart": "La fecha de fin es anterior a la de inicio",
+      "cellConflict": "Algunas casillas ya están reservadas en estas horas (en rojo). Bórrelas e inténtelo de nuevo.",
+      "draftSaved": "Borrador guardado",
+      "submitted": "Campaña enviada a revisión",
+      "confirmRemove": "¿Eliminar esta posición?",
+      "deleteFailed": "No se ha podido eliminar",
+      "removed": "Posición eliminada"
+    }
+  }
+}

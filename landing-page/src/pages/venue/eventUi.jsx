@@ -1,4 +1,8 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n, { formatLocale } from '../../lib/i18n';
+import { boardName } from '../../../../shared/gymBoard.ts';
+import { ukTime } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 
 // How a gym-run event reads in the portal. Times are shown in UK time — every
 // gym on POWR is in the UK today, and the server builds the dates in the
@@ -6,17 +10,18 @@ import React from 'react';
 
 const TZ = 'Europe/London';
 
+// labelKey is translated where it renders (StatusPill).
 export const STATUS = {
-    draft:     { label: 'Draft',            tone: 'grey'   },
-    pending:   { label: 'Waiting for POWR', tone: 'amber'  },
-    rejected:  { label: 'Changes needed',   tone: 'red'    },
-    scheduled: { label: 'Scheduled',        tone: 'blue'   },
-    live:      { label: 'Live',             tone: 'green'  },
-    locked:    { label: 'Board sealed',     tone: 'purple' },
-    revealed:  { label: 'Winners out',      tone: 'gold'   },
-    settled:   { label: 'Finished',         tone: 'grey'   },
-    cancelled: { label: 'Cancelled',        tone: 'grey'   },
-    pulled:    { label: 'Pulled by POWR',   tone: 'red'    },
+    draft:     { labelKey: 'venueEvents:status.draft',     tone: 'grey'   },
+    pending:   { labelKey: 'venueEvents:status.pending',   tone: 'amber'  },
+    rejected:  { labelKey: 'venueEvents:status.rejected',  tone: 'red'    },
+    scheduled: { labelKey: 'venueEvents:status.scheduled', tone: 'blue'   },
+    live:      { labelKey: 'venueEvents:status.live',      tone: 'green'  },
+    locked:    { labelKey: 'venueEvents:status.locked',    tone: 'purple' },
+    revealed:  { labelKey: 'venueEvents:status.revealed',  tone: 'gold'   },
+    settled:   { labelKey: 'venueEvents:status.settled',   tone: 'grey'   },
+    cancelled: { labelKey: 'venueEvents:status.cancelled', tone: 'grey'   },
+    pulled:    { labelKey: 'venueEvents:status.pulled',    tone: 'red'    },
 };
 
 /** One key for everything the status pill and the page copy switch on. */
@@ -41,22 +46,33 @@ const TONES = {
 };
 
 export function StatusPill({ ev }) {
+    const { t } = useTranslation();
     const s = STATUS[statusKey(ev)] ?? STATUS.draft;
     return (
         <span className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-full border text-[9px] font-black uppercase tracking-[0.2em] whitespace-nowrap ${TONES[s.tone]}`}>
             {s.tone === 'green' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
-            {s.label}
+            {t(s.labelKey)}
         </span>
     );
 }
 
 export const fmtDay = (iso) => iso
-    ? new Intl.DateTimeFormat('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(iso))
+    ? new Intl.DateTimeFormat(formatLocale(), { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(iso))
     : '—';
 
 export const fmtDayTime = (iso) => iso
-    ? new Intl.DateTimeFormat('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
+    ? new Intl.DateTimeFormat(formatLocale(), { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
     : '—';
+
+/** "6pm" on the UK clock in English, "18:00" in French and Spanish. */
+export function ukClock(iso) {
+    return ukTime(iso, i18n.language || 'en');
+}
+
+/** A person's name on the board, or "POWR member" in the reader's language. */
+export function personName(row) {
+    return row?.display_name || row?.username ? boardName(row) : i18n.t('venueEvents:people.unnamed');
+}
 
 /** The last day that counts: the window is half-open, so a minute before it closes. */
 export const lastDay = (iso) => iso ? fmtDay(new Date(new Date(iso).getTime() - 60_000).toISOString()) : '—';
@@ -64,38 +80,60 @@ export const lastDay = (iso) => iso ? fmtDay(new Date(new Date(iso).getTime() - 
 /** "Wed 2 Oct → Tue 29 Oct" */
 export const scoringRange = (ev) => `${fmtDay(ev.window_start_at)} → ${lastDay(ev.window_end_at)}`;
 
+// Template blurbs are POWR-written English, so their stand-in stays English too.
 export const withGym = (text, gymName) => String(text ?? '').replaceAll('{gym}', gymName || 'your gym');
 
 /** What a gym can make count, in the order the builder shows them (the
  *  server's _gym_event_fields accepts exactly these; sleep never counts). */
-// [key, chip label, word in a sentence]
+// [key, chip label, word in a sentence]. The labels here are English: show
+// activityLabel(key) for the reader's language.
 export const ACTIVITIES = [
     ['gym', 'Gym', 'gym sessions'], ['running', 'Running', 'running'], ['cycling', 'Cycling', 'cycling'],
     ['swimming', 'Swimming', 'swimming'], ['hiit', 'HIIT', 'HIIT'], ['yoga', 'Yoga', 'yoga'],
     ['sports', 'Sports', 'sports'], ['dance', 'Dance', 'dance'], ['walking', 'Walking and steps', 'walking'],
 ];
-const ACTIVITY_LABEL = Object.fromEntries(ACTIVITIES.map(([k, label]) => [k, label]));
+const ACTIVITY_KEYS = {
+    gym:      ['venueEvents:activities.gym.chip',      'venueEvents:activities.gym.word'],
+    running:  ['venueEvents:activities.running.chip',  'venueEvents:activities.running.word'],
+    cycling:  ['venueEvents:activities.cycling.chip',  'venueEvents:activities.cycling.word'],
+    swimming: ['venueEvents:activities.swimming.chip', 'venueEvents:activities.swimming.word'],
+    hiit:     ['venueEvents:activities.hiit.chip',     'venueEvents:activities.hiit.word'],
+    yoga:     ['venueEvents:activities.yoga.chip',     'venueEvents:activities.yoga.word'],
+    sports:   ['venueEvents:activities.sports.chip',   'venueEvents:activities.sports.word'],
+    dance:    ['venueEvents:activities.dance.chip',    'venueEvents:activities.dance.word'],
+    walking:  ['venueEvents:activities.walking.chip',  'venueEvents:activities.walking.word'],
+};
 
 /** "gym sessions, running and walking" */
 export function activityList(keys) {
-    const words = ACTIVITIES.filter(([k]) => keys?.includes(k)).map(([, , word]) => word);
+    const words = ACTIVITIES.filter(([k]) => keys?.includes(k)).map(([k, , word]) => (ACTIVITY_KEYS[k] ? i18n.t(ACTIVITY_KEYS[k][1]) : word));
     if (words.length <= 1) return words[0] ?? '';
-    return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+    return i18n.t('venueEvents:counts.listLast', { head: words.slice(0, -1).join(', '), last: words[words.length - 1] });
 }
 
 /** One line for what an event counts, from its row (or the builder's fields). */
 export function whatCounts({ count_venue_only, included_activities }, gymName) {
-    if (count_venue_only) return `Only sessions at ${gymName || 'your gym'}`;
+    if (count_venue_only) return i18n.t('venueEvents:counts.venueOnly', { gym: gymName || i18n.t('venueEvents:counts.yourGym') });
     if (included_activities?.length) {
         const list = activityList(included_activities);
-        return `Only ${list}${included_activities.includes('walking') ? ' (daily steps count as walking)' : ''}`;
+        return included_activities.includes('walking')
+            ? i18n.t('venueEvents:counts.onlyWithSteps', { list })
+            : i18n.t('venueEvents:counts.only', { list });
     }
-    return 'Every verified workout, anywhere';
+    return i18n.t('venueEvents:counts.everything');
 }
-export const activityLabel = (key) => ACTIVITY_LABEL[key] ?? key;
+
+/** The chip label for an activity, in the reader's language. */
+export function activityLabel(key) {
+    return ACTIVITY_KEYS[key] ? i18n.t(ACTIVITY_KEYS[key][0]) : key;
+}
 
 /** "3 days" / "4 weeks" */
-export const lengthLabel = (days) => (days >= 14 && days % 7 === 0 ? `${days / 7} weeks` : `${days} day${days === 1 ? '' : 's'}`);
+export function lengthLabel(days) {
+    return days >= 14 && days % 7 === 0
+        ? i18n.t('venueEvents:length.weeks', { count: days / 7 })
+        : i18n.t('venueEvents:length.days', { count: days });
+}
 
 /** Promo media can be a picture or a short video; the file name says which. */
 export const isVideo = (url) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url ?? '');

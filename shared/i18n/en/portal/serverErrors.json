@@ -1,1 +1,247 @@
-{}
+{
+  "common": {
+    "notAuthorised": "Not authorised",
+    "notFound": "Not found",
+    "nothingToChange": "Nothing to change",
+    "nothingToSave": "Nothing to save",
+    "nothingToUpdate": "Nothing to update",
+    "sentToday": "Already sent today. It can go again tomorrow",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "invalidEmail": "Enter a valid email address",
+    "passwordLength": "Password must be at least 8 characters"
+  },
+  "gym": {
+    "notFound": "Gym not found",
+    "packageMissing": "Your package doesn't include this. See Package in your portal to change it.",
+    "nameLength": "The name needs 2 to 60 characters",
+    "uploadLogo": "Upload the logo here rather than linking to it",
+    "uploadPhoto": "Upload the photo here rather than linking to it",
+    "uploadImage": "Upload the image here rather than linking to it"
+  },
+  "event": {
+    "notFound": "Event not found",
+    "nameLength": "Give the event a name of 3–48 characters",
+    "pickStartDate": "Pick a start date",
+    "prizeCount": "Add between 1 and 5 prizes",
+    "prizeLength": "Each prize needs 2–60 characters",
+    "prizePhotoUpload": "Upload prize photos here rather than linking to them",
+    "rulesCount": "Add up to 8 rules of your own",
+    "ruleLength": "Keep each rule under 200 characters",
+    "headlineLength": "Keep the headline under 80 characters",
+    "pointsOption": "That points option isn't available for this kind of event",
+    "distance": "Pick one of the nearby distances offered",
+    "length": "Pick one of the lengths offered",
+    "finaleTime": "Pick one of the finale night times offered",
+    "finaleLength": "Pick one of the finale night lengths offered",
+    "activityRequired": "Pick at least one activity",
+    "activityNotAllowed": "One of those activities can't count towards an event",
+    "gymOnly": "Say whether only sessions at your gym count",
+    "boardSize": "Pick one of the leaderboard sizes offered",
+    "bookingLinkHttps": "Add a booking link starting https://",
+    "bookingLinkEmail": "A booking link can't ask for members' email addresses",
+    "logoAsName": "Say whether the logo stands in for the name",
+    "partnerCodeUnavailable": "That partner code isn't available right now",
+    "pickKind": "Pick a kind of event",
+    "needsBasics": "An event needs a name, a start date and at least one prize",
+    "startFromToday": "Pick a start date from today on",
+    "lockedAfterStart": "That can't change once the event has started",
+    "publishedNotice": "A published event needs to start at least 2 hours from now",
+    "alreadyPublished": "This event is already published or waiting for POWR",
+    "newEventNotice": "Move the start date: a new event needs at least 2 hours' notice",
+    "publishHorizon": "Events can be published up to 90 days ahead",
+    "addPrize": "Add at least one prize",
+    "noLocation": "Your gym has no location on POWR yet — contact POWR",
+    "tooManyActive_one": "You already have {{count}} events on the go — publish this once one has finished",
+    "tooManyActive_other": "You already have {{count}} events on the go — publish this once one has finished",
+    "withdrawOnlyPending": "Only an event waiting for POWR can be withdrawn",
+    "deleteOnlyDraft": "Only a draft can be deleted — cancel a published event instead",
+    "cancelOnlyUpcoming": "Only an event that hasn't started can be cancelled — contact POWR",
+    "revealAfterSeal": "The winners can be revealed once the board has sealed",
+    "alreadyRevealed": "The winners are already out",
+    "revealWindow": "Pick a time after the board seals and within a week of it",
+    "resultsFinal": "The results are final — contact POWR",
+    "disqualifyReason": "Say why (3–200 characters) — POWR sees the reason",
+    "notInEvent": "They're not in this event",
+    "isOver": "This event is over",
+    "noFinaleNight": "This event has no finale night"
+  },
+  "door": {
+    "noFinaleBonus": "This event has no finale bonus, so there is nothing to check in for",
+    "eventNotOn": "The door is only open while the event is on",
+    "window": "The door opens two hours before the finale and closes six hours after",
+    "alreadyIn": "Already checked in",
+    "limit": "That's the limit for check-ins by hand tonight. Ask POWR if more people are here.",
+    "prizesAfterReveal": "Prizes are handed over after the reveal",
+    "noPrizeRank": "No prize with that rank"
+  },
+  "pushes": {
+    "pulseWindow": "The standings push only goes out while the event is live, before the board is sealed",
+    "pickHour": "Pick an hour for the standings push",
+    "hourRange": "The standings push goes out between 7am and 9pm"
+  },
+  "screens": {
+    "ownerOnly": "Only the gym's owner can switch the screens on",
+    "slugFormat": "Use 2–40 lower-case letters, numbers and single dashes",
+    "alreadySetUp": "This gym's screens are already set up",
+    "slugTaken": "That link is taken by another gym — try another",
+    "notSetUp": "Switch the screens on first",
+    "viewingDistance": "Viewing distance is near, standard or far",
+    "boardSize": "Board size is 10, 25 or 50",
+    "leagueRadius": "League radius is 5, 10, 15, 25, 50 or 100 km",
+    "ownerLink": "Only the gym's owner can change the screen link"
+  },
+  "clash": {
+    "needsPro": "Clash Nights come with Clash Pro. See Package in your portal to change it.",
+    "pickDate": "Pick a date",
+    "notice": "Clash Nights need {{days}} days' notice. The first date you can pick is {{date}}.",
+    "horizon": "You can book up to a year ahead.",
+    "startTime": "Pick a start time between 6am and 9pm",
+    "backupDate": "The backup date needs the same notice, and must be a different day",
+    "perQuarter": "You already have a Clash Night in that quarter. It's one per quarter.",
+    "taken": "That night is already taken. Pick another date.",
+    "notBooked": "That night isn't booked",
+    "past": "That night has already happened"
+  },
+  "discounts": {
+    "unavailable": "That discount isn't available right now",
+    "noLink": "That brand's link isn't set up yet",
+    "noCodes": "No codes left for that brand right now"
+  },
+  "retention": {
+    "ownNotesOnly": "You can only remove your own notes",
+    "pickChannel": "Pick how you reached out",
+    "noteLength": "Keep the note under 280 characters",
+    "notOnList": "That person isn't on your list",
+    "cantNudge": "They aren't slipping or drifting, or POWR can't reach their phone",
+    "teamOnlySwitch": "Only the gym's team has this switch"
+  },
+  "package": {
+    "noPortal": "This gym has no portal",
+    "ownerOnly": "Only your gym's owner can change the package",
+    "pick": "Pick a package",
+    "already": "You're already on that package",
+    "foundingTrialOnly": "Founding Pro was only available during the free trial",
+    "foundingGone": "All 10 founding places have gone"
+  },
+  "team": {
+    "ownerOnly": "Only the owner can change who shows in the app",
+    "gone": "They're not on your team any more",
+    "nothingToOrder": "Nothing to order",
+    "giveName": "Give them a name",
+    "full": "That's 40 people already. Take someone off first.",
+    "roleLength": "Keep the role under 30 characters",
+    "experienceLength": "Keep the experience short, like 8 years",
+    "bioLength": "Keep the bio under 500 characters",
+    "specialtyLength": "Keep each specialty under 24 characters",
+    "specialtyCount": "Pick up to 6 specialties",
+    "bookingLinkFormat": "The booking link needs to be a web address, like calendly.com/yourname",
+    "profileLinkFormat": "The profile link needs to be a web address, like calendly.com/yourname",
+    "bookingLinkLength": "That booking link is too long",
+    "profileLinkLength": "That profile link is too long"
+  },
+  "profile": {
+    "ownerOnly": "Only the owner can change the gym's details",
+    "descriptionLength": "Keep the description under 400 characters",
+    "addressLength": "Keep the address under 200 characters",
+    "phoneLength": "That phone number is too long",
+    "websiteLength": "That web address is too long",
+    "logoBackground": "The logo background is dark, black or white",
+    "hours": "Give each day an open and close time, like 06:00 and 22:00"
+  },
+  "help": {
+    "subject": "Add a subject",
+    "moreDetail": "Tell us a little more (10 characters or more)",
+    "tooMany": "You've sent a few just now. We'll answer those first."
+  },
+  "gymStaff": {
+    "accountExists": "You already have a POWR account with this email — sign in with it below and the invite will be added to it.",
+    "ownerInvite": "Only POWR can add another owner",
+    "inviteNotFound": "Invite not found",
+    "notOnTeam": "Not on this gym’s team",
+    "ownerRemove": "Only POWR can remove an owner",
+    "emailFailed": "Link created, but the email could not be sent — copy it instead."
+  },
+  "partnerUsers": {
+    "accountExists": "An account with this email already exists. Contact POWR to link it to your brand.",
+    "removeSelf": "You can't remove your own access",
+    "emailFailed": "Link created, but the email could not be sent — copy it below instead."
+  },
+  "inStore": {
+    "signIn": "Sign in first",
+    "noBrand": "This login is not linked to a brand",
+    "scanLinkDead": "This scan link no longer works. Ask your manager for a new one.",
+    "scanSignIn": "Open your scan link, or sign in to the partner portal.",
+    "siteName": "Give the site a name",
+    "sitePin": "Drop a pin on the map for this site",
+    "siteNotFound": "Site not found",
+    "staffName": "Add their name",
+    "staffNotFound": "Staff member not found",
+    "pickWhere": "Pick online, in store or both",
+    "notEnabled": "In-store rewards aren't switched on for your brand yet. Talk to POWR to get set up.",
+    "pickCheck": "Pick how your shop checks it",
+    "barcodeType": "Unknown barcode type",
+    "rewardNotFound": "Reward not found",
+    "postedReward": "Posted rewards can't be used in store",
+    "linkReward": "A link reward has no codes for a till to scan. Use staff scan or look at the screen."
+  },
+  "rewards": {
+    "limitReached": "Reward limit reached: {{brand}} already has {{n}} reward(s) live or in review (limit {{limit}})."
+  },
+  "codes": {
+    "reconcileForbidden": "You cannot reconcile codes for this reward",
+    "reconcileMax": "A reconciliation upload can contain at most 5,000 codes"
+  },
+  "placements": {
+    "notFound": "PLACEMENT_NOT_FOUND",
+    "notAuthorized": "NOT_AUTHORIZED",
+    "notDraft": "PLACEMENT_NOT_DRAFT",
+    "nameRequired": "CAMPAIGN_NAME_REQUIRED",
+    "cellsRequired": "PLACEMENT_CELLS_REQUIRED",
+    "flightWindow": "INVALID_FLIGHT_WINDOW"
+  },
+  "api": {
+    "keyLimit": "A brand can hold at most {{max}} active keys — revoke one first",
+    "endpointLimit": "A brand can hold at most {{max}} endpoints — delete one first",
+    "subscribeOne": "Subscribe to at least one event",
+    "invalidUrl": "Enter a valid URL",
+    "httpsOnly": "URL must use https://",
+    "publicUrl": "URL must be publicly reachable",
+    "mintUrlFirst": "Set a mint endpoint URL before enabling JIT minting",
+    "poolThreshold": "pool_low_threshold must be between 0 and 10,000",
+    "mintNotConfigured": "No mint endpoint URL is configured yet",
+    "mintTimeout": "Endpoint did not respond within the 3s mint budget",
+    "mintNoResponse": "Endpoint returned no response ({{detail}})",
+    "mintStatus": "Endpoint returned {{status}} ({{detail}})",
+    "mintBadJson": "Response body is not valid JSON with a \"code\" field",
+    "mintBadCode": "The \"code\" value must be 4–64 letters/digits/hyphens",
+    "mintSlow": "Response took over 2s — live mints are cut off at 3s, so add headroom",
+    "timeout": "timeout"
+  },
+  "shopify": {
+    "storeDomain": "Enter your store domain like your-store.myshopify.com",
+    "connectFirst": "Connect your Shopify store first",
+    "queryFailed": "Shopify query failed",
+    "noReward": "No such reward for this brand",
+    "templateKind": "Only basic percentage or fixed-amount code discounts can be used as templates",
+    "productAccess": "This discount is limited to specific products, which needs the app’s product-access permission. Use an order-wide discount as the template for now.",
+    "productRead": "Could not read the discount’s product restrictions — try an order-wide discount.",
+    "tooManyItems": "This discount is limited to more than 100 items — too broad to clone faithfully. Use an order-wide or smaller template.",
+    "targeting": "This discount’s item targeting can’t be cloned — use an order-wide discount as the template",
+    "mapFirst": "Map a reward to a discount first",
+    "createFailed": "Shopify discount create failed — check the store connection above",
+    "codeUntracked": "The code {{code}} was created in Shopify but POWR couldn't track it ({{detail}}) — delete it in your store and try again"
+  },
+  "auth": {
+    "invalidCredentials": "Invalid login credentials",
+    "emailNotConfirmed": "Email not confirmed",
+    "samePassword": "New password should be different from the old password.",
+    "emailRateLimit": "Email rate limit exceeded",
+    "retryAfter_one": "For security purposes, you can only request this after {{count}} seconds.",
+    "retryAfter_other": "For security purposes, you can only request this after {{count}} seconds."
+  },
+  "network": {
+    "functionError": "Edge Function returned a non-2xx status code",
+    "functionUnreachable": "Failed to send a request to the Edge Function"
+  }
+}

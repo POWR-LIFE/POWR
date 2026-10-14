@@ -1,32 +1,46 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, ChevronLeft, Upload, Award, Clock, CheckCircle, XCircle, AlertCircle, Eye, X, Mail } from 'lucide-react';
+import { Trans, useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { uploadPublicImage } from '../../lib/storage';
 import { useToast } from '../../lib/toast';
 import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
+import { formatLocale } from '../../lib/i18n';
+import { serverErrorText } from '../../lib/serverErrors';
 import { useAuth } from '../../App';
 import RewardAppPreview, { cleanPrefix, prefixFromPromo, previewFromReward, previewValueLabel } from '../../components/RewardAppPreview';
 
+// Option lists hold translation keys; they're translated where they render.
+// The values are what's stored, so they never change.
 const CATEGORY_OPTIONS = [
-    { value: 'food',    label: 'Eat' },
-    { value: 'gym',     label: 'Move' },
-    { value: 'health',  label: 'Mind' },
-    { value: 'gear',    label: 'Sleep' },
+    { value: 'food',    label: 'brandRewards:sectors.food' },
+    { value: 'gym',     label: 'brandRewards:sectors.gym' },
+    { value: 'health',  label: 'brandRewards:sectors.health' },
+    { value: 'gear',    label: 'brandRewards:sectors.gear' },
 ];
 
 const DISCOUNT_OPTIONS = [
-    { value: '',             label: 'Custom text' },
-    { value: 'percentage',   label: '% off' },
-    { value: 'fixed_amount', label: '£ off' },
+    { value: '',             label: 'brandRewards:valueTypes.custom' },
+    { value: 'percentage',   label: 'brandRewards:valueTypes.percentage' },
+    { value: 'fixed_amount', label: 'brandRewards:valueTypes.fixedAmount' },
 ];
 
 const STATUS_BADGE = {
-    invited:  { label: 'Draft',    color: 'bg-[#F4F4F1] text-[#666]',          icon: Clock        },
-    draft:    { label: 'Draft',    color: 'bg-[#F4F4F1] text-[#666]',          icon: Clock        },
-    pending:  { label: 'Review',   color: 'bg-[#E8D200]/10 text-[#8a7600]',    icon: AlertCircle  },
-    approved: { label: 'Approved', color: 'bg-[#10B981]/10 text-[#10B981]',    icon: CheckCircle  },
-    rejected: { label: 'Needs changes', color: 'bg-red-500/10 text-red-500',   icon: XCircle      },
+    invited:  { label: 'brandRewards:status.draft',    color: 'bg-[#F4F4F1] text-[#666]',          icon: Clock        },
+    draft:    { label: 'brandRewards:status.draft',    color: 'bg-[#F4F4F1] text-[#666]',          icon: Clock        },
+    pending:  { label: 'brandRewards:status.pending',  color: 'bg-[#E8D200]/10 text-[#8a7600]',    icon: AlertCircle  },
+    approved: { label: 'brandRewards:status.approved', color: 'bg-[#10B981]/10 text-[#10B981]',    icon: CheckCircle  },
+    rejected: { label: 'brandRewards:status.rejected', color: 'bg-red-500/10 text-red-500',        icon: XCircle      },
+};
+
+// lib/heroVideoUrl.js (shared with the admin reward editor) answers in English.
+// Its messages are mapped to keys here, so the English text below must match
+// that file word for word; a message it gains later simply shows in English.
+const HERO_VIDEO_MESSAGE_KEYS = {
+    'Enter a full URL starting with https://': 'brandRewards:imagery.videoUrl.notUrl',
+    "That's a YouTube/Vimeo-style page link, which can't be a card background. Upload the file, or paste a direct .mp4/.m3u8 link (e.g. Cloudflare Stream).": 'brandRewards:imagery.videoUrl.streamingSite',
+    "Saved — but that link doesn't end in .mp4/.m3u8/.webm. If it's a web page rather than a direct video file, the card will just show the image.": 'brandRewards:imagery.videoUrl.notAFile',
 };
 
 const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm font-light text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
@@ -41,6 +55,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video', accept = 'image/*', isVideo = false }) {
+    const { t } = useTranslation();
     const ref = useRef(null);
     return (
         <div>
@@ -59,7 +74,7 @@ function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video
                 ) : (
                     <div className="flex flex-col items-center gap-2">
                         <Upload size={20} className="text-[#BBBBBB]" />
-                        <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#BBB]">Upload</span>
+                        <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#BBB]">{t('brandRewards:imagery.upload')}</span>
                     </div>
                 )}
             </div>
@@ -82,34 +97,34 @@ const BLANK_FORM = {
 // inline until the current step is complete. Steps stay freely clickable — this
 // is soft gating, not a locked sequence.
 const WIZARD_STEPS = [
-    { key: 'offer',   label: 'The Offer',  hint: 'What members get' },
-    { key: 'details', label: 'Details',    hint: 'Copy & terms' },
-    { key: 'delivery', label: 'Delivery',  hint: 'How members redeem' },
-    { key: 'imagery', label: 'Imagery',    hint: 'Logo & hero' },
-    { key: 'review',  label: 'Review',     hint: 'Check & submit' },
+    { key: 'offer',   label: 'brandRewards:steps.offer.label',    hint: 'brandRewards:steps.offer.hint' },
+    { key: 'details', label: 'brandRewards:steps.details.label',  hint: 'brandRewards:steps.details.hint' },
+    { key: 'delivery', label: 'brandRewards:steps.delivery.label', hint: 'brandRewards:steps.delivery.hint' },
+    { key: 'imagery', label: 'brandRewards:steps.imagery.label',  hint: 'brandRewards:steps.imagery.hint' },
+    { key: 'review',  label: 'brandRewards:steps.review.label',   hint: 'brandRewards:steps.review.hint' },
 ];
 
-// Which required fields live on each step, and the message shown when missing.
-// Keyed by field so the input can highlight itself and the step can tell
-// whether it's complete. Kept in one place so validation and the review
-// summary never drift apart.
+// Which required fields live on each step, and the message shown when missing
+// (as a translation key, translated where it renders). Keyed by field so the
+// input can highlight itself and the step can tell whether it's complete.
+// Kept in one place so validation and the review summary never drift apart.
 function fieldErrors(form) {
     const e = {};
-    if (!form.title.trim()) e.title = 'Reward title is required';
-    if (!form.description.trim()) e.description = 'Short description is required';
+    if (!form.title.trim()) e.title = 'brandRewards:errors.title';
+    if (!form.description.trim()) e.description = 'brandRewards:errors.description';
     if (form.discount_type) {
-        if (!(Number(form.discount_value) > 0)) e.discount_value = 'Enter a value greater than 0';
+        if (!(Number(form.discount_value) > 0)) e.discount_value = 'brandRewards:errors.discountValue';
     } else if (!form.value_label.trim()) {
-        e.value_label = 'Add a value label (e.g. £20 value)';
+        e.value_label = 'brandRewards:errors.valueLabel';
     }
-    if (!form.offer.trim()) e.offer = 'Offer detail is required';
-    if (!form.partner_blurb.trim()) e.partner_blurb = 'A line about your brand is required';
-    if (!form.terms.trim()) e.terms = 'Terms & conditions are required';
-    if (form.delivery_method === 'code_pool' && cleanPrefix(form.code_prefix).length < 2) e.code_prefix = 'Code name needs at least 2 characters';
-    if (form.delivery_method === 'affiliate' && !form.url.trim()) e.url = 'An affiliate destination URL is required';
-    if (form.delivery_method === 'manual_fulfilment' && !form.fulfilment_notes.trim()) e.fulfilment_notes = 'Explain how your team will fulfil this reward';
-    if (!form.logo_url) e.logo_url = 'Upload a logo';
-    if (!form.hero_image_url) e.hero_image_url = 'Upload a hero image';
+    if (!form.offer.trim()) e.offer = 'brandRewards:errors.offer';
+    if (!form.partner_blurb.trim()) e.partner_blurb = 'brandRewards:errors.partnerBlurb';
+    if (!form.terms.trim()) e.terms = 'brandRewards:errors.terms';
+    if (form.delivery_method === 'code_pool' && cleanPrefix(form.code_prefix).length < 2) e.code_prefix = 'brandRewards:errors.codePrefix';
+    if (form.delivery_method === 'affiliate' && !form.url.trim()) e.url = 'brandRewards:errors.url';
+    if (form.delivery_method === 'manual_fulfilment' && !form.fulfilment_notes.trim()) e.fulfilment_notes = 'brandRewards:errors.fulfilmentNotes';
+    if (!form.logo_url) e.logo_url = 'brandRewards:errors.logo';
+    if (!form.hero_image_url) e.hero_image_url = 'brandRewards:errors.hero';
     return e;
 }
 
@@ -139,6 +154,7 @@ const previewFromSubmission = (s, partnerName) => ({
 });
 
 export default function PartnerRewards() {
+    const { t } = useTranslation();
     const toast = useToast();
     const { partnerData, user, isAdmin, inStoreEnabled } = useAuth();
     const [rewards, setRewards] = useState([]);
@@ -177,7 +193,12 @@ export default function PartnerRewards() {
     const step = WIZARD_STEPS[stepIndex];
     const stepComplete = (key) => STEP_FIELDS[key].every(f => !errors[f]);
     const currentStepComplete = stepComplete(step.key);
-    const err = (field) => (showErrors && errors[field] ? errors[field] : null);
+    const err = (field) => (showErrors && errors[field] ? t(errors[field]) : null);
+    const heroVideoText = (message) => (HERO_VIDEO_MESSAGE_KEYS[message] ? t(HERO_VIDEO_MESSAGE_KEYS[message]) : message);
+    const sectorLabel = (value) => {
+        const option = CATEGORY_OPTIONS.find(o => o.value === value);
+        return option ? t(option.label) : value;
+    };
 
     // Count rewards toward the cap: live rewards + any brand-new submission
     // still in review. Listing-update change requests (target_reward_id) and
@@ -280,9 +301,10 @@ export default function PartnerRewards() {
     // admin support inbox so the team can follow up. Reuses support_tickets
     // (RLS: insert allowed when user_id = auth.uid()).
     const handleGetInTouch = async () => {
-        if (!user) { toast.error('Please sign in again'); return; }
+        if (!user) { toast.error(t('brandRewards:toasts.signInAgain')); return; }
         setSendingContact(true);
         const note = contactNote.trim();
+        // The ticket is read by POWR staff in the admin inbox: it stays English.
         const { error } = await supabase.from('support_tickets').insert({
             user_id: user.id,
             email: user.email ?? '',
@@ -295,9 +317,9 @@ export default function PartnerRewards() {
         });
         setSendingContact(false);
         if (error) {
-            toast.error(error.message);
+            toast.error(serverErrorText(error));
         } else {
-            toast.success("Thanks — our team will be in touch shortly");
+            toast.success(t('brandRewards:toasts.requestSent'));
             setLimitOpen(false);
             setContactNote('');
         }
@@ -359,12 +381,12 @@ export default function PartnerRewards() {
     };
 
     const uploadVideo = async (file) => {
-        if (file.size > MAX_VIDEO_BYTES) { toast.error('Video must be under 50 MB — use a short, compressed loop'); return null; }
+        if (file.size > MAX_VIDEO_BYTES) { toast.error(t('brandRewards:toasts.videoTooLarge')); return null; }
         setUploadingHeroVideo(true);
         try {
             return await uploadPublicImage('reward-submissions', file, 'hero-videos');
         } catch (err) {
-            toast.error(err.message || 'Upload failed');
+            toast.error(serverErrorText(err, t('brandRewards:toasts.uploadFailed')));
             return null;
         } finally {
             setUploadingHeroVideo(false);
@@ -372,14 +394,14 @@ export default function PartnerRewards() {
     };
 
     const uploadImage = async (file, kind) => {
-        if (file.size > MAX_IMAGE_BYTES) { toast.error('Image must be under 5 MB'); return null; }
+        if (file.size > MAX_IMAGE_BYTES) { toast.error(t('brandRewards:toasts.imageTooLarge')); return null; }
         const setUploading = kind === 'logo' ? setUploadingLogo : setUploadingHero;
         setUploading(true);
         try {
             const url = await uploadPublicImage('reward-submissions', file, kind === 'logo' ? 'logos' : 'heroes');
             return url;
         } catch (err) {
-            toast.error(err.message || 'Upload failed');
+            toast.error(serverErrorText(err, t('brandRewards:toasts.uploadFailed')));
             return null;
         } finally {
             setUploading(false);
@@ -413,7 +435,7 @@ export default function PartnerRewards() {
     });
 
     const saveDraft = async () => {
-        if (!brand) { toast.error('Your brand profile is still loading'); return false; }
+        if (!brand) { toast.error(t('brandRewards:toasts.brandLoading')); return false; }
         setSaving(true);
         // Keep an already-submitted reward in review when its owner saves an
         // edit. Drafts and revision requests remain editable work in progress.
@@ -431,10 +453,10 @@ export default function PartnerRewards() {
             }).select().single());
         }
         setSaving(false);
-        if (error) { toast.error(error.message); return false; }
+        if (error) { toast.error(serverErrorText(error)); return false; }
         setEditingSubmission(data);
         setLastSavedAt(new Date());
-        toast.success(status === 'pending' ? 'Changes saved' : 'Draft saved');
+        toast.success(t(status === 'pending' ? 'brandRewards:toasts.changesSaved' : 'brandRewards:toasts.draftSaved'));
         fetchAll();
         return true;
     };
@@ -456,7 +478,7 @@ export default function PartnerRewards() {
             setShowErrors(true);
             const firstBad = WIZARD_STEPS.findIndex(s => !STEP_FIELDS[s.key].every(f => !problems[f]));
             if (firstBad >= 0) setStepIndex(firstBad);
-            toast.error('A few fields still need attention');
+            toast.error(t('brandRewards:toasts.needsAttention'));
             return;
         }
 
@@ -475,13 +497,13 @@ export default function PartnerRewards() {
         }
 
         if (error) {
-            toast.error(error.message);
+            toast.error(serverErrorText(error));
         } else {
-            toast.success(
-                editingListing ? "Changes submitted — they'll go live once approved by POWR"
-                : editingSubmission ? 'Submission updated'
-                : 'Reward submitted for review'
-            );
+            toast.success(t(
+                editingListing ? 'brandRewards:toasts.changesSubmitted'
+                : editingSubmission ? 'brandRewards:toasts.submissionUpdated'
+                : 'brandRewards:toasts.submitted'
+            ));
             closeForm();
             fetchAll();
         }
@@ -489,8 +511,8 @@ export default function PartnerRewards() {
     };
 
     const tabs = [
-        { key: 'live',        label: 'Live Rewards',  count: rewards.length },
-        { key: 'submissions', label: 'Submissions',   count: submissions.length },
+        { key: 'live',        label: t('brandRewards:list.tabs.live'),        count: rewards.length },
+        { key: 'submissions', label: t('brandRewards:list.tabs.submissions'), count: submissions.length },
     ];
 
     return (
@@ -505,18 +527,18 @@ export default function PartnerRewards() {
                         onClick={closeForm}
                         className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-[#999] hover:text-[#8a7600] transition-colors mb-8"
                     >
-                        <ChevronLeft size={14} /> Back to My Rewards
+                        <ChevronLeft size={14} /> {t('brandRewards:form.backToList')}
                     </button>
                     <div className="mb-10">
                         <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-3">
-                            {editingListing ? 'Edit Listing' : editingSubmission ? 'Edit Submission' : 'Submit a Reward'}
+                            {t(editingListing ? 'brandRewards:form.titleEditListing' : editingSubmission ? 'brandRewards:form.titleEditSubmission' : 'brandRewards:form.titleNew')}
                         </h1>
                                 <p className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">
-                            {editingListing
-                                ? 'Your live listing stays unchanged until POWR approves these changes'
-                                : 'Build a draft in stages, then send it to POWR for review'}
+                            {t(editingListing
+                                ? 'brandRewards:form.subtitleEditListing'
+                                : 'brandRewards:form.subtitleNew')}
                         </p>
-                            {lastSavedAt && <p className="mt-3 text-[10px] uppercase tracking-[0.25em] text-[#10B981] font-black">Saved {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
+                            {lastSavedAt && <p className="mt-3 text-[10px] uppercase tracking-[0.25em] text-[#10B981] font-black">{t('brandRewards:form.savedAt', { time: lastSavedAt.toLocaleTimeString(formatLocale(), { hour: '2-digit', minute: '2-digit' }) })}</p>}
                     </div>
 
                     <form onSubmit={handleSave} className="bg-white border border-[#E6E6E1] rounded-3xl p-10">
@@ -537,9 +559,9 @@ export default function PartnerRewards() {
                                             <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-black shrink-0 ${active ? 'bg-[#E8D200] text-[#080808]' : done ? 'bg-[#10B981] text-white' : 'bg-[#F0F0EC] text-[#AAA]'}`}>
                                                 {done ? <CheckCircle size={12} /> : i + 1}
                                             </span>
-                                            <span className={`text-[10px] uppercase tracking-[0.2em] font-black truncate ${active ? 'text-[#8a7600]' : 'text-[#888]'}`}>{s.label}</span>
+                                            <span className={`text-[10px] uppercase tracking-[0.2em] font-black truncate ${active ? 'text-[#8a7600]' : 'text-[#888]'}`}>{t(s.label)}</span>
                                         </div>
-                                        <p className="text-[9px] uppercase tracking-[0.2em] font-black text-[#BBB] truncate pl-7">{s.hint}</p>
+                                        <p className="text-[9px] uppercase tracking-[0.2em] font-black text-[#BBB] truncate pl-7">{t(s.hint)}</p>
                                     </button>
                                 );
                             })}
@@ -552,45 +574,45 @@ export default function PartnerRewards() {
                         {step.key === 'offer' && (
                         <section className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Reward Title *</label>
-                                <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. 30% off your first order" maxLength={60} className={`${INPUT} ${err('title') ? 'border-red-400' : ''}`} />
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:offer.titleLabel')}</label>
+                                <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder={t('brandRewards:offer.titlePlaceholder')} maxLength={60} className={`${INPUT} ${err('title') ? 'border-red-400' : ''}`} />
                                 {err('title') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('title')}</p>}
                             </div>
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Short Description *</label>
-                                <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="e.g. Your Brand · Any product" maxLength={80} className={`${INPUT} ${err('description') ? 'border-red-400' : ''}`} />
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:offer.descriptionLabel')}</label>
+                                <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder={t('brandRewards:offer.descriptionPlaceholder')} maxLength={80} className={`${INPUT} ${err('description') ? 'border-red-400' : ''}`} />
                                 {err('description') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('description')}</p>}
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Value type *</label>
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:offer.valueTypeLabel')}</label>
                                     <select value={form.discount_type} onChange={e => setForm(p => ({ ...p, discount_type: e.target.value }))} className={INPUT}>
-                                        {DISCOUNT_OPTIONS.map(o => <option key={o.value || 'x'} value={o.value}>{o.label}</option>)}
+                                        {DISCOUNT_OPTIONS.map(o => <option key={o.value || 'x'} value={o.value}>{t(o.label)}</option>)}
                                     </select>
                                 </div>
                                 {form.discount_type ? (
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{form.discount_type === 'percentage' ? 'Percent off *' : 'Amount off £ *'}</label>
+                                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t(form.discount_type === 'percentage' ? 'brandRewards:offer.percentOffLabel' : 'brandRewards:offer.amountOffLabel')}</label>
                                         <input type="number" min="0" value={form.discount_value} onChange={e => setForm(p => ({ ...p, discount_value: e.target.value }))} placeholder={form.discount_type === 'percentage' ? '30' : '20'} className={`${INPUT} ${err('discount_value') ? 'border-red-400' : ''}`} />
                                     </div>
                                 ) : (
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Value label *</label>
-                                        <input value={form.value_label} onChange={e => setForm(p => ({ ...p, value_label: e.target.value }))} placeholder="e.g. £20 value" className={`${INPUT} ${err('value_label') ? 'border-red-400' : ''}`} />
+                                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:offer.valueLabelLabel')}</label>
+                                        <input value={form.value_label} onChange={e => setForm(p => ({ ...p, value_label: e.target.value }))} placeholder={t('brandRewards:offer.valueLabelPlaceholder')} className={`${INPUT} ${err('value_label') ? 'border-red-400' : ''}`} />
                                     </div>
                                 )}
                                 <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Sector *</label>
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:offer.sectorLabel')}</label>
                                     <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} className={INPUT}>
-                                        {CATEGORY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        {CATEGORY_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
                                     </select>
                                 </div>
                             </div>
                             {(err('discount_value') || err('value_label')) && <p className="text-[10px] font-black text-red-500 tracking-[0.1em]">{err('discount_value') || err('value_label')}</p>}
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Reward type *</label>
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:offer.rewardTypeLabel')}</label>
                                 <div className="flex gap-3">
-                                    {[['digital', 'Digital code'], ['physical', 'Physical item']].map(([val, lbl]) => (
+                                    {[['digital', t('brandRewards:offer.digital')], ['physical', t('brandRewards:offer.physical')]].map(([val, lbl]) => (
                                         <button key={val} type="button" onClick={() => setForm(p => ({ ...p, reward_kind: val, delivery_method: val === 'physical' ? 'manual_fulfilment' : (p.delivery_method === 'manual_fulfilment' ? 'code_pool' : p.delivery_method) }))}
                                             className={`flex-1 h-12 rounded-2xl text-[11px] font-black uppercase tracking-[0.15em] border transition-all ${form.reward_kind === val ? 'border-[#E8D200]/60 bg-[#E8D200]/10 text-[#8a7600]' : 'border-[#DDD] bg-white text-[#888] hover:text-[#444]'}`}>
                                             {lbl}
@@ -605,23 +627,23 @@ export default function PartnerRewards() {
                         {step.key === 'details' && (
                         <section className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Offer detail * (expanded view)</label>
-                                <textarea value={form.offer} onChange={e => setForm(p => ({ ...p, offer: e.target.value }))} rows={2} placeholder="e.g. Get 30% off any single order. New customers only." className={`${INPUT} h-auto py-4 resize-none ${err('offer') ? 'border-red-400' : ''}`} />
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:details.offerLabel')}</label>
+                                <textarea value={form.offer} onChange={e => setForm(p => ({ ...p, offer: e.target.value }))} rows={2} placeholder={t('brandRewards:details.offerPlaceholder')} className={`${INPUT} h-auto py-4 resize-none ${err('offer') ? 'border-red-400' : ''}`} />
                                 {err('offer') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('offer')}</p>}
                             </div>
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">About your brand *</label>
-                                <textarea value={form.partner_blurb} onChange={e => setForm(p => ({ ...p, partner_blurb: e.target.value }))} rows={2} placeholder="A short line about who you are." className={`${INPUT} h-auto py-4 resize-none ${err('partner_blurb') ? 'border-red-400' : ''}`} />
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:details.blurbLabel')}</label>
+                                <textarea value={form.partner_blurb} onChange={e => setForm(p => ({ ...p, partner_blurb: e.target.value }))} rows={2} placeholder={t('brandRewards:details.blurbPlaceholder')} className={`${INPUT} h-auto py-4 resize-none ${err('partner_blurb') ? 'border-red-400' : ''}`} />
                                 {err('partner_blurb') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('partner_blurb')}</p>}
                             </div>
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Terms & conditions *</label>
-                                <textarea value={form.terms} onChange={e => setForm(p => ({ ...p, terms: e.target.value }))} rows={2} placeholder="e.g. One use per member. Cannot be combined with other offers." className={`${INPUT} h-auto py-4 resize-none ${err('terms') ? 'border-red-400' : ''}`} />
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:details.termsLabel')}</label>
+                                <textarea value={form.terms} onChange={e => setForm(p => ({ ...p, terms: e.target.value }))} rows={2} placeholder={t('brandRewards:details.termsPlaceholder')} className={`${INPUT} h-auto py-4 resize-none ${err('terms') ? 'border-red-400' : ''}`} />
                                 {err('terms') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('terms')}</p>}
                             </div>
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Website URL <span className="text-[#BBB] normal-case tracking-normal ml-1">— optional</span></label>
-                                <input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder="https://yourbrand.com" className={INPUT} />
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2"><Trans i18nKey="brandRewards:details.websiteLabel" components={{ muted: <span className="text-[#BBB] normal-case tracking-normal ml-1" /> }} /></label>
+                                <input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder={t('brandRewards:details.websitePlaceholder')} className={INPUT} />
                             </div>
                         </section>
                         )}
@@ -632,12 +654,12 @@ export default function PartnerRewards() {
                             {form.reward_kind === 'digital' ? (
                                 <>
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Member redemption *</label>
+                                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:delivery.methodLabel')}</label>
                                         <div className={`grid grid-cols-1 gap-3 ${isAdmin || inStoreEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
                                             {[
-                                                ['code_pool', 'Unique code', 'POWR issues one of your codes per claim'],
-                                                ['affiliate', 'Shared link', 'Members redeem through your destination'],
-                                                ...(isAdmin || inStoreEnabled ? [['in_store', 'In store', 'Members show a live voucher at your till. No codes needed']] : []),
+                                                ['code_pool', t('brandRewards:delivery.codePool.label'), t('brandRewards:delivery.codePool.detail')],
+                                                ['affiliate', t('brandRewards:delivery.affiliate.label'), t('brandRewards:delivery.affiliate.detail')],
+                                                ...(isAdmin || inStoreEnabled ? [['in_store', t('brandRewards:delivery.inStore.label'), t('brandRewards:delivery.inStore.detail')]] : []),
                                             ].map(([value, label, detail]) => (
                                                 <button key={value} type="button" onClick={() => setForm(p => ({ ...p, delivery_method: value }))} className={`text-left p-4 rounded-2xl border transition-all ${form.delivery_method === value ? 'border-[#E8D200] bg-[#E8D200]/10' : 'border-[#E6E6E1] bg-white hover:border-[#DDD]'}`}>
                                                     <span className={`block text-[10px] font-black uppercase tracking-[0.2em] ${form.delivery_method === value ? 'text-[#8a7600]' : 'text-[#666]'}`}>{label}</span>
@@ -648,42 +670,42 @@ export default function PartnerRewards() {
                                     </div>
                                     {form.delivery_method === 'code_pool' ? <>
                                         <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Code name * (your brand segment)</label>
-                                            <input value={form.code_prefix} onChange={e => setForm(p => ({ ...p, code_prefix: cleanPrefix(e.target.value) }))} placeholder="e.g. TRIBE" maxLength={8} className={`${INPUT} uppercase tracking-[0.2em] ${err('code_prefix') ? 'border-red-400' : ''}`} />
+                                            <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:delivery.codeNameLabel')}</label>
+                                            <input value={form.code_prefix} onChange={e => setForm(p => ({ ...p, code_prefix: cleanPrefix(e.target.value) }))} placeholder={t('brandRewards:delivery.codeNamePlaceholder')} maxLength={8} className={`${INPUT} uppercase tracking-[0.2em] ${err('code_prefix') ? 'border-red-400' : ''}`} />
                                             {err('code_prefix') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('code_prefix')}</p>}
                                         </div>
                                         <div className="p-5 rounded-2xl border border-[#E8D200]/40 bg-[#E8D200]/5">
-                                            <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">Members receive</p>
-                                            <div className="font-mono text-lg tracking-[0.12em] text-[#1A1A1A]">POWR-<span className="text-[#8a7600]">{form.code_prefix || 'BRAND'}</span>-<span className="text-[#AAA]">A1B2C3</span></div>
+                                            <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">{t('brandRewards:delivery.membersReceive')}</p>
+                                            <div className="font-mono text-lg tracking-[0.12em] text-[#1A1A1A]">POWR-<span className="text-[#8a7600]">{form.code_prefix || t('brandRewards:delivery.codeSample')}</span>-<span className="text-[#AAA]">A1B2C3</span></div>
                                         </div>
                                     </> : form.delivery_method === 'in_store' ? (
                                         <div className="p-5 rounded-2xl border border-[#E8D200]/40 bg-[#E8D200]/5">
-                                            <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">At your till</p>
-                                            <p className="text-sm text-[#1A1A1A] font-light leading-relaxed">Members open a live voucher in the POWR app and your staff scan it. Once it's approved, set up your shops and staff scan links on the In Store page.</p>
+                                            <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">{t('brandRewards:delivery.atYourTill')}</p>
+                                            <p className="text-sm text-[#1A1A1A] font-light leading-relaxed">{t('brandRewards:delivery.inStoreBody')}</p>
                                         </div>
                                     ) : (
                                         <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Affiliate destination URL *</label>
-                                            <input type="url" value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder="https://yourbrand.com/powr" className={`${INPUT} ${err('url') ? 'border-red-400' : ''}`} />
+                                            <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:delivery.affiliateUrlLabel')}</label>
+                                            <input type="url" value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder={t('brandRewards:delivery.affiliateUrlPlaceholder')} className={`${INPUT} ${err('url') ? 'border-red-400' : ''}`} />
                                             {err('url') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('url')}</p>}
                                         </div>
                                     )}
                                 </>
                             ) : (
                                 <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Fulfilment plan *</label>
-                                    <textarea value={form.fulfilment_notes} onChange={e => setForm(p => ({ ...p, fulfilment_notes: e.target.value }))} rows={3} placeholder="Explain what happens after a member claims, including delivery timing and any details your team needs." className={`${INPUT} h-auto py-4 resize-none ${err('fulfilment_notes') ? 'border-red-400' : ''}`} />
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:delivery.fulfilmentLabel')}</label>
+                                    <textarea value={form.fulfilment_notes} onChange={e => setForm(p => ({ ...p, fulfilment_notes: e.target.value }))} rows={3} placeholder={t('brandRewards:delivery.fulfilmentPlaceholder')} className={`${INPUT} h-auto py-4 resize-none ${err('fulfilment_notes') ? 'border-red-400' : ''}`} />
                                     {err('fulfilment_notes') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('fulfilment_notes')}</p>}
                                 </div>
                             )}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Inventory limit <span className="normal-case tracking-normal text-[#BBB]">optional</span></label>
-                                    <input type="number" min="0" value={form.stock} onChange={e => setForm(p => ({ ...p, stock: e.target.value }))} placeholder="Unlimited" className={INPUT} />
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2"><Trans i18nKey="brandRewards:delivery.stockLabel" components={{ muted: <span className="normal-case tracking-normal text-[#BBB]" /> }} /></label>
+                                    <input type="number" min="0" value={form.stock} onChange={e => setForm(p => ({ ...p, stock: e.target.value }))} placeholder={t('brandRewards:delivery.unlimited')} className={INPUT} />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Claims per member <span className="normal-case tracking-normal text-[#BBB]">optional</span></label>
-                                    <input type="number" min="1" value={form.max_redemptions_per_user} onChange={e => setForm(p => ({ ...p, max_redemptions_per_user: e.target.value }))} placeholder="Unlimited" className={INPUT} />
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2"><Trans i18nKey="brandRewards:delivery.perMemberLabel" components={{ muted: <span className="normal-case tracking-normal text-[#BBB]" /> }} /></label>
+                                    <input type="number" min="1" value={form.max_redemptions_per_user} onChange={e => setForm(p => ({ ...p, max_redemptions_per_user: e.target.value }))} placeholder={t('brandRewards:delivery.unlimited')} className={INPUT} />
                                 </div>
                             </div>
                         </section>
@@ -695,7 +717,7 @@ export default function PartnerRewards() {
                             <div className="grid grid-cols-2 gap-5">
                                 <div>
                                     <ImagePicker
-                                        label="Logo / brand mark * (square, min 512×512px)"
+                                        label={t('brandRewards:imagery.logoLabel')}
                                         preview={form.logo_url}
                                         uploading={uploadingLogo}
                                         aspect="aspect-square"
@@ -705,7 +727,7 @@ export default function PartnerRewards() {
                                 </div>
                                 <div>
                                     <ImagePicker
-                                        label="Hero / banner * (landscape 16:9, min 1200×675px)"
+                                        label={t('brandRewards:imagery.heroLabel')}
                                         preview={form.hero_image_url}
                                         uploading={uploadingHero}
                                         aspect="aspect-video"
@@ -715,7 +737,7 @@ export default function PartnerRewards() {
                                 </div>
                                 <div className="col-span-2">
                                     <ImagePicker
-                                        label="Hero video (optional) — plays instead of the image; MP4, ≤50 MB. Image stays as the still fallback."
+                                        label={t('brandRewards:imagery.videoLabel')}
                                         preview={form.hero_video_url}
                                         uploading={uploadingHeroVideo}
                                         aspect="aspect-video"
@@ -724,25 +746,25 @@ export default function PartnerRewards() {
                                         onFile={async (file) => { const url = await uploadVideo(file); if (url) setForm(p => ({ ...p, hero_video_url: url })); }}
                                     />
                                     {form.hero_video_url && (
-                                        <button type="button" onClick={() => setForm(p => ({ ...p, hero_video_url: null }))} className="mt-2 text-[10px] uppercase tracking-[0.2em] text-[#999] hover:text-red-500 transition-colors font-black">Remove video</button>
+                                        <button type="button" onClick={() => setForm(p => ({ ...p, hero_video_url: null }))} className="mt-2 text-[10px] uppercase tracking-[0.2em] text-[#999] hover:text-red-500 transition-colors font-black">{t('brandRewards:imagery.removeVideo')}</button>
                                     )}
                                     {/* Or paste a direct video-file URL instead of uploading (own CDN /
                                         Cloudflare Stream). Bound to hero_video_url so it also live-previews;
                                         validated on blur so streaming-site links are rejected. */}
                                     <input
                                         type="url"
-                                        placeholder="Or paste a direct link — https://…/clip.mp4"
+                                        placeholder={t('brandRewards:imagery.videoUrlPlaceholder')}
                                         className="mt-3 w-full h-11 px-5 bg-white border border-[#E6E6E1] rounded-full focus:border-[#E8D200] outline-none transition-all text-[11px] font-bold text-[#1A1A1A] placeholder-[#BBB] tracking-[0.05em]"
                                         value={form.hero_video_url || ''}
                                         onChange={e => setForm(p => ({ ...p, hero_video_url: e.target.value }))}
                                         onBlur={e => {
                                             const res = validateHeroVideoUrl(e.target.value);
-                                            if (res.error) { toast.error(res.error); setForm(p => ({ ...p, hero_video_url: null })); return; }
+                                            if (res.error) { toast.error(heroVideoText(res.error)); setForm(p => ({ ...p, hero_video_url: null })); return; }
                                             setForm(p => ({ ...p, hero_video_url: res.value || null }));
-                                            if (res.warn) toast.info(res.warn);
+                                            if (res.warn) toast.info(heroVideoText(res.warn));
                                         }}
                                     />
-                                    <p className="mt-2 text-[9px] uppercase tracking-[0.2em] text-[#AAA] font-black">Direct .mp4 / .m3u8 / .webm or Cloudflare Stream · YouTube &amp; Vimeo links won't play</p>
+                                    <p className="mt-2 text-[9px] uppercase tracking-[0.2em] text-[#AAA] font-black">{t('brandRewards:imagery.videoUrlHint')}</p>
                                 </div>
                             </div>
                         </section>
@@ -751,21 +773,24 @@ export default function PartnerRewards() {
                         {/* ── Step 5 · Review ── */}
                         {step.key === 'review' && (
                         <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
-                            <p className="text-[10px] uppercase tracking-[0.3em] text-[#BBB] font-black">Check everything below, then submit. Tap any step above to edit.</p>
+                            <p className="text-[10px] uppercase tracking-[0.3em] text-[#BBB] font-black">{t('brandRewards:review.intro')}</p>
                             <div className="rounded-2xl border border-[#EDEDEA] divide-y divide-[#F0F0EC]">
+                                {/* Labels translate; the brand's own words show as typed. The Value
+                                    row is the app's display string (previewValueLabel), English
+                                    like the phone preview beside it. */}
                                 {[
-                                    ['Title', form.title],
-                                    ['Description', form.description],
-                                    ['Value', previewValueLabel({ valueLabel: form.value_label, discountType: form.discount_type, discountValue: form.discount_value }) || '—'],
-                                    ['Sector', CATEGORY_OPTIONS.find(o => o.value === form.category)?.label ?? form.category],
-                                    ['Reward type', form.reward_kind === 'physical' ? 'Physical item' : 'Digital code'],
-                                    ['Offer detail', form.offer],
-                                    ['About brand', form.partner_blurb],
-                                    ['Terms', form.terms],
-                                    ['Website', form.url || '—'],
-                                    ['Delivery', form.delivery_method === 'code_pool' ? `Unique code · POWR-${cleanPrefix(form.code_prefix) || 'BRAND'}-A1B2C3` : form.delivery_method === 'affiliate' ? 'Shared affiliate link' : form.delivery_method === 'in_store' ? 'In store · live voucher at your till' : 'Manual fulfilment'],
-                                    ...(form.fulfilment_notes ? [['Fulfilment', form.fulfilment_notes]] : []),
-                                    ['Imagery', [form.logo_url && 'Logo', form.hero_image_url && 'Hero', form.hero_video_url && 'Video'].filter(Boolean).join(' · ') || '—'],
+                                    [t('brandRewards:review.rows.title'), form.title],
+                                    [t('brandRewards:review.rows.description'), form.description],
+                                    [t('brandRewards:review.rows.value'), previewValueLabel({ valueLabel: form.value_label, discountType: form.discount_type, discountValue: form.discount_value }) || '—'],
+                                    [t('brandRewards:review.rows.sector'), sectorLabel(form.category)],
+                                    [t('brandRewards:review.rows.rewardType'), t(form.reward_kind === 'physical' ? 'brandRewards:offer.physical' : 'brandRewards:offer.digital')],
+                                    [t('brandRewards:review.rows.offer'), form.offer],
+                                    [t('brandRewards:review.rows.about'), form.partner_blurb],
+                                    [t('brandRewards:review.rows.terms'), form.terms],
+                                    [t('brandRewards:review.rows.website'), form.url || '—'],
+                                    [t('brandRewards:review.rows.delivery'), form.delivery_method === 'code_pool' ? t('brandRewards:review.deliveryCode', { code: `POWR-${cleanPrefix(form.code_prefix) || t('brandRewards:delivery.codeSample')}-A1B2C3` }) : form.delivery_method === 'affiliate' ? t('brandRewards:review.deliveryAffiliate') : form.delivery_method === 'in_store' ? t('brandRewards:review.deliveryInStore') : t('brandRewards:review.deliveryManual')],
+                                    ...(form.fulfilment_notes ? [[t('brandRewards:review.rows.fulfilment'), form.fulfilment_notes]] : []),
+                                    [t('brandRewards:review.rows.imagery'), [form.logo_url && t('brandRewards:review.imageryLogo'), form.hero_image_url && t('brandRewards:review.imageryHero'), form.hero_video_url && t('brandRewards:review.imageryVideo')].filter(Boolean).join(' · ') || '—'],
                                 ].map(([k, v]) => (
                                     <div key={k} className="flex gap-4 px-5 py-3">
                                         <span className="w-32 shrink-0 text-[9px] uppercase tracking-[0.25em] font-black text-[#AAA] pt-0.5">{k}</span>
@@ -774,9 +799,9 @@ export default function PartnerRewards() {
                                 ))}
                             </div>
                             <p className="text-[10px] text-[#BBB] font-black leading-relaxed">
-                                {editingListing
-                                    ? 'POWR will review your changes and apply them to the live listing.'
-                                    : 'Our team will set the points price and review before it goes live.'}
+                                {t(editingListing
+                                    ? 'brandRewards:review.noteEditListing'
+                                    : 'brandRewards:review.noteNew')}
                             </p>
                         </section>
                         )}
@@ -788,25 +813,25 @@ export default function PartnerRewards() {
                                 onClick={() => (stepIndex === 0 ? closeForm() : setStepIndex(stepIndex - 1))}
                                 className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors"
                             >
-                                {stepIndex === 0 ? 'Cancel' : '← Back'}
+                                {stepIndex === 0 ? t('common:actions.cancel') : t('brandRewards:form.back')}
                             </button>
                             {step.key === 'review' ? (
                                 <div className="flex items-center gap-2">
-                                    <button type="button" onClick={saveDraft} disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">Save draft</button>
+                                    <button type="button" onClick={saveDraft} disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">{t('brandRewards:form.saveDraft')}</button>
                                     <button type="submit" disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50">
-                                        {saving ? 'Submitting...' : editingListing ? 'Submit Changes' : editingSubmission?.status === 'rejected' ? 'Resubmit for Review' : editingSubmission ? 'Update Submission' : 'Submit for Review'}
+                                        {t(saving ? 'brandRewards:form.submitting' : editingListing ? 'brandRewards:form.submitChanges' : editingSubmission?.status === 'rejected' ? 'brandRewards:form.resubmit' : editingSubmission ? 'brandRewards:form.updateSubmission' : 'brandRewards:form.submitForReview')}
                                     </button>
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-2">
-                                    <button type="button" onClick={saveDraft} disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">Save draft</button>
+                                    <button type="button" onClick={saveDraft} disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">{t('brandRewards:form.saveDraft')}</button>
                                     <button
                                         type="button"
                                         onClick={saveAndContinue}
                                         disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo}
                                         className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50"
                                     >
-                                        {saving ? 'Saving...' : 'Save & continue →'}
+                                        {t(saving ? 'brandRewards:form.saving' : 'brandRewards:form.saveAndContinue')}
                                     </button>
                                 </div>
                             )}
@@ -820,22 +845,22 @@ export default function PartnerRewards() {
             <div className="mb-12">
                 <div className="flex items-center gap-3 mb-5">
                     <div className="h-[1px] w-10 bg-[#10B981]"></div>
-                    <span className="text-[10px] uppercase tracking-[0.5em] text-[#10B981] font-black">Reward Management</span>
+                    <span className="text-[10px] uppercase tracking-[0.5em] text-[#10B981] font-black">{t('brandRewards:list.eyebrow')}</span>
                 </div>
-                <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">My Rewards</h1>
+                <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">{t('brandRewards:list.title')}</h1>
             </div>
 
             {/* Tabs + submit */}
             <div className="flex items-center justify-between gap-4 mb-8 flex-wrap">
                 <div className="flex gap-2 bg-white border border-[#E6E6E1] rounded-[2rem] p-2 w-fit">
-                    {tabs.map(t => (
+                    {tabs.map(item => (
                         <button
-                            key={t.key}
-                            onClick={() => setTab(t.key)}
-                            className={`h-10 px-6 rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 ${tab === t.key ? 'bg-[#E8D200] text-[#080808]' : 'text-[#555] hover:text-[#222]'}`}
+                            key={item.key}
+                            onClick={() => setTab(item.key)}
+                            className={`h-10 px-6 rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 ${tab === item.key ? 'bg-[#E8D200] text-[#080808]' : 'text-[#555] hover:text-[#222]'}`}
                         >
-                            {t.label}
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${tab === t.key ? 'bg-[#1A1A1A]/10' : 'bg-[#F4F4F1]'}`}>{ready ? t.count : '—'}</span>
+                            {item.label}
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${tab === item.key ? 'bg-[#1A1A1A]/10' : 'bg-[#F4F4F1]'}`}>{ready ? item.count : '—'}</span>
                         </button>
                     ))}
                 </div>
@@ -846,17 +871,17 @@ export default function PartnerRewards() {
                     {ready ? (
                         <>
                             <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${atLimit ? 'text-[#8a7600]' : 'text-[#BBB]'}`}>
-                                {rewardCount}/{rewardLimit} rewards{atLimit ? ' · limit reached' : ''}
+                                {t(atLimit ? 'brandRewards:list.counterAtLimit' : 'brandRewards:list.counter', { used: rewardCount, limit: rewardLimit })}
                             </span>
                             <button
                                 onClick={openNew}
                                 className="flex items-center gap-3 h-12 px-7 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20"
                             >
-                                {atLimit ? <><Mail size={15} /> Request More</> : <><Plus size={15} /> Submit Reward</>}
+                                {atLimit ? <><Mail size={15} /> {t('brandRewards:list.requestMore')}</> : <><Plus size={15} /> {t('brandRewards:list.submitReward')}</>}
                             </button>
                         </>
                     ) : (
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#BBB]">Checking your rewards…</span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#BBB]">{t('brandRewards:list.checking')}</span>
                     )}
                 </div>
             </div>
@@ -877,25 +902,25 @@ export default function PartnerRewards() {
                             <div className="py-24 text-center">
                                 <Clock size={32} className="text-[#E6E6E1] mx-auto mb-4" />
                                 <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black mb-2">
-                                    {reviewCount > 0 ? 'With POWR for review' : 'Nothing live yet'}
+                                    {t(reviewCount > 0 ? 'brandRewards:list.withPowr' : 'brandRewards:list.nothingLive')}
                                 </p>
                                 <p className="text-xs text-[#BBBBBB] mb-6">
                                     {reviewCount > 0
-                                        ? `${reviewCount} submission${reviewCount === 1 ? '' : 's'} in review — approved rewards appear here.`
-                                        : 'Your work in progress sits on the Submissions tab — finish it and send it for review.'}
+                                        ? t('brandRewards:list.inReview', { count: reviewCount })
+                                        : t('brandRewards:list.workInProgress')}
                                 </p>
                                 <button onClick={() => setTab('submissions')} className="h-10 px-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all">
-                                    View submissions
+                                    {t('brandRewards:list.viewSubmissions')}
                                 </button>
                             </div>
                         ) : (
                             <div className="py-24 text-center">
                                 <Award size={32} className="text-[#E6E6E1] mx-auto mb-4" />
-                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black mb-2">No live rewards yet</p>
-                                <p className="text-xs text-[#BBBBBB] mb-6">Submit a reward and our team will review and publish it.</p>
+                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black mb-2">{t('brandRewards:list.noLiveRewards')}</p>
+                                <p className="text-xs text-[#BBBBBB] mb-6">{t('brandRewards:list.noLiveRewardsBody')}</p>
                                 {!atLimit && (
                                     <button onClick={openNew} className="h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
-                                        Submit Your First Reward
+                                        {t('brandRewards:list.submitFirst')}
                                     </button>
                                 )}
                             </div>
@@ -904,8 +929,8 @@ export default function PartnerRewards() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
-                                    {['Reward', 'Category', 'Cost', 'Status', ''].map(h => (
-                                        <th key={h} className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.4em] text-[#888]">{h}</th>
+                                    {['brandRewards:list.columns.reward', 'brandRewards:list.columns.category', 'brandRewards:list.columns.cost', 'brandRewards:list.columns.status', ''].map(h => (
+                                        <th key={h} className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.4em] text-[#888]">{h && t(h)}</th>
                                     ))}
                                 </tr>
                             </thead>
@@ -932,13 +957,14 @@ export default function PartnerRewards() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
-                                            <span className="px-3 py-1 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[9px] uppercase font-black tracking-[0.3em] text-[#666]">{r.category}</span>
+                                            {/* English shows the stored category as is; other languages get its sector name. */}
+                                            <span className="px-3 py-1 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[9px] uppercase font-black tracking-[0.3em] text-[#666]">{r.category ? t(`brandRewards:list.categoryValue.${r.category}`, { defaultValue: r.category }) : r.category}</span>
                                         </td>
-                                        <td className="px-6 py-5 text-sm font-bold text-[#222]">{r.powr_cost?.toLocaleString()} pts</td>
+                                        <td className="px-6 py-5 text-sm font-bold text-[#222]">{t('brandRewards:list.pts', { points: r.powr_cost?.toLocaleString(formatLocale()) ?? '' })}</td>
                                         <td className="px-6 py-5">
                                             <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] w-fit ${r.active ? 'bg-[#10B981]/10 text-[#10B981]' : 'bg-[#F4F4F1] text-[#BBBBBB]'}`}>
                                                 <span className={`h-1.5 w-1.5 rounded-full ${r.active ? 'bg-[#10B981] animate-pulse' : 'bg-[#BBBBBB]'}`} />
-                                                {r.active ? 'Live' : 'Inactive'}
+                                                {t(r.active ? 'brandRewards:status.live' : 'brandRewards:status.inactive')}
                                             </span>
                                         </td>
                                         <td className="px-6 py-5 text-right">
@@ -950,18 +976,18 @@ export default function PartnerRewards() {
                                                     onClick={(e) => e.stopPropagation()}
                                                     className="inline-flex items-center h-9 px-5 whitespace-nowrap text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all"
                                                 >
-                                                    Make a post
+                                                    {t('brandRewards:list.makePost')}
                                                 </Link>
                                                 {pendingEditRewardIds.has(r.id) ? (
                                                     <span className="inline-flex items-center gap-2 px-4 py-2 bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full text-[9px] font-black uppercase tracking-[0.2em] text-[#8a7600]">
-                                                        <Clock size={10} /> Update in review
+                                                        <Clock size={10} /> {t('brandRewards:list.updateInReview')}
                                                     </span>
                                                 ) : (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); openEditListing(r); }}
                                                         className="h-9 px-5 whitespace-nowrap text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all"
                                                     >
-                                                        Edit Listing
+                                                        {t('brandRewards:list.editListing')}
                                                     </button>
                                                 )}
                                             </div>
@@ -974,14 +1000,14 @@ export default function PartnerRewards() {
                 ) : (
                     submissions.length === 0 ? (
                         <div className="py-24 text-center">
-                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">No submissions yet</p>
+                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">{t('brandRewards:list.noSubmissions')}</p>
                         </div>
                     ) : (
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
-                                    {['Reward', 'Status', 'Submitted', ''].map(h => (
-                                        <th key={h} className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.4em] text-[#888]">{h}</th>
+                                    {['brandRewards:list.columns.reward', 'brandRewards:list.columns.status', 'brandRewards:list.columns.submitted', ''].map(h => (
+                                        <th key={h} className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.4em] text-[#888]">{h && t(h)}</th>
                                     ))}
                                 </tr>
                             </thead>
@@ -998,9 +1024,9 @@ export default function PartnerRewards() {
                                         >
                                             <td className="px-6 py-5">
                                                 <div className="flex items-center gap-3">
-                                                    <span className="text-sm font-bold text-[#222]">{s.title || <span className="text-[#BBB] italic">Untitled</span>}</span>
+                                                    <span className="text-sm font-bold text-[#222]">{s.title || <span className="text-[#BBB] italic">{t('brandRewards:list.untitled')}</span>}</span>
                                                     {s.target_reward_id && (
-                                                        <span className="px-2.5 py-0.5 bg-[#8B5CF6]/10 border border-[#8B5CF6]/25 rounded-full text-[8px] font-black uppercase tracking-[0.2em] text-[#8B5CF6]">Listing update</span>
+                                                        <span className="px-2.5 py-0.5 bg-[#8B5CF6]/10 border border-[#8B5CF6]/25 rounded-full text-[8px] font-black uppercase tracking-[0.2em] text-[#8B5CF6]">{t('brandRewards:list.listingUpdate')}</span>
                                                     )}
                                                 </div>
                                                 <div className="text-[10px] text-[#BBB] font-black uppercase tracking-wider mt-0.5">{s.description}</div>
@@ -1008,19 +1034,20 @@ export default function PartnerRewards() {
                                             <td className="px-6 py-5">
                                                 <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] w-fit border border-current/20 ${badge.color}`}>
                                                     <BadgeIcon size={10} />
-                                                    {badge.label}
+                                                    {t(badge.label)}
                                                 </span>
                                                 {s.partner_feedback && (
-                                                    <p className="text-[10px] text-red-500 mt-2 max-w-xs leading-relaxed">Feedback: {s.partner_feedback}</p>
+                                                    // The feedback itself is POWR staff's words, shown as written.
+                                                    <p className="text-[10px] text-red-500 mt-2 max-w-xs leading-relaxed">{t('brandRewards:list.feedback', { feedback: s.partner_feedback })}</p>
                                                 )}
                                             </td>
                                             <td className="px-6 py-5 text-[11px] text-[#BBB] font-black">
-                                                {s.submitted_at ? new Date(s.submitted_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                                {s.submitted_at ? new Date(s.submitted_at).toLocaleDateString(formatLocale(), { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                                             </td>
                                             <td className="px-6 py-5 text-right">
                                                 {canEdit && (
                                                     <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="h-9 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all">
-                                                        {s.status === 'rejected' ? 'Revise' : s.status === 'draft' ? 'Continue' : 'Edit'}
+                                                        {t(s.status === 'rejected' ? 'brandRewards:list.revise' : s.status === 'draft' ? 'brandRewards:list.continue' : 'brandRewards:list.edit')}
                                                     </button>
                                                 )}
                                             </td>
@@ -1052,14 +1079,14 @@ export default function PartnerRewards() {
                         <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl p-12 text-center">
                             <Eye size={24} className="text-[#DDDDDD] mx-auto mb-4" />
                             <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black leading-relaxed mb-3">
-                                Nothing to preview yet
+                                {t('brandRewards:preview.nothingYet')}
                             </p>
                             <p className="text-[11px] text-[#BBBBBB] leading-relaxed mb-6">
-                                Rewards appear here exactly as members see them in the app.
+                                {t('brandRewards:preview.nothingYetBody')}
                             </p>
                             {!atLimit && (
                                 <button type="button" onClick={openNew} className="inline-flex items-center gap-2 h-10 px-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all">
-                                    <Plus size={13} /> Submit a reward
+                                    <Plus size={13} /> {t('brandRewards:preview.submit')}
                                 </button>
                             )}
                         </div>
@@ -1069,7 +1096,7 @@ export default function PartnerRewards() {
                         <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl p-12 text-center">
                             <Eye size={24} className="text-[#DDDDDD] mx-auto mb-4" />
                             <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black leading-relaxed">
-                                Select a reward<br />to preview it in the app
+                                <Trans i18nKey="brandRewards:preview.select" components={{ nl: <br /> }} />
                             </p>
                         </div>
                     )}
@@ -1082,25 +1109,25 @@ export default function PartnerRewards() {
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-8" onClick={() => !sendingContact && setLimitOpen(false)}>
                     <div className="bg-white border border-[#E6E6E1] rounded-3xl w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-between p-8 border-b border-[#E6E6E1]">
-                            <h2 className="text-2xl font-light tracking-tight text-[#1A1A1A]">Reward limit reached</h2>
+                            <h2 className="text-2xl font-light tracking-tight text-[#1A1A1A]">{t('brandRewards:limit.title')}</h2>
                             <button onClick={() => setLimitOpen(false)} disabled={sendingContact} className="w-10 h-10 rounded-full bg-[#EFEFEC] flex items-center justify-center text-[#999] hover:text-[#1A1A1A] transition-colors disabled:opacity-50"><X size={16} /></button>
                         </div>
                         <div className="p-8 space-y-6">
                             <p className="text-sm text-[#666] font-light leading-relaxed">
-                                Brands can run up to <span className="font-bold text-[#1A1A1A]">{rewardLimit} rewards</span> live or in review at a time. Want to offer more? Tell us a little about what you want to add and our team will get in touch.
+                                <Trans i18nKey="brandRewards:limit.body" count={rewardLimit} components={{ strong: <span className="font-bold text-[#1A1A1A]" /> }} />
                             </p>
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Anything we should know? (optional)</label>
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{t('brandRewards:limit.noteLabel')}</label>
                                 <textarea
                                     value={contactNote}
                                     onChange={e => setContactNote(e.target.value)}
                                     rows={3}
-                                    placeholder="e.g. We'd like to add a seasonal offer and a members-only reward."
+                                    placeholder={t('brandRewards:limit.notePlaceholder')}
                                     className={`${INPUT} h-auto py-4 resize-none`}
                                 />
                             </div>
                             <div className="flex justify-end gap-4 pt-2">
-                                <button type="button" onClick={() => setLimitOpen(false)} disabled={sendingContact} className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">Cancel</button>
+                                <button type="button" onClick={() => setLimitOpen(false)} disabled={sendingContact} className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">{t('common:actions.cancel')}</button>
                                 <button
                                     type="button"
                                     onClick={handleGetInTouch}
@@ -1110,7 +1137,7 @@ export default function PartnerRewards() {
                                     {sendingContact
                                         ? <div className="w-4 h-4 border-2 border-[#080808]/30 border-t-[#080808] rounded-full animate-spin" />
                                         : <Mail size={14} />}
-                                    {sendingContact ? 'Sending…' : 'Get in touch'}
+                                    {t(sendingContact ? 'brandRewards:limit.sending' : 'brandRewards:limit.getInTouch')}
                                 </button>
                             </div>
                         </div>

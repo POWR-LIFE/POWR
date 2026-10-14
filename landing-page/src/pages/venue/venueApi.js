@@ -110,6 +110,7 @@ export const fetchGymPlace = async (partnerId) => {
     const locs = data?.locations;
     const loc = Array.isArray(locs) ? locs[0] : locs;
     if (!loc) return null;
+    // 'Local' is the app's own fallback (members see it in the app preview): stays English.
     return { lat: loc.lat ?? null, lng: loc.lng ?? null, area: (loc.address?.trim() || loc.name?.trim()) || 'Local' };
 };
 export const setDriftEmail = (partnerId, on) => rpc('gym_set_drift_email', { p_partner_id: partnerId, p_on: on });

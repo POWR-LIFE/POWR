@@ -1,0 +1,266 @@
+{
+  "days": {
+    "mon": "Lundi",
+    "tue": "Mardi",
+    "wed": "Mercredi",
+    "thu": "Jeudi",
+    "fri": "Vendredi",
+    "sat": "Samedi",
+    "sun": "Dimanche"
+  },
+  "hours": {
+    "to": "à",
+    "closed": "Fermé",
+    "opens": "{{day}} : ouverture",
+    "closes": "{{day}} : fermeture",
+    "save": "Enregistrer les horaires"
+  },
+  "logoBg": {
+    "dark": "Fond sombre",
+    "black": "Fond noir",
+    "white": "Fond blanc",
+    "label": "Fond du logo"
+  },
+  "fields": {
+    "gymName": "Nom de la salle",
+    "about": "À propos",
+    "address": "Adresse",
+    "phone": "Téléphone",
+    "website": "Site web",
+    "websitePlaceholder": "votresalle.fr",
+    "openingHours": "Horaires d’ouverture",
+    "logo": "Logo"
+  },
+  "status": {
+    "saving": "Enregistrement",
+    "saved": "Enregistré.",
+    "uploading": "Envoi",
+    "undo": "Annuler",
+    "remove": "Supprimer",
+    "replace": "Remplacer",
+    "upload": "Importer"
+  },
+  "errors": {
+    "didntSave": "L’enregistrement a échoué.",
+    "uploadFailed": "L’envoi a échoué."
+  },
+  "settings": {
+    "loadFailed": "Impossible de charger vos paramètres",
+    "eyebrow": "Paramètres",
+    "title": "Votre salle",
+    "readOnly": "Seuls les propriétaires peuvent modifier ces informations. Vous pouvez les consulter, ainsi que l’équipe.",
+    "nothingYet": "Rien pour l’instant",
+    "details": {
+      "title": "Informations",
+      "intro": "Ce que les membres voient dans l’app, sur vos écrans et sur chaque publication. Le nom et l’adresse vous placent aussi sur la carte.",
+      "aboutHint": "Une ou deux phrases, 400 caractères maximum. Affiché sur la page de votre salle dans l’app.",
+      "save": "Enregistrer"
+    },
+    "logo": {
+      "label": "Votre logo",
+      "hint": "Idéalement un PNG à fond transparent. Il apparaît sur vos écrans, dans l’app et sur chaque publication créée par le Studio.",
+      "looksRight": "Rendu idéal sur",
+      "bgHint": "Choisissez le fond pour lequel votre logo est conçu, pour qu’il ne soit jamais sur le mauvais."
+    },
+    "photo": {
+      "title": "Photo",
+      "label": "Votre salle",
+      "hint": "La grande image de la page de votre salle dans l’app. En paysage, la salle ou la façade, avec du monde si possible."
+    },
+    "package": {
+      "title": "Formule",
+      "body": "Ce qui est activé, ce que comprend chaque formule et comment en changer.",
+      "see": "Voir les formules"
+    },
+    "email": {
+      "title": "E-mail",
+      "recapTitle": "La semaine de votre salle, chaque lundi",
+      "recapBody": "Séances, athlètes, nouvelles têtes, le haut du classement et vos événements, dans un seul e-mail. Chaque personne de l’équipe choisit pour elle-même.",
+      "driftTitle": "Quand quelqu’un commence à décrocher",
+      "driftBody": "Un e-mail le matin, les jours où quelqu’un dépasse nettement son intervalle habituel entre deux visites. Jamais plus d’un par jour.",
+      "driftBodyWho": "Un e-mail le matin, les jours où quelqu’un dépasse nettement son intervalle habituel entre deux visites, avec son nom. Jamais plus d’un par jour."
+    }
+  },
+  "team": {
+    "title": "Équipe",
+    "introOwner": "Donnez aux personnes qui gèrent {{gym}} leur propre accès. Elles peuvent utiliser leur compte de l’app POWR, ou en créer un depuis le lien.",
+    "introStaff": "Toutes les personnes qui peuvent gérer {{gym}} dans le portail. Demandez à un propriétaire d’ajouter quelqu’un.",
+    "emailPlaceholder": "nom@votresalle.fr",
+    "invite": "Inviter",
+    "copyLink": "Copier plutôt un lien d’accès",
+    "latestLink": "Dernier lien — valable une fois, pendant 14 jours",
+    "loadFailed": "Impossible de charger l’équipe — rien n’a changé.",
+    "waiting": "En attente",
+    "setupLink": "Lien d’accès",
+    "owner": "Propriétaire",
+    "member": "Équipe",
+    "expires": "expire le {{date}}",
+    "onTeam": "Dans l’équipe",
+    "nobodyYet": "Personne pour l’instant.",
+    "you": "Vous",
+    "neverSignedIn": "Aucune connexion",
+    "signedInToday": "Connexion aujourd’hui",
+    "signedInYesterday": "Connexion hier",
+    "signedInDaysAgo": "Connexion il y a {{days}} j",
+    "confirmRemove": "Retirer {{name}} de {{gym}} ? Cette personne perd immédiatement l’accès au portail.",
+    "toast": {
+      "emailed": "Invitation envoyée à {{email}}",
+      "emailFailed": "Échec de l’e-mail — lien copié à la place",
+      "linkCopied": "Lien d’accès copié",
+      "cancelled": "Invitation annulée",
+      "removed": "Personne retirée de l’équipe"
+    },
+    "errors": {
+      "load": "Échec du chargement",
+      "invite": "Impossible de créer l’invitation",
+      "revoke": "Échec de l’annulation",
+      "remove": "Échec du retrait"
+    }
+  },
+  "app": {
+    "title": "Votre salle dans l’app",
+    "whatMembersSee": "Ce que voit un membre en touchant votre marqueur dans Découvrir",
+    "notLoading": "Votre page ne se charge pas pour le moment. Réessayez dans une minute.",
+    "readOnly": "Seuls les propriétaires peuvent modifier votre page. Vous pouvez tout consulter ici.",
+    "savedLive": "Enregistré. Les membres le voient déjà.",
+    "complete": "Votre page est complète",
+    "ready": "Prête pour les membres",
+    "notSaved": "Pas encore enregistré",
+    "teamCount": "Votre équipe ({{n}})",
+    "items": {
+      "cover": "Photo de couverture",
+      "coverHint": "Ce qu’ils voient en premier",
+      "logoHint": "Sur votre marqueur et votre page",
+      "name": "Nom et adresse",
+      "nameHint": "Pour que les membres vous trouvent",
+      "hoursHint": "Ouvert ou fermé, en direct",
+      "aboutHint": "L’ambiance de votre salle",
+      "team": "Votre équipe",
+      "teamHint": "Coachs réservables par les membres"
+    },
+    "upload": {
+      "notImage": "Ce n’est pas une image. Essayez un JPG ou un PNG.",
+      "tooBig": "Cette image dépasse {{mb}} Mo. Essayez-en une plus petite."
+    },
+    "photo": {
+      "change": "Changer la photo",
+      "add": "Ajouter une photo",
+      "none": "Pas de photo",
+      "changeShort": "Changer"
+    },
+    "cover": {
+      "body": "La grande image en haut de votre page. Le format paysage est idéal : la salle ou la façade, avec du monde si possible.",
+      "none": "Pas encore de couverture",
+      "upload": "Importer une photo",
+      "studio": "Elle sert aussi de fond aux publications que le Studio crée pour vous."
+    },
+    "logo": {
+      "body": "Sur votre page, sur votre marqueur sur la carte, sur vos écrans et sur chaque publication. Idéalement un PNG à fond transparent.",
+      "none": "Pas de logo",
+      "upload": "Importer votre logo",
+      "madeFor": "Conçu pour",
+      "bgHint": "Le fond pour lequel votre logo est dessiné, pour qu’il ne soit jamais sur le mauvais."
+    },
+    "name": {
+      "body": "En haut de votre page et sous votre marqueur. Déplacer le marqueur lui-même, c’est notre rôle : touchez-le sur la carte.",
+      "addressPlaceholder": "12 rue de la Paix, Paris"
+    },
+    "hours": {
+      "body": "Les membres voient « Ouvert » ou « Fermé » en temps réel, et les horaires du jour en dessous.",
+      "sameAsMonday": "Comme le lundi, tous les jours"
+    },
+    "about": {
+      "body": "Une ou deux lignes sous votre nom : l’ambiance, pour qui c’est, ce qui fait votre réputation.",
+      "placeholder": "Salle de musculation indépendante à Belleville. Ouverte 24 h/24, cours coachés tous les soirs et la meilleure playlist du quartier.",
+      "aria": "À propos de votre salle"
+    },
+    "pin": {
+      "title": "Votre marqueur",
+      "body": "Là où les membres vous trouvent sur la carte, et là où « Itinéraire » les emmène. Il doit être sur votre porte d’entrée.",
+      "noAddress": "Pas encore d’adresse",
+      "wrongPlace": "Mal placé, ou du mauvais côté du bâtiment ? Dites-le-nous et nous le déplacerons. C’est important : c’est ainsi que les membres viennent jusqu’à vous.",
+      "ask": "Demander à POWR de le déplacer"
+    },
+    "home": {
+      "title": "Définir comme ma salle",
+      "body": "Le bouton qui fait de vous la salle d’un membre dans POWR.",
+      "detail": "Un membre qui le touche compte parmi les vôtres : sur votre classement, pour vous dans Gym Clash et dans vos chiffres ici. Le moyen le plus rapide de les amener à le toucher, c’est votre lien d’inscription.",
+      "joinLink": "Obtenir votre lien d’inscription"
+    },
+    "member": {
+      "addTitle": "Ajouter quelqu’un",
+      "detailsTitle": "Ses informations",
+      "addIntro": "Un coach, un entraîneur, toute personne que les membres devraient connaître. Elle apparaît sur votre page à mesure que vous remplissez ce formulaire.",
+      "editIntro": "Les modifications s’affichent sur le téléphone pendant la saisie, et arrivent chez les membres à l’enregistrement.",
+      "name": "Nom",
+      "namePlaceholder": "Camille Martin",
+      "experience": "Expérience",
+      "experiencePlaceholder": "8 ans",
+      "role": "Son rôle",
+      "specialties": "Spécialités",
+      "bio": "Bio",
+      "bioPlaceholder": "Ancien rugbyman en régional. La force d’abord, et des habitudes qui tiennent malgré une semaine chargée.",
+      "booking": "Lien de réservation",
+      "bookingPlaceholder": "calendly.com/camille",
+      "bookingHint": "Ajoute un bouton <strong>Réserver une séance</strong>. N’importe quelle page de réservation, ou un lien WhatsApp.",
+      "profile": "Lien de profil",
+      "profilePlaceholder": "instagram.com/camille",
+      "profileHint": "Ajoute un bouton <strong>Voir le profil</strong> : son Instagram ou sa page sur votre site.",
+      "show": "Afficher dans l’app",
+      "showHint": "Décochez pour masquer cette personne pour l’instant, sans perdre ses informations.",
+      "add": "Ajouter à votre page",
+      "addAnother": "Ajouter quelqu’un d’autre",
+      "takeOff": "Retirer",
+      "confirmLeaveNamed": "Quitter sans enregistrer les modifications de {{name}} ?",
+      "confirmLeave": "Quitter sans enregistrer ces modifications ?",
+      "confirmRemove": "Retirer {{name}} de votre page dans l’app ?",
+      "full": "Vous avez déjà {{max}} personnes. Retirez-en une d’abord."
+    },
+    "specialties": {
+      "addAnother": "Ajouter une autre",
+      "typeOne": "Saisissez-en une, puis Entrée",
+      "aria": "Ajouter une spécialité",
+      "remove": "Retirer {{name}}",
+      "hint": "6 maximum. Elles s’affichent en étiquettes quand un membre ouvre sa fiche."
+    },
+    "specialtyTags": {
+      "strength": "Force",
+      "weightLoss": "Perte de poids",
+      "muscle": "Prise de muscle",
+      "mobility": "Mobilité",
+      "hiit": "HIIT",
+      "hyrox": "Hyrox",
+      "boxing": "Boxe",
+      "rehab": "Rééducation",
+      "nutrition": "Nutrition",
+      "natal": "Pré et postnatal",
+      "yoga": "Yoga",
+      "pilates": "Pilates"
+    },
+    "roles": {
+      "personalTrainer": "Coach sportif",
+      "coach": "Coach",
+      "classInstructor": "Prof de cours collectifs",
+      "physio": "Kiné",
+      "nutritionist": "Nutritionniste",
+      "manager": "Responsable"
+    },
+    "team": {
+      "body": "Coachs, entraîneurs et personnel, sur votre page dans l’app. Les membres peuvent réserver une séance directement depuis la fiche de quelqu’un.",
+      "notLoading": "Votre équipe ne se charge pas pour le moment. Réessayez dans une minute.",
+      "emptyTitle": "Personne sur votre page pour l’instant",
+      "emptyBody": "Mettez vos coachs sous les yeux de chaque membre qui ouvre votre page. Chacun a sa fiche avec sa photo, ses points forts et un bouton Réserver une séance.",
+      "addFirst": "Ajouter la première personne",
+      "hidden": "Invisible",
+      "noBookingLink": "pas de lien de réservation",
+      "moveUp": "Monter {{name}}",
+      "moveDown": "Descendre {{name}}",
+      "hide": "Masquer {{name}}",
+      "show": "Afficher {{name}}",
+      "hideTitle": "Masquer aux membres",
+      "showTitle": "Afficher aux membres",
+      "takeOff": "Retirer {{name}}",
+      "add": "Ajouter quelqu’un"
+    }
+  }
+}

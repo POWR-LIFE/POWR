@@ -1,0 +1,110 @@
+{
+  "docTitle": "POWR · Escanear",
+  "camera": {
+    "starting": "Iniciando la cámara…",
+    "denied": "Cámara bloqueada. Permita el acceso a la cámara para este sitio en los ajustes del navegador, o escriba el código abajo.",
+    "unavailable": "No hay cámara. Escriba abajo el código de 6 caracteres que aparece en el móvil del miembro.",
+    "kioskLabel": "Acerque el vale a la cámara",
+    "phoneLabel": "Apunte al vale del miembro",
+    "notWorking": "¿NO FUNCIONA LA CÁMARA?",
+    "typePlaceholder": "Escriba el código de 6 caracteres",
+    "check": "Comprobar"
+  },
+  "result": {
+    "scanAnother": "Escanear otro",
+    "scanAgain": "Volver a escanear",
+    "applied": "Descuento aplicado",
+    "loggedAtSite": "Registrado en {{site}} a las {{time}}.",
+    "loggedAt": "Registrado a las {{time}}.",
+    "scanNext": "Escanear el siguiente",
+    "valid": "VÁLIDO",
+    "opened": "Abierto a las {{time}}",
+    "openedSwiped": "Abierto a las {{time}} · ya deslizado en su móvil",
+    "openedClosesIn": "Abierto a las {{time}} · se cierra en {{left}}",
+    "spendLabel": "¿CUÁNTO HA GASTADO? (OPCIONAL)",
+    "spendPlaceholder": "0,00",
+    "confirming": "Confirmando…",
+    "confirm": "Confirmar y aplicar el descuento",
+    "used": "YA USADO",
+    "usedAtSite": "Usado en {{site}} el {{date}} a las {{time}}.",
+    "usedOn": "Usado el {{date}} a las {{time}}.",
+    "usedNoDate": "Esta recompensa ya se ha usado.",
+    "dontApplyThe": "No aplique el descuento.",
+    "other": "NO ES UNA DE SUS RECOMPENSAS",
+    "otherBody": "Este vale es de otra tienda.",
+    "dontApplyA": "No aplique ningún descuento.",
+    "stale": "CÓDIGO ANTIGUO",
+    "staleBody": "Ese código tiene más de un minuto, lo que suele indicar una captura de pantalla. Pida al miembro que enseñe el vale en directo en la app POWR.",
+    "closed": "VALE CERRADO",
+    "closedBody": "Se ha acabado el tiempo de este vale. Pida al miembro que vuelva a tocar «Usar en tienda» para obtener un vale nuevo.",
+    "notFound": "SIN COINCIDENCIAS",
+    "notFoundBody": "Ningún vale en directo coincide con ese código. Compruebe el código en el móvil del miembro, o escanee el QR.",
+    "notPowr": "NO ES UN VALE DE POWR",
+    "notPowrBody": "Ese código no es un vale de POWR. Escanee el QR del móvil del miembro.",
+    "isStand": "Eso es un expositor de tienda. Escanee el vale del móvil del miembro.",
+    "error": "ALGO HA FALLADO",
+    "errorBody": "Compruebe la conexión y vuelva a escanear.",
+    "checkAgain": "Ha tardado demasiado. Vuelva a escanear el vale para confirmarlo.",
+    "confirmFailed": "No se ha podido confirmar. Vuelva a escanear el vale."
+  },
+  "gate": {
+    "signedOut": "Abra el enlace de escaneo que le ha enviado su responsable. Con él, este móvil queda listo para escanear.",
+    "notPartner": "Ha iniciado sesión como {{email}}, que no es una cuenta de marca, así que no puede escanear. Abra su enlace de escaneo o inicie sesión con su cuenta de marca.",
+    "notPartnerNoEmail": "La sesión iniciada no es una cuenta de marca, así que no puede escanear. Abra su enlace de escaneo o inicie sesión con su cuenta de marca.",
+    "revoked": "Este enlace de escaneo ya no funciona. Pida uno nuevo a su responsable.",
+    "title": "Escanear recompensas POWR",
+    "pasteLabel": "¿TIENE UN ENLACE DE ESCANEO? PÉGUELO AQUÍ",
+    "open": "Abrir",
+    "pasteError": "Eso no parece un enlace de escaneo. Termina en #k= seguido de un código largo.",
+    "managerSignIn": "¿Es responsable? Inicie sesión en el portal de marcas"
+  },
+  "header": {
+    "manager": "Responsable",
+    "shop": "Tienda",
+    "leaveKiosk": "¿Salir del modo quiosco?",
+    "exitKiosk": "Salir del quiosco",
+    "kioskTitle": "Modo quiosco para una tablet en caja",
+    "kioskLabel": "Modo quiosco",
+    "forget": "Olvidar este enlace de escaneo",
+    "forgetConfirm": "¿Olvidar este enlace de escaneo en este dispositivo? Necesitará el enlace de nuevo para escanear."
+  },
+  "kiosk": {
+    "showTab": "Para los miembros",
+    "scanTab": "Escanear a un miembro",
+    "noShop": "Añada una tienda en el portal de marcas para mostrar aquí su expositor.",
+    "headline": "¿Tienes una recompensa POWR?",
+    "headlineBold": "Escanea aquí.",
+    "newCode": "Nuevo código en {{seconds}} s · escanea con la app POWR, no con la cámara"
+  },
+  "phone": {
+    "noShops": "Aún no hay tiendas. Los escaneos funcionan igualmente; añada sus tiendas en la página En tienda del portal de marcas para registrarlos por tienda.",
+    "todayAt_one": "HOY EN {{site}}: {{count}} CONFIRMADO",
+    "todayAt_other": "HOY EN {{site}}: {{count}} CONFIRMADOS",
+    "today_one": "HOY: {{count}} CONFIRMADO",
+    "today_other": "HOY: {{count}} CONFIRMADOS",
+    "logged": "{{amount}} REGISTRADOS"
+  },
+  "today": {
+    "title": "HOY",
+    "titleAt": "HOY EN {{site}}",
+    "confirmed": "CONFIRMADOS",
+    "spend": "GASTO REGISTRADO",
+    "latest": "LO ÚLTIMO",
+    "nothing": "Nada todavía hoy.",
+    "status": {
+      "confirmed": "CONFIRMADO",
+      "swiped": "DESLIZADO",
+      "closed": "CERRADO SIN USAR",
+      "open": "ABIERTO AHORA"
+    },
+    "screenshots": "Los vales cambian cada pocos segundos. Las capturas de pantalla no se pueden escanear."
+  },
+  "stand": {
+    "docTitle": "POWR · Usa tu recompensa en tienda",
+    "eyebrow": "EXPOSITOR DE TIENDA {{code}}",
+    "title": "<light>Escanéalo </light><gold>en la app POWR</gold>",
+    "body": "Abre POWR, ve a tu Cartera, toca <strong>Usar en tienda</strong> en tu recompensa y escanea el expositor desde ahí.",
+    "openWallet": "Abrir mi cartera",
+    "noApp": "¿Aún no tienes POWR? El mismo enlace te lleva a la app."
+  }
+}

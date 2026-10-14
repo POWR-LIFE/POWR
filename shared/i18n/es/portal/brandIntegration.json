@@ -1,0 +1,371 @@
+{
+  "methods": {
+    "api": {
+      "label": "API",
+      "tagline": "Control total desde su propio stack: claves de API, webhooks firmados y generación de códigos bajo demanda.",
+      "bestFor": "Equipos con desarrolladores",
+      "beats": {
+        "key": "Crear una clave de API",
+        "webhooks": "Recibir webhooks firmados",
+        "mint": "Generar códigos bajo demanda"
+      }
+    },
+    "shopify": {
+      "label": "Shopify",
+      "tagline": "Conecte su tienda una sola vez: POWR genera un descuento nuevo de un solo uso por canje y lo marca como usado en el pago.",
+      "bestFor": "Tiendas en Shopify",
+      "beats": {
+        "connect": "Conectar su tienda",
+        "template": "Elegir un descuento plantilla",
+        "reconcile": "Los códigos se generan y concilian solos"
+      }
+    },
+    "manual": {
+      "label": "Códigos promocionales",
+      "tagline": "Suba o genere lotes de códigos aquí mismo, en el portal, sin ningún desarrollo.",
+      "bestFor": "Empezar rápido",
+      "beats": {
+        "upload": "Subir o generar códigos",
+        "handOut": "POWR los entrega a los miembros",
+        "reconcile": "Conciliar los códigos usados cuando quiera"
+      }
+    }
+  },
+  "status": {
+    "api": {
+      "notSetUp": "Aún sin configurar",
+      "keys_one": "{{count}} clave",
+      "keys_other": "{{count}} claves",
+      "webhooks_one": "{{count}} webhook",
+      "webhooks_other": "{{count}} webhooks",
+      "jitOn": "Generación JIT activada"
+    },
+    "shopify": {
+      "connected": "Conectado a {{domain}}",
+      "uninstalled": "App desinstalada: vuelva a conectarla para reanudar",
+      "notConnected": "Aún sin conectar"
+    },
+    "manual": {
+      "available_one": "{{codes}} código disponible",
+      "available_other": "{{codes}} códigos disponibles",
+      "none": "Aún no se han subido códigos"
+    }
+  },
+  "webhookEvents": {
+    "codeAssigned": {
+      "label": "Código asignado",
+      "description": "Un miembro canjeó una recompensa y recibió uno de sus códigos."
+    },
+    "codeUsed": {
+      "label": "Código usado",
+      "description": "Se confirmó en su sistema que un código se ha usado (mediante conciliación)."
+    },
+    "poolLow": {
+      "label": "Reserva casi agotada",
+      "description": "El stock de códigos disponibles de una recompensa ha bajado de su umbral."
+    },
+    "voucherConfirmed": {
+      "label": "Vale confirmado en tienda",
+      "description": "Su personal escaneó en caja el vale en tienda de un miembro."
+    },
+    "voucherSwiped": {
+      "label": "Vale deslizado en tienda",
+      "description": "Su personal deslizó para canjear el vale en tienda de un miembro en su móvil (mostrado, no escaneado)."
+    }
+  },
+  "shared": {
+    "timeAgo": {
+      "justNow": "justo ahora",
+      "minutes": "hace {{n}} min",
+      "hours": "hace {{n}} h",
+      "days": "hace {{n}} d"
+    },
+    "networkError": "error de red",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "copyFailed": "No se pudo copiar: selecciónelo manualmente",
+    "copySecret": "Copiar secreto",
+    "refresh": "Actualizar",
+    "retry": "Reintentar",
+    "httpStatus": "HTTP {{status}}",
+    "setup": {
+      "allDone": "Todo listo: ahora funciona solo",
+      "progress_one": "{{count}} de {{total}} pasos completados",
+      "progress_other": "{{count}} de {{total}} pasos completados",
+      "step": "Paso {{n}}",
+      "optional": "Opcional",
+      "recommended": "Recomendado",
+      "doNext": "Siguiente paso",
+      "done": "Hecho"
+    },
+    "stageAllSet": "Todo listo.",
+    "changeMethod": "Cambiar de método",
+    "setupGuide": "Guía de configuración",
+    "wrongMethod": {
+      "body": "Sus recompensas se entregan ahora mediante {{current}}. Puede preparar {{here}} aquí, pero no tomará el relevo hasta que cambie de método.",
+      "switch": "Cambiar de método"
+    },
+    "fallback": {
+      "title": "Códigos de respaldo",
+      "body": "Mantenga una pequeña reserva de códigos precargados: si su integración no está disponible en el momento de un canje, POWR recurre automáticamente a esa reserva y los miembros nunca se quedan bloqueados.",
+      "manage": "Gestionar la reserva de respaldo"
+    }
+  },
+  "hub": {
+    "eyebrowFirstRun": "Una sola decisión para empezar",
+    "eyebrow": "Integración",
+    "titleFirstRun": "¿Cómo entregará las recompensas a los miembros?",
+    "title": "Método de entrega",
+    "introFirstRun": "Cuando un miembro canjea una de sus recompensas, POWR le entrega un código. Elija cómo nos llegan esos códigos; puede cambiarlo en cualquier momento.",
+    "intro": "Cómo llegan los códigos a los miembros cuando canjean sus recompensas. Cambiar no borra nada: la configuración existente sigue funcionando.",
+    "confirmSwitch": "¿Cambiar su método de entrega a {{method}}? No se borra nada: su configuración actual sigue funcionando y puede volver atrás en cualquier momento.",
+    "current": "Método actual",
+    "readGuide": "Leer la guía →",
+    "bestFor": "Ideal para",
+    "openSetup": "Abrir configuración",
+    "choose": "Elegir {{method}}",
+    "switch": "Cambiar",
+    "decideLater": "¿Aún no lo tiene claro? Decida más tarde: puede elegir un método cuando quiera desde la barra lateral"
+  },
+  "api": {
+    "eyebrow": "Integración · API",
+    "docs": "Docs de la API",
+    "intro": "Automatice el suministro de códigos y la conciliación de usos en cuatro pasos: envíe códigos, entérese de cada canje al instante y olvídese de subir archivos CSV.",
+    "copyBaseUrl": "Copiar URL base",
+    "toast": {
+      "loadFailed": "No se pudieron cargar algunos datos. Actualice para reintentar ({{reason}})",
+      "keyRevoked": "Clave revocada",
+      "enterUrl": "Introduzca la URL de un endpoint",
+      "pickEvent": "Elija al menos un evento",
+      "endpointAdded": "Endpoint añadido",
+      "endpointDeleted": "Endpoint eliminado",
+      "redeliveryQueued": "Reenvío en cola",
+      "settingsSaved": "Ajustes de integración guardados"
+    },
+    "confirm": {
+      "revokeKey": "¿Revocar esta clave? Las integraciones que la usan dejarán de funcionar de inmediato.",
+      "deleteEndpoint": "¿Eliminar este endpoint? Su historial de envíos se eliminará con él."
+    },
+    "steps": {
+      "key": {
+        "title": "Crear una clave de API",
+        "detail": "Su servidor autentica cada llamada con una clave bearer: cree una y guárdela en un lugar seguro.",
+        "summaryCalled_one": "{{count}} clave activa · última llamada {{when}}",
+        "summaryCalled_other": "{{count}} claves activas · última llamada {{when}}",
+        "summaryNotCalled_one": "{{count}} clave activa · aún sin llamadas",
+        "summaryNotCalled_other": "{{count}} claves activas · aún sin llamadas"
+      },
+      "webhook": {
+        "title": "Añadir un endpoint de webhook",
+        "detail": "Enviamos (POST) eventos firmados a su sistema en cuanto ocurren: se asigna un código, se usa un código, una reserva se agota, o se confirma o desliza un vale en tienda.",
+        "summary_one": "{{count}} endpoint activo",
+        "summary_other": "{{count}} endpoints activos",
+        "summaryDelivered_one": "{{count}} endpoint activo · último envío {{when}}",
+        "summaryDelivered_other": "{{count}} endpoints activos · último envío {{when}}"
+      },
+      "jit": {
+        "title": "Activar la generación bajo demanda",
+        "detail": "La integración más completa: POWR pide a su endpoint un código nuevo en cada canje. Sáltese este paso si prefiere precargar reservas de códigos.",
+        "summary": "Activada: POWR genera los códigos desde su endpoint en el momento del canje."
+      },
+      "verify": {
+        "title": "Verificar la integración",
+        "detail": "Lance una prueba firmada contra todo lo que ha conectado y compruebe que todo vuelve en verde.",
+        "summaryPassed": "Todas las llamadas de prueba han ido bien.",
+        "summaryDelivered": "Verificado: webhook enviado {{when}}."
+      }
+    },
+    "keys": {
+      "freshTitle": "Copie su nueva clave ahora: no se volverá a mostrar",
+      "dismiss": "Hecho",
+      "empty": "Aún no hay claves de API. Cree una para empezar a llamar a la API.",
+      "revoked": "Revocada",
+      "used": "Usada {{when}}",
+      "neverUsed": "Nunca usada",
+      "revoke": "Revocar",
+      "labelPlaceholder": "Nombre de la clave (p. ej., sincronización Shopify)",
+      "creating": "Creando…",
+      "create": "Crear clave",
+      "pingHint": "Después, compruebe que funciona desde su servidor: <code>GET {{url}}/ping</code> con la clave como token bearer. Todos los detalles en la <docs>documentación de la API</docs>."
+    },
+    "webhooks": {
+      "empty": "Aún no hay endpoints. Añada uno y le enviaremos (POST) eventos firmados en cuanto ocurran.",
+      "test": "Probar",
+      "disable": "Desactivar",
+      "enable": "Activar",
+      "signingSecret": "Secreto de firma",
+      "testDelivered": "Prueba enviada: HTTP {{status}}",
+      "testFailed": "La prueba ha fallado: {{error}}",
+      "sendingTest": "Enviando evento de prueba…",
+      "add": "Añadir endpoint",
+      "adding": "Añadiendo…"
+    },
+    "deliveries": {
+      "title": "Envíos recientes",
+      "empty": "Aún no se ha enviado nada. Los eventos aparecen aquí en cuanto los miembros interactúan con sus recompensas.",
+      "status": {
+        "delivered": "enviado",
+        "pending": "pendiente",
+        "failed": "fallido",
+        "skipped": "omitido"
+      },
+      "attempts_one": "{{count}} intento",
+      "attempts_other": "{{count}} intentos",
+      "redeliver": "Reenviar"
+    },
+    "jit": {
+      "intro": "Cuando un miembro canjea, POWR pide a <em>su</em> endpoint un código nuevo de un solo uso: sin reservas precargadas, sin conciliación. Se aplica a las recompensas con entrega validada por API. Mantenga una pequeña reserva de códigos cargada como respaldo ante caídas.",
+      "mintUrl": "URL del endpoint de generación",
+      "mintSecret": "Secreto de firma de generación",
+      "threshold": "Umbral de alerta de reserva baja",
+      "thresholdHint": "Enviamos pool.low cuando los códigos disponibles de una recompensa bajan a este nivel. 0 lo desactiva.",
+      "mintOk": "Endpoint de generación operativo: respondió en {{ms}} ms con un código válido ({{code}}).",
+      "mintOkWarning": "Endpoint de generación operativo: respondió en {{ms}} ms con un código válido ({{code}}). ⚠ {{warning}}",
+      "mintFailed": "La prueba de generación ha fallado: {{error}}",
+      "sendingMint": "Enviando una solicitud de generación de prueba…",
+      "statusOn": "Generación JIT ACTIVADA",
+      "statusOff": "Generación JIT DESACTIVADA",
+      "testMint": "Probar endpoint de generación",
+      "turnOff": "Desactivar",
+      "turnOn": "Activar",
+      "save": "Guardar ajustes"
+    },
+    "verify": {
+      "intro": "Con un clic se envía un evento de prueba firmado a cada endpoint de webhook activo (y una sonda a su endpoint de generación, si lo ha configurado) y verá exactamente qué ha vuelto.",
+      "testing": "Probando…",
+      "run": "Ejecutar prueba de conexión",
+      "results": "Resultados de la prueba en directo",
+      "callFailed": "La llamada de prueba ha fallado",
+      "webhookTo": "Webhook → {{host}}",
+      "delivered": "Enviado: HTTP {{status}}",
+      "mintLabel": "Endpoint de generación JIT",
+      "mintResponded": "Respondió en {{ms}} ms con un código válido",
+      "mintRespondedWarning": "Respondió en {{ms}} ms con un código válido: {{warning}}",
+      "webhooksLabel": "Webhooks",
+      "noEndpoint": "No hay ningún endpoint activo que probar: añada uno abajo."
+    },
+    "health": {
+      "title": "Estado de la conexión",
+      "key": {
+        "label": "Clave de API",
+        "none": "Aún no hay clave: cree una en el paso 1.",
+        "working": "Funciona: última llamada {{when}}.",
+        "unused": "Clave creada pero nunca usada: pruebe GET /v1/ping desde su servidor."
+      },
+      "webhook": {
+        "label": "Endpoint de webhook",
+        "autoDisabled": "Su endpoint se desactivó automáticamente tras fallos repetidos: corríjalo y vuelva a activarlo en el paso 2.",
+        "none": "Aún no hay endpoint: añada uno en el paso 2 para enterarse de los canjes en directo.",
+        "failing_one": "{{count}} envío reciente ha fallado: revise su receptor o pulse Probar.",
+        "failing_other": "{{count}} envíos recientes han fallado: revise su receptor o pulse Probar.",
+        "receiving": "Recibiendo: último envío correcto {{when}}.",
+        "active": "Endpoint activo: verifíquelo en el paso 4 para confirmar que recibe eventos firmados."
+      },
+      "jit": {
+        "label": "Generación bajo demanda",
+        "none": "Opcional: configúrela en el paso 3 si quiere que su sistema genere los códigos en el momento del canje.",
+        "paused": "En pausa tras fallos de generación repetidos: pruebe su endpoint en el paso 3; se reanuda automáticamente.",
+        "on": "Activada: POWR pide a su endpoint un código nuevo en cada canje.",
+        "off": "Configurada pero desactivada: ejecute «Probar endpoint de generación» en el paso 3 y después actívela."
+      }
+    }
+  },
+  "shopify": {
+    "eyebrow": "Integración · Shopify",
+    "intro": "La integración sin esfuerzo: tres pasos y cada canje genera un código nuevo de un solo uso en su tienda, marcado como usado en cuanto se gasta en el pago. Sin CSV, sin desarrollo de API, nada que alojar.",
+    "toast": {
+      "unreachable": "No se pudo contactar con Shopify. La conexión de su tienda no ha cambiado; vuelva a intentarlo en un momento",
+      "connected": "Shopify conectado: elija de qué descuento genera códigos cada recompensa",
+      "connectFailed": "La conexión con Shopify ha fallado ({{reason}}). Inténtelo de nuevo",
+      "unknownReason": "motivo desconocido",
+      "enterDomain": "Introduzca el dominio de su tienda (your-store.myshopify.com)",
+      "mapped": "La recompensa ahora genera códigos desde ese descuento",
+      "unmapped": "Vinculación eliminada",
+      "disconnected": "Shopify desconectado"
+    },
+    "confirmDisconnect": "¿Desconectar Shopify? La generación se detiene de inmediato; las recompensas vinculadas recurren a los códigos de la reserva de respaldo, si los hay.",
+    "steps": {
+      "connect": {
+        "title": "Conectar su tienda",
+        "detail": "Apruebe la app de POWR en su tienda Shopify: un clic, sin código, apenas un minuto.",
+        "summary": "{{domain}} · conectada"
+      },
+      "map": {
+        "title": "Elegir un descuento para cada recompensa",
+        "detailUnmapped_one": "{{count}} recompensa publicada aún no tiene ningún descuento detrás: elija uno abajo.",
+        "detailUnmapped_other": "{{count}} recompensas publicadas aún no tienen ningún descuento detrás: elija uno para cada una abajo.",
+        "detail": "Cree un descuento plantilla en Shopify y elíjalo aquí: POWR lo clona en un código nuevo de un solo uso por canje.",
+        "summaryLive_one": "Recompensas publicadas vinculadas a sus descuentos: {{mapped}} de {{count}}",
+        "summaryLive_other": "Recompensas publicadas vinculadas a sus descuentos: {{mapped}} de {{count}}",
+        "summary_one": "{{count}} recompensa genera códigos desde sus descuentos",
+        "summary_other": "{{count}} recompensas generan códigos desde sus descuentos"
+      },
+      "test": {
+        "title": "Probar el circuito completo",
+        "detail": "Genere un código de prueba real y úselo en el pago de su propia tienda: demuestra de principio a fin la generación y el seguimiento de pedidos.",
+        "summary": "Circuito completo comprobado: generado, usado en el pago y confirmado a POWR."
+      }
+    },
+    "connect": {
+      "unreachable": "Ahora mismo no se pudo contactar con Shopify, así que no podemos mostrar el estado de su tienda. Nada ha cambiado por su parte: si su tienda estaba conectada, lo sigue estando, y la generación continúa.",
+      "uninstalled": "La app de POWR se desinstaló de su tienda: vuelva a conectarla abajo para reanudar la generación.",
+      "redirecting": "Redirigiendo…",
+      "connect": "Conectar Shopify",
+      "approveHint": "Aprobará la app POWR Rewards en la pantalla de Shopify y volverá directamente aquí.",
+      "connected": "Conectada",
+      "disconnect": "Desconectar",
+      "sessionExpired": "La sesión de Shopify ha caducado: pulse de nuevo Conectar Shopify para restablecer la generación y el seguimiento de pedidos.",
+      "ordersInactive": "El seguimiento de pedidos aún no está activo, así que los códigos usados no se confirmarán automáticamente. En los ajustes de su app de Shopify, apruebe el acceso a «Protected customer data» (datos protegidos de clientes; motivo: funcionalidad de la app) y vuelva a cargar esta página: se arregla sola."
+    },
+    "map": {
+      "waiting": "Esperando a su tienda: reintente en el paso 1 y sus descuentos de Shopify aparecerán aquí para elegir.",
+      "connectFirst": "Conecte primero su tienda: sus descuentos de Shopify aparecerán aquí para elegir.",
+      "discountsFailed": "No se pudieron cargar los descuentos de su tienda, así que los selectores de abajo siguen bloqueados. Las vinculaciones que ya tiene siguen generando códigos.",
+      "noRewards": "Aún no hay recompensas: cree una en Mis recompensas y aparecerá aquí. No hace falta que esté publicada en la app para configurar la generación.",
+      "createReward": "Crear una recompensa",
+      "noDiscountsTitle": "No hay descuentos que clonar",
+      "noDiscountsBody": "No encontramos en su tienda ningún descuento que POWR pueda copiar. Cree uno en Shopify (porcentaje o importe fijo, sin código), actualice y aparecerá aquí para cada recompensa.",
+      "notLive": "Aún no publicada en la app",
+      "mintsFrom": "Genera desde «{{discount}}»",
+      "notMinting": "Aún no genera códigos: elija un descuento",
+      "noMinting": "Sin generación",
+      "currentOption": "{{discount}} (actual)",
+      "templateHint": "Cree el descuento plantilla en Shopify (porcentaje o importe fijo): POWR lo clona en un código de un solo uso por canje. Los códigos se confirman como usados automáticamente al gastarse en el pago."
+    },
+    "test": {
+      "waiting": "Esperando a su tienda: reintente en el paso 1.",
+      "connectFirst": "Conecte primero su tienda.",
+      "mapFirst": "Primero vincule una recompensa a un descuento en el paso 2.",
+      "intro": "Genera un código de un solo uso desde su plantilla vinculada, exactamente como el canje de un miembro, pero sin el miembro. Aplíquelo en el pago de su propia tienda y vea cómo se confirma como usado automáticamente.",
+      "minting": "Generando…",
+      "create": "Crear código de prueba",
+      "used": "Usado: conciliado",
+      "waitingCheckout": "Esperando el pago",
+      "check": "Comprobar",
+      "loopWorks": "El circuito completo funciona: generado en Shopify, usado en el pago y confirmado a POWR.",
+      "realCode": "Es un descuento real de un solo uso en su tienda (caduca en 7 días). Haga un pedido de prueba con él: el estado cambiará aquí a Usado en menos de un minuto."
+    },
+    "health": {
+      "title": "Estado de la tienda",
+      "connection": {
+        "label": "Conexión de la tienda",
+        "unreachable": "Ahora mismo no se pudo contactar con Shopify: reintente en el paso 1 para ver el estado de su tienda.",
+        "none": "Aún sin conectar: empiece por el paso 1.",
+        "expired": "Sesión caducada: vuelva a conectar en el paso 1 para restablecer la generación.",
+        "connected": "Conectada a {{domain}}."
+      },
+      "orders": {
+        "label": "Seguimiento de pedidos",
+        "none": "Se activa automáticamente cuando su tienda se conecta.",
+        "live": "Activo: los códigos gastados en su pago se confirman como usados solos.",
+        "inactive": "Inactivo: apruebe «Protected customer data» en los ajustes de su app de Shopify y vuelva a cargar."
+      },
+      "minting": {
+        "label": "Generación de recompensas",
+        "count_one": "{{count}} recompensa genera códigos desde sus descuentos.",
+        "count_other": "{{count}} recompensas generan códigos desde sus descuentos.",
+        "none": "Ninguna recompensa genera códigos aún: vincule una en el paso 2."
+      }
+    }
+  }
+}

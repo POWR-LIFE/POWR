@@ -12,7 +12,11 @@
 //   headline   one sentence that says which of those matters this week
 //
 // Pure, from what the Overview already loads (gym_portal_summary and
-// gym_insights). Under jest (__tests__/gymWeek.test.ts).
+// gym_insights). Under jest (__tests__/gymWeek.test.ts). The headline's words
+// come from the venueHome catalog through `t` (the portal's own; English
+// without one), see shared/venueHomeText.ts.
+
+import { DAY_IDS, englishT, type Translate } from './venueHomeText';
 
 export type DayPoint = { day: string; sessions: number; athletes?: number };
 
@@ -48,10 +52,7 @@ export type WeekStory = {
   rush: { from: number; to: number } | null;
 };
 
-const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const PLURAL_DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
-
-/** "5pm", "12pm", "7am": the wall's own hour labels. */
+/** "5pm", "12pm", "7am": the wall's own hour labels (English; the portal shows other languages a 24-hour clock). */
 export function hourName(h: number): string {
   const x = ((h % 24) + 24) % 24;
   if (x === 0) return '12am';
@@ -68,7 +69,7 @@ export function rushOf(hours: number[] | null | undefined): { from: number; to: 
   return { from: best, to: best + 2 };
 }
 
-export function weekStory(i: WeekInput): WeekStory {
+export function weekStory(i: WeekInput, t: Translate = englishT): WeekStory {
   const days = i.days && i.days.length >= 14 ? i.days : null;
   const thisWeek = days ? days.slice(7) : [];
   const lastWeek = days ? days.slice(0, 7) : [];
@@ -113,33 +114,34 @@ export function weekStory(i: WeekInput): WeekStory {
     // Amber only for a gym that usually has sessions by now; a new one isn't behind anything.
     tone = dayIndex > 0 && usual ? 'down' : 'new';
     headline = dayIndex === 0
-      ? (usual ? `New week. A usual one here is about ${usual} sessions.` : 'New week. The board starts again today.')
-      : usual ? 'No check-ins yet this week.' : 'No check-ins yet. Each session shows up here as members train.';
+      ? (usual ? t('venueHome:week.newUsual', { n: usual }) : t('venueHome:week.newFresh'))
+      : usual ? t('venueHome:week.noneUsual') : t('venueHome:week.noneFresh');
   } else if (best != null && i.soFar > best) {
     tone = 'up';
     headline = dayIndex < 6
-      ? `Your busiest week in ${eight.length} weeks already, and it’s only ${WEEKDAYS[dayIndex]}.`
-      : `Your busiest week in ${eight.length} weeks.`;
+      ? t('venueHome:week.bestAlready', { weeks: eight.length, day: t(`venueHome:days.long.${DAY_IDS[dayIndex]}`) })
+      : t('venueHome:week.best', { weeks: eight.length });
   } else if (best != null && projected != null && projected > best && dayIndex < 6) {
     tone = 'up';
-    headline = `On course for your busiest week in ${eight.length} weeks.`;
+    headline = t('venueHome:week.onCourseBest', { weeks: eight.length });
   } else if (usual && projected != null) {
     const ratio = projected / usual;
+    const done = { soFar: i.soFar, usual };
     if (ratio >= 1.1) {
       tone = 'up';
-      headline = dayIndex < 6 ? `Busier than usual: on course for about ${projected}.` : `A busier week than usual: ${i.soFar} against about ${usual}.`;
+      headline = dayIndex < 6 ? t('venueHome:week.busier', { n: projected }) : t('venueHome:week.busierDone', done);
     } else if (ratio <= 0.9) {
       tone = 'down';
       headline = ahead && ahead.d === busiest && ahead.n > 0
-        ? `Quieter than usual so far. ${PLURAL_DAYS[ahead.d]} are your busiest, and it’s still to come.`
-        : dayIndex < 6 ? `Quieter than usual: on course for about ${projected}.` : `A quieter week than usual: ${i.soFar} against about ${usual}.`;
+        ? t('venueHome:week.quieterAhead', { days: t(`venueHome:days.plural.${DAY_IDS[ahead.d]}`) })
+        : dayIndex < 6 ? t('venueHome:week.quieter', { n: projected }) : t('venueHome:week.quieterDone', done);
     } else {
       tone = 'even';
-      headline = dayIndex < 6 ? `A normal week so far: on course for about ${projected}.` : `A normal week: ${i.soFar} against about ${usual}.`;
+      headline = dayIndex < 6 ? t('venueHome:week.normal', { n: projected }) : t('venueHome:week.normalDone', done);
     }
   } else {
     tone = 'even';
-    headline = `${i.soFar} session${i.soFar === 1 ? '' : 's'} so far this week.`;
+    headline = t('venueHome:week.soFar', { count: i.soFar, n: i.soFar });
   }
 
   return { dayIndex, soFar: i.soFar, usual, usualFrom, projected, best, bestOf: eight.length, headline, tone, rush: rushOf(i.hours) };

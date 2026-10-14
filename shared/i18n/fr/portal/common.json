@@ -10,7 +10,7 @@
     "close": "Fermer",
     "back": "Retour",
     "retry": "Réessayer",
-    "signOut": "Se déconnecter"
+    "signOut": "Déconnexion"
   },
   "states": {
     "loading": "Chargement…",

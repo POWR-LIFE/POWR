@@ -1,1 +1,247 @@
-{}
+{
+  "common": {
+    "notAuthorised": "No autorizado",
+    "notFound": "No encontrado",
+    "nothingToChange": "No hay cambios que guardar",
+    "nothingToSave": "No hay nada que guardar",
+    "nothingToUpdate": "No hay nada que actualizar",
+    "sentToday": "Ya se ha enviado hoy. Podrá enviarse de nuevo mañana",
+    "unauthorized": "No autorizado. Vuelva a iniciar sesión.",
+    "forbidden": "Acceso denegado",
+    "invalidEmail": "Introduzca un correo electrónico válido",
+    "passwordLength": "La contraseña debe tener al menos 8 caracteres"
+  },
+  "gym": {
+    "notFound": "Gimnasio no encontrado",
+    "packageMissing": "Su plan no incluye esta función. Puede cambiarlo en Plan, en su portal.",
+    "nameLength": "El nombre debe tener entre 2 y 60 caracteres",
+    "uploadLogo": "Suba el logotipo aquí en lugar de enlazarlo",
+    "uploadPhoto": "Suba la foto aquí en lugar de enlazarla",
+    "uploadImage": "Suba la imagen aquí en lugar de enlazarla"
+  },
+  "event": {
+    "notFound": "Evento no encontrado",
+    "nameLength": "Ponga al evento un nombre de 3 a 48 caracteres",
+    "pickStartDate": "Elija una fecha de inicio",
+    "prizeCount": "Añada entre 1 y 5 premios",
+    "prizeLength": "Cada premio debe tener entre 2 y 60 caracteres",
+    "prizePhotoUpload": "Suba las fotos de los premios aquí en lugar de enlazarlas",
+    "rulesCount": "Añada hasta 8 reglas propias",
+    "ruleLength": "Cada regla debe tener menos de 200 caracteres",
+    "headlineLength": "El titular debe tener menos de 80 caracteres",
+    "pointsOption": "Esa opción de puntos no está disponible para este tipo de evento",
+    "distance": "Elija una de las distancias propuestas",
+    "length": "Elija una de las duraciones propuestas",
+    "finaleTime": "Elija una de las horas propuestas para la noche final",
+    "finaleLength": "Elija una de las duraciones propuestas para la noche final",
+    "activityRequired": "Elija al menos una actividad",
+    "activityNotAllowed": "Una de esas actividades no puede contar para un evento",
+    "gymOnly": "Indique si solo cuentan las sesiones en su gimnasio",
+    "boardSize": "Elija uno de los tamaños de clasificación propuestos",
+    "bookingLinkHttps": "Añada un enlace de reserva que empiece por https://",
+    "bookingLinkEmail": "Un enlace de reserva no puede pedir el correo electrónico de los socios",
+    "logoAsName": "Indique si el logotipo sustituye al nombre",
+    "partnerCodeUnavailable": "Ese código de marca no está disponible en este momento",
+    "pickKind": "Elija un tipo de evento",
+    "needsBasics": "Un evento necesita un nombre, una fecha de inicio y al menos un premio",
+    "startFromToday": "Elija una fecha de inicio a partir de hoy",
+    "lockedAfterStart": "Esto no puede cambiarse una vez empezado el evento",
+    "publishedNotice": "Un evento publicado debe empezar dentro de 2 horas como mínimo",
+    "alreadyPublished": "Este evento ya está publicado o pendiente de revisión por POWR",
+    "newEventNotice": "Cambie la fecha de inicio: un evento nuevo necesita al menos 2 horas de antelación",
+    "publishHorizon": "Los eventos pueden publicarse con hasta 90 días de antelación",
+    "addPrize": "Añada al menos un premio",
+    "noLocation": "Su gimnasio aún no tiene ubicación en POWR. Contacte con POWR.",
+    "tooManyActive_one": "Ya tiene {{count}} evento en marcha. Publique este cuando haya terminado.",
+    "tooManyActive_other": "Ya tiene {{count}} eventos en marcha. Publique este cuando termine alguno.",
+    "withdrawOnlyPending": "Solo se puede retirar un evento pendiente de revisión por POWR",
+    "deleteOnlyDraft": "Solo se puede eliminar un borrador. Un evento publicado debe cancelarse.",
+    "cancelOnlyUpcoming": "Solo se puede cancelar un evento que no ha empezado. Contacte con POWR.",
+    "revealAfterSeal": "Los ganadores podrán revelarse cuando la clasificación esté sellada",
+    "alreadyRevealed": "Los ganadores ya se han revelado",
+    "revealWindow": "Elija un momento posterior al sellado de la clasificación y dentro de la semana siguiente",
+    "resultsFinal": "Los resultados son definitivos. Contacte con POWR.",
+    "disqualifyReason": "Indique el motivo (de 3 a 200 caracteres). POWR lo verá.",
+    "notInEvent": "Esta persona no participa en este evento",
+    "isOver": "Este evento ha terminado",
+    "noFinaleNight": "Este evento no tiene noche final"
+  },
+  "door": {
+    "noFinaleBonus": "Este evento no tiene bonificación final, así que no hay check-in.",
+    "eventNotOn": "El check-in solo está abierto mientras dura el evento",
+    "window": "El check-in abre dos horas antes de la final y cierra seis horas después",
+    "alreadyIn": "Check-in ya registrado",
+    "limit": "Se ha alcanzado el límite de check-ins manuales de esta noche. Avise a POWR si hay más gente.",
+    "prizesAfterReveal": "Los premios se entregan después de la revelación",
+    "noPrizeRank": "No hay premio para ese puesto"
+  },
+  "pushes": {
+    "pulseWindow": "La notificación de la clasificación solo se envía con el evento en directo, antes de sellar la clasificación",
+    "pickHour": "Elija una hora para la notificación de la clasificación",
+    "hourRange": "La notificación de la clasificación se envía entre las 7:00 y las 21:00"
+  },
+  "screens": {
+    "ownerOnly": "Solo el propietario del gimnasio puede activar las pantallas",
+    "slugFormat": "Use de 2 a 40 letras minúsculas, números y guiones simples",
+    "alreadySetUp": "Las pantallas de este gimnasio ya están configuradas",
+    "slugTaken": "Otro gimnasio ya usa ese enlace. Pruebe con otro.",
+    "notSetUp": "Active primero las pantallas",
+    "viewingDistance": "La distancia de visualización es cerca, estándar o lejos",
+    "boardSize": "La clasificación muestra 10, 25 o 50 puestos",
+    "leagueRadius": "El radio de la liga es de 5, 10, 15, 25, 50 o 100 km",
+    "ownerLink": "Solo el propietario del gimnasio puede cambiar el enlace de las pantallas"
+  },
+  "clash": {
+    "needsPro": "Las Clash Nights están incluidas en Clash Pro. Puede cambiar de plan en Plan, en su portal.",
+    "pickDate": "Elija una fecha",
+    "notice": "Una Clash Night se reserva con al menos {{days}} días de antelación. La primera fecha posible es el {{date}}.",
+    "horizon": "Puede reservar con hasta un año de antelación.",
+    "startTime": "Elija una hora de inicio entre las 6:00 y las 21:00",
+    "backupDate": "La fecha alternativa necesita la misma antelación y debe ser otro día",
+    "perQuarter": "Ya tiene una Clash Night en ese trimestre. Es una por trimestre.",
+    "taken": "Esa noche ya está reservada. Elija otra fecha.",
+    "notBooked": "Esa noche no está reservada",
+    "past": "Esa noche ya ha pasado"
+  },
+  "discounts": {
+    "unavailable": "Ese descuento no está disponible en este momento",
+    "noLink": "El enlace de esa marca aún no está configurado",
+    "noCodes": "Ahora mismo no quedan códigos de esa marca"
+  },
+  "retention": {
+    "ownNotesOnly": "Solo puede eliminar sus propias notas",
+    "pickChannel": "Indique cómo ha contactado",
+    "noteLength": "La nota debe tener menos de 280 caracteres",
+    "notOnList": "Esa persona no está en su lista",
+    "cantNudge": "Esta persona no se está alejando, o POWR no puede llegar a su teléfono",
+    "teamOnlySwitch": "Este ajuste es solo para el equipo del gimnasio"
+  },
+  "package": {
+    "noPortal": "Este gimnasio no tiene portal",
+    "ownerOnly": "Solo el propietario de su gimnasio puede cambiar el plan",
+    "pick": "Elija un plan",
+    "already": "Ya tiene ese plan",
+    "foundingTrialOnly": "Founding Pro solo estaba disponible durante la prueba gratuita",
+    "foundingGone": "Las 10 plazas fundadoras ya están ocupadas"
+  },
+  "team": {
+    "ownerOnly": "Solo el propietario puede cambiar quién aparece en la app",
+    "gone": "Esta persona ya no forma parte de su equipo",
+    "nothingToOrder": "No hay nada que ordenar",
+    "giveName": "Indique un nombre",
+    "full": "Ya hay 40 personas. Quite a alguien primero.",
+    "roleLength": "El cargo debe tener menos de 30 caracteres",
+    "experienceLength": "Indique la experiencia en pocas palabras, por ejemplo 8 años",
+    "bioLength": "La biografía debe tener menos de 500 caracteres",
+    "specialtyLength": "Cada especialidad debe tener menos de 24 caracteres",
+    "specialtyCount": "Elija hasta 6 especialidades",
+    "bookingLinkFormat": "El enlace de reserva debe ser una dirección web, como calendly.com/sunombre",
+    "profileLinkFormat": "El enlace de perfil debe ser una dirección web, como calendly.com/sunombre",
+    "bookingLinkLength": "Ese enlace de reserva es demasiado largo",
+    "profileLinkLength": "Ese enlace de perfil es demasiado largo"
+  },
+  "profile": {
+    "ownerOnly": "Solo el propietario puede cambiar los datos del gimnasio",
+    "descriptionLength": "La descripción debe tener menos de 400 caracteres",
+    "addressLength": "La dirección debe tener menos de 200 caracteres",
+    "phoneLength": "Ese número de teléfono es demasiado largo",
+    "websiteLength": "Esa dirección web es demasiado larga",
+    "logoBackground": "El fondo del logotipo es oscuro, negro o blanco",
+    "hours": "Indique para cada día una hora de apertura y de cierre, como 06:00 y 22:00"
+  },
+  "help": {
+    "subject": "Añada un asunto",
+    "moreDetail": "Cuéntenos un poco más (10 caracteres como mínimo)",
+    "tooMany": "Acaba de enviar varios mensajes. Responderemos primero a esos."
+  },
+  "gymStaff": {
+    "accountExists": "Ya tiene una cuenta de POWR con este correo. Inicie sesión con ella abajo y la invitación se añadirá a esa cuenta.",
+    "ownerInvite": "Solo POWR puede añadir otro propietario",
+    "inviteNotFound": "Invitación no encontrada",
+    "notOnTeam": "No forma parte del equipo de este gimnasio",
+    "ownerRemove": "Solo POWR puede quitar a un propietario",
+    "emailFailed": "Enlace creado, pero no se ha podido enviar el correo. Cópielo en su lugar."
+  },
+  "partnerUsers": {
+    "accountExists": "Ya existe una cuenta con este correo. Contacte con POWR para vincularla a su marca.",
+    "removeSelf": "No puede quitar su propio acceso",
+    "emailFailed": "Enlace creado, pero no se ha podido enviar el correo. Cópielo abajo."
+  },
+  "inStore": {
+    "signIn": "Inicie sesión primero",
+    "noBrand": "Esta cuenta no está vinculada a ninguna marca",
+    "scanLinkDead": "Este enlace de escaneo ya no funciona. Pida uno nuevo a su responsable.",
+    "scanSignIn": "Abra su enlace de escaneo o inicie sesión en el portal de marcas.",
+    "siteName": "Ponga un nombre a la tienda",
+    "sitePin": "Sitúe esta tienda en el mapa",
+    "siteNotFound": "Tienda no encontrada",
+    "staffName": "Añada el nombre",
+    "staffNotFound": "Miembro del personal no encontrado",
+    "pickWhere": "Elija en línea, en tienda o ambos",
+    "notEnabled": "Las recompensas en tienda aún no están activadas para su marca. Hable con POWR para configurarlas.",
+    "pickCheck": "Elija cómo la comprueba su tienda",
+    "barcodeType": "Tipo de código de barras desconocido",
+    "rewardNotFound": "Recompensa no encontrada",
+    "postedReward": "Las recompensas enviadas por correo postal no pueden usarse en tienda",
+    "linkReward": "Una recompensa con enlace no tiene códigos que escanear en caja. Elija el escaneo del personal o la comprobación en pantalla."
+  },
+  "rewards": {
+    "limitReached": "Límite de recompensas alcanzado: {{brand}} ya tiene {{n}} recompensa(s) publicadas o en revisión (límite: {{limit}})."
+  },
+  "codes": {
+    "reconcileForbidden": "No puede conciliar los códigos de esta recompensa",
+    "reconcileMax": "Un archivo de conciliación puede contener como máximo 5000 códigos"
+  },
+  "placements": {
+    "notFound": "Posición no encontrada",
+    "notAuthorized": "No autorizado",
+    "notDraft": "Solo se puede enviar a revisión un borrador",
+    "nameRequired": "Ponga un nombre a la campaña",
+    "cellsRequired": "Elija al menos una zona en el mapa",
+    "flightWindow": "La fecha de fin debe ser posterior a la de inicio"
+  },
+  "api": {
+    "keyLimit": "Una marca puede tener como máximo {{max}} claves activas. Revoque una primero.",
+    "endpointLimit": "Una marca puede tener como máximo {{max}} endpoints. Elimine uno primero.",
+    "subscribeOne": "Suscríbase al menos a un evento",
+    "invalidUrl": "Introduzca una URL válida",
+    "httpsOnly": "La URL debe usar https://",
+    "publicUrl": "La URL debe ser accesible públicamente",
+    "mintUrlFirst": "Indique la URL del endpoint de generación antes de activar la generación JIT",
+    "poolThreshold": "El umbral de reserva baja debe estar entre 0 y 10 000",
+    "mintNotConfigured": "Aún no hay ninguna URL de endpoint de generación configurada",
+    "mintTimeout": "El endpoint no ha respondido dentro del límite de generación de 3 s",
+    "mintNoResponse": "El endpoint no ha respondido ({{detail}})",
+    "mintStatus": "El endpoint ha devuelto {{status}} ({{detail}})",
+    "mintBadJson": "El cuerpo de la respuesta no es un JSON válido con un campo \"code\"",
+    "mintBadCode": "El valor de \"code\" debe tener de 4 a 64 letras, dígitos o guiones",
+    "mintSlow": "La respuesta ha tardado más de 2 s. En producción, la generación se corta a los 3 s, así que deje margen.",
+    "timeout": "tiempo de espera agotado"
+  },
+  "shopify": {
+    "storeDomain": "Introduzca el dominio de su tienda, como su-tienda.myshopify.com",
+    "connectFirst": "Conecte primero su tienda Shopify",
+    "queryFailed": "La consulta a Shopify ha fallado",
+    "noReward": "Esta marca no tiene esa recompensa",
+    "templateKind": "Solo los descuentos con código básicos, de porcentaje o de importe fijo, pueden usarse como plantilla",
+    "productAccess": "Este descuento se limita a productos concretos, lo que requiere el permiso de acceso a productos de la app. Por ahora, use como plantilla un descuento sobre todo el pedido.",
+    "productRead": "No se han podido leer las restricciones de productos del descuento. Pruebe con un descuento sobre todo el pedido.",
+    "tooManyItems": "Este descuento se limita a más de 100 artículos, demasiados para copiarlo fielmente. Use como plantilla un descuento sobre todo el pedido o más reducido.",
+    "targeting": "La selección de artículos de este descuento no se puede copiar. Use como plantilla un descuento sobre todo el pedido.",
+    "mapFirst": "Asocie primero una recompensa a un descuento",
+    "createFailed": "No se ha podido crear el descuento en Shopify. Compruebe la conexión de la tienda más arriba.",
+    "codeUntracked": "El código {{code}} se ha creado en Shopify, pero POWR no ha podido registrarlo ({{detail}}). Elimínelo en su tienda e inténtelo de nuevo."
+  },
+  "auth": {
+    "invalidCredentials": "Correo electrónico o contraseña incorrectos",
+    "emailNotConfirmed": "Correo electrónico no confirmado",
+    "samePassword": "La nueva contraseña debe ser distinta de la anterior.",
+    "emailRateLimit": "Se han enviado demasiados correos. Inténtelo más tarde.",
+    "retryAfter_one": "Por seguridad, podrá volver a solicitarlo dentro de {{count}} segundo.",
+    "retryAfter_other": "Por seguridad, podrá volver a solicitarlo dentro de {{count}} segundos."
+  },
+  "network": {
+    "functionError": "El servidor ha devuelto un error. Inténtelo de nuevo.",
+    "functionUnreachable": "No se ha podido contactar con el servidor. Compruebe su conexión e inténtelo de nuevo."
+  }
+}

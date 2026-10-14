@@ -16,8 +16,11 @@
  * cleared after the save lands.
  */
 import { supabase } from '../../lib/supabase';
+import i18n from '../../lib/i18n';
+import { serverErrorText } from '../../lib/serverErrors';
 import { loadMedia } from '../media';
 import { assetWithPreview } from '../assets';
+import { decimal } from '../labels';
 
 const BUCKET = 'studio-packs';
 // The bucket takes 50 MB a file; leave room for the container overhead.
@@ -64,15 +67,17 @@ export function signature(payload) {
 }
 
 async function upload(path, blob, type, { upsert = false } = {}) {
-    if (blob.size > MAX_FILE) throw new Error(`${path.split('/').pop()} is ${mb(blob.size)} — over the 50 MB a draft can keep.`);
+    if (blob.size > MAX_FILE) throw new Error(i18n.t('studio:store.tooBig', { file: path.split('/').pop(), size: mb(blob.size) }));
     // storage-js sends a Blob as multipart, where the file's own type is what
     // the bucket checks — so it's re-typed (a .m4v says video/x-m4v).
     const body = blob.type === type ? blob : new Blob([blob], { type });
     const { error } = await supabase.storage.from(BUCKET).upload(path, body, { contentType: type, upsert, cacheControl: upsert ? '0' : '31536000' });
-    if (error) throw new Error(`Upload failed (${path.split('/').pop()}): ${error.message}`);
+    if (error) throw new Error(i18n.t('studio:store.uploadFailed', { file: path.split('/').pop(), message: serverErrorText(error) }));
 }
 
-const canvasBlob = (c, type, q) => new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Couldn’t encode the image.'))), type, q));
+function canvasBlob(c, type, q) {
+    return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error(i18n.t('studio:store.encodeFailed')))), type, q));
+}
 
 // A photo as the editor holds it (EXIF-rotated, ≤ 3200 px) → JPEG.
 async function photoBlob(m) {
@@ -105,7 +110,7 @@ async function trimmedClip(blob, m, start, end, onProgress) {
         video: { ...size, codec: 'avc', bitrate },
         audio: { codec: 'aac', bitrate: 128e3 },
     });
-    if (!conversion.isValid) throw new Error('This browser can’t re-encode that clip.');
+    if (!conversion.isValid) throw new Error(i18n.t('studio:store.reencodeFailed'));
     conversion.onProgress = (p) => onProgress?.(p);
     await conversion.execute();
     return new Blob([output.target.buffer], { type: 'video/mp4' });
@@ -175,10 +180,10 @@ export async function saveDraft({ id = null, title, scope = {}, payload, thumb, 
         // Too big to keep whole: keep the stretch the slides use, with a second either side.
         const start = Math.max(0, range.start - 1);
         const end = Math.min(m.duration, range.end + 1);
-        const blob = await trimmedClip(original, m, start, end, (p) => onProgress?.({ done, total: steps, label: `Keeping the clip… ${Math.round(p * 100)}%` }));
+        const blob = await trimmedClip(original, m, start, end, (p) => onProgress?.({ done, total: steps, label: i18n.t('studio:store.keepingClipPercent', { percent: Math.round(p * 100) }) }));
         const path = `${base}/clip-${token()}.mp4`;
         await upload(path, blob, 'video/mp4');
-        notes.push(`“${m.name}” is ${mb(original.size)}, so the draft keeps the ${(end - start).toFixed(0)} s it uses (${mb(blob.size)}).`);
+        notes.push(i18n.t('studio:store.clipTrimmed', { name: m.name, size: mb(original.size), seconds: (end - start).toFixed(0), kept: mb(blob.size) }));
         return { path, bytes: blob.size, mime: 'video/mp4', offset: start, length: end - start };
     };
 
@@ -200,26 +205,26 @@ export async function saveDraft({ id = null, title, scope = {}, payload, thumb, 
 
     const keptMedia = new Map();
     for (const m of mediaList) {
-        step(m.kind === 'video' ? 'Keeping the clip…' : 'Keeping the photo…');
+        step(i18n.t(m.kind === 'video' ? 'studio:store.keepingClip' : 'studio:store.keepingPhoto'));
         try {
             keptMedia.set(m, await keepMedia(m));
         } catch (e) {
             // The draft still saves — words, look and crop — and says what's missing.
             keptMedia.set(m, null);
-            notes.push(`“${m.name}” wasn’t kept (${e.message.replace(/\.$/, '')}) — drop it in again when you open the draft.`);
+            notes.push(i18n.t('studio:store.mediaNotKept', { name: m.name, reason: serverErrorText(e).replace(/\.$/, '') }));
         }
     }
     const keptAssets = new Map();
     for (const a of assetList) {
-        step('Keeping the images…');
+        step(i18n.t('studio:store.keepingImages'));
         try {
             keptAssets.set(a, await keepAsset(a));
         } catch (e) {
             keptAssets.set(a, null);
-            notes.push(`“${a.name}” wasn’t kept (${e.message.replace(/\.$/, '')}).`);
+            notes.push(i18n.t('studio:store.assetNotKept', { name: a.name, reason: serverErrorText(e).replace(/\.$/, '') }));
         }
     }
-    step('Saving…');
+    step(i18n.t('common:actions.saving'));
     if (thumb) await upload(`${base}/${THUMB}`, thumb, 'image/jpeg', { upsert: true }).catch(() => {});
 
     const media = mediaList.map((m) => {
@@ -262,7 +267,7 @@ export async function saveDraft({ id = null, title, scope = {}, payload, thumb, 
     const { data: saved, error } = await q.select('id, title, updated_at').single();
     if (error) {
         if (isNew) await clearFolder(base).catch(() => {});
-        throw new Error(`Couldn’t save the draft — ${error.message}`);
+        throw new Error(i18n.t('studio:store.saveFailed', { message: serverErrorText(error) }));
     }
     // Remember what's where, so the next save reuses it.
     for (const [m, k] of keptMedia) if (k) kept.set(m, k);
@@ -272,7 +277,7 @@ export async function saveDraft({ id = null, title, scope = {}, payload, thumb, 
         const keep = new Set([THUMB, ...media.map((x) => x.path), ...assets.map((x) => x.path)].filter(Boolean).map((p) => p.split('/').pop()));
         await clearFolder(base, (name) => !keep.has(name)).catch(() => {});
     }
-    onProgress?.({ done: steps, total: steps, label: 'Saved' });
+    onProgress?.({ done: steps, total: steps, label: i18n.t('studio:store.saved') });
     return { draft: saved, notes };
 }
 
@@ -290,7 +295,7 @@ async function signed(paths, seconds = 3600) {
     const map = new Map();
     for (let i = 0; i < paths.length; i += 100) {
         const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(paths.slice(i, i + 100), seconds);
-        if (error) throw new Error(`Couldn’t open the saved files — ${error.message}`);
+        if (error) throw new Error(i18n.t('studio:store.signFailed', { message: serverErrorText(error) }));
         for (const d of data ?? []) if (d.signedUrl) map.set(d.path, d.signedUrl);
     }
     return map;
@@ -304,7 +309,7 @@ export async function listDrafts(scope = {}, { limit = 200 } = {}) {
         .order('updated_at', { ascending: false })
         .limit(limit);
     const { data, error } = await inScope(q, scope);
-    if (error) throw new Error(`Couldn’t load the drafts — ${error.message}`);
+    if (error) throw new Error(i18n.t('studio:store.listFailed', { message: serverErrorText(error) }));
     const rows = data ?? [];
     if (!rows.length) return [];
     const [urls, names] = await Promise.all([
@@ -334,7 +339,7 @@ export async function countDrafts(scope = {}) {
  */
 export async function openDraft(id, { onProgress } = {}) {
     const { data: row, error } = await supabase.from('studio_drafts').select('id, title, updated_at, state').eq('id', id).single();
-    if (error) throw new Error(`Couldn’t open the draft — ${error.message}`);
+    if (error) throw new Error(i18n.t('studio:store.openFailed', { message: serverErrorText(error) }));
     const { state } = row;
     const notes = [];
     const files = [...state.media, ...state.assets].filter((f) => f.path);
@@ -350,14 +355,14 @@ export async function openDraft(id, { onProgress } = {}) {
     };
     const media = [];
     for (const f of state.media) {
-        if (!f.path) { media.push(null); notes.push(`“${f.name}” wasn’t kept with this draft — drop it in again.`); continue; }
+        if (!f.path) { media.push(null); notes.push(i18n.t('studio:store.missingFile', { name: f.name })); continue; }
         try {
             const m = await loadMedia(await fetchFile(f));
             kept.set(m, { path: f.path, bytes: f.bytes, mime: f.mime, offset: 0, length: m.duration ?? 0 });
             media.push(m);
         } catch (e) {
             media.push(null);
-            notes.push(`“${f.name}” wouldn’t open (${e.message}) — drop it in again.`);
+            notes.push(i18n.t('studio:store.fileWontOpen', { name: f.name, reason: serverErrorText(e) }));
         }
     }
     const assets = [];
@@ -369,7 +374,7 @@ export async function openDraft(id, { onProgress } = {}) {
             assets.push(a);
         } catch {
             assets.push(null);
-            notes.push(`“${f.name}” wouldn’t open — upload it again.`);
+            notes.push(i18n.t('studio:store.assetWontOpen', { name: f.name }));
         }
     }
     onProgress?.({ done: total, total });
@@ -400,15 +405,19 @@ const clampClip = (clip, duration) => {
 
 export async function renameDraft(id, title) {
     const { data, error } = await supabase.from('studio_drafts').update({ title }).eq('id', id).select('id, title, updated_at').single();
-    if (error) throw new Error(`Couldn’t rename the draft — ${error.message}`);
+    if (error) throw new Error(i18n.t('studio:store.renameFailed', { message: serverErrorText(error) }));
     return data;
 }
 
 /** Delete a draft and its files. */
 export async function deleteDraft(id, scope = {}) {
-    await clearFolder(folderOf(id, scope)).catch((e) => { throw new Error(`Couldn’t delete the draft’s files — ${e.message}`); });
+    await clearFolder(folderOf(id, scope)).catch((e) => { throw new Error(i18n.t('studio:store.deleteFilesFailed', { message: serverErrorText(e) })); });
     const { error } = await supabase.from('studio_drafts').delete().eq('id', id);
-    if (error) throw new Error(`Couldn’t delete the draft — ${error.message}`);
+    if (error) throw new Error(i18n.t('studio:store.deleteFailed', { message: serverErrorText(error) }));
 }
 
-export const mb = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+/** A file size for people: "840 KB", "4.2 MB", "37 MB" (Ko / Mo in French). */
+export function mb(bytes) {
+    if (bytes >= 1024 * 1024) return i18n.t('studio:units.mb', { n: decimal(bytes / (1024 * 1024), bytes >= 10 * 1024 * 1024 ? 0 : 1) });
+    return i18n.t('studio:units.kb', { n: Math.max(1, Math.round(bytes / 1024)) });
+}

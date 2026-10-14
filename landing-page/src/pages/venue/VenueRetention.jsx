@@ -1,17 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { ChevronDown, Download, Lock, Search, Send, Trash2 } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Page, Card, Micro, PageTitle, Spinner, Empty, fmtNum, BTN_GHOST, BTN_GOLD, INPUT } from '../../components/portal/ui';
 import { useToast } from '../../lib/toast';
+import { formatLocale } from '../../lib/i18n';
+import { serverErrorText } from '../../lib/serverErrors';
 import { deleteOutreach, fetchRetention, logOutreach, nudgeQuietMembers } from './venueApi';
 import { Columns } from './charts';
 import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 import {
-    CHANNEL_LABEL, patternLine, personLine, quietLabel, sinceLabel, statusLabel,
+    agoParts, patternParts, personLineParts, quietParts, statusId,
 } from '../../../../supabase/functions/_shared/retentionCopy.ts';
-import { boardName, initials } from '../../../../shared/gymBoard.ts';
+import { initials } from '../../../../shared/gymBoard.ts';
 import { formatMemberId } from '../../../../shared/memberId.ts';
+import { useMemberName } from './MemberPeople';
 
 // Retention: who's drifting from the gym, each person against their own
 // normal (gym_retention, migration 20261007120000). Visits AT this gym only,
@@ -21,23 +25,124 @@ import { formatMemberId } from '../../../../shared/memberId.ts';
 // Anyone POWR can't hear (phone silent a week, location off) is shown apart
 // and never counted as drifting: they may still be training.
 
+// Labels are keys, translated where they render.
 const TABS = [
-    ['drifting', 'Drifting'],
-    ['slipping', 'Slipping'],
-    ['lapsed', 'Lapsed'],
-    ['new', 'New'],
-    ['regular', 'On track'],
-    ['cant_see', 'Can’t see'],
-    ['all', 'Everyone'],
+    ['drifting', 'venueMembers:retention.tabs.drifting'],
+    ['slipping', 'venueMembers:retention.tabs.slipping'],
+    ['lapsed', 'venueMembers:retention.tabs.lapsed'],
+    ['new', 'venueMembers:retention.tabs.new'],
+    ['regular', 'venueMembers:retention.tabs.regular'],
+    ['cant_see', 'venueMembers:retention.tabs.cantSee'],
+    ['all', 'venueMembers:retention.tabs.all'],
 ];
-// What staff pick; the history then says it as CHANNEL_LABEL ("Called", "Texted"…).
-const CHANNELS = [['call', 'Called'], ['text', 'Texted'], ['email', 'Emailed'], ['in_person', 'In person'], ['other', 'Other']];
+// What staff pick; the history then says it as CHANNEL_DONE ("Called", "Texted"…).
+const CHANNELS = [
+    ['call', 'venueMembers:retention.channels.call'],
+    ['text', 'venueMembers:retention.channels.text'],
+    ['email', 'venueMembers:retention.channels.email'],
+    ['in_person', 'venueMembers:retention.channels.inPerson'],
+    ['other', 'venueMembers:retention.channels.other'],
+];
 const AT_RISK = new Set(['slipping', 'drifting', 'lapsed']);
 
 const bucket = (p) => (AT_RISK.has(p.status) && p.signal !== 'ok' ? 'cant_see' : p.status);
 
+// Retention's words. retentionCopy.ts says them in English for the morning
+// email; its *Parts twins give the same answers as ids, worded here in the
+// reader's language (English comes out identical).
+const STATUS_KEY = {
+    drifting: 'venueMembers:retention.status.drifting',
+    slipping: 'venueMembers:retention.status.slipping',
+    lapsed: 'venueMembers:retention.status.lapsed',
+    new: 'venueMembers:retention.status.new',
+    regular: 'venueMembers:retention.status.regular',
+    occasional: 'venueMembers:retention.status.occasional',
+    unseen: 'venueMembers:retention.status.unseen',
+    location_off: 'venueMembers:retention.status.locationOff',
+    no_signal: 'venueMembers:retention.status.noSignal',
+};
+const CHANNEL_DONE = {
+    call: 'venueMembers:retention.channelDone.call',
+    text: 'venueMembers:retention.channelDone.text',
+    email: 'venueMembers:retention.channelDone.email',
+    in_person: 'venueMembers:retention.channelDone.inPerson',
+    push: 'venueMembers:retention.channelDone.push',
+    other: 'venueMembers:retention.channelDone.other',
+};
+const DAY_PART = {
+    morning: 'venueMembers:retention.dayParts.morning',
+    midday: 'venueMembers:retention.dayParts.midday',
+    afternoon: 'venueMembers:retention.dayParts.afternoon',
+    evening: 'venueMembers:retention.dayParts.evening',
+};
+
+/** sinceLabel: "today", "yesterday", "12 days ago", "5 weeks ago", "not yet". */
+function agoText(t, a) {
+    switch (a.id) {
+        case 'not_yet': return t('venueMembers:retention.ago.notYet');
+        case 'today': return t('venueMembers:retention.ago.today');
+        case 'yesterday': return t('venueMembers:retention.ago.yesterday');
+        case 'weeks': return t('venueMembers:retention.ago.weeks', { count: a.n });
+        default: return t('venueMembers:retention.ago.days', { count: a.n });
+    }
+}
+const sinceText = (t, gapDays) => agoText(t, agoParts(gapDays));
+
+/** quietLabel: "12 days quiet", "5 weeks quiet". */
+function quietText(t, gapDays) {
+    const q = quietParts(gapDays);
+    return q.id === 'weeks' ? t('venueMembers:retention.quiet.weeks', { count: q.n }) : t('venueMembers:retention.quiet.days', { count: q.n });
+}
+
+/** statusLabel: the status, or the phone's signal for anyone at risk. */
+function statusText(t, status, signal) {
+    const id = statusId(status, signal);
+    return STATUS_KEY[id] ? t(STATUS_KEY[id]) : id;
+}
+
+const channelText = (t, channel) => (CHANNEL_DONE[channel] ? t(CHANNEL_DONE[channel]) : channel);
+
+/** dowList: "Mon, Wed & Fri" (en-GB's short weekday names). */
+function dowText(t, dows) {
+    const names = dows.map((d) => new Intl.DateTimeFormat(formatLocale(), { weekday: 'short', timeZone: 'UTC' }).format(Date.UTC(2026, 0, 4 + d)));
+    if (names.length <= 1) return names.join('');
+    return t('venueMembers:retention.pattern.lastDay', { rest: names.slice(0, -1).join(', '), last: names[names.length - 1] });
+}
+
+/** patternLine: "Usually 3× a week, mornings · Mon, Wed & Fri". */
+function patternText(t, parts) {
+    if (!parts) return '';
+    const f = parts.frequency;
+    const frequency = f.id === 'most_days' ? t('venueMembers:retention.frequency.mostDays')
+        : f.id === 'per_week' ? t('venueMembers:retention.frequency.perWeek', { n: f.n })
+        : f.id === 'weekly' ? t('venueMembers:retention.frequency.weekly')
+        : t('venueMembers:retention.frequency.fortnightly');
+    const head = parts.part
+        ? t('venueMembers:retention.pattern.withPart', { frequency, part: t(DAY_PART[parts.part]) })
+        : t('venueMembers:retention.pattern.base', { frequency });
+    const days = dowText(t, parts.dows);
+    return days ? `${head} · ${days}` : head;
+}
+
+/** personLine: "Last visit 16 days ago · Usually 2× a week, mornings · Mon & Thu". */
+function personText(t, p) {
+    const line = personLineParts(p);
+    if (line.id === 'unseen') return t('venueMembers:retention.line.unseen');
+    if (line.id === 'new') {
+        const when = agoText(t, line.first);
+        return line.visits != null ? t('venueMembers:retention.line.newBack', { when, n: line.visits }) : t('venueMembers:retention.line.newOnce', { when });
+    }
+    const since = !line.since ? ''
+        : line.since.id === 'in_today' ? t('venueMembers:retention.line.inToday')
+        : t('venueMembers:retention.line.lastVisit', { when: agoText(t, line.since.ago) });
+    if (line.id === 'phone_quiet') return `${since} · ${t('venueMembers:retention.line.phoneQuiet')}`;
+    if (line.id === 'occasional') return `${since} · ${t('venueMembers:retention.line.occasional')}`;
+    return [since, patternText(t, line.pattern)].filter(Boolean).join(' · ');
+}
+
 // "12 days quiet" in the trailer's amber for drifting; the rest in their own tone.
 function Chip({ p }) {
+    const { t } = useTranslation();
     const b = bucket(p);
     const tone = {
         drifting: 'bg-[#FFF7E6] border-[#F5A524]/60 text-[#B45309]',
@@ -46,14 +151,14 @@ function Chip({ p }) {
         new:      'bg-[#ECFDF5] border-[#BBF7D0] text-[#0B7A57]',
         regular:  'bg-[#F0FDF4] border-[#DCFCE7] text-[#0B7A57]',
     }[b] ?? 'bg-[#F4F4F1] border-[#E6E6E1] text-[#888]';
-    const label = b === 'drifting' ? quietLabel(p.gap_days)
-        : b === 'slipping' ? `Slipping · ${p.gap_days}d`
-        : statusLabel(p.status, p.signal);
+    const label = b === 'drifting' ? quietText(t, p.gap_days)
+        : b === 'slipping' ? t('venueMembers:retention.slippingChip', { days: p.gap_days })
+        : statusText(t, p.status, p.signal);
     return <span className={`inline-flex items-center h-7 px-3 rounded-full border text-[9px] font-black uppercase tracking-[0.18em] whitespace-nowrap ${tone}`}>{label}</span>;
 }
 
 function Avatar({ p }) {
-    const name = boardName(p);
+    const name = useMemberName()(p);
     return p.avatar_url
         ? <img src={p.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border border-[#E6E6E1] shrink-0" />
         : <div className="w-10 h-10 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[11px] font-black text-[#666] uppercase shrink-0">{initials(name) || '?'}</div>;
@@ -73,6 +178,7 @@ function Fact({ label, value, note, tone }) {
 // Twelve weeks of visits, a column a week, Monday at the top. Days still to
 // come are left empty, not grey, so the last column doesn't read as missed.
 function VisitStrip({ visits, asOf }) {
+    const { t } = useTranslation();
     const set = useMemo(() => new Set(visits ?? []), [visits]);
     const today = new Date(`${asOf}T00:00:00Z`);
     const monday = new Date(today);
@@ -83,16 +189,16 @@ function VisitStrip({ visits, asOf }) {
         const iso = day.toISOString().slice(0, 10);
         return { iso, future: day > today, hit: set.has(iso) };
     }));
-    const fmt = (iso) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    const fmt = (iso) => new Date(`${iso}T00:00:00Z`).toLocaleDateString(formatLocale(), { day: 'numeric', month: 'short', timeZone: 'UTC' });
     return (
-        <figure className="m-0" aria-label="Visits over the last 12 weeks">
+        <figure className="m-0" aria-label={t('venueMembers:retention.strip.label')}>
             <div className="flex gap-[3px]">
                 {weeks.map((col, w) => (
                     <div key={w} className="flex flex-col gap-[3px]">
                         {col.map((c) => (
                             <span
                                 key={c.iso}
-                                title={`${fmt(c.iso)}${c.hit ? ': in' : ''}`}
+                                title={c.hit ? t('venueMembers:retention.strip.dayIn', { date: fmt(c.iso) }) : fmt(c.iso)}
                                 className={`block w-3 h-3 rounded-[3px] ${c.future ? 'bg-transparent' : c.hit ? 'bg-[#8a7600]' : 'bg-[#F0F0EC]'}`}
                             />
                         ))}
@@ -100,14 +206,16 @@ function VisitStrip({ visits, asOf }) {
                 ))}
             </div>
             <figcaption className="flex justify-between text-[9px] font-bold text-[#BBBBBB] mt-1.5 tabular-nums" style={{ width: 12 * 15 - 3 }}>
-                <span>{fmt(weeks[0][0].iso)}</span><span>Today</span>
+                <span>{fmt(weeks[0][0].iso)}</span><span>{t('venueMembers:retention.strip.today')}</span>
             </figcaption>
-            <div className="sr-only">{(visits ?? []).length} visits: {(visits ?? []).map(fmt).join(', ')}</div>
+            <div className="sr-only">{t('venueMembers:retention.strip.list', { count: (visits ?? []).length, list: (visits ?? []).map(fmt).join(', ') })}</div>
         </figure>
     );
 }
 
 function PersonDetail({ p, gym, asOf, canDelete, onChanged }) {
+    const { t } = useTranslation();
+    const nameOf = useMemberName();
     const toast = useToast();
     const [channel, setChannel] = useState(null);
     const [note, setNote] = useState('');
@@ -122,27 +230,29 @@ function PersonDetail({ p, gym, asOf, canDelete, onChanged }) {
         try {
             await logOutreach(gym.partner_id, p.user_id, channel, note.trim());
             setChannel(null); setNote('');
-            toast.success('Logged. We’ll tell you if they come back.');
+            toast.success(t('venueMembers:retention.detail.logged'));
             onChanged();
-        } catch (e) { toast.error(e.message); }
+        } catch (e) { toast.error(serverErrorText(e)); }
         finally { setBusy(null); }
     };
     const nudge = async () => {
-        if (!window.confirm(`Send ${boardName(p)} one push from POWR? They get it once, and not again for a fortnight.`)) return;
+        if (!window.confirm(t('venueMembers:retention.detail.nudgeConfirm', { name: nameOf(p) }))) return;
         setBusy('nudge');
         try {
             const r = await nudgeQuietMembers(gym.partner_id, false, p.user_id);
-            toast.success(r.recipients ? 'Sent.' : 'They had one in the last fortnight.');
+            toast.success(r.recipients ? t('venueMembers:retention.detail.sent') : t('venueMembers:retention.detail.hadOne'));
             onChanged();
-        } catch (e) { toast.error(e.message); }
+        } catch (e) { toast.error(serverErrorText(e)); }
         finally { setBusy(null); }
     };
     const remove = async (id) => {
         setBusy(id);
         try { await deleteOutreach(gym.partner_id, id); onChanged(); }
-        catch (e) { toast.error(e.message); }
+        catch (e) { toast.error(serverErrorText(e)); }
         finally { setBusy(null); }
     };
+    // What the member's phone shows: stays English until push previews follow
+    // the member's language (the push itself goes out in theirs).
     const preview = eventPushCopy('gym_quiet_nudge', { gym_name: gym.name, weeks: Math.floor((p.gap_days ?? 0) / 7) });
 
     return (
@@ -150,34 +260,34 @@ function PersonDetail({ p, gym, asOf, canDelete, onChanged }) {
             <div className="space-y-4">
                 <VisitStrip visits={p.visits} asOf={asOf} />
                 <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-[12px] max-w-[260px]">
-                    <div><dt className="text-[#AAAAAA] font-bold">Last visit</dt><dd className="text-[#1A1A1A] font-bold mt-0.5">{sinceLabel(p.gap_days)}</dd></div>
-                    <div><dt className="text-[#AAAAAA] font-bold">Last 4 weeks</dt><dd className="text-[#1A1A1A] font-bold mt-0.5">{p.recent_28} visit{p.recent_28 === 1 ? '' : 's'}</dd></div>
-                    {p.drift_after != null && <div><dt className="text-[#AAAAAA] font-bold">Usual gap</dt><dd className="text-[#1A1A1A] font-bold mt-0.5">{Math.round(Number(p.usual_gap))} day{Math.round(Number(p.usual_gap)) === 1 ? '' : 's'}</dd></div>}
-                    {p.drift_after != null && <div><dt className="text-[#AAAAAA] font-bold">Drifting after</dt><dd className="text-[#1A1A1A] font-bold mt-0.5">{p.drift_after} days</dd></div>}
+                    <div><dt className="text-[#AAAAAA] font-bold">{t('venueMembers:retention.detail.lastVisit')}</dt><dd className="text-[#1A1A1A] font-bold mt-0.5">{sinceText(t, p.gap_days)}</dd></div>
+                    <div><dt className="text-[#AAAAAA] font-bold">{t('venueMembers:retention.detail.last4')}</dt><dd className="text-[#1A1A1A] font-bold mt-0.5">{t('venueMembers:retention.detail.visits', { count: p.recent_28 ?? 0 })}</dd></div>
+                    {p.drift_after != null && <div><dt className="text-[#AAAAAA] font-bold">{t('venueMembers:retention.detail.usualGap')}</dt><dd className="text-[#1A1A1A] font-bold mt-0.5">{t('venueMembers:retention.detail.days', { count: Math.round(Number(p.usual_gap)) })}</dd></div>}
+                    {p.drift_after != null && <div><dt className="text-[#AAAAAA] font-bold">{t('venueMembers:retention.detail.driftingAfter')}</dt><dd className="text-[#1A1A1A] font-bold mt-0.5">{t('venueMembers:retention.detail.driftAfterDays', { count: p.drift_after })}</dd></div>}
                 </dl>
                 <p className="text-[11px] text-[#999] leading-relaxed max-w-[260px]">
-                    {p.is_member ? `Picked ${gym.name} as their gym in POWR.` : 'Checks in here; hasn’t picked you as their gym in POWR.'}
-                    {p.location === 'while_using' ? ' Their location is set to “while using”, so POWR only sees visits when they open the app here.' : ''}
-                    {p.drifting_since ? ` Drifting since ${new Date(`${p.drifting_since}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}.` : ''}
-                    {p.shares_all ? <> Shares all their training with you: <Link to="/venue/members" className="underline">Members</Link>.</> : null}
+                    {p.is_member ? t('venueMembers:retention.detail.picked', { gym: gym.name }) : t('venueMembers:retention.detail.notPicked')}
+                    {p.location === 'while_using' ? ` ${t('venueMembers:retention.detail.whileUsing')}` : ''}
+                    {p.drifting_since ? ` ${t('venueMembers:retention.detail.driftingSince', { date: new Date(`${p.drifting_since}T00:00:00Z`).toLocaleDateString(formatLocale(), { day: 'numeric', month: 'short', timeZone: 'UTC' }) })}` : ''}
+                    {p.shares_all ? <>{' '}<Trans i18nKey="venueMembers:retention.detail.sharesAll" components={{ members: <Link to="/venue/members" className="underline" /> }} /></> : null}
                 </p>
             </div>
 
             <div className="space-y-5 min-w-0">
                 <div>
-                    <Micro>Log a reach-out</Micro>
+                    <Micro>{t('venueMembers:retention.detail.logTitle')}</Micro>
                     <div className="flex flex-wrap gap-2 mt-3">
                         {CHANNELS.map(([c, label]) => (
                             <button key={c} type="button" onClick={() => setChannel(channel === c ? null : c)} aria-pressed={channel === c}
                                 className={`h-9 px-4 rounded-full border text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${channel === c ? 'bg-[#E8D200] border-[#E8D200] text-[#080808]' : 'bg-white border-[#E6E6E1] text-[#666] hover:border-[#E8D200]/50'}`}>
-                                {label}
+                                {t(label)}
                             </button>
                         ))}
                     </div>
                     {channel && (
                         <div className="flex flex-col sm:flex-row gap-2 mt-3">
-                            <input className={`${INPUT} h-11`} maxLength={280} placeholder="A note for the team (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-                            <button type="button" onClick={log} disabled={busy === 'log'} className={`${BTN_GOLD} h-11 px-6 shrink-0`}>{busy === 'log' ? 'Saving…' : 'Log it'}</button>
+                            <input className={`${INPUT} h-11`} maxLength={280} placeholder={t('venueMembers:retention.detail.notePlaceholder')} value={note} onChange={(e) => setNote(e.target.value)} />
+                            <button type="button" onClick={log} disabled={busy === 'log'} className={`${BTN_GOLD} h-11 px-6 shrink-0`}>{busy === 'log' ? t('common:actions.saving') : t('venueMembers:retention.detail.logIt')}</button>
                         </div>
                     )}
                 </div>
@@ -185,29 +295,29 @@ function PersonDetail({ p, gym, asOf, canDelete, onChanged }) {
                 {canNudge && (
                     <div className="rounded-2xl border border-[#E6E6E1] bg-[#FAFAF8] p-4 flex flex-wrap items-center justify-between gap-3">
                         <div className="min-w-0">
-                            <div className="text-[9px] uppercase tracking-[0.25em] font-black text-[#BBBBBB]">POWR · push</div>
+                            <div className="text-[9px] uppercase tracking-[0.25em] font-black text-[#BBBBBB]">{t('venueMembers:retention.detail.pushLabel')}</div>
                             <div className="text-[12px] font-bold text-[#1A1A1A] mt-1">{preview.title}</div>
                             <div className="text-[12px] text-[#666]">{preview.body}</div>
                         </div>
                         {cooling
-                            ? <span className="text-[11px] font-bold text-[#888]">Nudged {sinceLabel(nudgedDays)}</span>
-                            : <button type="button" onClick={nudge} disabled={busy === 'nudge'} className={`${BTN_GHOST} h-10 px-5`}><Send size={12} /> {busy === 'nudge' ? 'Sending…' : 'Send nudge'}</button>}
+                            ? <span className="text-[11px] font-bold text-[#888]">{t('venueMembers:retention.detail.nudged', { when: sinceText(t, nudgedDays) })}</span>
+                            : <button type="button" onClick={nudge} disabled={busy === 'nudge'} className={`${BTN_GHOST} h-10 px-5`}><Send size={12} /> {busy === 'nudge' ? t('venueMembers:retention.detail.sending') : t('venueMembers:retention.detail.sendNudge')}</button>}
                     </div>
                 )}
 
                 {(p.outreach ?? []).length > 0 && (
                     <div>
-                        <Micro>What the team did</Micro>
+                        <Micro>{t('venueMembers:retention.detail.teamDid')}</Micro>
                         <ul className="mt-2 divide-y divide-[#F0F0EC]">
                             {p.outreach.map((o) => (
                                 <li key={o.id} className="flex items-start gap-3 py-2.5 text-[12px]">
                                     <div className="flex-1 min-w-0">
-                                        <span className="font-bold text-[#1A1A1A]">{CHANNEL_LABEL[o.channel] ?? o.channel}</span>
-                                        <span className="text-[#AAAAAA]"> · {new Date(o.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}{o.by ? ` · ${o.by}` : ''}</span>
+                                        <span className="font-bold text-[#1A1A1A]">{channelText(t, o.channel)}</span>
+                                        <span className="text-[#AAAAAA]"> · {new Date(o.at).toLocaleDateString(formatLocale(), { day: 'numeric', month: 'short' })}{o.by ? ` · ${o.by}` : ''}</span>
                                         {o.note && <div className="text-[#666] mt-0.5 break-words">{o.note}</div>}
                                     </div>
                                     {o.channel !== 'push' && (o.mine || canDelete) && (
-                                        <button type="button" onClick={() => remove(o.id)} disabled={busy === o.id} aria-label="Remove this note" className="text-[#BBBBBB] hover:text-[#B91C1C] p-1"><Trash2 size={13} /></button>
+                                        <button type="button" onClick={() => remove(o.id)} disabled={busy === o.id} aria-label={t('venueMembers:retention.detail.removeNote')} className="text-[#BBBBBB] hover:text-[#B91C1C] p-1"><Trash2 size={13} /></button>
                                     )}
                                 </li>
                             ))}
@@ -220,6 +330,8 @@ function PersonDetail({ p, gym, asOf, canDelete, onChanged }) {
 }
 
 function PersonRow({ p, gym, asOf, open, onToggle, canDelete, onChanged }) {
+    const { t } = useTranslation();
+    const nameOf = useMemberName();
     const last = (p.outreach ?? [])[0];
     const lastDays = last ? Math.floor((Date.now() - new Date(last.at).getTime()) / 86400000) : null;
     return (
@@ -229,19 +341,19 @@ function PersonRow({ p, gym, asOf, open, onToggle, canDelete, onChanged }) {
                 <Avatar p={p} />
                 <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2 min-w-0">
-                        <span className="text-[14px] font-bold text-[#1A1A1A] truncate">{boardName(p)}</span>
+                        <span className="text-[14px] font-bold text-[#1A1A1A] truncate">{nameOf(p)}</span>
                         {p.member_id && <span className="hidden sm:inline text-[10px] font-bold text-[#BBBBBB] tabular-nums shrink-0">{formatMemberId(p.member_id)}</span>}
                     </div>
-                    <div className="text-[12px] text-[#888] mt-0.5 sm:truncate">{personLine({ ...p, as_of: asOf })}</div>
+                    <div className="text-[12px] text-[#888] mt-0.5 sm:truncate">{personText(t, { ...p, as_of: asOf })}</div>
                     {/* On a phone the chip sits under the line, so the line gets the width. */}
                     <div className="sm:hidden flex flex-wrap items-center gap-2 mt-2">
                         <Chip p={p} />
-                        {last && <span className="text-[10px] font-bold text-[#AAAAAA]">{CHANNEL_LABEL[last.channel]} {sinceLabel(lastDays)}</span>}
+                        {last && <span className="text-[10px] font-bold text-[#AAAAAA]">{t('venueMembers:retention.line.lastReach', { channel: channelText(t, last.channel), when: sinceText(t, lastDays) })}</span>}
                     </div>
                 </div>
                 <div className="hidden sm:flex flex-col items-end gap-1 shrink-0">
                     <Chip p={p} />
-                    {last && <span className="text-[10px] font-bold text-[#AAAAAA]">{CHANNEL_LABEL[last.channel]} {sinceLabel(lastDays)}</span>}
+                    {last && <span className="text-[10px] font-bold text-[#AAAAAA]">{t('venueMembers:retention.line.lastReach', { channel: channelText(t, last.channel), when: sinceText(t, lastDays) })}</span>}
                 </div>
                 <ChevronDown size={14} className={`text-[#CCCCCC] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
@@ -252,6 +364,7 @@ function PersonRow({ p, gym, asOf, open, onToggle, canDelete, onChanged }) {
 
 // Everyone drifting, one push from POWR, at most once a day.
 function NudgeAll({ gym, drifting, onSent }) {
+    const { t } = useTranslation();
     const toast = useToast();
     const [plan, setPlan] = useState(null);
     const [busy, setBusy] = useState(false);
@@ -262,35 +375,39 @@ function NudgeAll({ gym, drifting, onSent }) {
     }, [gym.partner_id, drifting]);
     const send = async () => {
         if (!plan?.recipients) return;
-        if (!window.confirm(`Send one push from POWR to ${plan.recipients} ${plan.recipients === 1 ? 'person' : 'people'} who are drifting? Each gets it once, and not again for a fortnight.`)) return;
+        if (!window.confirm(t('venueMembers:retention.nudgeAll.confirm', { count: plan.recipients }))) return;
         setBusy(true);
         try {
             const r = await nudgeQuietMembers(gym.partner_id, false);
-            toast.success(`Sent to ${r.recipients}`);
+            toast.success(t('venueMembers:retention.nudgeAll.sentTo', { count: r.recipients ?? 0 }));
             onSent();
-        } catch (e) { toast.error(e.message); }
+        } catch (e) { toast.error(serverErrorText(e)); }
         finally { setBusy(false); }
     };
     return (
         <div className="mt-5 pt-5 border-t border-[#F0F0EC]">
             <p className="text-[12px] text-[#888] leading-relaxed">
-                {plan == null ? 'Counting…'
-                    : plan.unavailable ? 'Nudges aren’t available right now.'
-                    : plan.recipients ? `One push from POWR to the ${plan.recipients} drifting${plan.cooling ? ` (${plan.cooling} had one in the last fortnight and wait)` : ''}.`
-                    : plan.cooling ? `Everyone drifting had a nudge in the last fortnight.` : 'Nobody to nudge right now.'}
+                {plan == null ? t('venueMembers:retention.nudgeAll.counting')
+                    : plan.unavailable ? t('venueMembers:retention.nudgeAll.unavailable')
+                    : plan.recipients ? (plan.cooling
+                        ? t('venueMembers:retention.nudgeAll.planCooling', { count: plan.recipients, cooling: plan.cooling })
+                        : t('venueMembers:retention.nudgeAll.plan', { count: plan.recipients }))
+                    : plan.cooling ? t('venueMembers:retention.nudgeAll.allCooling') : t('venueMembers:retention.nudgeAll.nobody')}
             </p>
-            <button type="button" onClick={send} disabled={busy || !plan?.recipients} className={`${BTN_GHOST} h-10 px-5 mt-3`}><Send size={12} /> {busy ? 'Sending…' : `Nudge ${plan?.recipients ?? 0}`}</button>
+            <button type="button" onClick={send} disabled={busy || !plan?.recipients} className={`${BTN_GHOST} h-10 px-5 mt-3`}><Send size={12} /> {busy ? t('venueMembers:retention.detail.sending') : t('venueMembers:retention.nudgeAll.button', { n: plan?.recipients ?? 0 })}</button>
         </div>
     );
 }
 
-function csv(rows, asOf) {
+// The header row stays English (columns other tools may match on); the
+// cells are in the reader's language.
+function csv(rows, asOf, t, nameOf) {
     const head = ['Name', 'Username', 'POWR ID', 'Status', 'Last visit', 'Days since', 'Usual pattern', 'Picked this gym', 'Last reach-out'];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const lines = rows.map((p) => [
-        boardName(p), p.username, formatMemberId(p.member_id), statusLabel(p.status, p.signal), p.last_visit, p.gap_days,
-        patternLine(p), p.is_member ? 'yes' : 'no',
-        p.outreach?.[0] ? `${CHANNEL_LABEL[p.outreach[0].channel]} ${new Date(p.outreach[0].at).toISOString().slice(0, 10)}` : '',
+        nameOf(p), p.username, formatMemberId(p.member_id), statusText(t, p.status, p.signal), p.last_visit, p.gap_days,
+        patternText(t, patternParts(p)), p.is_member ? t('venueMembers:retention.csv.yes') : t('venueMembers:retention.csv.no'),
+        p.outreach?.[0] ? `${channelText(t, p.outreach[0].channel)} ${new Date(p.outreach[0].at).toISOString().slice(0, 10)}` : '',
     ].map(esc).join(','));
     const blob = new Blob([[head.map(esc).join(','), ...lines].join('\n')], { type: 'text/csv' });
     const a = document.createElement('a');
@@ -301,6 +418,8 @@ function csv(rows, asOf) {
 }
 
 export default function VenueRetention() {
+    const { t } = useTranslation();
+    const nameOf = useMemberName();
     const { gym } = useAuth();
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
@@ -309,7 +428,7 @@ export default function VenueRetention() {
     const [q, setQ] = useState('');
 
     const load = useCallback(() => {
-        fetchRetention(gym.partner_id).then(setData).catch((e) => setError(e.message));
+        fetchRetention(gym.partner_id).then(setData).catch((e) => setError(e));
     }, [gym.partner_id]);
     useEffect(() => { load(); }, [load]);
 
@@ -321,17 +440,17 @@ export default function VenueRetention() {
     }, [people]);
     // Open on whoever needs a word first.
     const active = tab ?? (['drifting', 'slipping', 'lapsed', 'new'].find((k) => groups[k]?.length) ?? 'all');
-    const shown = (groups[active] ?? []).filter((p) => !q || `${boardName(p)} ${p.username ?? ''} ${p.member_id ?? ''}`.toLowerCase().includes(q.toLowerCase()));
+    const shown = (groups[active] ?? []).filter((p) => !q || `${nameOf(p)} ${p.username ?? ''} ${p.member_id ?? ''}`.toLowerCase().includes(q.toLowerCase()));
 
-    if (error) return <Empty title="Couldn’t load Retention" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
+    if (error) return <Empty title={t('venueMembers:retention.loadError')} action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>{t('common:actions.retry')}</button>}>{serverErrorText(error)}</Empty>;
     if (!data) return <Spinner />;
 
     if (data.too_few) {
         return (
             <Page>
-                <PageTitle eyebrow="Retention" title="Who’s drifting" sub={gym.name} />
-                <Empty title="Not enough people yet">
-                    Retention shows up once at least {data.min_people ?? 5} people pick {gym.name} in the POWR app or check in here, so nobody can be picked out. The poster by the door gets them on.
+                <PageTitle eyebrow={t('venueMembers:retention.eyebrow')} title={t('venueMembers:retention.title')} sub={gym.name} />
+                <Empty title={t('venueMembers:retention.tooFewTitle')}>
+                    {t('venueMembers:retention.tooFew', { min: data.min_people ?? 5, gym: gym.name })}
                 </Empty>
             </Page>
         );
@@ -339,11 +458,11 @@ export default function VenueRetention() {
 
     const c = data.counts ?? {};
     const tz = data.tz ?? 'Europe/London';
-    const fmtDay = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(new Date(`${iso}T00:00:00Z`));
+    const fmtDay = (iso) => new Intl.DateTimeFormat(formatLocale(), { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(new Date(`${iso}T00:00:00Z`));
     const trend = (data.trend ?? []).map((w) => ({
         key: w.week_end,
         tick: fmtDay(w.week_end),
-        tip: `Week to ${fmtDay(w.week_end)}: ${w.drifting} drifting, ${w.slipping} slipping`,
+        tip: t('venueMembers:retention.trend.tip', { date: fmtDay(w.week_end), drifting: w.drifting, slipping: w.slipping }),
         value: w.drifting ?? 0,
         ghost: (w.drifting ?? 0) + (w.slipping ?? 0),
     }));
@@ -356,11 +475,11 @@ export default function VenueRetention() {
     return (
         <Page>
             <PageTitle
-                eyebrow="Retention"
-                title="Who’s drifting"
-                sub={`${gym.name} · visits here, against each person’s own normal`}
+                eyebrow={t('venueMembers:retention.eyebrow')}
+                title={t('venueMembers:retention.title')}
+                sub={t('venueMembers:retention.sub', { gym: gym.name })}
                 right={named && people.length > 0 && (
-                    <button type="button" onClick={() => csv(people, data.as_of)} className={BTN_GHOST}><Download size={13} /> Export</button>
+                    <button type="button" onClick={() => csv(people, data.as_of, t, nameOf)} className={BTN_GHOST}><Download size={13} /> {t('venueMembers:retention.export')}</button>
                 )}
             />
 
@@ -368,42 +487,42 @@ export default function VenueRetention() {
                 <Card glow className="p-6 sm:p-8 lg:col-span-2">
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                         <span className={`text-6xl font-extralight tracking-tighter tabular-nums leading-none ${c.drifting ? 'text-[#B45309]' : 'text-[#1A1A1A]'}`}>{fmtNum(c.drifting)}</span>
-                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">drifting from their usual visits</span>
+                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">{t('venueMembers:retention.headline', { count: c.drifting ?? 0 })}</span>
                     </div>
                     <div className="mt-7 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-5">
-                        <Fact label="On track" value={c.regular} note="coming in as usual" tone={c.regular ? 'green' : undefined} />
-                        <Fact label="Slipping" value={c.slipping} note="later than usual" />
-                        <Fact label="Lapsed" value={c.lapsed} note="not in for 60+ days" />
-                        <Fact label="New" value={c.new} note="first visit in 4 weeks" />
+                        <Fact label={t('venueMembers:retention.tabs.regular')} value={c.regular} note={t('venueMembers:retention.facts.regularNote')} tone={c.regular ? 'green' : undefined} />
+                        <Fact label={t('venueMembers:retention.tabs.slipping')} value={c.slipping} note={t('venueMembers:retention.facts.slippingNote')} />
+                        <Fact label={t('venueMembers:retention.tabs.lapsed')} value={c.lapsed} note={t('venueMembers:retention.facts.lapsedNote')} />
+                        <Fact label={t('venueMembers:retention.tabs.new')} value={c.new} note={t('venueMembers:retention.facts.newNote')} />
                     </div>
                     {trend.length > 0 && (
                         <div className="mt-8">
-                            <Micro className="mb-6">Drifting each week</Micro>
-                            <Columns data={trend} label="Drifting" height={120} tickEvery={3} ghostLabel="Slipping or drifting" />
+                            <Micro className="mb-6">{t('venueMembers:retention.trend.title')}</Micro>
+                            <Columns data={trend} label={t('venueMembers:retention.tabs.drifting')} height={120} tickEvery={3} ghostLabel={t('venueMembers:retention.trend.ghost')} />
                         </div>
                     )}
                 </Card>
 
                 <div className="flex flex-col gap-4 sm:gap-6">
                     <Card className="p-6 sm:p-8">
-                        <Micro gold>Won back</Micro>
+                        <Micro gold>{t('venueMembers:retention.wonBack.title')}</Micro>
                         {wb.reached === 0 ? (
                             <>
-                                <div className="text-2xl font-light tracking-tight mt-2">Nothing logged yet</div>
+                                <div className="text-2xl font-light tracking-tight mt-2">{t('venueMembers:retention.wonBack.nothingYet')}</div>
                                 <p className="text-[12px] text-[#888] leading-relaxed mt-2">
-                                    {named ? 'Log a call or a text on someone’s row, or send a nudge. We’ll show who came back within two weeks.' : 'Clash Pro logs who you reached out to and shows who came back.'}
+                                    {named ? t('venueMembers:retention.wonBack.nothingNamed') : t('venueMembers:retention.wonBack.nothingPlus')}
                                 </p>
                             </>
                         ) : (
                             <>
                                 <div className="flex items-baseline gap-2 mt-2">
                                     <span className="text-5xl font-extralight tracking-tighter tabular-nums text-[#0B7A57]">{fmtNum(wb.back)}</span>
-                                    <span className="text-[12px] text-[#888]">of {fmtNum(wb.reached)} came back</span>
+                                    <span className="text-[12px] text-[#888]">{t('venueMembers:retention.wonBack.cameBack', { reached: fmtNum(wb.reached) })}</span>
                                 </div>
                                 <p className="text-[12px] text-[#888] leading-relaxed mt-2">
-                                    Reached out to in the last 90 days, back within two weeks.
-                                    {decided > 0 ? ` That’s ${Math.round((wb.back / decided) * 100)}% of those whose two weeks are up.` : ''}
-                                    {wb.waiting ? ` ${fmtNum(wb.waiting)} still inside their two weeks.` : ''}
+                                    {t('venueMembers:retention.wonBack.note')}
+                                    {decided > 0 ? ` ${t('venueMembers:retention.wonBack.rate', { pct: Math.round((wb.back / decided) * 100) })}` : ''}
+                                    {wb.waiting ? ` ${t('venueMembers:retention.wonBack.waiting', { count: wb.waiting, n: fmtNum(wb.waiting) })}` : ''}
                                 </p>
                             </>
                         )}
@@ -411,10 +530,9 @@ export default function VenueRetention() {
                     </Card>
                     {c.cant_see > 0 && (
                         <Card className="p-6">
-                            <Micro>Can’t see</Micro>
+                            <Micro>{t('venueMembers:retention.cantSee.title')}</Micro>
                             <p className="text-[12px] text-[#888] leading-relaxed mt-2">
-                                POWR hasn’t heard from {fmtNum(c.cant_see)} {c.cant_see === 1 ? 'person’s phone' : 'people’s phones'} in a week, or their location is off.
-                                They may still be training, so they’re not counted as drifting and never nudged.
+                                {t('venueMembers:retention.cantSee.body', { count: c.cant_see, n: fmtNum(c.cant_see) })}
                             </p>
                         </Card>
                     )}
@@ -432,7 +550,7 @@ export default function VenueRetention() {
                                 return (
                                     <button key={k} type="button" onClick={() => { setTab(k); setOpen(null); }} aria-pressed={active === k}
                                         className={`shrink-0 whitespace-nowrap h-9 px-4 rounded-full border text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${active === k ? 'bg-[#E8D200] border-[#E8D200] text-[#080808]' : 'bg-white border-[#E6E6E1] text-[#666] hover:border-[#E8D200]/50'}`}>
-                                        {l} · {n}
+                                        {t(l)} · {n}
                                     </button>
                                 );
                             })}
@@ -440,13 +558,13 @@ export default function VenueRetention() {
                         {people.length > 10 && (
                             <label className="relative w-full sm:w-64">
                                 <Search size={13} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#BBBBBB]" />
-                                <input className={`${INPUT} h-10 pl-10`} placeholder="Find someone" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find someone" />
+                                <input className={`${INPUT} h-10 pl-10`} placeholder={t('venueMembers:retention.find')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('venueMembers:retention.find')} />
                             </label>
                         )}
                     </div>
                     {shown.length === 0 ? (
                         <p className="text-sm text-[#888] font-light mt-6">
-                            {active === 'drifting' ? 'Nobody is drifting right now. Everyone with a pattern is coming in about as often as usual.' : 'Nobody here right now.'}
+                            {active === 'drifting' ? t('venueMembers:retention.noneDrifting') : t('venueMembers:retention.noneHere')}
                         </p>
                     ) : (
                         <ul className="mt-4 divide-y divide-[#F0F0EC]">
@@ -460,23 +578,22 @@ export default function VenueRetention() {
             ) : (
                 <Card className="p-6 sm:p-8">
                     <div className="flex items-center gap-3 mb-3"><Lock size={13} className="text-[#8a7600]" /><Micro gold>Clash Pro</Micro></div>
-                    <div className="text-2xl font-light tracking-tight">See who, before they cancel</div>
+                    <div className="text-2xl font-light tracking-tight">{t('venueMembers:retention.locked.title')}</div>
                     <p className="text-[13px] text-[#777] leading-relaxed mt-2 max-w-2xl">
-                        Clash Pro names everyone who’s slipping or drifting, with when they usually come in, a morning email when
-                        someone starts, a one-tap nudge from POWR, and a log of who you reached out to and who came back.
+                        {t('venueMembers:retention.locked.body')}
                     </p>
-                    <Link to="/venue/package" className={`${BTN_GHOST} mt-5`}>See packages</Link>
+                    <Link to="/venue/package" className={`${BTN_GHOST} mt-5`}>{t('venueMembers:seePackages')}</Link>
                 </Card>
             )}
 
             <Card className="p-6 sm:p-8">
-                <Micro>How it works</Micro>
+                <Micro>{t('venueMembers:retention.how.title')}</Micro>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4 text-[12px] text-[#777] leading-relaxed">
-                    <p><span className="block text-[13px] font-bold text-[#1A1A1A] mb-1">Their normal, not a fixed rule</span>Each person is measured against their own usual gap between visits. Someone who trains daily is drifting after a week; someone who comes weekly, after about three.</p>
-                    <p><span className="block text-[13px] font-bold text-[#1A1A1A] mb-1">Visits here only</span>Only the days and times POWR checked them in at {gym.name}. Never their other training, health data or where they are.</p>
-                    <p><span className="block text-[13px] font-bold text-[#1A1A1A] mb-1">Their choice</span>Members can switch this off in the POWR app (Settings, then Privacy). Anyone who does disappears from this page.</p>
+                    <p><span className="block text-[13px] font-bold text-[#1A1A1A] mb-1">{t('venueMembers:retention.how.normalTitle')}</span>{t('venueMembers:retention.how.normalBody')}</p>
+                    <p><span className="block text-[13px] font-bold text-[#1A1A1A] mb-1">{t('venueMembers:retention.how.hereTitle')}</span>{t('venueMembers:retention.how.hereBody', { gym: gym.name })}</p>
+                    <p><span className="block text-[13px] font-bold text-[#1A1A1A] mb-1">{t('venueMembers:retention.how.choiceTitle')}</span>{t('venueMembers:retention.how.choiceBody')}</p>
                 </div>
-                <p className="text-[10px] text-[#BBBBBB] font-bold mt-5">As of {fmtDay(data.as_of)} · {tz.replace('_', ' ')}</p>
+                <p className="text-[10px] text-[#BBBBBB] font-bold mt-5">{t('venueMembers:retention.asOf', { date: fmtDay(data.as_of), tz: tz.replace('_', ' ') })}</p>
             </Card>
         </Page>
     );

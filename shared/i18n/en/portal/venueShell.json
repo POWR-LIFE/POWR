@@ -1,0 +1,257 @@
+{
+  "portalName": "Gym Portal",
+  "loadingPortal": "Loading portal...",
+  "backHome": "Back to powr.life",
+  "nav": {
+    "overview": "Overview",
+    "events": "Events",
+    "discounts": "Discounts",
+    "clashNights": "Clash Nights",
+    "studio": "Studio",
+    "screens": "Screens",
+    "members": "Members",
+    "retention": "Retention",
+    "settings": "Settings",
+    "package": "Package"
+  },
+  "tabs": {
+    "home": "Home",
+    "events": "Events",
+    "discounts": "Discounts",
+    "nights": "Nights",
+    "studio": "Studio",
+    "screens": "Screens",
+    "members": "Members",
+    "retention": "Retention",
+    "settings": "Settings"
+  },
+  "roles": {
+    "owner": "Owner",
+    "staff": "Team"
+  },
+  "layout": {
+    "switchGym": "Switch gym",
+    "guides": "Guides",
+    "notInPackage": "Not in your package",
+    "accountMenu": "Account, package and sign out",
+    "trialBanner": "{{line}} · see what changes"
+  },
+  "packageLine": {
+    "trialEnded": "Trial ended · on Clash",
+    "trial_one": "Trial · {{count}} day left",
+    "trial_other": "Trial · {{count}} days left",
+    "clashFree": "Clash · free"
+  },
+  "locks": {
+    "andPro": "{{name}} and Clash Pro",
+    "youreOn": "You’re on {{name}}.",
+    "youreOnFree": "You’re on {{name}}, the free package.",
+    "seePackages": "See packages",
+    "events": {
+      "title": "Your own challenges come with Clash+",
+      "body": "Monthly challenges, weekend sprints and finale nights that run themselves: the board, the pushes and the reveal."
+    },
+    "insights": {
+      "title": "The Members dashboard comes with Clash+",
+      "body": "Who’s training, when your gym is busiest and what your members do, week by week."
+    },
+    "people": {
+      "title": "Named member insights come with Clash Pro",
+      "body": "Who’s drifting from their usual visits by name, and what each member who shares all their training with you has been doing."
+    },
+    "retention": {
+      "title": "Retention comes with Clash+",
+      "body": "See who’s slipping and drifting from their usual visits before they cancel, measured against each person’s own normal. Clash Pro names them."
+    },
+    "studio": {
+      "title": "Studio comes with Clash Pro",
+      "body": "Turn your photos and clips into posts, reels and posters in minutes, filled from your events and your board."
+    },
+    "discounts": {
+      "title": "Partner discounts come with Clash+",
+      "body": "The discounts POWR members get from our brand partners, for buying prizes and kit for your gym. One code when you need it."
+    }
+  },
+  "packages": {
+    "free": "Free",
+    "perMonth": "/ month",
+    "perYear": "/ year",
+    "clash": {
+      "line": "Get on the board.",
+      "note": "Always",
+      "items": {
+        "board": "Your gym in Gym Clash: the gyms near you, every week",
+        "perMember": "Gym vs gym, scored per active member so size doesn’t win",
+        "leaderboard": "Member leaderboard inside your gym",
+        "ranking": "Your live ranking"
+      }
+    },
+    "clashPlus": {
+      "line": "Compete and reward.",
+      "note": "Cancel anytime",
+      "items": {
+        "everything": "Everything in Clash",
+        "challenges": "Run your own in-gym challenges, monthly or whenever you want",
+        "discounts": "Partner discounts: buy prizes and kit at the POWR members’ price, one code when you need it",
+        "eventCode": "If you like, everyone who takes part in your event gets a partner brand’s code in their Wallet",
+        "dashboard": "Members dashboard: what they do, where they train, when they come in",
+        "retention": "Retention: how many are slipping and drifting from their usual visits, week by week"
+      }
+    },
+    "pro": {
+      "line": "Events, content and data. The full engine.",
+      "note": "or £4,188 / year",
+      "tag": "Most complete",
+      "items": {
+        "everything": "Everything in Clash+",
+        "nights": "4 POWR Clash Nights a year, one per quarter. We bring the DJ, photographer and partner prizes · book your dates in Clash Nights",
+        "studio": "Studio and event kits: your photos and clips turned into branded posts, reels and carousels, at every size",
+        "footage": "Upload your own footage from classes and PT sessions, and make content in minutes",
+        "retention": "Retention by name: who’s drifting from their own usual visits, a morning email when someone starts, a one-tap nudge, and who came back after you reached out",
+        "insights": "Full activity insights for members who share all their training with you",
+        "leads": "Guest leads from every event: who joined without being a member, named for the front desk, with export",
+        "report": "Quarterly insights report: 3 trends, 3 actions, with a matched brand partner · coming this season"
+      }
+    },
+    "founding": {
+      "line": "Clash Pro at the founding price, locked in.",
+      "note": "Paid upfront. Save over 50%",
+      "tag": "First 10 gyms",
+      "items": {
+        "everything": "Everything in Clash Pro",
+        "dates": "All 4 Clash Night dates booked at signing",
+        "priceLocked": "Price locked on renewal",
+        "status": "Founding gym status on the POWR leaderboard",
+        "monthly": "Prefer monthly? £249 / month"
+      }
+    }
+  },
+  "package": {
+    "title": "Your package",
+    "loadFailed": "Couldn’t load your package",
+    "tryAgainSoon": "Try again in a minute.",
+    "confirmAsk": "Ask POWR to switch {{gym}} to {{name}}? We’ll get in touch to set it up and invoice you. Nothing is charged here.",
+    "asked": "Asked for {{name}}. POWR will be in touch.",
+    "trialEnded": "Trial ended",
+    "freeTrial": "Free trial",
+    "daysLeft_one": "day left",
+    "daysLeft_other": "days left",
+    "endedBody": "Your trial ended on {{date}}. {{gym}} now runs on {{name}}.",
+    "endedBodyFree": "Your trial ended on {{date}}. {{gym}} now runs on {{name}}, the free package.",
+    "trialBody": "Everything is switched on until {{date}}. After that {{gym}} runs on {{name}} unless you choose another.",
+    "trialBodyFree": "Everything is switched on until {{date}}. After that {{gym}} runs on {{name}}, the free package, unless you choose another.",
+    "whatChanges": "<b>What stays:</b> your leaderboard and Gym Clash screens, the join poster, your team. <b>What switches off:</b> your own events, partner discounts, the members dashboard, the Studio and event kits, unless you choose Clash+ or Clash Pro.",
+    "freeBody": "The free package: your gym in Gym Clash, its own leaderboard and screens.",
+    "billedYearly": "Billed yearly.",
+    "billedMonthly": "Billed monthly.",
+    "setUpByPowr": "Set up by POWR.",
+    "requested": "You asked for {{name}} on {{date}}. POWR will be in touch to set it up.",
+    "yours": "Yours",
+    "foundingGone": "All {{limit}} places have gone",
+    "foundingLeft_one": "{{count}} of {{limit}} places left · only during your trial",
+    "foundingLeft_other": "{{count}} of {{limit}} places left · only during your trial",
+    "askedOn": "Asked on {{date}}",
+    "ownerCanAsk": "Your gym’s owner can ask to switch.",
+    "asking": "Asking…",
+    "choose": "Choose {{name}}",
+    "switchTo": "Switch to {{name}}",
+    "footer": "Every gym starts with three months free, with everything switched on. POWR sets up your package and invoices you; nothing is charged in the portal."
+  },
+  "auth": {
+    "emailAddress": "Email address",
+    "password": "Password",
+    "optional": "— optional",
+    "signingIn": "Signing in…",
+    "sending": "Sending…",
+    "signIn": "Sign In",
+    "emailLink": "Email me a sign-in link",
+    "checkEmail": "Check your email",
+    "differentEmail": "Use a different email"
+  },
+  "login": {
+    "enterEmail": "Enter your email first.",
+    "noAccount": "We couldn't find a POWR account with that email. Use the one your invite was for, or open your invite link again.",
+    "pausedTitle": "Portal paused",
+    "pausedBody": "Your gym's portal is switched off right now. Get in touch with POWR and we'll sort it.",
+    "notOnTeamTitle": "Not on a gym team",
+    "notOnTeamBody": "You're signed in as {{email}}, but this account isn't on a gym's team. Open the invite link your gym or POWR sent you, or sign in with the account you accepted it with.",
+    "contact": "Contact POWR",
+    "signOut": "Sign out",
+    "linkSent": "We've sent a sign-in link to {{email}}. Open it on this device and you're in.",
+    "welcome": "Welcome back",
+    "intro": "Sign in with your POWR account. Use Google or Apple in the app? Leave the password blank and we'll email you a link.",
+    "forgot": "Forgot it? Email me a sign-in link",
+    "runAGym": "Run a gym and want it on POWR?",
+    "partnerWithUs": "Partner with us"
+  },
+  "setup": {
+    "enterEmail": "Enter the email you use in the app.",
+    "noAccount": "We couldn't find a POWR account with that email. Create a login instead.",
+    "passwordsDontMatch": "Passwords do not match",
+    "passwordTooShort": "Password must be at least 8 characters",
+    "usedTitle": "Already used",
+    "usedBody": "This link has already been used. If it was you, just sign in.",
+    "expiredTitle": "Link expired",
+    "expiredBody": "Setup links last 14 days. Ask whoever sent it for a new one.",
+    "invalidTitle": "Invalid link",
+    "invalidBody": "This setup link isn't valid or has been revoked. Ask whoever sent it for a new one.",
+    "ownerAccess": "Owner access",
+    "teamAccess": "Team access",
+    "invited": "You're invited",
+    "joinTitle": "Join {{gym}}",
+    "joinSub": "This adds the gym portal to the POWR account you're signed in with: {{email}}.",
+    "adding": "Adding…",
+    "add": "Add {{gym}}",
+    "notYou": "Not you? Use a different account",
+    "linkSent": "We've sent a sign-in link to {{email}}. Open it on this device and it brings you back here to finish.",
+    "title": "Set up your access",
+    "sub": "Run your gym's screens and see who's training, all in one place.",
+    "existing": "I use POWR",
+    "new": "New to POWR",
+    "existingIntro": "Sign in with the account you use in the POWR app. Use Google or Apple there? Leave the password blank and we’ll email you a link.",
+    "yourName": "Your name",
+    "namePlaceholder": "First & last name",
+    "confirmPassword": "Confirm password",
+    "settingUp": "Setting up…",
+    "createLogin": "Create login"
+  },
+  "help": {
+    "title": "Help",
+    "intro": "Stuck, or something looks wrong? Ask us here and a person answers, usually the same day. The answer shows up below.",
+    "about": "About",
+    "topics": {
+      "broken": "Something’s not working",
+      "billing": "Package and billing",
+      "events": "Events",
+      "screens": "Screens and the board",
+      "studio": "Studio",
+      "other": "Other"
+    },
+    "subject": "Subject",
+    "subjectPlaceholder": "e.g. The board on our TV stopped updating",
+    "message": "What’s happening",
+    "messagePlaceholder": "What you expected, what happened instead, and when.",
+    "send": "Send to POWR",
+    "sent": "Sent. A person at POWR answers, usually the same day.",
+    "ask": "Ask POWR",
+    "guides": "How-to guides",
+    "boardOnTv": "Putting the board on a TV",
+    "joinPoster": "The join poster",
+    "yourRequests": "Your requests",
+    "kinds": {
+      "question": "Question",
+      "package": "Package change",
+      "clashNight": "Clash Night",
+      "clashCancel": "Clash Night called off",
+      "eventReview": "Event review",
+      "request": "Request"
+    },
+    "status": {
+      "open": "With POWR",
+      "inProgress": "On it",
+      "resolved": "Answered",
+      "closed": "Closed"
+    },
+    "orEmail": "Or email <mail>{{email}}</mail>."
+  }
+}

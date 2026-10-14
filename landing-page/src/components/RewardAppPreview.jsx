@@ -13,6 +13,10 @@ import React, { useState } from 'react';
 //   • Tab bar         → app/(tabs)/_layout.tsx
 //   • Background      → components/home/GeometricBackground.tsx
 //   • Redeem screen   → app/redeem-modal.tsx
+//
+// Stays in English on purpose, even in a translated portal: it shows what
+// MEMBERS see, and they read the app in their own language, not the brand's.
+// Until it can be shown in a member language, English is the honest preview.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // These tokens and the chrome below (Ion/StatusBar/PreviewBackground) are also

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Crosshair, AlertTriangle, Search, Layers } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { loadGoogleMaps } from '../lib/googleMaps';
 
 const MAPS_KEY = import.meta.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -36,6 +37,7 @@ const num = (v) => {
 // gold ring (or click the map) to move the node; `onMove` receives the new
 // coordinates and the parent owns the state as before.
 export default function GeofenceMap({ lat, lng, radius, label, readOnly = false, onMove, height = 320, approach = true }) {
+    const { t } = useTranslation();
     const elRef = useRef(null);
     const searchRef = useRef(null);
     const mapRef = useRef(null);
@@ -199,7 +201,7 @@ export default function GeofenceMap({ lat, lng, radius, label, readOnly = false,
         return (
             <div className="flex items-center gap-3 p-6 bg-[#F4F4F1] border border-dashed border-[#E6E6E1] rounded-2xl">
                 <AlertTriangle size={14} className="text-red-500 shrink-0" />
-                <span className="text-[10px] uppercase tracking-[0.3em] text-[#666666] font-black">Map unavailable — {error}</span>
+                <span className="text-[10px] uppercase tracking-[0.3em] text-[#666666] font-black">{t('brandPlacements:geofence.unavailable', { error })}</span>
             </div>
         );
     }
@@ -212,7 +214,7 @@ export default function GeofenceMap({ lat, lng, radius, label, readOnly = false,
                     <input
                         ref={searchRef}
                         type="text"
-                        placeholder="SEARCH A VENUE OR ADDRESS TO DROP THE PIN..."
+                        placeholder={t('brandPlacements:geofence.searchPlaceholder')}
                         onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
                         className="w-full h-12 pl-12 pr-6 bg-white border border-[#E6E6E1] rounded-2xl text-[11px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                     />
@@ -225,7 +227,7 @@ export default function GeofenceMap({ lat, lng, radius, label, readOnly = false,
                 {!centre && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/85 pointer-events-none">
                         <p className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black text-center px-8">
-                            {readOnly ? 'No coordinates on this node' : 'Search above or click the map to place this node'}
+                            {readOnly ? t('brandPlacements:geofence.noCoordinates') : t('brandPlacements:geofence.placePrompt')}
                         </p>
                     </div>
                 )}
@@ -233,19 +235,19 @@ export default function GeofenceMap({ lat, lng, radius, label, readOnly = false,
                 <div className="absolute top-3 right-3 flex gap-2">
                     <button
                         type="button"
-                        onClick={() => setMapType(t => (t === 'hybrid' ? 'roadmap' : 'hybrid'))}
-                        title={mapType === 'hybrid' ? 'Switch to map' : 'Switch to satellite'}
+                        onClick={() => setMapType(prev => (prev === 'hybrid' ? 'roadmap' : 'hybrid'))}
+                        title={mapType === 'hybrid' ? t('brandPlacements:geofence.switchToMap') : t('brandPlacements:geofence.switchToSatellite')}
                         className="h-9 px-4 flex items-center gap-2 bg-white/95 border border-[#E6E6E1] rounded-full text-[8px] uppercase tracking-[0.3em] text-[#333333] hover:text-[#8a7600] font-black transition-all shadow-sm"
                     >
                         {/* Labelled with the view you'd switch TO, like Google's own control —
                             labelling the current view reads as a status and confuses the click. */}
-                        <Layers size={11} /> {mapType === 'hybrid' ? 'Map' : 'Satellite'}
+                        <Layers size={11} /> {mapType === 'hybrid' ? t('brandPlacements:map.map') : t('brandPlacements:map.satellite')}
                     </button>
                     {centre && (
                         <button
                             type="button"
                             onClick={() => frame(window.google.maps, true)}
-                            title="Recentre on the fence"
+                            title={t('brandPlacements:geofence.recentre')}
                             className="w-9 h-9 flex items-center justify-center bg-white/95 border border-[#E6E6E1] rounded-full text-[#333333] hover:text-[#8a7600] transition-all shadow-sm"
                         >
                             <Crosshair size={13} />
@@ -257,12 +259,12 @@ export default function GeofenceMap({ lat, lng, radius, label, readOnly = false,
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-2">
                 <span className="flex items-center gap-2 text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black">
                     <span className="w-3 h-3 rounded-full border-2" style={{ borderColor: GOLD, background: `${GOLD}38` }} />
-                    Check-in fence · {Math.round(radiusM)}m
+                    {t('brandPlacements:geofence.fence', { radius: Math.round(radiusM) })}
                 </span>
                 {showApproach && (
                     <span className="flex items-center gap-2 text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black">
                         <span className="w-3 h-3 rounded-full border" style={{ borderColor: SKY, background: `${SKY}12` }} />
-                        Wake ring · {APPROACH_RADIUS_M}m
+                        {t('brandPlacements:geofence.wakeRing', { radius: APPROACH_RADIUS_M })}
                     </span>
                 )}
                 {centre && (
@@ -272,7 +274,7 @@ export default function GeofenceMap({ lat, lng, radius, label, readOnly = false,
                 )}
                 {!readOnly && centre && (
                     <span className="text-[8px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">
-                        Drag the gold ring to adjust{label ? ` · ${label}` : ''}
+                        {t('brandPlacements:geofence.dragHint')}{label ? ` · ${label}` : ''}
                     </span>
                 )}
             </div>

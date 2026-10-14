@@ -3,7 +3,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import jsQR from 'jsqr';
 import { AlertCircle, Camera as CameraIcon, Check, ChevronDown, Clock, LogOut, Monitor, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../App';
+import { formatLocale } from '../lib/i18n';
+import { serverErrorText } from '../lib/serverErrors';
 import {
     formatPence, kioskStand, scanCheck, scanConfirm, scanSession, scanToday,
 } from '../lib/inStore';
@@ -22,6 +25,9 @@ import {
 // Flow: scan (or type) -> in_store_scan_check says valid / used / other /
 // stale / closed -> staff tap Confirm (optional spend) -> in_store_scan_confirm.
 // Nothing is used up until Confirm.
+//
+// Language: the browser's (lib/i18n), staff addressed as vous/usted. There's no
+// picker here; a till tablet just follows its own settings.
 
 const TOKEN_KEY = 'powr:scan:token';
 const SITE_KEY = 'powr:scan:site';
@@ -51,11 +57,23 @@ function readToken() {
     return store.get(TOKEN_KEY);
 }
 
-const hhmm = (iso) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const hhmm = (iso) => new Date(iso).toLocaleTimeString(formatLocale(), { hour: '2-digit', minute: '2-digit' });
+
+// What staff typed in the spend box -> pence. A comma before the last one or
+// two digits is a decimal comma, how French and Spanish staff write it
+// ("12,50", "1.234,56"); "1,250" and "1,250.50" read as before.
+function spendToPence(text) {
+    const raw = text.trim();
+    if (!raw) return null;
+    const decimalComma = /,\d{1,2}$/.test(raw) && raw.lastIndexOf(',') > raw.lastIndexOf('.');
+    const clean = (decimalComma ? raw.replace(/\./g, '').replace(/,(?=\d{1,2}$)/, '.') : raw).replace(/[^0-9.]/g, '');
+    return Math.round(parseFloat(clean) * 100);
+}
 
 // ── Camera ───────────────────────────────────────────────────────────────────
 
 function Camera({ facing, paused, onCode, label }) {
+    const { t } = useTranslation();
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const onCodeRef = useRef(onCode);
@@ -127,9 +145,9 @@ function Camera({ facing, paused, onCode, label }) {
             {state === 'live' && !paused && <div className="absolute left-9 right-9 top-10 h-[2px] bg-[#E8D200]/70 animate-[powrScan_2.6s_ease-in-out_infinite]" />}
             {state !== 'live' && (
                 <div className="relative z-10 px-8 text-center text-white/75 text-[14px] leading-relaxed">
-                    {state === 'starting' && 'Starting the camera…'}
-                    {state === 'denied' && 'Camera blocked. Allow camera access for this site in your browser settings, or type the code below.'}
-                    {state === 'unavailable' && 'No camera here. Type the 6-character code from the member’s phone below.'}
+                    {state === 'starting' && t('scan:camera.starting')}
+                    {state === 'denied' && t('scan:camera.denied')}
+                    {state === 'unavailable' && t('scan:camera.unavailable')}
                 </div>
             )}
             {state === 'live' && <span className="absolute bottom-8 inset-x-0 text-center text-white/70 text-[13px]">{label}</span>}
@@ -141,6 +159,7 @@ function Camera({ facing, paused, onCode, label }) {
 // ── Results ──────────────────────────────────────────────────────────────────
 
 function ResultCard({ result, offset, site, askSpend, onConfirm, onReset, busy }) {
+    const { t } = useTranslation();
     const [spend, setSpend] = useState('');
     const [now, setNow] = useState(() => Date.now() + offset);
     useEffect(() => {
@@ -154,7 +173,7 @@ function ResultCard({ result, offset, site, askSpend, onConfirm, onReset, busy }
     const shell = (head, body) => (
         <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden" role="status" aria-live="assertive">{head}<div className="p-5 flex flex-col gap-3">{body}</div></div>
     );
-    const again = (label = 'Scan another') => (
+    const again = (label = t('scan:result.scanAnother')) => (
         <button type="button" onClick={onReset} className="mt-1 h-13 py-4 rounded-full border border-[#E6E6E1] bg-white text-[11px] font-black uppercase tracking-[0.15em]">{label}</button>
     );
 
@@ -162,17 +181,18 @@ function ResultCard({ result, offset, site, askSpend, onConfirm, onReset, busy }
         return (
             <div className="py-10 flex flex-col items-center gap-3 text-center" role="status" aria-live="assertive">
                 <div className="w-28 h-28 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center"><Check size={48} strokeWidth={2.2} /></div>
-                <div className="text-3xl font-light tracking-tight mt-2">Discount applied</div>
-                <p className="text-[14px] text-[#666]">Logged{site ? ` for ${site}` : ''} at {hhmm(result.confirmed_at)}.</p>
-                <button type="button" onClick={onReset} className="mt-6 w-full h-14 rounded-full bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.15em]">Scan next</button>
+                <div className="text-3xl font-light tracking-tight mt-2">{t('scan:result.applied')}</div>
+                <p className="text-[14px] text-[#666]">{site ? t('scan:result.loggedAtSite', { site, time: hhmm(result.confirmed_at) }) : t('scan:result.loggedAt', { time: hhmm(result.confirmed_at) })}</p>
+                <button type="button" onClick={onReset} className="mt-6 w-full h-14 rounded-full bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.15em]">{t('scan:result.scanNext')}</button>
             </div>
         );
     }
     if (result.result === 'valid') {
         const left = Math.max(0, Math.round((new Date(result.expires_at).getTime() - now) / 1000));
-        const pence = spend.trim() ? Math.round(parseFloat(spend.replace(/[^0-9.]/g, '')) * 100) : null;
+        const pence = spendToPence(spend);
+        const opened = hhmm(result.opened_at);
         return shell(
-            banner('bg-emerald-50 text-emerald-800', <Check size={18} strokeWidth={3} />, 'VALID'),
+            banner('bg-emerald-50 text-emerald-800', <Check size={18} strokeWidth={3} />, t('scan:result.valid')),
             <>
                 <div className="text-[28px] font-light tracking-tight leading-tight">{result.reward_title}</div>
                 <div className="flex items-center gap-3">
@@ -180,25 +200,27 @@ function ResultCard({ result, offset, site, askSpend, onConfirm, onReset, busy }
                     <div>
                         <div className="text-[15px] font-semibold">{result.member_label}</div>
                         <div className="text-[12px] text-[#666]">
-                            Opened {hhmm(result.opened_at)}{result.swiped ? ' · already swiped on their phone' : left > 0 ? ` · closes in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : ''}
+                            {result.swiped ? t('scan:result.openedSwiped', { time: opened })
+                                : left > 0 ? t('scan:result.openedClosesIn', { time: opened, left: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` })
+                                    : t('scan:result.opened', { time: opened })}
                         </div>
                     </div>
                 </div>
                 {askSpend && (
                     <div className="flex flex-col gap-2">
-                        <label htmlFor="scan-spend" className="text-[9px] font-black tracking-[0.2em] text-[#888]">WHAT DID THEY SPEND? (OPTIONAL)</label>
+                        <label htmlFor="scan-spend" className="text-[9px] font-black tracking-[0.2em] text-[#888]">{t('scan:result.spendLabel')}</label>
                         <div className="flex items-center h-12 rounded-2xl border border-[#E6E6E1] bg-[#F4F4F1] px-4 gap-1.5">
                             <span className="text-[16px] text-[#666]">£</span>
-                            <input id="scan-spend" inputMode="decimal" value={spend} onChange={e => setSpend(e.target.value)} placeholder="0.00"
+                            <input id="scan-spend" inputMode="decimal" value={spend} onChange={e => setSpend(e.target.value)} placeholder={t('scan:result.spendPlaceholder')}
                                 className="flex-1 min-w-0 bg-transparent outline-none text-[16px]" />
                         </div>
                     </div>
                 )}
                 <button type="button" disabled={busy} onClick={() => onConfirm(Number.isFinite(pence) ? pence : null)}
                     className="h-14 rounded-full bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.15em] disabled:opacity-50">
-                    {busy ? 'Confirming…' : 'Confirm and apply discount'}
+                    {busy ? t('scan:result.confirming') : t('scan:result.confirm')}
                 </button>
-                <button type="button" onClick={onReset} className="h-11 text-[10px] font-black uppercase tracking-[0.15em] text-[#666]">Cancel</button>
+                <button type="button" onClick={onReset} className="h-11 text-[10px] font-black uppercase tracking-[0.15em] text-[#666]">{t('common:actions.cancel')}</button>
             </>,
         );
     }
@@ -206,37 +228,43 @@ function ResultCard({ result, offset, site, askSpend, onConfirm, onReset, busy }
     const GREY = 'bg-[#EFEFEC] text-[#444]';
     switch (result.result) {
         case 'used':
-            return shell(banner(RED, <X size={18} strokeWidth={3} />, 'ALREADY USED'), <>
+            return shell(banner(RED, <X size={18} strokeWidth={3} />, t('scan:result.used')), <>
                 {result.reward_title && <div className="text-[24px] font-light tracking-tight">{result.reward_title}</div>}
                 <p className="text-[14px] text-[#555] leading-relaxed">
-                    {result.used_at ? `Used${result.used_site_name ? ` at ${result.used_site_name}` : ''} on ${new Date(result.used_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} at ${hhmm(result.used_at)}.` : 'This reward has been used.'}
+                    {result.used_at
+                        ? t(result.used_site_name ? 'scan:result.usedAtSite' : 'scan:result.usedOn', {
+                            site: result.used_site_name,
+                            date: new Date(result.used_at).toLocaleDateString(formatLocale(), { day: 'numeric', month: 'short' }),
+                            time: hhmm(result.used_at),
+                        })
+                        : t('scan:result.usedNoDate')}
                 </p>
-                <p className="text-[15px] font-bold">Don't apply the discount.</p>{again()}
+                <p className="text-[15px] font-bold">{t('scan:result.dontApplyThe')}</p>{again()}
             </>);
         case 'other':
-            return shell(banner(GREY, <AlertCircle size={18} />, 'NOT ONE OF YOUR REWARDS'), <>
-                <p className="text-[14px] text-[#555]">This voucher is for a different shop.</p>
-                <p className="text-[15px] font-bold">Don't apply a discount.</p>{again()}
+            return shell(banner(GREY, <AlertCircle size={18} />, t('scan:result.other')), <>
+                <p className="text-[14px] text-[#555]">{t('scan:result.otherBody')}</p>
+                <p className="text-[15px] font-bold">{t('scan:result.dontApplyA')}</p>{again()}
             </>);
         case 'stale':
-            return shell(banner(RED, <AlertCircle size={18} />, 'OLD CODE'), <>
-                <p className="text-[14px] text-[#555] leading-relaxed">That code is more than a minute old, which usually means a screenshot. Ask the member to show the live voucher in the POWR app.</p>{again('Scan again')}
+            return shell(banner(RED, <AlertCircle size={18} />, t('scan:result.stale')), <>
+                <p className="text-[14px] text-[#555] leading-relaxed">{t('scan:result.staleBody')}</p>{again(t('scan:result.scanAgain'))}
             </>);
         case 'closed':
-            return shell(banner(GREY, <Clock size={18} />, 'VOUCHER CLOSED'), <>
-                <p className="text-[14px] text-[#555] leading-relaxed">Time ran out on this one. Ask the member to tap Use in store again for a fresh voucher.</p>{again('Scan again')}
+            return shell(banner(GREY, <Clock size={18} />, t('scan:result.closed')), <>
+                <p className="text-[14px] text-[#555] leading-relaxed">{t('scan:result.closedBody')}</p>{again(t('scan:result.scanAgain'))}
             </>);
         case 'not_found':
-            return shell(banner(GREY, <AlertCircle size={18} />, 'NO MATCH'), <>
-                <p className="text-[14px] text-[#555] leading-relaxed">No live voucher matches that code. Check the code on the member's phone, or scan the QR instead.</p>{again('Try again')}
+            return shell(banner(GREY, <AlertCircle size={18} />, t('scan:result.notFound')), <>
+                <p className="text-[14px] text-[#555] leading-relaxed">{t('scan:result.notFoundBody')}</p>{again(t('common:actions.retry'))}
             </>);
         case 'not_powr':
-            return shell(banner(GREY, <AlertCircle size={18} />, 'NOT A POWR VOUCHER'), <>
-                <p className="text-[14px] text-[#555] leading-relaxed">{result.message ?? 'That code isn’t a POWR voucher. Scan the QR on the member’s phone.'}</p>{again('Scan again')}
+            return shell(banner(GREY, <AlertCircle size={18} />, t('scan:result.notPowr')), <>
+                <p className="text-[14px] text-[#555] leading-relaxed">{result.message ?? t('scan:result.notPowrBody')}</p>{again(t('scan:result.scanAgain'))}
             </>);
         default:
-            return shell(banner(RED, <AlertCircle size={18} />, 'SOMETHING WENT WRONG'), <>
-                <p className="text-[14px] text-[#555] leading-relaxed">{result.message ?? 'Check the connection and scan again.'}</p>{again('Scan again')}
+            return shell(banner(RED, <AlertCircle size={18} />, t('scan:result.error')), <>
+                <p className="text-[14px] text-[#555] leading-relaxed">{result.message ?? t('scan:result.errorBody')}</p>{again(t('scan:result.scanAgain'))}
             </>);
     }
 }
@@ -244,6 +272,7 @@ function ResultCard({ result, offset, site, askSpend, onConfirm, onReset, busy }
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ScanPage() {
+    const { t } = useTranslation();
     const { user, loading: authLoading } = useAuth();
     const [params, setParams] = useSearchParams();
     const kiosk = params.get('kiosk') === '1';
@@ -260,7 +289,7 @@ export default function ScanPage() {
     const [pasted, setPasted] = useState('');
     const [pasteError, setPasteError] = useState(null);
 
-    useEffect(() => { document.title = 'POWR · Scan'; }, []);
+    useEffect(() => { document.title = t('scan:docTitle'); }, [t]);
 
     useEffect(() => {
         if (authLoading) return;
@@ -278,7 +307,7 @@ export default function ScanPage() {
             if (cancelled) return;
             // A link that was revoked or replaced. Pasting a new one swaps it.
             if (token) { setSessionError('link_revoked'); return; }
-            setSessionError(user ? 'not_partner' : err.message);
+            setSessionError(user ? 'not_partner' : serverErrorText(err));
         });
         return () => { cancelled = true; };
     }, [token, user, authLoading]);
@@ -314,7 +343,7 @@ export default function ScanPage() {
             setResult(r);
             navigator.vibrate?.(r.result === 'valid' ? 60 : [40, 60, 40]);
         } catch (err) {
-            setResult({ result: 'error', message: err.message });
+            setResult({ result: 'error', message: serverErrorText(err) });
         } finally {
             setBusy(false);
         }
@@ -325,11 +354,11 @@ export default function ScanPage() {
         const parsed = parseInStoreScan(text);
         if (!parsed) { setResult({ result: 'not_powr' }); return; }
         if (parsed.kind === 'stand') {
-            setResult({ result: 'not_powr', message: 'That’s a shop stand. Scan the voucher on the member’s phone.' });
+            setResult({ result: 'not_powr', message: t('scan:result.isStand') });
             return;
         }
         runCheck(parsed.kind === 'voucher' ? { voucherId: parsed.voucherId, proof: parsed.proof } : { code: parsed.code });
-    }, [busy, result, runCheck]);
+    }, [busy, result, runCheck, t]);
 
     const submitTyped = (e) => {
         e.preventDefault();
@@ -343,14 +372,14 @@ export default function ScanPage() {
         setBusy(true);
         try {
             const r = await scanConfirm(token, siteId, result.voucher_id, result.ticket, pence);
-            if (r?.error === 'CHECK_AGAIN') { setResult({ result: 'error', message: 'That took a while. Scan the voucher again to confirm.' }); return; }
+            if (r?.error === 'CHECK_AGAIN') { setResult({ result: 'error', message: t('scan:result.checkAgain') }); return; }
             if (r?.error === 'ALREADY_USED') { setResult({ result: 'used' }); return; }
-            if (r?.error) { setResult({ result: 'error', message: 'Couldn’t confirm. Scan the voucher again.' }); return; }
+            if (r?.error) { setResult({ result: 'error', message: t('scan:result.confirmFailed') }); return; }
             setResult({ result: 'done', confirmed_at: r.confirmed_at });
             navigator.vibrate?.(80);
             loadToday();
         } catch (err) {
-            setResult({ result: 'error', message: err.message });
+            setResult({ result: 'error', message: serverErrorText(err) });
         } finally {
             setBusy(false);
         }
@@ -358,7 +387,7 @@ export default function ScanPage() {
 
     const pickSite = (id) => { setSiteId(id); store.set(SITE_KEY, id); };
     const forgetLink = () => {
-        if (!window.confirm('Forget this scan link on this device? You’ll need the link again to scan.')) return;
+        if (!window.confirm(t('scan:header.forgetConfirm'))) return;
         store.set(TOKEN_KEY, null);
         setToken(null);
         setSession(null);
@@ -367,40 +396,40 @@ export default function ScanPage() {
 
     const openPastedLink = (e) => {
         e.preventDefault();
-        const t = tokenFrom(pasted.trim());
-        if (!t) { setPasteError('That doesn\u2019t look like a scan link. It ends in #k= and a long code.'); return; }
+        const linkToken = tokenFrom(pasted.trim());
+        if (!linkToken) { setPasteError(t('scan:gate.pasteError')); return; }
         setPasteError(null);
         setPasted('');
-        store.set(TOKEN_KEY, t);
-        setToken(t);
+        store.set(TOKEN_KEY, linkToken);
+        setToken(linkToken);
     };
 
     // ── Gates ──
     if (sessionError) {
         const why = sessionError === 'signed_out'
-            ? 'Open the scan link your manager sent you. It signs this phone in for scanning.'
+            ? t('scan:gate.signedOut')
             : sessionError === 'not_partner'
-                ? `You\u2019re signed in as ${user?.email ?? 'someone'}, which isn\u2019t a partner login, so it can\u2019t scan. Open your scan link, or sign in with your partner login.`
+                ? (user?.email ? t('scan:gate.notPartner', { email: user.email }) : t('scan:gate.notPartnerNoEmail'))
                 : sessionError === 'link_revoked'
-                    ? 'This scan link no longer works. Ask your manager for a new one.'
+                    ? t('scan:gate.revoked')
                     : sessionError;
         return (
             <Shell>
                 <div className="max-w-md mx-auto text-center py-20 px-6">
                     <div className="text-[22px] font-black tracking-wide mb-8">POWR</div>
-                    <h1 className="text-3xl font-light tracking-tight mb-4">Scan POWR rewards</h1>
+                    <h1 className="text-3xl font-light tracking-tight mb-4">{t('scan:gate.title')}</h1>
                     <p className="text-[15px] text-[#555] leading-relaxed mb-8">{why}</p>
                     <form onSubmit={openPastedLink} className="text-left flex flex-col gap-2 mb-10">
-                        <label htmlFor="paste-link" className="text-[9px] font-black tracking-[0.2em] text-[#888]">HAVE A SCAN LINK? PASTE IT HERE</label>
+                        <label htmlFor="paste-link" className="text-[9px] font-black tracking-[0.2em] text-[#888]">{t('scan:gate.pasteLabel')}</label>
                         <div className="flex gap-2">
                             <input id="paste-link" value={pasted} onChange={e => setPasted(e.target.value)} placeholder="https://powr.life/scan#k=…"
                                 autoComplete="off" spellCheck={false}
                                 className="flex-1 min-w-0 h-12 px-4 rounded-2xl border border-[#E6E6E1] bg-white text-[14px] outline-none focus:border-[#E8D200]" />
-                            <button type="submit" className="h-12 px-5 rounded-full bg-[#1A1A1A] text-[#E8D200] text-[10px] font-black uppercase tracking-[0.15em]">Open</button>
+                            <button type="submit" className="h-12 px-5 rounded-full bg-[#1A1A1A] text-[#E8D200] text-[10px] font-black uppercase tracking-[0.15em]">{t('scan:gate.open')}</button>
                         </div>
                         {pasteError && <p className="text-[12px] text-[#A93A08]">{pasteError}</p>}
                     </form>
-                    <Link to="/partner/login" className="text-[11px] font-black uppercase tracking-[0.2em] text-[#6b5c00] underline">Manager? Sign in to the partner portal</Link>
+                    <Link to="/partner/login" className="text-[11px] font-black uppercase tracking-[0.2em] text-[#6b5c00] underline">{t('scan:gate.managerSignIn')}</Link>
                 </div>
             </Shell>
         );
@@ -409,7 +438,7 @@ export default function ScanPage() {
         return <Shell><div className="flex items-center justify-center py-40"><div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" /></div></Shell>;
     }
 
-    const who = session.staff ? session.staff.name : 'Manager';
+    const who = session.staff ? session.staff.name : t('scan:header.manager');
     const header = (
         <header className="bg-white border-b border-[#E6E6E1] px-5 py-4">
             <div className="max-w-6xl mx-auto flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -418,7 +447,7 @@ export default function ScanPage() {
                 <div className="flex-1" />
                 {session.sites.length > 1 ? (
                     <label className="relative">
-                        <span className="sr-only">Shop</span>
+                        <span className="sr-only">{t('scan:header.shop')}</span>
                         <select value={siteId ?? ''} onChange={e => pickSite(e.target.value)}
                             className="appearance-none h-10 pl-4 pr-9 rounded-full border border-[#E6E6E1] bg-[#F4F4F1] text-[10px] font-black uppercase tracking-[0.15em]">
                             {session.sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -429,14 +458,14 @@ export default function ScanPage() {
                     <span className="h-10 px-4 rounded-full border border-[#E6E6E1] bg-[#F4F4F1] text-[10px] font-black uppercase tracking-[0.15em] flex items-center">{site.name}</span>
                 ) : null}
                 {kiosk ? (
-                    <button type="button" onClick={() => { if (window.confirm('Leave kiosk mode?')) setParams({}); }}
-                        className="h-10 px-4 rounded-full border border-[#E6E6E1] text-[10px] font-black uppercase tracking-[0.15em] text-[#555]">Exit kiosk</button>
+                    <button type="button" onClick={() => { if (window.confirm(t('scan:header.leaveKiosk'))) setParams({}); }}
+                        className="h-10 px-4 rounded-full border border-[#E6E6E1] text-[10px] font-black uppercase tracking-[0.15em] text-[#555]">{t('scan:header.exitKiosk')}</button>
                 ) : (
-                    <button type="button" onClick={() => setParams({ kiosk: '1' })} title="Kiosk mode for a till tablet"
-                        className="h-10 w-10 rounded-full border border-[#E6E6E1] flex items-center justify-center text-[#555]" aria-label="Kiosk mode"><Monitor size={15} /></button>
+                    <button type="button" onClick={() => setParams({ kiosk: '1' })} title={t('scan:header.kioskTitle')}
+                        className="h-10 w-10 rounded-full border border-[#E6E6E1] flex items-center justify-center text-[#555]" aria-label={t('scan:header.kioskLabel')}><Monitor size={15} /></button>
                 )}
                 {session.staff && (
-                    <button type="button" onClick={forgetLink} aria-label="Forget this scan link" title="Forget this scan link"
+                    <button type="button" onClick={forgetLink} aria-label={t('scan:header.forget')} title={t('scan:header.forget')}
                         className="h-10 w-10 rounded-full border border-[#E6E6E1] flex items-center justify-center text-[#999]"><LogOut size={14} /></button>
                 )}
             </div>
@@ -449,14 +478,14 @@ export default function ScanPage() {
     ) : (
         <>
             <Camera facing={kiosk ? 'user' : 'environment'} paused={busy} onCode={onCode}
-                label={kiosk ? 'Hold the voucher up to the camera' : 'Point at the member’s voucher'} />
+                label={kiosk ? t('scan:camera.kioskLabel') : t('scan:camera.phoneLabel')} />
             <form onSubmit={submitTyped} className="flex flex-col gap-2">
-                <label htmlFor="typed-code" className="text-[9px] font-black tracking-[0.2em] text-[#888]">CAMERA NOT WORKING?</label>
+                <label htmlFor="typed-code" className="text-[9px] font-black tracking-[0.2em] text-[#888]">{t('scan:camera.notWorking')}</label>
                 <div className="flex gap-2">
-                    <input id="typed-code" value={typed} onChange={e => setTyped(e.target.value.toUpperCase())} placeholder="Type the 6-character code"
+                    <input id="typed-code" value={typed} onChange={e => setTyped(e.target.value.toUpperCase())} placeholder={t('scan:camera.typePlaceholder')}
                         autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={8}
                         className="flex-1 min-w-0 h-12 px-4 rounded-2xl border border-[#E6E6E1] bg-white text-[15px] tracking-[0.15em] outline-none focus:border-[#E8D200]" />
-                    <button type="submit" disabled={busy} className="h-12 px-5 rounded-full border border-[#E6E6E1] bg-white text-[10px] font-black uppercase tracking-[0.15em]">Check</button>
+                    <button type="submit" disabled={busy} className="h-12 px-5 rounded-full border border-[#E6E6E1] bg-white text-[10px] font-black uppercase tracking-[0.15em]">{t('scan:camera.check')}</button>
                 </div>
             </form>
         </>
@@ -470,7 +499,7 @@ export default function ScanPage() {
                     <section className="flex-[1.15_1_420px] bg-white border border-[#E6E6E1] rounded-[2rem] p-6 md:p-8 flex flex-col items-center gap-5 min-w-0">
                         {!result && (
                             <div className="flex p-1 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] gap-1" role="tablist">
-                                {[['show', 'Members scan this'], ['scan', 'Scan a member']].map(([k, label]) => (
+                                {[['show', t('scan:kiosk.showTab')], ['scan', t('scan:kiosk.scanTab')]].map(([k, label]) => (
                                     <button key={k} type="button" role="tab" aria-selected={kioskMode === k} onClick={() => setKioskMode(k)}
                                         className={`h-10 px-5 rounded-full text-[10px] font-black uppercase tracking-[0.15em] ${kioskMode === k ? 'bg-[#E8D200] text-[#080808]' : 'text-[#666]'}`}>{label}</button>
                                 ))}
@@ -491,13 +520,13 @@ export default function ScanPage() {
             {header}
             <main className="max-w-md mx-auto p-5 flex flex-col gap-4">
                 {!session.sites.length && (
-                    <p className="text-[13px] text-[#8a7600] bg-[#FFFCE5] border border-[#E8D200]/50 rounded-2xl p-4">No shops added yet. Scans still work; add your shops in the partner portal's In Store page so they're logged by shop.</p>
+                    <p className="text-[13px] text-[#8a7600] bg-[#FFFCE5] border border-[#E8D200]/50 rounded-2xl p-4">{t('scan:phone.noShops')}</p>
                 )}
                 {scanner}
                 {today && (
                     <div className="flex items-center justify-between text-[10px] font-black tracking-[0.15em] text-[#6b5c00] pt-2">
-                        <span>TODAY{site ? ` AT ${site.name.toUpperCase()}` : ''}: {today.confirmed} CONFIRMED</span>
-                        {today.spend_pence > 0 && <span>{formatPence(today.spend_pence)} LOGGED</span>}
+                        <span>{site ? t('scan:phone.todayAt', { site: site.name.toUpperCase(), count: today.confirmed }) : t('scan:phone.today', { count: today.confirmed })}</span>
+                        {today.spend_pence > 0 && <span>{t('scan:phone.logged', { amount: formatPence(today.spend_pence) })}</span>}
                     </div>
                 )}
             </main>
@@ -510,6 +539,7 @@ function Shell({ children }) {
 }
 
 function KioskStand({ token, siteId, offset }) {
+    const { t } = useTranslation();
     const [stand, setStand] = useState(null);
     const [error, setError] = useState(null);
     const [now, setNow] = useState(() => Date.now() + offset);
@@ -518,10 +548,10 @@ function KioskStand({ token, siteId, offset }) {
         setStand(null);
         setError(null);
         kioskStand(token, siteId).then((s) => {
-            if (s?.error) setError('Add a shop in the partner portal to show its stand here.');
+            if (s?.error) setError(t('scan:kiosk.noShop'));
             else setStand(s);
-        }).catch((err) => setError(err.message));
-    }, [token, siteId]);
+        }).catch((err) => setError(serverErrorText(err)));
+    }, [token, siteId, t]);
     useEffect(() => {
         const t = setInterval(() => setNow(Date.now() + offset), 1000);
         return () => clearInterval(t);
@@ -539,8 +569,8 @@ function KioskStand({ token, siteId, offset }) {
     return (
         <>
             <div className="text-center leading-[1.05]">
-                <div className="text-[40px] font-extralight tracking-tight">Got a POWR reward?</div>
-                <div className="text-[40px] font-extrabold tracking-tight">Scan here.</div>
+                <div className="text-[40px] font-extralight tracking-tight">{t('scan:kiosk.headline')}</div>
+                <div className="text-[40px] font-extrabold tracking-tight">{t('scan:kiosk.headlineBold')}</div>
             </div>
             <div className="p-4 rounded-3xl border border-[#E6E6E1] bg-white">
                 <QRCodeSVG value={value} size={280} level="M" fgColor="#1A1A1A" bgColor="#FFFFFF" />
@@ -548,34 +578,35 @@ function KioskStand({ token, siteId, offset }) {
             <div className="w-[312px] max-w-full h-1.5 rounded-full bg-[#EFEFEC] overflow-hidden">
                 <div className="h-full bg-[#E8D200] transition-[width] duration-1000 ease-linear" style={{ width: `${(left / STAND_STEP_SECONDS) * 100}%` }} />
             </div>
-            <span className="text-[13px] text-[#666] text-center">New code in {left}s · scan with the POWR app, not your camera</span>
+            <span className="text-[13px] text-[#666] text-center">{t('scan:kiosk.newCode', { seconds: left })}</span>
         </>
     );
 }
 
 function TodayPanel({ today, siteName }) {
+    const { t } = useTranslation();
     const tone = {
-        confirmed: ['CONFIRMED', 'bg-emerald-50 text-emerald-800'],
-        swiped: ['SWIPED', 'bg-[#FDEDE3] text-[#A93A08]'],
-        closed: ['CLOSED UNUSED', 'bg-[#EAF0FB] text-[#2F4F99]'],
-        open: ['OPEN NOW', 'bg-[#FFFCE5] text-[#6b5c00]'],
+        confirmed: [t('scan:today.status.confirmed'), 'bg-emerald-50 text-emerald-800'],
+        swiped: [t('scan:today.status.swiped'), 'bg-[#FDEDE3] text-[#A93A08]'],
+        closed: [t('scan:today.status.closed'), 'bg-[#EAF0FB] text-[#2F4F99]'],
+        open: [t('scan:today.status.open'), 'bg-[#FFFCE5] text-[#6b5c00]'],
     };
     return (
         <section className="flex-[1_1_320px] bg-white border border-[#E6E6E1] rounded-[2rem] p-6 md:p-8 flex flex-col gap-5 min-w-0">
-            <span className="text-[10px] font-black tracking-[0.3em] text-[#888]">TODAY{siteName ? ` AT ${siteName.toUpperCase()}` : ''}</span>
+            <span className="text-[10px] font-black tracking-[0.3em] text-[#888]">{siteName ? t('scan:today.titleAt', { site: siteName.toUpperCase() }) : t('scan:today.title')}</span>
             <div className="flex gap-3">
                 <div className="flex-1 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl p-4">
-                    <div className="text-[9px] font-black tracking-[0.2em] text-[#888]">CONFIRMED</div>
+                    <div className="text-[9px] font-black tracking-[0.2em] text-[#888]">{t('scan:today.confirmed')}</div>
                     <div className="text-4xl font-light tracking-tight mt-1">{today?.confirmed ?? '–'}</div>
                 </div>
                 <div className="flex-1 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl p-4">
-                    <div className="text-[9px] font-black tracking-[0.2em] text-[#888]">SPEND LOGGED</div>
+                    <div className="text-[9px] font-black tracking-[0.2em] text-[#888]">{t('scan:today.spend')}</div>
                     <div className="text-4xl font-light tracking-tight mt-1">{today ? formatPence(today.spend_pence) : '–'}</div>
                 </div>
             </div>
-            <span className="text-[10px] font-black tracking-[0.3em] text-[#888] mt-1">LATEST</span>
+            <span className="text-[10px] font-black tracking-[0.3em] text-[#888] mt-1">{t('scan:today.latest')}</span>
             {!today?.latest?.length ? (
-                <p className="text-[13px] text-[#888]">Nothing yet today.</p>
+                <p className="text-[13px] text-[#888]">{t('scan:today.nothing')}</p>
             ) : (
                 <ul>
                     {today.latest.map((row, i) => {
@@ -593,7 +624,7 @@ function TodayPanel({ today, siteName }) {
                     })}
                 </ul>
             )}
-            <p className="text-[12px] text-[#888] flex items-center gap-2 mt-auto"><CameraIcon size={13} /> Vouchers change every few seconds. Screenshots won't scan.</p>
+            <p className="text-[12px] text-[#888] flex items-center gap-2 mt-auto"><CameraIcon size={13} /> {t('scan:today.screenshots')}</p>
         </section>
     );
 }

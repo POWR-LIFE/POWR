@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, ChevronLeft, ChevronRight, Copy, Download, FilePlus2, Images, Loader2, Pause, Play, Plus, RefreshCw, RotateCcw, Save, Send, Trash2, TriangleAlert, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { prepareStudio, renderPost, compositeLayers, fieldDefaults, COLOURWAYS } from './render';
 import { TEMPLATES, CATEGORIES, LIBRARIES, SECTIONS, templateById } from './templates';
@@ -12,14 +13,21 @@ import { isCutout, ZOOM_FILL } from './templates/pillars/kit';
 import { exportVideo, EXPORT_FPS, MAX_CLIP_SECONDS } from './video';
 import { adminStudioData } from './data';
 import { saveDraft, renameDraft, signature } from './drafts/store';
+import { formatLocale } from '../lib/i18n';
+import { serverErrorText } from '../lib/serverErrors';
+import {
+    CATEGORY, COLOURWAY, FONT_NOTE, FORMAT_GROUP, FORMAT_GROUP_ALL, FORMAT_GROUP_ALL_TITLE, LIBRARY, SECTION, TINT,
+    decimal, formatLabel, formatNote, formatRatio, pick,
+} from './labels';
 
-// The data fills: what each is called, and the data-source call that lists
-// it. A kind shows only when the template takes it AND the source has it
-// (the gym portal's source has events and the gym board, no rewards).
+// The data fills: what each is called (keys, translated where shown), and
+// the data-source call that lists it. A kind shows only when the template
+// takes it AND the source has it (the gym portal's source has events and the
+// gym board, no rewards).
 const FILL = {
-    event:  { list: 'listEvents',  title: 'Fill from an event',       pick: 'Pick an event…', what: 'name, date, venue, the join QR and the standings' },
-    reward: { list: 'listRewards', title: 'Fill from a reward',       pick: 'Pick a reward…', what: 'the offer, points, logo and brand colour' },
-    board:  { list: 'listBoards',  title: 'Fill from your gym board', pick: 'Pick a week…',   what: 'the top five, as your gym’s screen shows them' },
+    event:  { list: 'listEvents',  title: 'studio:fill.event.title',  pick: 'studio:fill.event.pick',  what: 'studio:fill.event.what' },
+    reward: { list: 'listRewards', title: 'studio:fill.reward.title', pick: 'studio:fill.reward.pick', what: 'studio:fill.reward.what' },
+    board:  { list: 'listBoards',  title: 'studio:fill.board.title',  pick: 'studio:fill.board.pick',  what: 'studio:fill.board.what' },
 };
 
 /**
@@ -46,12 +54,12 @@ const FILL = {
  */
 
 const LOOK_SLIDERS = [
-    { key: 'exposure', label: 'Brightness',    min: -1,  max: 1,    step: 0.05 },
-    { key: 'contrast', label: 'Contrast',      min: 0,   max: 1,    step: 0.05 },
-    { key: 'grain',    label: 'Grain',         min: 0,   max: 1,    step: 0.05 },
-    { key: 'motion',   label: 'Motion blur',   min: 0,   max: 1,    step: 0.05 },
-    { key: 'vignette', label: 'Vignette',      min: 0,   max: 1,    step: 0.05 },
-    { key: 'size',     label: 'Headline size', min: 0.6, max: 1.15, step: 0.01 },
+    { key: 'exposure', label: 'studio:look.exposure', min: -1,  max: 1,    step: 0.05 },
+    { key: 'contrast', label: 'studio:look.contrast', min: 0,   max: 1,    step: 0.05 },
+    { key: 'grain',    label: 'studio:look.grain',    min: 0,   max: 1,    step: 0.05 },
+    { key: 'motion',   label: 'studio:look.motion',   min: 0,   max: 1,    step: 0.05 },
+    { key: 'vignette', label: 'studio:look.vignette', min: 0,   max: 1,    step: 0.05 },
+    { key: 'size',     label: 'studio:look.size',     min: 0.6, max: 1.15, step: 0.01 },
 ];
 
 const LABEL = 'block text-xs font-semibold text-[#888] mb-1.5 uppercase tracking-wide';
@@ -65,7 +73,10 @@ const stamp = () => new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
 // "Ticket, Spec and Results"; past a handful (a reward fills every pillar
 // template, 80-odd) the names stop helping, so just the count.
-const templateNames = (names) => (names.length > 4 ? `${names.length} templates` : names.join(', ').replace(/, ([^,]*)$/, ' and $1'));
+function templateNames(names, t) {
+    if (names.length > 4) return t('studio:fill.templates', { count: names.length });
+    return new Intl.ListFormat(formatLocale(), { style: 'long', type: 'conjunction' }).format(names);
+}
 
 // Image fields shared by every template that has them (see takeAsset).
 const SHARED_ASSETS = ['logo', 'product'];
@@ -77,17 +88,20 @@ const SHARED_ASSETS = ['logo', 'product'];
  * it, when the upload had a plain background: whether to cut the product out.
  */
 function ProductZoom({ asset, zoom, onChange, onBackground }) {
+    const { t } = useTranslation();
     const cut = isCutout(asset.image);
-    const stops = cut ? [[-1, 'Smaller'], [0, 'Whole'], [1, 'Bigger']] : [[-1, 'Smaller'], [0, 'Whole'], [ZOOM_FILL, 'Fill'], [1, 'Closer']];
+    const stops = cut
+        ? [[-1, t('studio:productZoom.smaller')], [0, t('studio:productZoom.whole')], [1, t('studio:productZoom.bigger')]]
+        : [[-1, t('studio:productZoom.smaller')], [0, t('studio:productZoom.whole')], [ZOOM_FILL, t('studio:productZoom.fill')], [1, t('studio:productZoom.closer')]];
     const nudge = (d) => onChange(Math.max(-1, Math.min(1, Math.round((zoom + d) * 4) / 4)));
     const ICON = 'flex-none rounded-lg p-1 text-[#888] hover:bg-white hover:text-[#111] disabled:opacity-30 disabled:hover:bg-transparent';
     return (
         <div className="mt-2 rounded-xl bg-[#FAFAF8] px-2 py-2">
             <div className="flex items-center gap-1.5">
-                <button type="button" aria-label="Zoom out" title="Zoom out" disabled={zoom <= -1} onClick={() => nudge(-0.25)} className={ICON}><ZoomOut size={15} /></button>
-                <input type="range" min={-1} max={1} step={0.01} value={zoom} aria-label="Product zoom"
+                <button type="button" aria-label={t('studio:productZoom.zoomOut')} title={t('studio:productZoom.zoomOut')} disabled={zoom <= -1} onClick={() => nudge(-0.25)} className={ICON}><ZoomOut size={15} /></button>
+                <input type="range" min={-1} max={1} step={0.01} value={zoom} aria-label={t('studio:productZoom.slider')}
                     onChange={(e) => { const v = Number(e.target.value); onChange(Math.abs(v) < 0.04 ? 0 : v); }} className="min-w-0 flex-1 accent-[#E8D200]" />
-                <button type="button" aria-label="Zoom in" title="Zoom in" disabled={zoom >= 1} onClick={() => nudge(0.25)} className={ICON}><ZoomIn size={15} /></button>
+                <button type="button" aria-label={t('studio:productZoom.zoomIn')} title={t('studio:productZoom.zoomIn')} disabled={zoom >= 1} onClick={() => nudge(0.25)} className={ICON}><ZoomIn size={15} /></button>
             </div>
             {/* Each stop sits under its place on the track (the thumb travels 8 px in from each end). */}
             <div className="relative mx-7 h-4 text-[11px]">
@@ -95,7 +109,7 @@ function ProductZoom({ asset, zoom, onChange, onBackground }) {
                     const p = (at + 1) / 2;
                     const pos = p === 0 ? { left: 0 } : p === 1 ? { right: 0 } : { left: `calc(8px + ${p} * (100% - 16px))`, transform: 'translateX(-50%)' };
                     return (
-                        <button key={l} type="button" onClick={() => onChange(at)} style={pos}
+                        <button key={at} type="button" onClick={() => onChange(at)} style={pos}
                             className={`absolute top-0 whitespace-nowrap ${Math.abs(zoom - at) < 0.02 ? 'font-medium text-[#111]' : 'text-[#999] hover:text-[#111]'}`}>
                             {l}
                         </button>
@@ -105,13 +119,13 @@ function ProductZoom({ asset, zoom, onChange, onBackground }) {
             {asset.source && (
                 <label className="mt-2 flex items-center gap-2 px-1 text-xs text-[#555]">
                     <input type="checkbox" checked={!asset.keep} onChange={(e) => onBackground(!e.target.checked)} className="accent-[#E8D200]" />
-                    Remove the plain background
+                    {t('studio:productZoom.removeBackground')}
                 </label>
             )}
             <p className="mt-1 px-1 text-[11px] text-[#999]">
-                {asset.source && !asset.keep ? 'Untick if any of the product has gone see-through. ' : ''}
-                {asset.source && asset.keep ? 'Kept: the product is close to its background colour, so cutting it out could lose parts of it. ' : ''}
-                Applies to every template.
+                {asset.source && !asset.keep ? `${t('studio:productZoom.untick')} ` : ''}
+                {asset.source && asset.keep ? `${t('studio:productZoom.kept')} ` : ''}
+                {t('studio:productZoom.everyTemplate')}
             </p>
         </div>
     );
@@ -174,6 +188,7 @@ export default function StudioEditor({
     stickyClass = 'lg:top-20', canvasInset = 0, start = null, venue = null, brandName = null, showRefs = true, apply = null, onPublish = null,
     drafts = null, initial = null,
 }) {
+    const { t } = useTranslation();
     const forHost = (templateId, key, value) => forBrand(templateId, key, forVenue(value, venue), brandName);
     const startingFields = (t) => Object.fromEntries(Object.entries(fieldDefaults(t)).map(([k, v]) => [k, forHost(t.id, k, v)]));
     // Every host (admin, a gym, a reward brand) offers every template: the
@@ -291,10 +306,10 @@ export default function StudioEditor({
     useEffect(() => {
         prepareStudio()
             .then(({ missing }) => {
-                if (missing.length) setError(`Some fonts didn't load (${missing.length}) — check the connection and reload.`);
+                if (missing.length) setError(t('studio:editor.fontsMissing', { n: missing.length }));
                 setReady(true);
             })
-            .catch((e) => setError(e.message));
+            .catch((e) => setError(serverErrorText(e)));
     }, []);
 
     // Local test photos (public/studio-samples, gitignored) — dev machines only.
@@ -371,7 +386,7 @@ export default function StudioEditor({
             if (now - lastUi > 100) {
                 lastUi = now;
                 if (scrubRef.current) scrubRef.current.value = String(v.currentTime);
-                if (clockRef.current) clockRef.current.textContent = `${v.currentTime.toFixed(1)} / ${v.duration.toFixed(1)} s`;
+                if (clockRef.current) clockRef.current.textContent = `${decimal(v.currentTime, 1)} / ${decimal(v.duration, 1)} s`;
             }
             next();
         }
@@ -401,7 +416,7 @@ export default function StudioEditor({
     useEffect(() => {
         if (!isVideo) return;
         if (scrubRef.current) scrubRef.current.value = String(Math.min(time, media.duration));
-        if (clockRef.current) clockRef.current.textContent = `${time.toFixed(1)} / ${media.duration.toFixed(1)} s`;
+        if (clockRef.current) clockRef.current.textContent = `${decimal(time, 1)} / ${decimal(media.duration, 1)} s`;
     }, [time, isVideo, media]);
 
     const seek = (t) => {
@@ -451,7 +466,7 @@ export default function StudioEditor({
             setFocal({ x: 0.5, y: 0.42 });
             setZoom(1);
         } catch (e) {
-            setError(e.message);
+            setError(serverErrorText(e));
         } finally {
             setLoadingPhoto(false);
         }
@@ -468,7 +483,7 @@ export default function StudioEditor({
             setFocal(at ?? { x: 0.5, y: 0.42 });
             setZoom(1);
         } catch (e) {
-            setError(e.message);
+            setError(serverErrorText(e));
         } finally {
             setLoadingPhoto(false);
         }
@@ -561,7 +576,8 @@ export default function StudioEditor({
         fields: sl.fields[sl.templateId], look: sl.looks[sl.templateId] ?? {}, assets: sl.assets[sl.templateId],
     });
     const carousel = slides.length > 1;
-    const pageWord = F.print ? 'page' : 'slide';
+    // Print sizes have pages, social ones slides: every line naming them has both versions.
+    const paged = Boolean(F.print);
 
     // Show a video slide at its own paused frame before drawing it as a still.
     const seekTo = (v, t) => new Promise((res) => {
@@ -615,7 +631,7 @@ export default function StudioEditor({
                 downloadBlob(pdfFromPages(pages, size), `powr-${F.print ? 'print' : 'carousel'}-${format}-${list.length}-pages-${stamp()}.pdf`);
             }
         } catch (e) {
-            if (e.name !== 'AbortError') setError(e.message || 'The carousel export failed.');
+            if (e.name !== 'AbortError') setError(serverErrorText(e, t('studio:editor.carouselExportFailed')));
         } finally {
             if (media?.kind === 'video') await seekTo(media.source, list[current].time);
             setExporting(false);
@@ -743,7 +759,7 @@ export default function StudioEditor({
                 downloadBlob(blob, `powr-${templateId}-${id}-${stamp()}.mp4`);
             }
         } catch (e) {
-            if (e.name !== 'AbortError') setError(e.message || 'The video export failed.');
+            if (e.name !== 'AbortError') setError(serverErrorText(e, t('studio:editor.videoExportFailed')));
         } finally {
             setExporting(false);
             setProgress(null);
@@ -807,7 +823,7 @@ export default function StudioEditor({
             });
             if (key === 'product') setProductZoom(0);
         } catch (e) {
-            setError(e.message);
+            setError(serverErrorText(e));
         }
     };
 
@@ -819,7 +835,7 @@ export default function StudioEditor({
             setDataLists((d) => ({ ...d, [kind]: 'loading' }));
             data[FILL[kind].list]()
                 .then((list) => setDataLists((d) => ({ ...d, [kind]: list })))
-                .catch((e) => setDataLists((d) => ({ ...d, [kind]: { error: e.message } })));
+                .catch((e) => setDataLists((d) => ({ ...d, [kind]: { error: serverErrorText(e) } })));
         }
     }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -849,7 +865,7 @@ export default function StudioEditor({
                 try {
                     facts = { ...item, standings: await data.eventStandings(item.id) };
                 } catch (e) {
-                    notes.push({ warn: true, text: e.message });
+                    notes.push({ warn: true, text: serverErrorText(e) });
                 }
             }
             const noRows = kind === 'event' && !facts.standings?.length;
@@ -859,28 +875,29 @@ export default function StudioEditor({
                 for (const t of filled) next[t.id] = { ...f[t.id], ...t.fill[kind](facts) };
                 return next;
             });
+            // "Results" in these notes is the template's name, which stays as the picker shows it.
+            const now = () => new Date().toLocaleTimeString(formatLocale(), { hour: '2-digit', minute: '2-digit' });
             if (kind === 'event') {
                 const n = facts.standings?.length ?? 0;
-                const held = data.fillOnlyWithStandings ? ', so Results isn’t filled yet' : ' — Results keeps its own rows until the board opens';
-                if (item.board === 'none') notes.push({ text: `No standings yet${held}.` });
-                else if (sealedHeld) notes.push({ text: 'The board is sealed until the winners are revealed. Results fills in after the reveal.' });
-                else if (item.board === 'sealed') notes.push({ warn: true, text: `The board is sealed until the reveal — hold a Results post until then. (Top ${n} filled in.)` });
-                else if (n) notes.push({ text: `${item.board === 'live' ? 'Live' : 'Final'} top ${n} filled into Results, as of ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.` });
-                if (item.hidden) notes.push({ warn: true, text: 'This event is hidden in the app — its QR leads to a page people can’t see yet.' });
-                if (item.status === 'draft') notes.push({ warn: true, text: 'Still a draft — the dates and venue may change.' });
+                if (item.board === 'none') notes.push({ text: t(data.fillOnlyWithStandings ? 'studio:fill.notes.noStandingsHeld' : 'studio:fill.notes.noStandingsKept') });
+                else if (sealedHeld) notes.push({ text: t('studio:fill.notes.sealedHeld') });
+                else if (item.board === 'sealed') notes.push({ warn: true, text: t('studio:fill.notes.sealed', { n }) });
+                else if (n) notes.push({ text: t(item.board === 'live' ? 'studio:fill.notes.liveTop' : 'studio:fill.notes.finalTop', { n, time: now() }) });
+                if (item.hidden) notes.push({ warn: true, text: t('studio:event.hidden') });
+                if (item.status === 'draft') notes.push({ warn: true, text: t('studio:event.draft') });
             } else if (kind === 'board') {
                 const n = item.standings?.length ?? 0;
                 notes.push(n
-                    ? { text: `Top ${n} filled into Results, as of ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.` }
-                    : { text: 'Nobody’s earned at the gym yet this week — Results keeps its own rows.' });
+                    ? { text: t('studio:fill.notes.boardTop', { n, time: now() }) }
+                    : { text: t('studio:fill.notes.boardEmpty') });
             } else {
                 if (item.accent) setStyle((st) => ({ ...st, accent: item.accent }));
                 // Their pillar's library is filled too — open it.
                 if (item.pillar && libraries.some((l) => l.id === item.pillar)) {
                     setLibraryId(item.pillar);
-                    notes.push({ text: `The ${item.category} templates are filled with ${item.brand} too.` });
+                    notes.push({ text: t('studio:fill.notes.pillarFilled', { category: pick(t, CATEGORY, item.category, item.category), brand: item.brand }) });
                 }
-                if (!item.active) notes.push({ warn: true, text: 'This reward is switched off — it isn’t in the app right now.' });
+                if (!item.active) notes.push({ warn: true, text: t('studio:fill.notes.rewardOff') });
                 if (item.logoUrl) {
                     try {
                         const a = await assetWithPreview(await data.fetchImage(item.logoUrl, `${item.brand} logo`));
@@ -892,7 +909,7 @@ export default function StudioEditor({
                             return next;
                         });
                     } catch {
-                        notes.push({ warn: true, text: 'Their logo wouldn’t load — upload it under Words.' });
+                        notes.push({ warn: true, text: t('studio:fill.notes.logoFailed') });
                     }
                 }
             }
@@ -1049,11 +1066,12 @@ export default function StudioEditor({
         const payload = draftPayload(list);
         const sigNow = signature(draftPayload(list, { forSig: true }));
         const name = (title.trim() || autoTitle).slice(0, 112);
-        setSaving({ done: 0, total: 1, label: 'Saving…' });
+        setSaving({ done: 0, total: 1, label: t('common:actions.saving') });
         setError(null);
         try {
             const { draft: d, notes } = await saveDraft({
                 id: asCopy ? null : draft?.id ?? null,
+                // Stored with the draft, so " (copy)" stays English like the rest of what's saved.
                 title: asCopy ? `${name} (copy)` : name,
                 scope: drafts.scope ?? {},
                 payload,
@@ -1066,7 +1084,7 @@ export default function StudioEditor({
             setDraftNotes(notes);
             drafts.onSaved?.(d);
         } catch (e) {
-            setError(e.message);
+            setError(serverErrorText(e));
         } finally {
             setSaving(null);
         }
@@ -1074,19 +1092,19 @@ export default function StudioEditor({
     saveRef.current = saveNow;
 
     const commitTitle = async () => {
-        const t = title.trim();
+        const next = title.trim();
         if (!draft) return;
-        if (!t) { setTitle(draft.title); return; }
-        if (t === draft.title) return;
+        if (!next) { setTitle(draft.title); return; }
+        if (next === draft.title) return;
         try {
-            setDraft(await renameDraft(draft.id, t.slice(0, 120)));
+            setDraft(await renameDraft(draft.id, next.slice(0, 120)));
         } catch (e) {
-            setError(e.message);
+            setError(serverErrorText(e));
         }
     };
 
     const newPost = () => {
-        if (dirty && !window.confirm(draft ? `Start a new post? Changes to “${draft.title}” since it was saved will be lost.` : 'Start a new post? This one isn’t saved.')) return;
+        if (dirty && !window.confirm(draft ? t('studio:draft.confirmNewChanged', { title: draft.title }) : t('studio:draft.confirmNewUnsaved'))) return;
         drafts.onNew?.();
     };
 
@@ -1128,51 +1146,51 @@ export default function StudioEditor({
 
     const savedAt = draft?.updated_at ? new Date(draft.updated_at) : null;
     const savedLabel = savedAt && (savedAt.toDateString() === new Date().toDateString()
-        ? savedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-        : savedAt.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+        ? savedAt.toLocaleTimeString(formatLocale(), { hour: '2-digit', minute: '2-digit' })
+        : savedAt.toLocaleString(formatLocale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
     const draftBar = drafts && (
         <div className="mb-3">
             {/* On a narrow screen the buttons drop under the name. */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-2xl border border-[#E6E6E1] bg-white py-2 pl-2 pr-2.5">
                 <div className="min-w-[13rem] flex-1">
-                    <input value={title} placeholder={autoTitle} aria-label="Draft name" maxLength={120}
+                    <input value={title} placeholder={autoTitle} aria-label={t('studio:draft.name')} maxLength={120}
                         onChange={(e) => setTitle(e.target.value)} onBlur={commitTitle}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setTitle(draft?.title ?? ''); e.currentTarget.blur(); } }}
                         className="block w-full truncate rounded-lg border border-transparent bg-transparent px-2 py-0.5 text-sm font-semibold text-[#111] placeholder:font-normal placeholder:text-[#AAA] hover:border-[#E6E6E1] focus:border-[#E8D200] focus:outline-none" />
                     <div className="flex items-center gap-1.5 whitespace-nowrap px-2 text-[11px] text-[#888]">
                         {saving ? (
-                            <><Loader2 size={11} className="flex-none animate-spin" /><span className="truncate">{saving.label}{saving.total > 2 && !/%/.test(saving.label) ? ` ${Math.min(saving.done + 1, saving.total)} of ${saving.total}` : ''}</span></>
+                            <><Loader2 size={11} className="flex-none animate-spin" /><span className="truncate">{saving.total > 2 && !/%/.test(saving.label) ? t('studio:draft.progress', { label: saving.label, n: Math.min(saving.done + 1, saving.total), total: saving.total }) : saving.label}</span></>
                         ) : draft && dirty ? (
-                            <><span className="h-1.5 w-1.5 flex-none rounded-full bg-[#D97706]" /><span className="truncate">Unsaved changes · last saved {savedLabel}</span></>
+                            <><span className="h-1.5 w-1.5 flex-none rounded-full bg-[#D97706]" /><span className="truncate">{t('studio:draft.unsaved', { when: savedLabel })}</span></>
                         ) : draft ? (
-                            <span className="truncate">Saved in Drafts · {savedLabel}</span>
+                            <span className="truncate">{t('studio:draft.saved', { when: savedLabel })}</span>
                         ) : (
-                            <span className="truncate">Not saved — keep it in Drafts to finish later</span>
+                            <span className="truncate">{t('studio:draft.notSaved')}</span>
                         )}
                     </div>
                 </div>
                 <div className="ml-auto flex flex-none items-center gap-1">
                     {draft && (
                         <button type="button" onClick={() => saveNow({ asCopy: true })} disabled={Boolean(saving) || !ready || exporting}
-                            title="Save as a new draft — this one stays as it was last saved" aria-label="Save as a copy"
+                            title={t('studio:draft.saveCopyTitle')} aria-label={t('studio:draft.saveCopy')}
                             className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-[#888] hover:bg-[#F4F4F1] hover:text-[#111] disabled:opacity-40">
                             <Copy size={15} />
                         </button>
                     )}
                     {(draft || dirty) && (
                         <button type="button" onClick={newPost} disabled={Boolean(saving)}
-                            title="Start a new post" aria-label="Start a new post"
+                            title={t('studio:draft.newPost')} aria-label={t('studio:draft.newPost')}
                             className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-[#888] hover:bg-[#F4F4F1] hover:text-[#111] disabled:opacity-40">
                             <FilePlus2 size={15} />
                         </button>
                     )}
                     <button type="button" onClick={() => saveNow()} disabled={Boolean(saving) || !ready || exporting || (draft && !dirty)}
-                        title={`Save to Drafts (${/Mac|iP/.test(navigator.platform) ? '⌘' : 'Ctrl+'}S)`}
+                        title={t('studio:draft.saveTitle', { shortcut: `${/Mac|iP/.test(navigator.platform) ? '⌘' : 'Ctrl+'}S` })}
                         className={`flex flex-none items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${draft && !dirty && !saving
                             ? 'bg-[#F4F4F1] text-[#888]'
                             : 'bg-[#111] text-white hover:bg-[#333] disabled:opacity-50'}`}>
                         {saving ? <Loader2 size={14} className="animate-spin" /> : draft && !dirty ? <Check size={14} /> : <Save size={14} />}
-                        {saving ? 'Saving' : draft && !dirty ? 'Saved' : draft ? 'Save' : 'Save draft'}
+                        {saving ? t('studio:draft.saving') : draft && !dirty ? t('studio:draft.savedButton') : draft ? t('common:actions.save') : t('studio:draft.saveDraft')}
                     </button>
                 </div>
             </div>
@@ -1180,7 +1198,7 @@ export default function StudioEditor({
                 <div className="mt-2 flex items-start gap-2 rounded-xl bg-[#FEF3C7] px-3 py-2 text-xs text-[#92400E]">
                     <TriangleAlert size={13} className="mt-px flex-none" />
                     <div className="min-w-0 flex-1 space-y-1">{draftNotes.map((n) => <p key={n}>{n}</p>)}</div>
-                    <button type="button" onClick={() => setDraftNotes([])} aria-label="Dismiss" className="flex-none text-[#92400E]/70 hover:text-[#92400E]"><X size={13} /></button>
+                    <button type="button" onClick={() => setDraftNotes([])} aria-label={t('studio:actions.dismiss')} className="flex-none text-[#92400E]/70 hover:text-[#92400E]"><X size={13} /></button>
                 </div>
             )}
         </div>
@@ -1246,9 +1264,9 @@ export default function StudioEditor({
             <div className="space-y-4 min-w-0 order-3 lg:order-none">
                 {intro && <div className="hidden lg:block">{intro}</div>}
                 <div className={CARD}>
-                    <span className={LABEL}>Template</span>
+                    <span className={LABEL}>{t('studio:editor.template')}</span>
                     {libraries.length > 1 && (
-                        <div className="mb-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Template library">
+                        <div className="mb-3 flex flex-wrap gap-1.5" role="tablist" aria-label={t('studio:editor.templateLibrary')}>
                             {libraries.map((l) => (
                                 <button
                                     key={l.id}
@@ -1258,31 +1276,33 @@ export default function StudioEditor({
                                     onClick={() => setLibraryId(l.id)}
                                     className={`rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors ${l.id === library.id ? 'border-[#E8D200] bg-[#FFFBE0] text-[#111]' : 'border-[#E6E6E1] text-[#666] hover:border-[#CFCFC8]'}`}
                                 >
-                                    {l.label}
-                                    <span className="ml-1 font-normal text-[#999]">{available.filter((t) => l.categories.includes(t.category)).length}</span>
+                                    {pick(t, LIBRARY, l.id, l.label)}
+                                    <span className="ml-1 font-normal text-[#999]">{available.filter((tpl) => l.categories.includes(tpl.category)).length}</span>
                                 </button>
                             ))}
                         </div>
                     )}
                     {groups.map((g) => (
                     <div key={g.label} className="mb-3 last:mb-0">
-                    {groups.length > 1 && <div className="mb-1.5 text-[11px] font-medium text-[#999]">{g.label}</div>}
+                    {groups.length > 1 && <div className="mb-1.5 text-[11px] font-medium text-[#999]">{pick(t, { ...CATEGORY, ...SECTION }, g.label, g.label)}</div>}
                     <div className="grid grid-cols-3 gap-2.5">
-                        {g.items.map((t) => (
+                        {g.items.map((tpl) => (
                             <button
-                                key={t.id}
+                                key={tpl.id}
                                 type="button"
-                                onClick={() => setTemplateId(t.id)}
-                                className={`flex flex-col justify-start text-left rounded-xl border p-1.5 transition-colors ${t.id === templateId ? 'border-[#E8D200] bg-[#FFFBE0]' : 'border-[#E6E6E1] hover:border-[#CFCFC8]'}`}
+                                onClick={() => setTemplateId(tpl.id)}
+                                className={`flex flex-col justify-start text-left rounded-xl border p-1.5 transition-colors ${tpl.id === templateId ? 'border-[#E8D200] bg-[#FFFBE0]' : 'border-[#E6E6E1] hover:border-[#CFCFC8]'}`}
                             >
                                 <canvas
-                                    ref={(el) => { thumbRefs.current[t.id] = el; }}
+                                    ref={(el) => { thumbRefs.current[tpl.id] = el; }}
                                     className="block w-full rounded-lg bg-[#111]"
                                     style={{ aspectRatio: '4 / 5' }}
                                 />
                                 <div className="px-1 pt-1.5 pb-0.5">
-                                    <div className="text-[13px] font-semibold text-[#111]">{t.name}</div>
-                                    {showRefs && <div className="text-[11px] leading-tight text-[#888]">After {t.refs}</div>}
+                                    {/* Template names (and blurbs, field labels…) come from the template files: English for now. */}
+                                    <div className="text-[13px] font-semibold text-[#111]">{tpl.name}</div>
+                                    {/* Admin only (it names other brands): stays English. */}
+                                    {showRefs && <div className="text-[11px] leading-tight text-[#888]">After {tpl.refs}</div>}
                                 </div>
                             </button>
                         ))}
@@ -1298,7 +1318,7 @@ export default function StudioEditor({
                     onDragLeave={() => setDragOver(false)}
                     onDrop={onDrop}
                 >
-                    <span className={LABEL}>Photo or video</span>
+                    <span className={LABEL}>{t('studio:editor.photoOrVideo')}</span>
                     <input
                         ref={fileRef}
                         type="file"
@@ -1312,32 +1332,34 @@ export default function StudioEditor({
                         className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-[#CFCFC8] bg-[#FAFAF8] px-4 py-5 text-sm text-[#555] hover:border-[#E8D200] hover:text-[#111] transition-colors"
                     >
                         {loadingPhoto ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                        {media ? `Replace — ${media.name}` : 'Drop a photo or video here, or click to upload'}
+                        {media ? t('studio:editor.replace', { name: media.name }) : t('studio:editor.dropMedia')}
                     </button>
                     {media && (
                         <div className="mt-3">
                             <div className="flex items-center justify-between">
-                                <span className="text-xs text-[#888]">Zoom</span>
-                                <span className="text-xs tabular-nums text-[#888]">{zoom.toFixed(2)}×</span>
+                                <span className="text-xs text-[#888]">{t('studio:editor.zoom')}</span>
+                                <span className="text-xs tabular-nums text-[#888]">{decimal(zoom, 2)}×</span>
                             </div>
                             <input type="range" min={1} max={2} step={0.01} value={zoom}
                                 onChange={(e) => setZoom(Number(e.target.value))} className="w-full accent-[#E8D200]" />
-                            <p className="text-xs text-[#888] mt-1">Click the subject in the preview to centre the crop on them.</p>
+                            <p className="text-xs text-[#888] mt-1">{t('studio:editor.centreHint')}</p>
                         </div>
                     )}
                     {isVideo && (
                         <div className="mt-4 space-y-2.5 border-t border-[#F0F0EE] pt-3">
                             <div className="flex items-center justify-between text-xs text-[#888]">
-                                <span>Clip</span>
+                                <span>{t('studio:editor.clip')}</span>
                                 <span className="tabular-nums">
-                                    {(clip.end - clip.start).toFixed(1)} s{media.duration > MAX_CLIP_SECONDS ? ` · max ${MAX_CLIP_SECONDS} s` : ''}
+                                    {media.duration > MAX_CLIP_SECONDS
+                                        ? t('studio:editor.clipLengthMax', { length: decimal(clip.end - clip.start, 1), max: MAX_CLIP_SECONDS })
+                                        : t('studio:editor.seconds', { n: decimal(clip.end - clip.start, 1) })}
                                 </span>
                             </div>
-                            {[['start', 'Starts at'], ['end', 'Ends at']].map(([k, l]) => (
+                            {[['start', t('studio:editor.startsAt')], ['end', t('studio:editor.endsAt')]].map(([k, l]) => (
                                 <div key={k}>
                                     <div className="flex items-center justify-between">
                                         <span className="text-xs text-[#555]">{l}</span>
-                                        <span className="text-xs tabular-nums text-[#999]">{clip[k].toFixed(1)} s</span>
+                                        <span className="text-xs tabular-nums text-[#999]">{t('studio:editor.seconds', { n: decimal(clip[k], 1) })}</span>
                                     </div>
                                     <input type="range" min={0} max={media.duration} step={0.1} value={clip[k]}
                                         onChange={(e) => {
@@ -1355,14 +1377,15 @@ export default function StudioEditor({
                             ))}
                             <label className="flex items-center gap-2 text-sm text-[#333]">
                                 <input type="checkbox" checked={keepSound} onChange={(e) => setKeepSound(e.target.checked)} className="accent-[#E8D200]" />
-                                Keep the clip’s own sound
+                                {t('studio:editor.keepSound')}
                             </label>
-                            <p className="text-[11px] text-[#999]">Off by default — add trending audio in Instagram or TikTok instead; it reaches further and avoids music claims.</p>
+                            <p className="text-[11px] text-[#999]">{t('studio:editor.keepSoundHint')}</p>
                         </div>
                     )}
                     {samples.length > 0 && (
                         <div className="mt-4">
                             <div className="flex items-center gap-1.5 text-xs text-[#888] mb-2">
+                                {/* Dev machines only (public/studio-samples is gitignored): stays English. */}
                                 <Images size={13} /> Test photos &amp; clips (this machine only)
                             </div>
                             <div className="grid grid-cols-6 gap-1.5">
@@ -1389,23 +1412,23 @@ export default function StudioEditor({
                     const items = Array.isArray(list) ? list : [];
                     const item = items.find((x) => x.id === picks[kind]);
                     const note = fillNote?.kind === kind ? fillNote : null;
-                    const users = available.filter((t) => t.fill?.[kind]).map((t) => t.name);
+                    const users = available.filter((tpl) => tpl.fill?.[kind]).map((tpl) => tpl.name);
                     return (
                         <div key={kind} className={CARD}>
-                            <span className={LABEL}>{FILL[kind].title}</span>
+                            <span className={LABEL}>{t(FILL[kind].title)}</span>
                             <div className="flex items-center gap-2">
                                 <select value={picks[kind] ?? ''} disabled={!Array.isArray(list) || filling}
                                     onChange={(e) => fillFrom(kind, e.target.value)} className={INPUT}>
                                     <option value="">
-                                        {list === 'loading' || list === undefined ? 'Loading…'
-                                            : list?.error ? 'Couldn’t load — see below'
-                                            : items.length ? FILL[kind].pick : 'None yet'}
+                                        {list === 'loading' || list === undefined ? t('common:states.loading')
+                                            : list?.error ? t('studio:fill.loadFailed')
+                                            : items.length ? t(FILL[kind].pick) : t('studio:fill.noneYet')}
                                     </option>
                                     {items.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
                                 </select>
                                 {item && (
                                     <button type="button" onClick={() => fillFrom(kind, item.id)} disabled={filling}
-                                        title="Fill again — picks up edits to the event and the latest standings"
+                                        title={t('studio:fill.again')}
                                         className="flex h-9 w-9 flex-none items-center justify-center rounded-xl border border-[#E6E6E1] text-[#888] hover:border-[#E8D200] hover:text-[#111] disabled:opacity-50">
                                         {filling ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                                     </button>
@@ -1414,7 +1437,7 @@ export default function StudioEditor({
                             {list?.error && <p className="mt-2 text-xs text-[#991B1B]">{list.error}</p>}
                             {note ? (
                                 <div className="mt-2.5 space-y-1.5">
-                                    <p className="text-xs text-[#555]">Filled {templateNames(note.filled)} from {note.name}. Edit anything after.</p>
+                                    <p className="text-xs text-[#555]">{t('studio:fill.filled', { templates: templateNames(note.filled, t), name: note.name })}</p>
                                     {note.notes.map((n) => (
                                         <p key={n.text} className={`flex gap-1.5 text-xs ${n.warn ? 'text-[#92400E]' : 'text-[#888]'}`}>
                                             {n.warn && <TriangleAlert size={13} className="mt-px flex-none" />}{n.text}
@@ -1423,13 +1446,13 @@ export default function StudioEditor({
                                 </div>
                             ) : (
                                 <p className="mt-2 text-[11px] text-[#999]">
-                                    Fills {templateNames(users)} in one go — {FILL[kind].what}.
+                                    {t('studio:fill.fills', { templates: templateNames(users, t), what: t(FILL[kind].what) })}
                                 </p>
                             )}
                             {kind === 'reward' && item?.heroUrl && (
                                 <button type="button" onClick={() => takeUrl(item.heroUrl)} disabled={loadingPhoto}
                                     className="mt-3 flex items-center gap-1.5 rounded-lg border border-[#E6E6E1] px-3 py-1.5 text-xs text-[#333] hover:border-[#E8D200] disabled:opacity-50">
-                                    <Images size={13} /> Use {item.brand}’s own photo
+                                    <Images size={13} /> {t('studio:fill.brandPhoto', { brand: item.brand })}
                                 </button>
                             )}
                         </div>
@@ -1438,14 +1461,14 @@ export default function StudioEditor({
 
                 <div className={CARD}>
                     <div className="flex items-center justify-between mb-3">
-                        <span className={`${LABEL} mb-0`}>Words</span>
+                        <span className={`${LABEL} mb-0`}>{t('studio:editor.words')}</span>
                         <button type="button" onClick={resetTemplate} className="flex items-center gap-1 text-xs text-[#888] hover:text-[#111]">
-                            <RotateCcw size={12} /> Reset
+                            <RotateCcw size={12} /> {t('studio:editor.reset')}
                         </button>
                     </div>
                     {template.presets?.length > 0 && (
                         <div className="mb-4">
-                            <div className="mb-1.5 text-[11px] text-[#999]">Starting points</div>
+                            <div className="mb-1.5 text-[11px] text-[#999]">{t('studio:editor.startingPoints')}</div>
                             <div className="flex flex-wrap gap-1.5">
                                 {template.presets.map((p) => (
                                     <button key={p.name} type="button" onClick={() => applyPreset(p)}
@@ -1480,11 +1503,11 @@ export default function StudioEditor({
                                                     <span className="truncate">{assets[templateId][f.key].name}</span>
                                                 </>
                                             ) : (
-                                                <><Upload size={15} className="flex-none" /> Upload or drop an image</>
+                                                <><Upload size={15} className="flex-none" /> {t('studio:editor.uploadImage')}</>
                                             )}
                                         </button>
                                         {assets[templateId]?.[f.key] && (
-                                            <button type="button" onClick={() => dropAsset(f.key)} className="flex-none text-xs text-[#888] hover:text-[#111]">Remove</button>
+                                            <button type="button" onClick={() => dropAsset(f.key)} className="flex-none text-xs text-[#888] hover:text-[#111]">{t('studio:editor.remove')}</button>
                                         )}
                                     </div>
                                 ) : f.rows > 1 ? (
@@ -1502,8 +1525,8 @@ export default function StudioEditor({
                 </div>
 
                 <div className={CARD}>
-                    <span className={LABEL}>Style</span>
-                    {carousel && <p className="-mt-0.5 mb-3 text-[11px] text-[#999]">Colours and fonts apply to every {pageWord}, so they belong together.</p>}
+                    <span className={LABEL}>{t('studio:editor.style')}</span>
+                    {carousel && <p className="-mt-0.5 mb-3 text-[11px] text-[#999]">{t(paged ? 'studio:editor.styleNotePage' : 'studio:editor.styleNoteSlide')}</p>}
                     <div className="grid grid-cols-4 gap-2 mb-4">
                         {COLOURWAYS.map((c) => (
                             <button key={c.id} type="button" onClick={() => setStyle((s) => ({ ...s, colourway: c.id, accent: '' }))}
@@ -1512,12 +1535,12 @@ export default function StudioEditor({
                                     <span className="h-4 w-4 rounded-full border border-black/10" style={{ background: '#111' }} />
                                     <span className="-ml-1.5 h-4 w-4 rounded-full border border-black/10" style={{ background: c.accent }} />
                                 </span>
-                                {c.label}
+                                {pick(t, COLOURWAY, c.id, c.label)}
                             </button>
                         ))}
                     </div>
                     <div className="mb-4 flex items-center gap-3">
-                        <label className="text-xs text-[#555]">Accent colour</label>
+                        <label className="text-xs text-[#555]">{t('studio:editor.accentColour')}</label>
                         <input type="color"
                             value={style.accent || (COLOURWAYS.find((c) => c.id === style.colourway) ?? COLOURWAYS[0]).accent}
                             onChange={(e) => setStyle((st) => ({ ...st, accent: e.target.value }))}
@@ -1527,22 +1550,22 @@ export default function StudioEditor({
                         </span>
                         {style.accent && (
                             <button type="button" onClick={() => setStyle((st) => ({ ...st, accent: '' }))} className="text-xs text-[#888] hover:text-[#111]">
-                                Use colourway
+                                {t('studio:editor.useColourway')}
                             </button>
                         )}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-xs text-[#555] mb-1">Headline font</label>
+                            <label className="block text-xs text-[#555] mb-1">{t('studio:editor.headlineFont')}</label>
                             <select value={style.headlineFont} onChange={(e) => setStyle((s) => ({ ...s, headlineFont: e.target.value }))} className={INPUT}>
-                                <option value="">Template default</option>
-                                {HEADLINE_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label} — {f.note}</option>)}
+                                <option value="">{t('studio:editor.templateDefault')}</option>
+                                {HEADLINE_FONTS.map((f) => <option key={f.id} value={f.id}>{t('studio:editor.fontOption', { font: f.label, note: pick(t, FONT_NOTE, f.id, f.note) })}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs text-[#555] mb-1">Photo tint</label>
+                            <label className="block text-xs text-[#555] mb-1">{t('studio:editor.photoTint')}</label>
                             <select value={eff.tint} onChange={(e) => setLook('tint', e.target.value)} className={INPUT}>
-                                {Object.entries(TINTS).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
+                                {Object.entries(TINTS).map(([id, tint]) => <option key={id} value={id}>{pick(t, TINT, id, tint.label)}</option>)}
                             </select>
                         </div>
                         {(template.controls ?? []).map((ctl) => (
@@ -1559,19 +1582,19 @@ export default function StudioEditor({
                                 const { tintAmount, ...rest } = l[templateId] ?? {};
                                 return { ...l, [templateId]: e.target.checked ? { ...rest, mono: 1 } : { ...rest, mono: 0, tintAmount: 0 } };
                             })} className="accent-[#E8D200]" />
-                            Black &amp; white
+                            {t('studio:editor.blackWhite')}
                         </label>
                     </div>
                 </div>
 
                 <div className={CARD}>
-                    <span className={LABEL}>Look</span>
+                    <span className={LABEL}>{t('studio:editor.look')}</span>
                     <div className="space-y-2.5">
                         {LOOK_SLIDERS.map((s) => (
                             <div key={s.key}>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-xs text-[#555]">{s.label}</span>
-                                    <span className="text-xs tabular-nums text-[#999]">{Number(eff[s.key] ?? 0).toFixed(2)}</span>
+                                    <span className="text-xs text-[#555]">{t(s.label)}</span>
+                                    <span className="text-xs tabular-nums text-[#999]">{decimal(Number(eff[s.key] ?? 0), 2)}</span>
                                 </div>
                                 <input type="range" min={s.min} max={s.max} step={s.step} value={eff[s.key] ?? 0}
                                     onChange={(e) => setLook(s.key, Number(e.target.value))} className="w-full accent-[#E8D200]" />
@@ -1595,67 +1618,70 @@ export default function StudioEditor({
                                 <button key={g} type="button"
                                     onClick={() => { if (g !== group) setFormat(FORMAT_LIST.find((f) => f.group === g).id); }}
                                     className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${group === g ? 'bg-white/15 text-white font-semibold' : 'text-white/60 hover:text-white'}`}>
-                                    {g}
+                                    {pick(t, FORMAT_GROUP, g, g)}
                                 </button>
                             ))}
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-2">
                             <label className="flex items-center gap-1.5 text-xs text-white/60 mr-1">
                                 <input type="checkbox" checked={showSafe} onChange={(e) => setShowSafe(e.target.checked)} className="accent-[#E8D200]" />
-                                Safe zones
+                                {t('studio:preview.safeZones')}
                             </label>
                             {carousel ? (
                                 <>
                                     <button type="button" disabled={!ready || exporting} onClick={() => download([format])}
-                                        title={`Just the ${pageWord} you're on`}
+                                        title={t(paged ? 'studio:preview.thisPageTitle' : 'studio:preview.thisSlideTitle')}
                                         className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/85 hover:bg-white/5 disabled:opacity-50">
-                                        This {pageWord}
+                                        {t(paged ? 'studio:preview.thisPage' : 'studio:preview.thisSlide')}
                                     </button>
                                     {!F.print && (
                                         <button type="button" disabled={!ready || exporting} onClick={() => exportCarousel('pdf')}
-                                            title="One PDF, a page per slide — LinkedIn posts carousels as PDF documents"
+                                            title={t('studio:preview.pdfTitle')}
                                             className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/85 hover:bg-white/5 disabled:opacity-50">
                                             PDF
                                         </button>
                                     )}
                                     <button type="button" disabled={!ready || exporting} onClick={() => exportCarousel(F.print ? 'pdf' : 'files')}
-                                        title={F.print ? `One print-ready PDF, ${slides.length} pages, ${F.print.wMm}×${F.print.hMm} mm + ${BLEED_MM} mm bleed`
-                                            : `${slides.length} numbered files at ${F.w}×${F.h} — PNG, or MP4 for video slides`}
+                                        title={F.print ? t('studio:preview.carouselPrintTitle', { n: slides.length, w: F.print.wMm, h: F.print.hMm, bleed: BLEED_MM })
+                                            : t('studio:preview.carouselFilesTitle', { n: slides.length, w: F.w, h: F.h })}
                                         className="flex items-center gap-1.5 rounded-lg bg-[#E8D200] px-3 py-1.5 text-sm font-semibold text-[#111] hover:brightness-95 disabled:opacity-50">
                                         {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                                        {F.print ? `Download PDF · ${slides.length} pages` : `Download ${slides.length} slides`}
+                                        {F.print ? t('studio:preview.downloadPdfPages', { n: slides.length }) : t('studio:preview.downloadSlides', { n: slides.length })}
                                     </button>
                                 </>
                             ) : (
                             <>
                             {F.print && (
                                 <button type="button" disabled={!ready || exporting} onClick={() => exportFormats([format])}
-                                    title={`${F.w}×${F.h} PNG at 300 dpi, no bleed`}
+                                    title={t('studio:preview.pngTitle', { w: F.w, h: F.h })}
                                     className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/85 hover:bg-white/5 disabled:opacity-50">
                                     PNG
                                 </button>
                             )}
                             {isVideo && !F.print && (
                                 <button type="button" disabled={!ready || exporting} onClick={() => exportFormats([format])}
-                                    title="This frame as a PNG — use it as the Reel cover"
+                                    title={t('studio:preview.coverTitle')}
                                     className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/85 hover:bg-white/5 disabled:opacity-50">
-                                    Cover
+                                    {t('studio:preview.cover')}
                                 </button>
                             )}
                             <button type="button" disabled={!ready || exporting} onClick={() => download([format])}
-                                title={F.print ? `Print-ready PDF, ${F.print.wMm}×${F.print.hMm} mm + ${BLEED_MM} mm bleed, 300 dpi`
-                                    : isVideo ? `${F.w}×${F.h} MP4, ${EXPORT_FPS} fps` : `${F.w}×${F.h} PNG — exactly what's in the preview`}
+                                title={F.print ? t('studio:preview.printTitle', { w: F.print.wMm, h: F.print.hMm, bleed: BLEED_MM })
+                                    : isVideo ? t('studio:preview.mp4Title', { w: F.w, h: F.h, fps: EXPORT_FPS }) : t('studio:preview.pngExactTitle', { w: F.w, h: F.h })}
                                 className="flex items-center gap-1.5 rounded-lg bg-[#E8D200] px-3 py-1.5 text-sm font-semibold text-[#111] hover:brightness-95 disabled:opacity-50">
                                 {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                                {F.print ? 'Download PDF' : isVideo ? 'Download MP4' : 'Download'}
+                                {F.print ? t('studio:preview.downloadPdf') : isVideo ? t('studio:preview.downloadMp4') : t('studio:preview.download')}
                             </button>
                             <button type="button" disabled={!ready || exporting} onClick={() => download(groupFormats.map((f) => f.id))}
-                                title={`Every ${group.toLowerCase()} size: ${groupFormats.map((f) => f.label).join(', ')}`}
+                                title={FORMAT_GROUP_ALL_TITLE[group]
+                                    ? t(FORMAT_GROUP_ALL_TITLE[group], { sizes: groupFormats.map((f) => formatLabel(t, f)).join(', ') })
+                                    : `Every ${group.toLowerCase()} size: ${groupFormats.map((f) => f.label).join(', ')}`}
                                 className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/85 hover:bg-white/5 disabled:opacity-50">
-                                All {group.toLowerCase()}
+                                {pick(t, FORMAT_GROUP_ALL, group, `All ${group.toLowerCase()}`)}
                             </button>
                             </>
                             )}
+                            {/* Admin only (onPublish is never passed in a portal): stays English. */}
                             {onPublish && (
                                 <button type="button" disabled={!ready || exporting} onClick={startPublish}
                                     title="Post this to POWR's Instagram, now or scheduled"
@@ -1669,17 +1695,17 @@ export default function StudioEditor({
                         {groupFormats.map((f) => (
                             <button key={f.id} type="button" onClick={() => setFormat(f.id)}
                                 className={`rounded-lg px-2.5 py-1 text-[13px] transition-colors ${format === f.id ? 'bg-[#E8D200] text-[#111] font-semibold' : 'bg-white/5 text-white/70 hover:text-white'}`}>
-                                {f.label} <span className="opacity-60">{f.ratio}</span>
+                                {formatLabel(t, f)} <span className="opacity-60">{formatRatio(t, f)}</span>
                             </button>
                         ))}
                         <span className="ml-1 text-[11px] text-white/40">
-                            {F.note ?? (F.print ? `${F.print.wMm}×${F.print.hMm} mm · 300 dpi` : `${F.w}×${F.h}`)}
+                            {formatNote(t, F) ?? (F.print ? `${F.print.wMm}×${F.print.hMm} mm · 300 dpi` : `${F.w}×${F.h}`)}
                         </span>
                         {!carousel && (
                             <button type="button" onClick={addSlide} disabled={!ready || exporting}
-                                title={F.print ? 'Add a page — a flyer back, say. It starts as a copy of this one.' : 'Make a carousel — the new slide starts as a copy of this one'}
+                                title={F.print ? t('studio:preview.addPageTitle') : t('studio:preview.makeCarouselTitle')}
                                 className="ml-auto flex items-center gap-1 rounded-lg bg-white/5 px-2.5 py-1 text-[13px] text-white/70 hover:text-white disabled:opacity-50">
-                                <Plus size={13} /> Add {pageWord}
+                                <Plus size={13} /> {t(paged ? 'studio:preview.addPage' : 'studio:preview.addSlide')}
                             </button>
                         )}
                     </div>
@@ -1721,24 +1747,24 @@ export default function StudioEditor({
                         )}
                         {!ready && (
                             <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-white/60">
-                                <Loader2 size={16} className="animate-spin" /> Loading type…
+                                <Loader2 size={16} className="animate-spin" /> {t('studio:preview.loadingType')}
                             </div>
                         )}
                         {ready && !media && template.photo !== 'optional' && (
                             <button type="button" onClick={() => fileRef.current?.click()}
                                 className="absolute inset-x-0 bottom-[42%] mx-auto flex w-max items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm text-white/80 backdrop-blur hover:bg-white/15">
-                                <Upload size={15} /> Add a photo or video
+                                <Upload size={15} /> {t('studio:preview.addMedia')}
                             </button>
                         )}
                         {progress !== null && (
                             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/70 backdrop-blur-[2px]">
-                                <div className="text-sm font-semibold text-white">Rendering MP4… {Math.round(progress * 100)}%</div>
+                                <div className="text-sm font-semibold text-white">{t('studio:preview.rendering', { percent: Math.round(progress * 100) })}</div>
                                 <div className="h-1.5 w-1/2 overflow-hidden rounded-full bg-white/15">
                                     <div className="h-full bg-[#E8D200] transition-[width] duration-200" style={{ width: `${progress * 100}%` }} />
                                 </div>
                                 <button type="button" onClick={() => abortRef.current?.abort()}
                                     className="mt-1 flex items-center gap-1 rounded-lg border border-white/20 px-3 py-1 text-xs text-white/80 hover:bg-white/10">
-                                    <X size={12} /> Cancel
+                                    <X size={12} /> {t('common:actions.cancel')}
                                 </button>
                             </div>
                         )}
@@ -1747,7 +1773,7 @@ export default function StudioEditor({
                         <div className="mt-3 flex items-center gap-3">
                             <button type="button" onClick={() => setPlaying((p) => !p)} disabled={exporting}
                                 className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-[#E8D200] text-[#111] hover:brightness-95 disabled:opacity-50"
-                                aria-label={playing ? 'Pause' : 'Play'}>
+                                aria-label={playing ? t('studio:preview.pause') : t('studio:preview.play')}>
                                 {playing ? <Pause size={14} className="fill-current" /> : <Play size={14} className="fill-current translate-x-[1px]" />}
                             </button>
                             {/* Uncontrolled: playback writes these directly (no React
@@ -1763,7 +1789,7 @@ export default function StudioEditor({
                             <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-1 pl-1">
                                 {slides.map((sl, i) => (
                                     <button key={sl.id} type="button" onClick={() => goTo(i)}
-                                        aria-label={`${pageWord} ${i + 1}`}
+                                        aria-label={t(paged ? 'studio:preview.pageN' : 'studio:preview.slideN', { n: i + 1 })}
                                         className={`relative flex-none rounded-md transition ${i === current ? 'ring-2 ring-[#E8D200]' : 'opacity-60 hover:opacity-100'}`}
                                         style={{ width: thumbW, height: thumbH }}>
                                         <canvas ref={(el) => { slideThumbs.current[sl.id] = el; }} className="block h-full w-full rounded-md bg-[#262624]" />
@@ -1771,7 +1797,7 @@ export default function StudioEditor({
                                     </button>
                                 ))}
                                 <button type="button" onClick={addSlide} disabled={exporting}
-                                    title={`Add a ${pageWord} — it starts as a copy of this one`}
+                                    title={t(paged ? 'studio:preview.addPageThumb' : 'studio:preview.addSlideThumb')}
                                     className="flex flex-none items-center justify-center rounded-md border border-dashed border-white/20 text-white/50 hover:border-white/40 hover:text-white disabled:opacity-50"
                                     style={{ width: thumbW, height: thumbH }}>
                                     <Plus size={16} />
@@ -1779,9 +1805,9 @@ export default function StudioEditor({
                             </div>
                             <div className="flex flex-none items-center gap-1">
                                 {[
-                                    { label: `Move this ${pageWord} earlier`, icon: <ChevronLeft size={15} />, on: () => moveSlide(-1), off: current === 0 },
-                                    { label: `Move this ${pageWord} later`, icon: <ChevronRight size={15} />, on: () => moveSlide(1), off: current === slides.length - 1 },
-                                    { label: `Delete this ${pageWord}`, icon: <Trash2 size={14} />, on: removeSlide, off: false },
+                                    { label: t(paged ? 'studio:preview.pageEarlier' : 'studio:preview.slideEarlier'), icon: <ChevronLeft size={15} />, on: () => moveSlide(-1), off: current === 0 },
+                                    { label: t(paged ? 'studio:preview.pageLater' : 'studio:preview.slideLater'), icon: <ChevronRight size={15} />, on: () => moveSlide(1), off: current === slides.length - 1 },
+                                    { label: t(paged ? 'studio:preview.deletePage' : 'studio:preview.deleteSlide'), icon: <Trash2 size={14} />, on: removeSlide, off: false },
                                 ].map((b) => (
                                     <button key={b.label} type="button" onClick={b.on} disabled={b.off || exporting} title={b.label} aria-label={b.label}
                                         className="flex h-8 w-8 items-center justify-center rounded-lg text-white/60 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent">

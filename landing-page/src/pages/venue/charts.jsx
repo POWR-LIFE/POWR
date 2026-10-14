@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { fmtNum } from '../../components/portal/ui';
 
 // Charts shared by the portal's Members page. They follow the dataviz rules:
@@ -27,6 +28,7 @@ export function niceMax(v) {
  * anywhere behind members who trained here); `ghostLabel` names it in the legend.
  */
 export function Columns({ data, label, unit, height = 160, tickEvery = 1, ghostLabel }) {
+    const { t } = useTranslation();
     const [hover, setHover] = useState(null);
     const hasGhost = data.some(d => d.ghost != null);
     const max = niceMax(Math.max(0, ...data.map(d => Math.max(d.value, d.ghost ?? 0))));
@@ -50,7 +52,7 @@ export function Columns({ data, label, unit, height = 160, tickEvery = 1, ghostL
                             onClick={() => setHover((h) => (h === i ? null : i))}
                             onFocus={() => setHover(i)}
                             onBlur={() => setHover(null)}
-                            aria-label={`${d.tip}: ${fmtNum(d.value)}${unit ? ` ${unit}` : ''}${d.ghost != null ? `, ${ghostLabel ?? 'total'} ${fmtNum(d.ghost)}` : ''}`}
+                            aria-label={`${d.tip}: ${fmtNum(d.value)}${unit ? ` ${unit}` : ''}${d.ghost != null ? `, ${ghostLabel ?? t('venueHome:charts.total')} ${fmtNum(d.ghost)}` : ''}`}
                         >
                             {d.ghost != null && (
                                 <span className="absolute bottom-0 rounded-t-[4px] w-full" style={{ maxWidth: 24, height: h(d.ghost), background: GHOST, opacity: d.partial ? 0.6 : 1 }} />
@@ -68,8 +70,8 @@ export function Columns({ data, label, unit, height = 160, tickEvery = 1, ghostL
                         className="absolute -top-2 z-10 -translate-x-1/2 -translate-y-full pointer-events-none bg-[#1A1A1A] text-white rounded-xl px-3 py-2 shadow-lg whitespace-nowrap"
                         style={{ left: `${((hover + 0.5) / data.length) * 100}%` }}
                     >
-                        <div className="text-[14px] font-bold tabular-nums">{fmtNum(active.value)}{unit ? ` ${unit}` : ''}{active.ghost != null ? <span className="text-white/50 font-bold text-[11px]"> of {fmtNum(active.ghost)}</span> : null}</div>
-                        <div className="text-[10px] text-white/60 font-bold">{active.tip}{active.partial ? ' (so far)' : ''}</div>
+                        <div className="text-[14px] font-bold tabular-nums">{fmtNum(active.value)}{unit ? ` ${unit}` : ''}{active.ghost != null ? <span className="text-white/50 font-bold text-[11px]">{' '}{t('venueHome:charts.of', { n: fmtNum(active.ghost) })}</span> : null}</div>
+                        <div className="text-[10px] text-white/60 font-bold">{active.tip}{active.partial ? ` ${t('venueHome:charts.soFar')}` : ''}</div>
                     </div>
                 )}
             </div>

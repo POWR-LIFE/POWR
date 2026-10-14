@@ -30,6 +30,7 @@ export function markDone(partnerId, moveKey, until) {
 }
 
 /** Local midnight after `now`, in the gym's time zone. */
+// 'en-GB' here is for parsing "HH:MM", never shown: keep it, not formatLocale().
 export function endOfDay(tz, now = new Date()) {
     const hm = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
     const [h, m] = hm.split(':').map(Number);

@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { formatLocale } from '../lib/i18n';
 
 // ─── Featured calendar ────────────────────────────────────────────────────────
 // Month-grid view of the featured-reward schedule. Each slot renders as a big
@@ -14,7 +16,11 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 // dashed and hollow so it can never be mistaken for a confirmed week.
 
 const MS_DAY = 86_400_000;
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+// Monday first. Translation keys, shared with the placements day chips.
+const WEEKDAYS = [
+    'brandPlacements:days.mon', 'brandPlacements:days.tue', 'brandPlacements:days.wed', 'brandPlacements:days.thu',
+    'brandPlacements:days.fri', 'brandPlacements:days.sat', 'brandPlacements:days.sun',
+];
 
 // Layout constants (px)
 const DAY_NUM_H = 26;   // space reserved at the top of a cell for the day number
@@ -111,11 +117,12 @@ export default function FeaturedCalendar({
     readOnly = false,
     highlightBrand = null,
 }) {
+    const { t } = useTranslation();
     const weeks = useMemo(() => buildWeeks(month), [month]);
     const todayKey = stripTime(new Date()).getTime();
     const highlight = highlightBrand?.trim().toLowerCase() || null;
 
-    const monthLabel = month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    const monthLabel = month.toLocaleDateString(formatLocale(), { month: 'long', year: 'numeric' });
 
     return (
         <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
@@ -127,7 +134,7 @@ export default function FeaturedCalendar({
                         type="button"
                         onClick={onPrevMonth}
                         className="w-10 h-10 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#666] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all"
-                        aria-label="Previous month"
+                        aria-label={t('brandPlacements:calendar.prevMonth')}
                     >
                         <ChevronLeft size={16} />
                     </button>
@@ -135,7 +142,7 @@ export default function FeaturedCalendar({
                         type="button"
                         onClick={onNextMonth}
                         className="w-10 h-10 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#666] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all"
-                        aria-label="Next month"
+                        aria-label={t('brandPlacements:calendar.nextMonth')}
                     >
                         <ChevronRight size={16} />
                     </button>
@@ -146,7 +153,7 @@ export default function FeaturedCalendar({
             <div className="grid grid-cols-7 border-b border-[#E6E6E1]">
                 {WEEKDAYS.map((w) => (
                     <div key={w} className="px-3 py-3 text-[9px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black text-center">
-                        {w}
+                        {t(w)}
                     </div>
                 ))}
             </div>
@@ -235,7 +242,7 @@ export default function FeaturedCalendar({
                                         key={key}
                                         type="button"
                                         onClick={onClick}
-                                        title={seg.ghost ? `${seg.label} — requested` : seg.label}
+                                        title={seg.ghost ? t('brandPlacements:calendar.requestedTitle', { label: seg.label }) : seg.label}
                                         className={[
                                             'absolute flex items-center justify-center rounded-xl overflow-hidden z-10',
                                             seg.ghost ? 'bg-white border-2 border-dashed' : 'bg-[#1A1A1A]',

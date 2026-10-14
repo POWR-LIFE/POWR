@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { invokeFn } from '../../lib/invokeFn';
+import { serverErrorText } from '../../lib/serverErrors';
 
 const INPUT = "w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]";
 
@@ -16,6 +18,7 @@ function Shell({ children }) {
 }
 
 export default function PartnerSetup() {
+    const { t } = useTranslation();
     const { token } = useParams();
     const navigate = useNavigate();
 
@@ -51,22 +54,22 @@ export default function PartnerSetup() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (password !== confirm) { setError('Passwords do not match'); return; }
-        if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
+        if (password !== confirm) { setError(t('brandShell:auth.passwordsDontMatch')); return; }
+        if (password.length < 8) { setError(t('brandShell:auth.passwordTooShort')); return; }
         setError(null);
         setSubmitting(true);
-        setStatus('Creating your account...');
+        setStatus(t('brandShell:setup.creatingAccount'));
         try {
             const data = await invokeFn('manage-partner-user', {
                 action: 'redeem_invite', token, email, password, contact_name: contactName,
             });
             if (!data?.ok) {
                 if (data?.reason) { setTokenState(data.reason === 'used' ? 'used' : 'invalid'); return; }
-                throw new Error(data?.error ?? 'Something went wrong');
+                throw new Error(data?.error ?? t('brandShell:setup.somethingWrong'));
             }
 
             // Account created — sign straight in and land on the portal
-            setStatus('Signing you in...');
+            setStatus(t('brandShell:setup.signingIn'));
             const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
             if (signInErr) {
                 // Account exists; just send them to the login page
@@ -75,7 +78,7 @@ export default function PartnerSetup() {
             }
             navigate('/partner');
         } catch (err) {
-            setError(err.message || 'Something went wrong. Please try again.');
+            setError(serverErrorText(err) || t('common:errors.generic'));
             setStatus(null);
         } finally {
             setSubmitting(false);
@@ -97,8 +100,8 @@ export default function PartnerSetup() {
             <Shell>
                 <div className="text-center py-6">
                     <div className="w-14 h-14 rounded-full border border-red-400/40 flex items-center justify-center text-red-500 text-xl mx-auto mb-6">✕</div>
-                    <h1 className="text-2xl font-light tracking-tight mb-3">Invalid link</h1>
-                    <p className="text-sm text-[#888] font-light leading-relaxed">This setup link isn't valid or has been revoked. Contact POWR for a new one.</p>
+                    <h1 className="text-2xl font-light tracking-tight mb-3">{t('brandShell:setup.invalidTitle')}</h1>
+                    <p className="text-sm text-[#888] font-light leading-relaxed">{t('brandShell:setup.invalidBody')}</p>
                 </div>
             </Shell>
         );
@@ -109,10 +112,10 @@ export default function PartnerSetup() {
             <Shell>
                 <div className="text-center py-6">
                     <div className="w-14 h-14 rounded-full border border-[#E8D200]/50 flex items-center justify-center text-[#8a7600] text-xl mx-auto mb-6">✓</div>
-                    <h1 className="text-2xl font-light tracking-tight mb-3">Already set up</h1>
-                    <p className="text-sm text-[#888] font-light leading-relaxed mb-6">This link has already been used to create an account.</p>
+                    <h1 className="text-2xl font-light tracking-tight mb-3">{t('brandShell:setup.usedTitle')}</h1>
+                    <p className="text-sm text-[#888] font-light leading-relaxed mb-6">{t('brandShell:setup.usedBody')}</p>
                     <Link to="/partner/login" className="inline-block h-12 px-8 leading-[48px] bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-lg hover:translate-y-[-2px] transition-all">
-                        Sign In
+                        {t('brandShell:auth.signIn')}
                     </Link>
                 </div>
             </Shell>
@@ -136,31 +139,31 @@ export default function PartnerSetup() {
                     />
                 ) : null}
                 <div>
-                    <div className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-1">Partner Portal Setup</div>
-                    <div className="text-base font-bold text-[#1A1A1A]">{partner?.name ?? 'Your brand'}</div>
+                    <div className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-1">{t('brandShell:setup.eyebrow')}</div>
+                    <div className="text-base font-bold text-[#1A1A1A]">{partner?.name ?? t('brandShell:setup.yourBrand')}</div>
                 </div>
             </div>
 
-            <h2 className="text-xl font-light text-center mb-2 tracking-tight">Create your account</h2>
+            <h2 className="text-xl font-light text-center mb-2 tracking-tight">{t('brandShell:setup.title')}</h2>
             <p className="text-center text-xs text-[#999] font-light mb-8 leading-relaxed">
-                Manage your rewards, track redemptions and update your listing — all in one place.
+                {t('brandShell:setup.sub')}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                    <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Your name</label>
-                    <input type="text" className={INPUT} value={contactName} onChange={e => setContactName(e.target.value)} placeholder="First & last name" />
+                    <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">{t('brandShell:setup.yourName')}</label>
+                    <input type="text" className={INPUT} value={contactName} onChange={e => setContactName(e.target.value)} placeholder={t('brandShell:setup.namePlaceholder')} />
                 </div>
                 <div>
-                    <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Email address</label>
-                    <input type="email" className={INPUT} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@brand.com" required />
+                    <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">{t('brandShell:auth.emailAddress')}</label>
+                    <input type="email" className={INPUT} value={email} onChange={e => setEmail(e.target.value)} placeholder={t('brandShell:setup.emailPlaceholder')} required />
                 </div>
                 <div>
-                    <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Password</label>
+                    <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">{t('brandShell:auth.password')}</label>
                     <input type="password" className={INPUT} value={password} onChange={e => setPassword(e.target.value)} minLength={8} required />
                 </div>
                 <div>
-                    <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Confirm password</label>
+                    <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">{t('brandShell:auth.confirmPassword')}</label>
                     <input type="password" className={INPUT} value={confirm} onChange={e => setConfirm(e.target.value)} required />
                 </div>
 
@@ -168,10 +171,10 @@ export default function PartnerSetup() {
                 {status && <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-lg animate-pulse">{status}</div>}
 
                 <button type="submit" disabled={submitting} className="w-full h-12 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-lg hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-50">
-                    {submitting ? 'Setting up...' : 'Create Account'}
+                    {submitting ? t('brandShell:setup.settingUp') : t('brandShell:setup.createAccount')}
                 </button>
                 <p className="text-center text-[10px] text-[#BBBBBB] leading-relaxed">
-                    Already have an account? <Link to="/partner/login" className="text-[#8a7600] hover:underline">Sign in</Link>
+                    <Trans i18nKey="brandShell:setup.haveAccount" components={{ action: <Link to="/partner/login" className="text-[#8a7600] hover:underline" /> }} />
                 </p>
             </form>
         </Shell>

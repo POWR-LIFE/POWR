@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Crosshair, AlertTriangle, Search, Layers } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../lib/toast';
 import { loadGoogleMaps } from '../lib/googleMaps';
@@ -16,6 +17,7 @@ const MAPS_KEY = import.meta.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 // Shared by the admin RewardPlacements page and the partner PartnerPlacements
 // page — the only auth difference lives in the get_taken_grid_cells RPC.
 export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseArea, excludeId }) {
+    const { t } = useTranslation();
     const toast = useToast();
     const elRef = useRef(null);
     const searchRef = useRef(null);
@@ -89,7 +91,7 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
             }
         return list;
     };
-    const isTaken = (cell) => takenRef.current.some((t) => tilesOverlap(cell, t));
+    const isTaken = (cell) => takenRef.current.some((taken) => tilesOverlap(cell, taken));
 
     const addRect = (bounds, style) => {
         rectsRef.current.push(new window.google.maps.Rectangle({ map: mapRef.current, clickable: false, bounds, ...style }));
@@ -119,11 +121,11 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
                 addRect(tileBounds(z, x, y), { fillOpacity: 0, strokeColor: '#94a3b8', strokeOpacity: 0.22, strokeWeight: 1 });
         // awaiting-review cells (their own zoom) — under the selection so a
         // square you paint over one still reads as yours
-        for (const t of pendingRef.current)
-            addRect(tileBounds(t.z, t.x, t.y), { fillColor: AMBER, fillOpacity: 0.3, strokeColor: AMBER, strokeOpacity: 0.9, strokeWeight: 1 });
+        for (const cell of pendingRef.current)
+            addRect(tileBounds(cell.z, cell.x, cell.y), { fillColor: AMBER, fillOpacity: 0.3, strokeColor: AMBER, strokeOpacity: 0.9, strokeWeight: 1 });
         // taken cells (their own zoom)
-        for (const t of takenRef.current)
-            addRect(tileBounds(t.z, t.x, t.y), { fillColor: RED, fillOpacity: 0.38, strokeColor: RED, strokeOpacity: 0.9, strokeWeight: 1 });
+        for (const cell of takenRef.current)
+            addRect(tileBounds(cell.z, cell.x, cell.y), { fillColor: RED, fillOpacity: 0.38, strokeColor: RED, strokeOpacity: 0.9, strokeWeight: 1 });
         // selected cells (their own zoom)
         for (const key of selected) { const { z: cz, x, y } = parseKey(key); addRect(tileBounds(cz, x, y), { fillColor: GOLD, fillOpacity: 0.5, strokeColor: GOLD, strokeOpacity: 0.95, strokeWeight: 1 }); }
     };
@@ -152,9 +154,9 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
             clearLasso();
             if (ring.length < 3) return;
             const list = cellsInPolygon(ring, curZoom());
-            if (list.length > CELL_CAP) { toast.error('Area too large — zoom in a little and try again'); return; }
+            if (list.length > CELL_CAP) { toast.error(t('brandPlacements:gridMap.tooLarge')); return; }
             const paintable = list.filter((c) => !isTaken(c));
-            if (!paintable.length) { toast.error('Draw a larger loop, or zoom in for finer squares'); return; }
+            if (!paintable.length) { toast.error(t('brandPlacements:gridMap.loopTooSmall')); return; }
             onPaint(paintable);
             return;
         }
@@ -170,7 +172,7 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
             return;
         }
         const list = cellsInBox(start, last, curZoom());
-        if (list.length > CELL_CAP) { toast.error('Area too large — zoom in a little and try again'); return; }
+        if (list.length > CELL_CAP) { toast.error(t('brandPlacements:gridMap.tooLarge')); return; }
         onPaint(list.filter((c) => !isTaken(c)));
     };
     finalizeRef.current = finalizeDrag;
@@ -229,7 +231,7 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
                         east: Math.max(s.lng(), e.latLng.lng()), west: Math.min(s.lng(), e.latLng.lng()),
                     });
                 });
-                map.addListener('idle', () => setIdleTick((t) => t + 1));
+                map.addListener('idle', () => setIdleTick((n) => n + 1));
 
                 // Address / venue search — fly the map to a typed place. Fails
                 // soft if the Places library/API isn't available on the key.
@@ -274,8 +276,8 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
         return (
             <div className="h-[420px] lg:h-[560px] w-full rounded-2xl border border-amber-300 bg-amber-50 flex flex-col items-center justify-center text-center px-6 gap-2">
                 <AlertTriangle size={22} className="text-amber-500" />
-                <div className="text-[13px] font-semibold text-amber-800">Map couldn’t load</div>
-                <div className="text-[12px] text-amber-700 max-w-sm">{error}. Enable the “Maps JavaScript API” and add this domain to the key’s referrer allow-list in Google Cloud Console.</div>
+                <div className="text-[13px] font-semibold text-amber-800">{t('brandPlacements:gridMap.loadFailed')}</div>
+                <div className="text-[12px] text-amber-700 max-w-sm">{t('brandPlacements:gridMap.loadFailedHelp', { error })}</div>
             </div>
         );
     }
@@ -291,37 +293,37 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
         <div className="relative">
             <div ref={elRef} className="h-[420px] lg:h-[560px] w-full rounded-2xl overflow-hidden border border-[#E6E6E1] bg-[#EDEDEA]" />
             <div className="absolute top-3 left-3 flex rounded-lg overflow-hidden shadow border border-[#E6E6E1]">
-                {modeBtn('pan', 'Pan')}
-                {modeBtn('paint', 'Paint')}
-                {modeBtn('lasso', 'Draw')}
-                {modeBtn('erase', 'Erase')}
+                {modeBtn('pan', t('brandPlacements:gridMap.modes.pan'))}
+                {modeBtn('paint', t('brandPlacements:gridMap.modes.paint'))}
+                {modeBtn('lasso', t('brandPlacements:gridMap.modes.draw'))}
+                {modeBtn('erase', t('brandPlacements:gridMap.modes.erase'))}
             </div>
             {mode === 'lasso' && (
                 <div className="absolute top-12 left-3 bg-black/70 text-white text-[11px] font-medium px-2.5 py-1 rounded-md pointer-events-none">
-                    Drag to draw an area — squares inside fill in
+                    {t('brandPlacements:gridMap.lassoHint')}
                 </div>
             )}
             <div className="absolute top-3 left-1/2 -translate-x-1/2 w-[min(300px,55%)]">
                 <div className="flex items-center gap-2 bg-white/95 backdrop-blur px-3 h-9 rounded-lg shadow border border-[#E6E6E1]">
                     <Search size={14} className="text-[#999] shrink-0" />
-                    <input ref={searchRef} type="text" placeholder="Search a place or address…"
+                    <input ref={searchRef} type="text" placeholder={t('brandPlacements:gridMap.searchPlaceholder')}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                         className="w-full bg-transparent text-[13px] text-[#1A1A1A] placeholder:text-[#AAA] outline-none" />
                 </div>
             </div>
             <div className="absolute top-3 right-3 flex items-center gap-2">
-                <button type="button" onClick={() => setMapType((t) => (t === 'roadmap' ? 'hybrid' : 'roadmap'))}
+                <button type="button" onClick={() => setMapType((prev) => (prev === 'roadmap' ? 'hybrid' : 'roadmap'))}
                     className="flex items-center gap-1.5 bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg shadow text-[12px] font-semibold text-[#444] hover:bg-white">
-                    <Layers size={13} /> {mapType === 'roadmap' ? 'Satellite' : 'Map'}
+                    <Layers size={13} /> {mapType === 'roadmap' ? t('brandPlacements:map.satellite') : t('brandPlacements:map.map')}
                 </button>
                 <button type="button" onClick={locateMe}
                     className="flex items-center gap-1.5 bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg shadow text-[12px] font-semibold text-[#8a7600] hover:bg-white">
-                    <Crosshair size={13} /> My location
+                    <Crosshair size={13} /> {t('brandPlacements:gridMap.myLocation')}
                 </button>
             </div>
             {tooWide && (
                 <div className="absolute inset-x-0 bottom-3 flex justify-center pointer-events-none">
-                    <div className="bg-black/70 text-white text-[12px] font-medium px-3 py-1.5 rounded-lg">Zoom in to select squares</div>
+                    <div className="bg-black/70 text-white text-[12px] font-medium px-3 py-1.5 rounded-lg">{t('brandPlacements:gridMap.zoomIn')}</div>
                 </div>
             )}
         </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatLocale } from '../../lib/i18n';
 
 // ─── Portal design language (affiliate + gym portals) ──────────────────────
 // Same light palette as the partner + admin portals (Jamie, 2026-08-26: a
@@ -118,11 +119,11 @@ export function Empty({ title, children, action }) {
 
 export function fmtDate(ts) {
     if (!ts) return '—';
-    return new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(ts).toLocaleDateString(formatLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export function fmtNum(n) {
-    return (n ?? 0).toLocaleString();
+    return (n ?? 0).toLocaleString(formatLocale());
 }
 
 /** Gold progress bar with a soft glow on the fill. */

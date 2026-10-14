@@ -10,7 +10,7 @@
     "close": "Cerrar",
     "back": "Volver",
     "retry": "Reintentar",
-    "signOut": "Cerrar sesión"
+    "signOut": "Salir"
   },
   "states": {
     "loading": "Cargando…",

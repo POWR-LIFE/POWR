@@ -1,0 +1,243 @@
+{
+  "sectors": {
+    "food": "Eat",
+    "gym": "Move",
+    "health": "Mind",
+    "gear": "Sleep"
+  },
+  "valueTypes": {
+    "custom": "Custom text",
+    "percentage": "% off",
+    "fixedAmount": "£ off"
+  },
+  "status": {
+    "draft": "Draft",
+    "pending": "Review",
+    "approved": "Approved",
+    "rejected": "Needs changes",
+    "live": "Live",
+    "inactive": "Inactive"
+  },
+  "steps": {
+    "offer": {
+      "label": "The Offer",
+      "hint": "What members get"
+    },
+    "details": {
+      "label": "Details",
+      "hint": "Copy & terms"
+    },
+    "delivery": {
+      "label": "Delivery",
+      "hint": "How members redeem"
+    },
+    "imagery": {
+      "label": "Imagery",
+      "hint": "Logo & hero"
+    },
+    "review": {
+      "label": "Review",
+      "hint": "Check & submit"
+    }
+  },
+  "errors": {
+    "title": "Reward title is required",
+    "description": "Short description is required",
+    "discountValue": "Enter a value greater than 0",
+    "valueLabel": "Add a value label (e.g. £20 value)",
+    "offer": "Offer detail is required",
+    "partnerBlurb": "A line about your brand is required",
+    "terms": "Terms & conditions are required",
+    "codePrefix": "Code name needs at least 2 characters",
+    "url": "An affiliate destination URL is required",
+    "fulfilmentNotes": "Explain how your team will fulfil this reward",
+    "logo": "Upload a logo",
+    "hero": "Upload a hero image"
+  },
+  "toasts": {
+    "signInAgain": "Please sign in again",
+    "requestSent": "Thanks — our team will be in touch shortly",
+    "videoTooLarge": "Video must be under 50 MB — use a short, compressed loop",
+    "imageTooLarge": "Image must be under 5 MB",
+    "uploadFailed": "Upload failed",
+    "brandLoading": "Your brand profile is still loading",
+    "changesSaved": "Changes saved",
+    "draftSaved": "Draft saved",
+    "needsAttention": "A few fields still need attention",
+    "changesSubmitted": "Changes submitted — they'll go live once approved by POWR",
+    "submissionUpdated": "Submission updated",
+    "submitted": "Reward submitted for review"
+  },
+  "form": {
+    "backToList": "Back to My Rewards",
+    "titleEditListing": "Edit Listing",
+    "titleEditSubmission": "Edit Submission",
+    "titleNew": "Submit a Reward",
+    "subtitleEditListing": "Your live listing stays unchanged until POWR approves these changes",
+    "subtitleNew": "Build a draft in stages, then send it to POWR for review",
+    "savedAt": "Saved {{time}}",
+    "back": "← Back",
+    "saveDraft": "Save draft",
+    "submitting": "Submitting...",
+    "submitChanges": "Submit Changes",
+    "resubmit": "Resubmit for Review",
+    "updateSubmission": "Update Submission",
+    "submitForReview": "Submit for Review",
+    "saving": "Saving...",
+    "saveAndContinue": "Save & continue →"
+  },
+  "offer": {
+    "titleLabel": "Reward Title *",
+    "titlePlaceholder": "e.g. 30% off your first order",
+    "descriptionLabel": "Short Description *",
+    "descriptionPlaceholder": "e.g. Your Brand · Any product",
+    "valueTypeLabel": "Value type *",
+    "percentOffLabel": "Percent off *",
+    "amountOffLabel": "Amount off £ *",
+    "valueLabelLabel": "Value label *",
+    "valueLabelPlaceholder": "e.g. £20 value",
+    "sectorLabel": "Sector *",
+    "rewardTypeLabel": "Reward type *",
+    "digital": "Digital code",
+    "physical": "Physical item"
+  },
+  "details": {
+    "offerLabel": "Offer detail * (expanded view)",
+    "offerPlaceholder": "e.g. Get 30% off any single order. New customers only.",
+    "blurbLabel": "About your brand *",
+    "blurbPlaceholder": "A short line about who you are.",
+    "termsLabel": "Terms & conditions *",
+    "termsPlaceholder": "e.g. One use per member. Cannot be combined with other offers.",
+    "websiteLabel": "Website URL <muted>— optional</muted>",
+    "websitePlaceholder": "https://yourbrand.com"
+  },
+  "delivery": {
+    "methodLabel": "Member redemption *",
+    "codePool": {
+      "label": "Unique code",
+      "detail": "POWR issues one of your codes per claim"
+    },
+    "affiliate": {
+      "label": "Shared link",
+      "detail": "Members redeem through your destination"
+    },
+    "inStore": {
+      "label": "In store",
+      "detail": "Members show a live voucher at your till. No codes needed"
+    },
+    "codeNameLabel": "Code name * (your brand segment)",
+    "codeNamePlaceholder": "e.g. TRIBE",
+    "membersReceive": "Members receive",
+    "codeSample": "BRAND",
+    "atYourTill": "At your till",
+    "inStoreBody": "Members open a live voucher in the POWR app and your staff scan it. Once it's approved, set up your shops and staff scan links on the In Store page.",
+    "affiliateUrlLabel": "Affiliate destination URL *",
+    "affiliateUrlPlaceholder": "https://yourbrand.com/powr",
+    "fulfilmentLabel": "Fulfilment plan *",
+    "fulfilmentPlaceholder": "Explain what happens after a member claims, including delivery timing and any details your team needs.",
+    "stockLabel": "Inventory limit <muted>optional</muted>",
+    "perMemberLabel": "Claims per member <muted>optional</muted>",
+    "unlimited": "Unlimited"
+  },
+  "imagery": {
+    "upload": "Upload",
+    "logoLabel": "Logo / brand mark * (square, min 512×512px)",
+    "heroLabel": "Hero / banner * (landscape 16:9, min 1200×675px)",
+    "videoLabel": "Hero video (optional) — plays instead of the image; MP4, ≤50 MB. Image stays as the still fallback.",
+    "removeVideo": "Remove video",
+    "videoUrlPlaceholder": "Or paste a direct link — https://…/clip.mp4",
+    "videoUrlHint": "Direct .mp4 / .m3u8 / .webm or Cloudflare Stream · YouTube & Vimeo links won't play",
+    "videoUrl": {
+      "notUrl": "Enter a full URL starting with https://",
+      "streamingSite": "That's a YouTube/Vimeo-style page link, which can't be a card background. Upload the file, or paste a direct .mp4/.m3u8 link (e.g. Cloudflare Stream).",
+      "notAFile": "Saved — but that link doesn't end in .mp4/.m3u8/.webm. If it's a web page rather than a direct video file, the card will just show the image."
+    }
+  },
+  "review": {
+    "intro": "Check everything below, then submit. Tap any step above to edit.",
+    "rows": {
+      "title": "Title",
+      "description": "Description",
+      "value": "Value",
+      "sector": "Sector",
+      "rewardType": "Reward type",
+      "offer": "Offer detail",
+      "about": "About brand",
+      "terms": "Terms",
+      "website": "Website",
+      "delivery": "Delivery",
+      "fulfilment": "Fulfilment",
+      "imagery": "Imagery"
+    },
+    "deliveryCode": "Unique code · {{code}}",
+    "deliveryAffiliate": "Shared affiliate link",
+    "deliveryInStore": "In store · live voucher at your till",
+    "deliveryManual": "Manual fulfilment",
+    "imageryLogo": "Logo",
+    "imageryHero": "Hero",
+    "imageryVideo": "Video",
+    "noteEditListing": "POWR will review your changes and apply them to the live listing.",
+    "noteNew": "Our team will set the points price and review before it goes live."
+  },
+  "list": {
+    "eyebrow": "Reward Management",
+    "title": "My Rewards",
+    "tabs": {
+      "live": "Live Rewards",
+      "submissions": "Submissions"
+    },
+    "counter": "{{used}}/{{limit}} rewards",
+    "counterAtLimit": "{{used}}/{{limit}} rewards · limit reached",
+    "requestMore": "Request More",
+    "submitReward": "Submit Reward",
+    "checking": "Checking your rewards…",
+    "withPowr": "With POWR for review",
+    "nothingLive": "Nothing live yet",
+    "inReview_one": "{{count}} submission in review — approved rewards appear here.",
+    "inReview_other": "{{count}} submissions in review — approved rewards appear here.",
+    "workInProgress": "Your work in progress sits on the Submissions tab — finish it and send it for review.",
+    "viewSubmissions": "View submissions",
+    "noLiveRewards": "No live rewards yet",
+    "noLiveRewardsBody": "Submit a reward and our team will review and publish it.",
+    "submitFirst": "Submit Your First Reward",
+    "columns": {
+      "reward": "Reward",
+      "category": "Category",
+      "cost": "Cost",
+      "status": "Status",
+      "submitted": "Submitted"
+    },
+    "categoryValue": {
+      "food": "food",
+      "gym": "gym",
+      "health": "health",
+      "gear": "gear"
+    },
+    "pts": "{{points}} pts",
+    "makePost": "Make a post",
+    "updateInReview": "Update in review",
+    "editListing": "Edit Listing",
+    "noSubmissions": "No submissions yet",
+    "untitled": "Untitled",
+    "listingUpdate": "Listing update",
+    "feedback": "Feedback: {{feedback}}",
+    "revise": "Revise",
+    "continue": "Continue",
+    "edit": "Edit"
+  },
+  "preview": {
+    "nothingYet": "Nothing to preview yet",
+    "nothingYetBody": "Rewards appear here exactly as members see them in the app.",
+    "submit": "Submit a reward",
+    "select": "Select a reward<nl/>to preview it in the app"
+  },
+  "limit": {
+    "title": "Reward limit reached",
+    "body_one": "Brands can run up to <strong>{{count}} reward</strong> live or in review at a time. Want to offer more? Tell us a little about what you want to add and our team will get in touch.",
+    "body_other": "Brands can run up to <strong>{{count}} rewards</strong> live or in review at a time. Want to offer more? Tell us a little about what you want to add and our team will get in touch.",
+    "noteLabel": "Anything we should know? (optional)",
+    "notePlaceholder": "e.g. We'd like to add a seasonal offer and a members-only reward.",
+    "sending": "Sending…",
+    "getInTouch": "Get in touch"
+  }
+}

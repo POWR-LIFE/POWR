@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { Copy, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
 import { Page, Card, Micro, PageTitle, Spinner, Empty, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
 import { storageImage } from '../../lib/storage';
+import { formatLocale } from '../../lib/i18n';
+import { serverErrorText } from '../../lib/serverErrors';
 import { claimPartnerCode, fetchPartnerDiscounts } from './venueApi';
 
 // Partner discounts (Clash+): the discounts POWR members get from our brand
@@ -15,9 +18,16 @@ import { claimPartnerCode, fetchPartnerDiscounts } from './venueApi';
 // never a prize itself; the event builder can also send everyone who took
 // part a code at the reveal, picked from this same list.
 
-const KIND = { pool: 'One-use code', shared: 'Shared code', link: 'Link' };
+// How it works: [title, body] keys, translated where they render.
+const STEPS = [
+    ['venueGrowth:partners.how.steps.pick.title', 'venueGrowth:partners.how.steps.pick.body'],
+    ['venueGrowth:partners.how.steps.code.title', 'venueGrowth:partners.how.steps.code.body'],
+    ['venueGrowth:partners.how.steps.shop.title', 'venueGrowth:partners.how.steps.shop.body'],
+];
 
-const fmtShort = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' }).format(new Date(iso));
+const KIND = { pool: 'venueGrowth:partners.kind.pool', shared: 'venueGrowth:partners.kind.shared', link: 'venueGrowth:partners.kind.link' };
+
+const fmtShort = (iso) => new Intl.DateTimeFormat(formatLocale(), { timeZone: 'Europe/London', day: 'numeric', month: 'short' }).format(new Date(iso));
 const hostOf = (url) => { try { return new URL(url).host.replace(/^www\./, ''); } catch { return url; } };
 // The gym's code for this week, if it has one.
 const current = (claim) => (claim && (!claim.next_at || new Date(claim.next_at) > new Date()) ? claim : null);
@@ -34,28 +44,29 @@ export function BrandTile({ d, className = 'w-12 h-12 rounded-2xl' }) {
 }
 
 function CodeBox({ d, claim, onCopy }) {
+    const { t } = useTranslation();
     return (
         <div>
             <div className="rounded-2xl bg-[#1A1A1A] p-4">
-                <div className="text-[9px] uppercase tracking-[0.4em] font-black text-white/40">{claim.code ? 'Your code' : 'Your link'}</div>
+                <div className="text-[9px] uppercase tracking-[0.4em] font-black text-white/40">{claim.code ? t('venueGrowth:partners.code.yourCode') : t('venueGrowth:partners.code.yourLink')}</div>
                 <div className="mt-2 flex items-center gap-3">
                     {claim.code
                         ? <code className="flex-1 min-w-0 font-mono text-[17px] tracking-wider text-[#E8D200] break-all">{claim.code}</code>
                         : <span className="flex-1 min-w-0 text-[14px] text-white/85 truncate">{hostOf(claim.url)}</span>}
-                    <button type="button" onClick={() => onCopy(claim.code ?? claim.url)} aria-label={claim.code ? 'Copy the code' : 'Copy the link'}
+                    <button type="button" onClick={() => onCopy(claim.code ?? claim.url)} aria-label={claim.code ? t('venueGrowth:partners.code.copyCode') : t('venueGrowth:partners.code.copyLink')}
                         className="w-10 h-10 shrink-0 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center text-white transition-colors">
                         <Copy size={15} />
                     </button>
                 </div>
                 <div className="text-[11px] text-white/45 mt-3 leading-relaxed">
-                    {d.kind === 'pool' && `Held for your gym. A new one from ${fmtShort(claim.next_at)}.`}
-                    {d.kind === 'shared' && 'The same code POWR members use.'}
-                    {d.kind === 'link' && 'Shop through it whenever you buy from them.'}
+                    {d.kind === 'pool' && t('venueGrowth:partners.code.pool', { date: fmtShort(claim.next_at) })}
+                    {d.kind === 'shared' && t('venueGrowth:partners.code.shared')}
+                    {d.kind === 'link' && t('venueGrowth:partners.code.link')}
                 </div>
             </div>
             {claim.url && (
                 <a href={claim.url} target="_blank" rel="noopener noreferrer" className={`${BTN_GHOST} w-full mt-3`}>
-                    <span className="inline-flex items-center gap-2 text-[#666]">Shop at {d.brand_name} <ExternalLink size={12} /></span>
+                    <span className="inline-flex items-center gap-2 text-[#666]">{t('venueGrowth:partners.code.shopAt', { brand: d.brand_name })} <ExternalLink size={12} /></span>
                 </a>
             )}
         </div>
@@ -63,6 +74,7 @@ function CodeBox({ d, claim, onCopy }) {
 }
 
 function DiscountCard({ d, busy, onClaim, onCopy }) {
+    const { t } = useTranslation();
     const claim = current(d.claim);
     const low = d.kind === 'pool' && d.available > 0 && d.available <= 20;
     // A title or terms that only repeat the brand or the value say nothing new.
@@ -79,7 +91,7 @@ function DiscountCard({ d, busy, onClaim, onCopy }) {
                         ? <img src={storageImage(d.image_url, 240)} alt={d.brand_name} className="h-11 w-24 object-contain object-left" />
                         : <span className="text-white text-lg font-bold">{d.brand_name}</span>}
                     <span className="h-6 px-2.5 inline-flex items-center rounded-full bg-black/55 border border-white/15 text-[8px] font-black uppercase tracking-[0.2em] text-white/80 shrink-0">
-                        {KIND[d.kind]}
+                        {KIND[d.kind] ? t(KIND[d.kind]) : null}
                     </span>
                 </div>
             </div>
@@ -89,7 +101,7 @@ function DiscountCard({ d, busy, onClaim, onCopy }) {
                 {blurb && <p className="text-[12px] text-[#777] leading-relaxed mt-2.5 line-clamp-3 whitespace-pre-line">{blurb}</p>}
                 {terms && (
                     <details className="mt-3">
-                        <summary className="text-[10px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] cursor-pointer select-none hover:text-[#8a7600]">Terms</summary>
+                        <summary className="text-[10px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] cursor-pointer select-none hover:text-[#8a7600]">{t('venueGrowth:partners.card.terms')}</summary>
                         <p className="text-[11px] text-[#888] leading-relaxed mt-2 whitespace-pre-line">{terms}</p>
                     </details>
                 )}
@@ -97,20 +109,21 @@ function DiscountCard({ d, busy, onClaim, onCopy }) {
                     {claim ? (
                         <CodeBox d={d} claim={claim} onCopy={onCopy} />
                     ) : !d.in_stock ? (
-                        <p className="text-[12px] text-[#888] leading-relaxed">No codes left right now. Check back soon.</p>
+                        <p className="text-[12px] text-[#888] leading-relaxed">{t('venueGrowth:partners.card.soldOut')}</p>
                     ) : (
                         <>
                             <button type="button" onClick={() => onClaim(d)} disabled={busy} className={`${BTN_GOLD} w-full`}>
-                                {busy ? 'Getting it…' : d.kind === 'link' ? 'Get the link' : 'Get a code'}
+                                {busy ? t('venueGrowth:partners.card.getting') : d.kind === 'link' ? t('venueGrowth:partners.card.getLink') : t('venueGrowth:partners.card.getCode')}
                             </button>
                             <p className="text-[11px] text-[#AAAAAA] mt-2 text-center">
-                                {d.kind === 'pool' && (low ? `Only ${d.available} left · one use, held for your gym` : 'One use, held for your gym')}
-                                {d.kind === 'shared' && 'The code POWR members use'}
-                                {d.kind === 'link' && 'The brand’s POWR link'}
+                                {d.kind === 'pool' && (low ? t('venueGrowth:partners.card.poolLow', { count: d.available }) : t('venueGrowth:partners.card.pool'))}
+                                {d.kind === 'shared' && t('venueGrowth:partners.card.shared')}
+                                {d.kind === 'link' && t('venueGrowth:partners.card.link')}
                             </p>
                             {d.claim?.code && d.claim.expires_at && new Date(d.claim.expires_at) > new Date() && (
                                 <p className="text-[11px] text-[#AAAAAA] mt-1 text-center">
-                                    Your last code, <code className="font-mono text-[#666]">{d.claim.code}</code>, works until {fmtShort(d.claim.expires_at)} if it’s unused.
+                                    <Trans i18nKey="venueGrowth:partners.card.lastCode" values={{ code: d.claim.code, date: fmtShort(d.claim.expires_at) }}
+                                        components={{ code: <code className="font-mono text-[#666]" /> }} />
                                 </p>
                             )}
                         </>
@@ -122,6 +135,7 @@ function DiscountCard({ d, busy, onClaim, onCopy }) {
 }
 
 export default function VenuePartners() {
+    const { t } = useTranslation();
     const { gym, isActingGym } = useAuth();
     const toast = useToast();
     const [rows, setRows] = useState(null);
@@ -130,30 +144,31 @@ export default function VenuePartners() {
 
     const load = useCallback(() => {
         setError(null);
-        fetchPartnerDiscounts(gym.partner_id).then(setRows).catch(err => setError(err.message));
+        fetchPartnerDiscounts(gym.partner_id).then(setRows).catch(err => setError(err));
     }, [gym.partner_id]);
     useEffect(() => { load(); }, [load]);
 
     const claim = async (d) => {
+        // Admin preview only, so it stays English (POWR staff).
         if (isActingGym) { toast.error('Preview only: codes are for the gym’s own team.'); return; }
         setBusy(d.reward_id);
         try {
             const row = await claimPartnerCode(gym.partner_id, d.reward_id);
             setRows(list => list.map(x => (x.reward_id === row.reward_id ? row : x)));
         } catch (err) {
-            toast.error(err.message);
+            toast.error(serverErrorText(err));
         } finally {
             setBusy(null);
         }
     };
     const copy = (text) => {
         navigator.clipboard?.writeText(text)
-            .then(() => toast.success('Copied'))
-            .catch(() => toast.error('Couldn’t copy. Select it and copy it instead.'));
+            .then(() => toast.success(t('venueGrowth:partners.toast.copied')))
+            .catch(() => toast.error(t('venueGrowth:partners.toast.copyFailed')));
     };
 
     if (error) {
-        return <Empty title="Couldn’t load the discounts" action={<button type="button" onClick={load} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
+        return <Empty title={t('venueGrowth:partners.loadError')} action={<button type="button" onClick={load} className={BTN_GHOST}>{t('common:actions.retry')}</button>}>{serverErrorText(error)}</Empty>;
     }
     if (!rows) return <Spinner />;
 
@@ -162,36 +177,32 @@ export default function VenuePartners() {
 
     return (
         <Page>
-            <PageTitle eyebrow="For your gym" title="Partner discounts" sub={gym.name} />
+            <PageTitle eyebrow={t('venueGrowth:partners.eyebrow')} title={t('venueGrowth:partners.title')} sub={gym.name} />
 
             <Card className="p-6 sm:p-10" glow>
-                <Micro gold>How it works</Micro>
+                <Micro gold>{t('venueGrowth:partners.how.eyebrow')}</Micro>
                 <h2 className="text-2xl sm:text-3xl font-light tracking-tight text-[#1A1A1A] mt-3 max-w-2xl leading-snug">
-                    Buy prizes and kit at the price POWR members pay.
+                    {t('venueGrowth:partners.how.title')}
                 </h2>
                 <ol className="grid grid-cols-1 sm:grid-cols-3 gap-5 sm:gap-8 mt-8">
-                    {[
-                        ['Pick a brand', 'Every POWR partner, with the discount our members get.'],
-                        ['Get your code', 'One tap when you need it. The same code comes back for a week.'],
-                        ['Shop', 'Use it at the brand’s checkout, like any discount code.'],
-                    ].map(([title, body], i) => (
+                    {STEPS.map(([title, body], i) => (
                         <li key={title} className="flex gap-4">
                             <span className="w-8 h-8 shrink-0 rounded-full bg-[#E8D200] text-[#080808] text-[12px] font-black flex items-center justify-center">{i + 1}</span>
                             <span className="min-w-0">
-                                <span className="block text-[14px] font-bold text-[#1A1A1A]">{title}</span>
-                                <span className="block text-[12px] text-[#777] leading-relaxed mt-1">{body}</span>
+                                <span className="block text-[14px] font-bold text-[#1A1A1A]">{t(title)}</span>
+                                <span className="block text-[12px] text-[#777] leading-relaxed mt-1">{t(body)}</span>
                             </span>
                         </li>
                     ))}
                 </ol>
                 <p className="text-[12px] text-[#888] leading-relaxed mt-8 pt-6 border-t border-[#F0F0EC] max-w-2xl">
-                    Running an event? You can also send everyone who takes part a partner code at the reveal, from the event’s Prizes step.{' '}
-                    <Link to="/venue/events" className="font-bold underline underline-offset-2"><span className="text-[#8a7600]">Your events</span></Link>
+                    {t('venueGrowth:partners.how.events')}{' '}
+                    <Link to="/venue/events" className="font-bold underline underline-offset-2"><span className="text-[#8a7600]">{t('venueGrowth:partners.how.eventsLink')}</span></Link>
                 </p>
             </Card>
 
             {list.length === 0 ? (
-                <Card className="p-8"><Empty title="No partner discounts right now">New brands join POWR all the time. Check back soon.</Empty></Card>
+                <Card className="p-8"><Empty title={t('venueGrowth:partners.empty.title')}>{t('venueGrowth:partners.empty.body')}</Empty></Card>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 items-stretch">
                     {list.map(d => (
@@ -201,8 +212,7 @@ export default function VenuePartners() {
             )}
 
             <p className="text-[12px] text-[#AAAAAA] leading-relaxed max-w-2xl">
-                These codes are for your gym’s own buying. Members get their own in the POWR app, so please don’t pass them on.
-                Need another code sooner? Email support@powr.life.
+                {t('venueGrowth:partners.footer')}
             </p>
         </Page>
     );

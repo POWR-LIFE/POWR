@@ -1,0 +1,202 @@
+{
+  "header": {
+    "eyebrow": "Gestión de códigos",
+    "title": "Códigos promocionales",
+    "intro": "Suba los códigos de descuento de su tienda o deje que POWR los genere. Cada miembro recibe uno de la reserva al canjear.",
+    "deliveryApi": "Sus códigos se entregan a través de la API. Los códigos cargados aquí sirven de respaldo si su integración no está disponible en el momento del canje.",
+    "deliveryShopify": "Sus códigos se entregan a través de Shopify. Los códigos cargados aquí sirven de respaldo si su integración no está disponible en el momento del canje."
+  },
+  "loadError": {
+    "title": "No se han podido cargar sus recompensas",
+    "body": "Sus reservas de códigos están a salvo: es solo que la lista no ha cargado esta vez."
+  },
+  "empty": {
+    "title": "Aún no hay recompensas digitales",
+    "body": "Cada reserva de códigos va ligada a una recompensa digital. Cree una y su reserva aparecerá aquí.",
+    "create": "Crear una recompensa"
+  },
+  "stages": {
+    "pick": "Elegir una recompensa",
+    "pickHint": "Elija qué recompensa desbloquean estos códigos. Cada recompensa tiene su propia reserva.",
+    "load": "Cargar códigos",
+    "loadHintDry": "La reserva se ha agotado: todos los códigos están usados o caducados. Añada un lote nuevo para que los miembros puedan seguir canjeando.",
+    "loadHintEmpty": "Genere un lote aquí mismo o suba los códigos de su tienda. Cualquiera de las dos opciones lleva menos de un minuto.",
+    "redeem": "Los miembros canjean",
+    "redeemHintLive": "POWR entrega un código a cada miembro automáticamente al canjear. No hay nada más que configurar.",
+    "redeemHintReady": "Los códigos están listos. En cuanto esta recompensa esté activa en la app, los miembros los recibirán de la reserva automáticamente.",
+    "done": "Esta recompensa está activa: POWR entrega un código a cada miembro automáticamente. Concilie los códigos usados o reponga la reserva cuando quiera aquí abajo.",
+    "checking": "Comprobando la reserva"
+  },
+  "selector": {
+    "label": "Sus recompensas",
+    "placeholder": "Seleccionar una recompensa",
+    "inactive": "Inactiva",
+    "available_one": "{{count}} disponible",
+    "available_other": "{{count}} disponibles",
+    "untitled": "Recompensa sin título"
+  },
+  "pool": {
+    "title": "Reserva de códigos",
+    "avail_one": "{{count}} disp.",
+    "avail_other": "{{count}} disp.",
+    "reserved_one": "{{count}} reservado",
+    "reserved_other": "{{count}} reservados",
+    "used_one": "{{count}} usado",
+    "used_other": "{{count}} usados",
+    "expired_one": "{{count}} cad.",
+    "expired_other": "{{count}} cad.",
+    "counting": "Contando",
+    "expiringSoon_one": "{{count}} caduca antes del {{date}}: amplíe la fecha abajo",
+    "expiringSoon_other": "{{count}} caducan antes del {{date}}: amplíe la fecha abajo",
+    "template": "Plantilla"
+  },
+  "modes": {
+    "add": "Añadir códigos",
+    "reconcile": "Conciliar",
+    "manage": "Gestionar reserva"
+  },
+  "format": {
+    "title": "Formato de los códigos",
+    "placeholder": "Introduzca un código de ejemplo para definir el formato, p. ej., POWR-BRAND-ABC123",
+    "detected": "Detectado:",
+    "legend": "· dorado = fijo · verde = variable",
+    "invalid": "Debe empezar por POWR- y contener solo A–Z, 0–9 y guiones",
+    "defaultHint": "Déjelo en blanco para usar el formato predeterminado POWR-XXXX-XXXXXX (6 caracteres)"
+  },
+  "expiry": {
+    "title": "Caducidad de los códigos nuevos",
+    "applied": "se aplica a los lotes nuevos de abajo",
+    "default": "en blanco = caducidad predeterminada de 90 días"
+  },
+  "generate": {
+    "title": "Generación automática",
+    "unit": "códigos",
+    "generating": "Generando…",
+    "button": "Generar lote",
+    "usingScheme": "con {{prefix}}•••",
+    "usingDefault": "con el formato POWR predeterminado"
+  },
+  "upload": {
+    "title": "Subir sus códigos",
+    "singlePlaceholder": "POWR-BRAND-XXXXXX  (un solo código)",
+    "singlePlaceholderScheme": "{{prefix}}XXXXXX  (un solo código)",
+    "add": "Añadir",
+    "csv": "Subir CSV",
+    "pastePlaceholder": "Pegue códigos o suelte un CSV: las columnas «Status» y «Deleted at» se respetan automáticamente",
+    "detected_one": "{{count}} código detectado",
+    "detected_other": "{{count}} códigos detectados",
+    "uploading": "Subiendo…",
+    "button": "Subir lote"
+  },
+  "reconcile": {
+    "title": "Conciliar los canjes de su tienda",
+    "body": "Pegue o suba los códigos que su tienda indica como canjeados. POWR solo marca como usados los códigos ya asignados a un miembro; los no asignados, caducados o desconocidos no cambian.",
+    "import": "Importar CSV",
+    "placeholder": "Pegue una lista de códigos o un CSV con una columna «Code»",
+    "reconciling": "Conciliando…",
+    "button": "Conciliar códigos usados",
+    "confirm_one": "¿Conciliar {{count}} canje de su tienda? Solo los códigos ya asignados por POWR pueden marcarse como usados.",
+    "confirm_other": "¿Conciliar {{count}} canjes de su tienda? Solo los códigos ya asignados por POWR pueden marcarse como usados."
+  },
+  "ledger": {
+    "title": "Registro",
+    "titleWithTotal": "Registro · {{total}} en total",
+    "apply": "Aplicar",
+    "applying": "Aplicando…",
+    "search": "Buscar códigos…",
+    "loading": "Cargando",
+    "emptySearch": "Ningún código coincide con «{{search}}»",
+    "emptyStatus": "Ningún código con el estado «{{status}}»",
+    "emptyNone": "Aún no se ha subido ningún código",
+    "columns": {
+      "code": "Código",
+      "status": "Estado",
+      "claimed": "Asignado",
+      "used": "Usado",
+      "expires": "Caduca"
+    },
+    "saveExpiry": "Guardar caducidad",
+    "editExpiry": "Editar caducidad",
+    "expireCode": "Marcar este código como caducado",
+    "reactivateCode": "Reactivar este código",
+    "range": "{{from}}–{{to}} de {{total}}",
+    "prev": "← Anterior",
+    "next": "Siguiente →"
+  },
+  "status": {
+    "all": "todos",
+    "available": "disponible",
+    "reserved": "reservado",
+    "used": "usado",
+    "expired": "caducado"
+  },
+  "bulkExpiry": {
+    "label": {
+      "all": "Caducidad de todos los códigos",
+      "available": "Caducidad de los códigos disponibles",
+      "reserved": "Caducidad de los códigos reservados",
+      "used": "Caducidad de los códigos usados",
+      "expired": "Caducidad de los códigos caducados"
+    },
+    "confirm": {
+      "all": "¿Fijar el {{date}} como fecha de caducidad de todos los códigos de esta reserva?",
+      "available": "¿Fijar el {{date}} como fecha de caducidad de los códigos disponibles de esta reserva?",
+      "reserved": "¿Fijar el {{date}} como fecha de caducidad de los códigos reservados de esta reserva?",
+      "used": "¿Fijar el {{date}} como fecha de caducidad de los códigos usados de esta reserva?",
+      "expired": "¿Fijar el {{date}} como fecha de caducidad de los códigos caducados de esta reserva?"
+    }
+  },
+  "toast": {
+    "loadFailed": "No se han podido cargar los códigos",
+    "generated_one": "{{count}} código generado",
+    "generated_other": "{{count}} códigos generados",
+    "generatedSkipped_one": "{{count}} código generado · duplicados omitidos: {{skipped}}",
+    "generatedSkipped_other": "{{count}} códigos generados · duplicados omitidos: {{skipped}}",
+    "generateFailed": "Error al generar",
+    "noCodes": "No se ha detectado ningún código",
+    "added_one": "{{count}} añadido",
+    "added_other": "{{count}} añadidos",
+    "alreadyInPool_one": "{{count}} ya en la reserva",
+    "alreadyInPool_other": "{{count}} ya en la reserva",
+    "rejected_one": "{{count}} rechazado",
+    "rejected_other": "{{count}} rechazados",
+    "uploadFailed": "Error al subir",
+    "fileLoaded": "Archivo cargado: {{name}}",
+    "fileUnreadable": "No se ha podido leer el archivo",
+    "markedUsed_one": "{{count}} marcado como usado",
+    "markedUsed_other": "{{count}} marcados como usados",
+    "alreadyReconciled_one": "{{count}} ya conciliado",
+    "alreadyReconciled_other": "{{count}} ya conciliados",
+    "notAssigned_one": "{{count}} sin asignar",
+    "notAssigned_other": "{{count}} sin asignar",
+    "notInPool_one": "{{count}} fuera de esta reserva",
+    "notInPool_other": "{{count}} fuera de esta reserva",
+    "reconcileFailed": "Error en la conciliación",
+    "codeAdded": "Código añadido",
+    "codeAlreadyInPool": "El código ya está en la reserva",
+    "codeRejected": "Rechazado: {{reason}}",
+    "failed": "Error",
+    "toggleFailed": "No se ha podido cambiar el estado",
+    "pickDate": "Elija primero una fecha",
+    "expiryUpdatedOn_one": "Caducidad actualizada en {{count}} código",
+    "expiryUpdatedOn_other": "Caducidad actualizada en {{count}} códigos",
+    "bulkFailed": "Error en la actualización masiva",
+    "expiryUpdated": "Caducidad actualizada",
+    "updateFailed": "Error al actualizar",
+    "exported_one": "{{count}} código exportado",
+    "exported_other": "{{count}} códigos exportados",
+    "exportFailed": "Error al exportar"
+  },
+  "rejectReasons": {
+    "duplicateInBatch": "duplicado en el lote",
+    "invalidFormat": "formato no válido",
+    "wrongPartnerPrefix": "prefijo de marca incorrecto",
+    "codeInDifferentReward": "código ya vinculado a otra recompensa",
+    "alreadyExists": "el código ya existe",
+    "insertFailed": "error al añadir",
+    "invalid": "no válido"
+  },
+  "errors": {
+    "rewardNotFound": "Recompensa no encontrada"
+  }
+}

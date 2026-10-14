@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { serverErrorText } from '../../lib/serverErrors';
 import { useAuth } from '../../App';
 import { PortalShell } from '../../components/portal/PortalShell';
 import { INPUT, LABEL, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
@@ -13,6 +15,7 @@ import { GymLogo } from './VenueLayout';
 //                    then add the gym to that account (accept_invite);
 //   · "New to POWR"  create a login here (redeem_invite), then sign straight in.
 export default function VenueSetup() {
+    const { t } = useTranslation();
     const { token } = useParams();
     const navigate = useNavigate();
     const { user, rolesFor, refreshGymMemberships, setActiveGym } = useAuth();
@@ -54,7 +57,7 @@ export default function VenueSetup() {
             if (!data?.ok) { setState(data?.reason ?? 'invalid'); return; }
             await finish(data.partner_id);
         } catch (err) {
-            setError(err.message);
+            setError(serverErrorText(err));
         } finally {
             setBusy(null);
         }
@@ -63,7 +66,7 @@ export default function VenueSetup() {
     const signInExisting = async (e) => {
         e.preventDefault();
         const addr = email.trim().toLowerCase();
-        if (!addr) return setError('Enter the email you use in the app.');
+        if (!addr) return setError(t('venueShell:setup.enterEmail'));
         setError(null);
         if (!password) {
             setBusy('link');
@@ -74,8 +77,8 @@ export default function VenueSetup() {
             setBusy(null);
             if (err) {
                 return setError(/signups? not allowed|not found|user_not_found/i.test(err.message)
-                    ? "We couldn't find a POWR account with that email. Create a login instead."
-                    : err.message);
+                    ? t('venueShell:setup.noAccount')
+                    : serverErrorText(err));
             }
             setLinkSent(true);
             return;
@@ -83,14 +86,14 @@ export default function VenueSetup() {
         setBusy('password');
         const { error: err } = await supabase.auth.signInWithPassword({ email: addr, password });
         setBusy(null);
-        if (err) setError(err.message);
+        if (err) setError(serverErrorText(err));
         // Signed in: the page re-renders into the "add to your account" step.
     };
 
     const createAccount = async (e) => {
         e.preventDefault();
-        if (password !== confirm) return setError('Passwords do not match');
-        if (password.length < 8) return setError('Password must be at least 8 characters');
+        if (password !== confirm) return setError(t('venueShell:setup.passwordsDontMatch'));
+        if (password.length < 8) return setError(t('venueShell:setup.passwordTooShort'));
         setBusy('create'); setError(null);
         try {
             const data = await staffApi('redeem_invite', { token, email, password, contact_name: name });
@@ -100,7 +103,7 @@ export default function VenueSetup() {
             await finish(null);
         } catch (err) {
             if (/already have a POWR account/i.test(err.message)) setMode('existing');
-            setError(err.message);
+            setError(serverErrorText(err));
         } finally {
             setBusy(null);
         }
@@ -118,16 +121,16 @@ export default function VenueSetup() {
 
     if (state !== 'valid') {
         const copy = {
-            used:    ['Already used', 'This link has already been used. If it was you, just sign in.'],
-            expired: ['Link expired', 'Setup links last 14 days. Ask whoever sent it for a new one.'],
-            invalid: ['Invalid link', "This setup link isn't valid or has been revoked. Ask whoever sent it for a new one."],
-        }[state] ?? ['Invalid link', ''];
+            used:    [t('venueShell:setup.usedTitle'), t('venueShell:setup.usedBody')],
+            expired: [t('venueShell:setup.expiredTitle'), t('venueShell:setup.expiredBody')],
+            invalid: [t('venueShell:setup.invalidTitle'), t('venueShell:setup.invalidBody')],
+        }[state] ?? [t('venueShell:setup.invalidTitle'), ''];
         return (
             <PortalShell>
                 <div className="text-center py-6">
                     <h1 className="text-2xl font-light tracking-tight mb-3">{copy[0]}</h1>
                     <p className="text-sm text-[#888] font-light leading-relaxed mb-6">{copy[1]}</p>
-                    <Link to="/venue/login" className={BTN_GOLD} style={{ color: '#080808' }}>Sign In</Link>
+                    <Link to="/venue/login" className={BTN_GOLD} style={{ color: '#080808' }}>{t('venueShell:auth.signIn')}</Link>
                 </div>
             </PortalShell>
         );
@@ -139,7 +142,7 @@ export default function VenueSetup() {
             <div className="min-w-0">
                 <div className="text-base font-bold text-[#1A1A1A] truncate">{invite.gym.name}</div>
                 <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black mt-0.5">
-                    {invite.role === 'owner' ? 'Owner access' : 'Team access'}
+                    {invite.role === 'owner' ? t('venueShell:setup.ownerAccess') : t('venueShell:setup.teamAccess')}
                 </div>
             </div>
         </div>
@@ -149,18 +152,18 @@ export default function VenueSetup() {
     // Signed in (or just signed in): one tap adds the gym to this account.
     if (user && rolesFor === user.id) {
         return (
-            <PortalShell eyebrow="You're invited" title={`Join ${invite.gym.name}`} sub={`This adds the gym portal to the POWR account you're signed in with: ${user.email}.`}>
+            <PortalShell eyebrow={t('venueShell:setup.invited')} title={t('venueShell:setup.joinTitle', { gym: invite.gym.name })} sub={t('venueShell:setup.joinSub', { email: user.email })}>
                 {gymCard}
                 <div className="space-y-4">
                     {errorBox}
                     <button onClick={accept} disabled={!!busy} className={`${BTN_GOLD} w-full`}>
-                        {busy === 'accept' ? 'Adding…' : `Add ${invite.gym.name}`}
+                        {busy === 'accept' ? t('venueShell:setup.adding') : t('venueShell:setup.add', { gym: invite.gym.name })}
                     </button>
                     <button
                         onClick={() => supabase.auth.signOut()}
                         className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors"
                     >
-                        Not you? Use a different account
+                        {t('venueShell:setup.notYou')}
                     </button>
                 </div>
             </PortalShell>
@@ -169,18 +172,18 @@ export default function VenueSetup() {
 
     if (linkSent) {
         return (
-            <PortalShell eyebrow="You're invited" title="Check your email" sub={`We've sent a sign-in link to ${email.trim()}. Open it on this device and it brings you back here to finish.`}>
-                <button onClick={() => setLinkSent(false)} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">Use a different email</button>
+            <PortalShell eyebrow={t('venueShell:setup.invited')} title={t('venueShell:auth.checkEmail')} sub={t('venueShell:setup.linkSent', { email: email.trim() })}>
+                <button onClick={() => setLinkSent(false)} className="w-full text-[10px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-[#8a7600] transition-colors">{t('venueShell:auth.differentEmail')}</button>
             </PortalShell>
         );
     }
 
     return (
-        <PortalShell eyebrow="You're invited" title="Set up your access" sub="Run your gym's screens and see who's training, all in one place.">
+        <PortalShell eyebrow={t('venueShell:setup.invited')} title={t('venueShell:setup.title')} sub={t('venueShell:setup.sub')}>
             {gymCard}
 
             <div className="grid grid-cols-2 gap-2 mb-6">
-                {[['existing', 'I use POWR'], ['new', 'New to POWR']].map(([m, label]) => (
+                {[['existing', t('venueShell:setup.existing')], ['new', t('venueShell:setup.new')]].map(([m, label]) => (
                     <button
                         key={m}
                         type="button"
@@ -195,42 +198,42 @@ export default function VenueSetup() {
             {mode === 'existing' ? (
                 <form onSubmit={signInExisting} className="space-y-5">
                     <p className="text-[12px] text-[#888] font-light leading-relaxed">
-                        Sign in with the account you use in the POWR app. Use Google or Apple there? Leave the password blank and we’ll email you a link.
+                        {t('venueShell:setup.existingIntro')}
                     </p>
                     <div>
-                        <label className={LABEL}>Email address</label>
+                        <label className={LABEL}>{t('venueShell:auth.emailAddress')}</label>
                         <input type="email" className={INPUT} value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" />
                     </div>
                     <div>
-                        <label className={LABEL}>Password <span className="normal-case tracking-normal text-[#CCCCCC]">— optional</span></label>
+                        <label className={LABEL}>{t('venueShell:auth.password')} <span className="normal-case tracking-normal text-[#CCCCCC]">{t('venueShell:auth.optional')}</span></label>
                         <input type="password" className={INPUT} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
                     </div>
                     {errorBox}
                     <button type="submit" disabled={!!busy} className={`${BTN_GOLD} w-full`}>
-                        {busy === 'password' ? 'Signing in…' : busy === 'link' ? 'Sending…' : password ? 'Sign In' : 'Email me a sign-in link'}
+                        {busy === 'password' ? t('venueShell:auth.signingIn') : busy === 'link' ? t('venueShell:auth.sending') : password ? t('venueShell:auth.signIn') : t('venueShell:auth.emailLink')}
                     </button>
                 </form>
             ) : (
                 <form onSubmit={createAccount} className="space-y-5">
                     <div>
-                        <label className={LABEL}>Your name</label>
-                        <input type="text" className={INPUT} value={name} onChange={e => setName(e.target.value)} placeholder="First & last name" autoComplete="name" />
+                        <label className={LABEL}>{t('venueShell:setup.yourName')}</label>
+                        <input type="text" className={INPUT} value={name} onChange={e => setName(e.target.value)} placeholder={t('venueShell:setup.namePlaceholder')} autoComplete="name" />
                     </div>
                     <div>
-                        <label className={LABEL}>Email address</label>
+                        <label className={LABEL}>{t('venueShell:auth.emailAddress')}</label>
                         <input type="email" className={INPUT} value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" inputMode="email" autoCapitalize="none" />
                     </div>
                     <div>
-                        <label className={LABEL}>Password</label>
+                        <label className={LABEL}>{t('venueShell:auth.password')}</label>
                         <input type="password" className={INPUT} value={password} onChange={e => setPassword(e.target.value)} minLength={8} required autoComplete="new-password" />
                     </div>
                     <div>
-                        <label className={LABEL}>Confirm password</label>
+                        <label className={LABEL}>{t('venueShell:setup.confirmPassword')}</label>
                         <input type="password" className={INPUT} value={confirm} onChange={e => setConfirm(e.target.value)} required autoComplete="new-password" />
                     </div>
                     {errorBox}
                     <button type="submit" disabled={!!busy} className={`${BTN_GOLD} w-full`}>
-                        {busy === 'create' ? 'Setting up…' : 'Create login'}
+                        {busy === 'create' ? t('venueShell:setup.settingUp') : t('venueShell:setup.createLogin')}
                     </button>
                 </form>
             )}
