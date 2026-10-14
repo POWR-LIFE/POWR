@@ -267,7 +267,8 @@ const REWARD_FIELDS = 'id, partner_id, title, description, powr_cost, category, 
 export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
   const now = new Date().toISOString();
 
-  // Check the schedule table for an active slot
+  // Check the schedule table for an active slot. No slot is the normal case,
+  // so maybeSingle: .single() turns zero rows into a 406 on every Spend/Home load.
   const { data: slot } = await supabase
     .from('featured_reward_schedule')
     .select('reward_id')
@@ -275,7 +276,7 @@ export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
     .gt('ends_at', now)
     .order('starts_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (slot?.reward_id) {
     const { data, error } = await supabase
@@ -283,7 +284,7 @@ export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
       .select(REWARD_FIELDS)
       .eq('id', slot.reward_id)
       .eq('active', true)
-      .single();
+      .maybeSingle();
     if (!error && data) {
       return { ...data, partner: Array.isArray(data.partners) ? data.partners[0] : data.partners } as Reward;
     }
