@@ -1,7 +1,7 @@
 {
   "language": {
     "label": "Langue",
-    "browser": "Langue du navigateur ({{language}})"
+    "change": "Changer de langue (actuellement {{language}})"
   },
   "actions": {
     "save": "Enregistrer",

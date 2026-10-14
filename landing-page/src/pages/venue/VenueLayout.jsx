@@ -4,7 +4,7 @@ import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Radar,
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import i18n, { rememberProfileLanguage } from '../../lib/i18n';
-import { LanguagePicker } from '../../components/portal/LanguagePicker';
+import { LanguageMenu } from '../../components/portal/LanguageMenu';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
 import { fetchGymPackage } from './venueApi';
@@ -291,7 +291,6 @@ export function VenueLayout({ children }) {
                 </nav>
 
                 <div className="p-6 mt-auto">
-                    <LanguagePicker userId={user?.id} className="mb-3" />
                     {user?.email && (
                         <div className="mb-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                             <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">{t('common:states.signedInAs')}</div>
@@ -388,7 +387,7 @@ export function VenueLayout({ children }) {
                             <span className="flex-1 text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] truncate">{t('venueShell:layout.guides')}</span>
                             <ChevronRight size={14} className="text-[#BBBBBB]" />
                         </a>
-                        <LanguagePicker userId={user?.id} className="mb-3" />
+                        <LanguageMenu userId={user?.id} align="left" className="mb-3" />
                         {user?.email && (
                             <div className="mb-4 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                                 <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">{t('common:states.signedInAs')}</div>
@@ -416,21 +415,24 @@ export function VenueLayout({ children }) {
                             <div className="text-[13px] uppercase tracking-[0.3em] font-black text-[#8a7600]">{currentLabel}</div>
                         </div>
                     </div>
-                    {/* Admin preview banner: POWR staff only, stays English. */}
-                    {isActingGym && (
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-3 px-5 py-2.5 bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-full">
-                                <Eye size={13} className="text-[#8B5CF6]" />
-                                <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8B5CF6]">Admin preview · {gym?.name}</span>
-                            </div>
-                            <button
-                                onClick={() => setActingGym(null)}
-                                className="h-10 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#8B5CF6]/40 hover:text-[#8B5CF6] transition-all"
-                            >
-                                Switch Gym
-                            </button>
-                        </div>
-                    )}
+                    <div className="flex items-center gap-4">
+                        {/* Admin preview banner: POWR staff only, stays English. */}
+                        {isActingGym && (
+                            <>
+                                <div className="flex items-center gap-3 px-5 py-2.5 bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-full">
+                                    <Eye size={13} className="text-[#8B5CF6]" />
+                                    <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8B5CF6]">Admin preview · {gym?.name}</span>
+                                </div>
+                                <button
+                                    onClick={() => setActingGym(null)}
+                                    className="h-10 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#8B5CF6]/40 hover:text-[#8B5CF6] transition-all"
+                                >
+                                    Switch Gym
+                                </button>
+                            </>
+                        )}
+                        <LanguageMenu userId={user?.id} />
+                    </div>
                 </header>
 
                 <div ref={paneRef} className="flex-1 lg:overflow-y-auto">

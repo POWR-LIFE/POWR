@@ -4,12 +4,16 @@ import { Trans, useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { invokeFn } from '../../lib/invokeFn';
 import { serverErrorText } from '../../lib/serverErrors';
+import i18n from '../../lib/i18n';
+import { LanguageMenu } from '../../components/portal/LanguageMenu';
 
 const INPUT = "w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]";
 
 function Shell({ children }) {
     return (
-        <div className="min-h-screen flex items-center justify-center bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] fixed inset-0 z-[100] overflow-y-auto py-10">
+        <div lang={i18n.language} dir={i18n.dir()} className="min-h-screen flex items-center justify-center bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] fixed inset-0 z-[100] overflow-y-auto py-10">
+            {/* Choose the language before setting up. */}
+            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20"><LanguageMenu /></div>
             <div className="w-full max-w-md p-8 bg-white border border-[#E6E6E1] rounded-2xl shadow-2xl my-auto">
                 {children}
             </div>

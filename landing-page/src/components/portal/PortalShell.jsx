@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import i18n from '../../lib/i18n';
+import { LanguageMenu } from './LanguageMenu';
 
 // The framed, centred card every pre-portal screen sits in: login, setup,
 // "not open yet". Same canvas and glow as the portal so the door matches the
@@ -8,7 +10,9 @@ import { useTranslation } from 'react-i18next';
 export function PortalShell({ eyebrow, title, sub, children, footer = true }) {
     const { t } = useTranslation();
     return (
-        <div className="min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] relative overflow-x-hidden">
+        <div lang={i18n.language} dir={i18n.dir()} className="min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] relative overflow-x-hidden">
+            {/* Choose the language before signing in. */}
+            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20"><LanguageMenu /></div>
             <div
                 aria-hidden
                 className="fixed inset-0 pointer-events-none"

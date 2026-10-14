@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy, Palette, BookOpen, ScanLine } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import i18n, { rememberProfileLanguage } from '../../lib/i18n';
-import { LanguagePicker } from '../../components/portal/LanguagePicker';
+import { LanguageMenu } from '../../components/portal/LanguageMenu';
 import { useAuth } from '../../App';
 import { methodLaterKey } from './PartnerIntegrationHub';
 
@@ -269,7 +269,6 @@ export function PartnerLayout({ children }) {
                             <span className="text-[10px] uppercase tracking-[0.18em] font-black">{t('brandShell:nav.guides')}</span>
                         </a>
                     </div>
-                    <LanguagePicker userId={user?.id} className="mb-3" />
                     {user?.email && (
                         <div className="mb-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                             <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">{t('common:states.signedInAs')}</div>
@@ -298,23 +297,26 @@ export function PartnerLayout({ children }) {
                             <div className="text-[13px] uppercase tracking-[0.3em] font-black text-[#8a7600]">{currentLabel}</div>
                         </div>
                     </div>
-                    {/* Admin preview chrome: POWR staff only, stays English. */}
-                    {isActingPartner && (
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-3 px-5 py-2.5 bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-full">
-                                <Eye size={13} className="text-[#8B5CF6]" />
-                                <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8B5CF6]">
-                                    Admin preview · {partnerData?.name}
-                                </span>
-                            </div>
-                            <button
-                                onClick={() => setActingPartner(null)}
-                                className="h-10 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#8B5CF6]/40 hover:text-[#8B5CF6] transition-all"
-                            >
-                                Switch Partner
-                            </button>
-                        </div>
-                    )}
+                    <div className="flex items-center gap-4">
+                        {/* Admin preview chrome: POWR staff only, stays English. */}
+                        {isActingPartner && (
+                            <>
+                                <div className="flex items-center gap-3 px-5 py-2.5 bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-full">
+                                    <Eye size={13} className="text-[#8B5CF6]" />
+                                    <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8B5CF6]">
+                                        Admin preview · {partnerData?.name}
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => setActingPartner(null)}
+                                    className="h-10 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#8B5CF6]/40 hover:text-[#8B5CF6] transition-all"
+                                >
+                                    Switch Partner
+                                </button>
+                            </>
+                        )}
+                        <LanguageMenu userId={user?.id} />
+                    </div>
                 </header>
 
                 <div className="flex-1 overflow-y-auto">

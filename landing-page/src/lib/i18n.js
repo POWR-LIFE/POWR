@@ -107,7 +107,20 @@ export const portalLanguageReady = loadLanguage(state.language).then(() => i18n.
 
 /** Show `lang` (or follow the browser again with null), and remember it. */
 export async function setPortalLanguage(lang) {
-    writeStorage(localStorage, PICK_KEY, lang);
+    if (state.preview && lang) {
+        // Translator preview: the menu moves the preview (drafts stay listed),
+        // and ?lang= comes off the address so it no longer pins the old one.
+        writeStorage(sessionStorage, PREVIEW_KEY, lang);
+        try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('lang')) {
+                url.searchParams.delete('lang');
+                window.history.replaceState(window.history.state, '', url);
+            }
+        } catch { /* no window */ }
+    } else {
+        writeStorage(localStorage, PICK_KEY, lang);
+    }
     const next = compute();
     await loadLanguage(next.language);
     await i18n.changeLanguage(next.language);

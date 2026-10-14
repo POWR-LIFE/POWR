@@ -40,6 +40,8 @@ import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
 import { useTranslation } from 'react-i18next';
 import { serverErrorText } from './lib/serverErrors';
+import i18n from './lib/i18n';
+import { LanguageMenu } from './components/portal/LanguageMenu';
 
 import PartnerPortalHome from './pages/partner/PartnerHome';
 import { PartnerLayout } from './pages/partner/PartnerLayout';
@@ -599,7 +601,9 @@ const PartnerLogin = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] fixed inset-0 z-[100]">
+        <div lang={i18n.language} dir={i18n.dir()} className="min-h-screen flex items-center justify-center bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] fixed inset-0 z-[100]">
+            {/* Choose the language before signing in. */}
+            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20"><LanguageMenu /></div>
             <div className="w-full max-w-md p-8 bg-white border border-[#E6E6E1] rounded-2xl shadow-2xl">
                 <div className="flex justify-center mb-8">
                     <img src="/powr-logo-black.png" alt="POWR" className="h-12" />

@@ -1,7 +1,7 @@
 {
   "language": {
     "label": "Idioma",
-    "browser": "Idioma del navegador ({{language}})"
+    "change": "Cambiar de idioma (ahora {{language}})"
   },
   "actions": {
     "save": "Guardar",

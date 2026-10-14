@@ -1,7 +1,7 @@
 {
   "language": {
     "label": "Language",
-    "browser": "Browser language ({{language}})"
+    "change": "Change language (now {{language}})"
   },
   "actions": {
     "save": "Save",
