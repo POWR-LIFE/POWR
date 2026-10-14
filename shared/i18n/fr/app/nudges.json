@@ -56,7 +56,7 @@
     "eyebrow": "LOCALISATION EN ARRIÈRE-PLAN",
     "eyebrowVenue": "TU ES À {{venue}}",
     "headline": "Gagne même\n<gold>sans y penser.</gold>",
-    "headlineVenue": "Cette visite\n<gold>ne compte pas.</gold>",
+    "headlineVenue": "Cette visite ne\n<gold>comptera pas toute seule.</gold>",
     "body": {
       "venueAsk": "POWR voit que tu es à {{venue}} uniquement parce que l’app est ouverte. Sur « Lorsque l’app est active », il ne peut pas faire ton check-in depuis ta poche : passe sur {{always}} et chaque visite compte, à commencer par celle-ci.",
       "venueSettings": "Règle la position de POWR sur {{always}} dans Réglages et il fera ton check-in à {{venue}} automatiquement, même avec l’app fermée.",
@@ -69,7 +69,7 @@
   "notificationPrime": {
     "headline": "Tu gagnes\n<gold>en silence.</gold>",
     "bodyAsk": "Tu as encaissé des séances avec les alertes coupées : chaque gain est tombé sans un bruit. Active-les et sache à la seconde quand une séance compte, quand ta série est sauvée ou quand une récompense tombe.",
-    "bodyDenied": "Les notifications de POWR sont coupées au niveau du système. Active-les dans les réglages et ne l’apprends plus jamais en retard."
+    "bodyDenied": "Les notifications de POWR sont coupées au niveau du système. Active-les dans les réglages et ne découvre plus rien après coup."
   },
   "levelUp": {
     "kicker": {

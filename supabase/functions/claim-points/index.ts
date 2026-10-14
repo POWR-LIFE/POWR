@@ -861,6 +861,11 @@ Deno.serve(async (req) => {
               points: overflow,
               reason: streakBonus > 0 ? `${currentStreak}-day streak bonus` : `${session.type} session`,
               vests_at: vestsAt,
+              // What `reason` is made of, so other languages can say it in
+              // their own words (_shared/pushCopy.ts). English reads `reason`.
+              reason_kind: streakBonus > 0 ? 'streak' : 'session',
+              streak_days: currentStreak,
+              activity_type: session.type,
             },
           }),
         });

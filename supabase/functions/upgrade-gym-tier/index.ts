@@ -424,6 +424,10 @@ Deno.serve(async (req) => {
               points: vaulted,
               reason: `${upgradeMin}-min bonus`,
               vests_at: vestsAt,
+              // What `reason` is made of, so other languages can say it in
+              // their own words (_shared/pushCopy.ts). English reads `reason`.
+              reason_kind: 'upgrade',
+              upgrade_minutes: upgradeMin,
             },
           }),
         });

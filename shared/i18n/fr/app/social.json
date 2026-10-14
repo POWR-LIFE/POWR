@@ -17,7 +17,7 @@
     "add": "Ajouter",
     "addName": "Ajouter {{name}}",
     "inviteName": "Inviter {{name}}",
-    "addFriend": "Ajouter en ami",
+    "addFriend": "Ajouter aux amis",
     "acceptRequest": "Accepter la demande",
     "shareLink": "Partager le lien",
     "couldntJoin": "Impossible de rejoindre",
@@ -50,7 +50,7 @@
     "sent": "Envoyée"
   },
   "addFriend": {
-    "title": "AJOUTER EN AMI",
+    "title": "AJOUTER AUX AMIS",
     "fallbackName": "Membre POWR",
     "notFound": {
       "title": "Personne introuvable",
@@ -82,7 +82,7 @@
     "notPowr": "Ce n’est pas un code POWR — réessaie avec son code.",
     "hint": "Vise le code POWR à scanner",
     "denied": {
-      "title": "Accès à l’appareil photo",
+      "title": "Accès à l’appareil photo requis",
       "body": "POWR a besoin de l’appareil photo pour scanner un code ami. Tu peux l’activer dans les réglages, ou ajouter tes amis par pseudo.",
       "allow": "Autoriser l’appareil photo",
       "openSettings": "Ouvrir les réglages",
@@ -93,7 +93,7 @@
     "title": "MON CODE",
     "shareMessage": "Ajoute-moi sur POWR 💪\n{{link}}",
     "loadError": "Impossible de charger ton code. Réessaie dans un instant.",
-    "caption": "Fais scanner ce code pour vous connecter sur POWR — puis relevez des défis ensemble.",
+    "caption": "Fais scanner ce code pour vous ajouter sur POWR — puis relevez des défis ensemble.",
     "shareA11y": "Partager ton code",
     "copyA11y": "Copier le lien",
     "copy": "Copier",
@@ -123,7 +123,7 @@
     "bonusLine": "Tout le monde gagne un bonus qui grimpe quand vous allez au bout.",
     "board": {
       "title": "Défis ouverts",
-      "hint": "Le premier à le relever l’affronte"
+      "hint": "Qui le relève en premier l’affronte"
     },
     "emptyParallel": "Aucun défi en parallèle pour le moment.",
     "emptyPooled": "Aucun défi en total d’équipe pour le moment."
@@ -135,7 +135,7 @@
     "waitingCta": "Montre-moi",
     "beFirst": {
       "title": "Lance le premier défi",
-      "body": "Publie un défi : n’importe quel membre POWR peut le relever. Le chrono démarre quand quelqu’un le prend, vous courez donc la même semaine.",
+      "body": "Publie un défi : n’importe quel membre POWR peut le relever. Le chrono démarre quand quelqu’un le prend, vous vous affrontez donc sur la même semaine.",
       "cta": "En publier un"
     },
     "pitch": {
@@ -153,7 +153,7 @@
   "templateCard": {
     "pitch": "Toi & {{who}} — finissez ensemble : +{{each}} de bonus par personne",
     "a11y": "Défier tes amis sur {{title}}",
-    "noCrew": "Pas encore d’équipe ? Lance-toi en solo contre le lièvre — bats le rythme, empoche les points.",
+    "noCrew": "Pas encore d’équipe ? Lance-toi en solo contre le lièvre — bats-le, empoche les points.",
     "racePacer": "Défier le lièvre",
     "challengeFriends": "Défier des amis"
   },
@@ -162,7 +162,7 @@
     "backToInvites": "Retour aux invitations",
     "addAFriend": "Ajouter des amis",
     "plate": {
-      "title": "Tu es au complet",
+      "title": "Tu en as plein les bras",
       "body": "Tu es dans {{open}} défis sur {{cap}}. Termine ta part — ou quittes-en un — pour en relever un autre.",
       "leaveName": "Quitter {{title}}",
       "leave": "Quitter",
@@ -184,7 +184,7 @@
     "addByUsernameA11y": "Ajouter quelqu’un par pseudo",
     "board": {
       "title": "Publier sur le tableau ouvert",
-      "body": "N’importe quel membre POWR peut le relever — le premier à le faire t’affronte. Seuls ton prénom et ta photo sont visibles."
+      "body": "N’importe quel membre POWR peut le relever — la première personne à le faire t’affronte. Seuls ton prénom et ta photo sont visibles."
     },
     "summary": {
       "friends_one": "{{count}} ami · groupe de {{size}}",
@@ -206,7 +206,7 @@
     "timing": {
       "board": "Démarre quand quelqu’un le relève : vous courez contre le même chrono.",
       "solo": "Démarre dès que tu appuies — tu cours contre le lièvre.",
-      "group": "Démarre dès que quelqu’un rejoint — tout ce que tu fais à partir de maintenant compte."
+      "group": "Démarre dès que quelqu’un te rejoint — tout ce que tu fais à partir de maintenant compte."
     },
     "shareMessage": "Rejoins-moi sur POWR : « {{title}} » — {{goal}}. {{url}}",
     "shareMessageDuration": "Rejoins-moi sur POWR : « {{title}} » — {{goal}} en {{duration}}. {{url}}"
@@ -220,7 +220,7 @@
     "invite": "Inviter",
     "sent_one": "Invitation envoyée.",
     "sent_other": "{{count}} invitations envoyées.",
-    "willNotify": "Une notification leur proposera de rejoindre.",
+    "willNotify": "Une notification les invitera à rejoindre le défi.",
     "notFriendsYet": "PAS ENCORE EN CONTACT ?",
     "searchIntro": "Trouve quelqu’un par pseudo. Ta demande d’ami doit être acceptée avant que tu puisses l’inviter.",
     "requestSent": "Demande envoyée. Une fois acceptée, tu pourras inviter cette personne dans ce défi."
@@ -337,7 +337,7 @@
       "pacerAhead": "Devant toi"
     },
     "invitePrompt": "{{name}} t’invite. Finissez ensemble pour <gold>jusqu’à +{{max}} de bonus</gold>.",
-    "underway": "Ce défi est déjà lancé — tu le rejoindrais avec <time></time> au compteur.",
+    "underway": "Ce défi est déjà lancé — tu le rejoindrais alors qu’il reste <time></time>.",
     "accept": "Accepter le défi",
     "joining": "On t’inscrit…",
     "declineA11y": "Refuser le défi",
@@ -366,7 +366,7 @@
       "title": "Tu es à jour",
       "body": "Les demandes d’amis, les invitations à des défis et ton activité récente s’afficheront ici."
     },
-    "needsYou": "À TRAITER",
+    "needsYou": "ON T’ATTEND",
     "friendRequest": "@{{username}} · t’a envoyé une demande d’ami",
     "accept": "Accepter",
     "challengeInvite": "{{name}} t’invite · {{goal}}",
@@ -473,12 +473,12 @@
   "remaining": {
     "notStarted": "Pas commencé",
     "ended": "Terminé",
-    "minutes_one": "encore {{count}} min",
-    "minutes_other": "encore {{count}} min",
-    "hours_one": "encore {{count}} h",
-    "hours_other": "encore {{count}} h",
-    "days_one": "encore {{count}} j",
-    "days_other": "encore {{count}} j"
+    "minutes_one": "Encore {{count}} min",
+    "minutes_other": "Encore {{count}} min",
+    "hours_one": "Encore {{count}} h",
+    "hours_other": "Encore {{count}} h",
+    "days_one": "Encore {{count}} j",
+    "days_other": "Encore {{count}} j"
   },
   "errors": {
     "respond": {

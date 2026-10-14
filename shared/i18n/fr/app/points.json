@@ -122,7 +122,7 @@
     "empty": "Aucun succès ici pour l’instant",
     "levelNumber": "NIV. {{level}}",
     "xp": "{{xp}} pts",
-    "unlockAt": "Débloqué à {{xp}} pts",
+    "unlockAt": "Se débloque à {{xp}} pts",
     "toGo": "Encore {{xp}} pts",
     "complete": "TERMINÉ",
     "progressTo": "{{percent}} % vers NIV. {{level}}"
@@ -135,7 +135,7 @@
       "name": "Gobelin du cardio"
     },
     "streakFreak": {
-      "name": "Accro aux séries"
+      "name": "Série infernale"
     },
     "motionMagic": {
       "name": "Magie du mouvement"
@@ -168,10 +168,10 @@
       "name": "Baskets à bout"
     },
     "certifiedWeapon": {
-      "name": "Bête certifiée"
+      "name": "Bête de compét"
     },
     "momentumMonster": {
-      "name": "Monstre lancé"
+      "name": "Rouleau compresseur"
     },
     "limitBreaker": {
       "name": "Brise-limites"

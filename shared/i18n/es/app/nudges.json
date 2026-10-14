@@ -11,7 +11,7 @@
     },
     "workoutsMissing": {
       "title": "¿Te faltan entrenos?",
-      "bodyAndroid": "Tu wearable registra actividad, pero los entrenos no llegan. En Garmin Connect → Ajustes → Health Connect, activa Actividades.",
+      "bodyAndroid": "Tu wearable registra actividad, pero los entrenos no llegan. En Garmin Connect → Configuración → Health Connect, activa Actividades.",
       "ctaAndroid": "Abrir Health Connect",
       "bodyIos": "Tu wearable registra actividad, pero POWR no ve tus entrenos. Activa Entrenamientos para POWR en la app Salud.",
       "ctaIos": "Abrir ajustes de Salud"
@@ -58,23 +58,23 @@
     "headline": "Gana sin\n<gold>mover un dedo.</gold>",
     "headlineVenue": "Esta visita no\n<gold>contará sola.</gold>",
     "body": {
-      "venueAsk": "POWR sabe que estás en {{venue}} solo porque la app está abierta. Con «Mientras se usa la app» no puede hacerte el check-in desde el bolsillo: cámbialo a {{always}} y cada visita contará, empezando por esta.",
+      "venueAsk": "POWR sabe que estás en {{venue}} solo porque la app está abierta. Con «Al usar la app» no puede hacerte el check-in desde el bolsillo: cámbialo a {{always}} y cada visita contará, empezando por esta.",
       "venueSettings": "Cambia la ubicación de POWR a {{always}} en Ajustes y te hará el check-in en {{venue}} automáticamente, incluso con la app cerrada.",
-      "askGym": "POWR solo puede hacerte el check-in desde el bolsillo con {{always}}. Ahora mismo está en «Mientras se usa la app», así que cada visita al gimnasio con la app cerrada no te suma nada.",
-      "askVenue": "POWR solo puede hacerte el check-in desde el bolsillo con {{always}}. Ahora mismo está en «Mientras se usa la app», así que cada visita a un centro asociado con la app cerrada no te suma nada.",
+      "askGym": "POWR solo puede hacerte el check-in desde el bolsillo con {{always}}. Ahora mismo está en «Al usar la app», así que cada visita al gimnasio con la app cerrada no te suma nada.",
+      "askVenue": "POWR solo puede hacerte el check-in desde el bolsillo con {{always}}. Ahora mismo está en «Al usar la app», así que cada visita a un centro asociado con la app cerrada no te suma nada.",
       "settings": "Cambia la ubicación de POWR a {{always}} en Ajustes y te hará el check-in automáticamente, incluso con la app cerrada."
     },
     "path": "Ajustes › POWR › Ubicación › Siempre"
   },
   "notificationPrime": {
     "headline": "Ganando en\n<gold>silencio.</gold>",
-    "bodyAsk": "Has sumado sesiones con las alertas desactivadas: cada ganancia llegó sin hacer ruido. Actívalas y entérate al momento cuando una sesión cuenta, salvas una racha o cae una recompensa.",
+    "bodyAsk": "Has sumado sesiones con las alertas desactivadas: cada ganancia llegó sin hacer ruido. Actívalas y entérate al momento cuando una sesión cuente, salves una racha o caiga una recompensa.",
     "bodyDenied": "Las notificaciones de POWR están desactivadas en el sistema. Actívalas en Ajustes y no vuelvas a enterarte tarde."
   },
   "levelUp": {
     "kicker": {
       "max": "NIVEL MÁXIMO",
-      "tier": "NUEVO RANGO — {{tier}}",
+      "tier": "NUEVO RANGO: {{tier}}",
       "standard": "NUEVO NIVEL"
     },
     "level": "NIVEL",
@@ -124,7 +124,7 @@
       "cycling": "{{name}} ha salido en bici hace un rato.",
       "other": "{{name}} ha hecho un entreno hace un rato."
     },
-    "a11y": "{{headline}} Rétale.",
+    "a11y": "{{headline}} Lánzale un reto.",
     "active": "Ha entrenado hoy",
     "dismiss": "Descartar sugerencia",
     "sub": "Lanza un reto en equipo.",
@@ -134,12 +134,12 @@
   "challengeCard": {
     "outcome": {
       "cancelled": "Cancelado antes de terminar",
-      "expiredPooled": "Se acabó el tiempo — objetivo no alcanzado",
-      "expiredSolo": "Se acabó el tiempo — no has terminado",
-      "expired": "Se acabó el tiempo — nadie ha terminado",
+      "expiredPooled": "Se acabó el tiempo: objetivo no alcanzado",
+      "expiredSolo": "Se acabó el tiempo: no has terminado",
+      "expired": "Se acabó el tiempo: nadie ha terminado",
       "won": "Has terminado  ·  +{{points}} ganados",
       "lostPooled": "El grupo llegó al objetivo sin ti",
-      "lost": "Se acabó — esta vez no has terminado"
+      "lost": "Se acabó: esta vez no has terminado"
     },
     "waiting": {
       "start": "Esperando para empezar",
@@ -158,15 +158,15 @@
     "bonus": "+{{bonus}} de bonus"
   },
   "celebration": {
-    "title": "{{title}} — hecho en equipo.",
-    "titleSettled": "{{title}} — misión cumplida.",
+    "title": "{{title}}: hecho en equipo.",
+    "titleSettled": "{{title}}: misión cumplida.",
     "subtitle": {
-      "settledWith_one": "Tú y {{count}} persona más habéis terminado — bonus sumado",
-      "settledWith_other": "Tú y {{count}} personas más habéis terminado — bonus sumado",
-      "settledSolo": "Reto completado — puntos sumados",
+      "settledWith_one": "Tú y {{count}} persona más habéis terminado: bonus sumado",
+      "settledWith_other": "Tú y {{count}} personas más habéis terminado: bonus sumado",
+      "settledSolo": "Reto completado: puntos sumados",
       "with_one": "Tú y {{count}} persona más habéis terminado en equipo",
       "with_other": "Tú y {{count}} personas más habéis terminado en equipo",
-      "solo": "Has terminado — tu bonus crece con cada persona que acaba"
+      "solo": "Has terminado. Tu bonus crece con cada persona que acaba"
     },
     "base": "{{points}} de base",
     "baseBonus": "{{points}} de base<bonus>  +{{bonus}} de bonus de grupo</bonus>",

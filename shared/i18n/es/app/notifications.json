@@ -24,7 +24,7 @@
   "nearbyOffer": {
     "title": "{{brand}} está cerca",
     "titleNoBrand": "Hay una recompensa cerca",
-    "body": "Extra en {{reward}} justo donde estás — abre la app para canjear."
+    "body": "{{reward}} tiene un extra justo donde estás: abre la app para canjear."
   },
   "sessionCompleted": {
     "titleEarned": "¡+{{points}} pts ganados! 🔥",
@@ -45,7 +45,7 @@
   },
   "pointsMilestone": {
     "title": "{{points}} puntos POWR",
-    "body": "Todos bien ganados. Echa un vistazo a tus recompensas — puede que haya algo nuevo."
+    "body": "Todos bien ganados. Echa un vistazo a tus recompensas: puede que haya algo nuevo."
   },
   "withinReach": {
     "title": "Recompensa al alcance",
@@ -59,7 +59,7 @@
     },
     "day7": {
       "title": "Tu racha te está esperando 🔄",
-      "body": "7 días fuera — vuelve y empieza a ganar otra vez."
+      "body": "7 días fuera. Vuelve y empieza a ganar otra vez."
     },
     "fallback": {
       "title": "¿Retomamos el ritmo?",
@@ -78,8 +78,8 @@
   "locationService": {
     "trackingTitle": "POWR registra tus entrenos",
     "idleBody": "Detecta cuándo llegas a un gimnasio asociado.",
-    "dwellBody": "Check-in hecho — estamos cronometrando tu sesión.",
+    "dwellBody": "Check-in hecho. Estamos cronometrando tu sesión.",
     "approachTitle": "POWR está haciendo tu check-in",
-    "approachBody": "Estás cerca de un gimnasio asociado — confirmando tu llegada."
+    "approachBody": "Estás cerca de un gimnasio asociado. Confirmando tu llegada."
   }
 }

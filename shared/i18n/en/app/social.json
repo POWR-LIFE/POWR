@@ -184,7 +184,7 @@
     "addByUsernameA11y": "Add a friend by username",
     "board": {
       "title": "Post to the open board",
-      "body": "Any POWR member can take it — the first one to does races you. They see your first name and photo."
+      "body": "Any POWR member can take it — the first to take it races you. They see your first name and photo."
     },
     "summary": {
       "friends_one": "{{count}} friend · group of {{size}}",

@@ -38,6 +38,7 @@ import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifica
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
 import { setTranslationPreview, useLanguageSettings } from '@/lib/i18n';
+import { useDistancePreference } from '@/lib/units';
 import { LANGUAGE_NAMES } from '@/shared/i18n';
 import { formatMemberId } from '@/shared/memberId';
 import { getGymSharing, setGymSharing, setGymVisitSharing, type GymSharing } from '@/lib/api/gymSharing';
@@ -72,6 +73,7 @@ export default function SettingsScreen() {
   const gymRelevant = useGymRelevance();
   const { t } = useTranslation();
   const languages = useLanguageSettings();
+  const distancePreference = useDistancePreference();
 
   const toggleTranslationPreview = useCallback(() => {
     const on = !languages.preview;
@@ -459,6 +461,24 @@ export default function SettingsScreen() {
             </View>
           </>
         )}
+
+        {/* ── Units ────────────────────────────────────────── */}
+        <SectionLabel label={t('settings:units.section')} />
+        <View style={styles.card}>
+          <RowLink
+            icon="speedometer-outline"
+            label={t('settings:units.title')}
+            value={
+              distancePreference === 'mi'
+                ? t('settings:units.miles')
+                : distancePreference === 'km'
+                  ? t('settings:units.kilometres')
+                  : t('settings:units.auto')
+            }
+            onPress={() => router.push('/distance-units')}
+            isLast
+          />
+        </View>
 
         {/* ── Creator ──────────────────────────────────────── */}
         {isCreator && (

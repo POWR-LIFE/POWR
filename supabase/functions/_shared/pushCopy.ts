@@ -270,6 +270,68 @@ function rescueRequirement(lang: string, payload: Record<string, unknown>): stri
   return tPush(lang, 'streakLost.sessionsFallback', { count: pluralCount(lang, sessions, false), sessions: `${sessions}` });
 }
 
+// A POWR activity type's name as the app shows it (activityNames.*, kept equal
+// to the app's activities.json by a test), or undefined for anything else.
+function activityName(lang: string, type: unknown): string | undefined {
+  switch (type) {
+    case 'walking': return tPush(lang, 'activityNames.walking');
+    case 'running': return tPush(lang, 'activityNames.running');
+    case 'cycling': return tPush(lang, 'activityNames.cycling');
+    case 'swimming': return tPush(lang, 'activityNames.swimming');
+    case 'gym': return tPush(lang, 'activityNames.gym');
+    case 'hiit': return tPush(lang, 'activityNames.hiit');
+    case 'sports': return tPush(lang, 'activityNames.sports');
+    case 'yoga': return tPush(lang, 'activityNames.yoga');
+    case 'dance': return tPush(lang, 'activityNames.dance');
+    case 'sleep': return tPush(lang, 'activityNames.sleep');
+    default: return undefined;
+  }
+}
+
+// The vault_banked body for languages other than English. claim-points and
+// upgrade-gym-tier send `reason` as English text ("3-day streak bonus", "gym
+// session", "40-min bonus") and, beside it, what it was made of: reason_kind
+// plus streak_days / activity_type / upgrade_minutes. English never calls
+// this (it always quotes `reason`); undefined means "no usable parts, quote
+// `reason` as sent", which is what an older caller gets.
+function vaultBankedBody(
+  lang: string,
+  payload: Record<string, unknown>,
+  points: string,
+  when: string,
+): string | undefined {
+  switch (payload.reason_kind) {
+    case 'streak': {
+      const days = Number(payload.streak_days);
+      if (!Number.isFinite(days) || days <= 0) return undefined;
+      return tPush(lang, 'vaultBanked.bodyStreak', { count: days, days: plain(lang, days), points, when });
+    }
+    case 'session': {
+      const activity = activityName(lang, payload.activity_type);
+      return activity ? tPush(lang, 'vaultBanked.bodySession', { activity, points, when }) : undefined;
+    }
+    case 'upgrade': {
+      const minutes = Number(payload.upgrade_minutes);
+      if (!Number.isFinite(minutes) || minutes <= 0) return undefined;
+      return tPush(lang, 'vaultBanked.bodyUpgrade', { minutes: plain(lang, minutes), points, when });
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * A challenge title or a person's name from the payload, as this language
+ * should see it. A shared-challenge or friend sender with no title or name
+ * still fills `title` / `from_name` with English ('your challenge', 'A
+ * friend', 'Someone'), which English shows as sent, and flags it with
+ * `title_missing` / `from_name_missing`. Other languages then treat the field
+ * as absent and use their own fallback rather than an English phrase.
+ */
+function sentText(lang: string, payload: Record<string, unknown>, field: 'title' | 'from_name'): unknown {
+  return lang !== 'en' && payload[`${field}_missing`] === true ? undefined : payload[field];
+}
+
 // ---------------------------------------------------------------------------
 // Notification copy per type
 // ---------------------------------------------------------------------------
@@ -537,15 +599,24 @@ export function buildMessage(
         // (count carries how many); the notification_config daily_cap (1)
         // keeps later same-day syncs silent so backfills can't machine-gun.
         // activity_label is Terra's own name for the workout ("Spin") or the
-        // POWR type: shown as sent in every language.
+        // POWR type, in English: English shows it as sent. Other languages
+        // name the activity themselves (the app's own name for it) when the
+        // caller says which it was (activity_type, terra-webhook) or the label
+        // is itself a bare POWR type ("running", what both senders fall back
+        // to when there's no name); otherwise the label as sent.
         const count = Math.max(1, Math.round(Number(payload.count ?? 1)));
         const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
         const label = ((payload.activity_label as string) ?? '').trim();
+        const activity = lang === 'en'
+          ? undefined
+          : activityName(lang, payload.activity_type) ?? activityName(lang, label);
         const what = count > 1
           ? tPush(lang, 'wearableSessionRecorded.syncedMany', { count: pluralCount(lang, count, false), number: `${count}` })
-          : label
-            ? tPush(lang, 'wearableSessionRecorded.syncedLabel', { label })
-            : tPush(lang, 'wearableSessionRecorded.synced');
+          : activity
+            ? tPush(lang, 'wearableSessionRecorded.syncedActivity', { activity })
+            : label
+              ? tPush(lang, 'wearableSessionRecorded.syncedLabel', { label })
+              : tPush(lang, 'wearableSessionRecorded.synced');
         return {
           title: tPush(lang, 'wearableSessionRecorded.title'),
           body: points > 0
@@ -908,17 +979,21 @@ export function buildMessage(
         // than the balance, so it is explanation, not headline.
         //
         // `reason` arrives as English text from claim-points / upgrade-gym-tier
-        // ("3-day streak bonus", "gym session", "40-min bonus") with nothing
-        // structured beside it, so every language quotes it as sent.
+        // ("3-day streak bonus", "gym session", "40-min bonus"). English quotes
+        // it as sent, always; other languages rebuild the sentence from the
+        // parts sent beside it (vaultBankedBody) and quote `reason` only when
+        // an older caller sent no parts.
         const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
         const reason = typeof payload.reason === 'string' ? payload.reason.trim() : '';
         const pts = grouped(lang, points);
         const when = formatVestDate(payload.vests_at, lang);
+        const translated = lang === 'en' ? undefined : vaultBankedBody(lang, payload, pts, when);
         return {
           title: tPush(lang, 'vaultBanked.title'),
-          body: reason
-            ? tPush(lang, 'vaultBanked.bodyReason', { points: pts, reason, when })
-            : tPush(lang, 'vaultBanked.body', { points: pts, when }),
+          body: translated
+            ?? (reason
+              ? tPush(lang, 'vaultBanked.bodyReason', { points: pts, reason, when })
+              : tPush(lang, 'vaultBanked.body', { points: pts, when })),
           data: { type, route: '/vault', points },
           sound: 'default',
           channelId: 'powr_rewards_v2',
@@ -954,7 +1029,7 @@ export function buildMessage(
 
       // ── Friend graph ──────────────────────────────────────────────────────
       case 'friend_request': {
-        const name = (payload.from_name as string) || tPush(lang, 'common.someone');
+        const name = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.someone');
         return {
           title: tPush(lang, 'friendRequest.title'),
           body: tPush(lang, 'friendRequest.body', { name }),
@@ -966,7 +1041,7 @@ export function buildMessage(
       }
 
       case 'friend_accepted': {
-        const name = (payload.from_name as string) || tPush(lang, 'common.yourFriend');
+        const name = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.yourFriend');
         return {
           title: tPush(lang, 'friendAccepted.title'),
           body: tPush(lang, 'friendAccepted.body', { name }),
@@ -978,8 +1053,8 @@ export function buildMessage(
 
       // ── Shared challenges ─────────────────────────────────────────────────
       case 'challenge_invite': {
-        const name = (payload.from_name as string) || tPush(lang, 'common.aFriend');
-        const title = (payload.title as string) || tPush(lang, 'common.aChallenge');
+        const name = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.aFriend');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.aChallenge');
         return {
           title: tPush(lang, 'challengeInvite.title', { name }),
           body: tPush(lang, 'challengeInvite.body', { quoted: quotedTitle(lang, title) }),
@@ -991,8 +1066,8 @@ export function buildMessage(
       }
 
       case 'challenge_accepted': {
-        const name = (payload.from_name as string) || tPush(lang, 'common.aFriend');
-        const title = (payload.title as string) || tPush(lang, 'common.yourChallengeLower');
+        const name = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.aFriend');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallengeLower');
         const accepted = Math.max(0, Math.round(Number(payload.accepted_count ?? 0)));
         const total = Math.max(0, Math.round(Number(payload.total_count ?? 0)));
         const quoted = quotedTitle(lang, title);
@@ -1008,7 +1083,7 @@ export function buildMessage(
       }
 
       case 'challenge_started': {
-        const title = (payload.title as string) || tPush(lang, 'common.yourChallenge');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
         // A shared challenge starts on the SECOND accept, not a full roster —
         // outstanding invitees keep their Accept card and join mid-race
         // (tryStartForming). The old copy said "everyone's in" regardless, so a
@@ -1036,8 +1111,8 @@ export function buildMessage(
       }
 
       case 'challenge_friend_finished': {
-        const name = (payload.from_name as string) || tPush(lang, 'common.aFriend');
-        const title = (payload.title as string) || tPush(lang, 'common.yourChallengeLower');
+        const name = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.aFriend');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallengeLower');
         return {
           title: tPush(lang, 'challengeFriendFinished.title', { name }),
           body: tPush(lang, 'challengeFriendFinished.body', { quoted: quotedTitle(lang, title) }),
@@ -1048,7 +1123,7 @@ export function buildMessage(
       }
 
       case 'challenge_pool_milestone': {
-        const title = (payload.title as string) || tPush(lang, 'common.yourChallengeLower');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallengeLower');
         const pct = Number(payload.pct ?? 50);
         const remaining = Math.max(0, Number(payload.remaining ?? 0));
         const unit = ((payload.unit as string) || '').trim();
@@ -1067,7 +1142,7 @@ export function buildMessage(
       }
 
       case 'challenge_completed': {
-        const title = (payload.title as string) || tPush(lang, 'common.yourChallenge');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
         const total = Math.max(0, Math.round(Number(payload.total ?? payload.base ?? 0)));
         const bonus = Math.max(0, Math.round(Number(payload.bonus ?? 0)));
         const quoted = quotedTitle(lang, title);
@@ -1093,7 +1168,7 @@ export function buildMessage(
       // happened, don't scold, and leave a door open. Normal priority — a loss
       // shouldn't ding like a win.
       case 'challenge_ended': {
-        const title = (payload.title as string) || tPush(lang, 'common.yourChallenge');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
         const outcome = String(payload.outcome ?? 'expired');
         const finishers = Math.max(0, Math.round(Number(payload.finishers ?? 0)));
         const roster = Math.max(0, Math.round(Number(payload.roster ?? 0)));
@@ -1133,7 +1208,7 @@ export function buildMessage(
       // nowhere, which is exactly what a config-override-only approach would
       // have shipped.
       case 'challenge_open_unclaimed': {
-        const title = (payload.title as string) || tPush(lang, 'common.yourChallenge');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
         return {
           // Deliberately not "nobody wanted it". The post going untaken is not
           // the user's failure and must not read like one — this is the modal
@@ -1153,8 +1228,8 @@ export function buildMessage(
       }
 
       case 'challenge_open_posted': {
-        const title = (payload.title as string) || tPush(lang, 'common.aChallenge');
-        const who = (payload.from_name as string) || tPush(lang, 'common.someone');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.aChallenge');
+        const who = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.someone');
         return {
           title: tPush(lang, 'challengeOpenPosted.title'),
           body: tPush(lang, 'challengeOpenPosted.body', { name: who, quoted: quotedTitle(lang, title) }),
@@ -1166,7 +1241,7 @@ export function buildMessage(
       }
 
       case 'challenge_expiring': {
-        const title = (payload.title as string) || tPush(lang, 'common.yourChallenge');
+        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
         const hours = Math.max(1, Math.round(Number(payload.hours_left ?? 6)));
         return {
           title: tPush(lang, 'challengeExpiring.title'),

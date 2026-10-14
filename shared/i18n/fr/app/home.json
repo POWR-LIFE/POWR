@@ -33,7 +33,7 @@
   "streak": {
     "title": "TA SÉRIE",
     "pill": {
-      "justStarted": "TOUT DÉBUT",
+      "justStarted": "PREMIERS PAS",
       "showingUp": "ÇA DÉMARRE",
       "building": "ÇA MONTE",
       "onARoll": "SUR TA LANCÉE",
@@ -87,7 +87,7 @@
     "hint": "Chaque séance vérifiée compte automatiquement — il suffit de t’entraîner.",
     "cta": {
       "saved": "GARDE LE RYTHME",
-      "partway": "TERMINE",
+      "partway": "VA AU BOUT",
       "offer": "C’EST PARTI"
     }
   },
@@ -162,7 +162,7 @@
       "title": "Tu fais venir du monde.",
       "body_one": "{{count}} personne que tu as invitée a fait sa première séance vérifiée. Les affiliés ont leur propre lien, un portail pour le suivre et de vraies récompenses pour chaque inscription. Ça te tente ?",
       "body_other": "{{count}} personnes que tu as invitées ont fait leur première séance vérifiée. Les affiliés ont leur propre lien, un portail pour le suivre et de vraies récompenses pour chaque inscription. Ça te tente ?",
-      "cta": "DEMANDER À REJOINDRE",
+      "cta": "POSTULER",
       "error": "Envoi impossible — réessaie dans un instant.",
       "foot": "Sur invitation. Une vraie personne lit chaque demande."
     },
@@ -213,8 +213,8 @@
     },
     "expired": "Expiré",
     "left": {
-      "daysHours": "encore {{days}} j {{hours}} h",
-      "hoursMinutes": "encore {{hours}} h {{minutes}} min"
+      "daysHours": "Encore {{days}} j {{hours}} h",
+      "hoursMinutes": "Encore {{hours}} h {{minutes}} min"
     }
   },
   "reward": {

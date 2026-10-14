@@ -77,7 +77,7 @@
   },
   "locationService": {
     "trackingTitle": "POWR suit tes séances",
-    "idleBody": "Détecte ton arrivée dans les salles partenaires.",
+    "idleBody": "On détecte ton arrivée dans les salles partenaires.",
     "dwellBody": "Check-in validé — ta séance est chronométrée.",
     "approachTitle": "POWR fait ton check-in",
     "approachBody": "Tu es près d’une salle partenaire — on confirme ton arrivée."

@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFormatLocale } from '@/lib/i18n';
+import { discoverDistanceUnit, METRES_PER_MILE, useDistancePreference } from '@/lib/units';
 
 const GOLD    = '#E8D200';
 const BG      = '#1E1E1E';
@@ -56,6 +57,7 @@ export default function DiscoverScreen() {
   const { t } = useTranslation();
   const [activeCategory, setActiveCategory] = useState<Category>('All');
   const [search, setSearch] = useState('');
+  const distanceUnit = discoverDistanceUnit(useDistancePreference());
 
   const filtered = activeCategory === 'All'
     ? PARTNERS
@@ -123,7 +125,11 @@ export default function DiscoverScreen() {
             </View>
             <View style={styles.partnerRight}>
               <Text style={styles.partnerPts}>{t('discover:web.pts', { points: partner.pts })}</Text>
-              <Text style={styles.partnerDistance}>{t('discover:distance.miles', { distance: fixed1(partner.miles) })}</Text>
+              <Text style={styles.partnerDistance}>
+                {distanceUnit === 'km'
+                  ? t('discover:distance.km', { distance: fixed1((partner.miles * METRES_PER_MILE) / 1000) })
+                  : t('discover:distance.miles', { distance: fixed1(partner.miles) })}
+              </Text>
             </View>
           </Pressable>
         ))}

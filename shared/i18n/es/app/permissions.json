@@ -26,15 +26,15 @@
   "precise": {
     "eyebrow": "UBICACIÓN PRECISA",
     "headline": "Lo bastante cerca\npara <gold>contar.</gold>",
-    "bodyGym": "POWR comprueba que de verdad estás en el gimnasio, con un margen de pocos metros. La ubicación aproximada no lo permite, así que tus sesiones no contarán. Activa <strong>Ubicación precisa</strong> en <strong>{{path}}</strong>.",
-    "bodyVenue": "POWR comprueba que de verdad estás en el centro asociado, con un margen de pocos metros. La ubicación aproximada no lo permite, así que tus sesiones no contarán. Activa <strong>Ubicación precisa</strong> en <strong>{{path}}</strong>."
+    "bodyGym": "POWR comprueba que de verdad estás en el gimnasio, con un margen de pocos metros. La ubicación aproximada no lo permite, así que tus sesiones no contarán. Activa la <strong>ubicación exacta</strong> («Precisa» en Android) en <strong>{{path}}</strong>.",
+    "bodyVenue": "POWR comprueba que de verdad estás en el centro asociado, con un margen de pocos metros. La ubicación aproximada no lo permite, así que tus sesiones no contarán. Activa la <strong>ubicación exacta</strong> («Precisa» en Android) en <strong>{{path}}</strong>."
   },
   "background": {
     "eyebrow": "SEGUIMIENTO AUTOMÁTICO",
     "headline": "Gana mientras\nte <gold>mueves.</gold>",
     "body": "Sin darle a empezar. POWR te hace el check-in desde el bolsillo, incluso con la app cerrada. Solo funciona con <strong>{{always}}</strong>.",
-    "offGym": "La ubicación está activada, pero solo mientras estás en la app, así que cada visita al gimnasio con POWR cerrado no te suma nada. Cámbiala a <strong>{{always}}</strong> en <strong>{{path}}</strong>.",
-    "offVenue": "La ubicación está activada, pero solo mientras estás en la app, así que cada visita a un centro asociado con POWR cerrado no te suma nada. Cámbiala a <strong>{{always}}</strong> en <strong>{{path}}</strong>.",
+    "offGym": "La ubicación está activada, pero solo mientras estás en la app, así que ninguna visita al gimnasio con POWR cerrado te suma nada. Cámbiala a <strong>{{always}}</strong> en <strong>{{path}}</strong>.",
+    "offVenue": "La ubicación está activada, pero solo mientras estás en la app, así que ninguna visita a un centro asociado con POWR cerrado te suma nada. Cámbiala a <strong>{{always}}</strong> en <strong>{{path}}</strong>.",
     "alwaysIos": "«Siempre»",
     "alwaysAndroid": "«Permitir todo el tiempo»",
     "cta": {
@@ -51,7 +51,7 @@
   },
   "locationOk": {
     "headline": "Todo está\n<gold>listo.</gold>",
-    "bodyGym": "POWR sabe dónde estás y te hace el check-in automáticamente. Si desactivas la ubicación, dejas de ganar en lugares geolocalizados y gimnasios asociados.",
+    "bodyGym": "POWR sabe dónde estás y te hace el check-in automáticamente. Si desactivas la ubicación, dejas de ganar en centros geolocalizados y gimnasios asociados.",
     "bodyVenue": "POWR sabe dónde estás y te hace el check-in automáticamente. Si desactivas la ubicación, dejas de ganar en centros asociados."
   },
   "battery": {
@@ -71,7 +71,7 @@
   },
   "fix": {
     "notNow": "Ahora no",
-    "done": "Listo",
+    "done": "Hecho",
     "paths": {
       "locationIos": "Ajustes › POWR › Ubicación",
       "locationAndroid": "Información de la aplicación › Permisos › Ubicación",
@@ -92,11 +92,11 @@
     },
     "arrival": {
       "title": "Ya estás dentro.",
-      "body": "Llegada detectada — sesión iniciada."
+      "body": "Llegada detectada: sesión iniciada."
     },
     "session": {
       "title": "Sesión registrada",
-      "body": "48 min en tu gimnasio — +50 POWR ganados."
+      "body": "48 min en tu gimnasio: +50 POWR ganados."
     },
     "reward": {
       "title": "Recompensa nueva cerca",

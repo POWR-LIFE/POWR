@@ -153,6 +153,9 @@ Deno.serve(async (req) => {
         if (boardPushes >= MAX_BOARD_PUSHES) break;
         await notifyPush(uid, 'challenge_open_posted', {
           challenge_id: post.id, title, from_name: who,
+          // English stand-ins flagged for other languages (pushCopy sentText).
+          title_missing: post.template?.title == null,
+          from_name_missing: !(prof?.display_name || prof?.username),
         });
         boardPushes++;
         stats.nudged++;
@@ -193,6 +196,8 @@ Deno.serve(async (req) => {
               challenge_id: ch.id,
               title: ch.template?.title ?? 'your challenge',
               outcome: 'pool_missed',
+              // English stand-ins flagged for other languages (pushCopy sentText).
+              title_missing: ch.template?.title == null,
             });
           }
         }
@@ -210,6 +215,8 @@ Deno.serve(async (req) => {
             await notifyPush(p.user_id, 'challenge_expiring', {
               challenge_id: ch.id, title: ch.template?.title ?? 'your challenge',
               hours_left: Math.max(1, Math.round(remaining / 3_600_000)),
+              // English stand-ins flagged for other languages (pushCopy sentText).
+              title_missing: ch.template?.title == null,
             });
             stats.nudged++;
           }
@@ -272,6 +279,8 @@ Deno.serve(async (req) => {
             outcome: 'expired',
             // Lets the copy drop "nobody finished" when it was only ever you.
             roster: (roster ?? []).length,
+            // English stand-ins flagged for other languages (pushCopy sentText).
+            title_missing: ch.template?.title == null,
           });
         }
         stats.settled++;
@@ -288,6 +297,8 @@ Deno.serve(async (req) => {
           outcome: 'missed',
           finishers: completerCount,
           roster: (roster ?? []).length,
+          // English stand-ins flagged for other languages (pushCopy sentText).
+          title_missing: ch.template?.title == null,
         });
       }
 
@@ -316,6 +327,8 @@ Deno.serve(async (req) => {
           bonus,
           total: ch.base_points + bonus,
           co_completers: coCompleters,
+          // English stand-ins flagged for other languages (pushCopy sentText).
+          title_missing: ch.template?.title == null,
         });
       }
       stats.settled++;
@@ -337,6 +350,8 @@ Deno.serve(async (req) => {
             challenge_id: ch.id,
             title: ch.template?.title ?? 'your challenge',
             hours_left: Math.max(1, Math.round(remaining / 3_600_000)),
+            // English stand-ins flagged for other languages (pushCopy sentText).
+            title_missing: ch.template?.title == null,
           });
           stats.nudged++;
         }

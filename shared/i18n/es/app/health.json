@@ -23,7 +23,7 @@
     "eyebrowSyncing": "YA CASI ESTÁ",
     "headline": "Así es como POWR <gold>cuenta tu movimiento.</gold>",
     "headlineSyncing": "Importando <gold>tu historial.</gold>",
-    "subhead": "Pasos, entrenos y sueño llegan desde tu móvil, así que cada movimiento suma automáticamente.",
+    "subhead": "Tus pasos, entrenos y sueño llegan desde tu móvil, así que cada movimiento suma automáticamente.",
     "subheadWithWearable": "Tu reloj se encarga de los entrenos y tu móvil, de los pasos. Necesitas los dos para ganarlo todo.",
     "syncing": "SINCRONIZANDO TUS DATOS…",
     "skip": "Continuar sin conectar",
@@ -34,7 +34,7 @@
       "noActivity": "Sin actividad",
       "estPoints": "aprox. +{{points}} POWR",
       "sessions": "{{sessions}} entrenos sincronizados",
-      "streak": "racha de {{days}} días"
+      "streak": "racha de {{days}} d"
     },
     "picker": {
       "title": "Elige tu fuente principal",

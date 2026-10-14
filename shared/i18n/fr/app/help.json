@@ -27,7 +27,7 @@
       },
       "redeem": {
         "q": "Comment échanger une récompense ?",
-        "a": "Va dans l’onglet Découvrir, trouve la récompense qui te plaît et touche Échanger. Tes points sont déduits et un code unique s’affiche. Présente-le au partenaire."
+        "a": "Ouvre l’onglet Récompenses, trouve la récompense qui te plaît et touche Échanger. Tes points sont déduits et un code unique s’affiche. Présente-le au partenaire."
       },
       "transfer": {
         "q": "Puis-je transférer mes points à quelqu’un ?",
@@ -42,7 +42,7 @@
       },
       "noPoints": {
         "q": "J’ai fait une séance à la salle mais je n’ai pas eu de points. Pourquoi ?",
-        "a": "Vérifie que le service de localisation est réglé sur « Lorsque l’app est active » pour POWR (Paramètres → Connexions). Vérifie aussi que la salle fait bien partie des partenaires POWR. Si le problème continue, saisis ta séance à la main ou contacte-nous."
+        "a": "Vérifie que la localisation est réglée sur « Toujours » pour POWR (Paramètres → Connexions) : les check-ins automatiques en salle en ont besoin, même quand l’app est fermée. Vérifie aussi que la salle fait bien partie des partenaires POWR. Si le problème continue, saisis ta séance à la main ou contacte-nous."
       },
       "perDay": {
         "q": "Combien de check-ins en salle rapportent des points par jour ?",
@@ -76,7 +76,7 @@
       },
       "healthShared": {
         "q": "Mes données de santé sont-elles partagées avec les partenaires ?",
-        "a": "Non. Tes données de santé ne sont jamais partagées avec les partenaires. On ne partage que le strict nécessaire pour te remettre une récompense que tu choisis d’échanger (par exemple un code de retrait)."
+        "a": "Non. Tes données de santé ne sont jamais partagées avec les partenaires. On ne partage que le strict nécessaire pour te remettre une récompense que tu choisis d’échanger (par exemple un code de récompense)."
       },
       "deleteAccount": {
         "q": "Comment supprimer mon compte ?",
@@ -84,7 +84,7 @@
       },
       "leaderboard": {
         "q": "Comment ne plus apparaître dans le classement ?",
-        "a": "Va dans Paramètres → Confidentialité et désactive « Apparaître dans le classement ». Ton activité restera privée et ton nom disparaîtra de tous les classements."
+        "a": "Va dans Paramètres → Confidentialité et désactive « M’afficher dans les classements des salles ». Ton nom et tes points n’apparaîtront plus dans les classements des salles où tu t’entraînes (dans l’app, sur leurs écrans ou dans Gym Clash), et tu continues à gagner des points normalement."
       }
     },
     "stillStuck": "Encore un souci ? Utilise l’onglet Nous contacter et on te répondra."

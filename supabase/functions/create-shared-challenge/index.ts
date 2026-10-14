@@ -205,7 +205,11 @@ const handler = async (req) => {
   const { data: me } = await supabase.from('profiles').select('username, display_name').eq('id', user.id).maybeSingle();
   const fromName = me?.display_name || me?.username || 'A friend';
   for (const fid of friendIds) {
-    await notifyPush(fid, 'challenge_invite', { challenge_id: challenge.id, from_name: fromName, title: tmpl.title });
+    await notifyPush(fid, 'challenge_invite', {
+      challenge_id: challenge.id, from_name: fromName, title: tmpl.title,
+      // English stand-ins flagged for other languages (pushCopy sentText).
+      from_name_missing: !(me?.display_name || me?.username),
+    });
   }
 
   return json({ ok: true, challenge_id: challenge.id });

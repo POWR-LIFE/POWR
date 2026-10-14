@@ -15,6 +15,17 @@
       "body": "POWR vuelve a los idiomas que ya están listos."
     }
   },
+  "units": {
+    "section": "Unidades",
+    "title": "Unidades de distancia",
+    "hint": "Automático usa millas en Descubrir y las unidades habituales de tu región para tus entrenos.",
+    "auto": "Automático",
+    "miles": "Millas",
+    "milesDetail": "mi · mph",
+    "kilometres": "Kilómetros",
+    "kilometresDetail": "km · km/h",
+    "swimNote": "La natación se muestra siempre en metros."
+  },
   "main": {
     "title": "Ajustes",
     "section": {
@@ -41,7 +52,7 @@
       "invitedBy": "Te invitó",
       "invitedByHint": "Los dos ganáis 20 POWR tras tu primer entreno verificado",
       "haveInviteCode": "¿Tienes un código de invitación?",
-      "inviteDaysLeft": "Añade un código de invitación en tus primeros días: te quedan {{days}}",
+      "inviteDaysLeft": "Añade un código de invitación en tus primeros días: te quedan {{days}} días",
       "inviteLastDay": "Último día para añadir un código de invitación"
     },
     "affiliate": {
@@ -65,7 +76,7 @@
       "locationHintGyms": "Verifica tus sesiones en gimnasios asociados",
       "locationHintVenues": "Verifica tus sesiones en centros asociados",
       "background": "Ubicación en segundo plano",
-      "backgroundHint": "Tu check-in aunque la app esté cerrada",
+      "backgroundHint": "Hace tu check-in aunque la app esté cerrada",
       "battery": "Actividad en segundo plano",
       "batteryHint": "Evita que Android pause la detección de check-ins",
       "status": {
@@ -107,9 +118,9 @@
       "weeklyHint": "Tus puntos, entrenos y posición de la semana, cada lunes"
     },
     "social": {
-      "together": "Retos en compañía",
+      "together": "Retos en equipo",
       "togetherHint": "Acepta retos con amigos desde tu pantalla de inicio",
-      "openBoard": "Tablón de retos abiertos",
+      "openBoard": "Tablón abierto de retos",
       "openBoardHint": "Publica retos que cualquier miembro de POWR puede aceptar y mira los suyos. Verán tu nombre y tu foto.",
       "boardAlerts": "Avisos del tablón",
       "boardAlertsHint": "Avísame cuando alguien publique un reto que pueda aceptar"
@@ -119,8 +130,8 @@
       "shareActivityHint": "Tus amigos pueden ver tus entrenos",
       "gymBoards": "Mostrarme en las clasificaciones de los gimnasios",
       "gymBoardsHint": "Tu nombre y tus puntos en la clasificación de los gimnasios donde entrenas: en la app, en sus pantallas y en Gym Clash. Si lo desactivas, sigues ganando.",
-      "gymVisits": "Mostrar mis visitas a los gimnasios",
-      "gymVisitsHint": "Los gimnasios donde entrenas ven cuándo fuiste, para darse cuenta si dejas de ir. Nunca tus otros entrenos, tus datos de salud ni dónde estás.",
+      "gymVisits": "Que los gimnasios vean mis visitas",
+      "gymVisitsHint": "Los gimnasios donde entrenas ven cuándo has ido, para darse cuenta de si dejas de ir. Nunca tus otros entrenos, tus datos de salud ni dónde estás.",
       "shareWithGym": "Compartir con {{gym}}",
       "shareWithGymHint": "Tu gimnasio también ve el resto de tus entrenos: carreras, salidas en bici, entrenos en casa, con qué frecuencia y cuándo. Nunca tu sueño, tu frecuencia cardíaca ni dónde estás."
     },
@@ -181,13 +192,13 @@
   "wearables": {
     "title": "Wearables",
     "hint": "Conecta un dispositivo para verificar tus entrenos y ganar puntos extra. Puedes cambiarlo cuando quieras; solo puede haber uno activo.",
-    "footer": "Más dispositivos se sincronizan automáticamente a través de la app Salud o Health Connect: conéctalos desde la sección de fuentes de salud en Ajustes."
+    "footer": "Otros dispositivos se sincronizan automáticamente a través de la app Salud o Health Connect, que puedes conectar desde la sección de fuentes de salud en Ajustes."
   },
   "activityPreferences": {
     "title": "Actividades principales",
     "headline": "¿En qué te\n<gold>centras?</gold>",
     "bodyWithDevices": "Elige hasta {{max}}. Registraremos automáticamente lo que admitan tus dispositivos.",
-    "bodyNoDevices": "Elige hasta {{max}}. Sin wearable, la mayoría hay que registrarlas a mano.",
+    "bodyNoDevices": "Elige hasta {{max}}. Sin wearable, la mayoría se registran a mano.",
     "pickOne": "Elige al menos una actividad",
     "roomFor_one": "Te queda hueco para {{count}} actividad más",
     "roomFor_other": "Te queda hueco para {{count}} actividades más",

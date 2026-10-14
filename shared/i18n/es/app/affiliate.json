@@ -12,7 +12,7 @@
       "terminated": "DADO DE BAJA"
     },
     "pausedBody": "Tu enlace sigue funcionando, pero los nuevos registros no suman por ahora. Escríbenos y lo arreglamos.",
-    "portalBody": "Clics diarios, cada registro, tu código QR, el historial de recompensas y tu dirección de envío — y ya con la sesión iniciada."
+    "portalBody": "Clics diarios, cada registro, tu código QR, el historial de recompensas y tu dirección de envío, y ya con la sesión iniciada."
   },
   "stats": {
     "eyebrow": "ÚLTIMOS 30 DÍAS",
@@ -52,7 +52,7 @@
     },
     "share": {
       "title": "Comparte tu enlace una vez",
-      "sub": "Story, bio, chat de grupo — cualquier sitio vale."
+      "sub": "Story, bio, chat de grupo: cualquier sitio vale."
     }
   },
   "code": {
@@ -63,7 +63,7 @@
     "share": "COMPARTE TU ENLACE",
     "copyCode": "Copiar código",
     "locked": "ACEPTA LAS CONDICIONES",
-    "foot": "Di tu código en voz alta en los vídeos — en iPhone, la App Store no puede conservarlo durante la instalación."
+    "foot": "Di tu código en voz alta en los vídeos: en iPhone, la App Store no puede conservarlo durante la instalación."
   },
   "next": {
     "eyebrow": "PRÓXIMO ESCALÓN",
@@ -86,7 +86,7 @@
     "addAddress": "Añade tu dirección para que podamos enviártelo",
     "parcel": {
       "owed": "En preparación",
-      "approved": "Aprobado — preparando el envío",
+      "approved": "Aprobado: preparando el envío",
       "shipped": "Enviado",
       "delivered": "Entregado",
       "cancelled": "Cancelado"
@@ -94,7 +94,7 @@
   },
   "profile": {
     "title": "Tu página de enlace",
-    "ledeWithLink": "Esto es lo que ve la gente al tocar tu enlace — {{url}}. Una cara y una frase convierten un código en una persona.",
+    "ledeWithLink": "Esto es lo que ve la gente al tocar tu enlace ({{url}}). Una cara y una frase convierten un código en una persona.",
     "lede": "Esto es lo que ve la gente al tocar tu enlace. Una cara y una frase convierten un código en una persona.",
     "namePlaceholder": "Tu nombre",
     "bioPlaceholder": "Una frase sobre ti",
@@ -107,13 +107,13 @@
     "displayName": "NOMBRE VISIBLE",
     "bio": "UNA FRASE SOBRE TI",
     "bioExample": "Coach en Iron Works, fan del maratón, aquí para ponerte en marcha",
-    "saveError": "No se ha podido guardar — inténtalo de nuevo.",
+    "saveError": "No se ha podido guardar. Inténtalo de nuevo.",
     "save": "GUARDAR"
   },
   "terms": {
     "title": "Condiciones de afiliado",
     "eyebrow": "PROGRAMA DE AFILIADOS DE POWR · {{version}}",
-    "saveError": "No se ha podido guardar — inténtalo de nuevo.",
+    "saveError": "No se ha podido guardar. Inténtalo de nuevo.",
     "agree": "LAS HE LEÍDO Y ACEPTO"
   },
   "shareText": "Entrenar ahora tiene premio. Descarga POWR y usa mi código {{code}}: {{link}}",

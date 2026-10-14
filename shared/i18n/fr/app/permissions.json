@@ -1,7 +1,7 @@
 {
   "cta": {
     "requesting": "DEMANDE EN COURS...",
-    "openSettings": "OUVRIR LES PARAMÈTRES"
+    "openSettings": "OUVRIR LES RÉGLAGES"
   },
   "location": {
     "eyebrow": "LOCALISATION",
@@ -11,7 +11,7 @@
     "offVenue": "La localisation est coupée pour POWR : tes séances dans les lieux partenaires ne peuvent pas être vérifiées, et ton téléphone ne te le redemandera pas. Réactive-la dans <strong>{{path}}</strong>.",
     "offGym": "La localisation est coupée pour POWR : tes séances dans les salles partenaires ne peuvent pas être vérifiées, et ton téléphone ne te le redemandera pas. Réactive-la dans <strong>{{path}}</strong>.",
     "cta": {
-      "allowIos": "LORSQUE L’APP EST ACTIVE",
+      "allowIos": "AUTORISER LA POSITION",
       "allowAndroid": "ACTIVER LA LOCALISATION"
     },
     "bonus": "+20 POWR",
