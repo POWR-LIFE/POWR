@@ -1,0 +1,18 @@
+{
+  "language": {
+    "section": "Langue",
+    "title": "Langue",
+    "hint": "POWR suit la langue de ton téléphone, sauf si tu en choisis une ici.",
+    "phone": "Langue du téléphone",
+    "phoneUnavailable": "{{language}} n'est pas encore disponible, POWR s'affiche donc en anglais",
+    "draft": "Brouillon",
+    "previewOn": {
+      "title": "Aperçu des traductions activé",
+      "body": "Les traductions en cours apparaissent maintenant dans Paramètres › Langue. Appuie longuement sur la ligne de version pour le désactiver."
+    },
+    "previewOff": {
+      "title": "Aperçu des traductions désactivé",
+      "body": "POWR revient aux langues qui sont prêtes."
+    }
+  }
+}

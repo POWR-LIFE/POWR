@@ -12,6 +12,7 @@ import { clearDeviceWakeTicket, ensureDeviceWakeTicket, readStoredSession } from
 import { claimDevice, confirmDeviceTransfer, getDeviceId } from '@/lib/deviceLock';
 import { reportLocationPermission } from '@/lib/locationPermission';
 import { reportUserCountry } from '@/lib/country';
+import { reportUserLanguage } from '@/lib/i18n/reportLanguage';
 import TransferDeviceSheet from '@/components/TransferDeviceSheet';
 
 type AuthContextType = {
@@ -461,6 +462,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 reportLocationPermission(session.user.id)
                     .then(fix => reportUserCountry(session.user.id, fix))
                     .catch(() => {});
+                reportUserLanguage(session.user.id);
                 refreshWakeTicket(session.user.id);
                 // ZOMBIE PATROL (2026-08-12): the destroyed-session logout bypasses
                 // clearGeofenceStateOnSignOut, so a re-login can inherit a stale
@@ -660,6 +662,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 reportLocationPermission(userId)
                     .then(fix => reportUserCountry(userId, fix))
                     .catch(() => {});
+                reportUserLanguage(userId);
                 // Renewal rides the foreground, because the foreground is the only
                 // place a ticket CAN be minted. A device that opens the app even
                 // once a month therefore never reaches a wake without one.

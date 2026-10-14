@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import type { HealthProviderId } from '@/lib/health/providers/types';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as SecureStore from 'expo-secure-store';
@@ -35,6 +36,8 @@ import { getNotificationPreferences, updateNotificationPreferences } from '@/lib
 import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
+import { setTranslationPreview, useLanguageSettings } from '@/lib/i18n';
+import { LANGUAGE_NAMES } from '@/shared/i18n';
 import { formatMemberId } from '@/shared/memberId';
 import { getGymSharing, setGymSharing, setGymVisitSharing, type GymSharing } from '@/lib/api/gymSharing';
 import { fetchProfile, updateLeaderboardVisibility } from '@/lib/api/user';
@@ -66,6 +69,19 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { signOut, user, updateUserMetadata } = useAuth();
   const gymRelevant = useGymRelevance();
+  const { t } = useTranslation();
+  const languages = useLanguageSettings();
+
+  const toggleTranslationPreview = useCallback(() => {
+    const on = !languages.preview;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setTranslationPreview(on);
+    Alert.alert(
+      t(on ? 'settings:language.previewOn.title' : 'settings:language.previewOff.title'),
+      t(on ? 'settings:language.previewOn.body' : 'settings:language.previewOff.body'),
+      [{ text: t('common:actions.ok') }],
+    );
+  }, [languages.preview, t]);
 
   const [isAdmin, setIsAdmin] = React.useState(false);
   // Granted a creator profile (admin links their app account in creator_users).
@@ -423,6 +439,24 @@ export default function SettingsScreen() {
             />
           ) : null}
         </View>
+
+        {/* ── Language ─────────────────────────────────────── */}
+        {/* Only once there's a choice to make: while English is the only
+            finished language, the row appears just for translators. */}
+        {languages.available.length > 1 && (
+          <>
+            <SectionLabel label={t('settings:language.section')} />
+            <View style={styles.card}>
+              <RowLink
+                icon="language-outline"
+                label={t('settings:language.title')}
+                value={LANGUAGE_NAMES[languages.language] ?? languages.language}
+                onPress={() => router.push('/language')}
+                isLast
+              />
+            </View>
+          </>
+        )}
 
         {/* ── Creator ──────────────────────────────────────── */}
         {isCreator && (
@@ -939,7 +973,12 @@ export default function SettingsScreen() {
 
         {/* ── App info ──────────────────────────────────────── */}
         <View style={styles.appInfo}>
-          <Text style={styles.appVersion}>{appVersionLabel}</Text>
+          {/* Long-press = translation preview, for whoever is reviewing a
+              draft language on a real phone. Harmless for anyone who finds
+              it: it only adds unfinished languages to Settings › Language. */}
+          <Pressable onLongPress={toggleTranslationPreview} delayLongPress={800}>
+            <Text style={styles.appVersion}>{appVersionLabel}</Text>
+          </Pressable>
         </View>
 
         {/* ── Danger zone ───────────────────────────────────── */}

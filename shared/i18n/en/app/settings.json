@@ -1,0 +1,18 @@
+{
+  "language": {
+    "section": "Language",
+    "title": "Language",
+    "hint": "POWR follows your phone's language unless you pick one here.",
+    "phone": "Phone language",
+    "phoneUnavailable": "{{language}} isn't available yet, so POWR is in English",
+    "draft": "Draft",
+    "previewOn": {
+      "title": "Translation preview on",
+      "body": "Unfinished translations now show under Settings › Language. Long-press the version line again to turn this off."
+    },
+    "previewOff": {
+      "title": "Translation preview off",
+      "body": "POWR is back to the languages that are ready."
+    }
+  }
+}

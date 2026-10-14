@@ -1,0 +1,18 @@
+{
+  "language": {
+    "section": "Idioma",
+    "title": "Idioma",
+    "hint": "POWR usa el idioma de tu móvil, salvo que elijas otro aquí.",
+    "phone": "Idioma del móvil",
+    "phoneUnavailable": "{{language}} aún no está disponible, así que POWR se muestra en inglés",
+    "draft": "Borrador",
+    "previewOn": {
+      "title": "Vista previa de traducciones activada",
+      "body": "Las traducciones sin terminar ya aparecen en Ajustes › Idioma. Mantén pulsada la línea de la versión otra vez para desactivarla."
+    },
+    "previewOff": {
+      "title": "Vista previa de traducciones desactivada",
+      "body": "POWR vuelve a los idiomas que ya están listos."
+    }
+  }
+}
