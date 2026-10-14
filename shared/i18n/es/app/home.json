@@ -34,7 +34,7 @@
     "title": "TU RACHA",
     "pill": {
       "justStarted": "PRIMER PASO",
-      "showingUp": "ARRANCANDO",
+      "showingUp": "CUMPLIENDO",
       "building": "COGIENDO RITMO",
       "onARoll": "EN RACHA",
       "onFire": "EN LLAMAS",
@@ -99,7 +99,7 @@
   "together": {
     "title": "EN EQUIPO",
     "full": "Completo",
-    "fullA11y": "Huecos de retos llenos, {{open}} de {{cap}}",
+    "fullA11y": "Sin huecos libres para retos, {{open}} de {{cap}}",
     "new_one": "{{count}} nuevo",
     "new_other": "{{count}} nuevos",
     "viewFriends": "Ver amigos",
@@ -125,7 +125,7 @@
       "points": "{{points}} POWR",
       "friends_one": "{{joined}} DE {{count}} AMIGO",
       "friends_other": "{{joined}} DE {{count}} AMIGOS",
-      "locked": "PUNTUACIONES CERRADAS",
+      "locked": "PUNTOS SELLADOS",
       "in": "ESTÁS DENTRO",
       "book": "RESERVA TU PLAZA",
       "see": "VER EVENTO"
@@ -162,7 +162,7 @@
       "title": "Estás trayendo gente.",
       "body_one": "{{count}} persona a la que invitaste ha hecho su primer entreno verificado. Los afiliados tienen su propio enlace, un portal para seguirlo y recompensas de verdad por cada registro. ¿Te apuntas?",
       "body_other": "{{count}} personas a las que invitaste han hecho su primer entreno verificado. Los afiliados tienen su propio enlace, un portal para seguirlo y recompensas de verdad por cada registro. ¿Te apuntas?",
-      "cta": "PEDIR UNIRME",
+      "cta": "QUIERO UNIRME",
       "error": "No se ha podido enviar. Inténtalo de nuevo en un momento.",
       "foot": "Solo por invitación. Una persona de verdad lee cada solicitud."
     },
@@ -213,8 +213,8 @@
     },
     "expired": "Caducado",
     "left": {
-      "daysHours": "quedan {{days}} d {{hours}} h",
-      "hoursMinutes": "quedan {{hours}} h {{minutes}} min"
+      "daysHours": "Quedan {{days}} d {{hours}} h",
+      "hoursMinutes": "Quedan {{hours}} h {{minutes}} min"
     }
   },
   "reward": {

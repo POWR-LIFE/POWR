@@ -52,6 +52,8 @@ Untranslated strings can be left as `""`. They show in English rather than blank
 
 - **French: "tu".** POWR talks like a training partner, not a bank. Use "tu" everywhere, including errors and legal-ish notices inside the app (the Terms and Privacy pages themselves get a proper legal translation, not this).
 - **Spanish: "tú", Spain Spanish.** Our Spanish members are in Spain. Use *móvil* (not *celular*), *vale* where natural, and Spain's iOS and Android terms (*Ajustes*).
+- **Spanish punctuation:** no spaced English dashes (" — "). Use a colon, comma, full stop or parentheses. French keeps spaced dashes, which are correct French.
+- POWR is masculine in Spanish ("POWR cerrado").
 - Short beats literal. French runs 15 to 30% longer than English. If a button or chip would wrap, find the shorter phrasing rather than shrinking the font.
 - Keep the energy of the English, but don't translate idioms word for word. Find what a French or Spanish speaker would actually say.
 - Numbers, dates and currency come from `Intl`. Don't hand-format "1 000" or "1.000" in a string.
@@ -103,8 +105,8 @@ Terms that stay in English are product names. Use them exactly as written, with 
 | phone | téléphone | móvil | |
 | email | e-mail | correo (electrónico) | |
 | password | mot de passe | contraseña | |
-| log in | se connecter (button: Connecte-toi) | iniciar sesión (button: Inicia sesión) | Toggle pills: Connexion / Inscription, Iniciar sesión / Registrarse |
-| sign up | s’inscrire (button: Inscris-toi) | registrarse (button: Regístrate) | |
+| log in | se connecter (buttons: SE CONNECTER; inline link: Connecte-toi) | iniciar sesión (link: Inicia sesión) | French buttons use the infinitive, like every other button. Toggle pills: Connexion / Inscription, Iniciar sesión / Registrarse |
+| sign up | s’inscrire (buttons: infinitive; inline link: Inscris-toi) | registrarse (Regístrate) | |
 | Forgot password? | Mot de passe oublié ? | ¿Has olvidado tu contraseña? | |
 | username | nom d’utilisateur (placeholder « pseudo ») | nombre de usuario (placeholder "usuario") | |
 | display name | nom affiché | nombre visible | |
@@ -156,9 +158,22 @@ Terms that stay in English are product names. Use them exactly as written, with 
 | Every move counts. | Chaque mouvement compte. | Cada movimiento cuenta. | Email tagline |
 | Unsubscribe / Privacy Policy | Se désabonner / Politique de confidentialité | Darse de baja / Política de privacidad | Email footer |
 | rank #N | n° N | n.º N | |
-| Doors open | Portes ouvertes | Las puertas abren | |
+| Doors open (door time) | Ouverture des portes | Las puertas abren | "Portes ouvertes" means an open day in French |
 | POWR drop (Vault grant) | Cadeau POWR | Regalo POWR | |
 | clean slate | page blanche | borrón y cuenta nueva | |
+| QR code | QR code | código QR | |
+| Something went wrong | Un problème est survenu | Algo ha fallado | |
+| achievements (badges) / career highlights | succès / palmarès | logros / logros | Different things in Edit Profile vs the badges |
+| You're in (registered for an event) | Tu en es | Ya estás dentro | French "Tu y es" only for arriving at the gym |
+| affiliate step (ladder) | palier | escalón | Same word in pushes |
+| "& more" in a list | et plus encore (devices) / et ailleurs (platforms) | y más | |
+| heart rate unit | bpm | lpm | Apple's Salud uses lpm |
+| sealed (scores, board) | scellé | sellado | |
+| Together (feature) | Ensemble | En equipo | |
+| Done | Terminé | Hecho | |
+| While Using (iOS location option) | « Lorsque l’app est active » | «Al usar la app» | Android: Autoriser seulement si l’appli est en cours d’utilisation / Permitir solo mientras se usa la aplicación |
+| Precise location | Position exacte | Ubicación exacta (iOS) / Usar ubicación precisa (Android) | |
+| partners (generic, member-facing) | partenaires | negocios asociados | Partner gym / venue keep their own rows |
 
 Add to this table whenever a new term comes up, so every screen uses the same word.
 
@@ -176,7 +191,7 @@ Each recipient's language comes from `profiles.language` (the app keeps it curre
 
 **Going live with a language on the server:**
 1. A native speaker reviews `push/<lang>.ts`, `email/<lang>.ts` and the email previews.
-2. The callers that still send English fragments are fixed (see the server PR: vault bonus reason, wearable activity label, shared-challenge fallbacks).
+2. The callers that used to send only English fragments are deployed with their fix: claim-points and upgrade-gym-tier (vault bonus `reason_kind` and its numbers), terra-webhook (`activity_type`), and create-, respond-, resolve- and complete-shared-challenge plus manage-friendship (`title_missing` / `from_name_missing`). Until each is deployed, its pushes quote the English fragment as before. The app's own workout receipt (`hooks/useHealthSync.ts`) still sends only `activity_label`: a bare type ("running") is translated, a HealthKit or Health Connect workout name stays English until the app also sends `activity_type`.
 3. Add the language to `SERVER_LANGUAGES`.
 4. Redeploy every function that bundles `_shared/i18n`: send-push-notification, gym-visit-beacon, dispatch-daily-nudges, streak-rescue-sweep, send-welcome-email, send-weekly-summary, send-level-up-email, send-reengagement-email, send-redemption-receipt, email-previews. Each edge function freezes its own copy of `_shared` at deploy time.
 

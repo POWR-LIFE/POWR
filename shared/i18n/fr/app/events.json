@@ -85,13 +85,13 @@
     },
     "pill": {
       "rank": "RANG {{rank}}",
-      "youreIn": "TU Y ES",
+      "youreIn": "TU EN ES",
       "soon": "BIENTÔT",
       "register": "S’INSCRIRE",
       "view": "VOIR"
     },
     "you": {
-      "finished": "Place finale : #{{rank}}",
+      "finished": "Place finale : n° {{rank}}",
       "points": "Toi · {{points}} pts cette semaine"
     },
     "cardA11y": {
@@ -177,7 +177,7 @@
       "eyebrow": "CLASSEMENT GÉNÉRAL",
       "light": "Chaque mouvement.",
       "bold": "Un seul classement.",
-      "line": "Podiums hebdo et classement historique, ouverts à tout POWR. Bientôt.",
+      "line": "Podiums hebdo et classement historique, ouverts à tout le monde sur POWR. Bientôt.",
       "statLabel": "TU APPORTES",
       "statUnit": "POINTS AU TOTAL",
       "statLine": "Déjà comptés. Tu pars de là où tu en es.",
@@ -216,7 +216,7 @@
     "second": "2E",
     "third": "3E",
     "champion": "N° 1",
-    "openSeatA11y": "{{place}} place, à prendre",
+    "openSeatA11y": "{{place}} : place à prendre",
     "upForGrabs": "À prendre",
     "open": "LIBRE"
   },
@@ -241,7 +241,7 @@
     "resetErrorTitle": "Réinitialisation impossible",
     "closeA11y": "Fermer",
     "eyebrow": "ÉVÉNEMENT LIVE",
-    "youreIn": "Tu y es",
+    "youreIn": "Tu en es",
     "rules": "LE RÈGLEMENT",
     "rulesMore": "+{{n}} autres après ton inscription",
     "note": "Tout le monde part de zéro — seuls les points gagnés pendant l’événement comptent.",
@@ -279,8 +279,8 @@
     "share": "Partager",
     "post": "Publier",
     "save": "Enregistrer",
-    "helperSave": "Partager envoie un aperçu de lien cliquable. Publier partage l’image sur TikTok, Instagram et plus. Enregistrer garde l’image sur ton téléphone.",
-    "helper": "Partager envoie un aperçu de lien cliquable. Publier partage l’image sur TikTok, Instagram, X, Threads et plus."
+    "helperSave": "Partager envoie un lien avec aperçu. Publier partage l’image sur TikTok, Instagram et ailleurs. Enregistrer la garde sur ton téléphone.",
+    "helper": "Partager envoie un lien avec aperçu. Publier partage l’image sur TikTok, Instagram, X, Threads et ailleurs."
   },
   "qr": {
     "fallbackName": "l’événement",
@@ -352,10 +352,10 @@
     "keepPlaceBy_one": "Fais venir {{n}} ami de plus d’ici le {{date}} pour garder cette place au classement final.",
     "keepPlaceBy_other": "Fais venir {{n}} amis de plus d’ici le {{date}} pour garder cette place au classement final.",
     "notInFinal": {
-      "signups": "Pas dans le classement final — il fallait {{required}} amis, et {{made}} ont suivi.",
-      "signupsBy": "Pas dans le classement final — il fallait {{required}} amis d’ici le {{date}}, et {{made}} ont suivi.",
-      "conversions": "Pas dans le classement final — il fallait {{required}} amis avec une séance vérifiée, et {{made}} ont suivi.",
-      "conversionsBy": "Pas dans le classement final — il fallait {{required}} amis avec une séance vérifiée d’ici le {{date}}, et {{made}} ont suivi."
+      "signups": "Pas dans le classement final — il fallait {{required}} amis, tu en as eu {{made}}.",
+      "signupsBy": "Pas dans le classement final — il fallait {{required}} amis d’ici le {{date}}, tu en as eu {{made}}.",
+      "conversions": "Pas dans le classement final — il fallait {{required}} amis avec une séance vérifiée, tu en as eu {{made}}.",
+      "conversionsBy": "Pas dans le classement final — il fallait {{required}} amis avec une séance vérifiée d’ici le {{date}}, tu en as eu {{made}}."
     },
     "empty": "Aucun point au classement pour l’instant — la première séance vérifiée lance les scores.",
     "winners": "PALMARÈS",

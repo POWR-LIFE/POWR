@@ -23,7 +23,7 @@
     "continue": "CONTINUER",
     "errors": {
       "justTaken": "Ce nom d’utilisateur vient d’être pris — essaie-en un autre.",
-      "generic": "Une erreur s’est produite"
+      "generic": "Un problème est survenu"
     },
     "photo": {
       "title": "Photo de profil",
@@ -33,7 +33,7 @@
       "remove": "Supprimer la photo",
       "permissionTitle": "Autorisation requise",
       "cameraDenied": "Autorise l’accès à l’appareil photo dans les réglages pour prendre une photo.",
-      "libraryDenied": "Autorise l’accès à tes photos dans les réglages pour en choisir une.",
+      "libraryDenied": "Autorise l’accès à la photothèque dans les réglages pour choisir une photo.",
       "errorTitle": "Impossible de sélectionner la photo",
       "errorBody": "Réessaie."
     }

@@ -27,7 +27,7 @@
       },
       "redeem": {
         "q": "How do I redeem a reward?",
-        "a": "Go to the Discover tab, find a reward you want, and tap Redeem. Your points will be deducted and a unique code will be shown. Present this to the partner business."
+        "a": "Open the Rewards tab, find a reward you want, and tap Redeem. Your points will be deducted and a unique code will be shown. Present this to the partner business."
       },
       "transfer": {
         "q": "Can I transfer points to someone else?",
@@ -42,7 +42,7 @@
       },
       "noPoints": {
         "q": "I visited the gym but didn't get points — why?",
-        "a": "Check that Location Services is set to \"While Using\" for POWR (Settings → Connections). Also make sure the gym is a listed POWR partner. If the issue persists, log a manual session or contact us."
+        "a": "Check that Location is set to \"Always\" for POWR (Settings → Connections): automatic gym check-ins need it, even with the app closed. Also make sure the gym is a listed POWR partner. If the issue persists, log a manual session or contact us."
       },
       "perDay": {
         "q": "How many gym check-in points can I earn per day?",
@@ -84,7 +84,7 @@
       },
       "leaderboard": {
         "q": "How do I opt out of the leaderboard?",
-        "a": "Go to Settings → Privacy and toggle off \"Show on leaderboard\". Your activity will remain private and you'll be removed from all rankings."
+        "a": "Go to Settings → Privacy and turn off \"Show me on gym boards\". Your name and points will no longer appear on the leaderboards at the gyms you train at (in the app, on their screens or in Gym Clash), and you’ll still earn points as normal."
       }
     },
     "stillStuck": "Still stuck? Use the Contact Us tab and we'll get back to you."

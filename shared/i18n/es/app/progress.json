@@ -74,11 +74,11 @@
     "min": "{{m}} min",
     "pt": "{{points}} pt",
     "steps": "{{steps}} pasos",
-    "bpm": "{{value}} bpm",
+    "bpm": "{{value}} lpm",
     "kcal": "{{value}} kcal"
   },
   "chart": {
-    "seeEarned": "{{day}} — mira lo que has ganado",
+    "seeEarned": "{{day}}: mira lo que has ganado",
     "less": "Menos",
     "more": "Más",
     "avg": "media {{value}}"
@@ -157,7 +157,7 @@
     "past5Days": "ÚLTIMOS 5 DÍAS",
     "today": "HOY",
     "weekTotal": "TOTAL SEMANAL",
-    "bestDay": "Mejor día: {{day}} — {{steps}} pasos",
+    "bestDay": "Mejor día: {{day}} ({{steps}} pasos)",
     "loadingMonth": "Cargando los pasos del mes…",
     "noDataThisMonth": "No hay datos de caminata este mes.",
     "noDataIn": "No hay datos de caminata en {{month}}.",
@@ -178,7 +178,7 @@
       "sessionsCounted_other": "{{count}} sesiones · {{duration}}",
       "greatToday": "Gran sesión de {{activity}} hoy.",
       "great": "Gran sesión de {{activity}}.",
-      "loggedToday": "{{activity}}: sesión registrada — mantén el ritmo.",
+      "loggedToday": "{{activity}}: sesión registrada. Mantén el ritmo.",
       "logged": "{{activity}}: sesión registrada.",
       "recentDays": "DÍAS RECIENTES"
     },
@@ -187,13 +187,13 @@
       "sessions": "{{activity}} · SESIONES",
       "ofFive": "{{sessions}}/5 sesiones",
       "goal": "/ objetivo 5",
-      "streak": "¡Racha de {{days}} días — sigue así!",
+      "streak": "¡Racha de {{days}} días, sigue así!",
       "activeThis_one": "{{count}} día activo esta semana.",
       "activeThis_other": "{{count}} días activos esta semana.",
       "activeThat_one": "{{count}} día activo esa semana.",
       "activeThat_other": "{{count}} días activos esa semana.",
       "outstanding": "Semana espectacular de {{activity}}.",
-      "solidThis": "Buen esfuerzo — sigue así para cumplir tu objetivo.",
+      "solidThis": "Buen esfuerzo. Sigue así para cumplir tu objetivo.",
       "solidThat": "Buena semana de entreno.",
       "moreToGo": "Te faltan {{sessions}} sesiones para cumplir tu objetivo.",
       "thatWeek": "{{sessions}}/5 sesiones esa semana."
@@ -235,15 +235,15 @@
     },
     "noStages": "Desglose de fases no disponible",
     "dayGood": "Gran noche de recuperación. Mantén la constancia.",
-    "dayShort": "{{duration}} por debajo del objetivo — prueba a acostarte antes.",
+    "dayShort": "{{duration}} por debajo del objetivo. Prueba a acostarte antes.",
     "avgNight": "MEDIA / NOCHE",
     "avgBedtime": "HORA MEDIA DE DORMIR",
     "bedtimeGoal": "objetivo: 22:30",
     "nightly": "SUEÑO POR NOCHE",
-    "bestNight": "Mejor noche: {{day}} — {{duration}}",
+    "bestNight": "Mejor noche: {{day}} ({{duration}})",
     "weekConnect": "Conecta un wearable para registrar tu sueño automáticamente.",
     "weekGood": "Buena recuperación. Mantén un horario de sueño regular.",
-    "weekShort": "Estás {{duration}} por debajo del objetivo — intenta acostarte antes.",
+    "weekShort": "Estás {{duration}} por debajo del objetivo. Intenta acostarte antes.",
     "loadingMonth": "Cargando el sueño del mes…",
     "noDataThisMonth": "No hay datos de sueño este mes.",
     "noDataIn": "No hay datos de sueño en {{month}}.",
@@ -287,14 +287,14 @@
     "effort": {
       "title": "INTENSIDAD · ESTA SEMANA",
       "raised": "con la frecuencia cardiaca elevada",
-      "peak": "FC máx. {{bpm}} bpm",
+      "peak": "FC máx. {{bpm}} lpm",
       "light": "esfuerzo suave",
       "hard": "intenso",
       "max": "máximo"
     },
     "rhr": {
       "title": "FC EN REPOSO · {{days}} DÍAS",
-      "unitWhen": "bpm · {{when}}",
+      "unitWhen": "lpm · {{when}}",
       "tip": "más baja = más en forma"
     },
     "hrv": {
@@ -335,7 +335,7 @@
       "averageDay": "tu día medio"
     },
     "quiet": {
-      "label": "{{device}} · SIN DATOS DESDE HACE {{days}} DÍAS",
+      "label": "{{device}} · {{days}} DÍAS SIN DATOS",
       "device": "Dispositivo",
       "title": "Sin lecturas desde {{when}}",
       "aWhileBack": "hace tiempo",
@@ -357,9 +357,9 @@
       "fromNights_other": "de {{count}} noches"
     },
     "delta": {
-      "stale": "sin lecturas desde {{when}} — esperando a tu dispositivo",
-      "noBaseline": "{{tip}} — en unos días podrás compararlo con lo habitual",
-      "vsAverage": "{{delta}} vs tu media — {{tip}}",
+      "stale": "sin lecturas desde {{when}}, esperando a tu dispositivo",
+      "noBaseline": "{{tip}} (en unos días podrás compararlo con lo habitual)",
+      "vsAverage": "{{delta}} vs tu media ({{tip}})",
       "level": "estable",
       "value": "{{sign}}{{value}} {{unit}}"
     },
@@ -414,26 +414,26 @@
         "rest": "Descansa o haz algo muy suave hoy."
       },
       "provider": "{{who}} puntúa tu recuperación de esta mañana con un {{score}} %. {{advice}}",
-      "providerWithEvidence": "{{who}} puntúa tu recuperación de esta mañana con un {{score}} % — {{evidence}}. {{advice}}",
-      "rhrElevated": "Tu FC en reposo está {{delta}} por encima de lo habitual — mejor tomarse hoy con más calma.",
-      "hrvLow": "Tu VFC está en {{value}} ms frente a tu media de {{usual}} — tu cuerpo aún se está recuperando. Hoy, con calma.",
-      "shortNight": "Noche corta ({{duration}}) — hoy te sentará mejor una sesión suave que una intensa.",
-      "bigDay": "Ayer fue un día duro ({{duration}} de entreno) — la recuperación también es parte del trabajo.",
-      "ordinary": "{{evidence}} — nada fuera de lo normal. Luz verde para apretar.",
+      "providerWithEvidence": "{{who}} puntúa tu recuperación de esta mañana con un {{score}} %: {{evidence}}. {{advice}}",
+      "rhrElevated": "Tu FC en reposo está {{delta}} por encima de lo habitual: mejor tomarse hoy con más calma.",
+      "hrvLow": "Tu VFC está en {{value}} ms frente a tu media de {{usual}}: tu cuerpo aún se está recuperando. Hoy, con calma.",
+      "shortNight": "Noche corta ({{duration}}): hoy te sentará mejor una sesión suave que una intensa.",
+      "bigDay": "Ayer fue un día duro ({{duration}} de entreno). La recuperación también es parte del trabajo.",
+      "ordinary": "{{evidence}}: nada fuera de lo normal. Luz verde para apretar.",
       "night": "{{duration}} de sueño anoche.",
       "nightWaiting_one": "{{duration}} de sueño anoche. {{basis}}: aún sin sincronizar, así que esta lectura se basa solo en el sueño.",
       "nightWaiting_other": "{{duration}} de sueño anoche. {{basis}}: aún sin sincronizar, así que esta lectura se basa solo en el sueño.",
-      "rhrBelow": "Tu FC en reposo está {{bpm}} bpm por debajo de tu media — luz verde para apretar.",
-      "rhrAbove": "Tu FC en reposo está {{bpm}} bpm por encima de tu media — luz verde para apretar.",
-      "rhrOnAverage": "Tu FC en reposo está justo en tu media — luz verde para apretar.",
-      "rhrFirst": "FC en reposo: {{bpm}} bpm ({{when}}). En unos días podrás compararla con lo habitual.",
-      "hrvVsUsual": "VFC de {{value}} ms frente a tu media de {{usual}} — luz verde para apretar.",
+      "rhrBelow": "Tu FC en reposo está {{bpm}} lpm por debajo de tu media: luz verde para apretar.",
+      "rhrAbove": "Tu FC en reposo está {{bpm}} lpm por encima de tu media: luz verde para apretar.",
+      "rhrOnAverage": "Tu FC en reposo está justo en tu media: luz verde para apretar.",
+      "rhrFirst": "FC en reposo: {{bpm}} lpm ({{when}}). En unos días podrás compararla con lo habitual.",
+      "hrvVsUsual": "VFC de {{value}} ms frente a tu media de {{usual}}: luz verde para apretar.",
       "hrvFirst": "VFC: {{value}} ms ({{when}}). En unas noches podrás compararla con lo habitual.",
       "trained": "Días con entreno: {{active}} de los últimos {{days}} ({{duration}}).",
       "needsSignals": "Para valorar tu forma hacen falta datos de sueño, VFC o FC en reposo de tu dispositivo.",
       "noRecent": "No hay lecturas recientes de sueño, VFC o frecuencia cardiaca para valorar tu recuperación.",
       "lastRhr": "Tu última FC en reposo fue hace {{days}} días.",
-      "default": "Tus tendencias irán tomando forma aquí a medida que tu dispositivo se sincronice — cuantos más días, más nítida la imagen."
+      "default": "Tus tendencias irán tomando forma aquí a medida que tu dispositivo se sincronice. Cuantos más días, más nítida la imagen."
     }
   },
   "sheet": {
@@ -486,7 +486,7 @@
       "walking": "Ganado con pasos, cada vez que tu total del día superó un tramo.",
       "sleep": "Ganado con tu sueño, según lo reparador que fue.",
       "allFrom": "Todo viene del {{day}}: {{session}}.",
-      "across": "En {{sessions}} sesiones — la mayor parte del {{day}}: {{session}}.",
+      "across": "En {{sessions}} sesiones, la mayor parte del {{day}}: {{session}}.",
       "streak": "Incluye un bonus de racha."
     },
     "source": {

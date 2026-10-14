@@ -347,7 +347,7 @@
       "sync": "Tu l’as porté ? Ouvre son app pour synchroniser."
     },
     "baselines": {
-      "title": "TES VALEURS HABITUELLES · AVANT LA PAUSE",
+      "title": "TES MOYENNES · AVANT LA PAUSE",
       "rhr": "FC AU REPOS",
       "hrv": "VFC",
       "sleep": "SOMMEIL",
@@ -493,7 +493,7 @@
       "checkIn": "Check-in salle",
       "checkInWith": "Check-in salle · {{provider}}",
       "wearable": "Montre connectée",
-      "health": "Santé du téléphone",
+      "health": "Données santé du téléphone",
       "manual": "Saisie manuelle",
       "tracked": "Suivi"
     },

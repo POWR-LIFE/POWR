@@ -151,7 +151,7 @@
     "you": "Toi",
     "shareMessage": "Rejoins-moi sur POWR – l’app qui te récompense pour chaque séance ! 💪\n\nUtilise mon code d’invitation {{code}} à l’inscription et on gagne tous les deux 20 points POWR offerts :\n{{url}}",
     "friendsLabel": "Voir et ajouter des amis",
-    "qrLabel": "Afficher mon code QR",
+    "qrLabel": "Afficher mon QR code",
     "levelPill": "NIV. {{level}} · {{name}}",
     "memberSince": "Membre depuis {{date}}",
     "totalXp": "XP TOTAL",
@@ -167,9 +167,9 @@
     "streakUnit_other": "jours",
     "streakPill": {
       "justStarting": "ÇA COMMENCE",
-      "showingUp": "AU RENDEZ-VOUS",
-      "building": "EN PROGRESSION",
-      "onARoll": "BONNE LANCÉE",
+      "showingUp": "ÇA DÉMARRE",
+      "building": "ÇA MONTE",
+      "onARoll": "SUR TA LANCÉE",
       "lockedIn": "À FOND",
       "relentless": "INARRÊTABLE",
       "legendary": "LÉGENDAIRE"

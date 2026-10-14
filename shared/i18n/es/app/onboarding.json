@@ -33,7 +33,7 @@
       "remove": "Quitar foto",
       "permissionTitle": "Permiso necesario",
       "cameraDenied": "Permite el acceso a la cámara en Ajustes para hacer una foto.",
-      "libraryDenied": "Permite el acceso a tus fotos en Ajustes para elegir una.",
+      "libraryDenied": "Permite el acceso a la fototeca en Ajustes para elegir una foto.",
       "errorTitle": "No se ha podido elegir la foto",
       "errorBody": "Vuelve a intentarlo."
     }

@@ -52,7 +52,7 @@
       "warmingUp": "Calentando",
       "building": "Cogiendo ritmo",
       "onARoll": "En racha",
-      "onFire": "A tope",
+      "onFire": "En llamas",
       "unstoppable": "Imparable",
       "legendary": "De leyenda"
     },
@@ -81,17 +81,17 @@
     "date_other": "{{count}} de {{month}} de {{year}}"
   },
   "headline": {
-    "checkInAtDetail": "He hecho check-in en {{venue}} con POWR — {{detail}}.",
+    "checkInAtDetail": "He hecho check-in en {{venue}} con POWR: {{detail}}.",
     "checkInAt": "He hecho check-in en {{venue}} con POWR.",
-    "checkInDetail": "He hecho check-in con POWR — {{detail}}.",
+    "checkInDetail": "He hecho check-in con POWR: {{detail}}.",
     "checkIn": "He hecho check-in con POWR.",
     "minutes": "{{minutes}} min",
     "points": "+{{points}} pts",
     "streakDay": "Día {{day}} de mi racha.",
     "challenge": "Reto completado en POWR: {{title}} (+{{points}} pts).",
-    "levelUp": "Acabo de llegar al nivel {{level}} — {{name}} — en POWR.",
-    "levelUpPast": "Nivel {{level}} alcanzado — {{name}} — en POWR.",
-    "streakMonth": "{{streak}} en POWR — {{sessions}}.",
+    "levelUp": "Acabo de llegar al nivel {{level}} ({{name}}) en POWR.",
+    "levelUpPast": "Nivel {{level}} alcanzado ({{name}}) en POWR.",
+    "streakMonth": "{{streak}} en POWR, {{sessions}}.",
     "month": "{{sessions}} en POWR.",
     "streakDays_one": "Racha de {{count}} día",
     "streakDays_other": "Racha de {{count}} días",
@@ -99,7 +99,7 @@
     "sessionsThisMonth_other": "{{count}} sesiones este mes"
   },
   "link": {
-    "title": "{{who}} — Nivel {{level}}, {{name}}",
+    "title": "{{who}}: nivel {{level}}, {{name}}",
     "member": "Miembro de POWR",
     "subtitle": "{{headline}} Toca para descargar POWR y ganar recompensas con cada entreno."
   },

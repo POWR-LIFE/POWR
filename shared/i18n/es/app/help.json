@@ -23,11 +23,11 @@
       },
       "expire": {
         "q": "¿Caducan los puntos?",
-        "a": "Los puntos pueden caducar si tu cuenta está inactiva durante 12 meses seguidos. Mientras sigas moviéndote, tus puntos están a salvo."
+        "a": "Los puntos pueden caducar si tu cuenta está inactiva durante 12 meses seguidos. Mientras tu cuenta siga activa, tus puntos están a salvo."
       },
       "redeem": {
         "q": "¿Cómo canjeo una recompensa?",
-        "a": "Ve a la pestaña Descubrir, busca la recompensa que quieras y toca Canjear. Se descontarán tus puntos y verás un código único. Enséñaselo al negocio asociado."
+        "a": "Abre la pestaña Recompensas, busca la recompensa que quieras y toca Canjear. Se descontarán tus puntos y verás un código único. Enséñaselo al negocio asociado."
       },
       "transfer": {
         "q": "¿Puedo pasarle mis puntos a otra persona?",
@@ -42,7 +42,7 @@
       },
       "noPoints": {
         "q": "Fui al gimnasio pero no recibí puntos. ¿Por qué?",
-        "a": "Comprueba que la localización está en «Al usar la app» para POWR (Ajustes → Conexiones). Comprueba también que el gimnasio es un centro asociado de POWR. Si el problema sigue, registra la sesión a mano o contacta con nosotros."
+        "a": "Comprueba que la ubicación de POWR está en «Siempre» (Ajustes → Conexiones): los check-ins automáticos en el gimnasio lo necesitan, incluso con la app cerrada. Comprueba también que el gimnasio es un centro asociado de POWR. Si el problema sigue, registra la sesión a mano o contacta con nosotros."
       },
       "perDay": {
         "q": "¿Cuántos check-ins en el gimnasio dan puntos al día?",
@@ -65,7 +65,7 @@
       },
       "battery": {
         "q": "¿POWR me gastará la batería?",
-        "a": "POWR está pensada para consumir poco. Los datos de salud se sincronizan por lotes, no de forma continua. La ubicación solo se usa un momento durante el check-in en el gimnasio."
+        "a": "POWR está pensado para consumir poco. Los datos de salud se sincronizan por lotes, no de forma continua. La ubicación solo se usa un momento durante el check-in en el gimnasio."
       }
     },
     "account": {
@@ -75,7 +75,7 @@
         "a": "Ve a Ajustes → Cuenta. Toca Correo para cambiar tu dirección, o Cambiar contraseña para cambiarla directamente en la app. Si has olvidado tu contraseña actual, toca «Restablecer por correo» en la pantalla Cambiar contraseña."
       },
       "healthShared": {
-        "q": "¿Se comparten mis datos de salud con los partners?",
+        "q": "¿Se comparten mis datos de salud con los negocios asociados?",
         "a": "No. Tus datos de salud nunca se comparten con los negocios asociados. Solo compartimos lo mínimo necesario para darte una recompensa que decidas canjear (por ejemplo, un código de canje)."
       },
       "deleteAccount": {
@@ -84,7 +84,7 @@
       },
       "leaderboard": {
         "q": "¿Cómo dejo de salir en la clasificación?",
-        "a": "Ve a Ajustes → Privacidad y desactiva «Aparecer en la clasificación». Tu actividad seguirá siendo privada y tu nombre desaparecerá de todas las clasificaciones."
+        "a": "Ve a Ajustes → Privacidad y desactiva «Mostrarme en las clasificaciones de los gimnasios». Tu nombre y tus puntos dejarán de aparecer en las clasificaciones de los gimnasios donde entrenas (en la app, en sus pantallas o en Gym Clash), y seguirás ganando puntos como siempre."
       }
     },
     "stillStuck": "¿Sigues con problemas? Usa la pestaña Contacto y te responderemos."

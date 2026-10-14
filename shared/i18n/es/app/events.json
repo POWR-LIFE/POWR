@@ -17,7 +17,7 @@
   },
   "invite": {
     "message": "Vente a {{event}} conmigo en POWR 💪",
-    "codeWithBonus": "Regístrate con mi código {{code}} — los dos ganamos +{{points}} POWR tras tu primer entreno.",
+    "codeWithBonus": "Regístrate con mi código {{code}}: los dos ganamos +{{points}} POWR tras tu primer entreno.",
     "code": "Regístrate con mi código {{code}}.",
     "joinMe": "Únete a POWR conmigo. {{codeLine}}",
     "shareA11y": "Compartir tu enlace de invitación",
@@ -32,7 +32,7 @@
       "few": "{{rank}}.º",
       "other": "{{rank}}.º"
     },
-    "message": "{{place}} premio en {{event}}: {{prize}} 🏆",
+    "message": "Premio para el {{place}} en {{event}}: {{prize}} 🏆",
     "join": "Únete a POWR conmigo y puede ser tuyo."
   },
   "gateStrip": {
@@ -51,8 +51,8 @@
     "startsToday": "Empieza hoy · solo cuentan los puntos de esa semana",
     "startsTomorrow": "Empieza mañana · solo cuentan los puntos de esa semana",
     "startsInDays": "Empieza en {{days}} días · solo cuentan los puntos de esa semana",
-    "liveNow": "En directo — termina el {{date}}",
-    "sealed": "Puntuaciones selladas 🔒 — se revelan en directo en la final",
+    "liveNow": "En directo. Termina el {{date}}",
+    "sealed": "Puntuaciones selladas 🔒. Se revelan en directo en la final",
     "winners": "Resultados anunciados"
   },
   "shareCardA11y": "Compartir {{event}} como tarjeta",
@@ -73,8 +73,8 @@
       "results": "RESULTADOS"
     },
     "fact": {
-      "liveNow": "En directo — termina el {{date}}",
-      "sealed": "Puntuaciones selladas — se revelan en la final",
+      "liveNow": "En directo. Termina el {{date}}",
+      "sealed": "Puntuaciones selladas: se revelan en la final",
       "winners": "Resultados anunciados"
     },
     "chip": {
@@ -87,11 +87,11 @@
       "rank": "PUESTO {{rank}}",
       "youreIn": "ESTÁS DENTRO",
       "soon": "PRONTO",
-      "register": "INSCRIBIRSE",
+      "register": "INSCRÍBETE",
       "view": "VER"
     },
     "you": {
-      "finished": "Puesto final: #{{rank}}",
+      "finished": "Puesto final: n.º {{rank}}",
       "points": "Tú · {{points}} pts esta semana"
     },
     "cardA11y": {
@@ -109,7 +109,7 @@
   },
   "sharePanel": {
     "pitch": {
-      "announced": "Las inscripciones abren pronto — avisa a tus amigos. Tu código de invitación va incluido.",
+      "announced": "Las inscripciones abren pronto: avisa a tus amigos. Tu código de invitación va incluido.",
       "scheduled": "Trae a tus amigos antes de que empiecen a contar los puntos. Tu código de invitación va incluido.",
       "live": "Aún estás a tiempo de traer amigos. Tu código de invitación va incluido.",
       "over": "Enseña lo que pasó. Tu código de invitación va incluido."
@@ -119,13 +119,13 @@
     "linkA11y": "Enviar un enlace a {{event}}",
     "link": "ENVIAR ENLACE",
     "code": "Tu código <value>{{code}}</value> va incluido en los dos.",
-    "preview": "Vista previa — tus amigos podrán abrir este evento cuando sea público."
+    "preview": "Vista previa: tus amigos podrán abrir este evento cuando sea público."
   },
   "ticket": {
     "friendFallback": "Alguien",
     "state": {
-      "countsWorkout": "Cuenta — primer entreno hecho",
-      "countsSignup": "Cuenta — se registró con tu código",
+      "countsWorkout": "Cuenta: primer entreno hecho",
+      "countsSignup": "Cuenta: se registró con tu código",
       "joinedBefore": "Se unió antes de este evento",
       "needsWorkout": "Le falta su primer entreno verificado"
     },
@@ -184,7 +184,7 @@
       "pillars": {
         "weekly": "PODIOS SEMANALES",
         "ladder": "CLASIFICACIÓN HISTÓRICA",
-        "tiers": "STANDARD & PRO"
+        "tiers": "ESTÁNDAR Y PRO"
       }
     },
     "podiumA11y": "Podio, puestos aún libres",
@@ -192,7 +192,7 @@
       "eyebrow": "EVENTOS EN DIRECTO",
       "light": "Una semana para puntuar.",
       "bold": "Una noche para ganar.",
-      "line": "El próximo evento ya está en marcha. Las inscripciones abren aquí primero.",
+      "line": "El próximo evento ya se está preparando. Las inscripciones abren aquí primero.",
       "beats": {
         "register": {
           "title": "Inscríbete",
@@ -200,7 +200,7 @@
         },
         "score": {
           "title": "Una semana puntuando",
-          "line": "Todos empiezan igual. Solo cuentan los puntos ganados dentro del periodo."
+          "line": "Todo el mundo empieza igual. Solo cuentan los puntos ganados dentro del periodo."
         },
         "reveal": {
           "title": "Revelado en directo",
@@ -216,7 +216,7 @@
     "second": "2.º",
     "third": "3.º",
     "champion": "N.º 1",
-    "openSeatA11y": "{{place}} puesto, en juego",
+    "openSeatA11y": "Puesto {{place}}, en juego",
     "upForGrabs": "En juego",
     "open": "LIBRE"
   },
@@ -227,25 +227,25 @@
       "third": "3.º",
       "nth": "{{rank}}.º"
     },
-    "a11y": "{{rank}} premio: {{prize}}",
+    "a11y": "Premio del {{rank}}: {{prize}}",
     "eyebrow": "LOS PREMIOS",
     "shareAllA11y": "Compartir los premios",
     "share": "COMPARTIR",
-    "openA11y": "{{rank}} premio: {{prize}}. Se abre en grande.",
+    "openA11y": "Premio del {{rank}}: {{prize}}. Se abre en grande.",
     "closeA11y": "Cerrar",
-    "shareA11y": "Compartir el {{rank}} premio"
+    "shareA11y": "Compartir el premio del {{rank}}"
   },
   "register": {
     "errorTitle": "No hemos podido inscribirte",
-    "errorBody": "Algo ha fallado — inténtalo de nuevo.",
+    "errorBody": "Algo ha fallado. Inténtalo de nuevo.",
     "resetErrorTitle": "No se ha podido restablecer",
     "closeA11y": "Cerrar",
     "eyebrow": "EVENTO EN DIRECTO",
     "youreIn": "Estás dentro",
     "rules": "LAS REGLAS",
     "rulesMore": "+{{n}} más cuando estés dentro",
-    "note": "Todos empiezan de cero — solo cuentan los puntos ganados durante el evento.",
-    "noteGate": "Todos empiezan de cero — solo cuentan los puntos ganados durante el evento. Para entrar en la clasificación, {{required}} amigos tienen que registrarse con tu código — tu enlace para compartir viene ahora.",
+    "note": "Todo el mundo empieza de cero: solo cuentan los puntos ganados durante el evento.",
+    "noteGate": "Todo el mundo empieza de cero: solo cuentan los puntos ganados durante el evento. Para entrar en la clasificación, {{required}} amigos tienen que registrarse con tu código. Tu enlace para compartir viene ahora.",
     "registerA11y": "Inscribirse en el evento",
     "registering": "INSCRIBIENDO…",
     "countMeIn": "ME APUNTO",
@@ -289,7 +289,7 @@
     "error": "No se ha podido cargar el enlace del evento. Inténtalo de nuevo en un momento.",
     "eyebrow": "EVENTO EN DIRECTO",
     "caption": "Al escanearlo se abre {{event}} en POWR.",
-    "captionCode": "Al escanearlo se abre {{event}} en POWR — las invitaciones cuentan para tu código {{code}}.",
+    "captionCode": "Al escanearlo se abre {{event}} en POWR. Las invitaciones cuentan para tu código {{code}}.",
     "shareA11y": "Compartir el enlace del evento",
     "share": "Compartir enlace",
     "copyA11y": "Copiar el código y el enlace de invitación",
@@ -307,7 +307,7 @@
     "opensOn": "Abre el {{date}}",
     "joinWithCode": "ÚNETE CON MI CÓDIGO",
     "joinOnPowr": "ÚNETE A POWR CONMIGO",
-    "prize": "{{rank}} PREMIO"
+    "prize": "PREMIO DEL {{rank}}"
   },
   "league": {
     "title": "Liga",
@@ -326,22 +326,22 @@
     "ptsAllTime": "PTS EN TOTAL",
     "gapUp": "<num>{{gap}}</num><plain> pts para alcanzar a </plain><name>{{name}}</name>",
     "gapDown": "<num>{{gap}}</num><plain> pts por delante de </plain><name>{{name}}</name>",
-    "champion": "<bold>N.º 1</bold><plain> — nadie a quien alcanzar</plain>",
+    "champion": "<bold>N.º 1</bold><plain>: nadie a quien alcanzar</plain>",
     "them": "alguien"
   },
   "board": {
     "top3": "TOP 3",
     "standings": "CLASIFICACIÓN",
     "ptsThisWeek": "PTS ESTA SEMANA",
-    "previewEmpty": "No hay clasificación antes de que se abra el periodo — es justo lo que ve un usuario real antes del evento. Elige un estado arriba para recorrer el resto.",
+    "previewEmpty": "No hay clasificación antes de que se abra el periodo. Es justo lo que ve un usuario real antes del evento. Elige un estado arriba para recorrer el resto.",
     "gate": {
       "unlockNote": "Desbloquea la clasificación con {{required}} amigos",
       "quiet": "La clasificación se desbloquea con {{required}} amigos",
       "title": "{{have}} de {{required}} amigos dentro",
-      "subConversions": "La clasificación se desbloquea cuando {{required}} amigos se registran con tu código y hacen su primer entreno verificado — compártelo arriba.",
-      "sub": "La clasificación se desbloquea cuando {{required}} amigos se registran con tu código — compártelo arriba."
+      "subConversions": "La clasificación se desbloquea cuando {{required}} amigos se registran con tu código y hacen su primer entreno verificado. Compártelo arriba.",
+      "sub": "La clasificación se desbloquea cuando {{required}} amigos se registran con tu código. Compártelo arriba."
     },
-    "sealedNote": "Contado y sellado — tu puesto se revela en la final",
+    "sealedNote": "Contado y sellado: tu puesto se revela en la final",
     "previewChip": "VISTA PREVIA",
     "previewChipSample": "VISTA PREVIA · DATOS DE MUESTRA",
     "resultsIn": "Ya están los resultados.",
@@ -352,12 +352,12 @@
     "keepPlaceBy_one": "Trae a {{n}} amigo más antes del {{date}} para mantener este puesto en la clasificación final.",
     "keepPlaceBy_other": "Trae a {{n}} amigos más antes del {{date}} para mantener este puesto en la clasificación final.",
     "notInFinal": {
-      "signups": "Fuera de la clasificación final — hacían falta {{required}} amigos y llegaron {{made}}.",
-      "signupsBy": "Fuera de la clasificación final — hacían falta {{required}} amigos antes del {{date}} y llegaron {{made}}.",
-      "conversions": "Fuera de la clasificación final — hacían falta {{required}} amigos con un entreno verificado y llegaron {{made}}.",
-      "conversionsBy": "Fuera de la clasificación final — hacían falta {{required}} amigos con un entreno verificado antes del {{date}} y llegaron {{made}}."
+      "signups": "Fuera de la clasificación final: hacían falta {{required}} amigos y llegaron {{made}}.",
+      "signupsBy": "Fuera de la clasificación final: hacían falta {{required}} amigos antes del {{date}} y llegaron {{made}}.",
+      "conversions": "Fuera de la clasificación final: hacían falta {{required}} amigos con un entreno verificado y llegaron {{made}}.",
+      "conversionsBy": "Fuera de la clasificación final: hacían falta {{required}} amigos con un entreno verificado antes del {{date}} y llegaron {{made}}."
     },
-    "empty": "Aún no hay puntos en la clasificación — el primer entreno verificado abre el marcador.",
+    "empty": "Aún no hay puntos en la clasificación. El primer entreno verificado abre el marcador.",
     "winners": "PODIO",
     "finalStandings": "CLASIFICACIÓN FINAL",
     "startLine": {

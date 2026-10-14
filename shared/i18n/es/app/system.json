@@ -10,7 +10,7 @@
     "connecting": "Conectando…",
     "connectingSamsung": "Conectando con Samsung Health…",
     "connected": "¡Conectado!",
-    "failed": "No se ha podido conectar — vuelve atrás para reintentarlo.",
+    "failed": "No se ha podido conectar. Vuelve atrás para reintentarlo.",
     "noUserId": "falta user_id en la redirección",
     "samsungReturned": "Respuesta de Samsung Health: {{error}}",
     "missingCode": "Falta el código de autorización",

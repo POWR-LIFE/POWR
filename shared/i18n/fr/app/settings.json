@@ -18,7 +18,7 @@
   "units": {
     "section": "Unités",
     "title": "Unités de distance",
-    "hint": "Automatique utilise les miles dans Découvrir et les unités habituelles de ta région pour tes séances.",
+    "hint": "En mode automatique, Découvrir affiche les miles et tes séances suivent les unités habituelles de ta région.",
     "auto": "Automatique",
     "miles": "Miles",
     "milesDetail": "mi · mph",
@@ -103,7 +103,7 @@
       "workoutSyncHint": "Quand une séance de ta montre arrive et rapporte des POWR",
       "streak": "Alertes de série",
       "streakHint": "Un rappel le soir quand ta série est en danger, et des offres pour la sauver",
-      "levelUp": "Passages de niveau",
+      "levelUp": "Nouveaux niveaux",
       "dailyNudges": "Rappels quotidiens",
       "dailyNudgesHint": "Rappels d’objectif de pas et, de temps en temps, un coup de pouce pour bouger — jamais plus d’un par jour",
       "nearby": "Récompenses à proximité",
@@ -114,13 +114,13 @@
       "newsHint": "De temps en temps, des annonces sur les nouvelles fonctionnalités et récompenses"
     },
     "email": {
-      "weekly": "Récap de la semaine",
+      "weekly": "Bilan de la semaine",
       "weeklyHint": "Tes points, tes séances et ton classement de la semaine, chaque lundi"
     },
     "social": {
-      "together": "Défis à plusieurs",
+      "together": "Défis Ensemble",
       "togetherHint": "Relève des défis avec tes amis depuis ton écran d’accueil",
-      "openBoard": "Tableau des défis ouverts",
+      "openBoard": "Tableau ouvert des défis",
       "openBoardHint": "Publie des défis que n’importe quel membre POWR peut relever, et découvre les leurs. Les autres voient ton prénom et ta photo.",
       "boardAlerts": "Alertes du tableau",
       "boardAlertsHint": "Préviens-moi quand quelqu’un publie un défi que je peux relever"
@@ -169,7 +169,7 @@
       "connected": "Connecté",
       "notConnected": "Non connecté"
     },
-    "healthConnectHint": "Pixel Watch, Galaxy Watch et plus",
+    "healthConnectHint": "Pixel Watch, Galaxy Watch et plus encore",
     "notConnected": "{{name}} n’est pas connecté",
     "permissionNotGranted": "L’autorisation n’a pas été accordée. Tu peux l’activer dans les paramètres de Santé Connect.",
     "permissionNotGrantedAllow": "L’autorisation n’a pas été accordée. Tu peux l’accorder dans les paramètres de Santé Connect.",
@@ -183,7 +183,7 @@
     "disconnectTitle": "Déconnecter {{name}} ?",
     "disconnectNative": "POWR arrêtera de lire cette source. Pour révoquer complètement l’accès, désactive aussi l’autorisation dans les réglages de ton téléphone.",
     "disconnectCloud": "POWR arrêtera de lire cette source et effacera les identifiants enregistrés.",
-    "disconnectDevice": "POWR arrêtera de lire cet appareil et effacera les identifiants enregistrés.",
+    "disconnectDevice": "POWR arrêtera de lire les données de cet appareil et effacera les identifiants enregistrés.",
     "isPrimary": "C’est ta source principale.",
     "switchTitle": "Passer à {{name}} ?",
     "switchBody": "Tu ne peux connecter qu’un appareil à la fois. {{current}} sera déconnecté.",

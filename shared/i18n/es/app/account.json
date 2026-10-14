@@ -134,8 +134,8 @@
     "partial": {
       "title": "Un paso más",
       "body": "Gracias: confirmación recibida.",
-      "hintWithEmail": "También hemos enviado un enlace a <email>{{email}}</email>. Púlsalo también para terminar de cambiar tu cuenta de POWR.",
-      "hintNoEmail": "También hemos enviado un enlace a tu otra bandeja de entrada. Púlsalo también para terminar de cambiar tu cuenta de POWR.",
+      "hintWithEmail": "También hemos enviado un enlace a <email>{{email}}</email>. Púlsalo para completar el cambio de correo.",
+      "hintNoEmail": "También hemos enviado un enlace a tu otra bandeja de entrada. Púlsalo para completar el cambio de correo.",
       "backToApp": "VOLVER A LA APP"
     },
     "done": {
@@ -172,7 +172,7 @@
       "onARoll": "EN RACHA",
       "lockedIn": "A TOPE",
       "relentless": "IMPARABLE",
-      "legendary": "LEYENDA"
+      "legendary": "DE LEYENDA"
     },
     "days": {
       "mon": "L",
