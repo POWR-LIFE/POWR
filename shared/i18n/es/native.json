@@ -1,0 +1,12 @@
+{
+  "NSCameraUsageDescription": "POWR usa tu cámara para escanear el código de un amigo y añadirlo a tus amigos.",
+  "NSFaceIDUsageDescription": "Permite que POWR acceda a tus datos biométricos de Face ID.",
+  "NSHealthShareUsageDescription": "POWR lee tus pasos y entrenos para verificar tu actividad y darte todos tus puntos.",
+  "NSHealthUpdateUsageDescription": "POWR necesita acceso a tus datos de salud para verificar tus entrenos.",
+  "NSLocationAlwaysAndWhenInUseUsageDescription": "POWR usa tu ubicación para detectar cuándo llegas a un gimnasio asociado y registrar tus entrenos automáticamente.",
+  "NSLocationAlwaysUsageDescription": "Permite que POWR acceda a tu ubicación.",
+  "NSLocationWhenInUseUsageDescription": "POWR usa tu ubicación para mostrarte gimnasios asociados y recompensas cerca de ti.",
+  "NSMicrophoneUsageDescription": "Permite que POWR acceda a tu micrófono.",
+  "NSPhotoLibraryAddUsageDescription": "POWR guarda en Fotos las imágenes que decides conservar.",
+  "NSPhotoLibraryUsageDescription": "POWR necesita acceso a tu fototeca para que puedas elegir una foto de perfil."
+}
