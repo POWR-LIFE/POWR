@@ -234,6 +234,10 @@ Deno.serve(async (req: Request) => {
             payload: {
               lost_streak: lostStreak,
               requirement_text: requirementText(challenge.requirement_type, challenge.requirement_count),
+              // The same requirement in parts, so send-push can word it in
+              // the member's language (English quotes requirement_text).
+              requirement_type: challenge.requirement_type,
+              requirement_count: challenge.requirement_count,
               window_hours: challenge.window_hours,
             },
           }),

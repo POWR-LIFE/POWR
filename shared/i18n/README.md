@@ -153,8 +153,34 @@ Terms that stay in English are product names. Use them exactly as written, with 
 | Saved to your Photos | Image enregistrée dans Photos | Imagen guardada en Fotos | |
 | Android notification channels: General / Streak Alerts / Rewards | Général / Alertes de série / Récompenses | General / Alertas de racha / Recompensas | |
 | times of day | 24-hour "22:30" | 24-hour "22:30" | English keeps "10:30pm" |
+| Every move counts. | Chaque mouvement compte. | Cada movimiento cuenta. | Email tagline |
+| Unsubscribe / Privacy Policy | Se désabonner / Politique de confidentialité | Darse de baja / Política de privacidad | Email footer |
+| rank #N | n° N | n.º N | |
+| Doors open | Portes ouvertes | Las puertas abren | |
+| POWR drop (Vault grant) | Cadeau POWR | Regalo POWR | |
+| clean slate | page blanche | borrón y cuenta nueva | |
 
 Add to this table whenever a new term comes up, so every screen uses the same word.
+
+## Server: pushes and emails
+
+Text the server sends lives in `supabase/functions/_shared/i18n/` (edge functions can't import this folder):
+
+- `push/<lang>.ts` and `email/<lang>.ts`: the catalogs, same `{{x}}` and `_one`/`_other` conventions as the app.
+- `levels.ts`: level names, which a test keeps identical to the app's.
+- `languages.ts`: `SERVER_LANGUAGES`, the languages pushes and emails actually go out in. Today that's only English, so the server code changes nothing for anyone until a language is added there.
+
+Each recipient's language comes from `profiles.language` (the app keeps it current). `languagesFor()` reads it for a whole batch, and doesn't touch the database at all while English is the only live language. `__tests__/serverI18n.test.ts` checks the catalogs the same way the app's are checked, plus that every `tPush`/`tEmail` key used in the code exists.
+
+**Reviewing emails before going live:** `POST https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/email-previews?lang=fr` (or `es`) with `{"key":"powr-email-previews","to":"<allowlisted address>"}` sends every member email in that language (see `docs/email-previews.md`).
+
+**Going live with a language on the server:**
+1. A native speaker reviews `push/<lang>.ts`, `email/<lang>.ts` and the email previews.
+2. The callers that still send English fragments are fixed (see the server PR: vault bonus reason, wearable activity label, shared-challenge fallbacks).
+3. Add the language to `SERVER_LANGUAGES`.
+4. Redeploy every function that bundles `_shared/i18n`: send-push-notification, gym-visit-beacon, dispatch-daily-nudges, streak-rescue-sweep, send-welcome-email, send-weekly-summary, send-level-up-email, send-reengagement-email, send-redemption-receipt, email-previews. Each edge function freezes its own copy of `_shared` at deploy time.
+
+Admin-written text stays as written: broadcasts, and the notification-copy overrides in the admin panel. Those overrides apply to English readers only; everyone else gets the translated default.
 
 ## Native (next build only)
 

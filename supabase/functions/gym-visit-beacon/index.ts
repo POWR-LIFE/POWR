@@ -28,7 +28,8 @@ import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 import { staleVisitVerdict, sessionBelongsToVisit, SESSION_OWNERSHIP_MARGIN_MS } from '../_shared/gymReaper.ts';
 import { settleIsTerminal } from '../_shared/settleOutcome.ts';
 import { EXIT_SETTLE_LOOKBACK_MS, EXIT_SETTLE_RIGHT_OF_WAY_MS, exitSettleDue, exitSettleExhausted } from '../_shared/exitSettle.ts';
-import { exitPushCopy, exitPushEndedWhileOff, exitPushPassOpen, type ExitPushSwitchRow } from '../_shared/exitPushSwitch.ts';
+import { exitPushCopy, exitPushDefaultCopy, exitPushEndedWhileOff, exitPushPassOpen, type ExitPushSwitchRow } from '../_shared/exitPushSwitch.ts';
+import { languagesFor } from '../_shared/i18n/index.ts';
 import {
   deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepCorroboratesPresence,
   sweepWitnessesOutside, SWEEP_WITNESSES_REQUIRED,
@@ -223,6 +224,10 @@ Deno.serve(async (req: Request) => {
       .limit(50);
     if (doneErr) console.error('[gym-visit-beacon] complete scan failed', doneErr);
 
+    // The banner's language per member: one profiles read for the whole scan,
+    // made the first time a banner is actually about to go out (never throws;
+    // a failed read means English).
+    let completeLangs: Map<string, string> | null = null;
     for (const visit of doneVisits ?? []) {
       // A 12-hour abandon is not a workout the user finished — it is a visit
       // nobody ever closed, ended at whatever moment presence was last seen. The
@@ -341,7 +346,7 @@ Deno.serve(async (req: Request) => {
           (new Date(visit.ended_at as string).getTime() - new Date(visit.started_at as string).getTime()) / 60_000,
         );
       const mins = Math.min(CAP_MIN, Math.max(1, rawMins));
-      const gymName = (visit as { partners?: { name?: string } | null }).partners?.name ?? 'your gym';
+      const gymName = (visit as { partners?: { name?: string } | null }).partners?.name;
 
       // ⚠ THE ROUTE MATTERS AS MUCH AS THE COPY (2026-08-09). This send used to
       // go through Expo like every other visible push, and on 08-09 it took ~25
@@ -355,10 +360,12 @@ Deno.serve(async (req: Request) => {
       // does not mean "the app's default" — per Expo's docs it means Expo's own
       // auto-created "Default" channel, at importance DEFAULT, so the most
       // satisfying notification in the product had no heads-up banner.
-      const copy = exitPushCopy(exitSwitch, {
-        title: 'Session complete 💪',
-        body: `${gymName} · ${mins} min` + (totalPts > 0 ? ` · +${totalPts} pts today` : ''),
-      });
+      //
+      // In the member's language; the admin's override (exitSwitch) is English
+      // text, so exitPushCopy applies it to English readers only.
+      completeLangs ??= await languagesFor(admin, (doneVisits ?? []).map((v) => v.user_id));
+      const lang = completeLangs.get(visit.user_id) ?? 'en';
+      const copy = exitPushCopy(exitSwitch, exitPushDefaultCopy(lang, gymName, mins, totalPts), lang);
       const result = await deliverVisiblePush(admin, tokens, {
         ...copy,
         data: { type: 'session_completed', route: '/(tabs)/index' },

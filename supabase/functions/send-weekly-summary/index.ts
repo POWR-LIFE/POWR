@@ -15,12 +15,12 @@
 // safe manual runs and previews.
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "../_shared/mailgun.ts";
-import { weeklySummaryEmail, type WeeklyActivityStat, type WeeklyDay, type WeeklyLevel, type WeeklyRewardTile, type WeeklySummaryData } from "../_shared/emails/weekly-summary.ts";
+import { formatWeekLabel, levelFor, weeklySummaryEmail, type WeeklyActivityStat, type WeeklyDay, type WeeklyRewardTile, type WeeklySummaryData } from "../_shared/emails/weekly-summary.ts";
 import { WEEKLY_SAMPLES, type WeeklySampleId } from "../_shared/emails/weekly-summary.samples.ts";
 import { getChallengeById } from "../_shared/challenges.ts";
 import { loadRewardCatalogue, rewardsReadyFor } from "../_shared/reward-catalogue.ts";
 import { wearableLabel } from "../_shared/wearable-label.ts";
-import { levelImageUrl, LEVELS, TIER_COLOR, TIER_LABEL } from "../_shared/levels.ts";
+import { languagesFor } from "../_shared/i18n/index.ts";
 
 /** Resolve completed challenge ids to their catalog titles (deduped, in order). */
 function challengeTitles(ids: string[] | null): string[] {
@@ -45,17 +45,6 @@ function mostRecentMondayUTC(now: Date): Date {
   const daysSinceMonday = (d.getUTCDay() + 6) % 7; // Sun=0 -> 6, Mon=1 -> 0
   d.setUTCDate(d.getUTCDate() - daysSinceMonday);
   return d;
-}
-
-/** "9–15 Jun" or "30 Jun – 6 Jul" for the [since, untilExclusive) window. */
-function formatWeekLabel(since: Date, untilExclusive: Date): string {
-  const end = new Date(untilExclusive.getTime() - DAY_MS);
-  const mon = (dt: Date) => dt.toLocaleString("en-GB", { month: "short", timeZone: "UTC" });
-  const ds = since.getUTCDate();
-  const de = end.getUTCDate();
-  return mon(since) === mon(end)
-    ? `${ds}–${de} ${mon(end)}`
-    : `${ds} ${mon(since)} – ${de} ${mon(end)}`;
 }
 
 interface RecipientRow {
@@ -102,23 +91,6 @@ interface ExtrasRow {
   longest_partner: string | null;
 }
 
-/** Level card from the canonical lifetime total (same basis as the app + level-up email). */
-function levelFor(totalEarned: number): WeeklyLevel {
-  const def = [...LEVELS].reverse().find((l) => totalEarned >= l.xpMin) ?? LEVELS[0];
-  const next = LEVELS.find((l) => l.level === def.level + 1) ?? null;
-  return {
-    level: def.level,
-    name: def.name,
-    tierLabel: TIER_LABEL[def.tier],
-    tierColor: TIER_COLOR[def.tier],
-    totalEarned,
-    levelAt: def.xpMin,
-    nextName: next?.name ?? null,
-    nextAt: next?.xpMin ?? null,
-    imageUrl: levelImageUrl(def.level),
-  };
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
   const supabase = createClient(
@@ -155,6 +127,7 @@ Deno.serve(async (req: Request) => {
     : new Date(mostRecentMondayUTC(now).getTime() - 7 * DAY_MS);
   const until = new Date(since.getTime() + 7 * DAY_MS);
   const prevSince = new Date(since.getTime() - 7 * DAY_MS);
+  // English label for logs and the sample; each recipient gets theirs in their language.
   const weekLabel = formatWeekLabel(since, until);
 
   // Sample preview: render the template with representative data and send to a
@@ -254,6 +227,14 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  // One profiles read per 200 recipients; English for anyone it can't resolve.
+  // (The cast spares deno check matching the whole client type against
+  // languagesFor's profiles-only shape, which it gives up on: TS2589.)
+  const languages = await languagesFor(
+    supabase as unknown as Parameters<typeof languagesFor>[0],
+    recipients.map((r) => r.user_id),
+  );
+
   let sent = 0;
   let failed = 0;
 
@@ -263,6 +244,7 @@ Deno.serve(async (req: Request) => {
       batch.map(async (r) => {
         if (!r.email) return;
         const extras = extrasByUser.get(r.user_id) ?? null;
+        const lang = languages.get(r.user_id) ?? "en";
         const ready = readyFor(r.balance ?? 0);
         // With extras, trust its plausibility-bounded longest (null = nothing worth
         // featuring); without, fall back to the raw one — the template bounds it too.
@@ -271,7 +253,7 @@ Deno.serve(async (req: Request) => {
         const longestPartner = extras ? extras.longest_partner : r.longest_partner;
         const payload: WeeklySummaryData = {
           name: r.display_name,
-          weekLabel,
+          weekLabel: formatWeekLabel(since, until, lang),
           pointsThisWeek: r.points ?? 0,
           pointsLastWeek: r.prev_points ?? 0,
           workouts: r.workouts ?? 0,
@@ -298,11 +280,11 @@ Deno.serve(async (req: Request) => {
           rewardsReady: ready.slice(0, 3),
           affordableCount: ready.length,
           days: extras?.days?.length === 7 ? extras.days : null,
-          level: extras ? levelFor(extras.total_earned ?? 0) : null,
+          level: extras ? levelFor(extras.total_earned ?? 0, lang) : null,
           vaultBanked: extras?.vault_banked ?? null,
           isFirstWeek: extras?.is_first_week ?? false,
         };
-        const email = weeklySummaryEmail(payload);
+        const email = weeklySummaryEmail(payload, lang);
         try {
           await sendEmail({ to: deliverTo ?? r.email, subject: email.subject, html: email.html, text: email.text, tag: "weekly-summary" });
           sent++;

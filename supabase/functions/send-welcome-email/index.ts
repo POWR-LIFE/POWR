@@ -8,6 +8,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "../_shared/mailgun.ts";
 import { welcomeEmail } from "../_shared/emails/welcome.ts";
+import { serverLanguage } from "../_shared/i18n/index.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
@@ -55,7 +56,7 @@ Deno.serve(async (req: Request) => {
   // Gather the personalisation inputs.
   const { data: profile } = await userClient
     .from("profiles")
-    .select("display_name, referral_code, location_granted, health_provider_connections")
+    .select("display_name, referral_code, location_granted, health_provider_connections, language")
     .eq("id", user.id)
     .single();
 
@@ -81,7 +82,7 @@ Deno.serve(async (req: Request) => {
     locationGranted: profile?.location_granted ?? false,
     wearableConnected,
     pointsEarned: pointsEarned > 0 ? pointsEarned : null,
-  });
+  }, serverLanguage(profile?.language));
 
   try {
     await sendEmail({
