@@ -1,3 +1,5 @@
+import i18n from 'i18next';
+
 // ─── Progress-page lookback anchors ──────────────────────────────────────────
 // The D/W/M breakdown views can step back through history. `offset` counts
 // periods back from now: 0 = current, -1 = previous, and so on. All anchors
@@ -5,11 +7,12 @@
 
 export type LookbackPeriod = 'D' | 'W' | 'M';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const MONTHS_FULL = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-];
+// Month and weekday names come from the progress catalog: Intl's en-GB writes
+// "Sept", and English must keep printing "Sep".
+const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+const shortMonth = (d: Date) => i18n.t(`progress:months.short.${MONTH_KEYS[d.getMonth()]}`);
+const yearSuffix = (d: Date) => (d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '');
 
 function localMidnight(base: Date): Date {
     const d = new Date(base);
@@ -59,13 +62,14 @@ export function monthAnchorEnd(offset: number): Date {
 }
 
 function shortDate(d: Date): string {
-    const year = d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '';
-    return `${MONTHS[d.getMonth()]} ${d.getDate()}${year}`;
+    return i18n.t('progress:lookback.shortDate', { month: shortMonth(d), day: d.getDate(), year: yearSuffix(d) });
 }
 
 function shortRange(start: Date, end: Date): string {
     if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
-        return `${shortDate(start)} – ${end.getDate()}`;
+        return i18n.t('progress:lookback.sameMonthRange', {
+            month: shortMonth(start), startDay: start.getDate(), endDay: end.getDate(), year: yearSuffix(start),
+        });
     }
     return `${shortDate(start)} – ${shortDate(end)}`;
 }
@@ -75,23 +79,23 @@ function shortRange(start: Date, end: Date): string {
  * The year is only shown once it differs from the current one.
  */
 export function monthLabel(offset: number): string {
-    if (offset === 0) return 'This Month';
+    if (offset === 0) return i18n.t('progress:lookback.thisMonth');
     const start = monthAnchorStart(offset);
-    const year = start.getFullYear() !== new Date().getFullYear() ? ` ${start.getFullYear()}` : '';
-    return `${MONTHS_FULL[start.getMonth()]}${year}`;
+    return i18n.t('progress:lookback.monthYear', {
+        month: i18n.t(`progress:months.full.${MONTH_KEYS[start.getMonth()]}`), year: yearSuffix(start),
+    });
 }
 
 /** Human label for the stepper, e.g. "This Week", "Jun 16 – 22", "Tue Jul 8". */
 export function rangeLabel(period: LookbackPeriod, offset: number): string {
     if (period === 'D') {
-        if (offset === 0) return 'Today';
-        if (offset === -1) return 'Yesterday';
+        if (offset === 0) return i18n.t('progress:lookback.today');
+        if (offset === -1) return i18n.t('progress:lookback.yesterday');
         const d = dayAnchor(offset);
-        const weekday = d.toLocaleDateString('en-GB', { weekday: 'short' });
-        return `${weekday} ${shortDate(d)}`;
+        return `${i18n.t(`progress:days.short.${DAY_KEYS[d.getDay()]}`)} ${shortDate(d)}`;
     }
     if (period === 'W') {
-        if (offset === 0) return 'This Week';
+        if (offset === 0) return i18n.t('progress:lookback.thisWeek');
         const start = weekAnchorMonday(offset);
         const end = new Date(start);
         end.setDate(end.getDate() + 6);

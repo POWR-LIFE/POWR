@@ -1,9 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { RescueRequirementType, StreakRescueOffer } from '@/hooks/useStreakRescue';
+import i18n from '@/lib/i18n';
 
 const GOLD = '#E8D200';
 const ORANGE = '#f97316';
@@ -26,16 +28,15 @@ const SEEN_PREFIX = '@powr/rescue_seen/';
 // home screen's first paint, where RN occasionally drops the presentation.
 const SETTLE_MS = 700;
 
-const UNIT_LABEL: Record<RescueRequirementType, [string, string]> = {
-  sessions:     ['session', 'sessions'],
-  gym_sessions: ['gym session', 'gym sessions'],
-  active_days:  ['active day', 'active days'],
-  steps:        ['step', 'steps'],
+const UNIT_LABEL: Record<RescueRequirementType, string> = {
+  sessions:     'home:rescue.units.sessions',
+  gym_sessions: 'home:rescue.units.gymSessions',
+  active_days:  'home:rescue.units.activeDays',
+  steps:        'home:rescue.units.steps',
 };
 
 function requirementPhrase(type: RescueRequirementType, n: number): string {
-  const [one, many] = UNIT_LABEL[type] ?? UNIT_LABEL.sessions;
-  return `${n.toLocaleString()} ${n === 1 ? one : many}`;
+  return i18n.t(UNIT_LABEL[type] ?? UNIT_LABEL.sessions, { count: n, n: n.toLocaleString() });
 }
 
 // Pips read instantly for a 2-session challenge; a bar is the only sane form
@@ -70,6 +71,7 @@ export function StreakRescueModal({
    *  prevent. */
   onVisibleChange?: (visible: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => { onVisibleChange?.(visible); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -128,18 +130,26 @@ export function StreakRescueModal({
           </View>
 
           <Text style={styles.kicker}>
-            {saved ? 'RESCUE COMPLETE' : partway ? 'RESCUE IN PROGRESS' : 'STREAK RESCUE'}
+            {saved ? t('home:rescue.kicker.saved') : partway ? t('home:rescue.kicker.partway') : t('home:rescue.kicker.offer')}
           </Text>
           <Text style={styles.title}>
-            {saved ? 'Streak saved' : (rescue.label || 'Save your streak')}
+            {saved ? t('home:rescue.title.saved') : (rescue.label || t('home:rescue.title.offer'))}
           </Text>
 
           <Text style={styles.body}>
             {saved
-              ? `You did the work — your ${rescue.lostStreak}-day streak is back and counting. Protect it tonight.`
+              ? t('home:rescue.body.saved', { count: rescue.lostStreak })
               : partway
-                ? `Just ${requirementPhrase(rescue.requirementType, remaining)} left in the next ${hoursLeft(rescue.expiresAt)}h and your ${rescue.lostStreak}-day streak comes all the way back.`
-                : `Your ${rescue.lostStreak}-day streak isn't gone yet. ${requirementPhrase(rescue.requirementType, rescue.sessionsRequired)} in the next ${hoursLeft(rescue.expiresAt)}h brings the whole thing back.`}
+                ? t('home:rescue.body.partway', {
+                    count: rescue.lostStreak,
+                    phrase: requirementPhrase(rescue.requirementType, remaining),
+                    hours: hoursLeft(rescue.expiresAt),
+                  })
+                : t('home:rescue.body.offer', {
+                    count: rescue.lostStreak,
+                    phrase: requirementPhrase(rescue.requirementType, rescue.sessionsRequired),
+                    hours: hoursLeft(rescue.expiresAt),
+                  })}
           </Text>
 
           {!saved && rescue.sessionsRequired > 0 && (
@@ -161,14 +171,17 @@ export function StreakRescueModal({
                 </View>
               )}
               <Text style={styles.progressLabel}>
-                {`${done.toLocaleString()} of ${requirementPhrase(rescue.requirementType, rescue.sessionsRequired)} done`}
+                {t('home:rescue.progress', {
+                  done: done.toLocaleString(),
+                  phrase: requirementPhrase(rescue.requirementType, rescue.sessionsRequired),
+                })}
               </Text>
             </View>
           )}
 
           {!saved && (
             <Text style={styles.hint}>
-              Every verified workout counts automatically — just train.
+              {t('home:rescue.hint')}
             </Text>
           )}
 
@@ -177,7 +190,7 @@ export function StreakRescueModal({
             style={({ pressed }) => [styles.cta, saved && styles.ctaSaved, pressed && { opacity: 0.8 }]}
           >
             <Text style={[styles.ctaText, saved && styles.ctaTextSaved]}>
-              {saved ? 'KEEP IT ROLLING' : partway ? 'FINISH IT' : "LET'S GO"}
+              {saved ? t('home:rescue.cta.saved') : partway ? t('home:rescue.cta.partway') : t('home:rescue.cta.offer')}
             </Text>
           </Pressable>
         </View>

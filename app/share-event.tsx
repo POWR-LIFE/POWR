@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
@@ -80,6 +81,7 @@ export default function ShareEventScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ slug?: string }>();
   const slug = typeof params.slug === 'string' ? params.slug : null;
 
@@ -157,7 +159,7 @@ queryFn: async () => {
       });
       await Share.share({ message: buildEventShareMessage({ event, shareUrl, referralCode }) });
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not publish your card.');
+      setLoadError(e instanceof Error ? e.message : t('events:shareScreen.publishError'));
     } finally {
       setBusy(null);
     }
@@ -181,9 +183,9 @@ queryFn: async () => {
     setNotice(null);
     try {
       const uri = await captureFullRes();
-      await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: 'Post the event' });
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: t('events:shareScreen.event.postDialog') });
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not share your card.');
+      setLoadError(e instanceof Error ? e.message : t('events:shareScreen.shareError'));
     } finally {
       setBusy(null);
     }
@@ -200,7 +202,7 @@ queryFn: async () => {
       setNotice(saveCardNotice(result));
     } catch (e) {
       setNotice(null);
-      setLoadError(e instanceof Error ? e.message : 'Could not save your card.');
+      setLoadError(e instanceof Error ? e.message : t('events:shareScreen.saveError'));
     } finally {
       setBusy(null);
     }
@@ -213,17 +215,17 @@ queryFn: async () => {
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom + 16 }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityLabel="Close">
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityLabel={t('events:shareScreen.closeA11y')}>
           <Ionicons name="close" size={24} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>Share event</Text>
+        <Text style={styles.headerTitle}>{t('events:shareScreen.event.title')}</Text>
         <View style={styles.headerBtn} />
       </View>
 
       {/* Card preview */}
       <View style={styles.body}>
         {loading && <ActivityIndicator color={GOLD} />}
-        {missing && <Text style={styles.errorText}>This event isn’t available to share.</Text>}
+        {missing && <Text style={styles.errorText}>{t('events:shareScreen.event.missing')}</Text>}
         {!loading && loadError && <Text style={styles.errorText}>{loadError}</Text>}
         {!loading && event && (
           <EventShareCard
@@ -243,7 +245,7 @@ queryFn: async () => {
           <View style={styles.actionRow}>
             <ActionButton
               icon="paper-plane"
-              label="Share"
+              label={t('events:shareScreen.share')}
               onPress={tracked('share_event_send', handleShare)}
               loading={busy === 'share'}
               disabled={busy !== null}
@@ -251,7 +253,7 @@ queryFn: async () => {
             />
             <ActionButton
               icon="share-social-outline"
-              label="Post"
+              label={t('events:shareScreen.post')}
               onPress={tracked('share_event_post', handlePost)}
               loading={busy === 'post'}
               disabled={busy !== null}
@@ -259,7 +261,7 @@ queryFn: async () => {
             {SAVE_CARD_ENABLED && (
               <ActionButton
                 icon="download-outline"
-                label="Save"
+                label={t('events:shareScreen.save')}
                 onPress={tracked('share_event_save', handleSave)}
                 loading={busy === 'save'}
                 disabled={busy !== null}
@@ -268,8 +270,8 @@ queryFn: async () => {
           </View>
           <Text style={styles.helperText}>
             {notice ?? (SAVE_CARD_ENABLED
-              ? 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram and more. Save keeps the image on your phone.'
-              : 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more.')}
+              ? t('events:shareScreen.helperSave')
+              : t('events:shareScreen.helper'))}
           </Text>
         </View>
       )}

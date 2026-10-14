@@ -1,0 +1,114 @@
+{
+  "distance": {
+    "miles": "{{distance}} mi",
+    "underMiles": "< {{distance}} mi"
+  },
+  "hours": {
+    "closedToday": "Closed today",
+    "today": "Today {{open}} – {{close}}"
+  },
+  "eta": {
+    "minutes": "{{minutes}} min",
+    "hours": "{{hours}} hr",
+    "hoursMinutes": "{{hours}} hr {{minutes}} min"
+  },
+  "map": {
+    "loadingArea": "Loading this area…",
+    "loadingMap": "Loading map…",
+    "emptyArea": "No partners in this area yet"
+  },
+  "route": {
+    "summary": "{{eta}} • {{distance}} km",
+    "loading": "Loading walking route...",
+    "startWalk": "Start Walk",
+    "clear": "Clear"
+  },
+  "location": {
+    "offBanner": "<strong>Location is off.</strong> Turn it on for distances, directions and automatic check-ins.",
+    "backgroundBanner": "<strong>Automatic check-ins are off.</strong> Set location to {{always}} so visits count with the app closed.",
+    "alwaysIos": "“Always”",
+    "alwaysAndroid": "“Allow all the time”"
+  },
+  "filters": {
+    "openNow": "Open Now",
+    "visited": "Visited",
+    "filters": "Filters",
+    "title": "Filters",
+    "reset": "Reset",
+    "maxDistance": "MAX DISTANCE",
+    "any": "Any",
+    "showResults_one": "Show {{count}} result",
+    "showResults_other": "Show {{count}} results"
+  },
+  "sort": {
+    "title": "Sort by",
+    "nearest": "Nearest",
+    "points": "Most Points",
+    "az": "A–Z"
+  },
+  "list": {
+    "searchPlaceholder": "Search gyms, classes...",
+    "count_one": "{{count}} PARTNER · {{sort}}",
+    "count_other": "{{count}} PARTNERS · {{sort}}",
+    "empty": "No partners match your filters",
+    "clearFilters": "Clear filters",
+    "sessionActive": "Session active",
+    "openNow": "Open now",
+    "closed": "Closed",
+    "requestTitle": "Can't find your venue?",
+    "requestBody": "Request it and we'll work on adding it to POWR."
+  },
+  "partner": {
+    "openNow": "Open now",
+    "closed": "Closed",
+    "homeGym": "Home Gym",
+    "setHomeGym": "Set as Home Gym",
+    "directions": "Get Directions",
+    "bookSession": "Book Session",
+    "viewProfile": "View Profile"
+  },
+  "walkNav": {
+    "routeFallback": "Route",
+    "summary": "{{eta}} • {{distance}} km walk",
+    "walkingRoute": "Walking route",
+    "next": "Next",
+    "recenter": "Recenter",
+    "overview": "Overview",
+    "endRoute": "End Route"
+  },
+  "steps": {
+    "title": "Walking Directions",
+    "destination": "To {{name}}",
+    "loading": "Loading route steps...",
+    "empty": "No detailed steps available yet.",
+    "done": "Done"
+  },
+  "request": {
+    "sentTitle": "Thanks!",
+    "sentBody": "We'll take a look and try to add it.",
+    "title": "Request a gym",
+    "body": "Tell us where you train and we'll work on adding it.",
+    "namePlaceholder": "Gym name",
+    "locationPlaceholder": "City or address (optional)",
+    "send": "Send Request"
+  },
+  "web": {
+    "title": "Discover",
+    "subtitle": "Fitness partners near you",
+    "mapUnavailable": "Map available on iOS & Android",
+    "nearest": "NEAREST PARTNERS",
+    "pts": "+{{points}} pts",
+    "category": {
+      "all": "All",
+      "gym": "Gym",
+      "yoga": "Yoga",
+      "pilates": "Pilates",
+      "cycling": "Cycling",
+      "running": "Running"
+    },
+    "status": {
+      "openNow": "Open now",
+      "opens8am": "Opens 8am"
+    }
+  }
+}

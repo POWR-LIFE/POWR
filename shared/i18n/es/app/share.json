@@ -1,0 +1,111 @@
+{
+  "stats": {
+    "title": {
+      "checkIn": "Compartir check-in",
+      "session": "Compartir sesión",
+      "challenge": "Compartir reto",
+      "level": "Compartir tu nivel",
+      "streak": "Compartir tu racha"
+    },
+    "background": {
+      "cover": "Mi foto",
+      "level": "Mi nivel",
+      "gallery": "Galería"
+    },
+    "photoSheet": {
+      "title": "Mi foto",
+      "take": "Hacer foto",
+      "library": "Elegir de la fototeca",
+      "profile": "Usar mi foto de perfil"
+    },
+    "actions": {
+      "share": "Compartir",
+      "post": "Publicar",
+      "save": "Guardar"
+    },
+    "postDialogTitle": "Publica tu entreno",
+    "helper": "Compartir envía un enlace con vista previa. Publicar comparte la imagen en TikTok, Instagram y más. Guardar la deja en tu móvil.",
+    "helperNoSave": "Compartir envía un enlace con vista previa. Publicar comparte la imagen en TikTok, Instagram, X, Threads y más.",
+    "errors": {
+      "noSession": "No se ha indicado ninguna sesión.",
+      "checkIn": "No se ha podido cargar este check-in.",
+      "level": "No se ha podido cargar tu nivel.",
+      "noChallenge": "No se ha indicado ningún reto.",
+      "challenge": "No se ha podido cargar este reto.",
+      "stats": "No se han podido cargar tus estadísticas.",
+      "photoAccess": "Necesitas dar acceso a tu fototeca para usar tu propia foto.",
+      "photo": "No se ha podido obtener esa foto. Inténtalo de nuevo.",
+      "publish": "No se ha podido publicar tu tarjeta.",
+      "share": "No se ha podido compartir tu tarjeta.",
+      "save": "No se ha podido guardar tu tarjeta."
+    }
+  },
+  "card": {
+    "levelEyebrow": "NIVEL {{level}}",
+    "member": "Miembro de POWR",
+    "status": {
+      "checkedIn": "Check-in hecho",
+      "logged": "Entreno registrado",
+      "challengeComplete": "Reto completado",
+      "levelUp": "Nuevo nivel",
+      "startStreak": "Empieza tu racha",
+      "warmingUp": "Calentando",
+      "building": "Cogiendo ritmo",
+      "onARoll": "En racha",
+      "onFire": "A tope",
+      "unstoppable": "Imparable",
+      "legendary": "De leyenda"
+    },
+    "stats": {
+      "session": "SESIÓN",
+      "total": "TOTAL",
+      "earned": "GANADO",
+      "streak": "RACHA",
+      "level": "NIVEL",
+      "lifetime": "ACUMULADO",
+      "thisMonth": "ESTE MES",
+      "challengeEarned": "Ganado",
+      "challengeStreak": "Racha"
+    },
+    "units": {
+      "min": "min",
+      "pts": "pts",
+      "visits_one": "visita",
+      "visits_other": "visitas",
+      "days_one": "día",
+      "days_other": "días",
+      "sessions_one": "sesión",
+      "sessions_other": "sesiones"
+    },
+    "date_one": "{{count}} de {{month}} de {{year}}",
+    "date_other": "{{count}} de {{month}} de {{year}}"
+  },
+  "headline": {
+    "checkInAtDetail": "He hecho check-in en {{venue}} con POWR — {{detail}}.",
+    "checkInAt": "He hecho check-in en {{venue}} con POWR.",
+    "checkInDetail": "He hecho check-in con POWR — {{detail}}.",
+    "checkIn": "He hecho check-in con POWR.",
+    "minutes": "{{minutes}} min",
+    "points": "+{{points}} pts",
+    "streakDay": "Día {{day}} de mi racha.",
+    "challenge": "Reto completado en POWR: {{title}} (+{{points}} pts).",
+    "levelUp": "Acabo de llegar al nivel {{level}} — {{name}} — en POWR.",
+    "levelUpPast": "Nivel {{level}} alcanzado — {{name}} — en POWR.",
+    "streakMonth": "{{streak}} en POWR — {{sessions}}.",
+    "month": "{{sessions}} en POWR.",
+    "streakDays_one": "Racha de {{count}} día",
+    "streakDays_other": "Racha de {{count}} días",
+    "sessionsThisMonth_one": "{{count}} sesión este mes",
+    "sessionsThisMonth_other": "{{count}} sesiones este mes"
+  },
+  "link": {
+    "title": "{{who}} — Nivel {{level}}, {{name}}",
+    "member": "Miembro de POWR",
+    "subtitle": "{{headline}} Toca para descargar POWR y ganar recompensas con cada entreno."
+  },
+  "saveNotice": {
+    "saved": "Imagen guardada en Fotos.",
+    "sheet": "Toca «Guardar imagen» en el menú para conservarla.",
+    "unavailable": "No se puede guardar en este dispositivo."
+  }
+}

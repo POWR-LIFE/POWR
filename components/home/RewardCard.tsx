@@ -2,27 +2,32 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
+import { Trans } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import type { Reward } from '@/lib/api/rewards';
+import i18n from '@/lib/i18n';
 import { rewardLogoUri } from '@/lib/storageImage';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
 const DIM = 'rgba(255,255,255,0.55)';
 
-function buildDiscountLabel(reward: Reward): string {
+type Discount = { amount: string; suffix: string };
+
+function buildDiscount(reward: Reward): Discount {
   if (reward.discount_type === 'percentage' && reward.discount_value != null)
-    return `${reward.discount_value}% OFF`;
+    return { amount: i18n.t('home:reward.percent', { value: reward.discount_value }), suffix: i18n.t('home:reward.off') };
   if (reward.discount_type === 'fixed_amount' && reward.discount_value != null)
-    return `£${reward.discount_value} OFF`;
-  return reward.value_label ?? '';
+    return { amount: i18n.t('home:reward.pounds', { value: reward.discount_value }), suffix: i18n.t('home:reward.off') };
+  return splitDiscount(reward.value_label ?? '');
 }
 
-function splitDiscount(label: string): { amount: string; suffix: string } {
+/** A partner's own label ("10% off") is shown as written, with its "off" in the language on screen. */
+function splitDiscount(label: string): Discount {
   const m = label.match(/^(.+?)\s*(OFF|off)$/);
-  return m ? { amount: m[1].trim(), suffix: 'OFF' } : { amount: label, suffix: '' };
+  return m ? { amount: m[1].trim(), suffix: i18n.t('home:reward.off') } : { amount: label, suffix: '' };
 }
 
 interface RewardCardProps {
@@ -33,8 +38,7 @@ interface RewardCardProps {
 
 export function RewardCard({ reward, balance, challengeTitle }: RewardCardProps) {
   const pct = Math.min(balance / reward.powr_cost, 1);
-  const label = buildDiscountLabel(reward);
-  const { amount, suffix } = splitDiscount(label);
+  const { amount, suffix } = buildDiscount(reward);
 
   const imageUri = reward.hero_image_url ?? reward.image_url;
   const logoUri = rewardLogoUri(reward.image_url ?? reward.partner?.logo_url);
@@ -58,7 +62,9 @@ export function RewardCard({ reward, balance, challengeTitle }: RewardCardProps)
 
         {/* Points - top right */}
         <View style={styles.pointsBlock}>
-          <Text style={styles.pointsNumber}>{reward.powr_cost} <Text style={styles.pointsLabel}>points</Text></Text>
+          <Text style={styles.pointsNumber}>
+            <Trans i18nKey="home:reward.cost" count={reward.powr_cost} components={{ label: <Text style={styles.pointsLabel} /> }} />
+          </Text>
         </View>
 
         {/* Bottom section with logo, discount and progress */}
@@ -67,7 +73,7 @@ export function RewardCard({ reward, balance, challengeTitle }: RewardCardProps)
             <ExpoImage source={{ uri: logoUri }} style={styles.logoImage} contentFit="contain" />
           )}
 
-          {label && (
+          {(amount || suffix) && (
             <View style={styles.discountBadge}>
               <Text style={styles.discountAmount}>{amount}</Text>
               {suffix ? <Text style={styles.discountSuffix}> {suffix}</Text> : null}

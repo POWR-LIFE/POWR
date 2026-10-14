@@ -4,6 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
 import { isAdminSwitchedOff } from '@/lib/adminNotificationSwitches';
+// Most of what this file schedules is composed in a HEADLESS wake (geofence,
+// placement and step-goal tasks), where the UI root never ran. This import is
+// what initialises i18next there; each composer awaits languageReady just
+// before it builds its text, so the member's saved language wins over the
+// phone's.
+import i18n, { languageReady } from '@/lib/i18n';
 // ⚠ THE ANDROID CHANNEL RIDES ON THE TRIGGER, NEVER ON `content`.
 // Expo's native scheduler (NotificationScheduler.kt) reads channelId off the
 // TRIGGER and silently drops any channelId set inside `content` — no warning,
@@ -102,22 +108,26 @@ Notifications.setNotificationHandler({
 export async function ensureAndroidChannels() {
   if (Platform.OS !== 'android') return;
 
+  // Re-registering an existing id renames the channel, so the names Android
+  // shows in the app's notification settings follow the language from the next
+  // launch.
+  await languageReady;
   await Notifications.setNotificationChannelAsync(CHANNEL_DEFAULT, {
-    name: 'General',
+    name: i18n.t('notifications:channels.general'),
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 250, 250, 250],
     lightColor: '#facc15',
   });
 
   await Notifications.setNotificationChannelAsync(CHANNEL_STREAK, {
-    name: 'Streak Alerts',
+    name: i18n.t('notifications:channels.streak'),
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 400, 200, 400],
     lightColor: '#facc15',
   });
 
   await Notifications.setNotificationChannelAsync(CHANNEL_REWARDS, {
-    name: 'Rewards',
+    name: i18n.t('notifications:channels.rewards'),
     importance: Notifications.AndroidImportance.HIGH,
     lightColor: '#facc15',
   });
@@ -211,11 +221,12 @@ export async function scheduleStreakAtRiskWarning(currentStreak: number) {
   // If it's already past 21:00, don't schedule (too late for today)
   if (now >= fireAt) return;
 
+  await languageReady;
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-streak_at_risk-${Date.now()}`,
     content: {
-      title: `Your ${currentStreak}-day streak is at risk 🔥`,
-      body: "Log any activity before midnight to keep it alive.",
+      title: i18n.t('notifications:streakAtRisk.title', { count: currentStreak }),
+      body: i18n.t('notifications:streakAtRisk.body'),
       data: { type: 'streak_at_risk', route: '/(tabs)/index' } satisfies NotificationPayload,
       sound: 'default',
     },
@@ -244,11 +255,12 @@ export async function scheduleWeeklyChallengeExpiryWarning(
   const fireAt = new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000);
   if (fireAt <= new Date()) return;
 
+  await languageReady;
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-weekly_challenge_expiry-${expiresAt.getTime()}`,
     content: {
-      title: "Last day ⏳",
-      body: `"${challengeName}" expires in 24 hours. Don't miss your bonus POWR points.`,
+      title: i18n.t('notifications:challengeExpiry.title'),
+      body: i18n.t('notifications:challengeExpiry.body', { challenge: challengeName }),
       data: {
         type: 'weekly_challenge_expiry',
         route: '/(tabs)/index',
@@ -268,11 +280,12 @@ export async function scheduleWeeklyChallengeExpiryWarning(
 // ---------------------------------------------------------------------------
 
 export async function notifyRewardUnlocked(rewardName: string, rewardId: string) {
+  await languageReady;
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-reward_unlocked-${rewardId}`,
     content: {
-      title: "New reward unlocked 🎁",
-      body: `You've unlocked "${rewardName}". Redeem it before it expires.`,
+      title: i18n.t('notifications:rewardUnlocked.title'),
+      body: i18n.t('notifications:rewardUnlocked.body', { reward: rewardName }),
       data: {
         type: 'reward_unlocked',
         route: '/(tabs)/rewards',
@@ -438,6 +451,8 @@ export async function notifyCheckInAvailable(
   // Idempotent — creating an existing channel is a no-op.
   await ensureAndroidChannels().catch(() => {});
 
+  // Its own wait as well: ensureAndroidChannels returns before reaching it on iOS.
+  await languageReady;
   await Notifications.scheduleNotificationAsync({
     identifier: checkInBannerIdentifier(locationId),
     content: {
@@ -449,8 +464,8 @@ export async function notifyCheckInAvailable(
       // The gym name is the whole point of the notification: it is the proof we
       // recognised where they are.
       body: partnerName
-        ? `You're in at ${partnerName}. Every minute counts.`
-        : "You're in. Every minute counts.",
+        ? i18n.t('notifications:checkIn.body', { gym: partnerName })
+        : i18n.t('notifications:checkIn.bodyNoName'),
       data: {
         type: 'check_in_reminder',
         route: '/(tabs)/index',
@@ -587,12 +602,15 @@ export async function notifyNearbyOffer(opts: {
   // Shares the one-local-nudge-per-day pool with within-reach + step goal.
   if (!(await consumeClientNudgeBudget('nearby_offer'))) return false;
 
-  const title = opts.brandName ? `${opts.brandName} is nearby` : 'A reward is nearby';
+  await languageReady;
+  const title = opts.brandName
+    ? i18n.t('notifications:nearbyOffer.title', { brand: opts.brandName })
+    : i18n.t('notifications:nearbyOffer.titleNoBrand');
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-nearby_offer-${opts.placementId}`,
     content: {
       title,
-      body: `${opts.rewardName} is boosted where you are right now — open to redeem.`,
+      body: i18n.t('notifications:nearbyOffer.body', { reward: opts.rewardName }),
       data: {
         type: 'nearby_offer',
         route: '/(tabs)/rewards',
@@ -619,19 +637,22 @@ export async function notifySessionCompleted(
   // The server skips an admin-disabled type without asking for this fallback,
   // so this only matters when send-push could not be reached at all.
   if (await isAdminSwitchedOff('session_completed')) return;
+  await languageReady;
   const hasEarned = earned !== undefined && earned > 0;
-  const title = hasEarned ? `+${earned!.toLocaleString()} pts earned! 🔥` : 'Session complete 🔥';
+  const title = hasEarned
+    ? i18n.t('notifications:sessionCompleted.titleEarned', { points: earned!.toLocaleString() })
+    : i18n.t('notifications:sessionCompleted.title');
 
   const name = partnerName.trim();
   let body: string;
   if (name && currentStreak && currentStreak > 0) {
-    body = `${name} · Day ${currentStreak} streak`;
+    body = i18n.t('notifications:sessionCompleted.bodyNameStreak', { gym: name, streak: currentStreak });
   } else if (name) {
     body = name;
   } else if (currentStreak && currentStreak > 0) {
-    body = `Day ${currentStreak} streak`;
+    body = i18n.t('notifications:sessionCompleted.bodyStreak', { streak: currentStreak });
   } else {
-    body = 'Your session counted.';
+    body = i18n.t('notifications:sessionCompleted.bodyFallback');
   }
 
   await Notifications.scheduleNotificationAsync({
@@ -663,17 +684,18 @@ export async function notifySessionUpgraded(
   earned?: number,
 ) {
   if (await isAdminSwitchedOff('session_upgraded')) return;
+  await languageReady;
   const name = partnerName.trim();
   const pts = Math.max(0, Math.round(earned ?? 0));
   const parts: string[] = [];
   if (name) parts.push(name);
-  if (pts > 0) parts.push(`+${pts.toLocaleString()} pts`);
-  parts.push(`${getGymUpgradeMinutes()}-min bonus`);
+  if (pts > 0) parts.push(i18n.t('notifications:sessionUpgraded.points', { points: pts.toLocaleString() }));
+  parts.push(i18n.t('notifications:sessionUpgraded.bonus', { minutes: getGymUpgradeMinutes() }));
 
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-session_upgraded-${sessionId}`,
     content: {
-      title: 'Bonus unlocked 🔓',
+      title: i18n.t('notifications:sessionUpgraded.title'),
       body: parts.join(' · '),
       data: {
         type: 'session_completed',
@@ -702,14 +724,15 @@ export async function notifySessionUpgraded(
  *  session_completed banner and this would double up. This announces an outcome
  *  and names the fix; it never asks anyone to open the app to record a session. */
 export async function notifyLocationOffSessionEnded(partnerName: string, sessionKey: string) {
+  await languageReady;
   const name = partnerName.trim();
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-location_off_session_ended-${sessionKey}`,
     content: {
-      title: 'Location is off',
+      title: i18n.t('notifications:locationOff.title'),
       body: name
-        ? `${name} · session ended. Turn location back on to keep earning.`
-        : 'Your session ended. Turn location back on to keep earning.',
+        ? i18n.t('notifications:locationOff.body', { gym: name })
+        : i18n.t('notifications:locationOff.bodyNoName'),
       data: {
         type: 'location_off_session_ended',
         route: '/permissions-help',
@@ -726,15 +749,26 @@ export async function notifyLocationOffSessionEnded(partnerName: string, session
 // Points milestone — sent server-side; this helper fires locally as fallback
 // ---------------------------------------------------------------------------
 
+/** "You're close. N pts to unlock your X reward." — "your next reward" when the
+ *  reward has no name. Call after languageReady. */
+function withinReachBody(pointsToUnlock: number, rewardName: string | undefined): string {
+  return rewardName
+    ? i18n.t('notifications:withinReach.body', { points: pointsToUnlock.toLocaleString(), reward: rewardName })
+    : i18n.t('notifications:withinReach.bodyNext', { points: pointsToUnlock.toLocaleString() });
+}
+
 export async function notifyPointsMilestone(points: number, options?: PointsMilestoneOptions) {
   const pointsToUnlock = Math.max(0, Math.ceil(options?.pointsToUnlock ?? 0));
   const rewardName = options?.rewardName?.trim();
   const hasWithinReach = pointsToUnlock > 0;
 
-  const title = hasWithinReach ? 'Reward within reach' : `${points.toLocaleString()} POWR points`;
+  await languageReady;
+  const title = hasWithinReach
+    ? i18n.t('notifications:withinReach.title')
+    : i18n.t('notifications:pointsMilestone.title', { points: points.toLocaleString() });
   const body = hasWithinReach
-    ? `You're close. ${pointsToUnlock.toLocaleString()} pts to unlock your ${rewardName || 'next'} reward.`
-    : 'All earned. Check your rewards — something new might be waiting.';
+    ? withinReachBody(pointsToUnlock, rewardName)
+    : i18n.t('notifications:pointsMilestone.body');
 
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-points_milestone-${points}`,
@@ -838,11 +872,12 @@ export async function scheduleRewardWithinReach(
     await AsyncStorage.setItem(WITHIN_REACH_FIRED_KEY, String(fireDate.getTime()));
   } catch { /* non-fatal */ }
 
+  await languageReady;
   await Notifications.scheduleNotificationAsync({
     identifier: 'powr-points_milestone-within-reach',
     content: {
-      title: 'Reward within reach',
-      body: `You're close. ${pointsToUnlock.toLocaleString()} pts to unlock your ${rewardName || 'next'} reward.`,
+      title: i18n.t('notifications:withinReach.title'),
+      body: withinReachBody(pointsToUnlock, rewardName),
       data: {
         type: 'points_milestone',
         route: '/(tabs)/rewards',
@@ -866,20 +901,21 @@ export async function scheduleRewardWithinReach(
 export async function scheduleInactivityNudge(daysInactive: number) {
   await cancelNotificationsOfType('inactivity_nudge');
 
+  await languageReady;
   const messages: Record<number, { title: string; body: string }> = {
     3: {
-      title: "We miss you 👋",
-      body: "It's been 3 days. Even a short walk earns POWR points.",
+      title: i18n.t('notifications:inactivity.day3.title'),
+      body: i18n.t('notifications:inactivity.day3.body'),
     },
     7: {
-      title: "Your streak is waiting to be rebuilt 🔄",
-      body: "7 days away — jump back in and start earning again.",
+      title: i18n.t('notifications:inactivity.day7.title'),
+      body: i18n.t('notifications:inactivity.day7.body'),
     },
   };
 
   const msg = messages[daysInactive] ?? {
-    title: "Ready to get back on track?",
-    body: "Log any activity today and start your next streak.",
+    title: i18n.t('notifications:inactivity.fallback.title'),
+    body: i18n.t('notifications:inactivity.fallback.body'),
   };
 
   const fireAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
@@ -906,11 +942,12 @@ export async function scheduleInactivityNudge(daysInactive: number) {
 // ---------------------------------------------------------------------------
 
 export async function notifySleepTargetMet(hours: number, points: number) {
+  await languageReady;
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-sleep_target_met-${Date.now()}`,
     content: {
-      title: "Sleep goal reached 🌙",
-      body: `${hours.toFixed(1)}h of sleep earned you ${points} POWR point${points !== 1 ? 's' : ''}.`,
+      title: i18n.t('notifications:sleepGoal.title'),
+      body: i18n.t('notifications:sleepGoal.body', { hours: hours.toFixed(1), count: points }),
       data: { type: 'sleep_target_met', route: '/(tabs)/index' } satisfies NotificationPayload,
       sound: 'default',
     },
@@ -944,11 +981,12 @@ export async function notifyStepGoal(opts: {
   // ~110 steps/min is a comfortable walking cadence — frame the ask as time.
   const mins = Math.max(5, Math.round(steps / 110 / 5) * 5);
 
+  await languageReady;
   await Notifications.scheduleNotificationAsync({
     identifier: 'powr-step_goal_nudge',
     content: {
-      title: `${steps.toLocaleString()} steps to go 🚶`,
-      body: `A ${mins}-minute walk locks in +${pts} POWR before midnight.`,
+      title: i18n.t('notifications:stepGoal.title', { steps: steps.toLocaleString() }),
+      body: i18n.t('notifications:stepGoal.body', { minutes: mins, points: pts }),
       data: { type: 'step_goal_nudge', route: '/(tabs)/index' } satisfies NotificationPayload,
       sound: 'default',
     },

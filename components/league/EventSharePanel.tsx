@@ -4,10 +4,12 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Trans, useTranslation } from 'react-i18next';
 
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import { fetchProfile } from '@/lib/api/user';
 import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
+import i18n from '@/lib/i18n';
 
 const GOLD = '#E8D200';
 const CARD_BG = 'rgba(40,40,40,0.85)';
@@ -17,10 +19,10 @@ const DIM = 'rgba(255,255,255,0.55)';
 
 /** The one sentence above the buttons: why send it now, in the event's terms. */
 function pitch(event: LiveEvent): string {
-    if (event.status === 'announced') return 'Registration opens soon — get your friends ready. Your invite code goes with it.';
-    if (event.status === 'scheduled') return 'Bring your friends in before scoring starts. Your invite code goes with it.';
-    if (event.status === 'live' && !event.is_locked) return 'Still time to bring friends in. Your invite code goes with it.';
-    return 'Show people what happened. Your invite code goes with it.';
+    if (event.status === 'announced') return i18n.t('events:sharePanel.pitch.announced');
+    if (event.status === 'scheduled') return i18n.t('events:sharePanel.pitch.scheduled');
+    if (event.status === 'live' && !event.is_locked) return i18n.t('events:sharePanel.pitch.live');
+    return i18n.t('events:sharePanel.pitch.over');
 }
 
 /**
@@ -40,6 +42,7 @@ function pitch(event: LiveEvent): string {
  */
 export function EventSharePanel({ event }: { event: LiveEvent }) {
     const router = useRouter();
+    const { t } = useTranslation();
     const { data: code } = useQuery({
         queryKey: ['eventShare', 'referralCode'],
         queryFn: async () => (await fetchProfile())?.referral_code ?? null,
@@ -70,7 +73,7 @@ export function EventSharePanel({ event }: { event: LiveEvent }) {
 
     return (
         <View style={styles.card}>
-            <Text style={styles.label}>SHARE THE EVENT</Text>
+            <Text style={styles.label}>{t('events:sharePanel.label')}</Text>
             <Text style={styles.pitch}>{pitch(event)}</Text>
 
             <View style={styles.row}>
@@ -78,30 +81,34 @@ export function EventSharePanel({ event }: { event: LiveEvent }) {
                     onPress={openCard}
                     style={({ pressed }) => [styles.btn, styles.btnPrimary, pressed && { opacity: 0.85 }]}
                     accessibilityRole="button"
-                    accessibilityLabel={`Share ${event.name} as a card`}
+                    accessibilityLabel={t('events:shareCardA11y', { event: event.name })}
                 >
                     <Ionicons name="image-outline" size={15} color="#0a0a0a" />
-                    <Text style={[styles.btnText, styles.btnTextPrimary]}>SHARE CARD</Text>
+                    <Text style={[styles.btnText, styles.btnTextPrimary]}>{t('events:sharePanel.card')}</Text>
                 </Pressable>
                 <Pressable
                     onPress={sendLink}
                     style={({ pressed }) => [styles.btn, styles.btnGhost, pressed && { opacity: 0.7 }]}
                     accessibilityRole="button"
-                    accessibilityLabel={`Send a link to ${event.name}`}
+                    accessibilityLabel={t('events:sharePanel.linkA11y', { event: event.name })}
                 >
                     <Ionicons name="paper-plane-outline" size={15} color={GOLD} />
-                    <Text style={styles.btnText}>SEND LINK</Text>
+                    <Text style={styles.btnText}>{t('events:sharePanel.link')}</Text>
                 </Pressable>
             </View>
 
             {!!code && (
                 <Text style={styles.code}>
-                    Your code <Text style={styles.codeValue}>{code}</Text> travels with both.
+                    <Trans
+                        i18nKey="events:sharePanel.code"
+                        values={{ code }}
+                        components={{ value: <Text style={styles.codeValue} /> }}
+                    />
                 </Text>
             )}
             {event.is_preview && (
                 <Text style={styles.previewNote}>
-                    Preview — friends can open this event once it&apos;s public.
+                    {t('events:sharePanel.preview')}
                 </Text>
             )}
         </View>

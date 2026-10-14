@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useState } from 'react';
 import { Image as NativeImage, type LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { EventLockup } from '@/components/events/EventLockup';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
@@ -13,6 +14,7 @@ import {
     type EventLeaderboard,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
+import i18n from '@/lib/i18n';
 import {
     eventNightLine,
     eventStatusChip,
@@ -35,9 +37,9 @@ const MUTED = 'rgba(255,255,255,0.3)';
 type Section = 'live' | 'upcoming' | 'results';
 
 const SECTION_LABEL: Record<Section, string> = {
-    live: 'LIVE NOW',
-    upcoming: 'UPCOMING',
-    results: 'RESULTS',
+    live: 'events:hub.section.live',
+    upcoming: 'events:hub.section.upcoming',
+    results: 'events:hub.section.results',
 };
 
 /** Where an event sits on the hub. A live event whose board has sealed is
@@ -53,17 +55,17 @@ function sectionOf(event: LiveEvent): Section {
 function factLine(event: LiveEvent): string {
     if (event.status === 'announced') return registrationLine(event);
     if (event.status === 'scheduled') return scoringLine(event);
-    if (event.status === 'live' && !event.is_locked) return `Live now — ends ${lastDayOf(event.window_end_at)}`;
-    if (!event.revealed_at) return 'Scores sealed — revealed at the final';
-    return 'Winners announced';
+    if (event.status === 'live' && !event.is_locked) return i18n.t('events:hub.fact.liveNow', { date: lastDayOf(event.window_end_at) });
+    if (!event.revealed_at) return i18n.t('events:hub.fact.sealed');
+    return i18n.t('events:hub.fact.winners');
 }
 
 /** The top-right chip, in the Home card's words where the two overlap. */
 function statusChip(event: LiveEvent): string {
     if (event.status === 'announced' || event.status === 'scheduled') return eventStatusChip(event);
-    if (event.status === 'live' && !event.is_locked) return 'LIVE NOW';
-    if (!event.revealed_at) return 'SEALED';
-    return 'RESULTS';
+    if (event.status === 'live' && !event.is_locked) return i18n.t('events:hub.chip.liveNow');
+    if (!event.revealed_at) return i18n.t('events:hub.chip.sealed');
+    return i18n.t('events:hub.chip.results');
 }
 
 /** The pill: what this event wants from you, or where you stand in it. Same
@@ -73,16 +75,19 @@ function standingPill(event: LiveEvent, board?: EventLeaderboard | null): { labe
         // Nobody is ranked from the start line — "RANK 9" on zero reads as last.
         const live = event.status === 'live' && !event.is_locked;
         const rank = live && !onStartLine(board?.viewer.points) ? board?.viewer.rank : undefined;
-        return { label: typeof rank === 'number' ? `RANK ${rank}` : 'YOU’RE IN', filled: false };
+        return {
+            label: typeof rank === 'number' ? i18n.t('events:hub.pill.rank', { rank }) : i18n.t('events:hub.pill.youreIn'),
+            filled: false,
+        };
     }
-    if (event.status === 'announced') return { label: 'SOON', filled: false };
+    if (event.status === 'announced') return { label: i18n.t('events:hub.pill.soon'), filled: false };
     const canJoin =
         event.scope === 'opt_in' &&
         event.viewer.eligible &&
         !event.viewer.disqualified &&
         (event.status === 'scheduled' || (event.status === 'live' && !event.is_locked));
-    if (canJoin) return { label: 'REGISTER', filled: true };
-    return { label: 'VIEW', filled: false };
+    if (canJoin) return { label: i18n.t('events:hub.pill.register'), filled: true };
+    return { label: i18n.t('events:hub.pill.view'), filled: false };
 }
 
 /** The viewer's own line under the facts, when there's anything to say. The
@@ -90,8 +95,8 @@ function standingPill(event: LiveEvent, board?: EventLeaderboard | null): { labe
 function youLine(event: LiveEvent, board?: EventLeaderboard | null): string | null {
     const v = board?.viewer;
     if (!v) return null;
-    if (event.revealed_at && typeof v.rank === 'number') return `You finished #${v.rank}`;
-    if (typeof v.points === 'number' && v.points > 0) return `You · ${v.points.toLocaleString()} pts this week`;
+    if (event.revealed_at && typeof v.rank === 'number') return i18n.t('events:hub.you.finished', { rank: v.rank });
+    if (typeof v.points === 'number' && v.points > 0) return i18n.t('events:hub.you.points', { points: v.points.toLocaleString() });
     return null;
 }
 
@@ -125,6 +130,7 @@ function EventHubCard({
     onPress: () => void;
     onLayout: (e: LayoutChangeEvent) => void;
 }) {
+    const { t } = useTranslation();
     // Same cache key as the League board and the Home card (the trailing null
     // is the preview state) so all three show one number. Only events that
     // have a board ask for one: nothing exists before scoring starts.
@@ -158,7 +164,12 @@ function EventHubCard({
             }}
             style={({ pressed }) => [styles.card, pressed && { opacity: 0.88 }]}
             accessibilityRole="button"
-            accessibilityLabel={`${event.name}. ${factLine(event)}.${night ? ` Event night ${night}.` : ''}${you ? ` ${you}.` : ''} Tap to open.`}
+            accessibilityLabel={[
+                t('events:hub.cardA11y.lead', { event: event.name, fact: factLine(event) }),
+                night ? t('events:hub.cardA11y.night', { night }) : null,
+                you ? `${you}.` : null,
+                t('events:hub.cardA11y.open'),
+            ].filter(Boolean).join(' ')}
         >
             {!!media && (
                 <>
@@ -191,7 +202,7 @@ function EventHubCard({
                 <View style={[styles.chip, event.is_preview && styles.chipPreview]}>
                     {live && !event.is_preview && <View style={styles.liveDot} />}
                     <Text style={[styles.chipText, event.is_preview && styles.chipTextPreview]} numberOfLines={1}>
-                        {event.is_preview ? `PREVIEW · ${statusChip(event)}` : statusChip(event)}
+                        {event.is_preview ? t('events:hub.chip.preview', { status: statusChip(event) }) : statusChip(event)}
                     </Text>
                 </View>
             </View>
@@ -238,21 +249,22 @@ const POWR_MARK_SOLID = 'https://auth.powr.life/storage/v1/object/public/landing
  * Promises no venue and no date.
  */
 function MoreToComeCard() {
+    const { t } = useTranslation();
     return (
         <View
             style={[styles.card, styles.moreCard]}
             accessible
-            accessibilityLabel="More to come. New venues are joining POWR. You'll see them here first."
+            accessibilityLabel={t('events:hub.more.a11y')}
         >
             {/* react-native's Image, like the lockup's mark: plain alpha on a
                 plain card, no expo-image compositing surprises. */}
             <NativeImage source={{ uri: POWR_MARK_SOLID }} style={styles.moreMark} resizeMode="contain" />
 
-            <Text style={styles.moreEyebrow}>COMING SOON</Text>
+            <Text style={styles.moreEyebrow}>{t('events:hub.more.eyebrow')}</Text>
             <View style={styles.moreBody}>
-                <Text style={styles.moreTitle}>More to come.</Text>
+                <Text style={styles.moreTitle}>{t('events:hub.more.title')}</Text>
                 <View style={styles.moreRule} />
-                <Text style={styles.moreLine}>New venues are joining POWR. You&apos;ll see them here first.</Text>
+                <Text style={styles.moreLine}>{t('events:hub.more.line')}</Text>
             </View>
         </View>
     );
@@ -275,6 +287,7 @@ export function EventHub({
     onOpen: (event: LiveEvent) => void;
     bottomInset: number;
 }) {
+    const { t } = useTranslation();
     const sections = (['live', 'upcoming', 'results'] as Section[])
         .map(key => ({ key, items: events.filter(e => sectionOf(e) === key) }))
         .filter(s => s.items.length > 0);
@@ -312,7 +325,7 @@ export function EventHub({
         >
             {sections.map(section => (
                 <React.Fragment key={section.key}>
-                    <Text style={styles.sectionLabel}>{SECTION_LABEL[section.key]}</Text>
+                    <Text style={styles.sectionLabel}>{t(SECTION_LABEL[section.key])}</Text>
                     {section.items.map(event => (
                         <EventHubCard
                             key={event.id}
@@ -338,6 +351,7 @@ export function EventHub({
  * as navigation at all (2026-10-06).
  */
 export function EventHubBackButton({ onPress }: { onPress: () => void }) {
+    const { t } = useTranslation();
     return (
         <Pressable
             onPress={() => {
@@ -347,7 +361,7 @@ export function EventHubBackButton({ onPress }: { onPress: () => void }) {
             style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Back to all events"
+            accessibilityLabel={t('events:hub.backA11y')}
         >
             <Ionicons name="chevron-back" size={22} color={TEXT} style={{ marginLeft: -2 }} />
         </Pressable>

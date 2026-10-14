@@ -15,6 +15,7 @@ import {
     Text,
     View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -75,6 +76,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
     const router = useRouter();
     const queryClient = useQueryClient();
     const { user } = useAuth();
+    const { t } = useTranslation();
 
     const [stage, setStage] = useState<'pitch' | 'success'>('pitch');
     const [joinedViewer, setJoinedViewer] = useState<LiveEventViewer | null>(null);
@@ -124,7 +126,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
         mutationFn: () => joinLiveEvent(event.id),
         onSuccess: (viewer) => {
             if (!viewer?.joined) {
-                Alert.alert('Couldn’t register', 'Something went wrong — please try again.');
+                Alert.alert(t('events:register.errorTitle'), t('events:register.errorBody'));
                 return;
             }
             // Render success from the returned viewer immediately — the cache
@@ -141,8 +143,8 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
             // surface them verbatim instead of a generic shrug.
             const deliberate = error?.code === 'P0001' || error?.code === 'P0002';
             Alert.alert(
-                'Couldn’t register',
-                deliberate && error.message ? error.message : 'Something went wrong — please try again.',
+                t('events:register.errorTitle'),
+                deliberate && error.message ? error.message : t('events:register.errorBody'),
             );
         },
     });
@@ -153,7 +155,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
         mutationFn: () => resetLiveEventPreview(event.id),
         onSuccess: (viewer) => {
             if (!viewer || viewer.joined) {
-                Alert.alert('Couldn’t reset', 'Something went wrong — please try again.');
+                Alert.alert(t('events:register.resetErrorTitle'), t('events:register.errorBody'));
                 return;
             }
             Haptics.selectionAsync().catch(() => {});
@@ -225,7 +227,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                 <Pressable
                     style={StyleSheet.absoluteFill}
                     onPress={() => dismiss()}
-                    accessibilityLabel="Close"
+                    accessibilityLabel={t('events:register.closeA11y')}
                 />
                 <Animated.View
                     style={[
@@ -243,7 +245,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                         <View style={styles.handle} />
                         {stage === 'pitch' ? (
                             <>
-                                <Text style={styles.eyebrow}>LIVE EVENT</Text>
+                                <Text style={styles.eyebrow}>{t('events:register.eyebrow')}</Text>
                                 <Text style={styles.name}>{event.name}</Text>
                                 <Text style={styles.dates}>{eventDateRange(event)}</Text>
                             </>
@@ -251,7 +253,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                             <>
                                 <View style={styles.inRow}>
                                     <Ionicons name="checkmark-circle" size={22} color={GOLD} />
-                                    <Text style={styles.inText}>You’re in</Text>
+                                    <Text style={styles.inText}>{t('events:register.youreIn')}</Text>
                                 </View>
                                 <Text style={styles.inSub}>
                                     {event.name} · {eventDateRange(event)}
@@ -275,7 +277,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
 
                                 {previewRules.length > 0 && (
                                     <View style={styles.rulesBlock}>
-                                        <Text style={styles.blockEyebrow}>THE RULES</Text>
+                                        <Text style={styles.blockEyebrow}>{t('events:register.rules')}</Text>
                                         {previewRules.map((rule, i) => (
                                             <View key={i} style={styles.ruleRow}>
                                                 <Text style={styles.ruleBullet}>•</Text>
@@ -284,17 +286,16 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                         ))}
                                         {previewMore > 0 && (
                                             <Text style={styles.ruleMore}>
-                                                +{previewMore} more once you’re in
+                                                {t('events:register.rulesMore', { n: previewMore })}
                                             </Text>
                                         )}
                                     </View>
                                 )}
 
                                 <Text style={styles.note}>
-                                    {'Everyone starts from zero — only points earned during the event window count.' +
-                                        (gate
-                                            ? ` To get on the leaderboard, ${gate.required} friends need to sign up with your code — your share link is next.`
-                                            : '')}
+                                    {gate
+                                        ? t('events:register.noteGate', { required: gate.required })
+                                        : t('events:register.note')}
                                 </Text>
 
                                 {consent ? <Text style={styles.consent}>{consent}</Text> : null}
@@ -310,10 +311,10 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                         joinMutation.mutate();
                                     }}
                                     accessibilityRole="button"
-                                    accessibilityLabel="Register for the event"
+                                    accessibilityLabel={t('events:register.registerA11y')}
                                 >
                                     <Text style={styles.primaryBtnText}>
-                                        {joinMutation.isPending ? 'REGISTERING…' : 'COUNT ME IN'}
+                                        {joinMutation.isPending ? t('events:register.registering') : t('events:register.countMeIn')}
                                     </Text>
                                 </Pressable>
 
@@ -322,14 +323,14 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                     onPress={() => dismiss()}
                                     accessibilityRole="button"
                                 >
-                                    <Text style={styles.skipLabel}>Not now</Text>
+                                    <Text style={styles.skipLabel}>{t('events:register.notNow')}</Text>
                                 </Pressable>
                             </>
                         ) : (
                             <>
                                 {rules.length > 0 && (
                                     <View style={styles.rulesBlock}>
-                                        <Text style={styles.blockEyebrow}>THE RULES</Text>
+                                        <Text style={styles.blockEyebrow}>{t('events:register.rules')}</Text>
                                         {rules.map((rule, i) => (
                                             <View key={i} style={styles.ruleRow}>
                                                 <Text style={styles.ruleBullet}>•</Text>
@@ -341,15 +342,13 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
 
                                 <View style={styles.recruitBlock}>
                                     <Text style={styles.blockEyebrow}>
-                                        {gate ? 'YOUR TICKET TO THE BOARD' : 'BRING YOUR CREW'}
+                                        {gate ? t('events:register.ticketEyebrow') : t('events:register.crewEyebrow')}
                                     </Text>
                                     <Text style={styles.recruitText}>
                                         {gate
-                                            ? `${gate.required} friends signing up with your code${
-                                                  gate.counting === 'conversions'
-                                                      ? ' and logging their first verified workout'
-                                                      : ''
-                                              } puts you on the leaderboard. ${inviteRewardLine(event)}`
+                                            ? gate.counting === 'conversions'
+                                                ? t('events:register.recruitConversions', { required: gate.required, reward: inviteRewardLine(event) })
+                                                : t('events:register.recruit', { required: gate.required, reward: inviteRewardLine(event) })
                                             : inviteRewardLine(event)}
                                     </Text>
 
@@ -358,7 +357,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                             style={({ pressed }) => [styles.qrCard, pressed && { opacity: 0.85 }]}
                                             onPress={openFullQr}
                                             accessibilityRole="button"
-                                            accessibilityLabel="Show the full-screen event QR code"
+                                            accessibilityLabel={t('events:register.qrA11y')}
                                         >
                                             {link ? (
                                                 <QRCode value={link} size={96} color="#0a0a0a" backgroundColor="#FFFFFF" />
@@ -371,7 +370,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                                 style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
                                                 onPress={handleCopy}
                                                 accessibilityRole="button"
-                                                accessibilityLabel="Copy your invite code and link"
+                                                accessibilityLabel={t('events:invite.copyA11y')}
                                             >
                                                 <Text style={styles.codeText}>{profile.code ?? '········'}</Text>
                                                 <Ionicons
@@ -389,7 +388,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                                 onPress={handleShare}
                                                 disabled={!link}
                                                 accessibilityRole="button"
-                                                accessibilityLabel="Share your invite link"
+                                                accessibilityLabel={t('events:invite.shareA11y')}
                                             >
                                                 <Ionicons
                                                     name="share-outline"
@@ -402,7 +401,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                                         !bookingUrl && styles.shareBtnTextPrimary,
                                                     ]}
                                                 >
-                                                    SHARE
+                                                    {t('events:invite.share')}
                                                 </Text>
                                             </Pressable>
                                         </View>
@@ -413,7 +412,9 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                     <View style={styles.bookedRow}>
                                         <Ionicons name="checkmark-circle" size={16} color={GREEN} />
                                         <Text style={styles.bookedText}>
-                                            Booked with {event.venue?.name ?? 'the venue'}
+                                            {event.venue?.name != null
+                                                ? t('events:booking.bookedWith', { venue: event.venue.name })
+                                                : t('events:booking.bookedWithVenue')}
                                         </Text>
                                     </View>
                                 ) : bookingUrl ? (
@@ -421,10 +422,14 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                         style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
                                         onPress={handleBook}
                                         accessibilityRole="button"
-                                        accessibilityLabel={`Book your place with ${event.venue?.name ?? 'the venue'}`}
+                                        accessibilityLabel={
+                                            event.venue?.name != null
+                                                ? t('events:booking.bookA11y', { venue: event.venue.name })
+                                                : t('events:booking.bookA11yVenue')
+                                        }
                                     >
                                         <View style={styles.bookBtnInner}>
-                                            <Text style={styles.primaryBtnText}>BOOK YOUR PLACE</Text>
+                                            <Text style={styles.primaryBtnText}>{t('events:booking.book')}</Text>
                                             <Ionicons name="open-outline" size={14} color="#0a0a0a" />
                                         </View>
                                     </Pressable>
@@ -432,7 +437,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                     // POWR adds the venue's booking link when bookings open; a
                                     // gym's own event has one only if the gym added it.
                                     <Text style={styles.bookingSoon}>
-                                        Your booking link with {event.venue.name} lands here soon.
+                                        {t('events:register.bookingSoon', { venue: event.venue.name })}
                                     </Text>
                                 ) : null}
 
@@ -445,10 +450,10 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                         disabled={resetMutation.isPending}
                                         onPress={() => resetMutation.mutate()}
                                         accessibilityRole="button"
-                                        accessibilityLabel="Reset test registration"
+                                        accessibilityLabel={t('events:register.resetA11y')}
                                     >
                                         <Text style={styles.resetBtnText}>
-                                            {resetMutation.isPending ? 'RESETTING…' : 'RESET TEST REGISTRATION'}
+                                            {resetMutation.isPending ? t('events:register.resetting') : t('events:register.reset')}
                                         </Text>
                                     </Pressable>
                                 )}
@@ -457,9 +462,9 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                     style={styles.skipButton}
                                     onPress={handleDone}
                                     accessibilityRole="button"
-                                    accessibilityLabel="Done"
+                                    accessibilityLabel={t('events:register.done')}
                                 >
-                                    <Text style={styles.skipLabel}>Done</Text>
+                                    <Text style={styles.skipLabel}>{t('events:register.done')}</Text>
                                 </Pressable>
                             </>
                         )}

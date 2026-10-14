@@ -1,10 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as SecureStore from 'expo-secure-store';
 
 import { isTerraProvider } from '@/lib/health/providers';
+import i18n from '@/lib/i18n';
 import type { HealthProviderId } from '@/lib/health/providers';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { awardBonus } from '@/lib/api/points';
@@ -21,6 +23,7 @@ import { awardBonus } from '@/lib/api/points';
  */
 export default function TerraCallback() {
     const router = useRouter();
+    const { t } = useTranslation();
     // Grab ALL params, not just the known ones: Terra appends a `reason`/`message`
     // to the failure redirect that we want to capture for debugging.
     const params = useLocalSearchParams<{
@@ -43,7 +46,7 @@ export default function TerraCallback() {
                 // Surface Terra's failure detail. `reason`/`message` are what Terra
                 // appends to auth_failure_redirect_url; log the full param set too so
                 // anything unexpected still shows up in Metro / logcat.
-                const reason = params.reason ?? params.message ?? (user_id ? null : 'no user_id in redirect');
+                const reason = params.reason ?? params.message ?? (user_id ? null : i18n.t('system:healthCallback.noUserId'));
                 console.warn('[terra-callback] connection failed:', JSON.stringify(params));
                 setFailReason(reason ?? null);
                 setStatus('failed');
@@ -90,9 +93,9 @@ export default function TerraCallback() {
         <View style={{ flex: 1, backgroundColor: '#0d0d0d', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
             <ActivityIndicator size="large" color="#facc15" />
             <Text style={{ color: '#F2F2F2', marginTop: 16, fontSize: 14, textAlign: 'center' }}>
-                {status === 'connecting' && 'Connecting…'}
-                {status === 'success' && 'Connected!'}
-                {status === 'failed' && 'Connection failed — tap back to retry.'}
+                {status === 'connecting' && t('system:healthCallback.connecting')}
+                {status === 'success' && t('system:healthCallback.connected')}
+                {status === 'failed' && t('system:healthCallback.failed')}
             </Text>
             {status === 'failed' && failReason && (
                 <Text style={{ color: '#9CA3AF', marginTop: 8, fontSize: 12, textAlign: 'center' }}>

@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useMemo } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
@@ -256,6 +257,7 @@ export interface LevelUpCelebrationProps {
  * level-up, unmount via onDone.
  */
 export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, onDone, onShare, onChallenge }: LevelUpCelebrationProps) {
+  const { t } = useTranslation();
   const fromDef: LevelDef = LEVELS.find(l => l.level === fromLevel) ?? LEVELS[0];
   const toDef: LevelDef = LEVELS.find(l => l.level === toLevel) ?? LEVELS[LEVELS.length - 1];
   const accent = toDef.textColor === '#FFFFFF' ? GOLD : toDef.textColor;
@@ -264,9 +266,9 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
   const graduation = levelUpGraduation(fromLevel, toLevel);
   const explosive = graduation !== 'standard';
   const kickerText =
-    graduation === 'apex' ? 'MAX LEVEL'
-    : graduation === 'tier' ? `NEW TIER — ${tier.label}`
-    : 'LEVEL UP';
+    graduation === 'apex' ? t('nudges:levelUp.kicker.max')
+    : graduation === 'tier' ? t('nudges:levelUp.kicker.tier', { tier: tier.label })
+    : t('nudges:levelUp.kicker.standard');
   const particleCount = graduation === 'apex' ? 44 : graduation === 'tier' ? 30 : 12;
   const particleSpread = explosive ? 1 : 0.6;
 
@@ -456,7 +458,7 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
         {/* Reveal: number roll, new name in its artwork colour, tier pill */}
         <View style={styles.reveal}>
           <Animated.View style={[styles.levelRow, kickerStyle]}>
-            <Text style={styles.levelWord}>LEVEL</Text>
+            <Text style={styles.levelWord}>{t('nudges:levelUp.level')}</Text>
             <RollingNumber from={fromLevel} to={toLevel} color={accent} />
           </Animated.View>
           <Animated.Text style={[styles.newName, { color: accent }, nameStyle]}>
@@ -473,29 +475,32 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
                 <View style={[styles.nextFill, { width: `${Math.max(2, Math.round(nextPct * 100))}%`, backgroundColor: accent }]} />
               </View>
               <Text style={styles.nextText}>
-                <Text style={[styles.nextPts, { color: accent }]}>{ptsToNext.toLocaleString()}</Text>
-                {` pts to ${nextDef.name}`}
+                <Trans
+                  i18nKey="nudges:levelUp.toNext"
+                  values={{ points: ptsToNext.toLocaleString(), name: nextDef.name }}
+                  components={{ pts: <Text style={[styles.nextPts, { color: accent }]} /> }}
+                />
               </Text>
             </Animated.View>
           ) : graduation === 'apex' ? (
             <Animated.Text style={[styles.nextText, styles.apexText, actionsStyle]}>
-              Top of the mountain. Nothing left to unlock.
+              {t('nudges:levelUp.apex')}
             </Animated.Text>
           ) : null}
         </View>
 
         <Animated.View style={[styles.actions, actionsStyle]}>
           <Pressable style={[styles.btnContinue, { backgroundColor: GOLD }]} onPress={onDone}>
-            <Text style={styles.btnContinueText}>Continue</Text>
+            <Text style={styles.btnContinueText}>{t('nudges:levelUp.continue')}</Text>
           </Pressable>
           {onChallenge && (
             <Pressable style={styles.btnShare} onPress={onChallenge}>
-              <Text style={[styles.btnShareText, { color: GOLD }]}>Challenge friends</Text>
+              <Text style={[styles.btnShareText, { color: GOLD }]}>{t('social:templateCard.challengeFriends')}</Text>
             </Pressable>
           )}
           {onShare && (
             <Pressable style={styles.btnShare} onPress={onShare}>
-              <Text style={styles.btnShareText}>Share</Text>
+              <Text style={styles.btnShareText}>{t('nudges:actions.share')}</Text>
             </Pressable>
           )}
         </Animated.View>

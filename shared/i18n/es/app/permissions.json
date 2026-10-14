@@ -18,7 +18,7 @@
     "skip": "Continuar sin ubicación",
     "preciseAlert": {
       "title": "Activa la ubicación precisa",
-      "body": "POWR comprueba que de verdad estás en un centro asociado, y la ubicación aproximada no lo permite. Elige “Precisa” para que tus sesiones cuenten.",
+      "body": "POWR comprueba que de verdad estás en un centro asociado, y la ubicación aproximada no lo permite. Elige «Precisa» para que tus sesiones cuenten.",
       "fix": "Corregir",
       "later": "Más tarde"
     }
@@ -35,16 +35,16 @@
     "body": "Sin darle a empezar. POWR te hace el check-in desde el bolsillo, incluso con la app cerrada. Solo funciona con <strong>{{always}}</strong>.",
     "offGym": "La ubicación está activada, pero solo mientras estás en la app, así que cada visita al gimnasio con POWR cerrado no te suma nada. Cámbiala a <strong>{{always}}</strong> en <strong>{{path}}</strong>.",
     "offVenue": "La ubicación está activada, pero solo mientras estás en la app, así que cada visita a un centro asociado con POWR cerrado no te suma nada. Cámbiala a <strong>{{always}}</strong> en <strong>{{path}}</strong>.",
-    "alwaysIos": "“Siempre”",
-    "alwaysAndroid": "“Permitir todo el tiempo”",
+    "alwaysIos": "«Siempre»",
+    "alwaysAndroid": "«Permitir todo el tiempo»",
     "cta": {
       "allowIos": "CAMBIAR A SIEMPRE",
       "allowAndroid": "PERMITIR TODO EL TIEMPO"
     },
     "skip": "Continuar sin permitir",
     "iosAlert": {
-      "title": "Activa “Siempre” para los check-ins automáticos",
-      "body": "Para detectar cuándo llegas a un centro asociado con POWR cerrado, cambia la ubicación a “Siempre” en Ajustes › Privacidad y seguridad › Localización › POWR.",
+      "title": "Activa «Siempre» para los check-ins automáticos",
+      "body": "Para detectar cuándo llegas a un centro asociado con POWR cerrado, cambia la ubicación a «Siempre» en Ajustes › Privacidad y seguridad › Localización › POWR.",
       "later": "Más tarde",
       "openSettings": "Abrir Ajustes"
     }
@@ -119,7 +119,7 @@
       },
       "always": {
         "title": "¿Permitir que “POWR” también use tu ubicación incluso cuando no estés usando la app?",
-        "message": "Los check-ins automáticos solo funcionan con el acceso “Siempre”.",
+        "message": "Los check-ins automáticos solo funcionan con el acceso «Siempre».",
         "keep": "Mantener solo al usar",
         "change": "Cambiar a Permitir siempre"
       },

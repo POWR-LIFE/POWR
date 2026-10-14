@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { addDays, dayFromKey, useDaySelection } from '@/components/progress/daySelection';
@@ -22,6 +23,7 @@ import {
 } from '@/lib/api/activity';
 import { getProvider } from '@/lib/health/providers';
 import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { dayAnchor, monthLabel, rangeLabel, weekAnchorMonday } from '@/lib/progressLookback';
 
 // ─── Design tokens (match progress.tsx) ──────────────────────────────────────
@@ -32,7 +34,19 @@ const TEXT   = '#F2F2F2';
 const MUTED  = 'rgba(255,255,255,0.25)';
 const DIM    = 'rgba(255,255,255,0.5)';
 
-const DAY_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_KEYS = [
+  'progress:days.short.mon', 'progress:days.short.tue', 'progress:days.short.wed', 'progress:days.short.thu',
+  'progress:days.short.fri', 'progress:days.short.sat', 'progress:days.short.sun',
+] as const;
+const DAY_INITIAL_KEYS = [
+  'progress:days.initial.mon', 'progress:days.initial.tue', 'progress:days.initial.wed', 'progress:days.initial.thu',
+  'progress:days.initial.fri', 'progress:days.initial.sat', 'progress:days.initial.sun',
+] as const;
+const MONTH_KEYS = [
+  'progress:months.short.jan', 'progress:months.short.feb', 'progress:months.short.mar', 'progress:months.short.apr',
+  'progress:months.short.may', 'progress:months.short.jun', 'progress:months.short.jul', 'progress:months.short.aug',
+  'progress:months.short.sep', 'progress:months.short.oct', 'progress:months.short.nov', 'progress:months.short.dec',
+] as const;
 const EMPTY_WEEK_HRS: number[] = [0, 0, 0, 0, 0, 0, 0];
 const EMPTY_WEEK_BEDTIMES: (string | null)[] = [null, null, null, null, null, null, null];
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
@@ -42,8 +56,10 @@ const SLEEP_BAR_H = 56;
 
 type Period = 'D' | 'W' | 'M';
 const PERIODS: Period[] = ['D', 'W', 'M'];
+const PERIOD_KEYS: Record<Period, string> = { D: 'progress:period.D', W: 'progress:period.W', M: 'progress:period.M' };
 
 function PillToggle({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.pillRow}>
       {PERIODS.map(p => {
@@ -54,7 +70,7 @@ function PillToggle({ value, onChange }: { value: Period; onChange: (p: Period) 
             style={[styles.pill, active && styles.pillActive]}
             onPress={() => onChange(p)}
           >
-            <Text style={[styles.pillText, active && styles.pillTextActive]}>{p}</Text>
+            <Text style={[styles.pillText, active && styles.pillTextActive]}>{t(PERIOD_KEYS[p])}</Text>
           </Pressable>
         );
       })}
@@ -64,13 +80,30 @@ function PillToggle({ value, onChange }: { value: Period; onChange: (p: Period) 
 
 // ─── Helper: format time ─────────────────────────────────────────────────────
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  const h = d.getHours();
-  const m = d.getMinutes();
+/**
+ * A clock time. English keeps its long-standing "10:30pm" / "7am"; other
+ * languages read their own clock ("22:30"), since am/pm isn't how French or
+ * Spanish speakers tell the time.
+ */
+function clockLabel(h: number, m: number): string {
+  if (i18n.language !== 'en') {
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d.toLocaleTimeString(getFormatLocale(), { hour: '2-digit', minute: '2-digit' });
+  }
   const ampm = h >= 12 ? 'pm' : 'am';
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`;
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return clockLabel(d.getHours(), d.getMinutes());
+}
+
+/** Decimal hours as shown on the sleep charts — "7.5h". */
+function hoursLabel(hours: string | number): string {
+  return i18n.t('progress:units.h', { h: hours });
 }
 
 function avgBedtimeFromTimestamps(bedtimes: (string | null)[]): string {
@@ -85,9 +118,7 @@ function avgBedtimeFromTimestamps(bedtimes: (string | null)[]): string {
   let avgMins = Math.round(totalMinutes / valid.length) % 1440;
   const h = Math.floor(avgMins / 60);
   const m = avgMins % 60;
-  const ampm = h >= 12 ? 'pm' : 'am';
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`;
+  return clockLabel(h, m);
 }
 
 // ─── Day View ────────────────────────────────────────────────────────────────
@@ -101,6 +132,7 @@ function SleepDayView({
   /** False when the wearable has sent no sleep in 30 days — it isn't worn to bed. */
   sleepTracked?: boolean;
 }) {
+  const { t } = useTranslation();
   const [history, setHistory] = useState<DailySleepHistory[]>([]);
   const isToday = offset === 0;
 
@@ -117,9 +149,9 @@ function SleepDayView({
           <Ionicons name="moon-outline" size={28} color={MUTED} />
           {authExpired ? (
             <>
-              <Text style={styles.emptyText}>Wearable connection expired</Text>
+              <Text style={styles.emptyText}>{t('progress:sleep.expired')}</Text>
               <Text style={styles.emptySubtext}>
-                Reconnect your wearable in Settings to resume sleep tracking.
+                {t('progress:sleep.expiredHint')}
               </Text>
             </>
           ) : !sleepTracked ? (
@@ -127,15 +159,15 @@ function SleepDayView({
             // to bed. "Will appear once synced" was a promise it could never
             // keep — say what would actually make sleep land here.
             <>
-              <Text style={styles.emptyText}>No sleep recorded in the last 30 days.</Text>
-              <Text style={styles.emptySubtext}>Wear your device to bed and your nights will land here.</Text>
+              <Text style={styles.emptyText}>{t('progress:sleep.notTracked')}</Text>
+              <Text style={styles.emptySubtext}>{t('progress:sleep.notTrackedHint')}</Text>
             </>
           ) : (
             <>
               <Text style={styles.emptyText}>
-                No sleep data for {isToday ? 'last night' : rangeLabel('D', offset)}.
+                {isToday ? t('progress:sleep.noDataLastNight') : t('progress:sleep.noDataFor', { day: rangeLabel('D', offset) })}
               </Text>
-              <Text style={styles.emptySubtext}>Sleep will appear once synced from your wearable.</Text>
+              <Text style={styles.emptySubtext}>{t('progress:sleep.syncHint')}</Text>
             </>
           )}
         </View>
@@ -143,7 +175,7 @@ function SleepDayView({
         {hasHistory && (
           <>
             <View style={styles.tabSep} />
-            <Text style={styles.tabSubLabel}>{isToday ? 'RECENT NIGHTS' : 'PREVIOUS NIGHTS'}</Text>
+            <Text style={styles.tabSubLabel}>{isToday ? t('progress:sleep.recentNights') : t('progress:sleep.previousNights')}</Text>
             {history.map(night => (
               <SleepHistoryRow key={night.date} night={night} />
             ))}
@@ -161,16 +193,16 @@ function SleepDayView({
       {/* Metrics */}
       <View style={styles.bigMetricRow}>
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>TOTAL SLEEP</Text>
-          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>{data.totalHours.toFixed(1)}h</Text>
-          <Text style={styles.bigMetricMax}>/ 8h goal</Text>
+          <Text style={styles.bigMetricSup}>{t('progress:sleep.totalSleep')}</Text>
+          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>{hoursLabel(data.totalHours.toFixed(1))}</Text>
+          <Text style={styles.bigMetricMax}>{t('progress:sleep.goal')}</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(Math.min(data.totalHours / 8, 1) * 100)}%` as any, backgroundColor: INDIGO }]} />
           </View>
         </View>
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>BEDTIME / WAKE</Text>
+          <Text style={styles.bigMetricSup}>{t('progress:sleep.bedtimeWake')}</Text>
           <Text style={[styles.bigMetricVal, { color: INDIGO, fontSize: 28 }]}>
             {formatTime(data.bedtime)}
           </Text>
@@ -181,7 +213,7 @@ function SleepDayView({
       <View style={styles.tabSep} />
 
       {/* Sleep stages */}
-      <Text style={styles.tabSubLabel}>SLEEP STAGES</Text>
+      <Text style={styles.tabSubLabel}>{t('progress:sleep.stages')}</Text>
       {hasStages && totalStageH > 0 ? (
         <>
           <View style={styles.stagesBar}>
@@ -192,15 +224,15 @@ function SleepDayView({
           <View style={styles.stageLegend}>
             <View style={styles.stageLegendItem}>
               <View style={[styles.stageDot, { backgroundColor: '#4338ca' }]} />
-              <Text style={styles.stageLegendText}>Deep {data.deepHours!.toFixed(1)}h</Text>
+              <Text style={styles.stageLegendText}>{t('progress:sleep.stage.deep', { duration: hoursLabel(data.deepHours!.toFixed(1)) })}</Text>
             </View>
             <View style={styles.stageLegendItem}>
               <View style={[styles.stageDot, { backgroundColor: INDIGO }]} />
-              <Text style={styles.stageLegendText}>REM {data.remHours!.toFixed(1)}h</Text>
+              <Text style={styles.stageLegendText}>{t('progress:sleep.stage.rem', { duration: hoursLabel(data.remHours!.toFixed(1)) })}</Text>
             </View>
             <View style={styles.stageLegendItem}>
               <View style={[styles.stageDot, { backgroundColor: '#a5b4fc' }]} />
-              <Text style={styles.stageLegendText}>Light {data.lightHours!.toFixed(1)}h</Text>
+              <Text style={styles.stageLegendText}>{t('progress:sleep.stage.light', { duration: hoursLabel(data.lightHours!.toFixed(1)) })}</Text>
             </View>
           </View>
         </>
@@ -210,7 +242,7 @@ function SleepDayView({
         </View>
       )}
       {!hasStages && (
-        <Text style={[styles.emptySubtext, { marginTop: 4 }]}>Stage breakdown unavailable</Text>
+        <Text style={[styles.emptySubtext, { marginTop: 4 }]}>{t('progress:sleep.noStages')}</Text>
       )}
 
       {/* Insight */}
@@ -218,8 +250,8 @@ function SleepDayView({
         <Ionicons name="moon-outline" size={12} color={INDIGO} />
         <Text style={[styles.insightText, { color: DIM }]}>
           {data.totalHours >= 7.5
-            ? 'Great recovery night. Keep it consistent.'
-            : `${(8 - data.totalHours).toFixed(1)}h below target — try an earlier bedtime.`}
+            ? t('progress:sleep.dayGood')
+            : t('progress:sleep.dayShort', { duration: hoursLabel((8 - data.totalHours).toFixed(1)) })}
         </Text>
       </View>
 
@@ -227,7 +259,7 @@ function SleepDayView({
       {hasHistory && (
         <>
           <View style={styles.tabSep} />
-          <Text style={styles.tabSubLabel}>{isToday ? 'RECENT NIGHTS' : 'PREVIOUS NIGHTS'}</Text>
+          <Text style={styles.tabSubLabel}>{isToday ? t('progress:sleep.recentNights') : t('progress:sleep.previousNights')}</Text>
           {history.map(night => (
             <SleepHistoryRow key={night.date} night={night} />
           ))}
@@ -239,7 +271,7 @@ function SleepDayView({
 
 function SleepHistoryRow({ night }: { night: DailySleepHistory }) {
   const d = new Date(night.date + 'T00:00:00');
-  const dayName = d.toLocaleDateString('en-GB', { weekday: 'short' });
+  const dayName = d.toLocaleDateString(getFormatLocale(), { weekday: 'short' });
   const dayNum  = d.getDate();
   const hasData = night.hours > 0;
   const pct     = Math.min(night.hours / 8, 1);
@@ -251,7 +283,7 @@ function SleepHistoryRow({ night }: { night: DailySleepHistory }) {
         {hasData && <View style={[styles.historyBarFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: hrColor }]} />}
       </View>
       <Text style={[styles.historyHrs, !hasData && { color: MUTED }]}>
-        {hasData ? `${night.hours.toFixed(1)}h` : '—'}
+        {hasData ? hoursLabel(night.hours.toFixed(1)) : '—'}
       </Text>
     </View>
   );
@@ -272,6 +304,7 @@ function SleepWeekView({
   /** A tapped night, plus every tappable night this week for the sheet to step through. */
   onSelectDay: (day: Date, days: Date[]) => void;
 }) {
+  const { t } = useTranslation();
   // A past week has no "today" column to highlight — TODAY_INDEX is the current
   // weekday, so using it unguarded would accent an arbitrary bar.
   const todayIndex = isCurrentWeek ? TODAY_INDEX : -1;
@@ -293,21 +326,21 @@ function SleepWeekView({
     <View style={styles.tabPanel}>
       <View style={styles.bigMetricRow}>
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>AVG / NIGHT</Text>
-          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>{hasData ? `${avg}h` : '—'}</Text>
-          <Text style={styles.bigMetricMax}>/ 8h goal</Text>
+          <Text style={styles.bigMetricSup}>{t('progress:sleep.avgNight')}</Text>
+          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>{hasData ? hoursLabel(avg) : '—'}</Text>
+          <Text style={styles.bigMetricMax}>{t('progress:sleep.goal')}</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(avgPct * 100)}%` as any, backgroundColor: INDIGO }]} />
           </View>
         </View>
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>AVG BEDTIME</Text>
+          <Text style={styles.bigMetricSup}>{t('progress:sleep.avgBedtime')}</Text>
           <Text style={[styles.bigMetricVal, { color: INDIGO }]}>
             {avgBedtime.replace(/(am|pm)$/i, '')}
             <Text style={{ fontSize: 22, fontWeight: '100', letterSpacing: -0.5 }}>{avgBedtime.match(/(am|pm)$/i)?.[0] ?? ''}</Text>
           </Text>
-          <Text style={styles.bigMetricMax}>goal: 10:30pm</Text>
+          <Text style={styles.bigMetricMax}>{t('progress:sleep.bedtimeGoal')}</Text>
           <View style={styles.metricBar}>
             {hasData ? (
               <View style={[styles.metricBarFill, { width: `${Math.round(Math.max(0, 1 - Math.abs(avgNum - 7.5) / 4) * 100)}%` as any, backgroundColor: INDIGO }]} />
@@ -318,7 +351,7 @@ function SleepWeekView({
 
       <View style={styles.tabSep} />
 
-      <Text style={styles.tabSubLabel}>{isCurrentWeek ? 'THIS WEEK' : 'NIGHTLY SLEEP'}</Text>
+      <Text style={styles.tabSubLabel}>{isCurrentWeek ? t('progress:metric.thisWeek') : t('progress:sleep.nightly')}</Text>
       <View style={styles.sleepChart}>
         {sleepHrs.map((hrs, i) => {
           const isToday = i === todayIndex;
@@ -340,11 +373,11 @@ function SleepWeekView({
                 ),
                 hitSlop: 8,
                 accessibilityRole: 'button',
-                accessibilityLabel: `${DAY_LABELS[i]} — see what you earned`,
+                accessibilityLabel: t('progress:chart.seeEarned', { day: t(DAY_KEYS[i]) }),
               } : {})}
             >
               <Text style={[styles.sleepBarHrs, isToday && { color: INDIGO }, isBest && { color: GOLD }]}>
-                {hrs > 0 ? (hrs % 1 === 0 ? `${hrs}h` : `${hrs.toFixed(1)}h`) : '—'}
+                {hrs > 0 ? (hrs % 1 === 0 ? hoursLabel(hrs) : hoursLabel(hrs.toFixed(1))) : '—'}
               </Text>
               <View style={styles.sleepBarTrack}>
                 {hrs > 0 && (
@@ -359,7 +392,7 @@ function SleepWeekView({
                 isToday && { color: TEXT, fontWeight: '600' },
                 selected && { color: GOLD, fontWeight: '600' },
               ]}>
-                {DAY_LABELS[i].charAt(0)}
+                {t(DAY_INITIAL_KEYS[i])}
               </Text>
             </Col>
           );
@@ -370,7 +403,7 @@ function SleepWeekView({
         <View style={styles.insightRow}>
           <Ionicons name="trophy-outline" size={12} color={GOLD} />
           <Text style={styles.insightText}>
-            Best night: {DAY_LABELS[bestIdx]} — {sleepHrs[bestIdx].toFixed(1)}h
+            {t('progress:sleep.bestNight', { day: t(DAY_KEYS[bestIdx]), duration: hoursLabel(sleepHrs[bestIdx].toFixed(1)) })}
           </Text>
         </View>
       )}
@@ -379,10 +412,10 @@ function SleepWeekView({
         <Ionicons name="moon-outline" size={12} color={INDIGO} />
         <Text style={[styles.insightText, { color: DIM }]}>
           {!hasData
-            ? 'Connect a wearable to track your sleep automatically.'
+            ? t('progress:sleep.weekConnect')
             : avgNum >= 7.5
-            ? 'Good recovery. Keep your sleep schedule consistent.'
-            : `You're ${(8 - avgNum).toFixed(1)}h below target — aim for an earlier bedtime.`}
+            ? t('progress:sleep.weekGood')
+            : t('progress:sleep.weekShort', { duration: hoursLabel((8 - avgNum).toFixed(1)) })}
         </Text>
       </View>
     </View>
@@ -417,6 +450,7 @@ function SleepMonthView({
   markedKey: string | null;
   onSelectDay: (day: Date, days: Date[]) => void;
 }) {
+  const { t } = useTranslation();
   // "This Month" / "June" — see WorkoutMonthView.
   const label = monthLabel(offset);
 
@@ -424,7 +458,7 @@ function SleepMonthView({
     return (
       <View style={styles.emptyState}>
         <Ionicons name="moon-outline" size={28} color={MUTED} />
-        <Text style={styles.emptyText}>Loading monthly sleep data...</Text>
+        <Text style={styles.emptyText}>{t('progress:sleep.loadingMonth')}</Text>
       </View>
     );
   }
@@ -436,9 +470,9 @@ function SleepMonthView({
       <View style={styles.emptyState}>
         <Ionicons name="moon-outline" size={28} color={MUTED} />
         <Text style={styles.emptyText}>
-          No sleep data {offset === 0 ? 'this month' : `in ${label}`}.
+          {offset === 0 ? t('progress:sleep.noDataThisMonth') : t('progress:sleep.noDataIn', { month: label })}
         </Text>
-        <Text style={styles.emptySubtext}>Sleep will appear once synced from your wearable.</Text>
+        <Text style={styles.emptySubtext}>{t('progress:sleep.syncHint')}</Text>
       </View>
     );
   }
@@ -483,20 +517,20 @@ function SleepMonthView({
       {/* Metrics */}
       <View style={styles.bigMetricRow}>
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>AVG / NIGHT</Text>
+          <Text style={styles.bigMetricSup}>{t('progress:sleep.avgNight')}</Text>
           <Text style={[styles.bigMetricVal, { color: INDIGO, fontSize: 30, lineHeight: 32 }]}>
-            {data.avgHours > 0 ? `${data.avgHours}h` : '—'}
+            {data.avgHours > 0 ? hoursLabel(data.avgHours) : '—'}
           </Text>
-          <Text style={styles.bigMetricMax}>/ 8h goal</Text>
+          <Text style={styles.bigMetricMax}>{t('progress:sleep.goal')}</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(Math.min(data.avgHours / 8, 1) * 100)}%` as any, backgroundColor: INDIGO }]} />
           </View>
         </View>
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>BEST NIGHT</Text>
+          <Text style={styles.bigMetricSup}>{t('progress:sleep.bestNightLabel')}</Text>
           <Text style={[styles.bigMetricVal, { color: INDIGO, fontSize: 30, lineHeight: 32 }]}>
-            {data.bestNight ? `${data.bestNight.hours.toFixed(1)}h` : '—'}
+            {data.bestNight ? hoursLabel(data.bestNight.hours.toFixed(1)) : '—'}
           </Text>
           <Text style={styles.bigMetricMax}>
             {data.bestNight ? formatShortDate(data.bestNight.date) : ''}
@@ -529,8 +563,7 @@ function SleepMonthView({
 
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
+  return i18n.t('progress:dates.monthDay', { month: i18n.t(MONTH_KEYS[d.getMonth()]), day: d.getDate() });
 }
 
 // ─── Main SleepTab ───────────────────────────────────────────────────────────

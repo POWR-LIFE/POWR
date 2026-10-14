@@ -1,4 +1,5 @@
 import type { LiveEvent, LiveEventPrize } from '@/lib/api/liveEvents';
+import i18n from '@/lib/i18n';
 import { eventInvitePath, inviteCodeLine } from '@/lib/eventInviteLink';
 import { eventDateRange } from '@/lib/liveEventDisplay';
 
@@ -29,6 +30,24 @@ export function ordinal(rank: number): string {
     }
 }
 
+/**
+ * The ordinal in the language on screen, for the share-sheet caption: "1st"
+ * and "22nd", "1er" and "2e", "1.º". Each language's own ordinal rule picks
+ * the form, which in English is exactly the suffix rule `ordinal` spells out.
+ * The link preview (sent to the server) keeps `ordinal`.
+ */
+const PLACE_KEYS: Record<string, string> = {
+    one: 'events:prizeShare.place.one',
+    two: 'events:prizeShare.place.two',
+    few: 'events:prizeShare.place.few',
+    other: 'events:prizeShare.place.other',
+};
+
+function place(rank: number): string {
+    const form = new Intl.PluralRules(i18n.language, { type: 'ordinal' }).select(rank);
+    return i18n.t(PLACE_KEYS[form] ?? PLACE_KEYS.other, { rank });
+}
+
 /** Bold line of the link preview. */
 export function buildPrizeShareTitle(event: PrizeShareEvent, prize: LiveEventPrize): string {
     return `${ordinal(prize.rank)} prize · ${event.name}`;
@@ -55,11 +74,11 @@ export function buildPrizeShareMessage(opts: {
     referralCode: string | null;
 }): string {
     const { event, prize, shareUrl, referralCode } = opts;
-    const lines = [`${ordinal(prize.rank)} prize at ${event.name}: ${prize.label} 🏆`];
+    const lines = [i18n.t('events:prizeShare.message', { place: place(prize.rank), event: event.name, prize: prize.label })];
     lines.push(
         referralCode
-            ? `Join me on POWR. ${inviteCodeLine(referralCode, event.invite_bonus_points)}`
-            : 'Join me on POWR and it could be yours.',
+            ? i18n.t('events:invite.joinMe', { codeLine: inviteCodeLine(referralCode, event.invite_bonus_points) })
+            : i18n.t('events:prizeShare.join'),
     );
     lines.push(shareUrl);
     return lines.join('\n');

@@ -76,7 +76,14 @@ function commit(next: LanguageState): void {
   if (changed) listeners.forEach(listener => listener());
 }
 
-i18n.use(initReactI18next).init({ ...APP_I18N_OPTIONS, lng: state.language });
+// This module sits in the static import graph of the headless geofence tasks
+// (via AuthContext), so loading it must never throw: a failure here would stop
+// those tasks being defined. Worst case is untranslated keys, never a crash.
+try {
+  i18n.use(initReactI18next).init({ ...APP_I18N_OPTIONS, lng: state.language });
+} catch (e) {
+  console.warn('[i18n] init failed', e);
+}
 
 async function readSaved(): Promise<void> {
   try {
@@ -92,9 +99,13 @@ export const languageReady: Promise<void> = readSaved();
 
 // Android keeps the app alive across a system language change (iOS restarts
 // it), so the phone's language is re-read whenever the app comes back.
-AppState.addEventListener('change', status => {
-  if (status === 'active') commit(compute(state.preference, state.preview));
-});
+try {
+  AppState.addEventListener('change', status => {
+    if (status === 'active') commit(compute(state.preference, state.preview));
+  });
+} catch {
+  // No AppState (an unusual headless runtime): the phone's language is read at launch only.
+}
 
 export function getLanguageState(): LanguageState {
   return state;

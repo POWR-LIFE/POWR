@@ -1,4 +1,6 @@
 import * as Haptics from 'expo-haptics';
+import type { TFunction } from 'i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 const GOLD = '#E8D200';
@@ -32,6 +34,7 @@ export default function TransferDeviceSheet({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   if (!visible) return null;
 
   const confirm = () => {
@@ -40,9 +43,9 @@ export default function TransferDeviceSheet({
   };
 
   const otherDevice =
-    fromPlatform === 'ios' ? 'your other iPhone'
-    : fromPlatform === 'android' ? 'your other Android'
-    : 'another device';
+    fromPlatform === 'ios' ? t('nudges:transfer.device.ios')
+    : fromPlatform === 'android' ? t('nudges:transfer.device.android')
+    : t('nudges:transfer.device.other');
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onCancel}>
@@ -52,16 +55,14 @@ export default function TransferDeviceSheet({
         <View style={styles.sheet}>
           <View style={styles.handle} />
 
-          <Text style={styles.eyebrow}>MOVE YOUR ACCOUNT</Text>
+          <Text style={styles.eyebrow}>{t('nudges:transfer.eyebrow')}</Text>
           <Text style={styles.headline}>
-            Bring POWR{'\n'}
-            <Text style={styles.headlineGold}>to this phone.</Text>
+            <Trans i18nKey="nudges:transfer.headline" components={{ gold: <Text style={styles.headlineGold} /> }} />
           </Text>
           <Text style={styles.body}>
-            Your POWR account is set up on {otherDevice}
-            {fromLastSeen ? ` (last active ${formatLastSeen(fromLastSeen)})` : ''}.
-            Move it here to keep earning — {otherDevice} will be signed out. Only
-            one phone at a time.
+            {fromLastSeen
+              ? t('nudges:transfer.bodyLastSeen', { device: otherDevice, when: formatLastSeen(fromLastSeen, t) })
+              : t('nudges:transfer.body', { device: otherDevice })}
           </Text>
 
           <Pressable
@@ -69,11 +70,11 @@ export default function TransferDeviceSheet({
             onPress={confirm}
             disabled={busy}
           >
-            <Text style={styles.primaryLabel}>{busy ? 'MOVING…' : 'MOVE TO THIS PHONE'}</Text>
+            <Text style={styles.primaryLabel}>{busy ? t('nudges:transfer.moving') : t('nudges:transfer.confirm')}</Text>
           </Pressable>
 
           <Pressable style={styles.skipButton} onPress={onCancel} disabled={busy}>
-            <Text style={styles.skipLabel}>Not now</Text>
+            <Text style={styles.skipLabel}>{t('nudges:transfer.notNow')}</Text>
           </Pressable>
         </View>
       </View>
@@ -82,13 +83,13 @@ export default function TransferDeviceSheet({
 }
 
 /** "3 days ago" / "today" — coarse is fine, this is reassurance copy. */
-function formatLastSeen(iso: string): string {
+function formatLastSeen(iso: string, t: TFunction): string {
   const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return 'recently';
+  if (Number.isNaN(then)) return t('nudges:transfer.lastSeen.recently');
   const days = Math.floor((Date.now() - then) / 86_400_000);
-  if (days <= 0) return 'today';
-  if (days === 1) return 'yesterday';
-  return `${days} days ago`;
+  if (days <= 0) return t('nudges:transfer.lastSeen.today');
+  if (days === 1) return t('nudges:transfer.lastSeen.yesterday');
+  return t('nudges:transfer.lastSeen.daysAgo', { days });
 }
 
 const styles = StyleSheet.create({

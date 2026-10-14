@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
+import i18n from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { edgeErrorMessage } from '@/hooks/useSharedChallenges';
 import { CATEGORY_ICON, CATEGORY_LABEL } from '@/lib/social/categories';
@@ -57,10 +58,10 @@ function mapOpenRow(row: any): OpenChallenge {
     template: {
       id: tmpl.id ?? row.id,
       category,
-      categoryLabel: CATEGORY_LABEL[category] ?? 'Activity',
+      categoryLabel: CATEGORY_LABEL[category] ?? i18n.t('social:category.fallback'),
       icon: CATEGORY_ICON[category] ?? CATEGORY_ICON.multi,
       tier: tmpl.tier ?? 'medium',
-      title: tmpl.title ?? 'Challenge',
+      title: tmpl.title ?? i18n.t('social:fallbackTitle'),
       goal: tmpl.goal ?? '',
       basePoints: Number(tmpl.base_points ?? row.base_points) || 0,
       mode: tmpl.mode === 'pooled' ? 'pooled' : 'solo',
@@ -71,7 +72,7 @@ function mapOpenRow(row: any): OpenChallenge {
     creatorId: row.creator_id,
     // The RPC already reduces display_name to a first name; the fallback is
     // never a username — a stranger gets a person or nothing.
-    creatorName: row.creator_name || 'A POWR member',
+    creatorName: row.creator_name || i18n.t('nudges:openBoard.fallbackCreator'),
     creatorAvatar: row.creator_avatar ?? null,
     category,
     basePoints: Number(row.base_points) || 0,
@@ -144,7 +145,7 @@ export function useOpenChallengeBoard(): UseOpenChallengeBoard {
       // A refusal arrives as a non-2xx, so the reason lives in the error's
       // response body, not in `data` — same read the challenge hook uses.
       if (error || (data as any)?.error) {
-        const message = await edgeErrorMessage(error, data, 'Couldn’t take that challenge');
+        const message = await edgeErrorMessage(error, data, i18n.t('nudges:openBoard.takeFailed'));
         await load(); // put the shelf back in sync — the row may still be live
         return { ok: false, error: message };
       }

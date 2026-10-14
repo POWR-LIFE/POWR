@@ -134,5 +134,26 @@
         "android": "Fitbit → your profile → Settings → Health Connect → Sync with Health Connect"
       }
     }
+  },
+  "wearableStatus": {
+    "sync": {
+      "noData": "no data yet",
+      "justNow": "synced just now",
+      "hours_one": "synced {{count}}h ago",
+      "hours_other": "synced {{count}}h ago",
+      "yesterday": "synced yesterday",
+      "days_one": "synced {{count}}d ago",
+      "days_other": "synced {{count}}d ago"
+    },
+    "silent": {
+      "unnamed": "Your wearable",
+      "sinceConnected": "{{name}} hasn’t sent POWR any data since you connected it.",
+      "sinceDays_one": "{{name}} hasn’t sent POWR any data in {{count}} days.",
+      "sinceDays_other": "{{name}} hasn’t sent POWR any data in {{count}} days.",
+      "title": "Check your {{name}} connection",
+      "titleUnnamed": "Check your wearable connection",
+      "body": "{{since}} If you’ve been wearing it, reconnecting usually fixes this.",
+      "cta": "Check connection"
+    }
   }
 }

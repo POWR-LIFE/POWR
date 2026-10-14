@@ -27,6 +27,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { Trans, useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeaderActions } from '@/components/HeaderActions';
@@ -60,6 +61,7 @@ import {
   splitStartLine,
 } from '@/lib/liveEventDisplay';
 import { getLevelInfo } from '@/constants/levels';
+import i18n from '@/lib/i18n';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -100,6 +102,7 @@ export default function LeagueScreen() {
   const router    = useRouter();
   const scrollRef = useRef<ScrollView>(null);
   const { user }  = useAuth();
+  const { t }     = useTranslation();
 
   const [activeTab, setActiveTab] = useState(0); // 0=Standard, 1=Pro
   const [metric, setMetric] = useState<LeaderboardMetric>('weekly');
@@ -257,7 +260,7 @@ export default function LeagueScreen() {
           <EventHubBackButton onPress={() => setOpenSlug(undefined)} />
         )}
         <View style={styles.titleBlock}>
-          <Text style={styles.title}>League</Text>
+          <Text style={styles.title}>{t('events:league.title')}</Text>
           {!LEAGUE_LIVE && hubMode && openSlug && activeEvent && (
             <Text style={styles.titleSub} numberOfLines={1}>{activeEvent.name}</Text>
           )}
@@ -369,10 +372,10 @@ export default function LeagueScreen() {
           {/* Standard / Pro tab bar */}
           <View style={styles.topTabBar}>
             <Pressable style={styles.topTab} onPress={() => goToTab(0)}>
-              <Text style={[styles.topTabText, activeTab === 0 && styles.topTabTextActive]}>STANDARD</Text>
+              <Text style={[styles.topTabText, activeTab === 0 && styles.topTabTextActive]}>{t('events:league.standard')}</Text>
             </Pressable>
             <Pressable style={styles.topTab} onPress={() => goToTab(1)}>
-              <Text style={[styles.topTabText, activeTab === 1 && styles.topTabTextActive]}>PRO</Text>
+              <Text style={[styles.topTabText, activeTab === 1 && styles.topTabTextActive]}>{t('events:league.pro')}</Text>
             </Pressable>
             <Animated.View style={[styles.tabIndicator, indicatorStyle]} />
           </View>
@@ -383,13 +386,13 @@ export default function LeagueScreen() {
               style={[styles.metricBtn, metric === 'weekly' && styles.metricBtnActive]}
               onPress={() => setMetric('weekly')}
             >
-              <Text style={[styles.metricBtnText, metric === 'weekly' && styles.metricBtnTextActive]}>WEEKLY</Text>
+              <Text style={[styles.metricBtnText, metric === 'weekly' && styles.metricBtnTextActive]}>{t('events:league.weekly')}</Text>
             </Pressable>
             <Pressable
               style={[styles.metricBtn, metric === 'alltime' && styles.metricBtnActive]}
               onPress={() => setMetric('alltime')}
             >
-              <Text style={[styles.metricBtnText, metric === 'alltime' && styles.metricBtnTextActive]}>ALL TIME</Text>
+              <Text style={[styles.metricBtnText, metric === 'alltime' && styles.metricBtnTextActive]}>{t('events:league.allTime')}</Text>
             </Pressable>
           </View>
 
@@ -412,25 +415,25 @@ export default function LeagueScreen() {
                 >
                   {loadingLeaderboard ? (
                     <View style={styles.emptyState}>
-                      <Text style={styles.emptyText}>Loading…</Text>
+                      <Text style={styles.emptyText}>{t('events:league.loading')}</Text>
                     </View>
                   ) : entries.length === 0 ? (
                     <View style={styles.emptyState}>
-                      <Text style={styles.emptyText}>No entries yet</Text>
+                      <Text style={styles.emptyText}>{t('events:league.noEntries')}</Text>
                     </View>
                   ) : (
                     <>
                       {entries.length >= 3 && (
                         <>
                           <View style={styles.sectionRow}>
-                            <Text style={styles.sectionLabel}>TOP 3</Text>
+                            <Text style={styles.sectionLabel}>{t('events:board.top3')}</Text>
                             <View style={styles.sectionLine} />
                           </View>
                           <RealPodium entries={entries.slice(0, 3)} onPress={openUserSheet} />
                         </>
                       )}
                       <View style={styles.sectionRow}>
-                        <Text style={styles.sectionLabel}>STANDINGS</Text>
+                        <Text style={styles.sectionLabel}>{t('events:board.standings')}</Text>
                         <View style={styles.sectionLine} />
                       </View>
                       <View style={styles.standingsCard}>
@@ -490,12 +493,20 @@ type EventSegment = 'board' | 'event';
  * vocabulary of switches.
  */
 function EventSegmentBar({ value, onChange }: { value: EventSegment; onChange: (s: EventSegment) => void }) {
-  return <SegmentBar items={EVENT_SEGMENTS} value={value} onChange={onChange} />;
+  const { t } = useTranslation();
+  return (
+    <SegmentBar
+      items={EVENT_SEGMENTS.map(item => ({ ...item, label: t(item.label) }))}
+      value={value}
+      onChange={onChange}
+    />
+  );
 }
 
+/** Labels are keys, resolved at render. */
 const EVENT_SEGMENTS: { key: EventSegment; label: string }[] = [
-  { key: 'board', label: 'LEADERBOARD' },
-  { key: 'event', label: 'EVENT' },
+  { key: 'board', label: 'events:league.segments.board' },
+  { key: 'event', label: 'events:league.segments.event' },
 ];
 
 function invitesOpen(event: LiveEvent): boolean {
@@ -527,19 +538,20 @@ function BoardPreviewSwitcher({
   value: BoardPreviewState | null;
   onChange: (next: BoardPreviewState | null) => void;
 }) {
+  const { t } = useTranslation();
   // 'auto' is modelled as null so the app sends nothing and the event's own
   // setting decides — distinct from explicitly forcing 'auto'.
   const options: { label: string; state: BoardPreviewState | null }[] = [
-    { label: 'AUTO', state: null },
-    { label: 'GATED', state: 'gated' },
-    { label: 'LIVE', state: 'live' },
-    { label: 'SEALED', state: 'locked' },
-    { label: 'WINNERS', state: 'revealed' },
+    { label: t('events:previewSwitcher.auto'), state: null },
+    { label: t('events:previewSwitcher.gated'), state: 'gated' },
+    { label: t('events:previewSwitcher.live'), state: 'live' },
+    { label: t('events:previewSwitcher.sealed'), state: 'locked' },
+    { label: t('events:previewSwitcher.winners'), state: 'revealed' },
   ];
 
   return (
     <View style={styles.previewSwitcher}>
-      <Text style={styles.previewSwitcherLabel}>PREVIEW · BOARD STATE</Text>
+      <Text style={styles.previewSwitcherLabel}>{t('events:previewSwitcher.label')}</Text>
       <View style={styles.previewSwitcherRow}>
         {options.map(o => {
           const active = value === o.state;
@@ -553,7 +565,7 @@ function BoardPreviewSwitcher({
               style={[styles.previewSwitcherPill, active && styles.previewSwitcherPillOn]}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={`Preview the ${o.label.toLowerCase()} board state`}
+              accessibilityLabel={t('events:previewSwitcher.a11y', { state: o.label.toLowerCase() })}
             >
               <Text style={[styles.previewSwitcherText, active && styles.previewSwitcherTextOn]}>
                 {o.label}
@@ -602,10 +614,11 @@ const asEntries = (
  * minus the rank: a rank is exactly what the gate and the seal withhold.
  */
 function ViewerPointsBlock({ points, note }: { points: number; note: string }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.eventYouBlock}>
       <View>
-        <Text style={styles.eventYouLabel}>PTS THIS WEEK</Text>
+        <Text style={styles.eventYouLabel}>{t('events:board.ptsThisWeek')}</Text>
         <Text style={styles.eventYouRank}>{points.toLocaleString()}</Text>
       </View>
       <Text style={styles.eventYouNote}>{note}</Text>
@@ -626,6 +639,7 @@ function EventBoardSection({
    *  gate count, the progress line and the share tools. */
   ticketAbove: boolean;
 }) {
+  const { t } = useTranslation();
   // Pre-week: the header card above already carries the countdown. A preview
   // payload FORCED into a real state (gated / sealed / live / winners) still
   // renders — that walkthrough is the point; auto-scheduled mirrors the real
@@ -643,8 +657,7 @@ function EventBoardSection({
     return board.is_preview ? (
       <View style={styles.previewEmptyNote}>
         <Text style={styles.previewEmptyNoteText}>
-          No board before the window opens — this is exactly what a real user sees
-          pre-event. Pick a state above to walk the rest of the flow.
+          {t('events:board.previewEmpty')}
         </Text>
       </View>
     ) : null;
@@ -663,7 +676,7 @@ function EventBoardSection({
   if (board.is_gated && gate) {
     const have = Math.min(gate.count, gate.required);
     const pct = gate.required > 0 ? Math.max(0, Math.min(1, have / gate.required)) : 0;
-    const unlockNote = `Unlocks the board at ${gate.required} friends`;
+    const unlockNote = t('events:board.gate.unlockNote', { required: gate.required });
     // With the ticket on screen the count, the progress line and the share
     // code are all already there — a second "0 of 5" with its own bar under
     // it read as two competing surfaces (field 2026-08-18). Here the board
@@ -675,7 +688,7 @@ function EventBoardSection({
           <View style={styles.eventGatedQuiet}>
             <Ionicons name="lock-closed-outline" size={13} color={GOLD} style={{ opacity: 0.8 }} />
             <Text style={styles.eventGatedQuietText}>
-              {`Leaderboard unlocks at ${gate.required} friends`}
+              {t('events:board.gate.quiet', { required: gate.required })}
             </Text>
           </View>
         </View>
@@ -691,7 +704,7 @@ function EventBoardSection({
         <Ionicons name="lock-closed-outline" size={30} color={GOLD} style={styles.eventGatedIcon} />
 
         <Text style={styles.eventGatedTitle}>
-          {`${have} of ${gate.required} friends in`}
+          {t('events:board.gate.title', { have, required: gate.required })}
         </Text>
 
         {/* The count again, as distance rather than a number — the one piece of
@@ -702,8 +715,8 @@ function EventBoardSection({
 
         <Text style={styles.eventGatedSub}>
           {gate.counting === 'conversions'
-            ? `The leaderboard unlocks when ${gate.required} friends sign up with your code and log their first verified workout — share it above.`
-            : `The leaderboard unlocks when ${gate.required} friends sign up with your code — share it above.`}
+            ? t('events:board.gate.subConversions', { required: gate.required })
+            : t('events:board.gate.sub', { required: gate.required })}
         </Text>
       </View>
       </View>
@@ -718,7 +731,7 @@ function EventBoardSection({
     return (
       <View style={{ gap: 8 }}>
         {ownPoints != null && (
-          <ViewerPointsBlock points={ownPoints} note="Counted and sealed — your rank is revealed at the final" />
+          <ViewerPointsBlock points={ownPoints} note={t('events:board.sealedNote')} />
         )}
         <SealedBoard event={event} preview={!!board.is_preview} />
       </View>
@@ -753,7 +766,11 @@ function EventBoardSection({
       {board.is_preview && (
         <View style={styles.boardPreviewChipRow}>
           <View style={styles.boardPreviewChip}>
-            <Text style={styles.boardPreviewChipText}>{'BOARD PREVIEW' + (entries.some(e => e.user_id.startsWith('00000000-0000-4000-8000')) ? ' · SAMPLE DATA' : '')}</Text>
+            <Text style={styles.boardPreviewChipText}>
+              {entries.some(e => e.user_id.startsWith('00000000-0000-4000-8000'))
+                ? t('events:board.previewChipSample')
+                : t('events:board.previewChip')}
+            </Text>
           </View>
         </View>
       )}
@@ -761,7 +778,7 @@ function EventBoardSection({
       {/* The reveal moment: one quiet line before the winners appear. */}
       {isWinners && (
         <View style={styles.revealHeader}>
-          <Text style={styles.revealHeaderText}>The results are in.</Text>
+          <Text style={styles.revealHeaderText}>{t('events:board.resultsIn')}</Text>
           <View style={styles.revealHairline} />
         </View>
       )}
@@ -772,7 +789,7 @@ function EventBoardSection({
         {viewerWaiting ? <StartLineYou /> : (
         <View style={styles.eventYouBlock}>
           <View>
-            <Text style={styles.eventYouLabel}>{isWinners ? 'YOUR FINAL RANK' : 'YOUR RANK'}</Text>
+            <Text style={styles.eventYouLabel}>{isWinners ? t('events:board.yourFinalRank') : t('events:board.yourRank')}</Text>
             <View style={styles.heroRankRow}>
               <Text style={styles.heroRankHash}>#</Text>
               <Text style={styles.eventYouRank}>{viewer.rank}</Text>
@@ -781,7 +798,7 @@ function EventBoardSection({
           </View>
           <View style={{ alignItems: 'flex-end', gap: 2 }}>
             <Text style={styles.heroPts}>{(viewer.points ?? 0).toLocaleString()}</Text>
-            <Text style={styles.heroPtsLabel}>PTS THIS WEEK</Text>
+            <Text style={styles.heroPtsLabel}>{t('events:board.ptsThisWeek')}</Text>
             {isWinners && viewer.prize_label && (
               <Text style={styles.eventYouPrize}>🏆 {viewer.prize_label}</Text>
             )}
@@ -792,9 +809,17 @@ function EventBoardSection({
             if the count lands in time. Said once, under the rank it protects. */}
         {!isWinners && gate && !gate.met && gate.mode === 'deadline' && (
           <Text style={styles.eventYouWarn}>
-            {`Bring ${Math.max(1, gate.required - gate.count)} more friend${gate.required - gate.count === 1 ? '' : 's'}${
-              gate.deadline_at ? ` by ${shortDate(gate.deadline_at)}` : ''
-            } to keep this place in the final standings.`}
+            {/* count picks the plural, n is what's shown (never below one). */}
+            {gate.deadline_at
+              ? t('events:board.keepPlaceBy', {
+                  count: gate.required - gate.count,
+                  n: Math.max(1, gate.required - gate.count),
+                  date: shortDate(gate.deadline_at),
+                })
+              : t('events:board.keepPlace', {
+                  count: gate.required - gate.count,
+                  n: Math.max(1, gate.required - gate.count),
+                })}
           </Text>
         )}
         </View>
@@ -804,22 +829,26 @@ function EventBoardSection({
           where your rank was reads as a bug. */}
       {isWinners && viewer.rank == null && viewer.joined && gate && !gate.met && (
         <Text style={styles.eventYouWarn}>
-          {`Not in the final standings — ${gate.required} friends${gate.counting === 'conversions' ? ' with a verified workout' : ''} were needed${
-            gate.deadline_at ? ` by ${shortDate(gate.deadline_at)}` : ''
-          }, and ${gate.count} made it.`}
+          {gate.counting === 'conversions'
+            ? gate.deadline_at
+              ? t('events:board.notInFinal.conversionsBy', { required: gate.required, made: gate.count, date: shortDate(gate.deadline_at) })
+              : t('events:board.notInFinal.conversions', { required: gate.required, made: gate.count })
+            : gate.deadline_at
+              ? t('events:board.notInFinal.signupsBy', { required: gate.required, made: gate.count, date: shortDate(gate.deadline_at) })
+              : t('events:board.notInFinal.signups', { required: gate.required, made: gate.count })}
         </Text>
       )}
 
       {entries.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No points on the board yet — first verified workout opens the scoring.</Text>
+          <Text style={styles.emptyText}>{t('events:board.empty')}</Text>
         </View>
       ) : (
         <>
           {showPodium && (
             <>
               <View style={styles.sectionRow}>
-                <Text style={styles.sectionLabel}>{isWinners ? 'WINNERS' : 'TOP 3'}</Text>
+                <Text style={styles.sectionLabel}>{isWinners ? t('events:board.winners') : t('events:board.top3')}</Text>
                 <View style={styles.sectionLine} />
               </View>
               <RealPodium entries={top3} onPress={pressUser} openSeats={!isWinners} />
@@ -845,7 +874,7 @@ function EventBoardSection({
           {restRows.length > 0 && (
             <>
               <View style={styles.sectionRow}>
-                <Text style={styles.sectionLabel}>{isWinners ? 'FINAL STANDINGS' : 'STANDINGS'}</Text>
+                <Text style={styles.sectionLabel}>{isWinners ? t('events:board.finalStandings') : t('events:board.standings')}</Text>
                 <View style={styles.sectionLine} />
               </View>
               <View style={styles.eventStandings}>
@@ -898,10 +927,11 @@ function StartLineSection({
   onPress: (e: LeaderboardEntry) => void;
 }) {
   const breath = useBreath();
+  const { t } = useTranslation();
   return (
     <>
       <View style={styles.sectionRow}>
-        <Text style={styles.sectionLabel}>{`ON THE START LINE · ${rows.length}`}</Text>
+        <Text style={styles.sectionLabel}>{t('events:board.startLine.label', { n: rows.length })}</Text>
         <View style={styles.sectionLine} />
       </View>
       <View style={styles.eventStandings}>
@@ -927,9 +957,13 @@ function StartLineRow({
   entry: LeaderboardEntry;
   breath: ReturnType<typeof useBreath>;
 }) {
+  const { t } = useTranslation();
   const initials = memberInitials(entry.display_name, entry.username);
   return (
-    <View style={styles.leaderRow} accessibilityLabel={`${memberLabel(entry.display_name, entry.username)}, on the start line`}>
+    <View
+      style={styles.leaderRow}
+      accessibilityLabel={t('events:board.startLine.rowA11y', { name: memberLabel(entry.display_name, entry.username) })}
+    >
       {/* No rank — the column stays so avatars line up with the race above. */}
       <View style={styles.leaderRankCol}>
         <View style={styles.leaderRankBadge} />
@@ -963,11 +997,12 @@ function StartLineRow({
  *  you onto the board. */
 function StartLineYou() {
   const breath = useBreath();
+  const { t } = useTranslation();
   return (
     <View style={styles.eventYouBlock}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.eventYouLabel}>YOU’RE ON THE START LINE</Text>
-        <Text style={styles.startLineYouText}>One verified workout puts you on the board.</Text>
+        <Text style={styles.eventYouLabel}>{t('events:board.startLine.you')}</Text>
+        <Text style={styles.startLineYouText}>{t('events:board.startLine.youLine')}</Text>
       </View>
       <Animated.View style={[styles.breathDot, styles.breathDotLg, breath]} />
     </View>
@@ -1078,6 +1113,7 @@ function SealSigil() {
  * the block says where, not when.
  */
 function RevealCountdown({ event }: { event: LiveEvent }) {
+  const { t } = useTranslation();
   const now = useNow(1000);
   const moment = revealMoment(event);
   const night = eventNightLine(event);
@@ -1087,8 +1123,8 @@ function RevealCountdown({ event }: { event: LiveEvent }) {
   if (!moment) {
     return (
       <View style={styles.sealedWhen}>
-        <Text style={styles.sealedWhenLabel}>THE REVEAL</Text>
-        <Text style={styles.sealedWhenBig}>{venue ? `Live at ${venue}` : 'Live at the final'}</Text>
+        <Text style={styles.sealedWhenLabel}>{t('events:sealed.reveal')}</Text>
+        <Text style={styles.sealedWhenBig}>{venue ? t('events:sealed.liveAt', { venue }) : t('events:sealed.liveAtFinal')}</Text>
       </View>
     );
   }
@@ -1097,10 +1133,12 @@ function RevealCountdown({ event }: { event: LiveEvent }) {
 
   if (!moment.exact) {
     const days = Math.ceil(remaining / 86_400_000);
-    const when = days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`;
+    const when = days <= 0
+      ? t('events:sealed.today')
+      : days === 1 ? t('events:sealed.tomorrow') : t('events:sealed.inDays', { days });
     return (
       <View style={styles.sealedWhen}>
-        <Text style={styles.sealedWhenLabel}>THE REVEAL</Text>
+        <Text style={styles.sealedWhenLabel}>{t('events:sealed.reveal')}</Text>
         <Text style={styles.sealedWhenBig}>{when}</Text>
         {!!where && <Text style={styles.sealedWhenLine}>{where}</Text>}
       </View>
@@ -1113,23 +1151,23 @@ function RevealCountdown({ event }: { event: LiveEvent }) {
   if (parts.total === 0) {
     return (
       <View style={styles.sealedWhen}>
-        <Text style={styles.sealedWhenLabel}>THE REVEAL</Text>
-        <Text style={styles.sealedWhenBig}>Any moment now</Text>
+        <Text style={styles.sealedWhenLabel}>{t('events:sealed.reveal')}</Text>
+        <Text style={styles.sealedWhenBig}>{t('events:sealed.anyMoment')}</Text>
         {!!where && <Text style={styles.sealedWhenLine}>{where}</Text>}
       </View>
     );
   }
 
   const cells: [number, string][] = parts.days > 0
-    ? [[parts.days, 'DAYS'], [parts.hours, 'HRS'], [parts.minutes, 'MIN']]
-    : [[parts.hours, 'HRS'], [parts.minutes, 'MIN'], [parts.seconds, 'SEC']];
+    ? [[parts.days, t('events:sealed.units.days')], [parts.hours, t('events:sealed.units.hours')], [parts.minutes, t('events:sealed.units.minutes')]]
+    : [[parts.hours, t('events:sealed.units.hours')], [parts.minutes, t('events:sealed.units.minutes')], [parts.seconds, t('events:sealed.units.seconds')]];
   const a11y = parts.days > 0
-    ? `Reveal in ${parts.days} days, ${parts.hours} hours and ${parts.minutes} minutes`
-    : `Reveal in ${parts.hours} hours, ${parts.minutes} minutes and ${parts.seconds} seconds`;
+    ? t('events:sealed.a11yDays', { days: parts.days, hours: parts.hours, minutes: parts.minutes })
+    : t('events:sealed.a11yHours', { hours: parts.hours, minutes: parts.minutes, seconds: parts.seconds });
 
   return (
     <View style={styles.sealedWhen}>
-      <Text style={styles.sealedWhenLabel}>REVEAL IN</Text>
+      <Text style={styles.sealedWhenLabel}>{t('events:sealed.revealIn')}</Text>
       <View style={styles.countRow} accessibilityRole="timer" accessibilityLabel={a11y}>
         {cells.map(([n, unit], i) => (
           <React.Fragment key={unit}>
@@ -1219,6 +1257,7 @@ function SealedRow({ rank, widthRatio, prize }: { rank: number; widthRatio: numb
 }
 
 function SealedBoard({ event, preview }: { event: LiveEvent; preview: boolean }) {
+  const { t } = useTranslation();
   const prizeFor = (rank: number) => event.prizes.find(p => p.rank === rank)?.label ?? null;
   // The rows ARE the prize positions: rank 1..N for N prizes, every one with
   // its prize on it. Only a prizeless event falls back to the anonymous
@@ -1232,7 +1271,7 @@ function SealedBoard({ event, preview }: { event: LiveEvent; preview: boolean })
       {preview && (
         <View style={styles.boardPreviewChipRow}>
           <View style={styles.boardPreviewChip}>
-            <Text style={styles.boardPreviewChipText}>BOARD PREVIEW</Text>
+            <Text style={styles.boardPreviewChipText}>{t('events:board.previewChip')}</Text>
           </View>
         </View>
       )}
@@ -1258,14 +1297,14 @@ function SealedBoard({ event, preview }: { event: LiveEvent; preview: boolean })
         />
 
         <SealSigil />
-        <Text style={styles.sealedEyebrow}>SCORES SEALED</Text>
-        <Text style={styles.sealedTitle}>Winners revealed live at the final</Text>
+        <Text style={styles.sealedEyebrow}>{t('events:sealed.eyebrow')}</Text>
+        <Text style={styles.sealedTitle}>{t('events:sealed.title')}</Text>
 
         <RevealCountdown event={event} />
 
         <View style={styles.sealedDivider}>
           <View style={styles.sealedDividerLine} />
-          <Text style={styles.sealedDividerText}>THE BOARD</Text>
+          <Text style={styles.sealedDividerText}>{t('events:sealed.divider')}</Text>
           <View style={styles.sealedDividerLine} />
         </View>
 
@@ -1283,7 +1322,7 @@ function SealedBoard({ event, preview }: { event: LiveEvent; preview: boolean })
         </View>
 
         <Text style={styles.sealedFoot}>
-          Every point is already counted. Nobody sees the board until the reveal.
+          {t('events:sealed.foot')}
         </Text>
       </View>
     </View>
@@ -1303,14 +1342,15 @@ function RealPodium({
    *  rather than left blank. Off for frozen results. */
   openSeats?: boolean;
 }) {
+  const { t } = useTranslation();
   const order = [entries[1], entries[0], entries[2]]; // 2nd | 1st | 3rd
   const rankOrder = [2, 1, 3] as const;
   const COL_W = Math.floor((SCREEN_W - 32) / 3);
 
   const META = {
-    1: { colour: GOLD,   colourSoft: GOLD_SOFT,   platformH: 108, avatarSize: 72, label: '1ST' },
-    2: { colour: SILVER, colourSoft: SILVER_SOFT,  platformH: 74,  avatarSize: 56, label: '2ND' },
-    3: { colour: BRONZE, colourSoft: BRONZE_SOFT,  platformH: 54,  avatarSize: 46, label: '3RD' },
+    1: { colour: GOLD,   colourSoft: GOLD_SOFT,   platformH: 108, avatarSize: 72, label: t('events:podium.first') },
+    2: { colour: SILVER, colourSoft: SILVER_SOFT,  platformH: 74,  avatarSize: 56, label: t('events:podium.second') },
+    3: { colour: BRONZE, colourSoft: BRONZE_SOFT,  platformH: 54,  avatarSize: 46, label: t('events:podium.third') },
   } as const;
 
   return (
@@ -1332,7 +1372,7 @@ function RealPodium({
               <View
                 key={i}
                 style={{ width: COL_W, alignItems: 'center' }}
-                accessibilityLabel={`${meta.label} place, up for grabs`}
+                accessibilityLabel={t('events:podium.openSeatA11y', { place: meta.label })}
               >
                 <View style={{ marginBottom: isFirst ? 6 : 8 }}>
                   {isFirst ? (
@@ -1365,7 +1405,7 @@ function RealPodium({
                   color: MUTED,
                   marginBottom: 10,
                 }}>
-                  Up for grabs
+                  {t('events:podium.upForGrabs')}
                 </Text>
                 <LinearGradient
                   colors={[`${meta.colour}14`, `${meta.colour}04`]}
@@ -1380,7 +1420,7 @@ function RealPodium({
                     borderTopColor: `${meta.colour}66`,
                   }}
                 >
-                  <Text style={{ fontSize: 8, fontWeight: '800', color: meta.colour, opacity: 0.5, letterSpacing: 2.5 }}>OPEN</Text>
+                  <Text style={{ fontSize: 8, fontWeight: '800', color: meta.colour, opacity: 0.5, letterSpacing: 2.5 }}>{t('events:podium.open')}</Text>
                 </LinearGradient>
               </View>
             );
@@ -1467,9 +1507,9 @@ function RealPodium({
                 }}>
                   {entry.points.toLocaleString()}
                 </Text>
-                <Text style={{ fontSize: 7, fontWeight: '800', color: meta.colour, opacity: 0.5, letterSpacing: 2 }}>PTS</Text>
+                <Text style={{ fontSize: 7, fontWeight: '800', color: meta.colour, opacity: 0.5, letterSpacing: 2 }}>{t('events:board.pts')}</Text>
                 {isFirst && (
-                  <Text style={{ fontSize: 7, fontWeight: '700', color: meta.colour, opacity: 0.7, letterSpacing: 2, marginTop: 4 }}>CHAMPION</Text>
+                  <Text style={{ fontSize: 7, fontWeight: '700', color: meta.colour, opacity: 0.7, letterSpacing: 2, marginTop: 4 }}>{t('events:podium.champion')}</Text>
                 )}
               </LinearGradient>
             </Pressable>
@@ -1495,6 +1535,7 @@ function NearYouSection({
   onPress: (e: LeaderboardEntry) => void;
   showPro: boolean;
 }) {
+  const { t } = useTranslation();
   const myIdx = entries.findIndex(e => e.user_id === myEntry.user_id);
   if (myIdx < 0) return null;
 
@@ -1512,7 +1553,7 @@ function NearYouSection({
   return (
     <>
       <View style={styles.sectionRow}>
-        <Text style={styles.sectionLabel}>NEAR YOU</Text>
+        <Text style={styles.sectionLabel}>{t('events:league.nearYou')}</Text>
         <View style={styles.sectionLine} />
       </View>
 
@@ -1520,17 +1561,17 @@ function NearYouSection({
       <View style={styles.heroCard}>
         <View style={styles.heroTopRow}>
           <View>
-            <Text style={styles.heroLabel}>YOUR RANK</Text>
+            <Text style={styles.heroLabel}>{t('events:board.yourRank')}</Text>
             <View style={styles.heroRankRow}>
               <Text style={styles.heroRankHash}>#</Text>
               <Text style={styles.heroRankNum}>{myEntry.rank}</Text>
-              <Text style={styles.heroRankOf}>of {entries.length}</Text>
+              <Text style={styles.heroRankOf}>{t('events:league.rankOf', { total: entries.length })}</Text>
             </View>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={styles.heroPts}>{myEntry.points.toLocaleString()}</Text>
             <Text style={styles.heroPtsLabel}>
-              PTS {metric === 'weekly' ? 'THIS WEEK' : 'ALL TIME'}
+              {metric === 'weekly' ? t('events:board.ptsThisWeek') : t('events:league.ptsAllTime')}
             </Text>
           </View>
         </View>
@@ -1542,9 +1583,11 @@ function NearYouSection({
               <View style={styles.gapTicker}>
                 <Ionicons name="arrow-up" size={11} color={GOLD} />
                 <Text style={styles.gapTickerText}>
-                  <Text style={styles.gapTickerNum}>{gapUp.toLocaleString()}</Text>
-                  <Text> pts to catch </Text>
-                  <Text style={styles.gapTickerName}>{firstName(above)}</Text>
+                  <Trans
+                    i18nKey="events:league.gapUp"
+                    values={{ gap: gapUp.toLocaleString(), name: firstName(above) }}
+                    components={{ num: <Text style={styles.gapTickerNum} />, plain: <Text />, name: <Text style={styles.gapTickerName} /> }}
+                  />
                 </Text>
               </View>
             )}
@@ -1552,9 +1595,11 @@ function NearYouSection({
               <View style={styles.gapTickerAhead}>
                 <Ionicons name="shield-checkmark" size={10} color={GREEN} />
                 <Text style={styles.gapTickerTextAhead}>
-                  <Text style={styles.gapTickerNumAhead}>{gapDown.toLocaleString()}</Text>
-                  <Text> pts ahead of </Text>
-                  <Text style={styles.gapTickerNameAhead}>{firstName(below)}</Text>
+                  <Trans
+                    i18nKey="events:league.gapDown"
+                    values={{ gap: gapDown.toLocaleString(), name: firstName(below) }}
+                    components={{ num: <Text style={styles.gapTickerNumAhead} />, plain: <Text />, name: <Text style={styles.gapTickerNameAhead} /> }}
+                  />
                 </Text>
               </View>
             )}
@@ -1562,8 +1607,10 @@ function NearYouSection({
               <View style={styles.gapTickerAhead}>
                 <Ionicons name="trophy" size={10} color={GOLD} />
                 <Text style={[styles.gapTickerTextAhead, { color: GOLD }]}>
-                  <Text style={{ fontWeight: '700' }}>CHAMPION</Text>
-                  <Text> — nobody to catch</Text>
+                  <Trans
+                    i18nKey="events:league.champion"
+                    components={{ bold: <Text style={{ fontWeight: '700' }} />, plain: <Text /> }}
+                  />
                 </Text>
               </View>
             )}
@@ -1597,7 +1644,7 @@ function NearYouSection({
 }
 
 function firstName(entry: LeaderboardEntry): string {
-  const name = entry.display_name ?? entry.username ?? 'them';
+  const name = entry.display_name ?? entry.username ?? i18n.t('events:league.them');
   return name.split(' ')[0];
 }
 
@@ -1612,6 +1659,7 @@ function LadderRow({
   isMe: boolean;
   showPro: boolean;
 }) {
+  const { t } = useTranslation();
   const initials = memberInitials(entry.display_name, entry.username);
 
   return (
@@ -1631,7 +1679,7 @@ function LadderRow({
       </View>
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={[styles.ladderName, isMe && styles.ladderNameMe]} numberOfLines={1}>
-          {memberLabel(entry.display_name, entry.username)}{isMe ? ' (You)' : ''}
+          {memberLabel(entry.display_name, entry.username)}{isMe ? t('events:board.youSuffix') : ''}
         </Text>
         <RowMeta entry={entry} showPro={showPro} />
       </View>
@@ -1649,19 +1697,21 @@ function LadderRow({
 // a column of zeros. Nothing to show → renders nothing (no phantom gap).
 
 function LevelPill({ totalEarned }: { totalEarned: number }) {
+  const { t } = useTranslation();
   const { current } = getLevelInfo(totalEarned);
   return (
     <View style={[styles.levelPill, { backgroundColor: current.pill.bg, borderColor: current.pill.border }]}>
-      <Text style={[styles.levelPillText, { color: current.pill.text }]}>LVL {current.level}</Text>
+      <Text style={[styles.levelPillText, { color: current.pill.text }]}>{t('events:board.level', { level: current.level })}</Text>
     </View>
   );
 }
 
 function TodayChip({ points }: { points: number }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.todayChip}>
       <Ionicons name="flash" size={8} color={GREEN} />
-      <Text style={styles.todayChipText}>+{points.toLocaleString()} TODAY</Text>
+      <Text style={styles.todayChipText}>{t('events:board.today', { points: points.toLocaleString() })}</Text>
     </View>
   );
 }
@@ -1730,6 +1780,7 @@ function RealLeaderRow({
   isMe: boolean;
   showPro: boolean;
 }) {
+  const { t } = useTranslation();
   const initials = memberInitials(entry.display_name, entry.username);
   const MEDAL: Record<number, string> = { 1: GOLD, 2: SILVER, 3: BRONZE };
   const isTop = entry.rank <= 3;
@@ -1776,7 +1827,7 @@ function RealLeaderRow({
           numberOfLines={1}
         >
           {memberLabel(entry.display_name, entry.username)}
-          {isMe ? ' (You)' : ''}
+          {isMe ? t('events:board.youSuffix') : ''}
         </Text>
         <RowMeta entry={entry} showPro={showPro} />
       </View>
@@ -1789,7 +1840,7 @@ function RealLeaderRow({
         <Text style={[styles.leaderPts, { color: accentColor }]}>
           {entry.points.toLocaleString()}
         </Text>
-        <Text style={{ fontSize: 7, fontWeight: '700', color: MUTED, letterSpacing: 1.5 }}>PTS</Text>
+        <Text style={{ fontSize: 7, fontWeight: '700', color: MUTED, letterSpacing: 1.5 }}>{t('events:board.pts')}</Text>
       </View>
     </View>
   );

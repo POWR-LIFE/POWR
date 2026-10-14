@@ -1,6 +1,7 @@
 import * as WebBrowser from 'expo-web-browser';
 import { Linking } from 'react-native';
 
+import i18n from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -161,7 +162,7 @@ export function ladderPosition(o: Pick<AffiliateOverview, 'program' | 'steps' | 
 }
 
 export function stepName(step: AffiliateStep | null): string {
-    return step?.creator_rewards?.name ?? step?.label ?? 'Next reward';
+    return step?.creator_rewards?.name ?? step?.label ?? i18n.t('affiliate:nextRewardFallback');
 }
 
 export function affiliateLink(handle: string): string {
@@ -169,7 +170,7 @@ export function affiliateLink(handle: string): string {
 }
 
 export function affiliateShareText(code: string, handle: string): string {
-    return `Get paid to train. Download POWR and use my code ${code} — ${affiliateLink(handle)}`;
+    return i18n.t('affiliate:shareText', { code, link: affiliateLink(handle) });
 }
 
 /**

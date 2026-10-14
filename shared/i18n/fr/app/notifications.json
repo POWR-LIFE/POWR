@@ -1,0 +1,85 @@
+{
+  "channels": {
+    "general": "Général",
+    "streak": "Alertes de série",
+    "rewards": "Récompenses"
+  },
+  "streakAtRisk": {
+    "title_one": "Ta série de {{count}} jour est en danger 🔥",
+    "title_other": "Ta série de {{count}} jours est en danger 🔥",
+    "body": "Enregistre une activité avant minuit pour la sauver."
+  },
+  "challengeExpiry": {
+    "title": "Dernier jour ⏳",
+    "body": "« {{challenge}} » se termine dans 24 heures. Ne rate pas tes points bonus POWR."
+  },
+  "rewardUnlocked": {
+    "title": "Nouvelle récompense débloquée 🎁",
+    "body": "Tu as débloqué « {{reward}} ». Échange-la avant qu’elle expire."
+  },
+  "checkIn": {
+    "body": "Te voilà à {{gym}}. Chaque minute compte.",
+    "bodyNoName": "C’est parti. Chaque minute compte."
+  },
+  "nearbyOffer": {
+    "title": "{{brand}} est tout près",
+    "titleNoBrand": "Une récompense tout près",
+    "body": "Boost sur {{reward}} là où tu es — ouvre l’app pour l’échanger."
+  },
+  "sessionCompleted": {
+    "titleEarned": "+{{points}} pts gagnés ! 🔥",
+    "title": "Séance terminée 🔥",
+    "bodyNameStreak": "{{gym}} · Série : jour {{streak}}",
+    "bodyStreak": "Série : jour {{streak}}",
+    "bodyFallback": "Ta séance a bien compté."
+  },
+  "sessionUpgraded": {
+    "title": "Bonus débloqué 🔓",
+    "points": "+{{points}} pts",
+    "bonus": "bonus {{minutes}} min"
+  },
+  "locationOff": {
+    "title": "Localisation désactivée",
+    "body": "{{gym}} · séance terminée. Réactive la localisation pour continuer à gagner.",
+    "bodyNoName": "Ta séance est terminée. Réactive la localisation pour continuer à gagner."
+  },
+  "pointsMilestone": {
+    "title": "{{points}} points POWR",
+    "body": "Tous bien mérités. Jette un œil à tes récompenses — du nouveau t’attend peut-être."
+  },
+  "withinReach": {
+    "title": "Récompense à portée de main",
+    "body": "Tu y es presque. Plus que {{points}} pts pour débloquer {{reward}}.",
+    "bodyNext": "Tu y es presque. Plus que {{points}} pts pour débloquer ta prochaine récompense."
+  },
+  "inactivity": {
+    "day3": {
+      "title": "Tu nous manques 👋",
+      "body": "Ça fait 3 jours. Même une petite marche rapporte des points POWR."
+    },
+    "day7": {
+      "title": "Ta série ne demande qu’à repartir 🔄",
+      "body": "7 jours d’absence — reviens et recommence à gagner."
+    },
+    "fallback": {
+      "title": "On s’y remet ?",
+      "body": "Enregistre une activité aujourd’hui et lance ta prochaine série."
+    }
+  },
+  "sleepGoal": {
+    "title": "Objectif sommeil atteint 🌙",
+    "body_one": "{{hours}} h de sommeil t’ont rapporté {{count}} point POWR.",
+    "body_other": "{{hours}} h de sommeil t’ont rapporté {{count}} points POWR."
+  },
+  "stepGoal": {
+    "title": "Plus que {{steps}} pas 🚶",
+    "body": "Marche {{minutes}} minutes pour décrocher +{{points}} POWR avant minuit."
+  },
+  "locationService": {
+    "trackingTitle": "POWR suit tes séances",
+    "idleBody": "Détecte ton arrivée dans les salles partenaires.",
+    "dwellBody": "Check-in validé — ta séance est chronométrée.",
+    "approachTitle": "POWR fait ton check-in",
+    "approachBody": "Tu es près d’une salle partenaire — on confirme ton arrivée."
+  }
+}

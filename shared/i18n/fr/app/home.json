@@ -1,0 +1,285 @@
+{
+  "shared": {
+    "pts": "pts"
+  },
+  "weekdays": {
+    "mon": "L",
+    "tue": "M",
+    "wed": "M",
+    "thu": "J",
+    "fri": "V",
+    "sat": "S",
+    "sun": "D"
+  },
+  "elapsed": {
+    "hoursMinutes": "{{hours}} h {{minutes}} min",
+    "minutesSeconds": "{{minutes}} min {{seconds}} s"
+  },
+  "rewardConnector": {
+    "ready": "Prête à échanger",
+    "toUnlock_one": "{{count}} pt pour débloquer",
+    "toUnlock_other": "{{count}} pts pour débloquer",
+    "challengeFallback": "le défi de la semaine"
+  },
+  "sessionModal": {
+    "title": "Suivi automatique actif",
+    "timeInSession": "Temps de séance",
+    "awarded": "{{points}} POWR te seront crédités automatiquement",
+    "minutesLeft": "Encore {{minutes}} min avant que les points comptent",
+    "manualLog": "Saisie manuelle",
+    "manualLogNote": "Rapporte 80 % des points de base — règle de la saisie manuelle",
+    "dismiss": "Fermer"
+  },
+  "streak": {
+    "title": "TA SÉRIE",
+    "pill": {
+      "justStarted": "TOUT DÉBUT",
+      "showingUp": "ÇA DÉMARRE",
+      "building": "ÇA MONTE",
+      "onARoll": "SUR TA LANCÉE",
+      "onFire": "EN FEU",
+      "unstoppable": "INARRÊTABLE",
+      "legendary": "LÉGENDAIRE"
+    },
+    "weeks_one": "semaine",
+    "weeks_other": "semaines",
+    "resets": "Remise à zéro à minuit",
+    "rescue": "SAUVE TA SÉRIE · {{done}}/{{required}}",
+    "rescueTimed_one": "SAUVE TA SÉRIE · {{done}}/{{required}} · ENCORE {{count}} H",
+    "rescueTimed_other": "SAUVE TA SÉRIE · {{done}}/{{required}} · ENCORE {{count}} H",
+    "session": {
+      "label": "SÉANCE",
+      "locked": "POINTS ACQUIS",
+      "maxTier": "PALIER MAX",
+      "hintMax": "+{{points}} pts · palier max",
+      "hintUpgrade": "+{{points}} pts · reste {{minutes}} min pour +{{bonus}}"
+    }
+  },
+  "rescue": {
+    "units": {
+      "sessions_one": "{{n}} séance",
+      "sessions_other": "{{n}} séances",
+      "gymSessions_one": "{{n}} séance en salle",
+      "gymSessions_other": "{{n}} séances en salle",
+      "activeDays_one": "{{n}} jour actif",
+      "activeDays_other": "{{n}} jours actifs",
+      "steps_one": "{{n}} pas",
+      "steps_other": "{{n}} pas"
+    },
+    "kicker": {
+      "saved": "SAUVETAGE RÉUSSI",
+      "partway": "SAUVETAGE EN COURS",
+      "offer": "SAUVETAGE DE SÉRIE"
+    },
+    "title": {
+      "saved": "Série sauvée",
+      "offer": "Sauve ta série"
+    },
+    "body": {
+      "saved_one": "Tu as fait le boulot — ta série de {{count}} jour est de retour et continue. Protège-la ce soir.",
+      "saved_other": "Tu as fait le boulot — ta série de {{count}} jours est de retour et continue. Protège-la ce soir.",
+      "partway_one": "Plus que {{phrase}} dans les {{hours}} h qui viennent, et ta série de {{count}} jour revient en entier.",
+      "partway_other": "Plus que {{phrase}} dans les {{hours}} h qui viennent, et ta série de {{count}} jours revient en entier.",
+      "offer_one": "Ta série de {{count}} jour n’est pas encore perdue. {{phrase}} dans les {{hours}} h qui viennent, et elle revient en entier.",
+      "offer_other": "Ta série de {{count}} jours n’est pas encore perdue. {{phrase}} dans les {{hours}} h qui viennent, et elle revient en entier."
+    },
+    "progress": "{{done}} sur {{phrase}}",
+    "hint": "Chaque séance vérifiée compte automatiquement — il suffit de t’entraîner.",
+    "cta": {
+      "saved": "GARDE LE RYTHME",
+      "partway": "TERMINE",
+      "offer": "C’EST PARTI"
+    }
+  },
+  "level": {
+    "toNext": "<num>{{points}}</num> pts avant le niveau suivant",
+    "toNamed": "<num>{{points}}</num> pts avant {{level}} — tu y es presque",
+    "top": "Tu as atteint le sommet"
+  },
+  "together": {
+    "title": "ENSEMBLE",
+    "full": "Complet",
+    "fullA11y": "Emplacements de défis pleins, {{open}} sur {{cap}}",
+    "new_one": "{{count}} nouveau",
+    "new_other": "{{count}} nouveaux",
+    "viewFriends": "Voir les amis",
+    "challengeFriends": "Défier des amis",
+    "empty": {
+      "title": "Relève un défi à plusieurs",
+      "body": "Parcours les défis — chacun gagne un bonus qui grimpe."
+    },
+    "intro": {
+      "crew": "Relève-en un ensemble — +{{perHead}} de bonus chacun par personne qui termine, jusqu’à +{{max}}.",
+      "noCrew": "Relève-en un entre amis — chacun gagne un bonus qui grimpe."
+    },
+    "couldntJoin": "Impossible de rejoindre",
+    "couldntDecline": "Impossible de refuser",
+    "couldntTake": "Impossible de prendre celui-là"
+  },
+  "liveEvent": {
+    "eyebrow": "ÉVÉNEMENT LIVE",
+    "preview": "APERÇU · {{status}}",
+    "register": "INSCRIS-TOI",
+    "pill": {
+      "rank": "RANG {{rank}}",
+      "points": "{{points}} POWR",
+      "friends_one": "{{joined}} SUR {{count}} AMI",
+      "friends_other": "{{joined}} SUR {{count}} AMIS",
+      "locked": "SCORES VERROUILLÉS",
+      "in": "TU EN ES",
+      "book": "RÉSERVE TA PLACE",
+      "see": "VOIR L’ÉVÉNEMENT"
+    },
+    "a11y": {
+      "ranked": "Ton rang : {{rank}}.",
+      "gatedPoints_one": "Tu as gagné {{points}} POWR cette semaine — le classement s’ouvre à {{count}} ami.",
+      "gatedPoints_other": "Tu as gagné {{points}} POWR cette semaine — le classement s’ouvre à {{count}} amis.",
+      "friends_one": "{{joined}} sur {{count}} ami — le classement s’ouvre à {{count}}.",
+      "friends_other": "{{joined}} sur {{count}} amis — le classement s’ouvre à {{count}}.",
+      "locked": "Les scores sont verrouillés jusqu’à l’annonce des résultats.",
+      "startLine": "Tu en es — une séance vérifiée te place au classement.",
+      "earned": "Tu as gagné {{points}} POWR.",
+      "book": "Inscription faite — réserve ta place auprès de {{venue}} depuis l’onglet Ligue.",
+      "venueFallback": "la salle",
+      "registered": "Ton inscription est confirmée.",
+      "see": "{{line}}. Touche pour voir l’événement.",
+      "card": {
+        "comingSoon": "Bientôt : {{name}}. {{status}}",
+        "register": "Événement live : {{name}}. Touche pour t’inscrire.",
+        "preview": "Événement live : {{name}}. Inscription faite — touche pour réinitialiser l’aperçu.",
+        "registered": "Événement live : {{name}}. {{status}} Touche pour ouvrir l’onglet Ligue."
+      }
+    }
+  },
+  "creatorInvite": {
+    "eyebrow": {
+      "eligible": "AFFILIÉS POWR",
+      "pending": "DEMANDE ENVOYÉE",
+      "approved": "TU EN ES"
+    },
+    "dismiss": "Fermer",
+    "eligible": {
+      "title": "Tu fais venir du monde.",
+      "body_one": "{{count}} personne que tu as invitée a fait sa première séance vérifiée. Les affiliés ont leur propre lien, un portail pour le suivre et de vraies récompenses pour chaque inscription. Ça te tente ?",
+      "body_other": "{{count}} personnes que tu as invitées ont fait leur première séance vérifiée. Les affiliés ont leur propre lien, un portail pour le suivre et de vraies récompenses pour chaque inscription. Ça te tente ?",
+      "cta": "DEMANDER À REJOINDRE",
+      "error": "Envoi impossible — réessaie dans un instant.",
+      "foot": "Sur invitation. Une vraie personne lit chaque demande."
+    },
+    "pending": {
+      "title": "On a bien reçu ta demande.",
+      "body": "Quelqu’un de l’équipe POWR va l’examiner. Tu recevras une notification dès que c’est validé — continue à partager ton code en attendant."
+    },
+    "approved": {
+      "title": "Bienvenue chez les Affiliés POWR.",
+      "body": "Ton code, ton lien, tes inscriptions et tes récompenses sont prêts. Retrouve Affiliation dans les Paramètres quand tu en as besoin.",
+      "cta": "OUVRIR AFFILIATION"
+    }
+  },
+  "rings": {
+    "getReady": "PRÉPARE-TOI",
+    "opensThisDay": "S’ouvre ce jour-là",
+    "detected": "DÉTECTÉE"
+  },
+  "challenges": {
+    "title": "CETTE SEMAINE",
+    "moreUnlock_one": "{{count}} autre se débloque quand tu valides ceux-ci",
+    "moreUnlock_other": "{{count}} autres se débloquent quand tu valides ceux-ci",
+    "weekCleared": "Semaine bouclée · {{points}} pts en poche",
+    "shareA11y": "Partager {{title}}",
+    "complete": "{{title}}, c’est fait.",
+    "pointsEarned": "Points POWR gagnés",
+    "totalBalance": "Solde total <num>{{total}} pts</num>",
+    "done": "Terminé",
+    "together": "Refaire à plusieurs",
+    "share": "Partager"
+  },
+  "weekly": {
+    "units": {
+      "steps_one": "pas",
+      "steps_other": "pas",
+      "days_one": "jour",
+      "days_other": "jours",
+      "categories_one": "catégorie",
+      "categories_other": "catégories",
+      "checkIns_one": "check-in",
+      "checkIns_other": "check-ins",
+      "runs_one": "course",
+      "runs_other": "courses",
+      "rides_one": "sortie",
+      "rides_other": "sorties",
+      "sessions_one": "séance",
+      "sessions_other": "séances"
+    },
+    "expired": "Expiré",
+    "left": {
+      "daysHours": "encore {{days}} j {{hours}} h",
+      "hoursMinutes": "encore {{hours}} h {{minutes}} min"
+    }
+  },
+  "reward": {
+    "cost_one": "{{count}} <label>point</label>",
+    "cost_other": "{{count}} <label>points</label>",
+    "percent": "{{value}} %",
+    "pounds": "{{value}} £",
+    "off": "DE REMISE"
+  },
+  "update": {
+    "title": "Mise à jour disponible",
+    "body": "POWR v{{version}} est sorti — profite des derniers correctifs et nouveautés.",
+    "cta": "Mettre à jour"
+  },
+  "recapCard": {
+    "title": "TA SEMAINE",
+    "dismissA11y": "Masquer le bilan de la semaine",
+    "openA11y": "Voir toute ta semaine",
+    "earned": "GAGNÉS LA SEMAINE DERNIÈRE",
+    "up": "+{{delta}} par rapport à la semaine d’avant",
+    "challenges": "DÉFIS",
+    "activeDays": "JOURS ACTIFS",
+    "cta": "VOIR TOUTE TA SEMAINE"
+  },
+  "recap": {
+    "title": "Ta semaine",
+    "close": "Fermer",
+    "earned": "POWR GAGNÉS",
+    "more": "{{delta}} de plus que la semaine d’avant",
+    "fewer": "{{delta}} de moins que la semaine d’avant",
+    "bestDay": "Meilleur jour <strong>{{day}}</strong> · {{active}} jours actifs sur 7",
+    "challenges": "DÉFIS",
+    "challengesMeta": "{{done}} sur {{total}} terminés",
+    "completed": "Terminé",
+    "progress": "{{value}} sur {{goal}} {{unit}}",
+    "body": "TON CORPS",
+    "bodyMeta": "d’après ton appareil",
+    "timeTraining": "TEMPS D’ENTRAÎNEMENT",
+    "highIntensity": "HAUTE INTENSITÉ",
+    "activeBurn": "CALORIES ACTIVES",
+    "peakHr": "FC MAX",
+    "sleep": "SOMMEIL / NUIT",
+    "bpm": "bpm",
+    "activity": "ACTIVITÉ",
+    "sessions_one": "{{count}} séance",
+    "sessions_other": "{{count}} séances",
+    "steps_one": "{{steps}} pas",
+    "steps_other": "{{steps}} pas",
+    "total": "{{duration}} au total",
+    "checkIns": "check-ins",
+    "sessionsFallback": "séances",
+    "duration": {
+      "minutes": "{{minutes}} min",
+      "hoursMinutes": "{{hours}} h {{minutes}} min",
+      "hours": "{{hours}} h"
+    },
+    "start": "LANCER LA SEMAINE"
+  },
+  "bell": {
+    "a11y": "Activité",
+    "a11yCount_one": "Activité, {{count}} nouvel élément",
+    "a11yCount_other": "Activité, {{count}} nouveaux éléments"
+  },
+  "recapRange": {
+    "sameMonth": "{{start}} – {{end}} {{month}}",
+    "crossMonth": "{{start}} {{startMonth}} – {{end}} {{endMonth}}"
+  }
+}

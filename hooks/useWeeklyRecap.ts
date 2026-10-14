@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 
 import { localDateStr } from '@/lib/api/activity';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { hrZonesFrom, isDayWideRow } from '@/lib/api/pointsBreakdown';
 import { supabase } from '@/lib/supabase';
 // challengeRules.js is CommonJS — import the namespace for interop.
@@ -118,7 +119,12 @@ const LAST_VISIBLE_DAY_INDEX = 2;
 
 const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
 
-const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+/** Mon-based weekday name in the language on screen (en-GB in English: "Monday"). */
+function dayLabel(monBasedIdx: number): string {
+    // 2024-01-01 was a Monday.
+    return new Date(Date.UTC(2024, 0, 1 + monBasedIdx))
+        .toLocaleDateString(getFormatLocale(), { weekday: 'long', timeZone: 'UTC' });
+}
 
 /** Mon-based day index of a UTC timestamp in the user's local time. */
 function localDow(startedAt: string, utcOffsetMinutes: number): number {
@@ -130,9 +136,14 @@ function localDow(startedAt: string, utcOffsetMinutes: number): number {
 function weekRangeLabel(mondayISO: string, utcOffsetMinutes: number): string {
     const mon = new Date(new Date(mondayISO).getTime() + utcOffsetMinutes * 60 * 1000);
     const sun = new Date(mon.getTime() + 6 * 86400000);
-    const fmt = (d: Date) => `${d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' })} ${d.getUTCDate()}`;
-    if (mon.getUTCMonth() === sun.getUTCMonth()) return `${fmt(mon)} – ${sun.getUTCDate()}`;
-    return `${fmt(mon)} – ${fmt(sun)}`;
+    // English is en-GB, so the month names are exactly what this always printed.
+    const month = (d: Date) => d.toLocaleString(getFormatLocale(), { month: 'short', timeZone: 'UTC' });
+    if (mon.getUTCMonth() === sun.getUTCMonth()) {
+        return i18n.t('home:recapRange.sameMonth', { month: month(mon), start: mon.getUTCDate(), end: sun.getUTCDate() });
+    }
+    return i18n.t('home:recapRange.crossMonth', {
+        startMonth: month(mon), start: mon.getUTCDate(), endMonth: month(sun), end: sun.getUTCDate(),
+    });
 }
 
 export function useWeeklyRecap(): WeeklyRecapState {
@@ -421,7 +432,7 @@ export function useWeeklyRecap(): WeeklyRecapState {
             steps,
             perCategory,
             bestDay: perDayPoints[bestDayIdx] > 0
-                ? { label: DAY_LABELS[bestDayIdx], points: perDayPoints[bestDayIdx] }
+                ? { label: dayLabel(bestDayIdx), points: perDayPoints[bestDayIdx] }
                 : null,
             body,
         });

@@ -8,6 +8,7 @@
 
 import { localDateStr } from '@/lib/api/activity';
 import { hrZonesFrom, isDayWideRow } from '@/lib/api/pointsBreakdown';
+import i18n from '@/lib/i18n';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 export type TrendPoint = {
@@ -314,7 +315,10 @@ export function deriveBodySignals(t: BodyTrends): BodySignals {
 }
 
 export type Readiness = {
-    /** One short word — "Primed" / "Easy" / "Rest" / "—". Fits the radial's centre. */
+    /**
+     * One short word — "Primed" / "Easy" / "Rest" / "—", in the language on
+     * screen. Fits the radial's centre.
+     */
     word: string;
     /** Why, in a few words — "short night", "good to push". */
     reason: string;
@@ -345,13 +349,14 @@ export function readinessOf(d: BodySignals): Readiness {
     if (d.providerReadiness) {
         const score = d.providerReadiness.value;
         const ring = Math.min(1, Math.max(0, score / 100));
+        const reason = i18n.t('progress:readiness.reason.recovery', { score: Math.round(score) });
         if (score >= READINESS_GOOD) {
-            return { word: 'Primed', reason: `recovery ${Math.round(score)}%`, level: 'good', ring, partial: false };
+            return { word: i18n.t('progress:readiness.word.primed'), reason, level: 'good', ring, partial: false };
         }
         if (score >= READINESS_LOW) {
-            return { word: 'Easy', reason: `recovery ${Math.round(score)}%`, level: 'attention', ring, partial: false };
+            return { word: i18n.t('progress:readiness.word.easy'), reason, level: 'attention', ring, partial: false };
         }
-        return { word: 'Rest', reason: `recovery ${Math.round(score)}%`, level: 'attention', ring, partial: false };
+        return { word: i18n.t('progress:readiness.word.rest'), reason, level: 'attention', ring, partial: false };
     }
 
     // Only the signals this user's device actually produces count toward the
@@ -368,21 +373,23 @@ export function readinessOf(d: BodySignals): Readiness {
     const partial = d.basis.length > 0 && d.missing.length > 0;
 
     if (d.rhrElevated || d.hrvLow || d.shortNight) {
-        const reason = d.rhrElevated ? 'heart says rest' : d.hrvLow ? 'HRV below your usual' : 'short night';
-        return { word: 'Easy', reason, level: 'attention', ring, partial };
+        const reason = d.rhrElevated ? i18n.t('progress:readiness.reason.heartSaysRest')
+            : d.hrvLow ? i18n.t('progress:readiness.reason.hrvLow')
+            : i18n.t('progress:readiness.reason.shortNight');
+        return { word: i18n.t('progress:readiness.word.easy'), reason, level: 'attention', ring, partial };
     }
     if (d.bigDay) {
-        return { word: 'Rest', reason: 'big day yesterday', level: 'attention', ring, partial };
+        return { word: i18n.t('progress:readiness.word.rest'), reason: i18n.t('progress:readiness.reason.bigDay'), level: 'attention', ring, partial };
     }
     if (d.nightFresh || d.rhrFresh || d.hrvFresh) {
-        return { word: 'Primed', reason: 'good to push', level: 'good', ring, partial };
+        return { word: i18n.t('progress:readiness.word.primed'), reason: i18n.t('progress:readiness.reason.goodToPush'), level: 'good', ring, partial };
     }
     // Nothing fresh to judge by. Say WHICH kind of nothing: a device that has
     // never sent sleep or resting HR needs wearing differently; one that has
     // just hasn't sent anything lately.
-    const reason = d.quiet ? `no readings for ${d.vitalDaysAgo} days`
+    const reason = d.quiet ? i18n.t('progress:readiness.reason.quiet', { days: d.vitalDaysAgo })
         : !d.tracksSleep && !d.tracksRhr && !d.tracksHrv
-            ? 'needs sleep or resting HR' : 'no recent readings';
+            ? i18n.t('progress:readiness.reason.needsSignals') : i18n.t('progress:readiness.reason.noRecent');
     return { word: '—', reason, level: 'unknown', ring: 0, partial: false };
 }
 

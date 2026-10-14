@@ -11,40 +11,67 @@
 
 import enAccount from './en/app/account.json';
 import enActivities from './en/app/activities.json';
+import enAffiliate from './en/app/affiliate.json';
 import enAuth from './en/app/auth.json';
 import enCommon from './en/app/common.json';
+import enDiscover from './en/app/discover.json';
+import enEvents from './en/app/events.json';
 import enHealth from './en/app/health.json';
 import enHelp from './en/app/help.json';
+import enHome from './en/app/home.json';
+import enNotifications from './en/app/notifications.json';
+import enNudges from './en/app/nudges.json';
 import enOnboarding from './en/app/onboarding.json';
 import enPermissions from './en/app/permissions.json';
 import enPoints from './en/app/points.json';
+import enProgress from './en/app/progress.json';
 import enRewards from './en/app/rewards.json';
 import enSettings from './en/app/settings.json';
+import enShare from './en/app/share.json';
 import enSocial from './en/app/social.json';
+import enSystem from './en/app/system.json';
 import esAccount from './es/app/account.json';
 import esActivities from './es/app/activities.json';
+import esAffiliate from './es/app/affiliate.json';
 import esAuth from './es/app/auth.json';
 import esCommon from './es/app/common.json';
+import esDiscover from './es/app/discover.json';
+import esEvents from './es/app/events.json';
 import esHealth from './es/app/health.json';
 import esHelp from './es/app/help.json';
+import esHome from './es/app/home.json';
+import esNotifications from './es/app/notifications.json';
+import esNudges from './es/app/nudges.json';
 import esOnboarding from './es/app/onboarding.json';
 import esPermissions from './es/app/permissions.json';
 import esPoints from './es/app/points.json';
+import esProgress from './es/app/progress.json';
 import esRewards from './es/app/rewards.json';
 import esSettings from './es/app/settings.json';
+import esShare from './es/app/share.json';
 import esSocial from './es/app/social.json';
+import esSystem from './es/app/system.json';
 import frAccount from './fr/app/account.json';
 import frActivities from './fr/app/activities.json';
+import frAffiliate from './fr/app/affiliate.json';
 import frAuth from './fr/app/auth.json';
 import frCommon from './fr/app/common.json';
+import frDiscover from './fr/app/discover.json';
+import frEvents from './fr/app/events.json';
 import frHealth from './fr/app/health.json';
 import frHelp from './fr/app/help.json';
+import frHome from './fr/app/home.json';
+import frNotifications from './fr/app/notifications.json';
+import frNudges from './fr/app/nudges.json';
 import frOnboarding from './fr/app/onboarding.json';
 import frPermissions from './fr/app/permissions.json';
 import frPoints from './fr/app/points.json';
+import frProgress from './fr/app/progress.json';
 import frRewards from './fr/app/rewards.json';
 import frSettings from './fr/app/settings.json';
+import frShare from './fr/app/share.json';
 import frSocial from './fr/app/social.json';
+import frSystem from './fr/app/system.json';
 
 export const APP_NAMESPACES = [
   'common',
@@ -59,6 +86,15 @@ export const APP_NAMESPACES = [
   'social',
   'rewards',
   'points',
+  'home',
+  'nudges',
+  'progress',
+  'events',
+  'discover',
+  'system',
+  'share',
+  'affiliate',
+  'notifications',
 ] as const;
 export type AppNamespace = (typeof APP_NAMESPACES)[number];
 
@@ -76,6 +112,15 @@ export const APP_RESOURCES = {
     social: enSocial,
     rewards: enRewards,
     points: enPoints,
+    home: enHome,
+    nudges: enNudges,
+    progress: enProgress,
+    events: enEvents,
+    discover: enDiscover,
+    system: enSystem,
+    share: enShare,
+    affiliate: enAffiliate,
+    notifications: enNotifications,
   },
   fr: {
     common: frCommon,
@@ -90,6 +135,15 @@ export const APP_RESOURCES = {
     social: frSocial,
     rewards: frRewards,
     points: frPoints,
+    home: frHome,
+    nudges: frNudges,
+    progress: frProgress,
+    events: frEvents,
+    discover: frDiscover,
+    system: frSystem,
+    share: frShare,
+    affiliate: frAffiliate,
+    notifications: frNotifications,
   },
   es: {
     common: esCommon,
@@ -104,6 +158,15 @@ export const APP_RESOURCES = {
     social: esSocial,
     rewards: esRewards,
     points: esPoints,
+    home: esHome,
+    nudges: esNudges,
+    progress: esProgress,
+    events: esEvents,
+    discover: esDiscover,
+    system: esSystem,
+    share: esShare,
+    affiliate: esAffiliate,
+    notifications: esNotifications,
   },
 } satisfies Record<string, Partial<Record<AppNamespace, object>>>;
 

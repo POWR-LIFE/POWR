@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Dimensions, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PodiumAvatarRing } from '@/components/league/PodiumAvatarRing';
@@ -47,18 +48,24 @@ const SCREEN_W = Dimensions.get('window').width;
 
 type PreviewSegment = 'board' | 'events';
 
+/** Labels are keys, resolved at render. */
 const SEGMENTS: { key: PreviewSegment; label: string }[] = [
-    { key: 'board', label: 'LEADERBOARD' },
-    { key: 'events', label: 'EVENTS' },
+    { key: 'board', label: 'events:preview.segments.board' },
+    { key: 'events', label: 'events:preview.segments.events' },
 ];
 
 export function LeaguePreview() {
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const [segment, setSegment] = useState<PreviewSegment>('board');
 
     return (
         <>
-            <SegmentBar items={SEGMENTS} value={segment} onChange={setSegment} />
+            <SegmentBar
+                items={SEGMENTS.map(item => ({ ...item, label: t(item.label) }))}
+                value={segment}
+                onChange={setSegment}
+            />
             <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingTop: 36, paddingBottom: insets.bottom + 40 }}
@@ -73,6 +80,7 @@ export function LeaguePreview() {
 // ─── LEADERBOARD ──────────────────────────────────────────────────────────────
 
 function BoardSegment() {
+    const { t } = useTranslation();
     const { totalEarned } = usePoints();
     const { data: profile } = useQuery({
         queryKey: ['profile', 'me'],
@@ -83,10 +91,10 @@ function BoardSegment() {
     return (
         <>
             <Headline
-                eyebrow="GLOBAL LEADERBOARD"
-                light="Every move."
-                bold="One board."
-                line="Weekly podiums and all-time rankings, open to everyone on POWR. Coming soon."
+                eyebrow={t('events:preview.board.eyebrow')}
+                light={t('events:preview.board.light')}
+                bold={t('events:preview.board.bold')}
+                line={t('events:preview.board.line')}
             />
 
             <EmptyPodium
@@ -97,13 +105,19 @@ function BoardSegment() {
             {/* The one number on the page — the style guide's stat stack:
                 label, then the number large and light in gold, then the unit. */}
             <View style={styles.stat}>
-                <Text style={styles.statLabel}>YOU BRING</Text>
+                <Text style={styles.statLabel}>{t('events:preview.board.statLabel')}</Text>
                 <Text style={styles.statNum}>{totalEarned.toLocaleString()}</Text>
-                <Text style={styles.statUnit}>POINTS ALL TIME</Text>
-                <Text style={styles.statLine}>Already counted. You start where you stand.</Text>
+                <Text style={styles.statUnit}>{t('events:preview.board.statUnit')}</Text>
+                <Text style={styles.statLine}>{t('events:preview.board.statLine')}</Text>
             </View>
 
-            <Pillars items={['WEEKLY PODIUMS', 'ALL-TIME LADDER', 'STANDARD & PRO']} />
+            <Pillars
+                items={[
+                    t('events:preview.board.pillars.weekly'),
+                    t('events:preview.board.pillars.ladder'),
+                    t('events:preview.board.pillars.tiers'),
+                ]}
+            />
         </>
     );
 }
@@ -112,16 +126,17 @@ function BoardSegment() {
  *  viewer in the champion's seat and nobody in the other two. The rings
  *  still turn: the places exist, the race hasn't. */
 function EmptyPodium({ avatarUrl, initials }: { avatarUrl: string | null; initials: string }) {
+    const { t } = useTranslation();
     const COL_W = Math.floor((SCREEN_W - 32) / 3);
     const META = {
-        1: { colour: GOLD, colourSoft: GOLD_SOFT, platformH: 92, avatarSize: 72, label: '1ST' },
-        2: { colour: SILVER, colourSoft: SILVER_SOFT, platformH: 62, avatarSize: 56, label: '2ND' },
-        3: { colour: BRONZE, colourSoft: BRONZE_SOFT, platformH: 44, avatarSize: 46, label: '3RD' },
+        1: { colour: GOLD, colourSoft: GOLD_SOFT, platformH: 92, avatarSize: 72, label: t('events:podium.first') },
+        2: { colour: SILVER, colourSoft: SILVER_SOFT, platformH: 62, avatarSize: 56, label: t('events:podium.second') },
+        3: { colour: BRONZE, colourSoft: BRONZE_SOFT, platformH: 44, avatarSize: 46, label: t('events:podium.third') },
     } as const;
     const order = [2, 1, 3] as const;
 
     return (
-        <View style={styles.podium} accessibilityLabel="Podium, seats not yet taken">
+        <View style={styles.podium} accessibilityLabel={t('events:preview.podiumA11y')}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
                 {order.map(rank => {
                     const meta = META[rank];
@@ -169,7 +184,7 @@ function EmptyPodium({ avatarUrl, initials }: { avatarUrl: string | null; initia
                                 }}
                             >
                                 <Text style={{ fontSize: isFirst ? 11 : 9, fontWeight: '700', color: meta.colour, opacity: 0.55, letterSpacing: 2.5 }}>
-                                    {isFirst ? 'CHAMPION' : meta.label}
+                                    {isFirst ? t('events:podium.champion') : meta.label}
                                 </Text>
                             </LinearGradient>
                         </View>
@@ -190,6 +205,7 @@ function friendLink(code: string): string {
 
 function EventsSegment() {
     const router = useRouter();
+    const { t } = useTranslation();
     const { data: profile } = useQuery({
         queryKey: ['profile', 'me'],
         queryFn: fetchProfile,
@@ -197,7 +213,7 @@ function EventsSegment() {
     });
     const code = profile?.referral_code ?? null;
     const link = code ? friendLink(code) : null;
-    const message = code && link ? `Join me on POWR. ${inviteCodeLine(code)}\n${link}` : null;
+    const message = code && link ? `${t('events:invite.joinMe', { codeLine: inviteCodeLine(code) })}\n${link}` : null;
     const [copied, setCopied] = useState(false);
 
     const handleShare = async () => {
@@ -222,40 +238,40 @@ function EventsSegment() {
     return (
         <>
             <Headline
-                eyebrow="LIVE EVENTS"
-                light="One week to score."
-                bold="One night to win."
-                line="The next event is in the works. Registration opens here first."
+                eyebrow={t('events:preview.events.eyebrow')}
+                light={t('events:preview.events.light')}
+                bold={t('events:preview.events.bold')}
+                line={t('events:preview.events.line')}
             />
 
             {/* Three beats down a hairline — the whole event, no card around it. */}
             <View style={styles.beats}>
-                <Beat n="01" title="Register" line="In the app. Your place on the board opens with it." />
-                <Beat n="02" title="Score for a week" line="Everyone starts level. Only points earned inside the window count." />
-                <Beat n="03" title="Revealed live" line="Scores seal before the night. Winners are announced at the venue." last />
+                <Beat n="01" title={t('events:preview.events.beats.register.title')} line={t('events:preview.events.beats.register.line')} />
+                <Beat n="02" title={t('events:preview.events.beats.score.title')} line={t('events:preview.events.beats.score.line')} />
+                <Beat n="03" title={t('events:preview.events.beats.reveal.title')} line={t('events:preview.events.beats.reveal.line')} last />
             </View>
 
             {/* The viewer's code, as the live ticket carries it: SHARE, the
                 code itself (tap to copy), and the QR. Same row, same order. */}
             <View style={styles.crew}>
-                <Text style={styles.crewLine}>Friends you bring count on event week. Your code works now.</Text>
+                <Text style={styles.crewLine}>{t('events:preview.events.crewLine')}</Text>
                 <View style={styles.codeRow}>
                     <Pressable
                         style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.85 }]}
                         onPress={handleShare}
                         disabled={!link}
                         accessibilityRole="button"
-                        accessibilityLabel="Share your invite link"
+                        accessibilityLabel={t('events:invite.shareA11y')}
                     >
                         <Ionicons name="share-outline" size={14} color="#0a0a0a" />
-                        <Text style={styles.shareBtnText}>SHARE</Text>
+                        <Text style={styles.shareBtnText}>{t('events:invite.share')}</Text>
                     </Pressable>
                     <Pressable
                         style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
                         onPress={handleCopy}
                         disabled={!message}
                         accessibilityRole="button"
-                        accessibilityLabel="Copy your invite code and link"
+                        accessibilityLabel={t('events:invite.copyA11y')}
                     >
                         <Text style={styles.codeText}>{code ?? '········'}</Text>
                         <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={13} color={copied ? GOLD : MUTED} />
@@ -264,7 +280,7 @@ function EventsSegment() {
                         style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.7 }]}
                         onPress={() => router.push('/my-qr')}
                         accessibilityRole="button"
-                        accessibilityLabel="Show your POWR QR code"
+                        accessibilityLabel={t('events:preview.events.qrA11y')}
                     >
                         <Ionicons name="qr-code-outline" size={16} color={DIM} />
                     </Pressable>

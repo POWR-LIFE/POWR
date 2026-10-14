@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { forwardRef, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, type ViewProps } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { EventLockup, lockupImageCount } from '@/components/events/EventLockup';
 import { fontFamily } from '@/constants/tokens';
@@ -12,7 +13,7 @@ import {
   eventStatusChip,
   isComingSoon,
   isVideoUrl,
-  registrationLine,
+  registrationOpensOn,
 } from '@/lib/liveEventDisplay';
 import { storageImage } from '@/lib/storageImage';
 
@@ -69,6 +70,7 @@ interface EventShareCardProps extends ViewProps {
  */
 export const EventShareCard = forwardRef<View, EventShareCardProps>(
   ({ event, referralCode, width, onReady, style, ...rest }, ref) => {
+    const { t } = useTranslation();
     const height = (width * 16) / 9;
     // Scale tokens proportionally to width — base sizes designed for 1080dp.
     const s = width / 1080;
@@ -100,6 +102,7 @@ export const EventShareCard = forwardRef<View, EventShareCardProps>(
     const night = eventNightLine(event);
     const venueName = event.venue?.name ?? null;
     const live = event.status === 'live';
+    const opensOn = registrationOpensOn(event);
 
     return (
       <View ref={ref} collapsable={false} style={[styles.root, { width, height }, style]} {...rest}>
@@ -144,7 +147,7 @@ export const EventShareCard = forwardRef<View, EventShareCardProps>(
         <View style={[styles.column, { paddingHorizontal: 80 * s, paddingTop: CROP_SAFE_Y * s, paddingBottom: CROP_SAFE_Y * s }]}>
           {/* ── Top: what this is, where it's up to ─────────────── */}
           <View style={styles.topRow}>
-            <Text style={[styles.eyebrow, { fontSize: 26 * s, letterSpacing: 7 * s }]}>LIVE EVENT</Text>
+            <Text style={[styles.eyebrow, { fontSize: 26 * s, letterSpacing: 7 * s }]}>{t('events:shareCard.eyebrow')}</Text>
             <View style={[styles.statusChip, { paddingHorizontal: 22 * s, paddingVertical: 12 * s, borderRadius: 100 * s, gap: 12 * s }]}>
               {live && <View style={[styles.liveDot, { width: 14 * s, height: 14 * s, borderRadius: 7 * s }]} />}
               <Text style={[styles.statusText, { fontSize: 22 * s, letterSpacing: 4 * s }]}>{eventStatusChip(event)}</Text>
@@ -175,11 +178,15 @@ export const EventShareCard = forwardRef<View, EventShareCardProps>(
             )}
 
             <View style={{ marginTop: 72 * s, gap: 26 * s }}>
-              {night && <Fact s={s} label="THE NIGHT" value={night} />}
-              {venueName && <Fact s={s} label="WHERE" value={venueName} />}
-              <Fact s={s} label="SCORING" value={eventDateRange(event)} />
+              {night && <Fact s={s} label={t('events:shareCard.night')} value={night} />}
+              {venueName && <Fact s={s} label={t('events:shareCard.where')} value={venueName} />}
+              <Fact s={s} label={t('events:shareCard.scoring')} value={eventDateRange(event)} />
               {isComingSoon(event) && (
-                <Fact s={s} label="SIGN-UP" value={registrationLine(event).replace(/^Registration opens/, 'Opens')} />
+                <Fact
+                  s={s}
+                  label={t('events:shareCard.signUp')}
+                  value={opensOn ? t('events:shareCard.opensOn', { date: opensOn }) : t('events:shareCard.opensSoon')}
+                />
               )}
             </View>
           </View>
@@ -190,7 +197,7 @@ export const EventShareCard = forwardRef<View, EventShareCardProps>(
             {referralCode ? (
               <View style={styles.codeRow}>
                 <Text style={[styles.codeLabel, { fontSize: 22 * s, letterSpacing: 4 * s }]}>
-                  JOIN ME WITH CODE
+                  {t('events:shareCard.joinWithCode')}
                 </Text>
                 <Text style={[styles.code, { fontSize: 44 * s, letterSpacing: 6 * s, marginLeft: 28 * s }]}>
                   {referralCode}
@@ -198,7 +205,7 @@ export const EventShareCard = forwardRef<View, EventShareCardProps>(
               </View>
             ) : (
               <Text style={[styles.codeLabel, { fontSize: 22 * s, letterSpacing: 4 * s }]}>
-                JOIN ME ON POWR
+                {t('events:shareCard.joinOnPowr')}
               </Text>
             )}
             {/* Instagram/TikTok strip share-sheet text, so the image itself

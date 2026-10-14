@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import PermissionFixScreen from '@/components/PermissionFixScreen';
@@ -28,6 +29,7 @@ const TEXT_MUTED = 'rgba(255,255,255,0.4)';
 export function SetupHealthBanner() {
     const { verdict, hasGap, resolved, dismiss } = useSetupHealth();
     const gymRelevant = useGymRelevance();
+    const { t } = useTranslation();
     const [fixing, setFixing] = useState(false);
 
     if (!hasGap || !verdict) return null;
@@ -40,10 +42,9 @@ export function SetupHealthBanner() {
                         <Ionicons name="location-outline" size={16} color={GOLD} />
                     </View>
                     <View style={styles.text}>
-                        <Text style={styles.title}>Check-ins aren’t running</Text>
+                        <Text style={styles.title}>{t('nudges:setupHealth.title')}</Text>
                         <Text style={styles.body}>
-                            POWR tried to check you in from your pocket and couldn’t — background
-                            location is switched off, so {gymRelevant ? 'gym trips' : 'visits to partner venues'} with the app closed earn nothing.
+                            {gymRelevant ? t('nudges:setupHealth.bodyGym') : t('nudges:setupHealth.bodyVenue')}
                         </Text>
                     </View>
                     <Pressable hitSlop={10} onPress={dismiss} style={styles.dismiss}>
@@ -55,7 +56,7 @@ export function SetupHealthBanner() {
                     onPress={() => setFixing(true)}
                     style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
                 >
-                    <Text style={styles.ctaText}>FIX IT</Text>
+                    <Text style={styles.ctaText}>{t('nudges:setupHealth.cta')}</Text>
                 </Pressable>
             </View>
 

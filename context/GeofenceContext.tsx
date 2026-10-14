@@ -10,6 +10,7 @@ import { ensureFreshSession } from '@/lib/authFresh';
 import { recordBackgroundHealth } from '@/lib/backgroundHealth';
 import { bgInsert, bgRpc, bgSelect, bgUpdate, readBackgroundAuth } from '@/lib/backgroundRest';
 import { noteTask } from '@/lib/crashHandler';
+import i18n from '@/lib/i18n';
 import { detectLocationLoss, type LocationLossReason } from '@/lib/locationPermission';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 // Type-only: erased at compile time, so it does NOT pull lib/notifications into a
@@ -259,11 +260,16 @@ const LOCATION_UPDATE_OPTIONS: Location.LocationTaskOptions = {
   distanceInterval:                 50,
   pausesUpdatesAutomatically:       false,
   showsBackgroundLocationIndicator: false,
-  foregroundService: {
-    notificationTitle: 'POWR is tracking your workouts',
-    notificationBody:  'Detecting when you arrive at partner gyms.',
-    notificationColor: '#facc15',
-    killServiceOnDestroy: true,
+  // A getter (here and in the two stream configs below) so the Android banner
+  // is worded in the member's language each time a stream starts, rather than
+  // frozen in whatever language was on when this module loaded.
+  get foregroundService() {
+    return {
+      notificationTitle: i18n.t('notifications:locationService.trackingTitle'),
+      notificationBody:  i18n.t('notifications:locationService.idleBody'),
+      notificationColor: '#facc15',
+      killServiceOnDestroy: true,
+    };
   },
 };
 
@@ -290,11 +296,13 @@ export const DWELL_LOCATION_OPTIONS: Location.LocationTaskOptions = {
   distanceInterval:                 0,   // ← time-driven: MUST stay 0, see above
   pausesUpdatesAutomatically:       false,
   showsBackgroundLocationIndicator: false,
-  foregroundService: {
-    notificationTitle: 'POWR is tracking your workouts',
-    notificationBody:  "You're checked in — your session is being timed.",
-    notificationColor: '#facc15',
-    killServiceOnDestroy: true,   // see LOCATION_UPDATE_OPTIONS — zombie prevention
+  get foregroundService() {
+    return {
+      notificationTitle: i18n.t('notifications:locationService.trackingTitle'),
+      notificationBody:  i18n.t('notifications:locationService.dwellBody'),
+      notificationColor: '#facc15',
+      killServiceOnDestroy: true,   // see LOCATION_UPDATE_OPTIONS — zombie prevention
+    };
   },
 };
 
@@ -356,11 +364,13 @@ const APPROACH_LOCATION_OPTIONS: Location.LocationTaskOptions = {
   activityType:                     Location.ActivityType?.Fitness ?? 3,
   pausesUpdatesAutomatically:       false,
   showsBackgroundLocationIndicator: false,
-  foregroundService: {
-    notificationTitle: 'POWR is checking you in',
-    notificationBody:  "You're near a partner gym — confirming your arrival.",
-    notificationColor: '#facc15',
-    killServiceOnDestroy: true,   // see LOCATION_UPDATE_OPTIONS — zombie prevention
+  get foregroundService() {
+    return {
+      notificationTitle: i18n.t('notifications:locationService.approachTitle'),
+      notificationBody:  i18n.t('notifications:locationService.approachBody'),
+      notificationColor: '#facc15',
+      killServiceOnDestroy: true,   // see LOCATION_UPDATE_OPTIONS — zombie prevention
+    };
   },
 };
 

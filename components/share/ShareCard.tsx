@@ -1,6 +1,8 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import type { TFunction } from 'i18next';
 import { forwardRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 
 import { LevelIcon } from '@/components/LevelIcon';
@@ -46,6 +48,7 @@ interface ShareCardProps extends ViewProps {
 }
 
 export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, backgroundSource, avatarUri, avatarCrop, showLevel, style, ...rest }, ref) => {
+  const { t } = useTranslation();
   const height = (width * 16) / 9;
   // Scale tokens proportionally to width — base sizes designed for ~1080dp.
   const s = width / 1080;
@@ -58,10 +61,10 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
       ? backgroundSource
       : (summary.profile.coverUrl ?? null);
 
-  const heroTitle = renderHeroTitle(summary);
-  const heroSubtitle = renderHeroSubtitle(summary);
-  const status = renderStatus(summary);
-  const stats = renderStatsRow(summary);
+  const heroTitle = renderHeroTitle(summary, t);
+  const heroSubtitle = renderHeroSubtitle(summary, t);
+  const status = renderStatus(summary, t);
+  const stats = renderStatsRow(summary, t);
 
   return (
     <View ref={ref} collapsable={false} style={[styles.root, { width, height }, style]} {...rest}>
@@ -102,7 +105,7 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
             />
           </View>
           <Text style={[styles.levelEyebrow, { fontSize: 26 * s, letterSpacing: 5 * s, marginTop: 44 * s }]}>
-            {`LEVEL ${level.level}`}
+            {t('share:card.levelEyebrow', { level: level.level })}
           </Text>
           <Text style={[styles.levelName, { color: level.textColor, fontSize: 46 * s, letterSpacing: 2 * s, marginTop: 16 * s }]}>
             {level.name.toUpperCase()}
@@ -218,23 +221,23 @@ ShareCard.displayName = 'ShareCard';
 
 // ─── Mode-aware renderers ───────────────────────────────────────────────────
 
-function renderStatus(summary: ShareSummary): { label: string; dotColor: string } {
+function renderStatus(summary: ShareSummary, t: TFunction): { label: string; dotColor: string } {
   if (summary.mode === 'check-in') {
     return {
-      label: summary.type === 'gym' ? 'Checked In' : 'Logged',
+      label: summary.type === 'gym' ? t('share:card.status.checkedIn') : t('share:card.status.logged'),
       dotColor: GOLD,
     };
   }
   if (summary.mode === 'challenge') {
-    return { label: 'Challenge Complete', dotColor: GREEN };
+    return { label: t('share:card.status.challengeComplete'), dotColor: GREEN };
   }
   if (summary.mode === 'level-up') {
-    return { label: 'Level Up', dotColor: GOLD };
+    return { label: t('share:card.status.levelUp'), dotColor: GOLD };
   }
-  return getStreakStatus(summary.currentStreak);
+  return getStreakStatus(summary.currentStreak, t);
 }
 
-function renderHeroTitle(summary: ShareSummary): string {
+function renderHeroTitle(summary: ShareSummary, t: TFunction): string {
   if (summary.mode === 'check-in') {
     const config = ACTIVITIES[summary.type];
     return summary.venue?.name ?? config.label;
@@ -242,13 +245,13 @@ function renderHeroTitle(summary: ShareSummary): string {
   if (summary.mode === 'challenge') {
     return summary.challengeTitle;
   }
-  return summary.profile.displayName ?? 'POWR Member';
+  return summary.profile.displayName ?? t('share:card.member');
 }
 
-function renderHeroSubtitle(summary: ShareSummary): string {
+function renderHeroSubtitle(summary: ShareSummary, t: TFunction): string {
   if (summary.mode === 'check-in') {
     const startedDate = new Date(summary.startedAt);
-    const timeLabel = `${dayLabel(startedDate)} · ${formatTime(startedDate)}`;
+    const timeLabel = `${dayLabel(startedDate, t)} · ${formatTime(startedDate)}`;
     const venueLine = summary.venue?.locationLabel;
     return venueLine ? `${venueLine} · ${timeLabel}` : timeLabel;
   }
@@ -258,24 +261,24 @@ function renderHeroSubtitle(summary: ShareSummary): string {
   return summary.profile.username ? `@${summary.profile.username}` : '';
 }
 
-function renderStatsRow(summary: ShareSummary): StatColProps[] {
+function renderStatsRow(summary: ShareSummary, t: TFunction): StatColProps[] {
   if (summary.mode === 'check-in') {
     return [
-      { label: 'SESSION', value: summary.durationMin.toString(), unit: 'min' },
-      { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'visits' },
+      { label: t('share:card.stats.session'), value: summary.durationMin.toString(), unit: t('share:card.units.min') },
+      { label: t('share:card.stats.total'), value: summary.lifetimeCount.toString(), unit: t('share:card.units.visits', { count: summary.lifetimeCount }) },
       // Throwbacks can't reconstruct "streak as of then", so they flex the
       // session's own points instead.
       summary.historical
         ? {
-            label: 'EARNED',
+            label: t('share:card.stats.earned'),
             value: `+${summary.sessionPoints.toLocaleString()}`,
-            unit: 'pts',
+            unit: t('share:card.units.pts'),
             valueColor: GOLD,
           }
         : {
-            label: 'STREAK',
+            label: t('share:card.stats.streak'),
             value: summary.currentStreak.toString(),
-            unit: 'days',
+            unit: t('share:card.units.days', { count: summary.currentStreak }),
             valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
           },
     ];
@@ -283,15 +286,15 @@ function renderStatsRow(summary: ShareSummary): StatColProps[] {
   if (summary.mode === 'level-up') {
     const { current } = getLevelInfo(summary.totalEarned);
     return [
-      { label: 'LEVEL', value: current.level.toString(), valueColor: GOLD },
-      { label: 'LIFETIME', value: summary.totalEarned.toLocaleString(), unit: 'pts' },
+      { label: t('share:card.stats.level'), value: current.level.toString(), valueColor: GOLD },
+      { label: t('share:card.stats.lifetime'), value: summary.totalEarned.toLocaleString(), unit: t('share:card.units.pts') },
       // Streak history isn't stored, so throwbacks show sessions-to-date instead.
       summary.historical
-        ? { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'sessions' }
+        ? { label: t('share:card.stats.total'), value: summary.lifetimeCount.toString(), unit: t('share:card.units.sessions', { count: summary.lifetimeCount }) }
         : {
-            label: 'STREAK',
+            label: t('share:card.stats.streak'),
             value: summary.currentStreak.toString(),
-            unit: 'days',
+            unit: t('share:card.units.days', { count: summary.currentStreak }),
             valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
           },
     ];
@@ -299,9 +302,9 @@ function renderStatsRow(summary: ShareSummary): StatColProps[] {
   if (summary.mode === 'challenge') {
     return [
       {
-        label: 'Earned',
+        label: t('share:card.stats.challengeEarned'),
         value: `+${summary.points.toLocaleString()}`,
-        unit: 'pts',
+        unit: t('share:card.units.pts'),
         valueColor: GOLD,
       },
       {
@@ -310,33 +313,33 @@ function renderStatsRow(summary: ShareSummary): StatColProps[] {
         unit: summary.unit,
       },
       {
-        label: 'Streak',
+        label: t('share:card.stats.challengeStreak'),
         value: summary.currentStreak.toString(),
-        unit: 'days',
+        unit: t('share:card.units.days', { count: summary.currentStreak }),
         valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
       },
     ];
   }
   return [
-    { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'visits' },
-    { label: 'THIS MONTH', value: summary.monthCount.toString() },
+    { label: t('share:card.stats.total'), value: summary.lifetimeCount.toString(), unit: t('share:card.units.visits', { count: summary.lifetimeCount }) },
+    { label: t('share:card.stats.thisMonth'), value: summary.monthCount.toString() },
     {
-      label: 'STREAK',
+      label: t('share:card.stats.streak'),
       value: summary.currentStreak.toString(),
-      unit: 'days',
+      unit: t('share:card.units.days', { count: summary.currentStreak }),
       valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
     },
   ];
 }
 
-function getStreakStatus(streak: number): { label: string; dotColor: string } {
-  if (streak === 0) return { label: 'Start Your Streak', dotColor: GOLD };
-  if (streak < 3) return { label: 'Warming Up', dotColor: 'rgba(255,255,255,0.55)' };
-  if (streak < 7) return { label: 'Building', dotColor: '#4ade80' };
-  if (streak < 14) return { label: 'On a Roll', dotColor: '#22c55e' };
-  if (streak < 21) return { label: 'On Fire', dotColor: ORANGE };
-  if (streak < 30) return { label: 'Unstoppable', dotColor: '#ef4444' };
-  return { label: 'Legendary', dotColor: GOLD };
+function getStreakStatus(streak: number, t: TFunction): { label: string; dotColor: string } {
+  if (streak === 0) return { label: t('share:card.status.startStreak'), dotColor: GOLD };
+  if (streak < 3) return { label: t('share:card.status.warmingUp'), dotColor: 'rgba(255,255,255,0.55)' };
+  if (streak < 7) return { label: t('share:card.status.building'), dotColor: '#4ade80' };
+  if (streak < 14) return { label: t('share:card.status.onARoll'), dotColor: '#22c55e' };
+  if (streak < 21) return { label: t('share:card.status.onFire'), dotColor: ORANGE };
+  if (streak < 30) return { label: t('share:card.status.unstoppable'), dotColor: '#ef4444' };
+  return { label: t('share:card.status.legendary'), dotColor: GOLD };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -368,16 +371,15 @@ function StatCol({ scale, label, value, unit, valueColor = TEXT }: StatColProps 
   );
 }
 
-function ordinal(n: number): string {
-  const s = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
-}
-
-function dayLabel(d: Date): string {
+/**
+ * "20th June 2026". The day's suffix comes from the language's ordinal rules
+ * (ordinal: true), so the catalog's _one/_two/_few/_other are 1st/2nd/3rd/nth
+ * in English, and French only marks the 1st ("1er juin").
+ */
+function dayLabel(d: Date, t: TFunction): string {
   const month = d.toLocaleDateString(undefined, { month: 'long' });
   const year  = d.getFullYear();
-  return `${ordinal(d.getDate())} ${month} ${year}`;
+  return t('share:card.date', { count: d.getDate(), ordinal: true, month, year });
 }
 
 function formatTime(d: Date): string {

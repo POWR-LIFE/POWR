@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ZONE_TINTS } from '@/components/progress/zoneTints';
@@ -20,6 +21,7 @@ import {
     type BodyTrends,
     type TrendPoint,
 } from '@/lib/api/bodyTrends';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 
 // ─── Design tokens (match progress.tsx / SleepTab) ───────────────────────────
 
@@ -86,6 +88,7 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
     /** With initialTrends: asks the parent to re-fetch (after new HRV access lands rows). */
     onTrendsStale?: () => void;
 }) {
+    const { t } = useTranslation();
     const [trends, setTrends] = useState<BodyTrends | null>(initialTrends ?? null);
     const [failed, setFailed] = useState(false);
     // Re-fetches on pull-to-refresh, which bumps the shared activity revision.
@@ -126,8 +129,8 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
         return (
             <View style={styles.emptyState}>
                 <Ionicons name="pulse-outline" size={28} color={MUTED} />
-                <Text style={styles.emptyText}>Couldn&apos;t load your trends.</Text>
-                <Text style={styles.emptySubtext}>Pull to refresh and try again.</Text>
+                <Text style={styles.emptyText}>{t('progress:body.failed')}</Text>
+                <Text style={styles.emptySubtext}>{t('progress:body.failedHint')}</Text>
             </View>
         );
     }
@@ -135,7 +138,7 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
     if (!trends) {
         return (
             <View style={styles.emptyState}>
-                <Text style={styles.emptySubtext}>Loading…</Text>
+                <Text style={styles.emptySubtext}>{t('progress:loading')}</Text>
             </View>
         );
     }
@@ -144,10 +147,9 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
         return (
             <View style={styles.emptyState}>
                 <Ionicons name="pulse-outline" size={28} color={MUTED} />
-                <Text style={styles.emptyText}>No body data yet.</Text>
+                <Text style={styles.emptyText}>{t('progress:body.empty')}</Text>
                 <Text style={styles.emptySubtext}>
-                    Resting heart rate, sleep and training load appear here as your
-                    device syncs them.
+                    {t('progress:body.emptyHint')}
                 </Text>
             </View>
         );
@@ -166,11 +168,13 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
 
     const loadSection = hasLoad && (
         <>
-            <Text style={styles.tabSubLabel}>TRAINING LOAD · LAST {LOAD_DAYS} DAYS</Text>
+            <Text style={styles.tabSubLabel}>{t('progress:body.load.title', { days: LOAD_DAYS })}</Text>
             <View style={styles.metricHead}>
                 <Text style={styles.metricVal}>
                     {weekMin > 0 ? formatMin(weekMin) : '—'}
-                    <Text style={styles.metricUnit}>{weekMin > 0 ? ' of exercise' : ' no workouts tracked this week'}</Text>
+                    <Text style={styles.metricUnit}>
+                        {' '}{weekMin > 0 ? t('progress:body.load.ofExercise') : t('progress:body.load.none')}
+                    </Text>
                 </Text>
                 <Text style={styles.metricDelta}>{loadSummary(trends, d)}</Text>
             </View>
@@ -180,14 +184,14 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
 
     const effortSection = trends.week.zoneMixSec.length > 0 && (
         <>
-            <Text style={styles.tabSubLabel}>EFFORT MIX · THIS WEEK</Text>
+            <Text style={styles.tabSubLabel}>{t('progress:body.effort.title')}</Text>
             <View style={styles.metricHead}>
                 <Text style={styles.metricVal}>
                     {formatMin(trends.week.zoneMixSec.reduce((s, v) => s + v, 0) / 60)}
-                    <Text style={styles.metricUnit}> at raised heart rate</Text>
+                    <Text style={styles.metricUnit}> {t('progress:body.effort.raised')}</Text>
                 </Text>
                 {trends.week.peakHr != null && (
-                    <Text style={styles.metricDelta}>peak heart rate {Math.round(trends.week.peakHr)} bpm</Text>
+                    <Text style={styles.metricDelta}>{t('progress:body.effort.peak', { bpm: Math.round(trends.week.peakHr) })}</Text>
                 )}
             </View>
             <EffortMixBar zoneMixSec={trends.week.zoneMixSec} />
@@ -238,14 +242,14 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
             {trends.restingHr.length > 0 && (
                 <>
                     <View style={styles.tabSep} />
-                    <Text style={styles.tabSubLabel}>RESTING HEART RATE · {TREND_DAYS} DAYS</Text>
+                    <Text style={styles.tabSubLabel}>{t('progress:body.rhr.title', { days: TREND_DAYS })}</Text>
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
                             {Math.round(rhr!.value)}
-                            <Text style={styles.metricUnit}> bpm · {whenLabel(rhr!.date)}</Text>
+                            <Text style={styles.metricUnit}> {t('progress:body.rhr.unitWhen', { when: whenLabel(rhr!.date) })}</Text>
                         </Text>
                         <Text style={styles.metricDelta}>
-                            {vitalDelta(rhr!, d.rhrAvg, d.rhrBaselineReady, 'bpm', 'lower is fitter')}
+                            {vitalDelta(rhr!, d.rhrAvg, d.rhrBaselineReady, 'bpm', t('progress:body.rhr.tip'))}
                         </Text>
                     </View>
                     <View style={styles.chartBlock}>
@@ -253,7 +257,7 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
                         {/* No legend: the baseline is the average the headline
                             already names, and the high/low now sit on their own
                             dots inside the chart. */}
-                        <AxisRow left={`${TREND_DAYS} days ago`} right="today" />
+                        <AxisRow left={t('progress:body.axis.daysAgo', { days: TREND_DAYS })} right={t('progress:body.axis.today')} />
                     </View>
                 </>
             )}
@@ -261,7 +265,7 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
             {!showHrv && hrvAccess.show && (
                 <>
                     <View style={styles.tabSep} />
-                    <Text style={styles.tabSubLabel}>RECOVERY (HRV)</Text>
+                    <Text style={styles.tabSubLabel}>{t('progress:body.hrv.prompt.title')}</Text>
                     <Pressable
                         style={styles.insightRow}
                         disabled={hrvAccess.busy}
@@ -270,7 +274,7 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
                     >
                         <Ionicons name="pulse" size={12} color={TEAL} />
                         <Text style={[styles.insightText, styles.insightAction]}>
-                            {hrvAccess.busy ? 'Asking Apple Health…' : 'Share your HRV from Apple Health'}
+                            {hrvAccess.busy ? t('progress:body.hrv.prompt.asking') : t('progress:body.hrv.prompt.share')}
                         </Text>
                     </Pressable>
                 </>
@@ -279,14 +283,14 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
             {showHrv && (
                 <>
                     <View style={styles.tabSep} />
-                    <Text style={styles.tabSubLabel}>RECOVERY (HRV) · {TREND_DAYS} DAYS</Text>
+                    <Text style={styles.tabSubLabel}>{t('progress:body.hrv.title', { days: TREND_DAYS })}</Text>
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
                             {Math.round(hrv!.value)}
-                            <Text style={styles.metricUnit}> ms · {whenLabel(hrv!.date)}</Text>
+                            <Text style={styles.metricUnit}> {t('progress:body.hrv.unitWhen', { when: whenLabel(hrv!.date) })}</Text>
                         </Text>
                         <Text style={styles.metricDelta}>
-                            {vitalDelta(hrv!, d.hrvAvg, d.hrvBaselineReady, 'ms', 'higher is fresher')}
+                            {vitalDelta(hrv!, d.hrvAvg, d.hrvBaselineReady, 'ms', t('progress:body.hrv.tip'))}
                         </Text>
                     </View>
                     <View style={styles.chartBlock}>
@@ -296,11 +300,11 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
                         {hrvAsLine
                             ? <Sparkline points={trends.hrv} days={TREND_DAYS} height={RHR_CHART_H} goodDirection="up" />
                             : <RangeDotChart points={trends.hrv} days={TREND_DAYS} height={HRV_CHART_H} color={TEAL} goodDirection="up" />}
-                        <AxisRow left={`${TREND_DAYS} days ago`} right="today" />
+                        <AxisRow left={t('progress:body.axis.daysAgo', { days: TREND_DAYS })} right={t('progress:body.axis.today')} />
                         {!hrvAsLine && (
                             <ChartLegend items={[
-                                { swatch: 'box', color: 'rgba(45,212,191,0.3)', label: 'your typical range' },
-                                { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: 'average' },
+                                { swatch: 'box', color: 'rgba(45,212,191,0.3)', label: t('progress:body.legend.typicalRange') },
+                                { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: t('progress:body.legend.average') },
                             ]} />
                         )}
                     </View>
@@ -317,12 +321,12 @@ export function BodyTab({ initialTrends, deviceName, onTrendsStale }: {
             {trends.sleepHours.length > 0 && (
                 <>
                     <View style={styles.tabSep} />
-                    <Text style={styles.tabSubLabel}>SLEEP · LAST {SLEEP_NIGHTS} NIGHTS</Text>
+                    <Text style={styles.tabSubLabel}>{t('progress:body.sleep.title', { nights: SLEEP_NIGHTS })}</Text>
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
                             {d.sleepAvg7 != null ? formatMin(d.sleepAvg7 * 60) : '—'}
                             <Text style={styles.metricUnit}>
-                                {d.sleepAvg7 != null ? ' avg per night this week' : ' no nights in the last 7 days'}
+                                {' '}{d.sleepAvg7 != null ? t('progress:body.sleep.avgPerNight') : t('progress:body.sleep.noNights')}
                             </Text>
                         </Text>
                         <Text style={styles.metricDelta}>{sleepSummary(d, trends)}</Text>
@@ -354,9 +358,18 @@ const hasBaselines = (d: BodySignals): boolean =>
 function QuietCard({ d, deviceName, hasBaselines: withBaselines }: {
     d: BodySignals; deviceName?: string; hasBaselines: boolean;
 }) {
+    const { t } = useTranslation();
     const days = d.vitalDaysAgo ?? 0;
-    const it = deviceName ? `your ${deviceName}` : 'your device';
-    const app = deviceName ? `the ${deviceName} app` : 'its app';
+    const wear = withBaselines
+        ? deviceName
+            ? t('progress:body.quiet.wearNamedBaselines', { device: deviceName })
+            : t('progress:body.quiet.wearBaselines')
+        : deviceName
+            ? t('progress:body.quiet.wearNamed', { device: deviceName })
+            : t('progress:body.quiet.wear');
+    const sync = deviceName
+        ? t('progress:body.quiet.syncNamed', { device: deviceName })
+        : t('progress:body.quiet.sync');
     return (
         <View style={styles.quietCard}>
             <View style={styles.quietIcon}>
@@ -364,16 +377,14 @@ function QuietCard({ d, deviceName, hasBaselines: withBaselines }: {
             </View>
             <View style={styles.quietBody}>
                 <Text style={styles.tabSubLabel}>
-                    {(deviceName ?? 'Device').toUpperCase()} · QUIET FOR {days} DAYS
+                    {t('progress:body.quiet.label', { device: (deviceName ?? t('progress:body.quiet.device')).toUpperCase(), days })}
                 </Text>
                 <Text style={styles.quietTitle}>
-                    No readings since {d.lastVitalDate ? whenLabel(d.lastVitalDate) : 'a while back'}
+                    {t('progress:body.quiet.title', { when: d.lastVitalDate ? whenLabel(d.lastVitalDate) : t('progress:body.quiet.aWhileBack') })}
                 </Text>
                 <Text style={styles.insightText}>
-                    {withBaselines
-                        ? `Wear ${it} tonight and your readiness is back by morning, read against your usual below.`
-                        : `Wear ${it} tonight and your trends start again from the morning.`}
-                    {' '}Been wearing it? Open {app} to sync.
+                    {wear}
+                    {' '}{sync}
                 </Text>
             </View>
         </View>
@@ -387,27 +398,28 @@ function QuietCard({ d, deviceName, hasBaselines: withBaselines }: {
  * about last month's vitals that still matters today.
  */
 function Baselines({ d, trends }: { d: BodySignals; trends: BodyTrends }) {
+    const { t } = useTranslation();
     const cells = [
         d.rhrAvg != null && {
-            key: 'rhr', tint: ROSE, label: 'RESTING HR',
+            key: 'rhr', tint: ROSE, label: t('progress:body.baselines.rhr'),
             value: `${Math.round(d.rhrAvg)}`, unit: ' bpm',
-            detail: countLabel(trends.restingHr.length, 'reading'),
+            detail: t('progress:body.baselines.fromReadings', { count: trends.restingHr.length }),
         },
         d.hrvAvg != null && {
-            key: 'hrv', tint: TEAL, label: 'HRV',
+            key: 'hrv', tint: TEAL, label: t('progress:body.baselines.hrv'),
             value: `${Math.round(d.hrvAvg)}`, unit: ' ms',
-            detail: countLabel(trends.hrv.length, 'reading'),
+            detail: t('progress:body.baselines.fromReadings', { count: trends.hrv.length }),
         },
         d.sleepAvg30 != null && {
-            key: 'sleep', tint: INDIGO, label: 'SLEEP',
+            key: 'sleep', tint: INDIGO, label: t('progress:body.baselines.sleep'),
             value: formatMin(d.sleepAvg30 * 60), unit: '',
-            detail: countLabel(trends.sleepHours.length, 'night'),
+            detail: t('progress:body.baselines.fromNights', { count: trends.sleepHours.length }),
         },
     ].filter((c): c is Exclude<typeof c, false> => !!c);
 
     return (
         <>
-            <Text style={styles.tabSubLabel}>YOUR USUAL · BEFORE THE GAP</Text>
+            <Text style={styles.tabSubLabel}>{t('progress:body.baselines.title')}</Text>
             <View style={styles.signalsRow}>
                 {cells.map((c, i) => (
                     <React.Fragment key={c.key}>
@@ -429,10 +441,6 @@ function Baselines({ d, trends }: { d: BodySignals; trends: BodyTrends }) {
     );
 }
 
-function countLabel(n: number, noun: string): string {
-    return `from ${n} ${noun}${n === 1 ? '' : 's'}`;
-}
-
 /** "+40m vs your usual week · 1,850 kcal burned · 45m at hard effort" —
  *  whatever of the three exists. The comparison leads: it is the one figure
  *  that says whether this week is a build or a recovery week. No "this week"
@@ -442,12 +450,12 @@ function loadSummary(t: BodyTrends, d: BodySignals): string {
     if (d.weekVsUsualMin != null) {
         const diff = Math.round(d.weekVsUsualMin);
         parts.push(Math.abs(diff) < 10
-            ? 'level with your usual week'
-            : `${diff > 0 ? '+' : '−'}${formatMin(Math.abs(diff))} vs your usual week`);
+            ? i18n.t('progress:body.load.levelWithUsual')
+            : i18n.t('progress:body.load.vsUsual', { delta: `${diff > 0 ? '+' : '−'}${formatMin(Math.abs(diff))}` }));
     }
-    if (t.week.kcal > 0) parts.push(`${t.week.kcal.toLocaleString()} kcal burned`);
+    if (t.week.kcal > 0) parts.push(i18n.t('progress:body.load.kcal', { kcal: t.week.kcal.toLocaleString() }));
     const hard = t.load.reduce((s, day) => s + day.hardMin, 0);
-    if (hard > 0) parts.push(`${formatMin(hard)} at hard effort`);
+    if (hard > 0) parts.push(i18n.t('progress:body.load.hard', { duration: formatMin(hard) }));
     return parts.join(' · ');
 }
 
@@ -459,9 +467,9 @@ function loadSummary(t: BodyTrends, d: BodySignals): string {
  */
 function vitalDelta(latest: TrendPoint, avg: number | null, baselineReady: boolean, unit: string, tip: string): string {
     const daysAgo = localDaysAgo(latest.date);
-    if (daysAgo > 3) return `no reading since ${whenLabel(latest.date)} — waiting on your device`;
-    if (avg == null || !baselineReady) return `${tip} — a few more days and you'll see how this compares to your usual`;
-    return `${deltaLabel(latest.value - avg, unit)} vs your average — ${tip}`;
+    if (daysAgo > 3) return i18n.t('progress:body.delta.stale', { when: whenLabel(latest.date) });
+    if (avg == null || !baselineReady) return i18n.t('progress:body.delta.noBaseline', { tip });
+    return i18n.t('progress:body.delta.vsAverage', { delta: deltaLabel(latest.value - avg, unit), tip });
 }
 
 /**
@@ -470,16 +478,16 @@ function vitalDelta(latest: TrendPoint, avg: number | null, baselineReady: boole
  * detail the device sends. A week that met the goal every night says so.
  */
 function sleepSummary(d: BodySignals, t: BodyTrends): string {
-    if (t.sleepHours.length < 3) return 'trends sharpen as more nights land';
+    if (t.sleepHours.length < 3) return i18n.t('progress:body.sleep.sharpen');
     // No nights this week is not "on your goal" — a debt summed over nothing
     // is zero, and zero was being read out as a perfect week.
-    if (d.nights7 === 0) return `last night recorded ${whenLabel(t.sleepHours[t.sleepHours.length - 1].date)}`;
+    if (d.nights7 === 0) return i18n.t('progress:body.sleep.lastRecorded', { when: whenLabel(t.sleepHours[t.sleepHours.length - 1].date) });
     const parts: string[] = [];
     parts.push(d.sleepDebtMin7 >= 15
-        ? `${formatMin(d.sleepDebtMin7)} short of ${SLEEP_GOAL_H}h this week`
-        : `on your ${SLEEP_GOAL_H}h goal this week`);
-    if (d.deepRemShare7 != null) parts.push(`${Math.round(d.deepRemShare7 * 100)}% deep + REM`);
-    if (d.efficiency7 != null) parts.push(`${Math.round(d.efficiency7)}% efficient`);
+        ? i18n.t('progress:body.sleep.short', { duration: formatMin(d.sleepDebtMin7), goal: SLEEP_GOAL_H })
+        : i18n.t('progress:body.sleep.onGoal', { goal: SLEEP_GOAL_H }));
+    if (d.deepRemShare7 != null) parts.push(i18n.t('progress:body.sleep.deepRem', { pct: Math.round(d.deepRemShare7 * 100) }));
+    if (d.efficiency7 != null) parts.push(i18n.t('progress:body.sleep.efficiency', { pct: Math.round(d.efficiency7) }));
     return parts.join(' · ');
 }
 
@@ -498,12 +506,13 @@ function sleepSummary(d: BodySignals, t: BodyTrends): string {
  * the day sheet, where the reader is comparing against their watch app.
  */
 function EffortMixBar({ zoneMixSec }: { zoneMixSec: number[] }) {
+    const { t } = useTranslation();
     const sumZones = (from: number, to: number) =>
         zoneMixSec.reduce((s, sec, zone) => zone >= from && zone <= to ? s + sec : s, 0);
     const groups = [
-        { label: 'light effort', sec: sumZones(1, 2), tint: ZONE_TINTS[2] },
-        { label: 'hard', sec: sumZones(3, 4), tint: ZONE_TINTS[4] },
-        { label: 'max', sec: sumZones(5, Infinity), tint: ZONE_TINTS[5] },
+        { label: t('progress:body.effort.light'), sec: sumZones(1, 2), tint: ZONE_TINTS[2] },
+        { label: t('progress:body.effort.hard'), sec: sumZones(3, 4), tint: ZONE_TINTS[4] },
+        { label: t('progress:body.effort.max'), sec: sumZones(5, Infinity), tint: ZONE_TINTS[5] },
     ].filter(g => g.sec >= 60);
 
     return (
@@ -562,7 +571,11 @@ const LEVEL_TINTS: Record<SignalLevel, string> = {
  * Amber wears orange, not true amber — gold is POWR's alone.
  */
 function SignalsRow({ d }: { d: BodySignals }) {
+    const { t } = useTranslation();
     const r = readinessOf(d);
+    // The word arrives in the language on screen, so "Rest" is recognised by
+    // comparing against the same translation rather than the English literal.
+    const isRest = r.word === t('progress:readiness.word.rest');
 
     // With a provider score the word already carries the band (Rest is the
     // red band, Easy the amber). Derived: one thing off (ring ≥ 2/3) is a
@@ -570,7 +583,7 @@ function SignalsRow({ d }: { d: BodySignals }) {
     const readinessLevel: SignalLevel =
         r.level === 'good' ? 'green'
         : r.level === 'attention'
-            ? (d.providerReadiness ? (r.word === 'Rest' ? 'red' : 'amber') : (r.ring >= 2 / 3 ? 'amber' : 'red'))
+            ? (d.providerReadiness ? (isRest ? 'red' : 'amber') : (r.ring >= 2 / 3 ? 'amber' : 'red'))
         : 'none';
 
     // The detail is the RECOMMENDATION, not the cause — the cause is already
@@ -579,32 +592,38 @@ function SignalsRow({ d }: { d: BodySignals }) {
     // verdict says what it rests on, so "Primed" from a night alone can't
     // pass for the full read.
     const recommendation =
-        r.level === 'good' ? 'good day to push'
-        : r.word === 'Rest' ? 'go light today'
-        : 'take it easy today';
+        r.level === 'good' ? t('progress:body.signals.advice.push')
+        : isRest ? t('progress:body.signals.advice.goLight')
+        : t('progress:body.signals.advice.easy');
     // The short form, for when the detail has to share its line with a
     // qualifier — "72% recovery · push", "sleep only · take it easy".
     const shortRecommendation =
-        r.level === 'good' ? 'push' : r.word === 'Rest' ? 'go light' : 'take it easy';
+        r.level === 'good' ? t('progress:body.signals.adviceShort.push')
+        : isRest ? t('progress:body.signals.adviceShort.goLight')
+        : t('progress:body.signals.adviceShort.easy');
     const readinessDetail =
         r.level === 'unknown' ? r.reason
-        : d.providerReadiness ? `${Math.round(d.providerReadiness.value)}% recovery · ${shortRecommendation}`
-        : r.partial ? `${basisLabel(d.basis)} only · ${shortRecommendation}`
+        : d.providerReadiness ? t('progress:body.signals.recovery', { pct: Math.round(d.providerReadiness.value), advice: shortRecommendation })
+        : r.partial ? t('progress:body.signals.basisOnly', { basis: basisLabel(d.basis), advice: shortRecommendation })
         : recommendation;
 
     const signals: Signal[] = [
         sleepSignal(d),
         {
-            label: 'READINESS',
+            label: t('progress:body.signals.readiness'),
             level: readinessLevel,
-            verdict: r.word === '—' ? 'No data' : r.word,
+            verdict: r.word === '—' ? t('progress:body.signals.noData') : r.word,
             detail: readinessDetail,
         },
         {
-            label: 'YESTERDAY',
+            label: t('progress:body.signals.yesterday'),
             level: d.bigDay ? 'amber' : 'green',
-            verdict: d.bigDay ? 'Big day' : d.yesterdayMin === 0 ? 'Rest day' : 'Trained',
-            detail: d.yesterdayMin === 0 ? 'no training' : `${d.yesterdayMin}m of exercise`,
+            verdict: d.bigDay ? t('progress:body.signals.bigDay')
+                : d.yesterdayMin === 0 ? t('progress:body.signals.restDay')
+                : t('progress:body.signals.trained'),
+            detail: d.yesterdayMin === 0
+                ? t('progress:body.signals.noTraining')
+                : t('progress:body.signals.exercise', { duration: t('progress:units.m', { m: d.yesterdayMin }) }),
         },
     ];
 
@@ -644,20 +663,28 @@ function sleepSignal(d: BodySignals): Signal {
         // worn to bed. Say so. "Waiting on your device" was a promise that
         // could never be kept, and a promise that never lands reads as a
         // broken page.
-        return { label: 'LAST NIGHT', level: 'none', verdict: 'Not tracked', detail: 'wear your device to bed' };
+        return {
+            label: i18n.t('progress:body.signals.lastNight'), level: 'none',
+            verdict: i18n.t('progress:body.signals.notTracked'), detail: i18n.t('progress:body.signals.wearToBed'),
+        };
     }
     if (!d.nightFresh) {
-        return { label: 'LAST NIGHT', level: 'none', verdict: 'Not synced', detail: 'waiting on your device' };
+        return {
+            label: i18n.t('progress:body.signals.lastNight'), level: 'none',
+            verdict: i18n.t('progress:body.signals.notSynced'), detail: i18n.t('progress:body.signals.waiting'),
+        };
     }
     const h = d.nightFresh.value;
     const level: SignalLevel = h < 6 ? 'red' : (h < 7 || d.shortNight) ? 'amber' : 'green';
     return {
-        label: 'LAST NIGHT',
+        label: i18n.t('progress:body.signals.lastNight'),
         level,
-        verdict: level === 'red' ? 'Short night' : level === 'amber' ? 'A bit short' : 'Rested',
+        verdict: level === 'red' ? i18n.t('progress:body.signals.shortNight')
+            : level === 'amber' ? i18n.t('progress:body.signals.aBitShort')
+            : i18n.t('progress:body.signals.rested'),
         // "slept 1h 30m" reads as a sentence under the LAST NIGHT label;
         // "1.5h slept" read as a unit nobody uses.
-        detail: `slept ${formatMin(h * 60)}`,
+        detail: i18n.t('progress:body.slept', { duration: formatMin(h * 60) }),
     };
 }
 
@@ -718,6 +745,7 @@ function ChartLegend({ items }: { items: LegendItem[] }) {
  * their empty track so a patchy fortnight looks patchy.
  */
 function SleepBars({ points }: { points: TrendPoint[] }) {
+    const { t } = useTranslation();
     const byDate = new Map(points.map(p => [p.date, p.value]));
     const nights: { date: string; hours: number }[] = [];
     for (let i = SLEEP_NIGHTS - 1; i >= 0; i--) {
@@ -749,11 +777,11 @@ function SleepBars({ points }: { points: TrendPoint[] }) {
                 })}
                 <View style={styles.sleepGoalLine} pointerEvents="none" />
             </View>
-            <AxisRow left={`${SLEEP_NIGHTS} nights ago`} right="last night" />
+            <AxisRow left={t('progress:body.axis.nightsAgo', { nights: SLEEP_NIGHTS })} right={t('progress:body.axis.lastNight')} />
             <ChartLegend items={[
-                { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: `${SLEEP_GOAL_H}h goal` },
-                { swatch: 'box', color: INDIGO, label: 'goal met' },
-                { swatch: 'box', color: `${INDIGO}60`, label: 'short of goal' },
+                { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: t('progress:body.legend.goal', { goal: SLEEP_GOAL_H }) },
+                { swatch: 'box', color: INDIGO, label: t('progress:body.legend.goalMet') },
+                { swatch: 'box', color: `${INDIGO}60`, label: t('progress:body.legend.shortOfGoal') },
             ]} />
         </View>
     );
@@ -772,6 +800,7 @@ const LOAD_FOOTER_H = 16;
  * reads against THEIR week, and the caption strip says what each mark means.
  */
 function LoadChart({ trends }: { trends: BodyTrends }) {
+    const { t } = useTranslation();
     const max = Math.max(60, ...trends.load.map(d => d.activeMin));
     const totalHard = trends.load.reduce((s, d) => s + d.hardMin, 0);
     const avg = trends.load.reduce((s, d) => s + d.activeMin, 0) / trends.load.length;
@@ -786,7 +815,7 @@ function LoadChart({ trends }: { trends: BodyTrends }) {
                     const isToday = d === trends.load[trends.load.length - 1];
                     return (
                         <View key={d.date} style={styles.loadCol}>
-                            <Text style={styles.loadMins}>{d.activeMin > 0 ? `${d.activeMin}m` : '—'}</Text>
+                            <Text style={styles.loadMins}>{d.activeMin > 0 ? t('progress:units.m', { m: d.activeMin }) : '—'}</Text>
                             <View style={styles.loadTrack}>
                                 {h > 0 && (
                                     <View style={[styles.loadFill, { height: h, backgroundColor: isToday ? 'rgba(251,146,60,0.5)' : 'rgba(251,146,60,0.28)' }]}>
@@ -804,18 +833,18 @@ function LoadChart({ trends }: { trends: BodyTrends }) {
                     <>
                         <View style={[styles.loadAvgLine, { bottom: avgBottom }]} pointerEvents="none" />
                         <Text style={[styles.loadAvgLabel, { bottom: avgBottom + 2 }]}>
-                            avg {Math.round(avg)}m
+                            {t('progress:body.load.avg', { duration: t('progress:units.m', { m: Math.round(avg) }) })}
                         </Text>
                     </>
                 )}
             </View>
             <ChartLegend items={[
-                { swatch: 'box', color: 'rgba(251,146,60,0.3)', label: 'minutes trained' },
+                { swatch: 'box', color: 'rgba(251,146,60,0.3)', label: t('progress:body.legend.minutesTrained') },
                 ...(totalHard > 0
-                    ? [{ swatch: 'box' as const, color: ORANGE, label: 'hard effort' }]
+                    ? [{ swatch: 'box' as const, color: ORANGE, label: t('progress:body.legend.hardEffort') }]
                     : []),
                 ...(avg > 0
-                    ? [{ swatch: 'line' as const, color: 'rgba(255,255,255,0.35)', label: 'your average day' }]
+                    ? [{ swatch: 'line' as const, color: 'rgba(255,255,255,0.35)', label: t('progress:body.legend.averageDay') }]
                     : []),
             ]} />
         </View>
@@ -830,14 +859,18 @@ function latest(series: TrendPoint[]): TrendPoint | null {
 
 function deltaLabel(delta: number, unit: string): string {
     const r = Math.round(delta);
-    if (r === 0) return 'level';
-    return `${r > 0 ? '+' : '−'}${Math.abs(r)} ${unit}`;
+    if (r === 0) return i18n.t('progress:body.delta.level');
+    return i18n.t('progress:body.delta.value', { sign: r > 0 ? '+' : '−', value: Math.abs(r), unit });
 }
 
 /** The signals a verdict rests on, as words — "sleep", "sleep + HRV". */
-const BASIS_WORDS: Record<BasisSignal, string> = { sleep: 'sleep', hrv: 'HRV', rhr: 'resting HR' };
+const BASIS_KEYS: Record<BasisSignal, string> = {
+    sleep: 'progress:body.basis.sleep',
+    hrv: 'progress:body.basis.hrv',
+    rhr: 'progress:body.basis.rhr',
+};
 function basisLabel(basis: BasisSignal[]): string {
-    return basis.map(b => BASIS_WORDS[b]).join(' + ');
+    return basis.map(b => i18n.t(BASIS_KEYS[b])).join(' + ');
 }
 
 /** The device behind a score, as the user knows it. */
@@ -845,7 +878,7 @@ const PROVIDER_NAMES: Record<string, string> = {
     whoop: 'Whoop', garmin: 'Garmin', oura: 'Oura', fitbit: 'Fitbit', polar: 'Polar', zepp: 'Zepp',
 };
 function providerName(source: string | null): string {
-    return (source && PROVIDER_NAMES[source.toLowerCase()]) || 'Your device';
+    return (source && PROVIDER_NAMES[source.toLowerCase()]) || i18n.t('progress:body.yourDevice');
 }
 
 function localDaysAgo(date: string): number {
@@ -862,14 +895,14 @@ function localDaysAgo(date: string): number {
 function whenLabel(date: string): string {
     const daysAgo = localDaysAgo(date);
     const d = new Date(`${date}T00:00:00`);
-    if (daysAgo <= 0) return 'today';
-    if (daysAgo === 1) return 'yesterday';
-    if (daysAgo < 7) return d.toLocaleDateString('en-GB', { weekday: 'short' });
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    if (daysAgo <= 0) return i18n.t('progress:body.when.today');
+    if (daysAgo === 1) return i18n.t('progress:body.when.yesterday');
+    if (daysAgo < 7) return d.toLocaleDateString(getFormatLocale(), { weekday: 'short' });
+    return d.toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short' });
 }
 
 function dayInitial(date: string): string {
-    return new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'narrow' });
+    return new Date(`${date}T00:00:00`).toLocaleDateString(getFormatLocale(), { weekday: 'narrow' });
 }
 
 /** 132 → "2h 12m", 45 → "45m" — same h/m form the breakdown sheet uses. */
@@ -877,15 +910,17 @@ function formatMin(mins: number): string {
     const m = Math.round(mins);
     if (m >= 60) {
         const rem = m % 60;
-        return rem > 0 ? `${Math.floor(m / 60)}h ${rem}m` : `${Math.floor(m / 60)}h`;
+        return rem > 0
+            ? i18n.t('progress:units.hm', { h: Math.floor(m / 60), m: rem })
+            : i18n.t('progress:units.h', { h: Math.floor(m / 60) });
     }
-    return `${m}m`;
+    return i18n.t('progress:units.m', { m });
 }
 
 /** "HRV 68 ms (your usual 74)" — a fresh vital against its baseline, or bare. */
 function vitalPhrase(label: string, fresh: TrendPoint, avg: number | null, ready: boolean, unit: string): string {
-    const v = `${label} ${Math.round(fresh.value)} ${unit}`;
-    return ready && avg != null ? `${v} (your usual ${Math.round(avg)})` : v;
+    const v = i18n.t('progress:body.insight.vital', { label, value: Math.round(fresh.value), unit });
+    return ready && avg != null ? i18n.t('progress:body.insight.vitalVsUsual', { vital: v, usual: Math.round(avg) }) : v;
 }
 
 /**
@@ -899,41 +934,42 @@ function buildInsight(d: BodySignals): string {
         const score = Math.round(d.providerReadiness.value);
         const who = providerName(d.providerReadiness.source);
         const behind: string[] = [];
-        if (d.nightFresh) behind.push(`slept ${formatMin(d.nightFresh.value * 60)}`);
-        if (d.hrvFresh) behind.push(vitalPhrase('HRV', d.hrvFresh, d.hrvAvg, d.hrvBaselineReady, 'ms'));
-        if (d.rhrFresh) behind.push(vitalPhrase('resting HR', d.rhrFresh, d.rhrAvg, d.rhrBaselineReady, 'bpm'));
-        const evidence = behind.length > 0 ? ` — ${behind.join(', ')}` : '';
-        const advice = score >= 67 ? 'Good day to push.'
-            : score >= 34 ? 'Train, but keep it steady.'
-            : 'Rest or go very light today.';
-        return `${who} scores this morning's recovery ${score}%${evidence}. ${advice}`;
+        if (d.nightFresh) behind.push(i18n.t('progress:body.slept', { duration: formatMin(d.nightFresh.value * 60) }));
+        if (d.hrvFresh) behind.push(vitalPhrase(i18n.t('progress:body.insight.hrv'), d.hrvFresh, d.hrvAvg, d.hrvBaselineReady, 'ms'));
+        if (d.rhrFresh) behind.push(vitalPhrase(i18n.t('progress:body.insight.rhr'), d.rhrFresh, d.rhrAvg, d.rhrBaselineReady, 'bpm'));
+        const advice = score >= 67 ? i18n.t('progress:body.insight.advice.push')
+            : score >= 34 ? i18n.t('progress:body.insight.advice.steady')
+            : i18n.t('progress:body.insight.advice.rest');
+        return behind.length > 0
+            ? i18n.t('progress:body.insight.providerWithEvidence', { who, score, evidence: behind.join(', '), advice })
+            : i18n.t('progress:body.insight.provider', { who, score, advice });
     }
     if (d.rhrElevated) {
-        return `Resting heart rate is ${deltaLabel(d.rhrFresh!.value - d.rhrAvg!, 'bpm')} above your usual — worth keeping today steadier.`;
+        return i18n.t('progress:body.insight.rhrElevated', { delta: deltaLabel(d.rhrFresh!.value - d.rhrAvg!, 'bpm') });
     }
     if (d.hrvLow) {
-        return `HRV is ${Math.round(d.hrvFresh!.value)} ms against your usual ${Math.round(d.hrvAvg!)} — your body is still working on something. Keep today easy.`;
+        return i18n.t('progress:body.insight.hrvLow', { value: Math.round(d.hrvFresh!.value), usual: Math.round(d.hrvAvg!) });
     }
     if (d.shortNight) {
-        return `Short night (${formatMin(d.nightFresh!.value * 60)}) — an easy session will do more for you than a hard one today.`;
+        return i18n.t('progress:body.insight.shortNight', { duration: formatMin(d.nightFresh!.value * 60) });
     }
     if (d.bigDay) {
-        return `Big day yesterday (${formatMin(d.yesterdayMin)} of training) — recovery is part of the work.`;
+        return i18n.t('progress:body.insight.bigDay', { duration: formatMin(d.yesterdayMin) });
     }
     if (d.nightFresh && (d.hrvFresh || d.rhrFresh)) {
-        const behind: string[] = [`Slept ${formatMin(d.nightFresh.value * 60)}`];
-        if (d.hrvFresh) behind.push(vitalPhrase('HRV', d.hrvFresh, d.hrvAvg, d.hrvBaselineReady, 'ms'));
-        if (d.rhrFresh) behind.push(vitalPhrase('resting HR', d.rhrFresh, d.rhrAvg, d.rhrBaselineReady, 'bpm'));
-        return `${behind.join(', ')} — nothing out of the ordinary. Good day to push.`;
+        const behind: string[] = [i18n.t('progress:body.insight.slept', { duration: formatMin(d.nightFresh.value * 60) })];
+        if (d.hrvFresh) behind.push(vitalPhrase(i18n.t('progress:body.insight.hrv'), d.hrvFresh, d.hrvAvg, d.hrvBaselineReady, 'ms'));
+        if (d.rhrFresh) behind.push(vitalPhrase(i18n.t('progress:body.insight.rhr'), d.rhrFresh, d.rhrAvg, d.rhrBaselineReady, 'bpm'));
+        return i18n.t('progress:body.insight.ordinary', { evidence: behind.join(', ') });
     }
     if (d.nightFresh) {
         // A night alone. Name what is still to come, in the device's own
         // terms — "trends build as your device syncs" read as broken to a
         // wearer whose device had been syncing for weeks.
-        const waiting = d.missing.length > 0
-            ? ` ${basisLabel(d.missing)} ${d.missing.length > 1 ? 'haven\'t' : 'hasn\'t'} synced yet, so this is a read from sleep alone.`
-            : '';
-        return `Slept ${formatMin(d.nightFresh.value * 60)} last night.${waiting}`;
+        const duration = formatMin(d.nightFresh.value * 60);
+        return d.missing.length > 0
+            ? i18n.t('progress:body.insight.nightWaiting', { count: d.missing.length, duration, basis: basisLabel(d.missing) })
+            : i18n.t('progress:body.insight.night', { duration });
     }
     // No night to speak of — for a wearer who never takes the device to bed,
     // resting heart rate carries the whole read. Speak to what IS there rather
@@ -941,28 +977,29 @@ function buildInsight(d: BodySignals): string {
     // device has been syncing all along.
     if (d.rhrFresh && d.rhrBaselineReady && d.rhrAvg != null) {
         const diff = Math.round(d.rhrFresh.value - d.rhrAvg);
-        const vs = diff < 0 ? `${Math.abs(diff)} bpm below your average`
-            : diff > 0 ? `${diff} bpm above your average`
-            : 'right on your average';
-        return `Resting heart rate is ${vs} — good day to push.`;
+        return diff < 0 ? i18n.t('progress:body.insight.rhrBelow', { bpm: Math.abs(diff) })
+            : diff > 0 ? i18n.t('progress:body.insight.rhrAbove', { bpm: diff })
+            : i18n.t('progress:body.insight.rhrOnAverage');
     }
     if (d.rhrFresh) {
-        return `Resting heart rate ${Math.round(d.rhrFresh.value)} bpm ${whenLabel(d.rhrFresh.date)}. A few more days and you'll see how that compares to your usual.`;
+        return i18n.t('progress:body.insight.rhrFirst', { bpm: Math.round(d.rhrFresh.value), when: whenLabel(d.rhrFresh.date) });
     }
     if (d.hrvFresh) {
         return d.hrvBaselineReady && d.hrvAvg != null
-            ? `HRV ${Math.round(d.hrvFresh.value)} ms against your usual ${Math.round(d.hrvAvg)} — good day to push.`
-            : `HRV ${Math.round(d.hrvFresh.value)} ms ${whenLabel(d.hrvFresh.date)}. A few more nights and you'll see how that compares to your usual.`;
+            ? i18n.t('progress:body.insight.hrvVsUsual', { value: Math.round(d.hrvFresh.value), usual: Math.round(d.hrvAvg) })
+            : i18n.t('progress:body.insight.hrvFirst', { value: Math.round(d.hrvFresh.value), when: whenLabel(d.hrvFresh.date) });
     }
     if (d.weekActiveDays > 0) {
-        const trained = `Trained ${d.weekActiveDays} of the last ${LOAD_DAYS} days (${formatMin(d.weekActiveMin)}).`;
+        const trained = i18n.t('progress:body.insight.trained', {
+            active: d.weekActiveDays, days: LOAD_DAYS, duration: formatMin(d.weekActiveMin),
+        });
         if (!d.tracksSleep && !d.tracksRhr && !d.tracksHrv) {
-            return `${trained} Readiness needs sleep, HRV, or resting heart rate from your device.`;
+            return `${trained} ${i18n.t('progress:body.insight.needsSignals')}`;
         }
-        const last = d.rhrDaysAgo != null ? ` Last resting HR reading was ${d.rhrDaysAgo} days ago.` : '';
-        return `${trained} No recent sleep, HRV, or heart-rate reading to judge recovery.${last}`;
+        const last = d.rhrDaysAgo != null ? ` ${i18n.t('progress:body.insight.lastRhr', { days: d.rhrDaysAgo })}` : '';
+        return `${trained} ${i18n.t('progress:body.insight.noRecent')}${last}`;
     }
-    return 'Your trends build here as your device syncs — the more days, the sharper the picture.';
+    return i18n.t('progress:body.insight.default');
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────

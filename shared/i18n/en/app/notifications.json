@@ -1,0 +1,85 @@
+{
+  "channels": {
+    "general": "General",
+    "streak": "Streak Alerts",
+    "rewards": "Rewards"
+  },
+  "streakAtRisk": {
+    "title_one": "Your {{count}}-day streak is at risk 🔥",
+    "title_other": "Your {{count}}-day streak is at risk 🔥",
+    "body": "Log any activity before midnight to keep it alive."
+  },
+  "challengeExpiry": {
+    "title": "Last day ⏳",
+    "body": "\"{{challenge}}\" expires in 24 hours. Don't miss your bonus POWR points."
+  },
+  "rewardUnlocked": {
+    "title": "New reward unlocked 🎁",
+    "body": "You've unlocked \"{{reward}}\". Redeem it before it expires."
+  },
+  "checkIn": {
+    "body": "You're in at {{gym}}. Every minute counts.",
+    "bodyNoName": "You're in. Every minute counts."
+  },
+  "nearbyOffer": {
+    "title": "{{brand}} is nearby",
+    "titleNoBrand": "A reward is nearby",
+    "body": "{{reward}} is boosted where you are right now — open to redeem."
+  },
+  "sessionCompleted": {
+    "titleEarned": "+{{points}} pts earned! 🔥",
+    "title": "Session complete 🔥",
+    "bodyNameStreak": "{{gym}} · Day {{streak}} streak",
+    "bodyStreak": "Day {{streak}} streak",
+    "bodyFallback": "Your session counted."
+  },
+  "sessionUpgraded": {
+    "title": "Bonus unlocked 🔓",
+    "points": "+{{points}} pts",
+    "bonus": "{{minutes}}-min bonus"
+  },
+  "locationOff": {
+    "title": "Location is off",
+    "body": "{{gym}} · session ended. Turn location back on to keep earning.",
+    "bodyNoName": "Your session ended. Turn location back on to keep earning."
+  },
+  "pointsMilestone": {
+    "title": "{{points}} POWR points",
+    "body": "All earned. Check your rewards — something new might be waiting."
+  },
+  "withinReach": {
+    "title": "Reward within reach",
+    "body": "You're close. {{points}} pts to unlock your {{reward}} reward.",
+    "bodyNext": "You're close. {{points}} pts to unlock your next reward."
+  },
+  "inactivity": {
+    "day3": {
+      "title": "We miss you 👋",
+      "body": "It's been 3 days. Even a short walk earns POWR points."
+    },
+    "day7": {
+      "title": "Your streak is waiting to be rebuilt 🔄",
+      "body": "7 days away — jump back in and start earning again."
+    },
+    "fallback": {
+      "title": "Ready to get back on track?",
+      "body": "Log any activity today and start your next streak."
+    }
+  },
+  "sleepGoal": {
+    "title": "Sleep goal reached 🌙",
+    "body_one": "{{hours}}h of sleep earned you {{count}} POWR point.",
+    "body_other": "{{hours}}h of sleep earned you {{count}} POWR points."
+  },
+  "stepGoal": {
+    "title": "{{steps}} steps to go 🚶",
+    "body": "A {{minutes}}-minute walk locks in +{{points}} POWR before midnight."
+  },
+  "locationService": {
+    "trackingTitle": "POWR is tracking your workouts",
+    "idleBody": "Detecting when you arrive at partner gyms.",
+    "dwellBody": "You're checked in — your session is being timed.",
+    "approachTitle": "POWR is checking you in",
+    "approachBody": "You're near a partner gym — confirming your arrival."
+  }
+}

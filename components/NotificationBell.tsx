@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useNotifications } from '@/context/NotificationsContext';
@@ -13,6 +14,7 @@ import { useNotifications } from '@/context/NotificationsContext';
  */
 export function NotificationBell() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { bellCount, refreshPendingActions, refreshActivity } = useNotifications();
 
   useFocusEffect(
@@ -31,7 +33,7 @@ export function NotificationBell() {
       onPress={() => router.push('/notifications')}
       accessibilityRole="button"
       accessibilityLabel={
-        count > 0 ? `Activity, ${count} new item${count === 1 ? '' : 's'}` : 'Activity'
+        count > 0 ? t('home:bell.a11yCount', { count }) : t('home:bell.a11y')
       }
     >
       <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
