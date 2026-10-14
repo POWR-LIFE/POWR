@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy, Palette, BookOpen, ScanLine } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import i18n, { rememberProfileLanguage } from '../../lib/i18n';
+import { LanguagePicker } from '../../components/portal/LanguagePicker';
 import { useAuth } from '../../App';
 import { methodLaterKey } from './PartnerIntegrationHub';
 
@@ -170,13 +172,16 @@ export function PartnerLayout({ children }) {
         navigate('/partner/login');
     };
 
+    // What this person reads, for the emails POWR sends them (best-effort).
+    useEffect(() => { rememberProfileLanguage(supabase, user?.id); }, [user?.id]);
+
     // Admin with no partner link and no preview selection yet → pick one first
     if (!partnerData && isAdmin) {
         return <AdminPartnerPicker onSelect={setActingPartner} />;
     }
 
     return (
-        <div className="flex min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808]">
+        <div lang={i18n.language} dir={i18n.dir()} className="flex min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808]">
             {/* Sidebar */}
             <aside className="w-72 flex-shrink-0 border-r border-[#E6E6E1] bg-white flex flex-col h-screen sticky top-0 z-[100]">
                 <div className="px-8 pt-8 pb-5 flex items-center justify-start pointer-events-none">
@@ -261,6 +266,7 @@ export function PartnerLayout({ children }) {
                             <span className="text-[10px] uppercase tracking-[0.18em] font-black">Guides</span>
                         </a>
                     </div>
+                    <LanguagePicker userId={user?.id} className="mb-3" />
                     {user?.email && (
                         <div className="mb-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                             <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>

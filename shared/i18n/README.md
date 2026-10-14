@@ -1,6 +1,6 @@
 # Translations
 
-One place for every language POWR speaks. The app reads `shared/i18n/<lang>/app/*.json`; the portals will read `shared/i18n/<lang>/portal.json` once #513 lands.
+One place for every language POWR speaks. The app reads `shared/i18n/<lang>/app/*.json`; the gym and partner portals read `shared/i18n/<lang>/portal/*.json` (see *Portals* below).
 
 | Language | App status |
 |---|---|
@@ -183,6 +183,52 @@ Terms that stay in English are product names. Use them exactly as written, with 
 | partners (generic, member-facing) | partenaires | negocios asociados | Partner gym / venue keep their own rows |
 
 Add to this table whenever a new term comes up, so every screen uses the same word.
+
+## Portals (gym portal /venue, partner portal /partner)
+
+Same files, same rules as the app, with these differences:
+
+- **Catalogs:** `shared/i18n/<lang>/portal/<namespace>.json`. `landing-page/src/lib/i18n.js` loads every file there by glob, so a new namespace is just a new file per language. English is bundled; French and Spanish load on demand.
+- **Live list:** `PORTAL_LANGUAGES` / `PORTAL_DRAFT_LANGUAGES` in `index.ts`. `__tests__/portalI18n.test.ts` holds the portals to the same checks as the app.
+- **Preview:** add `?lang=fr` (or `es`) to any portal URL. It sticks for the tab; `?lang=off` clears it. The sidebar then shows a Language picker.
+- **Using a key:** `const { t } = useTranslation();` then `t('venueHome:week.title')`. Outside React (helpers, toasts), `import i18n from '…/lib/i18n'` and call `i18n.t(…)` inside the function, never at module level. Module-level arrays (nav items, option lists) hold keys, translated where they render.
+- **Dates and numbers:** `formatLocale()` from `lib/i18n` instead of `'en-GB'` (English stays en-GB). Money stays in pounds (`£`), formatted with `Intl.NumberFormat(formatLocale(), { style: 'currency', currency: 'GBP' })` where code already formats it, or left as is where it's a fixed price string.
+- **Server errors:** show them with `serverErrorText(error)` from `lib/serverErrors` instead of `error.message`. English is unchanged; known messages get their own words in the `serverErrors` namespace.
+- **Stays English:** admin-only UI (the "view portal as" pickers, admin preview banners), legal text, brand-written and POWR-staff-written text, CSV headers that are parsed back on upload, and anything sent to the server.
+- **Where text appears to members** (app previews inside the portal, push previews): it follows the **member's** language, not the owner's. Until those previews are wired to a member language, keep them English and say so in a comment.
+
+### Portal tone
+
+- **French: "vous".** Gym owners and brands are businesses. Polite, direct, short. Buttons and menu items use the infinitive or a noun (*Enregistrer*, *Paramètres*); sentences addressed to the reader use *vous* (*Ajoutez votre logo*).
+- **Spanish: "usted", Spain Spanish.** Buttons in the infinitive (*Guardar*), sentences with *usted* (*Añada su logotipo*). No spaced dashes, same as the app.
+- Keep POWR's energy, lose the slang. Short beats complete: French runs 15–30% longer, and the sidebar is 288 px.
+
+### Portal glossary
+
+| English | French | Spanish | Notes |
+|---|---|---|---|
+| gym portal | portail salle | portal del gimnasio | |
+| partner portal | portail partenaire | portal de marcas | "brand" = *marque* / *marca*; Spanish avoids *socio* here (that word means a gym member) |
+| member (a gym's POWR member) | membre | socio / socia | Spain's gyms say *socios*; avoid gendered forms where a neutral phrasing exists |
+| owner | propriétaire | propietario/a | |
+| team, staff | équipe | equipo | |
+| Overview (dashboard) | Vue d’ensemble | Resumen | |
+| event | événement | evento | |
+| live event | événement live | evento en directo | as in the app |
+| Clash Night, Gym Clash, Studio, The Drop, Vault | (unchanged) | (unchanged) | Product names |
+| package (the gym's plan) | formule | plan | |
+| trial | essai | prueba | "14-day trial" → *essai de 14 jours* / *prueba de 14 días* |
+| retention | fidélisation | fidelización | |
+| big screen, screen | écran | pantalla | |
+| poster | affiche | cartel | |
+| discount | réduction | descuento | |
+| reward | récompense | recompensa | as in the app |
+| redemption (a member redeeming) | échange | canje | verb: *échanger* / *canjear* |
+| promo code | code promo | código promocional | |
+| placement (paid slot in the app) | emplacement | posición | |
+| in store, till, voucher, stand | en magasin, caisse, bon, présentoir | en tienda, caja, vale, expositor | as in the app |
+| check-in | check-in | check-in | as in the app |
+| sign in / sign out | se connecter / se déconnecter | iniciar sesión / cerrar sesión | |
 
 ## Server: pushes and emails
 

@@ -1,0 +1,22 @@
+{
+  "language": {
+    "label": "Langue",
+    "browser": "Langue du navigateur ({{language}})"
+  },
+  "actions": {
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "back": "Retour",
+    "retry": "Réessayer",
+    "signOut": "Se déconnecter"
+  },
+  "states": {
+    "loading": "Chargement…",
+    "signedInAs": "Connecté en tant que"
+  },
+  "errors": {
+    "generic": "Une erreur s’est produite. Veuillez réessayer."
+  }
+}

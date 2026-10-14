@@ -1,0 +1,22 @@
+{
+  "language": {
+    "label": "Language",
+    "browser": "Browser language ({{language}})"
+  },
+  "actions": {
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "close": "Close",
+    "back": "Back",
+    "retry": "Try again",
+    "signOut": "Sign Out"
+  },
+  "states": {
+    "loading": "Loading…",
+    "signedInAs": "Signed in as"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again."
+  }
+}

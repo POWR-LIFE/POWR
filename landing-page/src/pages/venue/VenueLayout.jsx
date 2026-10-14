@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, BadgePercent, Palette, Tv, Users, Radar, Settings2, LogOut, ChevronRight, Search, Eye, X, ChevronDown, Lock, Package, PartyPopper, BookOpen } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import i18n, { rememberProfileLanguage } from '../../lib/i18n';
+import { LanguagePicker } from '../../components/portal/LanguagePicker';
 import { useAuth } from '../../App';
 import { INPUT } from '../../components/portal/ui';
 import { fetchGymPackage } from './venueApi';
@@ -208,13 +210,16 @@ export function VenueLayout({ children }) {
         navigate('/venue/login');
     };
 
+    // What this person reads, for the emails POWR sends them (best-effort).
+    useEffect(() => { rememberProfileLanguage(supabase, user?.id); }, [user?.id]);
+
     // Admin with no gym of their own and no preview pick yet → pick one first.
     if (!gym && isAdmin) return <AdminGymPicker onSelect={setActingGym} />;
 
     const roleLabel = ROLE_LABEL[gym?.role] ?? '';
 
     return (
-        <div className="min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808] lg:flex">
+        <div lang={i18n.language} dir={i18n.dir()} className="min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808] lg:flex">
             <div
                 aria-hidden
                 className="fixed inset-0 pointer-events-none z-0"
@@ -275,6 +280,7 @@ export function VenueLayout({ children }) {
                 </nav>
 
                 <div className="p-6 mt-auto">
+                    <LanguagePicker userId={user?.id} className="mb-3" />
                     {user?.email && (
                         <div className="mb-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                             <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
@@ -370,6 +376,7 @@ export function VenueLayout({ children }) {
                             <span className="flex-1 text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] truncate">Guides</span>
                             <ChevronRight size={14} className="text-[#BBBBBB]" />
                         </a>
+                        <LanguagePicker userId={user?.id} className="mb-3" />
                         {user?.email && (
                             <div className="mb-4 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
                                 <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
