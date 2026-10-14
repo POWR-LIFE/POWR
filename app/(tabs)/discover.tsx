@@ -16,6 +16,7 @@ import {
 } from '@/lib/locationPrompt';
 import { GOOGLE_DIRECTIONS_KEY, MAP_PROVIDER } from '@/lib/mapProvider';
 import { getSessionUser, supabase } from '@/lib/supabase';
+import { discoverDistanceUnit, METRES_PER_MILE, useDistancePreference } from '@/lib/units';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import type { TFunction } from 'i18next';
@@ -108,6 +109,19 @@ type RouteStep = {
 
 const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
+type PlaceUnit = 'mi' | 'km';
+
+/**
+ * Max-distance chips, in round numbers of the unit on screen. Kilometres get
+ * their own ladder rather than 1.6 / 8 / 16 / 40: 2 km is a walk, 5 and 10 are
+ * the distances people already think in, and 25 km still takes in the whole
+ * ~15 km box the nearby list is fetched for, like 25 mi does.
+ */
+const DISTANCE_FILTER_STEPS: Record<PlaceUnit, number[]> = {
+  mi: [1, 5, 10, 25],
+  km: [2, 5, 10, 25],
+};
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -131,7 +145,14 @@ function fixed1(n: number): string {
   return n.toFixed(1).replace('.', mark);
 }
 
-function formatMiles(miles: number, t: TFunction): string {
+/** A place's distance in Discover's unit, from miles: "1.2 mi", "< 0.1 km". */
+function formatPlaceDistance(miles: number, unit: PlaceUnit, t: TFunction): string {
+  if (unit === 'km') {
+    const km = (miles * METRES_PER_MILE) / 1000;
+    return km < 0.1
+      ? t('discover:distance.underKm', { distance: fixed1(0.1) })
+      : t('discover:distance.km', { distance: fixed1(km) });
+  }
   return miles < 0.1
     ? t('discover:distance.underMiles', { distance: fixed1(0.1) })
     : t('discover:distance.miles', { distance: fixed1(miles) });
@@ -314,7 +335,15 @@ export default function DiscoverScreen() {
   const [openNowFilter, setOpenNowFilter] = useState(false);
   const [visitedFilter, setVisitedFilter] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('nearest');
-  const [maxDistanceMi, setMaxDistanceMi] = useState<number | null>(null); // null = any
+  // Miles unless the member picked kilometres (Settings › Distance units).
+  const distanceUnit = discoverDistanceUnit(useDistancePreference());
+  // The chip picked, in the unit it was picked in; null = any. A pick from the
+  // other unit (the setting changed since) matches no chip, so it lapses.
+  const [maxDistancePick, setMaxDistancePick] = useState<{ value: number; unit: PlaceUnit } | null>(null);
+  const maxDistance = maxDistancePick?.unit === distanceUnit ? maxDistancePick.value : null;
+  // Every distance below is compared in miles (_distMi), whatever is on screen.
+  const maxDistanceMi =
+    maxDistance === null ? null : distanceUnit === 'km' ? (maxDistance * 1000) / METRES_PER_MILE : maxDistance;
 
   // Set of partner dbIds the user has previously checked in at (for the
   // "Visited" filter + the gold badge on the map pins).
@@ -576,7 +605,7 @@ export default function DiscoverScreen() {
       );
       return {
         ...p,
-        distance: formatMiles(miles, t),
+        distance: formatPlaceDistance(miles, distanceUnit, t),
         _distMi: miles,
       };
     });
@@ -586,7 +615,7 @@ export default function DiscoverScreen() {
       if (sortMode === 'pts') return b.pts - a.pts;
       return a.name.localeCompare(b.name);
     });
-  }, [rawPartners, userLoc, sortMode, t]);
+  }, [rawPartners, userLoc, sortMode, distanceUnit, t]);
 
   /** Everything that happens once foreground location is actually granted:
    *  first fix, provider coverage, map centring. Split out of the mount effect
@@ -779,14 +808,14 @@ export default function DiscoverScreen() {
     Object.values(areaPartners).forEach(p => {
       if (userLoc) {
         const miles = getDistanceMiles(userLoc.coords.latitude, userLoc.coords.longitude, p.lat, p.lng);
-        m.set(p.id, { ...p, distance: formatMiles(miles, t), _distMi: miles } as Partner);
+        m.set(p.id, { ...p, distance: formatPlaceDistance(miles, distanceUnit, t), _distMi: miles } as Partner);
       } else {
         m.set(p.id, { ...p, _distMi: Infinity } as Partner);
       }
     });
     partners.forEach(p => m.set(p.id, p));
     return m;
-  }, [partners, areaPartners, userLoc, t]);
+  }, [partners, areaPartners, userLoc, distanceUnit, t]);
 
   // What the map may place, honouring the active filters. The nationwide
   // geometry set backs the default view so counts are true everywhere; server
@@ -1352,7 +1381,7 @@ export default function DiscoverScreen() {
             <Pressable onPress={() => {
               setOpenNowFilter(false);
               setVisitedFilter(false);
-              setMaxDistanceMi(null);
+              setMaxDistancePick(null);
               setSearch('');
             }}>
               <Text style={styles.emptyReset}>{t('discover:list.clearFilters')}</Text>
@@ -1825,7 +1854,7 @@ export default function DiscoverScreen() {
             <View style={styles.filtersHeader}>
               <Text style={styles.sortTitle}>{t('discover:filters.title')}</Text>
               <Pressable onPress={() => {
-                setMaxDistanceMi(null);
+                setMaxDistancePick(null);
               }}>
                 <Text style={styles.resetText}>{t('discover:filters.reset')}</Text>
               </Pressable>
@@ -1834,16 +1863,18 @@ export default function DiscoverScreen() {
             {/* Max distance */}
             <Text style={[styles.filterSectionLabel, { marginTop: 20 }]}>{t('discover:filters.maxDistance')}</Text>
             <View style={styles.distanceRow}>
-              {([null, 1, 5, 10, 25] as (number | null)[]).map(d => {
-                const active = maxDistanceMi === d;
+              {([null, ...DISTANCE_FILTER_STEPS[distanceUnit]] as (number | null)[]).map(d => {
+                const active = maxDistance === d;
                 return (
                   <Pressable
                     key={String(d)}
                     style={[styles.distanceChip, active && styles.distanceChipActive]}
-                    onPress={() => setMaxDistanceMi(d)}
+                    onPress={() => setMaxDistancePick(d === null ? null : { value: d, unit: distanceUnit })}
                   >
                     <Text style={[styles.distanceChipText, active && styles.distanceChipTextActive]}>
-                      {d === null ? t('discover:filters.any') : t('discover:distance.miles', { distance: d })}
+                      {d === null
+                        ? t('discover:filters.any')
+                        : t(distanceUnit === 'km' ? 'discover:distance.km' : 'discover:distance.miles', { distance: d })}
                     </Text>
                   </Pressable>
                 );

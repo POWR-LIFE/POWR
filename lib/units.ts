@@ -11,13 +11,23 @@
  *
  * Region comes from the device locale through Intl, which needs no native
  * module (expo-localization would mean a new EAS build, not an OTA).
+ *
+ * Settings › Distance units can override that per device: 'auto' (the default)
+ * is the per-sport, per-region table above; 'mi' or 'km' puts every land sport
+ * in that unit. Swimming stays in metres whatever the setting.
  */
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSyncExternalStore } from 'react';
 
 import type { ActivityType } from '@/constants/activities';
 
 export type DistanceUnit = 'km' | 'mi' | 'm';
 
-const METRES_PER_MILE = 1609.344;
+/** Settings › Distance units. 'auto' is what everyone had before the setting existed. */
+export type DistancePreference = 'auto' | 'mi' | 'km';
+
+export const METRES_PER_MILE = 1609.344;
 
 /** Regions that ride in miles. */
 const MILES_CYCLING = new Set(['GB', 'US', 'LR', 'MM']);
@@ -29,8 +39,9 @@ let regionOverride: string | null | undefined;
 
 /**
  * Pin the region every formatter reads, or pass undefined to go back to the
- * device locale. The seam a future in-app units preference plugs into; tests
- * use it because Jest's locale is whatever the host machine has.
+ * device locale. Tests use it because Jest's locale is whatever the host
+ * machine has. It only feeds the 'auto' rules: a 'mi' or 'km' preference wins
+ * over any region.
  */
 export function setRegionOverride(region: string | null | undefined): void {
     regionOverride = region;
@@ -54,9 +65,92 @@ export function deviceRegion(): string | null {
     return cachedRegion;
 }
 
-/** The long unit a sport's distances are read in. Unknown region → km. */
-export function distanceUnitFor(type: ActivityType | string, region: string | null = deviceRegion()): DistanceUnit {
+// ─── The member's preference ─────────────────────────────────────────────────
+
+const PREFERENCE_KEY = 'powr:distanceUnit';
+
+let preference: DistancePreference = 'auto';
+/** Set once the member picks in this session, so a slow first read can't undo it. */
+let pickedThisSession = false;
+const listeners = new Set<() => void>();
+
+function parsePreference(value: string | null | undefined): DistancePreference {
+    return value === 'mi' || value === 'km' ? value : 'auto';
+}
+
+function commitPreference(next: DistancePreference): void {
+    if (next === preference) return;
+    preference = next;
+    listeners.forEach(listener => listener());
+}
+
+async function readSavedPreference(): Promise<void> {
+    try {
+        const saved = await AsyncStorage.getItem(PREFERENCE_KEY);
+        if (!pickedThisSession) commitPreference(parsePreference(saved));
+    } catch {
+        // Storage unreadable: stay on 'auto', which is what everyone had before.
+    }
+}
+
+/**
+ * Resolves once the saved preference (if any) is applied. Never rejects. Until
+ * then every formatter uses 'auto', so nothing waits on storage to render.
+ */
+export const distancePreferenceReady: Promise<void> = readSavedPreference();
+
+export function getDistancePreference(): DistancePreference {
+    return preference;
+}
+
+/** Pick a unit for this device, or 'auto' to follow sport and region again. */
+export async function setDistancePreference(next: DistancePreference): Promise<void> {
+    pickedThisSession = true;
+    commitPreference(parsePreference(next));
+    try {
+        if (preference === 'auto') await AsyncStorage.removeItem(PREFERENCE_KEY);
+        else await AsyncStorage.setItem(PREFERENCE_KEY, preference);
+    } catch {
+        // Applies for this session; next launch falls back to what was saved.
+    }
+}
+
+function subscribe(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+}
+
+/**
+ * The current preference, re-rendering the caller when it changes. Any screen
+ * that formats distances while it can stay mounted under Settings (a tab)
+ * should call it, even if it ignores the value, so its figures switch too.
+ */
+export function useDistancePreference(): DistancePreference {
+    return useSyncExternalStore(subscribe, getDistancePreference, getDistancePreference);
+}
+
+/**
+ * Discover's place distances. Discover has always been in miles, and
+ * Automatic keeps it there; only an explicit 'km' changes it.
+ */
+export function discoverDistanceUnit(pref: DistancePreference = preference): 'mi' | 'km' {
+    return pref === 'km' ? 'km' : 'mi';
+}
+
+// ─── Units per sport ─────────────────────────────────────────────────────────
+
+/**
+ * The long unit a sport's distances are read in. Swims are always metres; a
+ * 'mi' or 'km' preference covers every other sport; 'auto' follows the region
+ * table, and an unknown region → km.
+ */
+export function distanceUnitFor(
+    type: ActivityType | string,
+    region: string | null = deviceRegion(),
+    pref: DistancePreference = preference,
+): DistanceUnit {
     if (type === 'swimming') return 'm';
+    if (pref !== 'auto') return pref;
     if (!region) return 'km';
     if (type === 'cycling') return MILES_CYCLING.has(region) ? 'mi' : 'km';
     return MILES_RUNNING.has(region) ? 'mi' : 'km';

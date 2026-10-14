@@ -15,6 +15,17 @@
       "body": "POWR is back to the languages that are ready."
     }
   },
+  "units": {
+    "section": "Units",
+    "title": "Distance units",
+    "hint": "Automatic uses miles on Discover and your region's usual units for workouts.",
+    "auto": "Automatic",
+    "miles": "Miles",
+    "milesDetail": "mi · mph",
+    "kilometres": "Kilometres",
+    "kilometresDetail": "km · km/h",
+    "swimNote": "Swims always stay in metres."
+  },
   "main": {
     "title": "Settings",
     "section": {

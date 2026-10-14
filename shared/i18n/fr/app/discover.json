@@ -1,7 +1,9 @@
 {
   "distance": {
     "miles": "{{distance}} mi",
-    "underMiles": "< {{distance}} mi"
+    "underMiles": "< {{distance}} mi",
+    "km": "{{distance}} km",
+    "underKm": "< {{distance}} km"
   },
   "hours": {
     "closedToday": "Fermé aujourd’hui",

@@ -15,6 +15,17 @@
       "body": "POWR revient aux langues qui sont prêtes."
     }
   },
+  "units": {
+    "section": "Unités",
+    "title": "Unités de distance",
+    "hint": "Automatique utilise les miles dans Découvrir et les unités habituelles de ta région pour tes séances.",
+    "auto": "Automatique",
+    "miles": "Miles",
+    "milesDetail": "mi · mph",
+    "kilometres": "Kilomètres",
+    "kilometresDetail": "km · km/h",
+    "swimNote": "La natation reste toujours en mètres."
+  },
   "main": {
     "title": "Paramètres",
     "section": {

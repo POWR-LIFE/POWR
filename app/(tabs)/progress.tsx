@@ -36,6 +36,7 @@ import { deriveBodySignals, fetchBodyTrends, isEmptyTrends, readinessOf, type Bo
 import { isPausedProvider } from '@/lib/health/providers';
 import { fetchProfile } from '@/lib/api/user';
 import { orderedProgressActivities, weeklyDistanceLabel, WEEKLY_STEPS_TARGET } from '@/lib/weeklyActivities';
+import { useDistancePreference } from '@/lib/units';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,9 @@ export default function ProgressScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const { weekActiveDays, weeklyMetrics, refresh: refreshActivity } = useActivity();
+  // Settings › Distance units sits on top of this tab, which stays mounted:
+  // subscribing re-renders the radials, workouts and breakdown in the new unit.
+  useDistancePreference();
   // Which activities have EVER had a session — the gate that decides whether a
   // preference gets a radial at all. Lives under the ['activity'] key so the
   // revision bump in useActivity refetches it when a new session lands.
