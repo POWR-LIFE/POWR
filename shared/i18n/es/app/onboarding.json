@@ -1,0 +1,144 @@
+{
+  "profile": {
+    "eyebrow": "TU PERFIL",
+    "headline": "Elige tu <gold>nombre.</gold>",
+    "body": "Así aparecerás en la clasificación.",
+    "avatarHint": "Añade una foto (opcional)",
+    "displayName": {
+      "label": "Nombre visible",
+      "placeholder": "Tu nombre"
+    },
+    "username": {
+      "label": "Nombre de usuario",
+      "placeholder": "usuario",
+      "taken": "Ese nombre de usuario ya está en uso.",
+      "invalid": "Mínimo {{min}} caracteres: letras, números o _.",
+      "rules": "Letras minúsculas, números y guiones bajos."
+    },
+    "invite": {
+      "label": "Código de invitación (opcional)",
+      "placeholder": "CÓDIGO DE 8 CARACTERES",
+      "helper": "¿Te han pasado un código? Los dos ganaréis POWR después de tu primer entreno."
+    },
+    "continue": "CONTINUAR",
+    "errors": {
+      "justTaken": "Alguien acaba de quedarse con ese nombre de usuario. Prueba con otro.",
+      "generic": "Algo ha ido mal"
+    },
+    "photo": {
+      "title": "Foto de perfil",
+      "message": "Elige de dónde",
+      "take": "Hacer foto",
+      "library": "Elegir de la fototeca",
+      "remove": "Quitar foto",
+      "permissionTitle": "Permiso necesario",
+      "cameraDenied": "Permite el acceso a la cámara en Ajustes para hacer una foto.",
+      "libraryDenied": "Permite el acceso a tus fotos en Ajustes para elegir una.",
+      "errorTitle": "No se ha podido elegir la foto",
+      "errorBody": "Vuelve a intentarlo."
+    }
+  },
+  "activities": {
+    "eyebrow": "YA CASI ESTÁ",
+    "headline": "Elige cómo te mueves",
+    "subhead": {
+      "observed_one": "Tu dispositivo ya registra {{labels}}: lo hemos marcado. Ajústalo si quieres, hasta {{max}}.",
+      "observed_other": "Tu dispositivo ya registra {{labels}}: los hemos marcado. Ajústalo si quieres, hasta {{max}}.",
+      "default": "Elige hasta {{max}} actividades que hagas de verdad. El gym viene marcado: desmárcalo si no es lo tuyo."
+    },
+    "hint": {
+      "pickOne": "Elige al menos una actividad",
+      "roomLeft_one": "Aún puedes añadir {{count}} actividad más, o seguir",
+      "roomLeft_other": "Aún puedes añadir {{count}} actividades más, o seguir"
+    },
+    "continue": "CONTINUAR"
+  },
+  "picker": {
+    "searchPlaceholder": "Busca: pádel, boxeo, zumba…",
+    "noResults": "Nada coincide con «{{query}}». Prueba con otro nombre o elige lo más parecido.",
+    "logTag": "MANUAL",
+    "auto": {
+      "heading": "SE REGISTRAN SOLAS",
+      "sub": "Con lo que tienes conectado, estas se registran solas."
+    },
+    "manual": {
+      "heading": "REGÍSTRALO A MANO",
+      "sub": "Estas también cuentan: regístralas con un toque. <cta>Conecta un wearable</cta> y se registrarán solas."
+    }
+  },
+  "gym": {
+    "eyebrow": "DÓNDE ENTRENAS",
+    "headline": "Tu <gold>gimnasio.</gold>",
+    "sub": "Elígelo ahora para ganar más rápido, o añádelo luego.",
+    "searchPlaceholder": "Busca tu gimnasio",
+    "empty": {
+      "noMatch": "Ningún gimnasio coincide con tu búsqueda.",
+      "noneNearby": "No hemos encontrado gimnasios cerca de ti. Prueba a buscarlo por su nombre."
+    },
+    "request": {
+      "prompt": "¿No encuentras tu centro? <cta>Solicítalo</cta>",
+      "title": "Solicitar un gimnasio",
+      "sub": "Dinos dónde entrenas y nos pondremos a ello.",
+      "namePlaceholder": "Nombre del gimnasio",
+      "locationPlaceholder": "Ciudad o dirección (opcional)",
+      "submit": "ENVIAR SOLICITUD",
+      "sentTitle": "¡Gracias!",
+      "sentBody": "Le echaremos un vistazo e intentaremos añadirlo."
+    },
+    "cta": {
+      "continue": "CONTINUAR",
+      "skip": "AHORA NO"
+    }
+  },
+  "achievement": {
+    "ring": {
+      "eyebrow": "DÍA",
+      "of": "de 7"
+    },
+    "headline": "7 días ya en el bote.",
+    "bonus": {
+      "label": "Ganado hoy",
+      "amount": "+20 POWR"
+    },
+    "invite": {
+      "receipt": "Código de invitación {{code}}: los dos ganaréis POWR después de tu primer entreno.",
+      "title": "¿Te han pasado un código de invitación?",
+      "titleFixing": "Revisa ese código de invitación",
+      "sub": "Última oportunidad para introducirlo: los dos ganaréis POWR después de tu primer entreno, y no se puede añadir más tarde.",
+      "subFixing": "No lo hemos reconocido. Compara los 8 caracteres con el mensaje que te han enviado.",
+      "placeholder": "CÓDIGO DE INVITACIÓN",
+      "paste": "PEGAR EL CÓDIGO"
+    },
+    "paste": {
+      "emptyTitle": "Nada que pegar",
+      "emptyBody": "En tu portapapeles no hay nada que parezca un código de invitación."
+    },
+    "cta": {
+      "go": "¡VAMOS! →",
+      "busy": "UN SEGUNDO…"
+    },
+    "alerts": {
+      "title": "Código de invitación",
+      "continue": "Continuar",
+      "skip": "Omitir",
+      "applied": {
+        "title": "Código de invitación aplicado 🎉",
+        "body": "Los dos ganaréis POWR en cuanto registres tu primer entreno verificado. ¡A moverse!",
+        "go": "¡Vamos!"
+      },
+      "invalid": {
+        "title": "Código de invitación no reconocido",
+        "body": "Comprueba los 8 caracteres con el mensaje que te han enviado: este es el único sitio donde puedes introducirlo.",
+        "fix": "Corregir código"
+      },
+      "selfReferral": "Ese es tu propio código. ¡Compártelo con tus amigos!",
+      "alreadyReferred": "Ese código de invitación ya está aplicado en esta cuenta.",
+      "notAuthenticated": "Vuelve a iniciar sesión para aplicar tu código.",
+      "failed": {
+        "title": "No se ha podido aplicar tu código",
+        "body": "Comprueba tu conexión y vuelve a intentarlo: el código solo se puede aplicar ahora, durante el registro.",
+        "retry": "Reintentar"
+      }
+    }
+  }
+}

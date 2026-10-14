@@ -9,6 +9,7 @@ import {
 import { type ActivityType } from '@/constants/activities';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Dimensions, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const GOLD = '#E8D200';
@@ -55,6 +56,7 @@ export default function ActivityCatalogPicker({
     /** Makes "Connect a wearable" in the log-it-yourself sub-line tappable. */
     onConnectWearable?: () => void;
 }) {
+    const { t } = useTranslation();
     const [query, setQuery] = useState('');
     const results = useMemo(() => searchCatalog(query), [query]);
     const searching = query.trim().length > 0;
@@ -124,7 +126,7 @@ export default function ActivityCatalogPicker({
                     {a.label}
                 </Text>
                 {searching && !isAuto && !isSelected && (
-                    <Text style={styles.logTag}>LOG</Text>
+                    <Text style={styles.logTag}>{t('onboarding:picker.logTag')}</Text>
                 )}
                 {isSelected && (
                     <View style={styles.chipCheck}>
@@ -144,7 +146,7 @@ export default function ActivityCatalogPicker({
                     style={styles.searchInput}
                     value={query}
                     onChangeText={setQuery}
-                    placeholder="Search — padel, boxing, zumba…"
+                    placeholder={t('onboarding:picker.searchPlaceholder')}
                     placeholderTextColor="rgba(255,255,255,0.25)"
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -161,7 +163,7 @@ export default function ActivityCatalogPicker({
                     <View style={styles.chipGrid}>{sortAutoFirst(results).map(renderChip)}</View>
                 ) : (
                     <Text style={styles.noResults}>
-                        Nothing matching “{query.trim()}” — try another name, or pick the closest match.
+                        {t('onboarding:picker.noResults', { query: query.trim() })}
                     </Text>
                 )
             ) : manualEntries.length === 0 ? (
@@ -180,24 +182,23 @@ export default function ActivityCatalogPicker({
             ) : (
                 <>
                     <View style={styles.group}>
-                        <Text style={styles.groupHeading}>COUNTS AUTOMATICALLY</Text>
+                        <Text style={styles.groupHeading}>{t('onboarding:picker.auto.heading')}</Text>
                         <Text style={styles.groupSub}>
-                            With your setup these track on their own.
+                            {t('onboarding:picker.auto.sub')}
                         </Text>
                         <View style={styles.chipGrid}>{autoEntries.map(renderChip)}</View>
                     </View>
                     <View style={styles.group}>
-                        <Text style={styles.groupHeading}>LOG IT YOURSELF</Text>
+                        <Text style={styles.groupHeading}>{t('onboarding:picker.manual.heading')}</Text>
                         <Text style={styles.groupSub}>
-                            These count too — log them in a tap.{' '}
-                            {onConnectWearable ? (
-                                <Text style={styles.groupSubLink} onPress={onConnectWearable}>
-                                    Connect a wearable
-                                </Text>
-                            ) : (
-                                'Connect a wearable'
-                            )}
-                            {' '}and they track automatically.
+                            <Trans
+                                i18nKey="onboarding:picker.manual.sub"
+                                components={{
+                                    cta: onConnectWearable
+                                        ? <Text style={styles.groupSubLink} onPress={onConnectWearable} />
+                                        : <></>,
+                                }}
+                            />
                         </Text>
                         <View style={styles.chipGrid}>{manualEntries.map(renderChip)}</View>
                     </View>

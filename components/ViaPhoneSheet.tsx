@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -28,17 +29,18 @@ type Props = {
  */
 export default function ViaPhoneSheet({ brand, phoneConnected, busy, onConnectPhone, onClose }: Props) {
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const platform = Platform.OS === 'android' ? 'android' : Platform.OS === 'ios' ? 'ios' : 'web';
     // Web has no phone health store to connect (getNativeProviderId() is null),
     // so it gets the explanation without a connect action.
     const web = platform === 'web';
-    const store = platform === 'android' ? 'Health Connect' : 'Apple Health';
+    const android = platform === 'android';
     const copy = brand ? viaPhoneCopy(brand.id, brand.name, platform) : null;
 
     return (
         <Modal visible={!!brand} animationType="slide" transparent onRequestClose={onClose}>
             <View style={styles.overlay}>
-                <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+                <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('health:viaPhone.close')} />
                 {copy && <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
                     <View style={styles.handle} />
                     <View style={styles.iconRow}>
@@ -56,9 +58,9 @@ export default function ViaPhoneSheet({ brand, phoneConnected, busy, onConnectPh
                                 color={phoneConnected ? GREEN : GOLD}
                             />
                             <View style={styles.stepInfo}>
-                                <Text style={styles.stepTitle}>1. Connect {store}</Text>
+                                <Text style={styles.stepTitle}>{android ? t('health:viaPhone.step1HealthConnect') : t('health:viaPhone.step1AppleHealth')}</Text>
                                 <Text style={styles.stepDesc}>
-                                    {phoneConnected ? 'Connected' : `POWR reads your ${brand!.name} data from it`}
+                                    {phoneConnected ? t('health:viaPhone.connected') : t('health:viaPhone.readsFrom', { brand: brand!.name })}
                                 </Text>
                             </View>
                         </View>
@@ -78,7 +80,7 @@ export default function ViaPhoneSheet({ brand, phoneConnected, busy, onConnectPh
                             style={({ pressed }) => [styles.connectBtn, pressed && { opacity: 0.8 }]}
                             onPress={onClose}
                         >
-                            <Text style={styles.connectBtnText}>{web ? 'GOT IT' : 'DONE'}</Text>
+                            <Text style={styles.connectBtnText}>{web ? t('health:actions.gotIt') : t('health:actions.done')}</Text>
                         </Pressable>
                     ) : (
                         <>
@@ -88,11 +90,13 @@ export default function ViaPhoneSheet({ brand, phoneConnected, busy, onConnectPh
                                 disabled={busy}
                             >
                                 <Text style={styles.connectBtnText}>
-                                    {busy ? 'CONNECTING…' : `CONNECT ${store.toUpperCase()}`}
+                                    {busy
+                                        ? t('health:actions.connecting')
+                                        : android ? t('health:actions.connectHealthConnect') : t('health:actions.connectAppleHealth')}
                                 </Text>
                             </Pressable>
                             <Pressable style={styles.skipBtn} onPress={onClose}>
-                                <Text style={styles.skipBtnText}>Not now</Text>
+                                <Text style={styles.skipBtnText}>{t('health:actions.notNow')}</Text>
                             </Pressable>
                         </>
                     )}

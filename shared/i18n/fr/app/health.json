@@ -1,0 +1,81 @@
+{
+  "actions": {
+    "continue": "CONTINUER",
+    "done": "TERMINÉ",
+    "gotIt": "COMPRIS",
+    "notNow": "Plus tard",
+    "connecting": "CONNEXION…",
+    "connectAppleHealth": "CONNECTER L’APP SANTÉ",
+    "connectHealthConnect": "CONNECTER SANTÉ CONNECT"
+  },
+  "bonus": "+20 POWR",
+  "devBuild": {
+    "title": "Build de développement requis",
+    "body": "Santé Connect n’est pas disponible dans Expo Go — lance un build de développement pour tester."
+  },
+  "installHealthConnect": {
+    "title": "Installe Santé Connect",
+    "body": "Santé Connect permet à POWR de lire les pas et l’activité enregistrés par ton téléphone. C’est une app Google gratuite : installe-la, puis reviens ici pour la connecter.",
+    "openPlayStore": "OUVRIR LE PLAY STORE"
+  },
+  "onboarding": {
+    "eyebrow": "L’ESSENTIEL",
+    "eyebrowSyncing": "PRESQUE FINI",
+    "headline": "Voilà comment POWR <gold>compte ton activité.</gold>",
+    "headlineSyncing": "On récupère <gold>ton historique.</gold>",
+    "subhead": "Pas, séances et sommeil arrivent depuis ton téléphone : chaque mouvement rapporte, automatiquement.",
+    "subheadWithWearable": "Ta montre compte les séances, ton téléphone compte les pas. Il te faut les deux pour tout gagner.",
+    "syncing": "SYNCHRO DE TES DONNÉES…",
+    "skip": "Continuer sans connecter",
+    "sync": {
+      "reading": "LECTURE DES DONNÉES SANTÉ...",
+      "steps": "{{steps}} pas",
+      "sleep": "{{hours}} h de sommeil",
+      "noActivity": "Aucune activité",
+      "estPoints": "env. +{{points}} POWR",
+      "sessions": "{{sessions}} séances synchronisées",
+      "streak": "série de {{days}} jours"
+    },
+    "picker": {
+      "title": "Choisis ta source principale",
+      "body": "Tu en as connecté plusieurs. Choisis celle que POWR utilise comme référence pour tes points."
+    }
+  },
+  "wearables": {
+    "eyebrow": "UNE MONTRE CONNECTÉE ?",
+    "headline": "Ta montre sait <gold>tout.</gold>",
+    "bonusHint": "si tu en connectes une",
+    "viaHealthConnect": "VIA SANTÉ CONNECT",
+    "viaAppleHealth": "VIA L’APP SANTÉ",
+    "viaPhone": "VIA TON TÉLÉPHONE",
+    "noWearable": "Je n’ai pas de montre connectée"
+  },
+  "samsung": {
+    "title": "Connecte Samsung Health",
+    "body": "Samsung Health partage tes séances, tes pas et ton sommeil via Santé Connect. Deux étapes rapides :",
+    "step1Title": "1. Connecte Santé Connect",
+    "step1Desc": "POWR lit tes données depuis Santé Connect",
+    "step2Title": "2. Active le partage dans Samsung Health",
+    "step2Desc": "Samsung Health → Paramètres → Santé Connect → autoriser",
+    "openApp": "Ouvrir Samsung Health"
+  },
+  "scene": {
+    "stepsToday": "PAS AUJOURD’HUI",
+    "sleepValue": "7 h 20",
+    "sleep": "SOMMEIL",
+    "workoutValue": "Salle · 48 min",
+    "workout": "SÉANCE",
+    "doublePoints": "2× PTS",
+    "stepsCounting": "{{steps}} pas déjà comptés",
+    "connected": "Connecté — tes données arrivent",
+    "sourcesIos": "Apple Watch + toutes les apps qui alimentent Santé",
+    "sourcesAndroid": "Google Fit, Galaxy et Pixel Watch, et plus encore"
+  },
+  "viaPhone": {
+    "close": "Fermer",
+    "step1AppleHealth": "1. Connecte l’app Santé",
+    "step1HealthConnect": "1. Connecte Santé Connect",
+    "connected": "Connecté",
+    "readsFrom": "POWR y lit tes données {{brand}}"
+  }
+}

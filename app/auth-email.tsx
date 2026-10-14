@@ -6,6 +6,7 @@ import GeometricBackground from '@/components/GeometricBackground';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizeMemberId } from '@/shared/memberId';
 import {
@@ -32,6 +33,7 @@ export default function AuthEmailScreen() {
     const insets = useSafeAreaInsets();
     const { signInWithEmail, signUpWithEmail } = useAuth();
     const params = useLocalSearchParams<{ mode?: string }>();
+    const { t } = useTranslation();
 
     const [mode, setMode] = useState<'signin' | 'signup'>(params.mode === 'signin' ? 'signin' : 'signup');
     const [email, setEmail] = useState('');
@@ -67,11 +69,11 @@ export default function AuthEmailScreen() {
     const handleSubmit = async () => {
         setError(null);
 
-        if (!email.trim()) { setError('Please enter your email.'); return; }
-        if (!password) { setError('Please enter your password.'); return; }
+        if (!email.trim()) { setError(t('auth:email.error.emailRequired')); return; }
+        if (!password) { setError(t('auth:email.error.passwordRequired')); return; }
         if (mode === 'signup') {
-            if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
-            if (password !== confirmPassword) { setError('Passwords don\'t match.'); return; }
+            if (password.length < 6) { setError(t('auth:email.error.passwordTooShort')); return; }
+            if (password !== confirmPassword) { setError(t('auth:email.error.passwordMismatch')); return; }
         }
 
         setLoading(true);
@@ -111,7 +113,7 @@ export default function AuthEmailScreen() {
     const handleForgotPassword = async () => {
         setError(null);
         if (!email.trim()) {
-            setError('Enter your email above, then tap "Forgot password?" again.');
+            setError(t('auth:email.error.forgotNeedsEmail'));
             return;
         }
         setResetLoading(true);
@@ -131,21 +133,23 @@ export default function AuthEmailScreen() {
             <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }]}>
                 <View style={styles.confirmBox}>
                     <Text style={styles.confirmIcon}>✉</Text>
-                    <Text style={styles.confirmTitle}>Check your inbox</Text>
+                    <Text style={styles.confirmTitle}>{t('auth:email.inbox.title')}</Text>
                     <Text style={styles.confirmBody}>
-                        If an account exists for{'\n'}
-                        <Text style={styles.confirmEmail}>{email.trim()}</Text>
-                        {'\n'}we sent a link to reset your password.
+                        <Trans
+                            i18nKey="auth:email.inbox.resetBody"
+                            values={{ email: email.trim() }}
+                            components={{ email: <Text style={styles.confirmEmail} /> }}
+                        />
                     </Text>
                     <Text style={styles.confirmHint}>
-                        Open the link on this device to set a new password.
+                        {t('auth:email.inbox.resetHint')}
                     </Text>
                 </View>
                 <Pressable
                     onPress={() => { setResetSent(false); setMode('signin'); }}
                     style={({ pressed }) => [styles.secondaryButton, pressed && { opacity: 0.7 }]}
                 >
-                    <Text style={styles.secondaryLabel}>Back to Log In</Text>
+                    <Text style={styles.secondaryLabel}>{t('auth:email.inbox.backToLogIn')}</Text>
                 </Pressable>
             </View>
         );
@@ -162,22 +166,23 @@ export default function AuthEmailScreen() {
             <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }]}>
                 <View style={styles.confirmBox}>
                     <Text style={styles.confirmIcon}>✉</Text>
-                    <Text style={styles.confirmTitle}>Check your inbox</Text>
+                    <Text style={styles.confirmTitle}>{t('auth:email.inbox.title')}</Text>
                     <Text style={styles.confirmBody}>
-                        If{'\n'}
-                        <Text style={styles.confirmEmail}>{email.trim()}</Text>
-                        {'\n'}is new to POWR, we sent a confirmation link.
+                        <Trans
+                            i18nKey="auth:email.inbox.existingBody"
+                            values={{ email: email.trim() }}
+                            components={{ email: <Text style={styles.confirmEmail} /> }}
+                        />
                     </Text>
                     <Text style={styles.confirmHint}>
-                        Already signed up? Head back and log in — and if you started with
-                        Google or Apple, use that button instead of a password.
+                        {t('auth:email.inbox.existingHint')}
                     </Text>
                 </View>
                 <Pressable
                     onPress={() => { setExistingAccount(false); setMode('signin'); }}
                     style={({ pressed }) => [styles.secondaryButton, pressed && { opacity: 0.7 }]}
                 >
-                    <Text style={styles.secondaryLabel}>Back to Log In</Text>
+                    <Text style={styles.secondaryLabel}>{t('auth:email.inbox.backToLogIn')}</Text>
                 </Pressable>
             </View>
         );
@@ -188,20 +193,23 @@ export default function AuthEmailScreen() {
             <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }]}>
                 <View style={styles.confirmBox}>
                     <Text style={styles.confirmIcon}>✉</Text>
-                    <Text style={styles.confirmTitle}>Check your inbox</Text>
+                    <Text style={styles.confirmTitle}>{t('auth:email.inbox.title')}</Text>
                     <Text style={styles.confirmBody}>
-                        We sent a confirmation link to{'\n'}
-                        <Text style={styles.confirmEmail}>{email}</Text>
+                        <Trans
+                            i18nKey="auth:email.inbox.confirmBody"
+                            values={{ email }}
+                            components={{ email: <Text style={styles.confirmEmail} /> }}
+                        />
                     </Text>
                     <Text style={styles.confirmHint}>
-                        Click the link to activate your account, then come back and log in.
+                        {t('auth:email.inbox.confirmHint')}
                     </Text>
                 </View>
                 <Pressable
                     onPress={() => setMode('signin')}
                     style={({ pressed }) => [styles.secondaryButton, pressed && { opacity: 0.7 }]}
                 >
-                    <Text style={styles.secondaryLabel}>Back to Log In</Text>
+                    <Text style={styles.secondaryLabel}>{t('auth:email.inbox.backToLogIn')}</Text>
                 </Pressable>
             </View>
         );
@@ -238,10 +246,10 @@ export default function AuthEmailScreen() {
             >
                 {/* Header */}
                 <Text style={styles.headline}>
-                    {mode === 'signup' ? 'Create\n' : 'Welcome\n'}
-                    <Text style={styles.headlineGold}>
-                        {mode === 'signup' ? 'your account.' : 'back.'}
-                    </Text>
+                    <Trans
+                        i18nKey={mode === 'signup' ? 'auth:email.headline.signup' : 'auth:email.headline.signin'}
+                        components={{ gold: <Text style={styles.headlineGold} /> }}
+                    />
                 </Text>
 
                 {/* Mode toggle */}
@@ -251,7 +259,7 @@ export default function AuthEmailScreen() {
                         onPress={() => { setMode('signup'); setError(null); }}
                     >
                         <Text style={[styles.toggleLabel, mode === 'signup' && styles.toggleLabelActive]}>
-                            Sign Up
+                            {t('auth:email.toggle.signUp')}
                         </Text>
                     </Pressable>
                     <Pressable
@@ -259,7 +267,7 @@ export default function AuthEmailScreen() {
                         onPress={() => { setMode('signin'); setError(null); }}
                     >
                         <Text style={[styles.toggleLabel, mode === 'signin' && styles.toggleLabelActive]}>
-                            Log In
+                            {t('auth:email.toggle.logIn')}
                         </Text>
                     </Pressable>
                 </View>
@@ -267,13 +275,13 @@ export default function AuthEmailScreen() {
                 {/* Form */}
                 <View style={styles.form}>
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>EMAIL</Text>
+                        <Text style={styles.fieldLabel}>{t('auth:email.field.email')}</Text>
                         <TextInput
                             style={[
                                 styles.input,
                                 focusedField === 'email' && styles.inputFocused,
                             ]}
-                            placeholder="you@example.com"
+                            placeholder={t('auth:email.placeholder.email')}
                             placeholderTextColor="rgba(255,255,255,0.22)"
                             value={email}
                             onChangeText={setEmail}
@@ -287,14 +295,14 @@ export default function AuthEmailScreen() {
                     </View>
                     
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>PASSWORD</Text>
+                        <Text style={styles.fieldLabel}>{t('auth:email.field.password')}</Text>
                         <View style={[
                             styles.inputContainer,
                             focusedField === 'password' && styles.inputFocused
                         ]}>
                             <TextInput
                                 style={styles.inputBorderless}
-                                placeholder={mode === 'signup' ? 'Min. 6 characters' : '••••••••'}
+                                placeholder={mode === 'signup' ? t('auth:email.placeholder.newPassword') : '••••••••'}
                                 placeholderTextColor="rgba(255,255,255,0.22)"
                                 value={password}
                                 onChangeText={setPassword}
@@ -326,21 +334,21 @@ export default function AuthEmailScreen() {
                         >
                             {resetLoading
                                 ? <ActivityIndicator color={GOLD} size="small" />
-                                : <Text style={styles.forgotLink}>Forgot password?</Text>
+                                : <Text style={styles.forgotLink}>{t('auth:email.forgotPassword')}</Text>
                             }
                         </Pressable>
                     )}
 
                     {mode === 'signup' && (
                         <View style={styles.fieldGroup}>
-                            <Text style={styles.fieldLabel}>CONFIRM PASSWORD</Text>
+                            <Text style={styles.fieldLabel}>{t('auth:email.field.confirmPassword')}</Text>
                             <View style={[
                                 styles.inputContainer,
                                 focusedField === 'confirm' && styles.inputFocused
                             ]}>
                                 <TextInput
                                     style={styles.inputBorderless}
-                                    placeholder="Re-enter your password"
+                                    placeholder={t('auth:email.placeholder.confirmPassword')}
                                     placeholderTextColor="rgba(255,255,255,0.22)"
                                     value={confirmPassword}
                                     onChangeText={setConfirmPassword}
@@ -366,17 +374,17 @@ export default function AuthEmailScreen() {
 
                     {mode === 'signup' && (
                         <View style={styles.fieldGroup}>
-                            <Text style={styles.fieldLabel}>INVITE CODE (OPTIONAL)</Text>
+                            <Text style={styles.fieldLabel}>{t('auth:email.field.inviteCode')}</Text>
                             <TextInput
                                 style={[
                                     styles.input,
                                     styles.inviteInput,
                                     focusedField === 'invite' && styles.inputFocused,
                                 ]}
-                                placeholder="8-CHARACTER CODE"
+                                placeholder={t('auth:email.placeholder.inviteCode')}
                                 placeholderTextColor="rgba(255,255,255,0.22)"
                                 value={inviteCode}
-                                onChangeText={t => setInviteCode(t.toUpperCase())}
+                                onChangeText={text => setInviteCode(text.toUpperCase())}
                                 onFocus={() => setFocusedField('invite')}
                                 onBlur={() => setFocusedField(null)}
                                 autoCapitalize="characters"
@@ -385,8 +393,8 @@ export default function AuthEmailScreen() {
                             />
                             <Text style={styles.inviteHint}>
                                 {inviteFromLink
-                                    ? 'From your friend\u2019s invite link \u2014 you\u2019ll both earn POWR after your first workout.'
-                                    : 'Got a code from a friend? Enter it and you\u2019ll both earn POWR after your first workout.'}
+                                    ? t('auth:email.inviteHint.fromLink')
+                                    : t('auth:email.inviteHint.manual')}
                             </Text>
                         </View>
                     )}
@@ -406,15 +414,17 @@ export default function AuthEmailScreen() {
                     >
                         {loading
                             ? <ActivityIndicator color="#0a0a0a" />
-                            : <Text style={styles.primaryLabel}>{mode === 'signup' ? 'CREATE ACCOUNT' : 'LOG IN'}</Text>
+                            : <Text style={styles.primaryLabel}>{mode === 'signup' ? t('auth:email.submit.signup') : t('auth:email.submit.signin')}</Text>
                         }
                     </Pressable>
 
                     {/* Toggle hint */}
                     <Pressable onPress={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setError(null); }}>
                         <Text style={styles.switchHint}>
-                            {mode === 'signup' ? 'Already have an account? ' : 'Don\'t have an account? '}
-                            <Text style={styles.switchLink}>{mode === 'signup' ? 'Log in' : 'Sign up'}</Text>
+                            <Trans
+                                i18nKey={mode === 'signup' ? 'auth:email.switch.toSignin' : 'auth:email.switch.toSignup'}
+                                components={{ action: <Text style={styles.switchLink} /> }}
+                            />
                         </Text>
                     </Pressable>
                 </View>

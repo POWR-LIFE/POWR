@@ -1,0 +1,163 @@
+{
+  "cta": {
+    "requesting": "DEMANDE EN COURS...",
+    "openSettings": "OUVRIR LES PARAMÈTRES"
+  },
+  "location": {
+    "eyebrow": "LOCALISATION",
+    "headline": "Débloque la\n<gold>carte.</gold>",
+    "bodyVenue": "Lieux partenaires et check-ins automatiques — tout commence là où tu es.",
+    "bodyGym": "Salles partenaires et check-ins automatiques — tout commence là où tu es.",
+    "offVenue": "La localisation est coupée pour POWR : tes séances dans les lieux partenaires ne peuvent pas être vérifiées, et ton téléphone ne te le redemandera pas. Réactive-la dans <strong>{{path}}</strong>.",
+    "offGym": "La localisation est coupée pour POWR : tes séances dans les salles partenaires ne peuvent pas être vérifiées, et ton téléphone ne te le redemandera pas. Réactive-la dans <strong>{{path}}</strong>.",
+    "cta": {
+      "allowIos": "LORSQUE L’APP EST ACTIVE",
+      "allowAndroid": "ACTIVER LA LOCALISATION"
+    },
+    "bonus": "+20 POWR",
+    "skip": "Continuer sans localisation",
+    "preciseAlert": {
+      "title": "Active la position exacte",
+      "body": "POWR vérifie que tu es vraiment dans un lieu partenaire, et une position approximative ne le permet pas. Choisis « Exacte » pour que tes séances comptent.",
+      "fix": "Corriger",
+      "later": "Plus tard"
+    }
+  },
+  "precise": {
+    "eyebrow": "POSITION EXACTE",
+    "headline": "Assez près\npour <gold>compter.</gold>",
+    "bodyGym": "POWR vérifie que tu es vraiment à la salle, à quelques mètres près. Une position approximative ne le permet pas, donc tes séances ne compteront pas. Active <strong>Position exacte</strong> dans <strong>{{path}}</strong>.",
+    "bodyVenue": "POWR vérifie que tu es vraiment dans le lieu partenaire, à quelques mètres près. Une position approximative ne le permet pas, donc tes séances ne compteront pas. Active <strong>Position exacte</strong> dans <strong>{{path}}</strong>."
+  },
+  "background": {
+    "eyebrow": "SUIVI AUTOMATIQUE",
+    "headline": "Gagne pendant\nque tu <gold>bouges.</gold>",
+    "body": "Pas besoin d’appuyer sur démarrer. POWR fait ton check-in depuis ta poche, même quand l’app est fermée. Ça ne marche qu’avec <strong>{{always}}</strong>.",
+    "offGym": "La localisation est activée, mais seulement quand tu es dans l’app : chaque passage à la salle avec POWR fermé ne te rapporte rien. Choisis <strong>{{always}}</strong> dans <strong>{{path}}</strong>.",
+    "offVenue": "La localisation est activée, mais seulement quand tu es dans l’app : chaque passage dans un lieu partenaire avec POWR fermé ne te rapporte rien. Choisis <strong>{{always}}</strong> dans <strong>{{path}}</strong>.",
+    "alwaysIos": "« Toujours »",
+    "alwaysAndroid": "« Toujours autoriser »",
+    "cta": {
+      "allowIos": "RÉGLER SUR TOUJOURS",
+      "allowAndroid": "TOUJOURS AUTORISER"
+    },
+    "skip": "Continuer sans autoriser",
+    "iosAlert": {
+      "title": "Active « Toujours » pour les check-ins automatiques",
+      "body": "Pour détecter tes arrivées dans les lieux partenaires quand POWR est fermé, règle la position sur « Toujours » dans Réglages › Confidentialité et sécurité › Service de localisation › POWR.",
+      "later": "Plus tard",
+      "openSettings": "Ouvrir Réglages"
+    }
+  },
+  "locationOk": {
+    "headline": "Tout est\n<gold>prêt.</gold>",
+    "bodyGym": "POWR voit où tu es et fait ton check-in automatiquement. Coupe la localisation et tu ne gagnes plus rien dans les lieux géolocalisés ni dans les salles partenaires.",
+    "bodyVenue": "POWR voit où tu es et fait ton check-in automatiquement. Coupe la localisation et tu ne gagnes plus rien dans les lieux partenaires."
+  },
+  "battery": {
+    "eyebrow": "ACTIVITÉ EN ARRIÈRE-PLAN",
+    "headline": "Pas de sieste\n<gold>pour POWR.</gold>",
+    "bodyGym": "POWR garde un œil discret ouvert pour repérer tes arrivées à la salle quand l’app est fermée. L’optimisation de la batterie lui ferme cet œil sans te prévenir.",
+    "bodyVenue": "POWR garde un œil discret ouvert pour repérer tes arrivées dans les lieux partenaires quand l’app est fermée. L’optimisation de la batterie lui ferme cet œil sans te prévenir.",
+    "cta": "AUTORISER SANS RESTRICTION"
+  },
+  "notifications": {
+    "eyebrow": "NOTIFICATIONS",
+    "headline": "Sache quand\ntu <gold>gagnes.</gold>",
+    "body": "Une séance validée, une série en danger, une récompense qui tombe près de toi — tu le sais à la seconde. Tu peux couper chaque alerte quand tu veux.",
+    "off": "Les alertes de POWR sont coupées au niveau du système : rien de ce qui suit ne peut t’atteindre, et ton téléphone ne te le redemandera pas. Active-les dans <strong>{{path}}</strong>.",
+    "cta": "ACTIVER LES ALERTES",
+    "skip": "Continuer sans alertes"
+  },
+  "fix": {
+    "notNow": "Pas maintenant",
+    "done": "Terminé",
+    "paths": {
+      "locationIos": "Réglages › POWR › Position",
+      "locationAndroid": "Infos sur l’appli › Autorisations › Position",
+      "notificationsIos": "Réglages › POWR › Notifications",
+      "notificationsAndroid": "Infos sur l’appli › Notifications"
+    }
+  },
+  "scene": {
+    "yourGym": "TA SALLE",
+    "lockDate": "mardi 7 juillet"
+  },
+  "push": {
+    "now": "maintenant",
+    "hoursAgo": "{{hours}} h",
+    "detecting": {
+      "title": "Recherche de partenaires proches",
+      "body": "Check-ins automatiques activés."
+    },
+    "arrival": {
+      "title": "Tu y es.",
+      "body": "Arrivée détectée — séance lancée."
+    },
+    "session": {
+      "title": "Séance enregistrée",
+      "body": "48 min à ta salle — +50 POWR en poche."
+    },
+    "reward": {
+      "title": "Nouvelle récompense près de toi",
+      "body": "Une récompense vient de se débloquer juste à côté."
+    },
+    "streak": {
+      "title": "Série en danger",
+      "body": "Une séance aujourd’hui et ta série de 6 jours continue."
+    }
+  },
+  "mock": {
+    "ios": {
+      "location": {
+        "title": "Autoriser « POWR » à utiliser votre position ?",
+        "message": "POWR utilise ta position pour vérifier tes séances et te montrer les récompenses près de toi.",
+        "allowOnce": "Autoriser une fois",
+        "allowWhileUsing": "Autoriser lorsque l’app est active",
+        "dontAllow": "Ne pas autoriser",
+        "precise": "Position exacte : activée"
+      },
+      "always": {
+        "title": "Autoriser « POWR » à utiliser également votre position même lorsque vous n’utilisez pas l’app ?",
+        "message": "Les check-ins automatiques ne fonctionnent qu’avec l’accès « Toujours ».",
+        "keep": "Conserver « Lorsque l’app est active »",
+        "change": "Toujours autoriser"
+      },
+      "notifications": {
+        "title": "« POWR » souhaite vous envoyer des notifications",
+        "message": "Les notifications peuvent inclure des alertes, des sons et des pastilles d’icônes.",
+        "allow": "Autoriser",
+        "dontAllow": "Refuser"
+      }
+    },
+    "android": {
+      "location": {
+        "title": "Autoriser POWR à accéder à la position de cet appareil ?",
+        "whileUsing": "Lorsque vous utilisez l’appli",
+        "onlyThisTime": "Uniquement cette fois-ci",
+        "dontAllow": "Ne pas autoriser",
+        "precise": "Exacte",
+        "approximate": "Approximative"
+      },
+      "background": {
+        "title": "Autorisation d’accéder à la position",
+        "section": "Accès à la position pour cette appli",
+        "allTheTime": "Toujours autoriser",
+        "whileUsing": "Autoriser seulement si l’appli est en cours d’utilisation",
+        "askEveryTime": "Toujours demander",
+        "dontAllow": "Ne pas autoriser"
+      },
+      "notifications": {
+        "title": "Autoriser POWR à vous envoyer des notifications ?",
+        "allow": "Autoriser",
+        "dontAllow": "Ne pas autoriser"
+      },
+      "battery": {
+        "title": "Ignorer les optimisations de batterie ?",
+        "message": "Autoriser POWR à toujours s’exécuter en arrière-plan ? Cela peut solliciter davantage la batterie.",
+        "allow": "Autoriser",
+        "deny": "Refuser"
+      }
+    }
+  }
+}

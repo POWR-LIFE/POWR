@@ -8,6 +8,7 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Animated, AppState, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Trans, useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const GOLD = '#E8D200';
@@ -62,6 +63,7 @@ const SKIP_SCREEN = '/onboarding-wearables';
 export default function OnboardingPermissionScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const [requesting, setRequesting] = useState(false);
     // 'denied' = the OS dialog is burned (denied with canAskAgain false) — the
     // CTA has to deep-link to system settings instead of re-firing the dialog.
@@ -149,11 +151,11 @@ export default function OnboardingPermissionScreen() {
             // before moving on.
             if (res.android?.accuracy === 'coarse') {
                 Alert.alert(
-                    'Turn on Precise location',
-                    'POWR verifies you’re really at a partner venue — approximate location can’t do that. Choose “Precise” so your sessions count.',
+                    t('permissions:location.preciseAlert.title'),
+                    t('permissions:location.preciseAlert.body'),
                     [
                         {
-                            text: 'Fix it',
+                            text: t('permissions:location.preciseAlert.fix'),
                             onPress: async () => {
                                 if (res.canAskAgain) {
                                     // Android re-shows the dialog with the
@@ -167,7 +169,7 @@ export default function OnboardingPermissionScreen() {
                                 }
                             },
                         },
-                        { text: 'Later', onPress: finishGrant },
+                        { text: t('permissions:location.preciseAlert.later'), onPress: finishGrant },
                     ],
                 );
                 return;
@@ -204,14 +206,14 @@ export default function OnboardingPermissionScreen() {
             {/* Center content */}
             <View style={[styles.center, { paddingTop: insets.top + 60 }]}>
                 <Animated.View style={[styles.textBlock, { opacity: contentFade }]}>
-                    <Text style={styles.eyebrow}>LOCATION</Text>
+                    <Text style={styles.eyebrow}>{t('permissions:location.eyebrow')}</Text>
                     <Text style={styles.headline}>
-                        Unlock the{'\n'}
-                        <Text style={styles.headlineGold}>map.</Text>
+                        <Trans
+                            i18nKey="permissions:location.headline"
+                            components={{ gold: <Text style={styles.headlineGold} /> }}
+                        />
                     </Text>
-                    <Text style={styles.body}>
-                        Partner venues and automatic check-ins — it all starts with where you are.
-                    </Text>
+                    <Text style={styles.body}>{t('permissions:location.bodyVenue')}</Text>
 
                     <View style={styles.mock}>
                         <PermissionPrimeScene kind="location-foreground" />
@@ -230,14 +232,16 @@ export default function OnboardingPermissionScreen() {
                 >
                     <Text style={styles.primaryLabel}>
                         {requesting
-                            ? 'REQUESTING...'
+                            ? t('permissions:cta.requesting')
                             : mode === 'denied'
-                              ? 'OPEN SETTINGS'
-                              : Platform.OS === 'ios' ? 'ALLOW WHILE USING' : 'ALLOW LOCATION'}
+                              ? t('permissions:cta.openSettings')
+                              : Platform.OS === 'ios'
+                                ? t('permissions:location.cta.allowIos')
+                                : t('permissions:location.cta.allowAndroid')}
                     </Text>
                     {!requesting && (
                         <View style={styles.bonusBadge}>
-                            <Text style={styles.bonusLabel}>+20 POWR</Text>
+                            <Text style={styles.bonusLabel}>{t('permissions:location.bonus')}</Text>
                         </View>
                     )}
                 </Pressable>
@@ -256,7 +260,7 @@ export default function OnboardingPermissionScreen() {
                             router.push(SKIP_SCREEN);
                         }}
                     >
-                        <Text style={styles.skipLabel}>Continue without location</Text>
+                        <Text style={styles.skipLabel}>{t('permissions:location.skip')}</Text>
                     </Pressable>
                 )}
             </Animated.View>

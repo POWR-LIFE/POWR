@@ -6,11 +6,13 @@ import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { syncHistoricalHealthData, setOnboardingOwnsBackfill, type DaySyncResult } from '@/lib/api/onboardingSync';
 import { getNativeProviderId } from '@/lib/health/providers';
 import { recordHealthOnboardingDeclined } from '@/lib/healthPrompt';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { awardBonus } from '@/lib/api/points';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -112,25 +114,25 @@ const dotStyles = StyleSheet.create({
 
 function getDayName(dateStr: string): string {
     const d = new Date(dateStr + 'T12:00:00');
-    return d.toLocaleDateString('en-US', { weekday: 'long' });
+    return d.toLocaleDateString(getFormatLocale(), { weekday: 'long' });
 }
 
 function formatDaySummary(day: DaySyncResult): string {
     const parts: string[] = [];
     if (day.steps >= 1000) {
-        parts.push(`${day.steps.toLocaleString()} steps`);
+        parts.push(i18n.t('health:onboarding.sync.steps', { steps: day.steps.toLocaleString() }));
     }
     if (day.activities.length > 0) {
         parts.push(day.activities.join(', '));
     }
     if (day.sleepHours > 0) {
-        parts.push(`${day.sleepHours}h sleep`);
+        parts.push(i18n.t('health:onboarding.sync.sleep', { hours: day.sleepHours }));
     }
     if (parts.length === 0 && day.steps > 0) {
-        parts.push(`${day.steps.toLocaleString()} steps`);
+        parts.push(i18n.t('health:onboarding.sync.steps', { steps: day.steps.toLocaleString() }));
     }
-    if (parts.length === 0) return 'No activity';
-    if (day.points > 0) parts.push(`est. +${day.points} POWR`);
+    if (parts.length === 0) return i18n.t('health:onboarding.sync.noActivity');
+    if (day.points > 0) parts.push(i18n.t('health:onboarding.sync.estPoints', { points: day.points }));
     return parts.join(' · ');
 }
 
@@ -240,6 +242,7 @@ export default function OnboardingHealthScreen() {
 
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const health = useHealthData();
     const providers = useHealthProviders();
     // Re-read provider state when this screen regains focus — the
@@ -304,8 +307,8 @@ export default function OnboardingHealthScreen() {
             // Connect wouldn't help, so say what's actually wrong (dev-only).
             if (status === 'module_missing') {
                 Alert.alert(
-                    'Development build needed',
-                    'Health Connect isn’t available in Expo Go — run a development build to test this.',
+                    t('health:devBuild.title'),
+                    t('health:devBuild.body'),
                 );
                 return;
             }
@@ -447,16 +450,18 @@ export default function OnboardingHealthScreen() {
 
             {/* Header */}
             <Animated.View style={[styles.header, { paddingTop: insets.top + 72, opacity: headerFade }]}>
-                <Text style={styles.eyebrow}>{showSyncProgress ? 'ALMOST THERE' : 'YOUR BASELINE'}</Text>
+                <Text style={styles.eyebrow}>{showSyncProgress ? t('health:onboarding.eyebrowSyncing') : t('health:onboarding.eyebrow')}</Text>
                 <Text style={styles.headline}>
-                    {showSyncProgress ? 'Pulling in ' : 'This is how POWR '}
-                    <Text style={styles.headlineGold}>{showSyncProgress ? 'your history.' : 'counts your movement.'}</Text>
+                    <Trans
+                        i18nKey={showSyncProgress ? 'health:onboarding.headlineSyncing' : 'health:onboarding.headline'}
+                        components={{ gold: <Text style={styles.headlineGold} /> }}
+                    />
                 </Text>
                 {!showSyncProgress && (
                     <Text style={styles.subhead}>
                         {hasWearable
-                            ? 'Your watch covers workouts — your phone covers steps. You need both to earn everything.'
-                            : 'Steps, workouts and sleep flow in from your phone, so every move earns automatically.'}
+                            ? t('health:onboarding.subheadWithWearable')
+                            : t('health:onboarding.subhead')}
                     </Text>
                 )}
             </Animated.View>
@@ -471,7 +476,7 @@ export default function OnboardingHealthScreen() {
                     {syncing && syncedDays.length === 0 && (
                         <View style={syncStyles.doneCard}>
                             <ActivityIndicator size="small" color={GOLD} />
-                            <Text style={syncStyles.syncingLabel}>READING HEALTH DATA...</Text>
+                            <Text style={syncStyles.syncingLabel}>{t('health:onboarding.sync.reading')}</Text>
                         </View>
                     )}
                     {syncedDays.map((day, i) => (
@@ -481,9 +486,9 @@ export default function OnboardingHealthScreen() {
                         <View style={syncStyles.doneCard}>
                             <Ionicons name="checkmark-circle" size={18} color={GOLD} />
                             <Text style={syncStyles.doneText}>
-                                {syncResult.totalSessions} sessions synced
-                                {syncResult.totalPoints > 0 ? ` · est. +${syncResult.totalPoints} POWR` : ''}
-                                {syncResult.streakDays > 0 ? ` · ${syncResult.streakDays}-day streak` : ''}
+                                {t('health:onboarding.sync.sessions', { sessions: syncResult.totalSessions })}
+                                {syncResult.totalPoints > 0 ? ` · ${t('health:onboarding.sync.estPoints', { points: syncResult.totalPoints })}` : ''}
+                                {syncResult.streakDays > 0 ? ` · ${t('health:onboarding.sync.streak', { days: syncResult.streakDays })}` : ''}
                             </Text>
                         </View>
                     )}
@@ -535,21 +540,23 @@ export default function OnboardingHealthScreen() {
                     {syncing ? (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                             <ActivityIndicator size="small" color="#0a0a0a" />
-                            <Text style={styles.primaryLabel}>SYNCING YOUR DATA…</Text>
+                            <Text style={styles.primaryLabel}>{t('health:onboarding.syncing')}</Text>
                         </View>
                     ) : mustConnect ? (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                             <Text style={styles.primaryLabel}>
-                                {health.requesting ? 'CONNECTING…' : `CONNECT ${Platform.OS === 'ios' ? 'APPLE HEALTH' : 'HEALTH CONNECT'}`}
+                                {health.requesting
+                                    ? t('health:actions.connecting')
+                                    : Platform.OS === 'ios' ? t('health:actions.connectAppleHealth') : t('health:actions.connectHealthConnect')}
                             </Text>
                             {!health.requesting && (
                                 <View style={styles.bonusBadge}>
-                                    <Text style={styles.bonusLabel}>+20 POWR</Text>
+                                    <Text style={styles.bonusLabel}>{t('health:bonus')}</Text>
                                 </View>
                             )}
                         </View>
                     ) : (
-                        <Text style={styles.primaryLabel}>CONTINUE</Text>
+                        <Text style={styles.primaryLabel}>{t('health:actions.continue')}</Text>
                     )}
                 </Pressable>
 
@@ -563,7 +570,7 @@ export default function OnboardingHealthScreen() {
                             router.push('/onboarding-notifications');
                         }}
                     >
-                        <Text style={styles.skipLabel}>Continue without connecting</Text>
+                        <Text style={styles.skipLabel}>{t('health:onboarding.skip')}</Text>
                     </Pressable>
                 )}
             </Animated.View>
@@ -583,9 +590,9 @@ export default function OnboardingHealthScreen() {
                                 <MaterialCommunityIcons name="download" size={24} color={GOLD} />
                             </View>
                         </View>
-                        <Text style={skipModalStyles.title}>Install Health Connect</Text>
+                        <Text style={skipModalStyles.title}>{t('health:installHealthConnect.title')}</Text>
                         <Text style={skipModalStyles.reassurance}>
-                            Health Connect lets POWR read your phone&apos;s step &amp; activity data. It&apos;s a free Google app — install it and come back here to connect.
+                            {t('health:installHealthConnect.body')}
                         </Text>
                         <Pressable
                             style={({ pressed }) => [skipModalStyles.connectBtn, pressed && { opacity: 0.8 }]}
@@ -595,10 +602,10 @@ export default function OnboardingHealthScreen() {
                                 setShowHealthConnectInstall(false);
                             }}
                         >
-                            <Text style={skipModalStyles.connectBtnText}>OPEN PLAY STORE</Text>
+                            <Text style={skipModalStyles.connectBtnText}>{t('health:installHealthConnect.openPlayStore')}</Text>
                         </Pressable>
                         <Pressable style={skipModalStyles.skipBtn} onPress={() => setShowHealthConnectInstall(false)}>
-                            <Text style={skipModalStyles.skipBtnText}>Not now</Text>
+                            <Text style={skipModalStyles.skipBtnText}>{t('health:actions.notNow')}</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -614,9 +621,9 @@ export default function OnboardingHealthScreen() {
                 <View style={skipModalStyles.overlay}>
                     <View style={[skipModalStyles.sheet, { paddingBottom: insets.bottom + 24 }]}>
                         <View style={skipModalStyles.handle} />
-                        <Text style={skipModalStyles.title}>Pick your primary source</Text>
+                        <Text style={skipModalStyles.title}>{t('health:onboarding.picker.title')}</Text>
                         <Text style={skipModalStyles.reassurance}>
-                            You&apos;ve connected more than one. Choose which POWR should use as the source of truth for points.
+                            {t('health:onboarding.picker.body')}
                         </Text>
                         <View style={{ gap: 8, marginVertical: 8 }}>
                             {connectedRows
@@ -660,7 +667,7 @@ export default function OnboardingHealthScreen() {
                             style={({ pressed }) => [skipModalStyles.connectBtn, pressed && { opacity: 0.8 }]}
                             onPress={() => setShowPrimaryPicker(false)}
                         >
-                            <Text style={skipModalStyles.connectBtnText}>DONE</Text>
+                            <Text style={skipModalStyles.connectBtnText}>{t('health:actions.done')}</Text>
                         </Pressable>
                     </View>
                 </View>

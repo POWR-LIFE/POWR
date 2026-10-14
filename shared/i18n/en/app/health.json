@@ -1,0 +1,81 @@
+{
+  "actions": {
+    "continue": "CONTINUE",
+    "done": "DONE",
+    "gotIt": "GOT IT",
+    "notNow": "Not now",
+    "connecting": "CONNECTING…",
+    "connectAppleHealth": "CONNECT APPLE HEALTH",
+    "connectHealthConnect": "CONNECT HEALTH CONNECT"
+  },
+  "bonus": "+20 POWR",
+  "devBuild": {
+    "title": "Development build needed",
+    "body": "Health Connect isn’t available in Expo Go — run a development build to test this."
+  },
+  "installHealthConnect": {
+    "title": "Install Health Connect",
+    "body": "Health Connect lets POWR read your phone's step & activity data. It's a free Google app — install it and come back here to connect.",
+    "openPlayStore": "OPEN PLAY STORE"
+  },
+  "onboarding": {
+    "eyebrow": "YOUR BASELINE",
+    "eyebrowSyncing": "ALMOST THERE",
+    "headline": "This is how POWR <gold>counts your movement.</gold>",
+    "headlineSyncing": "Pulling in <gold>your history.</gold>",
+    "subhead": "Steps, workouts and sleep flow in from your phone, so every move earns automatically.",
+    "subheadWithWearable": "Your watch covers workouts — your phone covers steps. You need both to earn everything.",
+    "syncing": "SYNCING YOUR DATA…",
+    "skip": "Continue without connecting",
+    "sync": {
+      "reading": "READING HEALTH DATA...",
+      "steps": "{{steps}} steps",
+      "sleep": "{{hours}}h sleep",
+      "noActivity": "No activity",
+      "estPoints": "est. +{{points}} POWR",
+      "sessions": "{{sessions}} sessions synced",
+      "streak": "{{days}}-day streak"
+    },
+    "picker": {
+      "title": "Pick your primary source",
+      "body": "You've connected more than one. Choose which POWR should use as the source of truth for points."
+    }
+  },
+  "wearables": {
+    "eyebrow": "GOT A WEARABLE?",
+    "headline": "Your watch knows <gold>everything.</gold>",
+    "bonusHint": "when you connect one",
+    "viaHealthConnect": "VIA HEALTH CONNECT",
+    "viaAppleHealth": "VIA APPLE HEALTH",
+    "viaPhone": "VIA YOUR PHONE",
+    "noWearable": "I don't have a wearable"
+  },
+  "samsung": {
+    "title": "Connect Samsung Health",
+    "body": "Samsung Health shares your workouts, steps & sleep through Health Connect. Two quick steps:",
+    "step1Title": "1. Connect Health Connect",
+    "step1Desc": "POWR reads your data from Health Connect",
+    "step2Title": "2. Turn on sharing in Samsung Health",
+    "step2Desc": "Samsung Health → Settings → Health Connect → allow",
+    "openApp": "Open Samsung Health"
+  },
+  "scene": {
+    "stepsToday": "STEPS TODAY",
+    "sleepValue": "7h 20m",
+    "sleep": "SLEEP",
+    "workoutValue": "Gym · 48 min",
+    "workout": "WORKOUT",
+    "doublePoints": "2× PTS",
+    "stepsCounting": "{{steps}} steps already counting",
+    "connected": "Connected — your data is flowing",
+    "sourcesIos": "Apple Watch + anything that writes to Apple Health",
+    "sourcesAndroid": "Google Fit, Galaxy & Pixel Watch & more"
+  },
+  "viaPhone": {
+    "close": "Close",
+    "step1AppleHealth": "1. Connect Apple Health",
+    "step1HealthConnect": "1. Connect Health Connect",
+    "connected": "Connected",
+    "readsFrom": "POWR reads your {{brand}} data from it"
+  }
+}

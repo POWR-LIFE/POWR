@@ -3,6 +3,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Trans, useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
@@ -60,6 +61,7 @@ export default function OnboardingNotificationsScreen() {
 
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const { requestPermissions } = useNotifications();
     const [requesting, setRequesting] = useState(false);
     // 'denied' = the OS dialog is burned (Android 13 two-strike, or toggled
@@ -184,14 +186,14 @@ export default function OnboardingNotificationsScreen() {
             {/* Center content */}
             <View style={[styles.center, { paddingTop: insets.top + 60 }]}>
                 <Animated.View style={[styles.textBlock, { opacity: contentFade }]}>
-                    <Text style={styles.eyebrow}>NOTIFICATIONS</Text>
+                    <Text style={styles.eyebrow}>{t('permissions:notifications.eyebrow')}</Text>
                     <Text style={styles.headline}>
-                        Know when{'\n'}you{' '}
-                        <Text style={styles.headlineGold}>earn.</Text>
+                        <Trans
+                            i18nKey="permissions:notifications.headline"
+                            components={{ gold: <Text style={styles.headlineGold} /> }}
+                        />
                     </Text>
-                    <Text style={styles.body}>
-                        A session lands, a streak’s at risk, a reward drops nearby — you’ll know the second it happens. Every alert is yours to switch off.
-                    </Text>
+                    <Text style={styles.body}>{t('permissions:notifications.body')}</Text>
 
                     <View style={styles.mock}>
                         <PermissionPrimeScene kind="notifications" />
@@ -210,10 +212,10 @@ export default function OnboardingNotificationsScreen() {
                 >
                     <Text style={styles.primaryLabel}>
                         {requesting
-                            ? 'REQUESTING...'
+                            ? t('permissions:cta.requesting')
                             : mode === 'denied'
-                              ? 'OPEN SETTINGS'
-                              : 'ENABLE ALERTS'}
+                              ? t('permissions:cta.openSettings')
+                              : t('permissions:notifications.cta')}
                     </Text>
                 </Pressable>
 
@@ -222,7 +224,7 @@ export default function OnboardingNotificationsScreen() {
                         style={styles.skipButton}
                         onPress={handleSkip}
                     >
-                        <Text style={styles.skipLabel}>Continue without alerts</Text>
+                        <Text style={styles.skipLabel}>{t('permissions:notifications.skip')}</Text>
                     </Pressable>
                 )}
             </Animated.View>

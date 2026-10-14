@@ -5,6 +5,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     Alert,
@@ -87,6 +88,7 @@ const dotStyles = StyleSheet.create({
 export default function OnboardingProfileScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const { session } = useAuth();
     // Already onboarded but missing name/username (resumeOnboardingRoute sent
     // them here): finish the profile and go straight back to the app.
@@ -186,10 +188,10 @@ export default function OnboardingProfileScreen() {
                     : await ImagePicker.requestMediaLibraryPermissionsAsync();
             if (perm.status !== 'granted') {
                 Alert.alert(
-                    'Permission required',
+                    t('onboarding:profile.photo.permissionTitle'),
                     source === 'camera'
-                        ? 'Please allow camera access in Settings to take a photo.'
-                        : 'Please allow photo library access in Settings to choose a photo.',
+                        ? t('onboarding:profile.photo.cameraDenied')
+                        : t('onboarding:profile.photo.libraryDenied'),
                 );
                 return;
             }
@@ -208,18 +210,18 @@ export default function OnboardingProfileScreen() {
             }
         } catch (e) {
             console.warn('[OnboardingProfile] Image picker error:', e);
-            Alert.alert('Could not select photo', 'Please try again.');
+            Alert.alert(t('onboarding:profile.photo.errorTitle'), t('onboarding:profile.photo.errorBody'));
         }
     }
 
     function showPhotoOptions() {
-        Alert.alert('Profile photo', 'Choose a source', [
-            { text: 'Take photo', onPress: () => pickImage('camera') },
-            { text: 'Choose from library', onPress: () => pickImage('library') },
+        Alert.alert(t('onboarding:profile.photo.title'), t('onboarding:profile.photo.message'), [
+            { text: t('onboarding:profile.photo.take'), onPress: () => pickImage('camera') },
+            { text: t('onboarding:profile.photo.library'), onPress: () => pickImage('library') },
             ...(avatarUri
-                ? [{ text: 'Remove photo', style: 'destructive' as const, onPress: () => { setAvatarUri(null); setAvatarChanged(true); } }]
+                ? [{ text: t('onboarding:profile.photo.remove'), style: 'destructive' as const, onPress: () => { setAvatarUri(null); setAvatarChanged(true); } }]
                 : []),
-            { text: 'Cancel', style: 'cancel' },
+            { text: t('common:actions.cancel'), style: 'cancel' },
         ]);
     }
 
@@ -269,7 +271,7 @@ export default function OnboardingProfileScreen() {
             if (saveErr) {
                 // Unique-violation backstop: the handle was claimed mid-flow.
                 const taken = /duplicate|unique/i.test(saveErr);
-                setError(taken ? 'That username was just taken — try another.' : saveErr);
+                setError(taken ? t('onboarding:profile.errors.justTaken') : saveErr);
                 if (taken) setUsernameStatus('taken');
                 setSaving(false);
                 return;
@@ -284,7 +286,7 @@ export default function OnboardingProfileScreen() {
             if (mustFinish) router.replace('/(tabs)');
             else router.push(NEXT_SCREEN);
         } catch (e: any) {
-            setError(e?.message ?? 'Something went wrong');
+            setError(e?.message ?? t('onboarding:profile.errors.generic'));
         } finally {
             setSaving(false);
         }
@@ -317,12 +319,12 @@ export default function OnboardingProfileScreen() {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
             >
-                <Text style={styles.eyebrow}>YOUR PROFILE</Text>
+                <Text style={styles.eyebrow}>{t('onboarding:profile.eyebrow')}</Text>
                 <Text style={styles.headline}>
-                    Claim your <Text style={styles.headlineGold}>name.</Text>
+                    <Trans i18nKey="onboarding:profile.headline" components={{ gold: <Text style={styles.headlineGold} /> }} />
                 </Text>
                 <Text style={styles.body}>
-                    This is how you'll show up on the leaderboard.
+                    {t('onboarding:profile.body')}
                 </Text>
 
                 {/* Avatar */}
@@ -342,16 +344,16 @@ export default function OnboardingProfileScreen() {
                         <Ionicons name="camera" size={15} color="#0a0a0a" />
                     </View>
                 </Pressable>
-                <Text style={styles.avatarHint}>Add a photo (optional)</Text>
+                <Text style={styles.avatarHint}>{t('onboarding:profile.avatarHint')}</Text>
 
                 {/* Display name */}
                 <View style={styles.fieldBlock}>
-                    <Text style={styles.label}>Display name</Text>
+                    <Text style={styles.label}>{t('onboarding:profile.displayName.label')}</Text>
                     <TextInput
                         style={styles.input}
                         value={displayName}
-                        onChangeText={(t) => { setDisplayName(t); setError(null); }}
-                        placeholder="Your name"
+                        onChangeText={(text) => { setDisplayName(text); setError(null); }}
+                        placeholder={t('onboarding:profile.displayName.placeholder')}
                         placeholderTextColor="rgba(255,255,255,0.25)"
                         autoCapitalize="words"
                         maxLength={40}
@@ -361,14 +363,14 @@ export default function OnboardingProfileScreen() {
 
                 {/* Username */}
                 <View style={styles.fieldBlock}>
-                    <Text style={styles.label}>Username</Text>
+                    <Text style={styles.label}>{t('onboarding:profile.username.label')}</Text>
                     <View style={styles.usernameRow}>
                         <Text style={styles.atSign}>@</Text>
                         <TextInput
                             style={styles.usernameInput}
                             value={username}
                             onChangeText={onChangeUsername}
-                            placeholder="username"
+                            placeholder={t('onboarding:profile.username.placeholder')}
                             placeholderTextColor="rgba(255,255,255,0.25)"
                             autoCapitalize="none"
                             autoCorrect={false}
@@ -383,28 +385,28 @@ export default function OnboardingProfileScreen() {
                     </View>
                     <Text style={styles.helper}>
                         {usernameStatus === 'taken'
-                            ? 'That username is taken.'
+                            ? t('onboarding:profile.username.taken')
                             : usernameStatus === 'invalid'
-                                ? `At least ${MIN_USERNAME} characters — letters, numbers or _.`
-                                : 'Lowercase letters, numbers and underscores.'}
+                                ? t('onboarding:profile.username.invalid', { min: MIN_USERNAME })
+                                : t('onboarding:profile.username.rules')}
                     </Text>
                 </View>
 
                 {askInvite && (
                     <View style={styles.fieldBlock}>
-                        <Text style={styles.label}>Invite code (optional)</Text>
+                        <Text style={styles.label}>{t('onboarding:profile.invite.label')}</Text>
                         <TextInput
                             style={[styles.input, styles.inviteInput]}
                             value={inviteCode}
-                            onChangeText={t => setInviteCode(t.toUpperCase())}
-                            placeholder="8-CHARACTER CODE"
+                            onChangeText={text => setInviteCode(text.toUpperCase())}
+                            placeholder={t('onboarding:profile.invite.placeholder')}
                             placeholderTextColor="rgba(255,255,255,0.25)"
                             autoCapitalize="characters"
                             autoCorrect={false}
                             maxLength={8}
                         />
                         <Text style={styles.helper}>
-                            Got a code from a friend? You’ll both earn POWR after your first workout.
+                            {t('onboarding:profile.invite.helper')}
                         </Text>
                     </View>
                 )}
@@ -426,7 +428,7 @@ export default function OnboardingProfileScreen() {
                 >
                     {saving
                         ? <ActivityIndicator color="#0a0a0a" size="small" />
-                        : <Text style={styles.primaryLabel}>CONTINUE</Text>}
+                        : <Text style={styles.primaryLabel}>{t('onboarding:profile.continue')}</Text>}
                 </Pressable>
             </View>
         </KeyboardAvoidingView>

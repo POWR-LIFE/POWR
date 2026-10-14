@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Video, ResizeMode } from 'expo-av';
 
@@ -14,6 +15,7 @@ const FONT_BOLD = 'Outfit_700Bold';
 export default function OnboardingScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
 
     const line1Fade = useRef(new Animated.Value(0)).current;
     const buttonsFade = useRef(new Animated.Value(0)).current;
@@ -45,13 +47,13 @@ export default function OnboardingScreen() {
                 {/* Headlines */}
                 <View style={styles.headlineBlock}>
                     <Animated.Text style={[styles.headline, { opacity: line1Fade }]}>
-                        Train.
+                        {t('auth:welcome.headline.train')}
                     </Animated.Text>
                     <Animated.Text style={[styles.headline, { opacity: line1Fade }]}>
-                        Earn.
+                        {t('auth:welcome.headline.earn')}
                     </Animated.Text>
                     <Animated.Text style={[styles.headline, { opacity: line1Fade }]}>
-                        Repeat.
+                        {t('auth:welcome.headline.repeat')}
                     </Animated.Text>
                 </View>
 
@@ -61,14 +63,14 @@ export default function OnboardingScreen() {
                         style={styles.primaryButton}
                         onPress={() => router.push('/onboarding-account')}
                     >
-                        <Text style={styles.primaryLabel}>GET STARTED</Text>
+                        <Text style={styles.primaryLabel}>{t('auth:welcome.getStarted')}</Text>
                     </Pressable>
 
                     <Pressable
                         style={styles.ghostButton}
                         onPress={() => router.push('/onboarding-account')}
                     >
-                        <Text style={styles.ghostLabel}>LOG IN</Text>
+                        <Text style={styles.ghostLabel}>{t('auth:welcome.logIn')}</Text>
                     </Pressable>
                 </Animated.View>
             </View>
