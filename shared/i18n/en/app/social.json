@@ -488,7 +488,22 @@
       "dismiss": "Couldn’t clear this challenge. Check your connection and try again.",
       "cancel": "Couldn’t cancel this challenge. Check your connection and try again."
     },
-    "create": "Couldn’t create that challenge"
+    "create": "Couldn’t create that challenge",
+    "codes": {
+      "atCap": "Challenge slots full — finish or drop one first",
+      "notLive": "This challenge has already finished",
+      "groupFull": "Groups are capped at {{max}}",
+      "groupFullNoMax": "This group is full",
+      "badToken": "Invite link not recognised",
+      "unavailable": "This one’s no longer available",
+      "notOptedIn": "Turn on the open board in Settings first",
+      "openExists": "You already have an open challenge on the board",
+      "inviteeOptedOut": "A selected friend isn’t on Together",
+      "blocked": "You can’t join this challenge",
+      "notOpen": "This challenge isn’t open",
+      "notCreator": "Only the challenge creator can do that",
+      "stillLive": "You can only dismiss a finished challenge"
+    }
   },
   "fallbackTitle": "Challenge"
 }

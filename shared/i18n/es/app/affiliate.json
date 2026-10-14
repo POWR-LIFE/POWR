@@ -36,7 +36,19 @@
   "earnings": {
     "eyebrow": "GANANCIAS RECIENTES",
     "allTime": "{{points}} PTS EN TOTAL",
-    "fullLedger": "HISTORIAL COMPLETO EN EL PORTAL"
+    "fullLedger": "HISTORIAL COMPLETO EN EL PORTAL",
+    "kinds": {
+      "signup": "Alguien ha usado tu código",
+      "conversion": "Registro convertido: primer entreno verificado",
+      "eventSignup": "Un registro se ha unido a {{event}}",
+      "eventSignupNoName": "Un registro se ha unido a un evento en directo",
+      "milestone": "Escalón alcanzado",
+      "milestoneConversions_one": "{{label}}: {{count}} registro convertido",
+      "milestoneConversions_other": "{{label}}: {{count}} registros convertidos",
+      "milestoneSignups_one": "{{label}}: {{count}} registro",
+      "milestoneSignups_other": "{{label}}: {{count}} registros",
+      "manual": "Añadido por POWR"
+    }
   },
   "ready": {
     "eyebrow": "PREPARA TU AFILIACIÓN",

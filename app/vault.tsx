@@ -49,6 +49,7 @@ import {
   type VaultDeposit,
   type VaultOutlook,
 } from '@/lib/api/vault';
+import { vaultDepositDescriptionLabel } from '@/lib/pointsLabels';
 import { supabase } from '@/lib/supabase';
 
 // Same dev account that gets the level-up celebration replay (useLevelUp) and
@@ -108,7 +109,10 @@ function depositLabel(d: VaultDeposit): string {
       ? i18n.t('rewards:vault.deposit.levelNamed', { level: d.level, name: def.name })
       : i18n.t('rewards:vault.deposit.levelBonus', { level: d.level });
   }
-  return d.description ?? (d.source === 'admin_grant'
+  // The description is English the server wrote: the cap-overflow templates
+  // and the 'POWR drop' stand-in are re-said in the member's language; an
+  // admin's own grant note shows as typed (lib/pointsLabels).
+  return vaultDepositDescriptionLabel(d.source, d.description) ?? (d.source === 'admin_grant'
     ? i18n.t('rewards:vault.deposit.powrDrop')
     : i18n.t('rewards:vault.deposit.bonusPoints'));
 }
@@ -502,6 +506,10 @@ function VaultPotHero({
              is the row in the list, and its countdown is the timer directly
              below — so plain vesting gets no card at all. */
           <View style={[styles.card, styles.cardEvent]}>
+            {/* nextUnlockNote is the admin's own words for this Vault Day
+                (vault_unlock_events.note), typed free-form in the admin
+                panel, so it shows as written in every language. Only the
+                fallback when there's no note is a catalog string. */}
             <Text style={styles.cardLabel}>
               {(outlook?.nextUnlockNote || t('rewards:vault.hero.vaultDay')).toUpperCase()}
             </Text>

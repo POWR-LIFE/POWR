@@ -259,7 +259,15 @@
     "resetA11y": "Restablecer la inscripción de prueba",
     "resetting": "RESTABLECIENDO…",
     "reset": "RESTABLECER INSCRIPCIÓN DE PRUEBA",
-    "done": "Hecho"
+    "done": "Hecho",
+    "errors": {
+      "notFound": "No encontramos este evento.",
+      "notRequired": "Este evento no requiere inscripción.",
+      "notOpenYet": "Las inscripciones para este evento aún no están abiertas.",
+      "closed": "Ya no es posible unirse a este evento.",
+      "cutoff": "Tu cuenta se creó después de la fecha límite para participar.",
+      "noRejoin": "No puedes volver a unirte a este evento."
+    }
   },
   "shareScreen": {
     "publishError": "No se ha podido publicar tu tarjeta.",
@@ -401,5 +409,12 @@
     "title": "Los resultados se revelan en directo en la final",
     "divider": "LA CLASIFICACIÓN",
     "foot": "Cada punto ya está contado. Nadie ve la clasificación hasta la revelación."
+  },
+  "shareLink": {
+    "title": "{{event}} · Evento en directo en POWR",
+    "nightVenue": "{{night}} en {{venue}}. Periodo de puntos: {{range}}. Toca, descarga POWR y vente conmigo.",
+    "night": "{{night}}. Periodo de puntos: {{range}}. Toca, descarga POWR y vente conmigo.",
+    "venue": "En {{venue}}. Periodo de puntos: {{range}}. Toca, descarga POWR y vente conmigo.",
+    "scoringOnly": "Periodo de puntos: {{range}}. Toca, descarga POWR y vente conmigo."
   }
 }

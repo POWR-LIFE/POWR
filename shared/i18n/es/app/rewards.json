@@ -178,7 +178,11 @@
       "bonusPoints": "Puntos extra",
       "subLevelUp": "Bonus por subir de nivel",
       "subGrant": "Regalo de POWR",
-      "subCapOverflow": "Por encima del límite diario"
+      "subCapOverflow": "Por encima del límite diario",
+      "capOverflow": "Sesión de {{activity}} por encima del límite",
+      "capOverflowStreak_one": "Racha de {{count}} día · {{activity}} por encima del límite",
+      "capOverflowStreak_other": "Racha de {{count}} días · {{activity}} por encima del límite",
+      "capOverflowUpgrade": "Sesión de gimnasio: tramo superior ({{minutes}} min) · por encima del límite"
     },
     "errors": {
       "alreadyMoved": "Esos POWR ya habían pasado a tu saldo.",

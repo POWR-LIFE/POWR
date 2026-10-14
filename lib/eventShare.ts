@@ -1,5 +1,6 @@
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import { eventInviteMessage, eventInvitePath } from '@/lib/eventInviteLink';
+import i18n from '@/lib/i18n';
 import { eventDateRange, eventNightLine } from '@/lib/liveEventDisplay';
 
 /**
@@ -33,9 +34,12 @@ export type EventShareEvent = Pick<
     | 'venue'
 >;
 
+// Both lines are in the SHARER's language: they're written into the card when
+// it's published, before anyone else sees it.
+
 /** Bold line of the link preview. */
 export function buildEventShareTitle(event: Pick<EventShareEvent, 'name'>): string {
-    return `${event.name} · Live event on POWR`;
+    return i18n.t('events:shareLink.title', { event: event.name });
 }
 
 /**
@@ -47,13 +51,12 @@ export function buildEventShareSubtitle(
     event: Pick<EventShareEvent, 'window_start_at' | 'window_end_at' | 'doors_open_at' | 'doors_close_at' | 'venue'>,
 ): string {
     const night = eventNightLine(event);
-    const where = event.venue?.name ?? null;
-    const lead = night
-        ? `${night}${where ? ` at ${where}` : ''}. `
-        : where
-            ? `At ${where}. `
-            : '';
-    return `${lead}Scoring ${eventDateRange(event)}. Tap to get POWR and join me.`;
+    const venue = event.venue?.name ?? null;
+    const range = eventDateRange(event);
+    if (night && venue) return i18n.t('events:shareLink.nightVenue', { night, venue, range });
+    if (night) return i18n.t('events:shareLink.night', { night, range });
+    if (venue) return i18n.t('events:shareLink.venue', { venue, range });
+    return i18n.t('events:shareLink.scoringOnly', { range });
 }
 
 /** Where a human who taps the preview lands: this event, attributed to the sharer. */

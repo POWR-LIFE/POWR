@@ -67,7 +67,12 @@
     "uploadFailed": "Error al subir",
     "coverUploadFailed": "Error al subir la portada",
     "saveFailed": "No se ha podido guardar",
-    "somethingWentWrong": "Algo ha fallado"
+    "somethingWentWrong": "Algo ha fallado",
+    "errors": {
+      "usernameTaken": "Ese nombre de usuario ya está en uso. Prueba con otro.",
+      "notSignedIn": "Tu sesión ha caducado. Vuelve a iniciar sesión.",
+      "generic": "Algo ha fallado. Inténtalo de nuevo."
+    }
   },
   "changeEmail": {
     "error": {

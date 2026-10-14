@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
+import { withLocalizedWeeklyText } from '@/lib/challengeText';
 import i18n from '@/lib/i18n';
 import { CATEGORY_LABEL } from '@/lib/social/categories';
 import { supabase } from '@/lib/supabase';
@@ -308,7 +309,9 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
       const metaMap = CATEGORY_META as Record<string, { label: string; icon: { lib: 'ion' | 'mc'; name: string } }>;
       const meta = metaMap[c.category] ?? { label: c.category, icon: { lib: 'ion' as const, name: 'flame' } };
       const fmt = formatProgress(c.rule, c.category, effectiveProgress, target);
-      cards.push({
+      // title / description / completeSubtitle read in the language on screen
+      // (render-time getters over the catalog's English — lib/challengeText).
+      cards.push(withLocalizedWeeklyText({
         id: c.id,
         category: c.category,
         categoryLabel: CATEGORY_LABEL[c.category] ?? meta.label,
@@ -324,7 +327,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
         overallStreak: streakFor(ctx.sessions, null),
         todayIndex,
         completeSubtitle: c.description,
-      });
+      }));
     }
 
     setState({ challenges: cards, loading: false, newlyCompletedId });

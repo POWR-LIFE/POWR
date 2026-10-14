@@ -6,6 +6,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { RescueRequirementType, StreakRescueOffer } from '@/hooks/useStreakRescue';
 import i18n from '@/lib/i18n';
+import { rescueLabelText } from '@/lib/i18n/serverText';
 
 const GOLD = '#E8D200';
 const ORANGE = '#f97316';
@@ -133,7 +134,8 @@ export function StreakRescueModal({
             {saved ? t('home:rescue.kicker.saved') : partway ? t('home:rescue.kicker.partway') : t('home:rescue.kicker.offer')}
           </Text>
           <Text style={styles.title}>
-            {saved ? t('home:rescue.title.saved') : (rescue.label || t('home:rescue.title.offer'))}
+            {/* The challenge's name: the seed's is translated, one an admin added shows as typed. */}
+            {saved ? t('home:rescue.title.saved') : (rescueLabelText(rescue.label) || t('home:rescue.title.offer'))}
           </Text>
 
           <Text style={styles.body}>

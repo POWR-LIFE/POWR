@@ -187,7 +187,8 @@
     "isPrimary": "This is your primary source.",
     "switchTitle": "Switch to {{name}}?",
     "switchBody": "You can only connect one device at a time. This will disconnect {{current}}.",
-    "switchConfirm": "Switch to {{name}}"
+    "switchConfirm": "Switch to {{name}}",
+    "couldNotStartDetail": "We could not start the connection. Please try again. ({{detail}})"
   },
   "wearables": {
     "title": "Wearables",

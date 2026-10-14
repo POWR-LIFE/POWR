@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
+import { withLocalizedTemplateText } from '@/lib/challengeText';
 import i18n from '@/lib/i18n';
 import { useActivityRelevance } from '@/hooks/useGymRelevance';
 import { filterTemplatesByRelevance } from '@/lib/social/templateRelevance';
@@ -64,6 +65,41 @@ const RESPOND_FALLBACK_ERROR_KEY: Record<RespondAction, string> = {
 };
 
 /**
+ * The shared-challenge edge functions' refusal codes, and how each reads in the
+ * app's catalog. The server writes its message in English only; the code is
+ * what lets other languages say the same thing.
+ */
+const EDGE_ERROR_KEYS: Record<string, string> = {
+  AT_CAP: 'social:errors.codes.atCap',
+  NOT_LIVE: 'social:errors.codes.notLive',
+  BAD_TOKEN: 'social:errors.codes.badToken',
+  UNAVAILABLE: 'social:errors.codes.unavailable',
+  NOT_OPTED_IN: 'social:errors.codes.notOptedIn',
+  OPEN_EXISTS: 'social:errors.codes.openExists',
+  INVITEE_OPTED_OUT: 'social:errors.codes.inviteeOptedOut',
+  BLOCKED: 'social:errors.codes.blocked',
+  NOT_OPEN: 'social:errors.codes.notOpen',
+  NOT_CREATOR: 'social:errors.codes.notCreator',
+  STILL_LIVE: 'social:errors.codes.stillLive',
+};
+
+/** A refusal body ({ error, code }) in the language on screen. English shows the server's own words, as it always has. */
+export function edgeErrorText(body: { error?: unknown; code?: unknown } | null | undefined, fallback: string): string {
+  if (!body?.error) return fallback;
+  if (i18n.language === 'en') return String(body.error);
+  const code = typeof body.code === 'string' ? body.code : '';
+  if (code === 'GROUP_FULL') {
+    // "Groups are capped at 6": the number only travels inside the English text.
+    const max = /\d+/.exec(String(body.error))?.[0];
+    return max ? i18n.t('social:errors.codes.groupFull', { max }) : i18n.t('social:errors.codes.groupFullNoMax');
+  }
+  const key = EDGE_ERROR_KEYS[code];
+  // No code, or one this build doesn't know: the caller's own (translated)
+  // fallback rather than an English sentence in the middle of a French screen.
+  return key ? i18n.t(key) : fallback;
+}
+
+/**
  * supabase-js surfaces a non-2xx edge-function reply as an error carrying the
  * Response on `context`, so the server's own message (slots full, already
  * finished) only exists if we read the body back out. Same shape join-challenge
@@ -74,7 +110,7 @@ export async function edgeErrorMessage(fnErr: unknown, data: any, fallback: stri
     const body = fnErr && typeof fnErr === 'object' && 'context' in (fnErr as any)
       ? await (fnErr as any).context.json()
       : data;
-    if (body?.error) return String(body.error);
+    if (body?.error) return edgeErrorText(body, fallback);
   } catch { /* body already consumed or not JSON — use the fallback */ }
   return fallback;
 }
@@ -97,7 +133,7 @@ function humanizeRemaining(endsAt?: string | null): string {
 }
 
 function mapTemplateRow(row: any): ChallengeTemplate {
-  return {
+  return withLocalizedTemplateText({
     id: row.id,
     category: row.category,
     categoryLabel: CATEGORY_LABEL[row.category] ?? i18n.t('social:category.fallback'),
@@ -105,10 +141,11 @@ function mapTemplateRow(row: any): ChallengeTemplate {
     tier: row.tier,
     title: row.title,
     goal: row.goal,
+    measure: row.measure ?? null,
     basePoints: row.base_points,
     mode: row.mode === 'pooled' ? 'pooled' : 'solo',
     durationHours: Number(row.duration_hours) || undefined,
-  };
+  });
 }
 
 function mapChallengeRow(row: any): SharedChallenge {
@@ -163,18 +200,19 @@ function mapChallengeRow(row: any): SharedChallenge {
 
   return {
     id: row.id,
-    template: {
+    template: withLocalizedTemplateText({
       id: tmpl.id ?? row.id,
       category: row.category,
       categoryLabel: CATEGORY_LABEL[row.category] ?? i18n.t('social:category.fallback'),
       icon: CATEGORY_ICON[row.category] ?? CATEGORY_ICON.multi,
       tier: tmpl.tier ?? 'easy',
-      title: tmpl.title ?? i18n.t('social:fallbackTitle'),
+      title: tmpl.title ?? '',
       goal: tmpl.goal ?? '',
+      measure: tmpl.measure ?? null,
       basePoints: tmpl.base_points ?? row.base_points ?? 0,
       mode: row.kind === 'pooled' ? 'pooled' : 'solo',
       durationHours: Number(row.duration_hours) || undefined,
-    },
+    }, !!tmpl.title),
     kind: row.kind ?? 'parallel',
     // The UI derives "forming" from a participant still being `invited`; DB
     // 'forming' maps to the client's 'active' so the card renders either way.

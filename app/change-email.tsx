@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import GeometricBackground from '@/components/GeometricBackground';
 import { useAuth } from '@/context/AuthContext';
+import { authErrorMessage } from '@/lib/i18n/serverText';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
@@ -96,7 +97,7 @@ export default function ChangeEmailScreen() {
                 // updateUser surfaces "email already registered" generically. We
                 // intentionally don't disambiguate to avoid leaking which emails
                 // exist on POWR.
-                setError(updateError.message);
+                setError(authErrorMessage(updateError));
                 return;
             }
 
@@ -119,7 +120,7 @@ export default function ChangeEmailScreen() {
                 { emailRedirectTo: Linking.createURL('email-change-confirmed') },
             );
             if (resendError) {
-                setError(resendError.message);
+                setError(authErrorMessage(resendError));
                 return;
             }
         } finally {

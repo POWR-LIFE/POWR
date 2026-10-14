@@ -155,5 +155,9 @@
       "body": "{{since}} Si tu as porté ton appareil, le reconnecter règle généralement le problème.",
       "cta": "Vérifier la connexion"
     }
+  },
+  "authExpired": {
+    "title": "{{name}} déconnecté",
+    "body": "Ta connexion à {{name}} a expiré. Va dans les Paramètres pour la rétablir."
   }
 }

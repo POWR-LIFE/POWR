@@ -1,0 +1,320 @@
+{
+  "weekly": {
+    "gym-show-up": {
+      "title": "¡Presente!",
+      "description": "Haz 2 check-ins esta semana."
+    },
+    "gym-back-again": {
+      "title": "De vuelta",
+      "description": "Haz 3 check-ins esta semana."
+    },
+    "gym-midweek-move": {
+      "title": "Antes del jueves",
+      "description": "Haz al menos un check-in entre el lunes y el miércoles."
+    },
+    "gym-weekend": {
+      "title": "Finde a tope",
+      "description": "Haz check-in un sábado o un domingo esta semana."
+    },
+    "gym-4-from-7": {
+      "title": "4 de 7",
+      "description": "Haz 4 check-ins esta semana."
+    },
+    "gym-early-doors": {
+      "title": "A primera hora",
+      "description": "Haz check-in antes de las 8:00, 3 veces esta semana."
+    },
+    "gym-lunchtime": {
+      "title": "Mediodía activo",
+      "description": "Haz check-in entre las 12:00 y las 14:00, 3 veces esta semana."
+    },
+    "gym-no-days-off": {
+      "title": "Sin días libres",
+      "description": "Haz 5 check-ins esta semana."
+    },
+    "gym-perfect-week": {
+      "title": "Semana perfecta",
+      "description": "Haz check-in todos los días, 7 días seguidos."
+    },
+    "gym-double-day": {
+      "title": "Doblete",
+      "description": "Haz dos check-ins el mismo día, 2 veces esta semana."
+    },
+    "gym-5am-club": {
+      "title": "Club de las 5",
+      "description": "Haz check-in antes de las 6:00, 3 veces esta semana."
+    },
+    "gym-six-pack": {
+      "title": "Semana tableta",
+      "description": "Haz 6 check-ins esta semana."
+    },
+    "walk-first-steps": {
+      "title": "Primeros pasos",
+      "description": "Haz {{steps}} pasos en un solo día esta semana."
+    },
+    "walk-daily-mover": {
+      "title": "Muévete a diario",
+      "description": "Haz {{steps}} pasos al día, 3 días esta semana."
+    },
+    "walk-lunch-walk": {
+      "title": "Paseo de mediodía",
+      "description": "Haz {{steps}} pasos entre las 12:00 y las 14:00, 3 veces esta semana."
+    },
+    "walk-evening": {
+      "title": "Paseo de tarde",
+      "description": "Haz {{steps}} pasos después de las 18:00, 3 veces esta semana."
+    },
+    "walk-10k-days": {
+      "title": "Días de 10.000",
+      "description": "Haz {{steps}} pasos al día, 4 días esta semana."
+    },
+    "walk-30k-weekend": {
+      "title": "Finde de 30.000",
+      "description": "Suma {{steps}} pasos entre el sábado y el domingo."
+    },
+    "walk-morning": {
+      "title": "Pasos mañaneros",
+      "description": "Haz {{steps}} pasos antes de las 9:00, 4 veces esta semana."
+    },
+    "walk-35k-week": {
+      "title": "Semana de 35.000",
+      "description": "Suma {{steps}} pasos en la semana."
+    },
+    "walk-50k-week": {
+      "title": "Semana de 50.000",
+      "description": "Suma {{steps}} pasos en la semana."
+    },
+    "walk-10k-everyday": {
+      "title": "10.000 cada día",
+      "description": "Haz {{steps}} pasos cada día durante 7 días."
+    },
+    "walk-big-day": {
+      "title": "Sábado XXL",
+      "description": "Haz {{steps}} pasos en un solo día."
+    },
+    "walk-70k-week": {
+      "title": "Semana de 70.000",
+      "description": "Suma {{steps}} pasos en la semana."
+    },
+    "run-just-run": {
+      "title": "Solo corre",
+      "description": "Haz 1 carrera de cualquier distancia esta semana."
+    },
+    "run-3km": {
+      "title": "Carrera de 3 km",
+      "description": "Corre al menos 3 km de una sola vez."
+    },
+    "run-twice": {
+      "title": "Dos carreras",
+      "description": "Haz 2 carreras esta semana, de cualquier distancia."
+    },
+    "run-5km-total": {
+      "title": "5 km en total",
+      "description": "Corre 5 km en total durante la semana."
+    },
+    "run-3-runs-10km": {
+      "title": "Tres carreras",
+      "description": "Haz 3 carreras que sumen al menos 10 km."
+    },
+    "run-5k-x3": {
+      "title": "5K por triplicado",
+      "description": "Corre 5 km o más, 3 veces esta semana."
+    },
+    "run-20k-week": {
+      "title": "Semana de 20 km",
+      "description": "Corre 20 km en total durante la semana."
+    },
+    "run-every-other": {
+      "title": "Un día sí, otro no",
+      "description": "4 carreras esta semana, con al menos 1 día de descanso entre cada una."
+    },
+    "run-long-one": {
+      "title": "Tirada larga",
+      "description": "Corre al menos 10 km de una sola vez."
+    },
+    "run-half-week": {
+      "title": "Media en 7 días",
+      "description": "Corre 21 km en total durante la semana."
+    },
+    "run-5-runs": {
+      "title": "Cinco carreras",
+      "description": "Haz 5 carreras de cualquier distancia esta semana."
+    },
+    "run-30k-week": {
+      "title": "Semana de 30 km",
+      "description": "Corre 30 km en total durante la semana."
+    },
+    "cycle-first-ride": {
+      "title": "Primera salida",
+      "description": "Haz 1 salida en bici de cualquier distancia esta semana."
+    },
+    "cycle-10km": {
+      "title": "Salida de 10 km",
+      "description": "Pedalea al menos 10 km de una sola vez."
+    },
+    "cycle-twice": {
+      "title": "Dos salidas",
+      "description": "Haz 2 salidas en bici esta semana, de cualquier distancia."
+    },
+    "cycle-20km-total": {
+      "title": "20 km en total",
+      "description": "Pedalea 20 km en total durante la semana."
+    },
+    "cycle-commuter": {
+      "title": "Al curro en bici",
+      "description": "Sal en bici 3 veces esta semana, de cualquier distancia."
+    },
+    "cycle-50km-week": {
+      "title": "Semana de 50 km",
+      "description": "Pedalea 50 km en total durante la semana."
+    },
+    "cycle-25km": {
+      "title": "Salida de 25 km",
+      "description": "Pedalea al menos 25 km de una sola vez."
+    },
+    "cycle-4-rides": {
+      "title": "Cuatro salidas",
+      "description": "Haz 4 salidas en bici de cualquier distancia esta semana."
+    },
+    "cycle-50km-ride": {
+      "title": "Salida de 50 km",
+      "description": "Pedalea al menos 50 km de una sola vez."
+    },
+    "cycle-100km-week": {
+      "title": "Semana de 100 km",
+      "description": "Pedalea 100 km en total durante la semana."
+    },
+    "cycle-5-rides": {
+      "title": "Cinco salidas",
+      "description": "Haz 5 salidas en bici esta semana, de cualquier distancia."
+    },
+    "cycle-century-prep": {
+      "title": "Rumbo a los 100",
+      "description": "Pedalea al menos 80 km de una sola vez."
+    },
+    "multi-mix-it-up": {
+      "title": "De todo un poco",
+      "description": "Haz actividad en 2 categorías distintas esta semana."
+    },
+    "multi-gym-and-go": {
+      "title": "Gym y a la calle",
+      "description": "Haz check-in en el gimnasio y sal a caminar o a correr el mismo día."
+    },
+    "multi-3-types": {
+      "title": "Tres disciplinas",
+      "description": "Haz al menos 1 sesión en 3 categorías distintas esta semana."
+    },
+    "multi-triple": {
+      "title": "Triple amenaza",
+      "description": "Haz 2 sesiones en 3 categorías distintas esta semana."
+    },
+    "multi-gym-and-run": {
+      "title": "Pesas y asfalto",
+      "description": "Haz check-in en el gimnasio y sal a correr el mismo día, 2 veces esta semana."
+    },
+    "multi-5-days": {
+      "title": "5 días activos",
+      "description": "Haz al menos 1 actividad, la que sea, 5 días esta semana."
+    },
+    "multi-everyday": {
+      "title": "De lunes a domingo",
+      "description": "Haz al menos 1 actividad cada día durante 7 días."
+    },
+    "multi-all-four": {
+      "title": "Cuatro de cuatro",
+      "description": "Haz al menos 1 sesión en cada una de las 4 categorías esta semana."
+    },
+    "multi-10-sessions": {
+      "title": "10 sesiones",
+      "description": "Haz 10 sesiones en total durante la semana."
+    }
+  },
+  "templates": {
+    "backAgain": "De vuelta",
+    "10kDays": "Días de 10.000",
+    "justRun": "Solo corre",
+    "fourOfAKind": "Póker de ases",
+    "35kSteps": "35.000 pasos",
+    "earlyBird": "Al que madruga",
+    "fullHouse": "Lleno total",
+    "stepItUp": "A paso ligero",
+    "50kSteps": "50.000 pasos",
+    "100kTogether": "100.000 en equipo",
+    "threeRuns": "Tres carreras",
+    "10kRunner": "10 km en las piernas",
+    "distancePool": "Bote de kilómetros",
+    "wheelsUp": "Rueda libre",
+    "gymPileUp": "Atasco en el gym",
+    "saddleTime": "Hora de sillín",
+    "testSharedChallenge": "Reto compartido de prueba",
+    "centurySplit": "Medio centenar",
+    "mixItUp": "De todo un poco",
+    "stepSquad": "Patrulla de pasos",
+    "milesTogether": "Kilómetros en equipo",
+    "quarterMillion": "Cuarto de millón",
+    "gymGrind": "Gym sin tregua",
+    "fullGym": "Gym a reventar",
+    "runClub": "Club de running",
+    "marathonPool": "Bote maratoniano",
+    "pedalParty": "Fiesta del pedal",
+    "roadPedalPool": "Bote en carretera",
+    "everestRide": "Everest en bici",
+    "allIn": "Órdago",
+    "megaMix": "Megamix"
+  },
+  "goal": {
+    "distance": "{{value}} {{unit}}",
+    "checkins": {
+      "any_one": "Haz {{count}} check-in",
+      "any_other": "Haz {{count}} check-ins",
+      "before_9am_one": "Haz {{count}} check-in antes de las 9:00",
+      "before_9am_other": "Haz {{count}} check-ins antes de las 9:00",
+      "midday_one": "Haz {{count}} check-in entre las 12:00 y las 14:00",
+      "midday_other": "Haz {{count}} check-ins entre las 12:00 y las 14:00",
+      "after_6pm_one": "Haz {{count}} check-in después de las 18:00",
+      "after_6pm_other": "Haz {{count}} check-ins después de las 18:00"
+    },
+    "distinctDays_one": "Haz check-in en {{count}} día",
+    "distinctDays_other": "Haz check-in en {{count}} días distintos",
+    "stepsWeek": "{{steps}} pasos en total",
+    "stepsDay": {
+      "any_one": "{{steps}} pasos al día, {{count}} día",
+      "any_other": "{{steps}} pasos al día, {{count}} días",
+      "before_9am_one": "{{steps}} pasos antes de las 9:00, {{count}} día",
+      "before_9am_other": "{{steps}} pasos antes de las 9:00, {{count}} días",
+      "midday_one": "{{steps}} pasos entre las 12:00 y las 14:00, {{count}} día",
+      "midday_other": "{{steps}} pasos entre las 12:00 y las 14:00, {{count}} días",
+      "after_6pm_one": "{{steps}} pasos después de las 18:00, {{count}} día",
+      "after_6pm_other": "{{steps}} pasos después de las 18:00, {{count}} días"
+    },
+    "total": {
+      "running": "Corre {{distance}} en total",
+      "cycling": "Pedalea {{distance}} en total",
+      "walking": "Camina {{distance}} en total"
+    },
+    "runs_one": "Haz {{count}} carrera",
+    "runs_other": "Haz {{count}} carreras",
+    "rides_one": "Haz {{count}} salida en bici",
+    "rides_other": "Haz {{count}} salidas en bici",
+    "sessions_one": "Haz {{count}} sesión",
+    "sessions_other": "Haz {{count}} sesiones",
+    "categories_one": "Prueba {{count}} actividad",
+    "categories_other": "Prueba {{count}} actividades distintas",
+    "pool": {
+      "distance": {
+        "running": "En equipo: {{distance}} corriendo",
+        "cycling": "En equipo: {{distance}} en bici",
+        "walking": "En equipo: {{distance}} caminando"
+      },
+      "checkins_one": "En equipo: {{count}} check-in en el gimnasio",
+      "checkins_other": "En equipo: {{count}} check-ins en el gimnasio",
+      "steps": "En equipo: {{steps}} pasos",
+      "runs_one": "En equipo: {{count}} carrera",
+      "runs_other": "En equipo: {{count}} carreras",
+      "rides_one": "En equipo: {{count}} salida en bici",
+      "rides_other": "En equipo: {{count}} salidas en bici",
+      "sessions_one": "En equipo: {{count}} sesión",
+      "sessions_other": "En equipo: {{count}} sesiones"
+    }
+  }
+}

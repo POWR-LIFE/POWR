@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { fontFamily } from '@/constants/tokens';
+import { edgeErrorMessage } from '@/hooks/useSharedChallenges';
 import i18n from '@/lib/i18n';
 import { PENDING_JOIN_KEY } from '@/lib/social/inviteLinks';
 import { getSessionUser, supabase } from '@/lib/supabase';
@@ -49,15 +50,10 @@ export default function JoinChallengeScreen() {
         body: { action: 'join', invite_token: inviteToken },
       });
       // supabase-js surfaces non-2xx as FunctionsHttpError with the body on
-      // `context` — pull the server's message out so caps read as themselves,
-      // not as a generic failure.
+      // `context` — pull the server's refusal out so caps read as themselves,
+      // not as a generic failure (in the language on screen, by its code).
       if (fnErr || !data?.ok) {
-        let message = i18n.t('social:join.failed');
-        try {
-          const body = fnErr && 'context' in (fnErr as any) ? await (fnErr as any).context.json() : data;
-          if (body?.error) message = body.error;
-        } catch { /* keep the generic message */ }
-        setError(message);
+        setError(await edgeErrorMessage(fnErr, data, i18n.t('social:join.failed')));
         return;
       }
       router.replace({ pathname: '/shared-challenge', params: { id: data.challenge_id } });

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 
 import { localDateStr } from '@/lib/api/activity';
+import { withLocalizedWeeklyText } from '@/lib/challengeText';
 import i18n, { getFormatLocale } from '@/lib/i18n';
 import { hrZonesFrom, isDayWideRow } from '@/lib/api/pointsBreakdown';
 import { supabase } from '@/lib/supabase';
@@ -393,7 +394,7 @@ export function useWeeklyRecap(): WeeklyRecapState {
             const completed = completedIds.has(c.id) || met;
             const meta = metaMap[c.category] ?? { label: c.category, icon: { lib: 'ion' as const, name: 'flame' } };
             const fmt = formatProgress(c.rule, c.category, completed ? target : progress, target);
-            return {
+            return withLocalizedWeeklyText({
                 id: c.id,
                 title: c.title,
                 categoryLabel: meta.label,
@@ -405,7 +406,7 @@ export function useWeeklyRecap(): WeeklyRecapState {
                 displayValue: fmt.displayValue,
                 displayGoal: fmt.displayGoal,
                 unit: fmt.unit,
-            };
+            });
         });
         // Wins first, then closest misses — the order the story reads best in.
         challenges.sort((a, b) => Number(b.completed) - Number(a.completed) || b.fraction - a.fraction);

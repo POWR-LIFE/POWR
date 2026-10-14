@@ -112,5 +112,10 @@
       "openNow": "Open now",
       "opens8am": "Opens 8am"
     }
+  },
+  "team": {
+    "headingTrainers": "Personal Trainers",
+    "headingTeam": "The Team",
+    "personalTrainer": "Personal trainer"
   }
 }

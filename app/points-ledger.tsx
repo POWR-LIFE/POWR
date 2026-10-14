@@ -33,6 +33,7 @@ import {
   type LedgerFilterKey,
 } from '@/lib/ledgerFilters';
 import { deriveLevelUps, type LevelUpEvent } from '@/lib/levelHistory';
+import { pointsDescriptionLabel } from '@/lib/pointsLabels';
 
 // ─── Design tokens (match settings-screen) ───────────────────────────────────
 
@@ -221,14 +222,15 @@ function typeFallback(tx: PointTransaction): string {
   return i18n.t(TYPE_FALLBACK_KEY[tx.type] ?? 'points:ledger.typeFallback.earn');
 }
 
-// tx.description is written by the server (point_transactions.description) and
-// renders as stored.
+// tx.description is English the server wrote (point_transactions.description).
+// lib/pointsLabels re-says the templates it knows in the member's language;
+// anything else renders as stored, unless it quotes a raw id.
 function txLabel(tx: PointTransaction): string {
   if (tx.activity_type) {
     const config = ACTIVITIES[tx.activity_type as ActivityType];
-    return config?.label ?? tx.description ?? typeFallback(tx);
+    if (config) return config.label;
   }
-  return tx.description ?? typeFallback(tx);
+  return pointsDescriptionLabel(tx.description, { source: tx.source, kind: tx.type }) ?? typeFallback(tx);
 }
 
 function TxBadges({ tx }: { tx: PointTransaction }) {

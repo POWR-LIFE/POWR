@@ -89,6 +89,9 @@
       "saved": "SIGUE ASÍ",
       "partway": "TERMÍNALO",
       "offer": "¡VAMOS!"
+    },
+    "labels": {
+      "backOnTrack": "Retoma el ritmo"
     }
   },
   "level": {

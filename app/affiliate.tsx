@@ -40,6 +40,7 @@ import {
     type ReadinessStep,
 } from '@/lib/api/affiliate';
 import { getFormatLocale } from '@/lib/i18n';
+import { affiliateEarningText } from '@/lib/i18n/serverText';
 import { rewardLogoUri } from '@/lib/storageImage';
 
 const GOLD = '#E8D200';
@@ -210,7 +211,7 @@ export default function AffiliateScreen() {
                                             <Ionicons name={e.kind === 'milestone' ? 'trophy-outline' : e.kind === 'signup' ? 'person-add-outline' : 'flash-outline'} size={12} color={e.kind === 'milestone' ? GOLD : DIM} />
                                         </View>
                                         <View style={{ flex: 1, minWidth: 0 }}>
-                                            <Text style={styles.earnNote} numberOfLines={1}>{e.note ?? e.kind}</Text>
+                                            <Text style={styles.earnNote} numberOfLines={1}>{affiliateEarningText(e.kind, e.note)}</Text>
                                             <Text style={styles.earnDate}>{fmtDate(e.created_at)}</Text>
                                         </View>
                                         <Text style={styles.earnPts}>+{e.points_amount.toLocaleString()}</Text>

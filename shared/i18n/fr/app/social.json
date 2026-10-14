@@ -488,7 +488,22 @@
       "dismiss": "Impossible de retirer ce défi. Vérifie ta connexion et réessaie.",
       "cancel": "Impossible d’annuler ce défi. Vérifie ta connexion et réessaie."
     },
-    "create": "Impossible de créer ce défi"
+    "create": "Impossible de créer ce défi",
+    "codes": {
+      "atCap": "Plus de place pour un défi — termine ta part ou quittes-en un d’abord",
+      "notLive": "Ce défi est déjà terminé",
+      "groupFull": "Les groupes sont limités à {{max}} personnes",
+      "groupFullNoMax": "Ce groupe est complet",
+      "badToken": "Lien d’invitation non reconnu",
+      "unavailable": "Celui-ci n’est plus disponible",
+      "notOptedIn": "Active d’abord le tableau ouvert dans les Paramètres",
+      "openExists": "Tu as déjà un défi sur le tableau ouvert",
+      "inviteeOptedOut": "Une personne sélectionnée a désactivé Ensemble",
+      "blocked": "Tu ne peux pas rejoindre ce défi",
+      "notOpen": "Ce défi n’est pas ouvert à de nouvelles personnes",
+      "notCreator": "Seule la personne qui a créé le défi peut faire ça",
+      "stillLive": "Tu ne peux retirer qu’un défi terminé"
+    }
   },
   "fallbackTitle": "Défi"
 }

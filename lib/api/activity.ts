@@ -516,6 +516,23 @@ async function absorbIntoExistingWorkout(
     return true;
 }
 
+/** Why a manual log was refused, for the screen to say in the member's language. */
+export type ManualLogErrorCode = 'DAILY_MANUAL_CAP' | 'ALREADY_TRACKED';
+
+/**
+ * A manual log refused by a rule rather than a failure. `message` stays English
+ * for logs and Sentry; screens show their own copy for `code`
+ * (app/manual-log.tsx).
+ */
+export class ManualLogError extends Error {
+    code: ManualLogErrorCode;
+    constructor(code: ManualLogErrorCode, message: string) {
+        super(message);
+        this.name = 'ManualLogError';
+        this.code = code;
+    }
+}
+
 /**
  * Records a session. Returns the new session's id, or null when nothing was
  * written (already synced, or superseded by a higher-trust source).
@@ -629,7 +646,8 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
             .gte('started_at', dayStart.toISOString());
 
         if (!countError && (count ?? 0) >= DAILY_MANUAL_CAP) {
-            throw new Error(
+            throw new ManualLogError(
+                'DAILY_MANUAL_CAP',
                 "You've already logged a session manually today. " +
                 'Connect a health provider to log unlimited sessions automatically.',
             );
@@ -664,7 +682,8 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
                 return startMs < sEnd && endMs > sStart;
             });
             if (overlaps) {
-                throw new Error(
+                throw new ManualLogError(
+                    'ALREADY_TRACKED',
                     'This time is already tracked automatically by a check-in or your connected device.',
                 );
             }

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
 
 import { ACTIVE_GEOFENCE_KEY } from '@/context/GeofenceContext';
+import i18n from '@/lib/i18n';
 
 // expo-updates' own launch-time check already downloads new updates for the
 // NEXT cold start; this prompt exists so users aren't a launch behind. Checks
@@ -49,11 +50,11 @@ async function maybePromptForUpdate(): Promise<void> {
     promptedUpdateId = updateId;
 
     Alert.alert(
-      'Update ready',
-      'A new version of POWR is ready. Restart now to get the latest improvements?',
+      i18n.t('system:otaUpdate.title'),
+      i18n.t('system:otaUpdate.body'),
       [
-        { text: 'Later', style: 'cancel' }, // applies automatically on the next cold start
-        { text: 'Restart', onPress: () => Updates.reloadAsync().catch(() => {}) },
+        { text: i18n.t('system:otaUpdate.later'), style: 'cancel' }, // applies automatically on the next cold start
+        { text: i18n.t('system:otaUpdate.restart'), onPress: () => Updates.reloadAsync().catch(() => {}) },
       ],
     );
   } catch {

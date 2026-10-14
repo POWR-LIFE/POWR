@@ -103,7 +103,11 @@
       "verified": "Health verified — full points awarded. No streak credit.",
       "manual": "Manual logs earn 80% of base points. Verify with Health for full points."
     },
-    "submitFailed": "Failed to log session"
+    "submitFailed": "Failed to log session",
+    "errors": {
+      "dailyCap": "You've already logged a session manually today. Connect a health provider to log unlimited sessions automatically.",
+      "alreadyTracked": "This time is already tracked automatically by a check-in or your connected device."
+    }
   },
   "achievementsScreen": {
     "title": "ACHIEVEMENTS",
@@ -219,5 +223,51 @@
       "epic": "Epic",
       "legendary": "Legendary"
     }
+  },
+  "transaction": {
+    "welcomeBonus": "Welcome bonus",
+    "locationGranted": "Location permission granted",
+    "wearableConnected": "Wearable connected",
+    "healthConnected": "Health data connected",
+    "vaultUnlocked": "Vault unlocked",
+    "friendJoined": "Your friend joined POWR",
+    "friendFirstWorkout": "Your friend logged their first workout",
+    "inviteRewardUnlocked": "First workout done — invite reward unlocked",
+    "inviteCodeReward": "Invite code reward",
+    "friendJoinedWithCode": "A friend joined with your code",
+    "creatorSignup": "Someone entered your code",
+    "creatorConversion": "A signup from your link logged their first workout",
+    "adminAdjustment": "Manual adjustment by admin",
+    "gymUpgradeBackfill": "gym session upgrade (backfill)",
+    "session": "{{activity}} session",
+    "gymUpgrade": "gym session upgrade ({{minutes}}min)",
+    "streakBonus_one": "{{count}}-day streak bonus",
+    "streakBonus_other": "{{count}}-day streak bonus",
+    "earlyBirdBonus": "Early Bird challenge bonus (3× {{activity}})",
+    "weeklyBonus": "Weekly challenge bonus (3× {{activity}})",
+    "supersededByCheckIn": "Superseded {{activity}} by geofence check-in",
+    "supersededByWearable": "Superseded manual {{activity}} by wearable sync",
+    "reversedRejected": "Reversed rejected {{activity}} session",
+    "reversedDuplicate": "Reversed duplicate check-in",
+    "milestoneConverted_one": "{{count}} friend converted — milestone bonus",
+    "milestoneConverted_other": "{{count}} friends converted — milestone bonus",
+    "milestoneJoined_one": "{{count}} friend joined — milestone bonus",
+    "milestoneJoined_other": "{{count}} friends joined — milestone bonus",
+    "creatorStepSignups_one": "{{count}} signup — {{label}}",
+    "creatorStepSignups_other": "{{count}} signups — {{label}}",
+    "creatorStepConversions_one": "{{count}} conversion — {{label}}",
+    "creatorStepConversions_other": "{{count}} conversions — {{label}}",
+    "creatorStepSignupsConverted_one": "{{count}} signup converted — {{label}}",
+    "creatorStepSignupsConverted_other": "{{count}} signups converted — {{label}}",
+    "creatorEventSignup": "A signup from your link joined {{event}}",
+    "creatorEventSignupUnnamed": "A signup from your link joined a live event",
+    "attended": "Attended {{event}}",
+    "attendedUnnamed": "Attended a live event",
+    "redeemed": "Redeemed: {{reward}}",
+    "weeklyChallenge": "Weekly challenge: {{title}} (+{{points}})",
+    "togetherChallenge": "Together challenge: {{title}} (+{{points}})",
+    "togetherBonus_one": "Together bonus: {{title}} (+{{points}} · {{count}} friend)",
+    "togetherBonus_other": "Together bonus: {{title}} (+{{points}} · {{count}} friends)",
+    "challengeFallback": "Challenge"
   }
 }

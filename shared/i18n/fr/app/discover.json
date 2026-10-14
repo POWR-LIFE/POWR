@@ -112,5 +112,10 @@
       "openNow": "Ouvert",
       "opens8am": "Ouvre à 8 h"
     }
+  },
+  "team": {
+    "headingTrainers": "Coachs sportifs",
+    "headingTeam": "L’équipe",
+    "personalTrainer": "Coach sportif"
   }
 }

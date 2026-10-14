@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
 import { resumeOnboardingRoute } from '@/lib/onboarding/resume';
+import { authErrorMessage } from '@/lib/i18n/serverText';
 import { PASSWORD_RESET_REDIRECT, supabase } from '@/lib/supabase';
 import GeometricBackground from '@/components/GeometricBackground';
 import { Image } from 'expo-image';
@@ -121,7 +122,7 @@ export default function AuthEmailScreen() {
             const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
                 redirectTo: PASSWORD_RESET_REDIRECT,
             });
-            if (error) { setError(error.message); return; }
+            if (error) { setError(authErrorMessage(error)); return; }
             setResetSent(true);
         } finally {
             setResetLoading(false);

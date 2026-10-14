@@ -89,6 +89,9 @@
       "saved": "GARDE LE RYTHME",
       "partway": "VA AU BOUT",
       "offer": "C’EST PARTI"
+    },
+    "labels": {
+      "backOnTrack": "Retour en piste"
     }
   },
   "level": {

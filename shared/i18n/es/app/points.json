@@ -103,7 +103,11 @@
       "verified": "Verificado con tus datos de salud: todos los puntos. No suma a tu racha.",
       "manual": "Un registro manual da el 80 % de los puntos base. Verifícalo con tus datos de salud para conseguirlos todos."
     },
-    "submitFailed": "No se ha podido registrar el entreno"
+    "submitFailed": "No se ha podido registrar el entreno",
+    "errors": {
+      "dailyCap": "Ya has registrado una sesión a mano hoy. Conecta una fuente de salud para registrar tus sesiones automáticamente y sin límite.",
+      "alreadyTracked": "Esta franja horaria ya la registra automáticamente un check-in o tu dispositivo conectado."
+    }
   },
   "achievementsScreen": {
     "title": "LOGROS",
@@ -219,5 +223,51 @@
       "epic": "Épico",
       "legendary": "Legendario"
     }
+  },
+  "transaction": {
+    "welcomeBonus": "Bonus de bienvenida",
+    "locationGranted": "Ubicación permitida",
+    "wearableConnected": "Wearable conectado",
+    "healthConnected": "Datos de salud conectados",
+    "vaultUnlocked": "Vault desbloqueado",
+    "friendJoined": "Invitación lograda: registro en POWR",
+    "friendFirstWorkout": "Invitación lograda: primer entreno hecho",
+    "inviteRewardUnlocked": "Primer entreno hecho: recompensa de invitación desbloqueada",
+    "inviteCodeReward": "Recompensa por código de invitación",
+    "friendJoinedWithCode": "Alguien se ha registrado con tu código",
+    "creatorSignup": "Alguien ha introducido tu código",
+    "creatorConversion": "Una persona registrada con tu enlace ha hecho su primer entreno",
+    "adminAdjustment": "Ajuste manual de un admin",
+    "gymUpgradeBackfill": "Sesión de gimnasio: tramo superior (recuperado)",
+    "session": "Sesión de {{activity}}",
+    "gymUpgrade": "Sesión de gimnasio: tramo superior ({{minutes}} min)",
+    "streakBonus_one": "Bonus de racha de {{count}} día",
+    "streakBonus_other": "Bonus de racha de {{count}} días",
+    "earlyBirdBonus": "Bonus del reto Early Bird (3× {{activity}})",
+    "weeklyBonus": "Bonus del reto semanal (3× {{activity}})",
+    "supersededByCheckIn": "Sustituido por un check-in en el gimnasio ({{activity}})",
+    "supersededByWearable": "Registro manual sustituido por tu wearable ({{activity}})",
+    "reversedRejected": "Sesión rechazada, puntos retirados ({{activity}})",
+    "reversedDuplicate": "Check-in duplicado, puntos retirados",
+    "milestoneConverted_one": "Hito: {{count}} amigo ha hecho su primer entreno",
+    "milestoneConverted_other": "Hito: {{count}} amigos han hecho su primer entreno",
+    "milestoneJoined_one": "Hito: {{count}} amigo registrado",
+    "milestoneJoined_other": "Hito: {{count}} amigos registrados",
+    "creatorStepSignups_one": "{{count}} registro: {{label}}",
+    "creatorStepSignups_other": "{{count}} registros: {{label}}",
+    "creatorStepConversions_one": "{{count}} primer entreno: {{label}}",
+    "creatorStepConversions_other": "{{count}} primeros entrenos: {{label}}",
+    "creatorStepSignupsConverted_one": "{{count}} primer entreno: {{label}}",
+    "creatorStepSignupsConverted_other": "{{count}} primeros entrenos: {{label}}",
+    "creatorEventSignup": "Una persona registrada con tu enlace se ha unido a {{event}}",
+    "creatorEventSignupUnnamed": "Una persona registrada con tu enlace se ha unido a un evento en directo",
+    "attended": "Asistencia: {{event}}",
+    "attendedUnnamed": "Asistencia a un evento en directo",
+    "redeemed": "Canjeado: {{reward}}",
+    "weeklyChallenge": "Reto semanal: {{title}} (+{{points}})",
+    "togetherChallenge": "Reto En equipo: {{title}} (+{{points}})",
+    "togetherBonus_one": "Bonus En equipo: {{title}} (+{{points}} · {{count}} amigo)",
+    "togetherBonus_other": "Bonus En equipo: {{title}} (+{{points}} · {{count}} amigos)",
+    "challengeFallback": "Reto"
   }
 }

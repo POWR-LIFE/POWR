@@ -187,7 +187,8 @@
     "isPrimary": "C’est ta source principale.",
     "switchTitle": "Passer à {{name}} ?",
     "switchBody": "Tu ne peux connecter qu’un appareil à la fois. {{current}} sera déconnecté.",
-    "switchConfirm": "Passer à {{name}}"
+    "switchConfirm": "Passer à {{name}}",
+    "couldNotStartDetail": "Impossible de lancer la connexion. Réessaie. ({{detail}})"
   },
   "wearables": {
     "title": "Montres connectées",

@@ -505,6 +505,16 @@
       "minimum": "Sessions under {{minimum}} minutes don't earn.",
       "walkingTiers": "Points step up as the day's total passes {{tiers}} steps.",
       "manual": "Manual logs earn 80% of a tracked session, one a day."
+    },
+    "row": {
+      "streakBonus": "Streak bonus",
+      "bonus": "Bonus",
+      "stepTier": "Step tier progress",
+      "syncedDevice": "Synced from your device",
+      "manualLog": "Manual log",
+      "syncedWearable": "Synced from your wearable",
+      "challengeReward": "Challenge reward",
+      "session": "Session"
     }
   },
   "verify": {

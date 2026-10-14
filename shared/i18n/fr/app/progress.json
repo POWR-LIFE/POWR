@@ -505,6 +505,16 @@
       "minimum": "Les séances de moins de {{minimum}} minutes ne rapportent rien.",
       "walkingTiers": "Les points augmentent quand ton total du jour passe {{tiers}} pas.",
       "manual": "Les saisies manuelles rapportent 80 % d’une séance suivie, une par jour."
+    },
+    "row": {
+      "streakBonus": "Bonus de série",
+      "bonus": "Bonus",
+      "stepTier": "Progression des paliers de pas",
+      "syncedDevice": "Synchronisé depuis ton appareil",
+      "manualLog": "Saisie manuelle",
+      "syncedWearable": "Synchronisé depuis ta montre connectée",
+      "challengeReward": "Récompense de défi",
+      "session": "Séance"
     }
   },
   "verify": {

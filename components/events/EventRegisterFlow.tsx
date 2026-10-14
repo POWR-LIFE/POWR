@@ -30,6 +30,7 @@ import {
 import { fetchProfile } from '@/lib/api/user';
 import { openEventBooking } from '@/lib/eventBookingLink';
 import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
+import { liveEventJoinErrorText } from '@/lib/i18n/serverText';
 import { consentLine, eventDateRange, inviteRewardLine } from '@/lib/liveEventDisplay';
 import { useAuth } from '@/context/AuthContext';
 
@@ -140,11 +141,12 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
         onError: (error: { code?: string; message?: string }) => {
             // P0001/P0002 are deliberate raises with human-readable copy
             // ("Your account was created after the eligibility cutoff") —
-            // surface them verbatim instead of a generic shrug.
+            // surface them instead of a generic shrug: verbatim in English,
+            // in the reader's language otherwise (lib/i18n/serverText.ts).
             const deliberate = error?.code === 'P0001' || error?.code === 'P0002';
             Alert.alert(
                 t('events:register.errorTitle'),
-                deliberate && error.message ? error.message : t('events:register.errorBody'),
+                deliberate && error.message ? liveEventJoinErrorText(error.message) : t('events:register.errorBody'),
             );
         },
     });

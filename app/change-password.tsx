@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import GeometricBackground from '@/components/GeometricBackground';
 import { useAuth } from '@/context/AuthContext';
+import { authErrorMessage } from '@/lib/i18n/serverText';
 import { PASSWORD_RESET_REDIRECT, supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -77,7 +78,7 @@ export default function ChangePasswordScreen() {
                 password: newPassword,
             });
             if (updateError) {
-                setError(updateError.message);
+                setError(authErrorMessage(updateError));
                 return;
             }
 
@@ -97,7 +98,7 @@ export default function ChangePasswordScreen() {
                 redirectTo: PASSWORD_RESET_REDIRECT,
             });
             if (resetError) {
-                setError(resetError.message);
+                setError(authErrorMessage(resetError));
                 return;
             }
             setScreen('reset-sent');

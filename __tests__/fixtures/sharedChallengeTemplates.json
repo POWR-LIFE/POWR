@@ -1,0 +1,439 @@
+{
+  "_comment": "shared_challenge_templates in production on 2026-10-14 (title, category, mode, measure, goal as stored). __tests__/challengeNames.test.ts proves every title has a translated name and every goal line regenerates byte for byte in English. Refresh when templates are added: select category, title, mode, measure, goal, active from shared_challenge_templates order by sort_order.",
+  "rows": [
+    {
+      "title": "Back Again",
+      "category": "gym",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "distinct_days",
+        "target": 7,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Check in on 7 different days",
+      "active": true
+    },
+    {
+      "title": "10K Days",
+      "category": "walking",
+      "mode": "solo",
+      "measure": {
+        "days": 4,
+        "measure": "steps_day",
+        "target": 10000,
+        "unit": null,
+        "window": "any"
+      },
+      "goal": "10,000 steps a day, 4 days",
+      "active": true
+    },
+    {
+      "title": "Just Run",
+      "category": "running",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "runs",
+        "target": 1,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Log 1 run",
+      "active": true
+    },
+    {
+      "title": "Four of a Kind",
+      "category": "gym",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "checkins",
+        "target": 4,
+        "unit": null,
+        "window": "any"
+      },
+      "goal": "Check in 4×",
+      "active": true
+    },
+    {
+      "title": "35K Steps",
+      "category": "walking",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "steps_week",
+        "target": 35000,
+        "unit": null,
+        "window": null
+      },
+      "goal": "35,000 steps in total",
+      "active": true
+    },
+    {
+      "title": "Early Bird",
+      "category": "gym",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "checkins",
+        "target": 3,
+        "unit": null,
+        "window": "before_9am"
+      },
+      "goal": "Check in 3× before 9am",
+      "active": true
+    },
+    {
+      "title": "Full House",
+      "category": "gym",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "checkins",
+        "target": 6,
+        "unit": null,
+        "window": "any"
+      },
+      "goal": "Check in 6×",
+      "active": true
+    },
+    {
+      "title": "Step It Up",
+      "category": "walking",
+      "mode": "solo",
+      "measure": {
+        "days": 3,
+        "measure": "steps_day",
+        "target": 8000,
+        "unit": null,
+        "window": "any"
+      },
+      "goal": "8,000 steps a day, 3 days",
+      "active": true
+    },
+    {
+      "title": "50K Steps",
+      "category": "walking",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "steps_week",
+        "target": 50000,
+        "unit": null,
+        "window": null
+      },
+      "goal": "50,000 steps in total",
+      "active": true
+    },
+    {
+      "title": "100K Together",
+      "category": "walking",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "steps_week",
+        "target": 100000,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Together: 100,000 steps",
+      "active": true
+    },
+    {
+      "title": "Three Runs",
+      "category": "running",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "runs",
+        "target": 3,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Log 3 runs",
+      "active": true
+    },
+    {
+      "title": "10K Runner",
+      "category": "running",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "distance",
+        "target": 10,
+        "unit": "km",
+        "window": null
+      },
+      "goal": "Run 10km in total",
+      "active": true
+    },
+    {
+      "title": "Distance Pool",
+      "category": "running",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "distance",
+        "target": 100,
+        "unit": "km",
+        "window": null
+      },
+      "goal": "Together: 100km running",
+      "active": true
+    },
+    {
+      "title": "Gym Pile-Up",
+      "category": "gym",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "checkins",
+        "target": 20,
+        "unit": null,
+        "window": "any"
+      },
+      "goal": "Together: 20 gym check-ins",
+      "active": true
+    },
+    {
+      "title": "Wheels Up",
+      "category": "cycling",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "rides",
+        "target": 1,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Log 1 ride",
+      "active": true
+    },
+    {
+      "title": "Saddle Time",
+      "category": "cycling",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "rides",
+        "target": 3,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Log 3 rides",
+      "active": true
+    },
+    {
+      "title": "Test Shared Challenge",
+      "category": "walking",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "steps_week",
+        "target": 10000,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Together: 10,000 steps",
+      "active": false
+    },
+    {
+      "title": "Century Split",
+      "category": "cycling",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "distance",
+        "target": 50,
+        "unit": "km",
+        "window": null
+      },
+      "goal": "Ride 50km in total",
+      "active": true
+    },
+    {
+      "title": "Mix It Up",
+      "category": "multi",
+      "mode": "solo",
+      "measure": {
+        "days": null,
+        "measure": "categories",
+        "target": 3,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Try 3 different activities",
+      "active": true
+    },
+    {
+      "title": "Step Squad",
+      "category": "walking",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "steps_week",
+        "target": 50000,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Together: 50,000 steps",
+      "active": true
+    },
+    {
+      "title": "Miles Together",
+      "category": "walking",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "distance",
+        "target": 50,
+        "unit": "km",
+        "window": null
+      },
+      "goal": "Together: 50km walking",
+      "active": true
+    },
+    {
+      "title": "Quarter Million",
+      "category": "walking",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "steps_week",
+        "target": 250000,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Together: 250,000 steps",
+      "active": true
+    },
+    {
+      "title": "Gym Grind",
+      "category": "gym",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "checkins",
+        "target": 40,
+        "unit": null,
+        "window": "any"
+      },
+      "goal": "Together: 40 gym check-ins",
+      "active": true
+    },
+    {
+      "title": "Full Gym",
+      "category": "gym",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "checkins",
+        "target": 75,
+        "unit": null,
+        "window": "any"
+      },
+      "goal": "Together: 75 gym check-ins",
+      "active": true
+    },
+    {
+      "title": "Run Club",
+      "category": "running",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "runs",
+        "target": 15,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Together: 15 runs",
+      "active": true
+    },
+    {
+      "title": "Marathon Pool",
+      "category": "running",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "distance",
+        "target": 200,
+        "unit": "km",
+        "window": null
+      },
+      "goal": "Together: 200km running",
+      "active": true
+    },
+    {
+      "title": "Pedal Party",
+      "category": "cycling",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "rides",
+        "target": 15,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Together: 15 rides",
+      "active": true
+    },
+    {
+      "title": "Road Pedal Pool",
+      "category": "cycling",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "distance",
+        "target": 250,
+        "unit": "km",
+        "window": null
+      },
+      "goal": "Together: 250km cycling",
+      "active": true
+    },
+    {
+      "title": "Everest Ride",
+      "category": "cycling",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "distance",
+        "target": 500,
+        "unit": "km",
+        "window": null
+      },
+      "goal": "Together: 500km cycling",
+      "active": true
+    },
+    {
+      "title": "All In",
+      "category": "multi",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "sessions",
+        "target": 30,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Together: 30 sessions",
+      "active": true
+    },
+    {
+      "title": "Mega Mix",
+      "category": "multi",
+      "mode": "pooled",
+      "measure": {
+        "days": null,
+        "measure": "sessions",
+        "target": 60,
+        "unit": null,
+        "window": null
+      },
+      "goal": "Together: 60 sessions",
+      "active": true
+    }
+  ]
+}

@@ -9,7 +9,9 @@
 // runtime — so any hardcoded "here's what you earn" copy drifts out of sync
 // with what the user was actually paid. Their own rows can't.
 
-import { type ActivityType } from '@/constants/activities';
+import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import i18n from '@/lib/i18n';
+import { hasRawId, translatePointsDescription } from '@/lib/pointsLabels';
 import {
     dayAnchor,
     monthAnchorEnd,
@@ -143,42 +145,54 @@ export function breakdownWindow(period: LookbackPeriod, offset: number): { start
 }
 
 /**
- * Best available label for a ledger row. claim-points and upgrade-gym-tier write
- * readable descriptions ("gym session upgrade (40min)", "4-day streak bonus");
- * the health-sync and manual paths write only a `source`, so those get a derived
- * label instead of rendering blank.
+ * Best available label for a ledger row, in the member's language. claim-points
+ * and upgrade-gym-tier write English descriptions ("gym session upgrade (40min)",
+ * "4-day streak bonus") that lib/pointsLabels re-says; the health-sync and
+ * manual paths write only a `source`, so those get a derived label instead of
+ * rendering blank.
  *
  * Historical rows can name thresholds that have since been retuned (the ledger
  * still holds "gym session upgrade (45min)" from when that was the live gate).
  * That is left as-is on purpose — it is what the user was actually paid for.
+ *
+ * Read when the sheet fetches (each time it opens), so a row is in the
+ * language on screen at that moment. Exported for __tests__/pointsLabels.
  */
-function labelFor(
+export function labelFor(
     type: ActivityType,
     kind: string,
     description: string | null,
     source: string | null,
 ): string {
     const desc = description?.trim();
-    if (desc) return desc.charAt(0).toUpperCase() + desc.slice(1);
+    if (desc) {
+        // A description nobody taught the app to say shows as stored — unless it
+        // quotes a raw id, where the activity's own name says more.
+        const label = translatePointsDescription(desc, { source, kind })
+            ?? (hasRawId(desc) ? ACTIVITIES[type]?.label ?? i18n.t('progress:sheet.row.session') : desc);
+        return label.charAt(0).toUpperCase() + label.slice(1);
+    }
 
-    if (kind === 'streak') return 'Streak bonus';
-    if (kind === 'bonus') return 'Bonus';
+    if (kind === 'streak') return i18n.t('progress:sheet.row.streakBonus');
+    if (kind === 'bonus') return i18n.t('progress:sheet.row.bonus');
 
     switch (source) {
         case 'health_sync':
             // Walking rows are written as tier DELTAS as the day's step count
             // climbs, so a 1-POWR row is a top-up, not a tier value.
-            return type === 'walking' ? 'Step tier progress' : 'Synced from your device';
+            return type === 'walking'
+                ? i18n.t('progress:sheet.row.stepTier')
+                : i18n.t('progress:sheet.row.syncedDevice');
         case 'manual_log':
-            return 'Manual log';
+            return i18n.t('progress:sheet.row.manualLog');
         case 'terra':
         case 'terra_webhook':
-            return 'Synced from your wearable';
+            return i18n.t('progress:sheet.row.syncedWearable');
         case 'shared_challenge':
         case 'shared_challenge_bonus':
-            return 'Challenge reward';
+            return i18n.t('progress:sheet.row.challengeReward');
         default:
-            return 'Session';
+            return i18n.t('progress:sheet.row.session');
     }
 }
 
