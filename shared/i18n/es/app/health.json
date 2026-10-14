@@ -155,5 +155,9 @@
       "body": "{{since}} Si lo has llevado puesto, volver a conectarlo suele solucionarlo.",
       "cta": "Revisar conexión"
     }
+  },
+  "authExpired": {
+    "title": "{{name}} desconectado",
+    "body": "Tu conexión con {{name}} ha caducado. Ve a Ajustes para volver a conectarla."
   }
 }

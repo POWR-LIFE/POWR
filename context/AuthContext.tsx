@@ -13,6 +13,7 @@ import { claimDevice, confirmDeviceTransfer, getDeviceId } from '@/lib/deviceLoc
 import { reportLocationPermission } from '@/lib/locationPermission';
 import { reportUserCountry } from '@/lib/country';
 import i18n from '@/lib/i18n';
+import { authErrorMessage } from '@/lib/i18n/serverText';
 import { reportUserLanguage } from '@/lib/i18n/reportLanguage';
 import TransferDeviceSheet from '@/components/TransferDeviceSheet';
 
@@ -702,13 +703,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 provider: 'apple',
                 token: credential.identityToken,
             });
-            if (error) return { error: error.message };
+            if (error) return { error: authErrorMessage(error) };
             await enforceOneSession();
             return { error: null };
         } catch (e: unknown) {
             // ERR_REQUEST_CANCELED = user dismissed the sheet — not an error
             if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return { error: null };
-            return { error: e instanceof Error ? e.message : i18n.t('auth:errors.unknown') };
+            return { error: e instanceof Error ? authErrorMessage(e) : i18n.t('auth:errors.unknown') };
         }
     };
 
@@ -722,7 +723,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 provider: 'google',
                 options: { redirectTo, skipBrowserRedirect: true },
             });
-            if (error) return { error: error.message };
+            if (error) return { error: authErrorMessage(error) };
             if (!data.url) return { error: i18n.t('auth:errors.noOAuthUrl') };
 
             const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
@@ -732,21 +733,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const code = result.url.match(/[?&]code=([^&#]+)/)?.[1];
                 if (code) {
                     const { error: sessionError } = await supabase.auth.exchangeCodeForSession(decodeURIComponent(code));
-                    if (sessionError) return { error: sessionError.message };
+                    if (sessionError) return { error: authErrorMessage(sessionError) };
                 }
                 await enforceOneSession();
             }
             // result.type === 'cancel' means user closed browser — not an error
             return { error: null };
         } catch (e: unknown) {
-            return { error: e instanceof Error ? e.message : i18n.t('auth:errors.unknown') };
+            return { error: e instanceof Error ? authErrorMessage(e) : i18n.t('auth:errors.unknown') };
         }
     };
 
     const signInWithEmail = async (email: string, password: string): Promise<{ error: string | null }> => {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (!error) await enforceOneSession();
-        return { error: error?.message ?? null };
+        // Supabase writes its errors in English ("Invalid login credentials");
+        // English readers keep that text, others get it in their language.
+        return { error: error ? authErrorMessage(error) : null };
     };
 
     const signUpWithEmail = async (
@@ -758,7 +761,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             password,
             options: { emailRedirectTo: EMAIL_CONFIRM_REDIRECT },
         });
-        if (error) return { error: error.message };
+        if (error) return { error: authErrorMessage(error) };
 
         // Signing up with an address that already has an account (commonly one
         // created via Google/Apple) does NOT error — GoTrue returns a decoy user
@@ -791,12 +794,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const markOnboardingComplete = async (): Promise<{ error: string | null }> => {
         const { error } = await supabase.auth.updateUser({ data: { onboarding_complete: true } });
-        return { error: error?.message ?? null };
+        return { error: error ? authErrorMessage(error) : null };
     };
 
     const updateUserMetadata = async (data: Record<string, any>): Promise<{ error: string | null }> => {
         const { error } = await supabase.auth.updateUser({ data });
-        return { error: error?.message ?? null };
+        return { error: error ? authErrorMessage(error) : null };
     };
 
     return (

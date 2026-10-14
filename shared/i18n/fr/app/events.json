@@ -259,7 +259,15 @@
     "resetA11y": "Réinitialiser l’inscription de test",
     "resetting": "RÉINITIALISATION…",
     "reset": "RÉINITIALISER L’INSCRIPTION TEST",
-    "done": "Terminé"
+    "done": "Terminé",
+    "errors": {
+      "notFound": "Événement introuvable.",
+      "notRequired": "Pas besoin de t’inscrire à cet événement.",
+      "notOpenYet": "Les inscriptions à cet événement ne sont pas encore ouvertes.",
+      "closed": "Il n’est plus possible de rejoindre cet événement.",
+      "cutoff": "Ton compte a été créé après la date limite pour participer.",
+      "noRejoin": "Tu ne peux pas rejoindre cet événement une deuxième fois."
+    }
   },
   "shareScreen": {
     "publishError": "Impossible de publier ta carte.",
@@ -401,5 +409,12 @@
     "title": "Résultats révélés en direct à la finale",
     "divider": "LE CLASSEMENT",
     "foot": "Chaque point est déjà compté. Personne ne voit le classement avant la révélation."
+  },
+  "shareLink": {
+    "title": "{{event}} · Événement live sur POWR",
+    "nightVenue": "{{night}} à {{venue}}. Période de points : {{range}}. Touche, installe POWR et rejoins-moi.",
+    "night": "{{night}}. Période de points : {{range}}. Touche, installe POWR et rejoins-moi.",
+    "venue": "À {{venue}}. Période de points : {{range}}. Touche, installe POWR et rejoins-moi.",
+    "scoringOnly": "Période de points : {{range}}. Touche, installe POWR et rejoins-moi."
   }
 }

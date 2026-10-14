@@ -13,6 +13,7 @@ import enAccount from './en/app/account.json';
 import enActivities from './en/app/activities.json';
 import enAffiliate from './en/app/affiliate.json';
 import enAuth from './en/app/auth.json';
+import enChallenges from './en/app/challenges.json';
 import enCommon from './en/app/common.json';
 import enDiscover from './en/app/discover.json';
 import enEvents from './en/app/events.json';
@@ -35,6 +36,7 @@ import esAccount from './es/app/account.json';
 import esActivities from './es/app/activities.json';
 import esAffiliate from './es/app/affiliate.json';
 import esAuth from './es/app/auth.json';
+import esChallenges from './es/app/challenges.json';
 import esCommon from './es/app/common.json';
 import esDiscover from './es/app/discover.json';
 import esEvents from './es/app/events.json';
@@ -57,6 +59,7 @@ import frAccount from './fr/app/account.json';
 import frActivities from './fr/app/activities.json';
 import frAffiliate from './fr/app/affiliate.json';
 import frAuth from './fr/app/auth.json';
+import frChallenges from './fr/app/challenges.json';
 import frCommon from './fr/app/common.json';
 import frDiscover from './fr/app/discover.json';
 import frEvents from './fr/app/events.json';
@@ -99,6 +102,7 @@ export const APP_NAMESPACES = [
   'affiliate',
   'notifications',
   'inStore',
+  'challenges',
 ] as const;
 export type AppNamespace = (typeof APP_NAMESPACES)[number];
 
@@ -126,6 +130,7 @@ export const APP_RESOURCES = {
     affiliate: enAffiliate,
     notifications: enNotifications,
     inStore: enInStore,
+    challenges: enChallenges,
   },
   fr: {
     common: frCommon,
@@ -150,6 +155,7 @@ export const APP_RESOURCES = {
     affiliate: frAffiliate,
     notifications: frNotifications,
     inStore: frInStore,
+    challenges: frChallenges,
   },
   es: {
     common: esCommon,
@@ -174,6 +180,7 @@ export const APP_RESOURCES = {
     affiliate: esAffiliate,
     notifications: esNotifications,
     inStore: esInStore,
+    challenges: esChallenges,
   },
 } satisfies Record<string, Partial<Record<AppNamespace, object>>>;
 

@@ -15,6 +15,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import GeometricBackground from '@/components/GeometricBackground';
 import i18n from '@/lib/i18n';
+import { authErrorMessage } from '@/lib/i18n/serverText';
 import { supabase } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
@@ -75,7 +76,12 @@ export default function ResetPasswordScreen() {
                 setExchangeError(
                     auth_error === 'otp_expired'
                         ? i18n.t('auth:resetPassword.error.expired')
-                        : description.replace(/\+/g, ' ')
+                        // Supabase's own English description: kept for English,
+                        // mapped (or the invalid-link line) for everyone else.
+                        : authErrorMessage(
+                            { code: auth_error, message: description.replace(/\+/g, ' ') },
+                            i18n.t('auth:resetPassword.error.invalidLink'),
+                        )
                 );
                 setScreen('error');
                 return;
@@ -90,13 +96,13 @@ export default function ResetPasswordScreen() {
                 const url = Linking.createURL('reset-password', { queryParams: { code } });
                 const { error } = await supabase.auth.exchangeCodeForSession(url);
                 if (error) {
-                    setExchangeError(error.message);
+                    setExchangeError(authErrorMessage(error, i18n.t('auth:resetPassword.error.invalidLink')));
                     setScreen('error');
                     return;
                 }
                 setScreen('form');
             } catch (e: unknown) {
-                setExchangeError(e instanceof Error ? e.message : i18n.t('auth:resetPassword.error.exchangeFailed'));
+                setExchangeError(e instanceof Error ? authErrorMessage(e, i18n.t('auth:resetPassword.error.exchangeFailed')) : i18n.t('auth:resetPassword.error.exchangeFailed'));
                 setScreen('error');
             }
         })();
@@ -113,7 +119,7 @@ export default function ResetPasswordScreen() {
         setLoading(true);
         try {
             const { error } = await supabase.auth.updateUser({ password: newPassword });
-            if (error) { setFormError(error.message); return; }
+            if (error) { setFormError(authErrorMessage(error)); return; }
             setScreen('success');
         } finally {
             setLoading(false);

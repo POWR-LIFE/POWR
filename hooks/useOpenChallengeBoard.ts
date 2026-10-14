@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
+import { withLocalizedTemplateText } from '@/lib/challengeText';
 import i18n from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { edgeErrorMessage } from '@/hooks/useSharedChallenges';
@@ -55,18 +56,19 @@ function mapOpenRow(row: any): OpenChallenge {
   const category = row.category ?? tmpl.category ?? 'multi';
   return {
     id: row.id,
-    template: {
+    template: withLocalizedTemplateText({
       id: tmpl.id ?? row.id,
       category,
       categoryLabel: CATEGORY_LABEL[category] ?? i18n.t('social:category.fallback'),
       icon: CATEGORY_ICON[category] ?? CATEGORY_ICON.multi,
       tier: tmpl.tier ?? 'medium',
-      title: tmpl.title ?? i18n.t('social:fallbackTitle'),
+      title: tmpl.title ?? '',
       goal: tmpl.goal ?? '',
+      measure: tmpl.measure ?? null,
       basePoints: Number(tmpl.base_points ?? row.base_points) || 0,
       mode: tmpl.mode === 'pooled' ? 'pooled' : 'solo',
       durationHours: Number(row.duration_hours) || undefined,
-    },
+    }, !!tmpl.title),
     kind: row.kind === 'pooled' ? 'pooled' : 'parallel',
     status: row.status,
     creatorId: row.creator_id,

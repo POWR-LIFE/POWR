@@ -67,7 +67,12 @@
     "uploadFailed": "Upload failed",
     "coverUploadFailed": "Cover upload failed",
     "saveFailed": "Save failed",
-    "somethingWentWrong": "Something went wrong"
+    "somethingWentWrong": "Something went wrong",
+    "errors": {
+      "usernameTaken": "That username is taken. Try another one.",
+      "notSignedIn": "Not authenticated",
+      "generic": "Something went wrong. Please try again."
+    }
   },
   "changeEmail": {
     "error": {

@@ -36,7 +36,19 @@
   "earnings": {
     "eyebrow": "RECENT EARNINGS",
     "allTime": "{{points}} PTS ALL TIME",
-    "fullLedger": "FULL LEDGER IN THE PORTAL"
+    "fullLedger": "FULL LEDGER IN THE PORTAL",
+    "kinds": {
+      "signup": "Someone entered your code",
+      "conversion": "Signup converted — first verified workout",
+      "eventSignup": "A signup joined {{event}}",
+      "eventSignupNoName": "A signup joined a live event",
+      "milestone": "Step reached",
+      "milestoneConversions_one": "{{label}} — {{count}} conversion",
+      "milestoneConversions_other": "{{label}} — {{count}} conversions",
+      "milestoneSignups_one": "{{label}} — {{count}} signup",
+      "milestoneSignups_other": "{{label}} — {{count}} signups",
+      "manual": "Added by POWR"
+    }
   },
   "ready": {
     "eyebrow": "GET AFFILIATE-READY",

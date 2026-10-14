@@ -2,7 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import type { TFunction } from 'i18next';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -17,6 +17,7 @@ import { fontFamily } from '@/constants/tokens';
 import { useFriends } from '@/hooks/useFriends';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { deleteActivityItem, fetchActivityFeed, type ActivityItem } from '@/lib/api/notifications';
+import { activityFeedText } from '@/lib/i18n/activityFeedText';
 import type { FriendRelationship } from '@/lib/api/user';
 import type { Friend, IconSpec, SharedChallenge } from '@/lib/social/types';
 
@@ -146,23 +147,27 @@ function RemoveAction({ label, onRemove }: { label: string; onRemove: () => void
 }
 
 function FeedItem({ item, onPress, onRemove }: { item: ActivityItem; onPress: () => void; onRemove: () => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const unread = item.readAt === null;
   const icon = iconForActivity(item);
   const tappable = !!item.route;
   const swipeRef = useRef<SwipeableMethods>(null);
+  // Stored in the language the member read when it was sent; rebuilt in
+  // today's language when the row's data proves it can be (see
+  // lib/i18n/activityFeedText.ts). Admin broadcasts stay exactly as typed.
+  const { title, body } = useMemo(() => activityFeedText(item, i18n.language), [item, i18n.language]);
 
   const renderRightActions = useCallback(
     () => (
       <RemoveAction
-        label={item.title}
+        label={title}
         onRemove={() => {
           swipeRef.current?.close();
           onRemove();
         }}
       />
     ),
-    [item.title, onRemove],
+    [title, onRemove],
   );
 
   return (
@@ -179,14 +184,14 @@ function FeedItem({ item, onPress, onRemove }: { item: ActivityItem; onPress: ()
         disabled={!tappable}
         style={({ pressed }) => [styles.feedRow, pressed && tappable && { opacity: 0.6 }]}
         accessibilityRole={tappable ? 'button' : 'text'}
-        accessibilityLabel={`${item.title}. ${item.body}`}
+        accessibilityLabel={`${title}. ${body}`}
       >
         <View style={styles.feedIcon}>
           <CatIcon spec={icon} size={20} color={GOLD} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.feedTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.feedBody} numberOfLines={2}>{item.body}</Text>
+          <Text style={styles.feedTitle} numberOfLines={1}>{title}</Text>
+          <Text style={styles.feedBody} numberOfLines={2}>{body}</Text>
         </View>
         <View style={styles.feedMeta}>
           <Text style={styles.feedTime}>{timeAgo(item.createdAt, t)}</Text>

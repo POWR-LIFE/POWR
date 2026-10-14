@@ -178,7 +178,11 @@
       "bonusPoints": "Points bonus",
       "subLevelUp": "Bonus de niveau",
       "subGrant": "Bonus offert par POWR",
-      "subCapOverflow": "Au-delà du plafond quotidien"
+      "subCapOverflow": "Au-delà du plafond quotidien",
+      "capOverflow": "Séance de {{activity}} au-delà du plafond",
+      "capOverflowStreak_one": "Série de {{count}} jour · {{activity}} au-delà du plafond",
+      "capOverflowStreak_other": "Série de {{count}} jours · {{activity}} au-delà du plafond",
+      "capOverflowUpgrade": "Séance en salle : palier supérieur ({{minutes}} min) · au-delà du plafond"
     },
     "errors": {
       "alreadyMoved": "Ces POWR étaient déjà passés sur ton solde.",

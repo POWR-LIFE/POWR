@@ -259,7 +259,15 @@
     "resetA11y": "Reset test registration",
     "resetting": "RESETTING…",
     "reset": "RESET TEST REGISTRATION",
-    "done": "Done"
+    "done": "Done",
+    "errors": {
+      "notFound": "Event not found",
+      "notRequired": "This event does not require joining",
+      "notOpenYet": "Registration for this event isn't open yet",
+      "closed": "This event can no longer be joined",
+      "cutoff": "Your account was created after the eligibility cutoff",
+      "noRejoin": "You cannot rejoin this event"
+    }
   },
   "shareScreen": {
     "publishError": "Could not publish your card.",
@@ -401,5 +409,12 @@
     "title": "Winners revealed live at the final",
     "divider": "THE BOARD",
     "foot": "Every point is already counted. Nobody sees the board until the reveal."
+  },
+  "shareLink": {
+    "title": "{{event}} · Live event on POWR",
+    "nightVenue": "{{night}} at {{venue}}. Scoring {{range}}. Tap to get POWR and join me.",
+    "night": "{{night}}. Scoring {{range}}. Tap to get POWR and join me.",
+    "venue": "At {{venue}}. Scoring {{range}}. Tap to get POWR and join me.",
+    "scoringOnly": "Scoring {{range}}. Tap to get POWR and join me."
   }
 }

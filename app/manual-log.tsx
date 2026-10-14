@@ -22,7 +22,7 @@ import { selectionLabel } from '@/constants/activityCatalog';
 import { getGymDwellMinutes, getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
 import { useAuth } from '@/context/AuthContext';
 import { tracked } from '@/lib/analytics';
-import { logManualSession } from '@/lib/api/activity';
+import { logManualSession, ManualLogError, type ManualLogErrorCode } from '@/lib/api/activity';
 import i18n, { getFormatLocale } from '@/lib/i18n';
 import { useHealthData, type VerifyResult } from '@/hooks/useHealthData';
 
@@ -35,6 +35,12 @@ const BORDER = 'rgba(255,255,255,0.08)';
 const TEXT   = '#F2F2F2';
 const MUTED  = 'rgba(255,255,255,0.25)';
 const DIM    = 'rgba(255,255,255,0.45)';
+
+/** A refusal's copy in the member's language — the thrown message is English, for logs. */
+const MANUAL_LOG_ERROR_KEY: Record<ManualLogErrorCode, string> = {
+    DAILY_MANUAL_CAP: 'points:manualLog.errors.dailyCap',
+    ALREADY_TRACKED: 'points:manualLog.errors.alreadyTracked',
+};
 
 // ─── Points calculation ────────────────────────────────────────────────────────
 // Returns base POWR for each activity given user inputs.
@@ -281,7 +287,11 @@ export default function ManualLogScreen() {
             });
             router.back();
         } catch (e) {
-            setError(e instanceof Error ? e.message : t('points:manualLog.submitFailed'));
+            setError(
+                e instanceof ManualLogError
+                    ? t(MANUAL_LOG_ERROR_KEY[e.code])
+                    : e instanceof Error ? e.message : t('points:manualLog.submitFailed'),
+            );
         } finally {
             setSubmitting(false);
         }

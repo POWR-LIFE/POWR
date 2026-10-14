@@ -31,5 +31,11 @@
   "modal": {
     "title": "Esto es una ventana modal",
     "home": "Ir a la pantalla de inicio"
+  },
+  "otaUpdate": {
+    "title": "Actualización lista",
+    "body": "Hay una nueva versión de POWR lista. ¿Reinicias ahora para tener las últimas mejoras?",
+    "later": "Más tarde",
+    "restart": "Reiniciar"
   }
 }

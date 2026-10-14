@@ -505,6 +505,16 @@
       "minimum": "Las sesiones de menos de {{minimum}} minutos no suman.",
       "walkingTiers": "Los puntos suben cuando tu total del día supera {{tiers}} pasos.",
       "manual": "Los registros manuales suman el 80 % de una sesión registrada, uno al día."
+    },
+    "row": {
+      "streakBonus": "Bonus de racha",
+      "bonus": "Bonus",
+      "stepTier": "Avance por tramos de pasos",
+      "syncedDevice": "Sincronizado desde tu dispositivo",
+      "manualLog": "Registro manual",
+      "syncedWearable": "Sincronizado desde tu wearable",
+      "challengeReward": "Recompensa de reto",
+      "session": "Sesión"
     }
   },
   "verify": {

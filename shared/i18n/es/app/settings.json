@@ -187,7 +187,8 @@
     "isPrimary": "Es tu fuente principal.",
     "switchTitle": "¿Cambiar a {{name}}?",
     "switchBody": "Solo puedes conectar un dispositivo a la vez. Se desconectará {{current}}.",
-    "switchConfirm": "Cambiar a {{name}}"
+    "switchConfirm": "Cambiar a {{name}}",
+    "couldNotStartDetail": "No hemos podido iniciar la conexión. Inténtalo de nuevo. ({{detail}})"
   },
   "wearables": {
     "title": "Wearables",

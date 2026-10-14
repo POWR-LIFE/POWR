@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/AuthContext';
 import { fetchProfile, updateProfile, updateProProfile, uploadAvatar, uploadCover, type Profile } from '@/lib/api/user';
+import { profileSaveErrorText } from '@/lib/i18n/serverText';
 import { fetchGallery, uploadGalleryPhoto, deleteGalleryPhoto, type GalleryPhoto } from '@/lib/api/pro-gallery';
 import {
   fetchAchievements,
@@ -192,7 +193,7 @@ export default function EditProfileScreen() {
     setGalleryUploading(true);
     const { photo, error } = await uploadGalleryPhoto(result.assets[0].uri);
     if (error || !photo) {
-      Alert.alert(t('account:editProfile.uploadFailed'), error ?? t('account:editProfile.somethingWentWrong'));
+      Alert.alert(t('account:editProfile.uploadFailed'), error != null ? profileSaveErrorText(error) : t('account:editProfile.somethingWentWrong'));
     } else {
       setGallery(prev => [...prev, photo]);
     }
@@ -241,14 +242,14 @@ export default function EditProfileScreen() {
       if (editingAchId === 'new') {
         const { achievement, error } = await createAchievement(achForm);
         if (error || !achievement) {
-          Alert.alert(t('account:editProfile.achievement.addFailed'), error ?? t('account:editProfile.achievement.tryAgain'));
+          Alert.alert(t('account:editProfile.achievement.addFailed'), error != null ? profileSaveErrorText(error) : t('account:editProfile.achievement.tryAgain'));
           return;
         }
         setAchievements(prev => [...prev, achievement]);
       } else if (editingAchId) {
         const { error } = await updateAchievement(editingAchId, achForm);
         if (error) {
-          Alert.alert(t('account:editProfile.achievement.updateFailed'), error);
+          Alert.alert(t('account:editProfile.achievement.updateFailed'), profileSaveErrorText(error));
           return;
         }
         setAchievements(prev => prev.map(a =>
@@ -270,7 +271,7 @@ export default function EditProfileScreen() {
         text: t('account:editProfile.delete'), style: 'destructive',
         onPress: async () => {
           const { error } = await deleteAchievement(a.id);
-          if (error) { Alert.alert(t('account:editProfile.achievement.deleteFailed'), error); return; }
+          if (error) { Alert.alert(t('account:editProfile.achievement.deleteFailed'), profileSaveErrorText(error)); return; }
           setAchievements(prev => prev.filter(x => x.id !== a.id));
         },
       },
@@ -300,7 +301,7 @@ export default function EditProfileScreen() {
         if (avatarUri) {
           const { url, error: uploadErr } = await uploadAvatar(avatarUri);
           if (uploadErr) {
-            Alert.alert(t('account:editProfile.uploadFailed'), uploadErr);
+            Alert.alert(t('account:editProfile.uploadFailed'), profileSaveErrorText(uploadErr));
             return;
           }
           updates.avatar_url = url;
@@ -311,7 +312,9 @@ export default function EditProfileScreen() {
 
       const { error } = await updateProfile(updates);
       if (error) {
-        Alert.alert(t('account:editProfile.saveFailed'), error);
+        // Raw Postgres/Storage text: English as before; other languages get a
+        // taken-username, signed-out or generic line (lib/i18n/serverText.ts).
+        Alert.alert(t('account:editProfile.saveFailed'), profileSaveErrorText(error));
         return;
       }
 
@@ -323,7 +326,7 @@ export default function EditProfileScreen() {
         if (coverUri) {
           const { url: covUrl, error: covErr } = await uploadCover(coverUri);
           if (covErr) {
-            Alert.alert(t('account:editProfile.coverUploadFailed'), covErr);
+            Alert.alert(t('account:editProfile.coverUploadFailed'), profileSaveErrorText(covErr));
             return;
           }
           proUpdates.cover_url = covUrl;
@@ -334,14 +337,14 @@ export default function EditProfileScreen() {
       if (Object.keys(proUpdates).length > 0) {
         const { error: proErr } = await updateProProfile(proUpdates);
         if (proErr) {
-          Alert.alert(t('account:editProfile.saveFailed'), proErr);
+          Alert.alert(t('account:editProfile.saveFailed'), profileSaveErrorText(proErr));
           return;
         }
       }
 
       router.back();
     } catch (err: any) {
-      Alert.alert(t('account:editProfile.saveFailed'), err?.message ?? t('account:editProfile.somethingWentWrong'));
+      Alert.alert(t('account:editProfile.saveFailed'), err?.message != null ? profileSaveErrorText(err.message) : t('account:editProfile.somethingWentWrong'));
     } finally {
       setSaving(false);
     }

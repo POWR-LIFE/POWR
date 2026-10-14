@@ -112,5 +112,10 @@
       "openNow": "Abierto",
       "opens8am": "Abre a las 8:00"
     }
+  },
+  "team": {
+    "headingTrainers": "Entrenamiento personal",
+    "headingTeam": "El equipo",
+    "personalTrainer": "Entrenamiento personal"
   }
 }

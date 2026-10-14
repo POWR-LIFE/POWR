@@ -31,5 +31,11 @@
   "modal": {
     "title": "This is a modal",
     "home": "Go to home screen"
+  },
+  "otaUpdate": {
+    "title": "Update ready",
+    "body": "A new version of POWR is ready. Restart now to get the latest improvements?",
+    "later": "Later",
+    "restart": "Restart"
   }
 }

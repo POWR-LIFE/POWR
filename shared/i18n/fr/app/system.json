@@ -31,5 +31,11 @@
   "modal": {
     "title": "Ceci est une fenêtre modale",
     "home": "Retour à l’accueil"
+  },
+  "otaUpdate": {
+    "title": "Mise à jour prête",
+    "body": "Une nouvelle version de POWR est prête. Tu redémarres maintenant pour profiter des dernières améliorations ?",
+    "later": "Plus tard",
+    "restart": "Redémarrer"
   }
 }

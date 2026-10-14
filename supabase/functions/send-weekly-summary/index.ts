@@ -20,10 +20,10 @@ import { WEEKLY_SAMPLES, type WeeklySampleId } from "../_shared/emails/weekly-su
 import { getChallengeById } from "../_shared/challenges.ts";
 import { loadRewardCatalogue, rewardsReadyFor } from "../_shared/reward-catalogue.ts";
 import { wearableLabel } from "../_shared/wearable-label.ts";
-import { languagesFor } from "../_shared/i18n/index.ts";
+import { languagesFor, weeklyChallengeTitle } from "../_shared/i18n/index.ts";
 
-/** Resolve completed challenge ids to their catalog titles (deduped, in order). */
-function challengeTitles(ids: string[] | null): string[] {
+/** Resolve completed challenge ids to their catalog titles in `lang` (deduped, in order). */
+function challengeTitles(ids: string[] | null, lang: string): string[] {
   if (!ids?.length) return [];
   const seen = new Set<string>();
   const titles: string[] = [];
@@ -31,7 +31,7 @@ function challengeTitles(ids: string[] | null): string[] {
     if (seen.has(id)) continue;
     seen.add(id);
     const title = getChallengeById(id)?.title;
-    if (title) titles.push(title);
+    if (title) titles.push(weeklyChallengeTitle(lang, id, title));
   }
   return titles;
 }
@@ -272,7 +272,7 @@ Deno.serve(async (req: Request) => {
           gyms: r.gyms?.length ? r.gyms : null,
           wearable: wearableLabel(r.wearable),
           challengesCompleted: r.challenges ?? 0,
-          challengeTitles: challengeTitles(r.challenge_ids),
+          challengeTitles: challengeTitles(r.challenge_ids, lang),
           balance: r.balance ?? 0,
           topRewards,
           closestReward: closestRewardFor(r.balance ?? 0),

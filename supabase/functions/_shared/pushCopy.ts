@@ -9,14 +9,17 @@
 // every English string lives in _shared/i18n/push/en.ts exactly as it used to
 // be written inline here. Numbers keep the formatting they always had in
 // English (a bare toLocaleString(), or none at all); other languages format
-// with their own locale. Database content (reward, event, gym, challenge
-// names, admin notes) goes in as a {{placeholder}}, never translated.
+// with their own locale. Database content (reward, event, gym names, admin
+// notes) goes in as a {{placeholder}}, never translated. Challenge names are
+// the exception: a weekly challenge (by its catalog id) or a Together template
+// (by its stored English title) we have a name for is quoted in the reader's
+// language (challengeNames.*); any other name goes out as sent.
 //
 // Routing data (`data`) is identical in every language: it is read by the app,
 // not by people.
 
 import { eventPushCopy, ukDay } from './eventPushCopy.ts';
-import { formatLocale, levelName, PUSH_CATALOGS, tPush } from './i18n/index.ts';
+import { formatLocale, levelName, PUSH_CATALOGS, templateTitleKey, tPush, weeklyChallengeKey } from './i18n/index.ts';
 import { levelDef } from './levels.ts';
 
 export type NotificationType =
@@ -151,13 +154,50 @@ export function quotedTitle(lang: string, title: unknown): string {
 /**
  * The quoted name as every push language writes it. dispatch-daily-nudges
  * dedupes the weekly "within reach" nudge on push_send_log.body containing the
- * quoted challenge name, so this must cover every language a body can be in.
+ * quoted challenge name, so this must cover every language a body can be in —
+ * and every name it can be in: a weekly challenge's own English name is quoted
+ * translated (weeklyChallengeName), so each weekly challenge called `title`
+ * adds its name in every language. Two challenges can share an English name
+ * ("Twice This Week" runs and rides); both count, as they always did.
  */
 export function quotedTitleMarkers(title: string): string[] {
   // No title, no way to dedupe: throw, as the LIKE pattern this replaced did,
   // so the dispatcher counts the target as failed rather than nudging blind.
   if (typeof title !== 'string') throw new TypeError('quotedTitleMarkers: title must be a string');
-  return [...new Set(Object.keys(PUSH_CATALOGS).map((lang) => quotedTitle(lang, title)))];
+  const weekly = catalogBranch(PUSH_CATALOGS.en, 'challengeNames', 'weekly');
+  const ids = Object.keys(weekly).filter((id) => weekly[id] === title);
+  const markers = new Set<string>();
+  for (const lang of Object.keys(PUSH_CATALOGS)) {
+    markers.add(quotedTitle(lang, title));
+    for (const id of ids) markers.add(quotedTitle(lang, tPush(lang, `challengeNames.weekly.${id}`)));
+  }
+  return [...markers];
+}
+
+/** A nested branch of a catalog (string leaves only), or {} if it isn't there. */
+function catalogBranch(catalog: unknown, ...path: string[]): Record<string, unknown> {
+  let node: unknown = catalog;
+  for (const part of path) node = node && typeof node === 'object' ? (node as Record<string, unknown>)[part] : undefined;
+  return node && typeof node === 'object' ? (node as Record<string, unknown>) : {};
+}
+
+/**
+ * A weekly challenge's name, for the weekly board's nudges. Senders put the
+ * catalog id (`challenge_id`) and its English name (`challenge_name`) in the
+ * payload. Other languages get the catalog's name for that id — but only while
+ * the name sent is still the catalog's own: an admin catalog override can
+ * rename a challenge, and that name goes out as written. English always shows
+ * `challenge_name` as sent, as before.
+ */
+function weeklyChallengeName(lang: string, payload: Record<string, unknown>, fallbackKey: string): string {
+  const sent = payload.challenge_name as string | undefined;
+  const id = weeklyChallengeKey(payload.challenge_id);
+  if (lang !== 'en' && id) {
+    const key = `challengeNames.weekly.${id}`;
+    const english = tPush('en', key);
+    if (english !== key && (sent == null || sent === english)) return tPush(lang, key);
+  }
+  return sent ?? tPush(lang, fallbackKey);
 }
 
 // "on 16 Sep" for a vault maturity date. Falls back to a vaguer phrase rather
@@ -332,6 +372,19 @@ function sentText(lang: string, payload: Record<string, unknown>, field: 'title'
   return lang !== 'en' && payload[`${field}_missing`] === true ? undefined : payload[field];
 }
 
+/**
+ * A Together challenge's title, as this language should see it: the stored
+ * English title of a template we have a name for (_shared/i18n/challengeNames)
+ * comes out in the reader's language; any other title as sent. English is
+ * always as sent.
+ */
+function challengeTitle(lang: string, payload: Record<string, unknown>): unknown {
+  const sent = sentText(lang, payload, 'title');
+  if (lang === 'en') return sent;
+  const key = templateTitleKey(sent);
+  return key ? tPush(lang, `challengeNames.templates.${key}`) : sent;
+}
+
 // ---------------------------------------------------------------------------
 // Notification copy per type
 // ---------------------------------------------------------------------------
@@ -370,7 +423,7 @@ export function buildMessage(
       }
 
       case 'weekly_challenge_expiry': {
-        const name = (payload.challenge_name as string) ?? tPush(lang, 'weeklyChallengeExpiry.fallbackName');
+        const name = weeklyChallengeName(lang, payload, 'weeklyChallengeExpiry.fallbackName');
         const progress = weeklyProgress(lang, payload);
         const quoted = quotedTitle(lang, name);
         return {
@@ -389,7 +442,7 @@ export function buildMessage(
       }
 
       case 'challenge_within_reach': {
-        const name = (payload.challenge_name as string) ?? tPush(lang, 'challengeWithinReach.fallbackName');
+        const name = weeklyChallengeName(lang, payload, 'challengeWithinReach.fallbackName');
         const progress = weeklyProgress(lang, payload);
         // ⚠ Every body below carries quotedTitle(): dispatch-daily-nudges
         // dedupes this nudge on it (once per challenge per week).
@@ -1054,7 +1107,7 @@ export function buildMessage(
       // ── Shared challenges ─────────────────────────────────────────────────
       case 'challenge_invite': {
         const name = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.aFriend');
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.aChallenge');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.aChallenge');
         return {
           title: tPush(lang, 'challengeInvite.title', { name }),
           body: tPush(lang, 'challengeInvite.body', { quoted: quotedTitle(lang, title) }),
@@ -1067,7 +1120,7 @@ export function buildMessage(
 
       case 'challenge_accepted': {
         const name = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.aFriend');
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallengeLower');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.yourChallengeLower');
         const accepted = Math.max(0, Math.round(Number(payload.accepted_count ?? 0)));
         const total = Math.max(0, Math.round(Number(payload.total_count ?? 0)));
         const quoted = quotedTitle(lang, title);
@@ -1083,7 +1136,7 @@ export function buildMessage(
       }
 
       case 'challenge_started': {
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.yourChallenge');
         // A shared challenge starts on the SECOND accept, not a full roster —
         // outstanding invitees keep their Accept card and join mid-race
         // (tryStartForming). The old copy said "everyone's in" regardless, so a
@@ -1112,7 +1165,7 @@ export function buildMessage(
 
       case 'challenge_friend_finished': {
         const name = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.aFriend');
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallengeLower');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.yourChallengeLower');
         return {
           title: tPush(lang, 'challengeFriendFinished.title', { name }),
           body: tPush(lang, 'challengeFriendFinished.body', { quoted: quotedTitle(lang, title) }),
@@ -1123,7 +1176,7 @@ export function buildMessage(
       }
 
       case 'challenge_pool_milestone': {
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallengeLower');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.yourChallengeLower');
         const pct = Number(payload.pct ?? 50);
         const remaining = Math.max(0, Number(payload.remaining ?? 0));
         const unit = ((payload.unit as string) || '').trim();
@@ -1142,7 +1195,7 @@ export function buildMessage(
       }
 
       case 'challenge_completed': {
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.yourChallenge');
         const total = Math.max(0, Math.round(Number(payload.total ?? payload.base ?? 0)));
         const bonus = Math.max(0, Math.round(Number(payload.bonus ?? 0)));
         const quoted = quotedTitle(lang, title);
@@ -1168,7 +1221,7 @@ export function buildMessage(
       // happened, don't scold, and leave a door open. Normal priority — a loss
       // shouldn't ding like a win.
       case 'challenge_ended': {
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.yourChallenge');
         const outcome = String(payload.outcome ?? 'expired');
         const finishers = Math.max(0, Math.round(Number(payload.finishers ?? 0)));
         const roster = Math.max(0, Math.round(Number(payload.roster ?? 0)));
@@ -1208,7 +1261,7 @@ export function buildMessage(
       // nowhere, which is exactly what a config-override-only approach would
       // have shipped.
       case 'challenge_open_unclaimed': {
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.yourChallenge');
         return {
           // Deliberately not "nobody wanted it". The post going untaken is not
           // the user's failure and must not read like one — this is the modal
@@ -1228,7 +1281,7 @@ export function buildMessage(
       }
 
       case 'challenge_open_posted': {
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.aChallenge');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.aChallenge');
         const who = (sentText(lang, payload, 'from_name') as string) || tPush(lang, 'common.someone');
         return {
           title: tPush(lang, 'challengeOpenPosted.title'),
@@ -1241,7 +1294,7 @@ export function buildMessage(
       }
 
       case 'challenge_expiring': {
-        const title = (sentText(lang, payload, 'title') as string) || tPush(lang, 'common.yourChallenge');
+        const title = (challengeTitle(lang, payload) as string) || tPush(lang, 'common.yourChallenge');
         const hours = Math.max(1, Math.round(Number(payload.hours_left ?? 6)));
         return {
           title: tPush(lang, 'challengeExpiring.title'),

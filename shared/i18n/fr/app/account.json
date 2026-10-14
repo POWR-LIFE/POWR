@@ -67,7 +67,12 @@
     "uploadFailed": "Échec de l’envoi",
     "coverUploadFailed": "Échec de l’envoi de la couverture",
     "saveFailed": "Échec de l’enregistrement",
-    "somethingWentWrong": "Un problème est survenu"
+    "somethingWentWrong": "Un problème est survenu",
+    "errors": {
+      "usernameTaken": "Ce nom d’utilisateur est déjà pris. Essaie-en un autre.",
+      "notSignedIn": "Ta session a expiré. Reconnecte-toi.",
+      "generic": "Un problème est survenu. Réessaie."
+    }
   },
   "changeEmail": {
     "error": {

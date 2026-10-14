@@ -103,7 +103,11 @@
       "verified": "Vérifié avec tes données santé — tous les points sont crédités. Ne compte pas pour ta série.",
       "manual": "Une saisie manuelle rapporte 80 % des points de base. Vérifie avec tes données santé pour les avoir tous."
     },
-    "submitFailed": "Impossible d’enregistrer la séance"
+    "submitFailed": "Impossible d’enregistrer la séance",
+    "errors": {
+      "dailyCap": "Tu as déjà saisi une séance à la main aujourd’hui. Connecte une source santé pour enregistrer tes séances automatiquement, sans limite.",
+      "alreadyTracked": "Ce créneau est déjà suivi automatiquement par un check-in ou ton appareil connecté."
+    }
   },
   "achievementsScreen": {
     "title": "SUCCÈS",
@@ -219,5 +223,51 @@
       "epic": "Épique",
       "legendary": "Légendaire"
     }
+  },
+  "transaction": {
+    "welcomeBonus": "Bonus de bienvenue",
+    "locationGranted": "Localisation autorisée",
+    "wearableConnected": "Montre connectée associée",
+    "healthConnected": "Données santé connectées",
+    "vaultUnlocked": "Vault débloqué",
+    "friendJoined": "Invitation réussie : inscription sur POWR",
+    "friendFirstWorkout": "Invitation réussie : première séance faite",
+    "inviteRewardUnlocked": "Première séance faite — récompense d’invitation débloquée",
+    "inviteCodeReward": "Récompense du code d’invitation",
+    "friendJoinedWithCode": "Quelqu’un s’est inscrit avec ton code",
+    "creatorSignup": "Quelqu’un a saisi ton code",
+    "creatorConversion": "Une personne inscrite via ton lien a fait sa première séance",
+    "adminAdjustment": "Ajustement manuel par un admin",
+    "gymUpgradeBackfill": "Séance en salle : palier supérieur (rattrapage)",
+    "session": "Séance de {{activity}}",
+    "gymUpgrade": "Séance en salle : palier supérieur ({{minutes}} min)",
+    "streakBonus_one": "Bonus de série de {{count}} jour",
+    "streakBonus_other": "Bonus de série de {{count}} jours",
+    "earlyBirdBonus": "Bonus du défi Early Bird (3× {{activity}})",
+    "weeklyBonus": "Bonus du défi de la semaine (3× {{activity}})",
+    "supersededByCheckIn": "Remplacé par un check-in en salle ({{activity}})",
+    "supersededByWearable": "Saisie manuelle remplacée par ta montre connectée ({{activity}})",
+    "reversedRejected": "Séance refusée, points retirés ({{activity}})",
+    "reversedDuplicate": "Check-in en double, points retirés",
+    "milestoneConverted_one": "Palier atteint : {{count}} ami a fait sa première séance",
+    "milestoneConverted_other": "Palier atteint : {{count}} amis ont fait leur première séance",
+    "milestoneJoined_one": "Palier atteint : {{count}} ami inscrit",
+    "milestoneJoined_other": "Palier atteint : {{count}} amis inscrits",
+    "creatorStepSignups_one": "{{count}} inscription — {{label}}",
+    "creatorStepSignups_other": "{{count}} inscriptions — {{label}}",
+    "creatorStepConversions_one": "{{count}} première séance — {{label}}",
+    "creatorStepConversions_other": "{{count}} premières séances — {{label}}",
+    "creatorStepSignupsConverted_one": "{{count}} première séance — {{label}}",
+    "creatorStepSignupsConverted_other": "{{count}} premières séances — {{label}}",
+    "creatorEventSignup": "Une personne inscrite via ton lien a rejoint {{event}}",
+    "creatorEventSignupUnnamed": "Une personne inscrite via ton lien a rejoint un événement live",
+    "attended": "Participation : {{event}}",
+    "attendedUnnamed": "Participation à un événement live",
+    "redeemed": "Échangé : {{reward}}",
+    "weeklyChallenge": "Défi de la semaine : {{title}} (+{{points}})",
+    "togetherChallenge": "Défi Ensemble : {{title}} (+{{points}})",
+    "togetherBonus_one": "Bonus Ensemble : {{title}} (+{{points}} · {{count}} ami)",
+    "togetherBonus_other": "Bonus Ensemble : {{title}} (+{{points}} · {{count}} amis)",
+    "challengeFallback": "Défi"
   }
 }

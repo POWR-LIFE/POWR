@@ -23,6 +23,7 @@ import gymFr from "./gym/fr.ts";
 import gymRecapEn from "./gymRecap/en.ts";
 import gymRecapEs from "./gymRecap/es.ts";
 import gymRecapFr from "./gymRecap/fr.ts";
+import { weeklyChallengeKey } from "./challengeNames.ts";
 import { SERVER_LANGUAGES } from "./languages.ts";
 import { makeT } from "./t.ts";
 
@@ -37,6 +38,7 @@ export {
   serverLanguage,
 } from "./languages.ts";
 export { LEVEL_KEYS, LEVEL_NAMES, levelName } from "./levels.ts";
+export { TEMPLATE_TITLE_KEYS, templateTitleKey, weeklyChallengeKey } from "./challengeNames.ts";
 export type { Catalog, Vars } from "./t.ts";
 
 export const PUSH_CATALOGS = { en: pushEn, fr: pushFr, es: pushEs };
@@ -56,6 +58,20 @@ export const BUSINESS_CATALOGS = {
 export const tPush = makeT(PUSH_CATALOGS);
 export const tEmail = makeT(EMAIL_CATALOGS);
 export const tBusiness = makeT(BUSINESS_CATALOGS);
+
+/**
+ * A weekly challenge's name in `lang`, by its catalog id. `english` is the
+ * catalog title the caller already has; it comes back unchanged for English,
+ * for an id the catalog doesn't know, and for a title that isn't the catalog's
+ * own (an admin override renamed it). Names live in push/<lang>.ts
+ * challengeNames.weekly, kept equal to the app's by a test.
+ */
+export function weeklyChallengeTitle(lang: string, id: unknown, english: string): string {
+  const wid = weeklyChallengeKey(id);
+  if (lang === "en" || !wid) return english;
+  const key = `challengeNames.weekly.${wid}`;
+  return tPush("en", key) === english ? tPush(lang, key) : english;
+}
 
 /** The date/number locale to format with for a language ('en' stays en-GB, as every server format already is). */
 export function formatLocale(lang: string): string {

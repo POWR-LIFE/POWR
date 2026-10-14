@@ -178,7 +178,11 @@
       "bonusPoints": "Bonus points",
       "subLevelUp": "Level-up bonus",
       "subGrant": "Bonus drop from POWR",
-      "subCapOverflow": "Earned over the daily cap"
+      "subCapOverflow": "Earned over the daily cap",
+      "capOverflow": "{{activity}} over the daily cap",
+      "capOverflowStreak_one": "{{count}}-day streak · {{activity}} over the daily cap",
+      "capOverflowStreak_other": "{{count}}-day streak · {{activity}} over the daily cap",
+      "capOverflowUpgrade": "gym session upgrade ({{minutes}}min) · over the daily cap"
     },
     "errors": {
       "alreadyMoved": "That POWR had already moved into your balance.",

@@ -6,6 +6,7 @@ import { fetchPartnersInArea, getPartnerGeometry, searchPartners, useGeofenceCon
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { createGymRequest } from '@/lib/api/gyms';
 import { getFormatLocale } from '@/lib/i18n';
+import { teamHeadingText, teamLineText } from '@/lib/i18n/serverText';
 import {
   getLocationPromptState,
   isForegroundMissing,
@@ -314,7 +315,7 @@ function synthesizePartner(g: GeoLike): Partner {
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const mapRef = useRef<MapView>(null);
   const navMapRef = useRef<MapView>(null);
 
@@ -987,7 +988,10 @@ export default function DiscoverScreen() {
       try {
         const origin = `${userLoc.coords.latitude},${userLoc.coords.longitude}`;
         const destination = `${routePartner.lat},${routePartner.lng}`;
-        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=walking&key=${GOOGLE_DIRECTIONS_KEY}`;
+        // Step text, distances and durations come back in this language.
+        // English sends no parameter, exactly as before (Google's default).
+        const language = i18n.language && i18n.language !== 'en' ? `&language=${encodeURIComponent(i18n.language)}` : '';
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=walking${language}&key=${GOOGLE_DIRECTIONS_KEY}`;
         const response = await fetch(url);
         const data = await response.json();
 
@@ -1032,7 +1036,7 @@ export default function DiscoverScreen() {
     return () => {
       cancelled = true;
     };
-  }, [routePartner, userLoc, routeSummary]);
+  }, [routePartner, userLoc, routeSummary, i18n.language]);
 
   const activeStepIndex = useMemo(() => {
     if (!userLoc || routeSteps.length === 0) return 0;
@@ -1564,12 +1568,13 @@ export default function DiscoverScreen() {
                   {trainers.length > 0 && (
                     <View style={styles.trainersSection}>
                       <View style={styles.trainersDivider} />
-                      <Text style={styles.trainersSectionTitle}>{teamHeading(trainers)}</Text>
+                      {/* shared/gymTeam.ts speaks English (the portal's preview shares it): its fixed words are translated here, anything the gym typed stays as typed. */}
+                      <Text style={styles.trainersSectionTitle}>{teamHeadingText(teamHeading(trainers))}</Text>
                       {trainers.map(trainer => (
                         <TrainerCard
                           key={trainer.id}
                           trainer={trainer}
-                          line={teamLine(trainer, trainers)}
+                          line={teamLineText(teamLine(trainer, trainers), trainer.role)}
                           expanded={expandedTrainerId === trainer.id}
                           onToggle={() => {
                             LayoutAnimation.configureNext(

@@ -89,6 +89,9 @@
       "saved": "KEEP IT ROLLING",
       "partway": "FINISH IT",
       "offer": "LET'S GO"
+    },
+    "labels": {
+      "backOnTrack": "Back on track"
     }
   },
   "level": {

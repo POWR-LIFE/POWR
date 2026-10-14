@@ -488,7 +488,22 @@
       "dismiss": "No se ha podido quitar este reto. Revisa tu conexión y vuelve a intentarlo.",
       "cancel": "No se ha podido cancelar este reto. Revisa tu conexión y vuelve a intentarlo."
     },
-    "create": "No se ha podido crear el reto"
+    "create": "No se ha podido crear el reto",
+    "codes": {
+      "atCap": "No te quedan huecos para retos: termina tu parte o deja uno antes",
+      "notLive": "Este reto ya ha terminado",
+      "groupFull": "Los grupos tienen un máximo de {{max}} personas",
+      "groupFullNoMax": "Este grupo está completo",
+      "badToken": "No reconocemos este enlace de invitación",
+      "unavailable": "Este ya no está disponible",
+      "notOptedIn": "Activa primero el tablón abierto en Ajustes",
+      "openExists": "Ya tienes un reto en el tablón abierto",
+      "inviteeOptedOut": "Una de las personas elegidas ha desactivado En equipo",
+      "blocked": "No puedes unirte a este reto",
+      "notOpen": "Este reto no está abierto a más gente",
+      "notCreator": "Solo quien ha creado el reto puede hacer eso",
+      "stillLive": "Solo puedes quitar un reto terminado"
+    }
   },
   "fallbackTitle": "Reto"
 }

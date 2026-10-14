@@ -36,7 +36,19 @@
   "earnings": {
     "eyebrow": "GAINS RÉCENTS",
     "allTime": "{{points}} PTS AU TOTAL",
-    "fullLedger": "HISTORIQUE COMPLET SUR LE PORTAIL"
+    "fullLedger": "HISTORIQUE COMPLET SUR LE PORTAIL",
+    "kinds": {
+      "signup": "Quelqu’un a saisi ton code",
+      "conversion": "Inscription convertie — première séance vérifiée",
+      "eventSignup": "Une inscription a rejoint {{event}}",
+      "eventSignupNoName": "Une inscription a rejoint un événement live",
+      "milestone": "Palier atteint",
+      "milestoneConversions_one": "{{label}} — {{count}} inscription convertie",
+      "milestoneConversions_other": "{{label}} — {{count}} inscriptions converties",
+      "milestoneSignups_one": "{{label}} — {{count}} inscription",
+      "milestoneSignups_other": "{{label}} — {{count}} inscriptions",
+      "manual": "Ajouté par POWR"
+    }
   },
   "ready": {
     "eyebrow": "PRÉPARE TON AFFILIATION",

@@ -155,5 +155,9 @@
       "body": "{{since}} If you’ve been wearing it, reconnecting usually fixes this.",
       "cta": "Check connection"
     }
+  },
+  "authExpired": {
+    "title": "{{name}} disconnected",
+    "body": "Your {{name}} connection has expired. Go to Settings to reconnect."
   }
 }

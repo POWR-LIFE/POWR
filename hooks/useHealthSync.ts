@@ -17,6 +17,7 @@ import { calculateBasePoints, calculateSleepPoints, mapHealthType } from '@/lib/
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
 import { triggerServerNotification } from '@/lib/api/notifications';
 import { getSessionUser } from '@/lib/supabase';
+import i18n from '@/lib/i18n';
 
 /** True if an ISO timestamp falls on the current local calendar day. */
 function isLocalToday(iso: string): boolean {
@@ -447,8 +448,8 @@ export function useHealthSync() {
             console.error('[HealthSync] Failed to auto-disconnect:', err),
           );
           Alert.alert(
-            `${name} disconnected`,
-            `Your ${name} connection has expired. Go to Settings to reconnect.`,
+            i18n.t('health:authExpired.title', { name }),
+            i18n.t('health:authExpired.body', { name }),
           );
         }
         return;

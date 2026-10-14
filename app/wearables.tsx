@@ -20,6 +20,7 @@ import GeometricBackground from '@/components/GeometricBackground';
 import { androidCheckAlreadyGranted, androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { getNativeProviderId, HealthProviderNotImplementedError, isPausedProvider, type HealthProviderId } from '@/lib/health/providers';
+import { wearableConnectErrorText } from '@/lib/i18n/serverText';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -160,7 +161,9 @@ export default function WearablesScreen() {
         if (e instanceof HealthProviderNotImplementedError) {
           Alert.alert(t('settings:providers.comingSoon', { name }), t('settings:providers.notAvailable'));
         } else {
-          Alert.alert(t('settings:providers.connectionFailed'), String((e as Error).message ?? e));
+          // The provider's own (English) text: as-is for English, behind our
+          // line for everyone else (lib/i18n/serverText.ts).
+          Alert.alert(t('settings:providers.connectionFailed'), wearableConnectErrorText(String((e as Error).message ?? e)));
         }
       }
     })();
