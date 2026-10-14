@@ -94,7 +94,7 @@
     "intro": "Pour ta sécurité, on enverra un lien de confirmation à ton adresse actuelle et à la nouvelle. Il faut cliquer sur les deux pour finaliser le changement.",
     "currentEmail": "E-MAIL ACTUEL",
     "newEmail": "NOUVEL E-MAIL",
-    "emailPlaceholder": "toi@exemple.com",
+    "emailPlaceholder": "toi@example.com",
     "confirmEmail": "CONFIRMER LE NOUVEL E-MAIL",
     "confirmPlaceholder": "Ressaisis le nouvel e-mail",
     "submit": "ENVOYER LES LIENS"
