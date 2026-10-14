@@ -1,0 +1,243 @@
+{
+  "sectors": {
+    "food": "Manger",
+    "gym": "Bouger",
+    "health": "Mental",
+    "gear": "Sommeil"
+  },
+  "valueTypes": {
+    "custom": "Texte libre",
+    "percentage": "Réduction en %",
+    "fixedAmount": "Réduction en £"
+  },
+  "status": {
+    "draft": "Brouillon",
+    "pending": "En validation",
+    "approved": "Approuvée",
+    "rejected": "À modifier",
+    "live": "En ligne",
+    "inactive": "Inactive"
+  },
+  "steps": {
+    "offer": {
+      "label": "L’offre",
+      "hint": "L’avantage membre"
+    },
+    "details": {
+      "label": "Détails",
+      "hint": "Textes et conditions"
+    },
+    "delivery": {
+      "label": "Échange",
+      "hint": "Comment l’échanger"
+    },
+    "imagery": {
+      "label": "Visuels",
+      "hint": "Logo et visuel"
+    },
+    "review": {
+      "label": "Récapitulatif",
+      "hint": "Vérifier et envoyer"
+    }
+  },
+  "errors": {
+    "title": "Le titre de la récompense est obligatoire",
+    "description": "La description courte est obligatoire",
+    "discountValue": "Saisissez une valeur supérieure à 0",
+    "valueLabel": "Ajoutez une mention de valeur (ex. : valeur de 20 £)",
+    "offer": "Le détail de l’offre est obligatoire",
+    "partnerBlurb": "Une phrase sur votre marque est obligatoire",
+    "terms": "Les conditions générales sont obligatoires",
+    "codePrefix": "Le nom du code doit comporter au moins 2 caractères",
+    "url": "Une URL de destination affiliée est obligatoire",
+    "fulfilmentNotes": "Expliquez comment votre équipe livrera cette récompense",
+    "logo": "Importez un logo",
+    "hero": "Importez un visuel principal"
+  },
+  "toasts": {
+    "signInAgain": "Veuillez vous reconnecter",
+    "requestSent": "Merci, notre équipe vous recontactera très vite",
+    "videoTooLarge": "La vidéo doit faire moins de 50 Mo — utilisez une boucle courte et compressée",
+    "imageTooLarge": "L’image doit faire moins de 5 Mo",
+    "uploadFailed": "Échec de l’import",
+    "brandLoading": "Votre profil de marque est encore en cours de chargement",
+    "changesSaved": "Modifications enregistrées",
+    "draftSaved": "Brouillon enregistré",
+    "needsAttention": "Quelques champs sont encore à compléter",
+    "changesSubmitted": "Modifications envoyées — elles seront en ligne dès leur validation par POWR",
+    "submissionUpdated": "Proposition mise à jour",
+    "submitted": "Récompense envoyée pour validation"
+  },
+  "form": {
+    "backToList": "Retour à Mes récompenses",
+    "titleEditListing": "Modifier la fiche",
+    "titleEditSubmission": "Modifier la proposition",
+    "titleNew": "Proposer une récompense",
+    "subtitleEditListing": "Votre fiche en ligne reste inchangée jusqu’à ce que POWR valide ces modifications",
+    "subtitleNew": "Préparez un brouillon étape par étape, puis envoyez-le à POWR pour validation",
+    "savedAt": "Enregistré à {{time}}",
+    "back": "← Retour",
+    "saveDraft": "Enregistrer le brouillon",
+    "submitting": "Envoi…",
+    "submitChanges": "Envoyer les modifications",
+    "resubmit": "Renvoyer pour validation",
+    "updateSubmission": "Mettre à jour la proposition",
+    "submitForReview": "Envoyer pour validation",
+    "saving": "Enregistrement…",
+    "saveAndContinue": "Enregistrer et continuer →"
+  },
+  "offer": {
+    "titleLabel": "Titre de la récompense *",
+    "titlePlaceholder": "Ex. : 30 % de réduction sur votre première commande",
+    "descriptionLabel": "Description courte *",
+    "descriptionPlaceholder": "Ex. : Votre marque · Tous les produits",
+    "valueTypeLabel": "Type de valeur *",
+    "percentOffLabel": "Réduction en % *",
+    "amountOffLabel": "Réduction en £ *",
+    "valueLabelLabel": "Mention de valeur *",
+    "valueLabelPlaceholder": "Ex. : valeur de 20 £",
+    "sectorLabel": "Secteur *",
+    "rewardTypeLabel": "Type de récompense *",
+    "digital": "Code numérique",
+    "physical": "Article physique"
+  },
+  "details": {
+    "offerLabel": "Détail de l’offre * (vue développée)",
+    "offerPlaceholder": "Ex. : 30 % de réduction sur une commande. Nouveaux clients uniquement.",
+    "blurbLabel": "À propos de votre marque *",
+    "blurbPlaceholder": "Une phrase courte pour présenter votre marque.",
+    "termsLabel": "Conditions générales *",
+    "termsPlaceholder": "Ex. : Une utilisation par membre. Non cumulable avec d’autres offres.",
+    "websiteLabel": "URL du site <muted>— facultatif</muted>",
+    "websitePlaceholder": "https://votremarque.com"
+  },
+  "delivery": {
+    "methodLabel": "Mode d’échange *",
+    "codePool": {
+      "label": "Code unique",
+      "detail": "POWR attribue l’un de vos codes à chaque échange"
+    },
+    "affiliate": {
+      "label": "Lien partagé",
+      "detail": "Les membres en profitent via votre lien de destination"
+    },
+    "inStore": {
+      "label": "En magasin",
+      "detail": "Les membres présentent un bon actif en caisse. Aucun code nécessaire"
+    },
+    "codeNameLabel": "Nom du code * (segment de votre marque)",
+    "codeNamePlaceholder": "Ex. : TRIBE",
+    "membersReceive": "Les membres reçoivent",
+    "codeSample": "MARQUE",
+    "atYourTill": "En caisse",
+    "inStoreBody": "Les membres ouvrent un bon actif dans l’app POWR et votre personnel le scanne. Une fois la récompense validée, configurez vos boutiques et les liens de scan du personnel sur la page « En magasin ».",
+    "affiliateUrlLabel": "URL de destination affiliée *",
+    "affiliateUrlPlaceholder": "https://votremarque.com/powr",
+    "fulfilmentLabel": "Plan de livraison *",
+    "fulfilmentPlaceholder": "Expliquez ce qui se passe après l’échange par un membre : délais de livraison et informations dont votre équipe a besoin.",
+    "stockLabel": "Limite de stock <muted>facultatif</muted>",
+    "perMemberLabel": "Échanges par membre <muted>facultatif</muted>",
+    "unlimited": "Illimité"
+  },
+  "imagery": {
+    "upload": "Importer",
+    "logoLabel": "Logo / marque * (carré, 512×512 px min.)",
+    "heroLabel": "Visuel principal / bannière * (paysage 16:9, 1200×675 px min.)",
+    "videoLabel": "Vidéo principale (facultatif) — remplace l’image ; MP4, 50 Mo max. L’image reste l’image fixe de secours.",
+    "removeVideo": "Supprimer la vidéo",
+    "videoUrlPlaceholder": "Ou collez un lien direct — https://…/clip.mp4",
+    "videoUrlHint": "Lien direct .mp4 / .m3u8 / .webm ou Cloudflare Stream · Les liens YouTube et Vimeo ne sont pas lus",
+    "videoUrl": {
+      "notUrl": "Saisissez une URL complète commençant par https://",
+      "streamingSite": "Ce lien mène à une page de type YouTube ou Vimeo, qui ne peut pas servir de fond de carte. Importez le fichier ou collez un lien direct .mp4/.m3u8 (ex. : Cloudflare Stream).",
+      "notAFile": "Enregistré — mais ce lien ne se termine pas par .mp4/.m3u8/.webm. S’il s’agit d’une page web et non d’un fichier vidéo direct, la carte affichera seulement l’image."
+    }
+  },
+  "review": {
+    "intro": "Vérifiez tout ci-dessous, puis envoyez. Cliquez sur une étape ci-dessus pour la modifier.",
+    "rows": {
+      "title": "Titre",
+      "description": "Description",
+      "value": "Valeur",
+      "sector": "Secteur",
+      "rewardType": "Type de récompense",
+      "offer": "Détail de l’offre",
+      "about": "À propos de la marque",
+      "terms": "Conditions",
+      "website": "Site web",
+      "delivery": "Échange",
+      "fulfilment": "Livraison",
+      "imagery": "Visuels"
+    },
+    "deliveryCode": "Code unique · {{code}}",
+    "deliveryAffiliate": "Lien d’affiliation partagé",
+    "deliveryInStore": "En magasin · bon actif en caisse",
+    "deliveryManual": "Livraison manuelle",
+    "imageryLogo": "Logo",
+    "imageryHero": "Visuel principal",
+    "imageryVideo": "Vidéo",
+    "noteEditListing": "POWR examinera vos modifications et les appliquera à la fiche en ligne.",
+    "noteNew": "Notre équipe fixera le prix en points et validera la récompense avant sa mise en ligne."
+  },
+  "list": {
+    "eyebrow": "Gestion des récompenses",
+    "title": "Mes récompenses",
+    "tabs": {
+      "live": "Récompenses en ligne",
+      "submissions": "Propositions"
+    },
+    "counter": "{{used}}/{{limit}} récompenses",
+    "counterAtLimit": "{{used}}/{{limit}} récompenses · limite atteinte",
+    "requestMore": "En demander plus",
+    "submitReward": "Proposer une récompense",
+    "checking": "Vérification de vos récompenses…",
+    "withPowr": "En validation chez POWR",
+    "nothingLive": "Rien en ligne pour l’instant",
+    "inReview_one": "{{count}} proposition en validation — les récompenses validées apparaîtront ici.",
+    "inReview_other": "{{count}} propositions en validation — les récompenses validées apparaîtront ici.",
+    "workInProgress": "Votre travail en cours se trouve dans l’onglet Propositions — terminez-le et envoyez-le pour validation.",
+    "viewSubmissions": "Voir les propositions",
+    "noLiveRewards": "Aucune récompense en ligne",
+    "noLiveRewardsBody": "Proposez une récompense : notre équipe la validera et la publiera.",
+    "submitFirst": "Proposer votre première récompense",
+    "columns": {
+      "reward": "Récompense",
+      "category": "Catégorie",
+      "cost": "Coût",
+      "status": "Statut",
+      "submitted": "Date d’envoi"
+    },
+    "categoryValue": {
+      "food": "Manger",
+      "gym": "Bouger",
+      "health": "Mental",
+      "gear": "Sommeil"
+    },
+    "pts": "{{points}} pts",
+    "makePost": "Créer un post",
+    "updateInReview": "Mise à jour en validation",
+    "editListing": "Modifier la fiche",
+    "noSubmissions": "Aucune proposition pour l’instant",
+    "untitled": "Sans titre",
+    "listingUpdate": "Mise à jour de fiche",
+    "feedback": "Retour : {{feedback}}",
+    "revise": "Corriger",
+    "continue": "Continuer",
+    "edit": "Modifier"
+  },
+  "preview": {
+    "nothingYet": "Rien à prévisualiser pour l’instant",
+    "nothingYetBody": "Les récompenses s’affichent ici exactement comme les membres les voient dans l’app.",
+    "submit": "Proposer une récompense",
+    "select": "Sélectionnez une récompense<nl/>pour la prévisualiser dans l’app"
+  },
+  "limit": {
+    "title": "Limite de récompenses atteinte",
+    "body_one": "Les marques peuvent avoir jusqu’à <strong>{{count}} récompense</strong> en ligne ou en validation à la fois. Vous souhaitez en proposer davantage ? Dites-nous en quelques mots ce que vous voulez ajouter et notre équipe vous recontactera.",
+    "body_other": "Les marques peuvent avoir jusqu’à <strong>{{count}} récompenses</strong> en ligne ou en validation à la fois. Vous souhaitez en proposer davantage ? Dites-nous en quelques mots ce que vous voulez ajouter et notre équipe vous recontactera.",
+    "noteLabel": "Quelque chose à nous signaler ? (facultatif)",
+    "notePlaceholder": "Ex. : Nous aimerions ajouter une offre saisonnière et une récompense réservée aux membres.",
+    "sending": "Envoi…",
+    "getInTouch": "Nous contacter"
+  }
+}

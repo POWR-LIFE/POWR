@@ -1,0 +1,250 @@
+{
+  "clash": {
+    "eyebrow": "Clash Pro",
+    "title": "Clash Nights",
+    "loadError": "Couldn’t load your Clash Nights",
+    "status": {
+      "requested": "Asked",
+      "confirmed": "Confirmed",
+      "declined": "Not possible",
+      "cancelled": "Called off"
+    },
+    "quarter": "{{from}} – {{to}}",
+    "calendar": {
+      "previous": "Previous month",
+      "next": "Next month",
+      "taken": "Taken",
+      "dayAria": "{{day}}: {{why}}",
+      "why": {
+        "confirmed": "Your Clash Night",
+        "requested": "You asked for this night",
+        "tooSoon_one": "Needs {{count}} day’s notice",
+        "tooSoon_other": "Needs {{count}} days’ notice",
+        "tooFar": "More than a year ahead",
+        "taken": "POWR is at another gym that night",
+        "quarterUsed": "You have a night this quarter",
+        "pick": "Pick this night"
+      },
+      "legend": {
+        "free": "Free",
+        "cantBook": "Can’t book"
+      }
+    },
+    "locked": {
+      "eyebrow": "Clash Pro and Founding Pro",
+      "title": "Clash Nights come with Clash Pro",
+      "body": "Four POWR Clash Nights a year, one a quarter, at your gym. We bring the DJ, the photographer and partner prizes, and you pick the dates here.",
+      "cta": "See packages"
+    },
+    "how": {
+      "eyebrow": "How it works",
+      "included_one": "Your package includes {{count}} Clash Night a year. We bring the DJ, the photographer and partner prizes.",
+      "included_other": "Your package includes {{count}} Clash Nights a year, one a quarter. We bring the DJ, the photographer and partner prizes.",
+      "notice_one": "Pick a night at least <strong>{{count}} week ahead</strong>. The first date you can pick is {{date}}.",
+      "notice_other": "Pick a night at least <strong>{{count}} weeks ahead</strong>. The first date you can pick is {{date}}.",
+      "confirm": "POWR gets your request, then confirms the date with you.",
+      "founding": "Founding Pro: pick all four dates now, one in each quarter.",
+      "freeToBook": "Free to book"
+    },
+    "form": {
+      "pickNight": "Pick a night",
+      "yourNight": "Your night",
+      "quarterNight": "Your {{quarter}} night",
+      "startsAt": "Starts at",
+      "backup": "Backup date (optional)",
+      "backupHint": "If we can’t do your first choice, we’ll try this one.",
+      "notes": "Anything we should know",
+      "notesPlaceholder": "How many you expect, a theme, where the DJ can set up…",
+      "sending": "Sending…",
+      "submit": "Ask POWR for this night",
+      "clear": "Clear",
+      "empty": "Pick a free date on the calendar. Greyed-out days are too soon, in a quarter you’ve already booked, or taken by another gym."
+    },
+    "list": {
+      "title": "Your nights",
+      "backup": "Backup {{date}}",
+      "notes": "“{{notes}}”",
+      "powrNote": "POWR:",
+      "callOff": "Call off"
+    },
+    "toast": {
+      "asked": "Asked for {{date}}. POWR will confirm it with you.",
+      "callOffConfirm": "Call off the Clash Night on {{date}}? POWR will be told straight away.",
+      "calledOff": "Called off. That quarter is free to book again."
+    }
+  },
+  "partners": {
+    "eyebrow": "For your gym",
+    "title": "Partner discounts",
+    "loadError": "Couldn’t load the discounts",
+    "kind": {
+      "pool": "One-use code",
+      "shared": "Shared code",
+      "link": "Link"
+    },
+    "how": {
+      "eyebrow": "How it works",
+      "title": "Buy prizes and kit at the price POWR members pay.",
+      "steps": {
+        "pick": {
+          "title": "Pick a brand",
+          "body": "Every POWR partner, with the discount our members get."
+        },
+        "code": {
+          "title": "Get your code",
+          "body": "One tap when you need it. The same code comes back for a week."
+        },
+        "shop": {
+          "title": "Shop",
+          "body": "Use it at the brand’s checkout, like any discount code."
+        }
+      },
+      "events": "Running an event? You can also send everyone who takes part a partner code at the reveal, from the event’s Prizes step.",
+      "eventsLink": "Your events"
+    },
+    "empty": {
+      "title": "No partner discounts right now",
+      "body": "New brands join POWR all the time. Check back soon."
+    },
+    "footer": "These codes are for your gym’s own buying. Members get their own in the POWR app, so please don’t pass them on. Need another code sooner? Email support@powr.life.",
+    "card": {
+      "terms": "Terms",
+      "soldOut": "No codes left right now. Check back soon.",
+      "getting": "Getting it…",
+      "getLink": "Get the link",
+      "getCode": "Get a code",
+      "poolLow_one": "Only {{count}} left · one use, held for your gym",
+      "poolLow_other": "Only {{count}} left · one use, held for your gym",
+      "pool": "One use, held for your gym",
+      "shared": "The code POWR members use",
+      "link": "The brand’s POWR link",
+      "lastCode": "Your last code, <code>{{code}}</code>, works until {{date}} if it’s unused."
+    },
+    "code": {
+      "yourCode": "Your code",
+      "yourLink": "Your link",
+      "copyCode": "Copy the code",
+      "copyLink": "Copy the link",
+      "pool": "Held for your gym. A new one from {{date}}.",
+      "shared": "The same code POWR members use.",
+      "link": "Shop through it whenever you buy from them.",
+      "shopAt": "Shop at {{brand}}"
+    },
+    "toast": {
+      "copied": "Copied",
+      "copyFailed": "Couldn’t copy. Select it and copy it instead."
+    }
+  },
+  "screens": {
+    "eyebrow": "Screens",
+    "title": "Your gym on the big screen",
+    "loadError": "Couldn’t load your screens",
+    "live": "Live",
+    "paused": "Paused",
+    "loading": "Loading",
+    "tvTitle": "{{title}}, as it shows on the TV",
+    "previewShows": "What the preview shows",
+    "yourGym": "Your gym",
+    "actions": {
+      "open": "Open",
+      "copyLink": "Copy link",
+      "pause": "Pause",
+      "resume": "Resume",
+      "newLink": "Make a new link"
+    },
+    "setup": {
+      "tvTitle": "Your leaderboard, before it's switched on",
+      "teaserTitle": "{{gym}} · this week",
+      "teaserLines": "The weekly leaderboard, live on your TV",
+      "eyebrow": "Two screens, one switch",
+      "title": "Switch on your screens",
+      "body": "A weekly leaderboard of points earned at {{gym}}, made for a TV on the gym floor. It resets every Monday, shows last week’s champion and carries a QR code so members can join. You also get <strong>Gym Clash</strong>: your gym racing every other POWR gym nearby.",
+      "linkLabel": "Your screen link",
+      "linkAria": "Screen link name",
+      "linkHint": "Lower-case letters, numbers and dashes. It’s part of the link you’ll open on the TV, so pick it once.",
+      "switching": "Switching on…",
+      "switchOn": "Switch on the screens",
+      "switchedOn": "Screens switched on",
+      "ownerOnly": "Your gym’s owner can switch the screens on from here."
+    },
+    "board": {
+      "eyebrow": "Screen 1",
+      "title": "Weekly leaderboard",
+      "blurb": "Points earned at {{gym}}, Monday to Sunday, with last week’s champion and a QR code to join. It changes scene by itself and updates every few seconds.",
+      "sample": "Sample members",
+      "paused": "Paused — the TV goes blank on its next refresh",
+      "live": "Leaderboard live",
+      "viewing": "Viewing distance",
+      "viewingSet": "Viewing distance: {{label}}",
+      "viewings": {
+        "near": {
+          "label": "Near",
+          "hint": "A monitor, or a screen behind reception. Everything on."
+        },
+        "standard": {
+          "label": "Standard",
+          "hint": "A 50\" TV in a room. A third bigger, a little less on screen."
+        },
+        "far": {
+          "label": "Far",
+          "hint": "Across a gym floor. One idea per scene, big enough from the far wall."
+        }
+      },
+      "size": "Board size",
+      "sizeSet": "Showing the top {{n}}",
+      "top": "Top {{n}}"
+    },
+    "league": {
+      "eyebrow": "Screen 2",
+      "title": "Gym Clash",
+      "blurb": "{{gym}} against the gyms nearby this week, then the whole POWR network, with a head-to-head against the gym just above you.",
+      "sample": "Sample gyms",
+      "paused": "League paused",
+      "live": "League live",
+      "radius": "Nearby means within",
+      "radiusHint": "A city needs 10–15 km to catch real neighbours, a town 25–50.",
+      "radiusSet": "Nearby: gyms within {{km}} km",
+      "km": "{{km}} km"
+    },
+    "tv": {
+      "eyebrow": "Putting it on the TV",
+      "steps": {
+        "open": {
+          "title": "Open the link",
+          "body": "In the TV’s own browser, or cast a laptop tab to it. Copy the link from the screen you want."
+        },
+        "fullScreen": {
+          "title": "Go full screen",
+          "body": "Press F11 (or the browser’s full-screen button). The board fits any size of screen."
+        },
+        "leave": {
+          "title": "Leave it running",
+          "body": "It refreshes itself, changes scene, and starts a new week every Monday. Nothing to touch."
+        }
+      },
+      "linksNote": "Both links share one key, and a link can only show its board. Keep them to your screens: anyone with a link can open it.",
+      "linksNoteOwner": "If one has got out, make a new key: every TV on the old links goes blank until you open the new ones.",
+      "rotateConfirm": "Change the screen link? Any TV showing the old link goes blank until you open the new one on it.",
+      "rotated": "New link made — open it on your TVs"
+    },
+    "toast": {
+      "copied": "Link copied",
+      "copyFailed": "Copy failed"
+    }
+  },
+  "studio": {
+    "eyebrow": "Studio",
+    "title": "Posts for {{name}}",
+    "loadError": "Couldn’t open the Studio",
+    "modes": {
+      "post": "One post",
+      "pack": "A pack from a shoot",
+      "drafts": "Drafts"
+    },
+    "blurb": {
+      "post": "Pick a template, add a photo or video, and fill it from your events or this week’s board. Save a draft to finish it later.",
+      "pack": "Drop a folder, photos or a ZIP from a shoot, pick the event, and get every post it needs in one go — downloaded, and kept here to come back to.",
+      "drafts": "Posts saved to finish later. Open one to carry on where it was left — every slide, photo or clip, the words and the look."
+    }
+  }
+}

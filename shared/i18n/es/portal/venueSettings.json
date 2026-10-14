@@ -1,0 +1,266 @@
+{
+  "days": {
+    "mon": "Lunes",
+    "tue": "Martes",
+    "wed": "Miércoles",
+    "thu": "Jueves",
+    "fri": "Viernes",
+    "sat": "Sábado",
+    "sun": "Domingo"
+  },
+  "hours": {
+    "to": "a",
+    "closed": "Cerrado",
+    "opens": "{{day}}: apertura",
+    "closes": "{{day}}: cierre",
+    "save": "Guardar horario"
+  },
+  "logoBg": {
+    "dark": "Fondo oscuro",
+    "black": "Fondo negro",
+    "white": "Fondo blanco",
+    "label": "Fondo del logotipo"
+  },
+  "fields": {
+    "gymName": "Nombre del gimnasio",
+    "about": "Descripción",
+    "address": "Dirección",
+    "phone": "Teléfono",
+    "website": "Sitio web",
+    "websitePlaceholder": "sugimnasio.es",
+    "openingHours": "Horario",
+    "logo": "Logotipo"
+  },
+  "status": {
+    "saving": "Guardando",
+    "saved": "Guardado.",
+    "uploading": "Subiendo",
+    "undo": "Deshacer",
+    "remove": "Quitar",
+    "replace": "Reemplazar",
+    "upload": "Subir"
+  },
+  "errors": {
+    "didntSave": "No se ha podido guardar.",
+    "uploadFailed": "No se ha podido subir."
+  },
+  "settings": {
+    "loadFailed": "No se han podido cargar sus ajustes",
+    "eyebrow": "Ajustes",
+    "title": "Su gimnasio",
+    "readOnly": "Solo los propietarios pueden cambiar estos datos. Usted puede verlos, y también el equipo.",
+    "nothingYet": "Nada todavía",
+    "details": {
+      "title": "Datos",
+      "intro": "Lo que ven los socios en la app, en sus pantallas y en cada publicación. El nombre y la dirección también le sitúan en el mapa.",
+      "aboutHint": "Una o dos frases, hasta 400 caracteres. Se muestra en la página de su gimnasio en la app.",
+      "save": "Guardar datos"
+    },
+    "logo": {
+      "label": "Su logotipo",
+      "hint": "Lo ideal es un PNG con fondo transparente. Aparece en sus pantallas, en la app y en cada publicación que crea el Studio.",
+      "looksRight": "Queda bien sobre",
+      "bgHint": "Elija el fondo para el que está pensado su logotipo, para que nunca aparezca sobre el equivocado."
+    },
+    "photo": {
+      "title": "Foto",
+      "label": "Su gimnasio",
+      "hint": "La imagen grande de la página de su gimnasio en la app. En horizontal, la sala o la fachada, con gente si es posible."
+    },
+    "package": {
+      "title": "Plan",
+      "body": "Qué está activado, qué incluye cada plan y cómo cambiarlo.",
+      "see": "Ver planes"
+    },
+    "email": {
+      "title": "Correo",
+      "recapTitle": "La semana de su gimnasio, cada lunes",
+      "recapBody": "Sesiones, deportistas, caras nuevas, lo más alto de la clasificación y sus eventos, en un solo correo. Cada persona del equipo elige por su cuenta.",
+      "driftTitle": "Cuando alguien empieza a alejarse",
+      "driftBody": "Un correo por la mañana los días en que alguien supera con creces su intervalo habitual entre visitas. Nunca más de uno al día.",
+      "driftBodyWho": "Un correo por la mañana los días en que alguien supera con creces su intervalo habitual entre visitas, con su nombre. Nunca más de uno al día."
+    }
+  },
+  "team": {
+    "title": "Equipo",
+    "introOwner": "Dé a las personas que gestionan {{gym}} su propio acceso. Pueden usar su cuenta de la app POWR o crear una desde el enlace.",
+    "introStaff": "Todas las personas que pueden gestionar {{gym}} en el portal. Pida a un propietario que añada a alguien.",
+    "emailPlaceholder": "nombre@sugimnasio.es",
+    "invite": "Invitar",
+    "copyLink": "Copiar un enlace de acceso",
+    "latestLink": "Último enlace: válido una vez, durante 14 días",
+    "loadFailed": "No se ha podido cargar el equipo. No ha cambiado nada.",
+    "waiting": "Pendientes de unirse",
+    "setupLink": "Enlace de acceso",
+    "owner": "Propietario/a",
+    "member": "Equipo",
+    "expires": "caduca el {{date}}",
+    "onTeam": "En el equipo",
+    "nobodyYet": "Nadie todavía.",
+    "you": "Usted",
+    "neverSignedIn": "Nunca ha iniciado sesión",
+    "signedInToday": "Último acceso: hoy",
+    "signedInYesterday": "Último acceso: ayer",
+    "signedInDaysAgo": "Último acceso: hace {{days}} d",
+    "confirmRemove": "¿Quitar a {{name}} de {{gym}}? Perderá el acceso al portal de inmediato.",
+    "toast": {
+      "emailed": "Invitación enviada a {{email}}",
+      "emailFailed": "No se ha podido enviar el correo; se ha copiado el enlace",
+      "linkCopied": "Enlace de acceso copiado",
+      "cancelled": "Invitación cancelada",
+      "removed": "Persona retirada del equipo"
+    },
+    "errors": {
+      "load": "Error al cargar",
+      "invite": "No se ha podido crear la invitación",
+      "revoke": "No se ha podido cancelar",
+      "remove": "No se ha podido quitar"
+    }
+  },
+  "app": {
+    "title": "Su gimnasio en la app",
+    "whatMembersSee": "Lo que ve un socio al tocar su marcador en Descubrir",
+    "notLoading": "Su página no carga en este momento. Inténtelo de nuevo en un minuto.",
+    "readOnly": "Solo los propietarios pueden cambiar su página. Aquí puede verlo todo.",
+    "savedLive": "Guardado. Los socios ya lo ven.",
+    "complete": "Su página está completa",
+    "ready": "Lista para los socios",
+    "notSaved": "Sin guardar",
+    "teamCount": "Su equipo ({{n}})",
+    "items": {
+      "cover": "Foto de portada",
+      "coverHint": "Lo primero que ven",
+      "logoHint": "En su marcador y su página",
+      "name": "Nombre y dirección",
+      "nameHint": "Cómo le encuentran los socios",
+      "hoursHint": "Abierto o cerrado, en directo",
+      "aboutHint": "Cómo es su gimnasio",
+      "team": "Su equipo",
+      "teamHint": "Entrenadores reservables"
+    },
+    "upload": {
+      "notImage": "Eso no es una imagen. Pruebe con un JPG o un PNG.",
+      "tooBig": "Esa imagen supera los {{mb}} MB. Pruebe con una más pequeña."
+    },
+    "photo": {
+      "change": "Cambiar foto",
+      "add": "Añadir foto",
+      "none": "Sin foto",
+      "changeShort": "Cambiar"
+    },
+    "cover": {
+      "body": "La imagen grande en lo alto de su página. Mejor en horizontal: la sala o la fachada, con gente si es posible.",
+      "none": "Aún sin portada",
+      "upload": "Subir una foto",
+      "studio": "También aparece de fondo en las publicaciones que el Studio crea para usted."
+    },
+    "logo": {
+      "body": "En su página, en su marcador del mapa, en sus pantallas y en cada publicación. Lo ideal es un PNG con fondo transparente.",
+      "none": "Sin logotipo",
+      "upload": "Subir su logotipo",
+      "madeFor": "Pensado para",
+      "bgHint": "El fondo para el que está diseñado su logotipo, para que nunca aparezca sobre el equivocado."
+    },
+    "name": {
+      "body": "En lo alto de su página y bajo su marcador. Mover el marcador es cosa nuestra: tóquelo en el mapa.",
+      "addressPlaceholder": "Calle Mayor 12, Madrid"
+    },
+    "hours": {
+      "body": "Los socios ven «Abierto» o «Cerrado» en tiempo real, y debajo el horario de hoy.",
+      "sameAsMonday": "Igual que el lunes, todos los días"
+    },
+    "about": {
+      "body": "Una o dos líneas bajo su nombre: cómo es, para quién es, por qué se le conoce.",
+      "placeholder": "Gimnasio de fuerza independiente en Malasaña. Abierto 24/7, clases dirigidas cada tarde y la mejor música del barrio.",
+      "aria": "Sobre su gimnasio"
+    },
+    "pin": {
+      "title": "Su marcador",
+      "body": "Donde los socios le encuentran en el mapa, y adonde les lleva «Cómo llegar». Debe estar sobre su puerta de entrada.",
+      "noAddress": "Aún sin dirección",
+      "wrongPlace": "¿Está mal situado o en el lado equivocado del edificio? Díganoslo y lo moveremos. Es importante: así es como los socios llegan hasta usted.",
+      "ask": "Pedir a POWR que lo mueva"
+    },
+    "home": {
+      "title": "Marcar como mi gimnasio",
+      "body": "El botón que le convierte en el gimnasio de alguien en POWR.",
+      "detail": "Un socio que lo toca cuenta como suyo: en su clasificación, para usted en Gym Clash y en sus cifras de aquí. La forma más rápida de que lo toquen es su enlace de registro.",
+      "joinLink": "Obtener su enlace de registro"
+    },
+    "member": {
+      "addTitle": "Añadir a alguien",
+      "detailsTitle": "Sus datos",
+      "addIntro": "Un entrenador, un coach, cualquier persona que los socios deban conocer. Aparece en su página a medida que rellena esto.",
+      "editIntro": "Los cambios se ven en el móvil mientras escribe y llegan a los socios al guardar.",
+      "name": "Nombre",
+      "namePlaceholder": "Alex García",
+      "experience": "Experiencia",
+      "experiencePlaceholder": "8 años",
+      "role": "Su función",
+      "specialties": "Especialidades",
+      "bio": "Bio",
+      "bioPlaceholder": "Exjugador de rugby regional. Primero la fuerza, y hábitos que aguanten una semana ajetreada.",
+      "booking": "Enlace de reserva",
+      "bookingPlaceholder": "calendly.com/alex",
+      "bookingHint": "Añade un botón <strong>Reservar sesión</strong>. Cualquier página de reservas o un enlace de WhatsApp.",
+      "profile": "Enlace de perfil",
+      "profilePlaceholder": "instagram.com/alex",
+      "profileHint": "Añade un botón <strong>Ver perfil</strong>: su Instagram o su página en la web del gimnasio.",
+      "show": "Mostrar en la app",
+      "showHint": "Desmarque para ocultar a esta persona por ahora sin perder sus datos.",
+      "add": "Añadir a su página",
+      "addAnother": "Añadir a otra persona",
+      "takeOff": "Quitar",
+      "confirmLeaveNamed": "¿Salir sin guardar los cambios de {{name}}?",
+      "confirmLeave": "¿Salir sin guardar estos cambios?",
+      "confirmRemove": "¿Quitar a {{name}} de su página en la app?",
+      "full": "Ya tiene {{max}} personas. Quite a alguien primero."
+    },
+    "specialties": {
+      "addAnother": "Añadir otra",
+      "typeOne": "Escriba una y pulse Intro",
+      "aria": "Añadir una especialidad",
+      "remove": "Quitar {{name}}",
+      "hint": "Hasta 6. Aparecen como etiquetas cuando un socio abre su ficha."
+    },
+    "specialtyTags": {
+      "strength": "Fuerza",
+      "weightLoss": "Pérdida de peso",
+      "muscle": "Ganancia muscular",
+      "mobility": "Movilidad",
+      "hiit": "HIIT",
+      "hyrox": "Hyrox",
+      "boxing": "Boxeo",
+      "rehab": "Readaptación",
+      "nutrition": "Nutrición",
+      "natal": "Pre y posparto",
+      "yoga": "Yoga",
+      "pilates": "Pilates"
+    },
+    "roles": {
+      "personalTrainer": "Entrenador personal",
+      "coach": "Coach",
+      "classInstructor": "Monitor de clases",
+      "physio": "Fisioterapeuta",
+      "nutritionist": "Nutricionista",
+      "manager": "Gerente"
+    },
+    "team": {
+      "body": "Entrenadores, coaches y personal, en su página de la app. Los socios pueden reservar una sesión directamente desde la ficha de cada persona.",
+      "notLoading": "Su equipo no carga en este momento. Inténtelo de nuevo en un minuto.",
+      "emptyTitle": "Aún no hay nadie en su página",
+      "emptyBody": "Ponga a sus entrenadores delante de cada socio que abra su página. Cada uno tiene una ficha con su foto, sus puntos fuertes y un botón Reservar sesión.",
+      "addFirst": "Añadir a la primera persona",
+      "hidden": "No visible",
+      "noBookingLink": "sin enlace de reserva",
+      "moveUp": "Subir a {{name}}",
+      "moveDown": "Bajar a {{name}}",
+      "hide": "Ocultar a {{name}}",
+      "show": "Mostrar a {{name}}",
+      "hideTitle": "Ocultar a los socios",
+      "showTitle": "Mostrar a los socios",
+      "takeOff": "Quitar a {{name}}",
+      "add": "Añadir a alguien"
+    }
+  }
+}

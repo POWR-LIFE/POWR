@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug, LifeBuoy, Palette, BookOpen, ScanLine } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import i18n, { rememberProfileLanguage } from '../../lib/i18n';
+import { LanguageMenu } from '../../components/portal/LanguageMenu';
 import { useAuth } from '../../App';
 import { methodLaterKey } from './PartnerIntegrationHub';
 
-// --- Admin-only: pick which reward brand to preview the portal as ---
+// --- Admin-only: pick which reward brand to preview the portal as (English: POWR staff only) ---
 // Brands come from rewards.brand_name — partners (gyms) are unrelated.
 function AdminPartnerPicker({ onSelect }) {
     const [brands, setBrands] = useState([]);
@@ -100,50 +103,52 @@ function AdminPartnerPicker({ onSelect }) {
 // The integration slot adapts to the brand's chosen delivery method — one
 // nav item, labelled by the method; Promo Codes only surfaces for manual
 // brands (it stays routable for the others as their fallback pool).
+// Labels are keys, translated where they render.
 const INTEGRATION_NAV = {
-    api:     { label: 'API',         path: '/partner/integration/api',     icon: Code2,  match: '/partner/integration' },
-    shopify: { label: 'Shopify',     path: '/partner/integration/shopify', icon: Store,  match: '/partner/integration' },
-    manual:  { label: 'Promo Codes', path: '/partner/promo-codes',         icon: Ticket, match: '/partner/integration' },
+    api:     { label: 'brandShell:nav.api',        path: '/partner/integration/api',     icon: Code2,  match: '/partner/integration' },
+    shopify: { label: 'brandShell:nav.shopify',    path: '/partner/integration/shopify', icon: Store,  match: '/partner/integration' },
+    manual:  { label: 'brandShell:nav.promoCodes', path: '/partner/promo-codes',         icon: Ticket, match: '/partner/integration' },
 };
-const INTEGRATION_NAV_DEFAULT = { label: 'Integration', path: '/partner/integration', icon: Plug, match: '/partner/integration' };
+const INTEGRATION_NAV_DEFAULT = { label: 'brandShell:nav.integration', path: '/partner/integration', icon: Plug, match: '/partner/integration' };
 
 const navItemsFor = (deliveryMethod) => [
-    { label: 'Overview',    path: '/partner',             icon: LayoutDashboard },
-    { label: 'My Rewards',  path: '/partner/rewards',     icon: Award           },
+    { label: 'brandShell:nav.overview',    path: '/partner',             icon: LayoutDashboard },
+    { label: 'brandShell:nav.myRewards',   path: '/partner/rewards',     icon: Award           },
     INTEGRATION_NAV[deliveryMethod] ?? INTEGRATION_NAV_DEFAULT,
-    { label: 'In Store',    path: '/partner/in-store',    icon: ScanLine, gate: 'inStore' },
-    { label: "What's On",   path: '/partner/featured',    icon: CalendarDays    },
-    { label: 'Placements',  path: '/partner/placements',  icon: MapPin, gated: true },
-    { label: 'Studio',      path: '/partner/studio',      icon: Palette         },
-    { label: 'Redemptions', path: '/partner/redemptions', icon: Gift            },
-    { label: 'Settings',    path: '/partner/settings',    icon: Settings        },
+    { label: 'brandShell:nav.inStore',     path: '/partner/in-store',    icon: ScanLine, gate: 'inStore' },
+    { label: 'brandShell:nav.whatsOn',     path: '/partner/featured',    icon: CalendarDays    },
+    { label: 'brandShell:nav.placements',  path: '/partner/placements',  icon: MapPin, gated: true },
+    { label: 'brandShell:nav.studio',      path: '/partner/studio',      icon: Palette         },
+    { label: 'brandShell:nav.redemptions', path: '/partner/redemptions', icon: Gift            },
+    { label: 'brandShell:nav.settings',    path: '/partner/settings',    icon: Settings        },
 ];
 
 const PATH_LABELS = {
-    partner:       'Overview',
-    rewards:       'My Rewards',
-    'promo-codes': 'Promo Codes',
-    featured:      "What's On",
-    placements:    'Placements',
-    studio:        'Studio',
-    redemptions:   'Redemptions',
-    'in-store':    'In Store',
-    integration:   'Integration',
-    settings:      'Settings',
-    support:       'Support',
+    partner:       'brandShell:nav.overview',
+    rewards:       'brandShell:nav.myRewards',
+    'promo-codes': 'brandShell:nav.promoCodes',
+    featured:      'brandShell:nav.whatsOn',
+    placements:    'brandShell:nav.placements',
+    studio:        'brandShell:nav.studio',
+    redemptions:   'brandShell:nav.redemptions',
+    'in-store':    'brandShell:nav.inStore',
+    integration:   'brandShell:nav.integration',
+    settings:      'brandShell:nav.settings',
+    support:       'brandShell:nav.support',
 };
 
-const INTEGRATION_SUB_LABELS = { api: 'API', shopify: 'Shopify' };
+const INTEGRATION_SUB_LABELS = { api: 'brandShell:nav.api', shopify: 'brandShell:nav.shopify' };
 
 export function PartnerLayout({ children }) {
+    const { t } = useTranslation();
     const location = useLocation();
     const navigate = useNavigate();
     const { user, partnerData, isAdmin, isActingPartner, setActingPartner, placementsEnabled, inStoreEnabled, deliveryMethod } = useAuth();
 
     const segment = location.pathname.split('/')[2] || 'partner';
     const currentLabel = segment === 'integration'
-        ? (INTEGRATION_SUB_LABELS[location.pathname.split('/')[3]] ?? 'Integration')
-        : (PATH_LABELS[segment] || segment);
+        ? t(INTEGRATION_SUB_LABELS[location.pathname.split('/')[3]] ?? 'brandShell:nav.integration')
+        : (PATH_LABELS[segment] ? t(PATH_LABELS[segment]) : segment);
 
     // Placements is gated: hidden for brands until the feature flag is on,
     // but always shown to admins (incl. admin-preview) for testing.
@@ -170,13 +175,16 @@ export function PartnerLayout({ children }) {
         navigate('/partner/login');
     };
 
+    // What this person reads, for the emails POWR sends them (best-effort).
+    useEffect(() => { rememberProfileLanguage(supabase, user?.id); }, [user?.id]);
+
     // Admin with no partner link and no preview selection yet → pick one first
     if (!partnerData && isAdmin) {
         return <AdminPartnerPicker onSelect={setActingPartner} />;
     }
 
     return (
-        <div className="flex min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808]">
+        <div lang={i18n.language} dir={i18n.dir()} className="flex min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808]">
             {/* Sidebar */}
             <aside className="w-72 flex-shrink-0 border-r border-[#E6E6E1] bg-white flex flex-col h-screen sticky top-0 z-[100]">
                 <div className="px-8 pt-8 pb-5 flex items-center justify-start pointer-events-none">
@@ -212,7 +220,7 @@ export function PartnerLayout({ children }) {
                     scrolling; overflow-y-auto is only a short-window fallback. */}
                 <nav className="flex-1 px-6 space-y-1 overflow-y-auto">
                     <div className="px-4 mb-4">
-                        <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Partner Portal</div>
+                        <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">{t('brandShell:portalName')}</div>
                         <div className="h-[2px] w-10 bg-[#E8D200]/60"></div>
                     </div>
                     {navItems.map(item => {
@@ -229,7 +237,7 @@ export function PartnerLayout({ children }) {
                                 }`}
                             >
                                 <item.icon size={18} strokeWidth={active ? 3 : 2} className={active ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
-                                <span className="text-[11px] uppercase tracking-[0.2em] font-black">{item.label}</span>
+                                <span className="text-[11px] uppercase tracking-[0.2em] font-black">{t(item.label)}</span>
                             </Link>
                         );
                     })}
@@ -249,7 +257,7 @@ export function PartnerLayout({ children }) {
                             }`}
                         >
                             <LifeBuoy size={16} strokeWidth={location.pathname === '/partner/support' ? 3 : 2} className={location.pathname === '/partner/support' ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
-                            <span className="text-[10px] uppercase tracking-[0.18em] font-black">Support</span>
+                            <span className="text-[10px] uppercase tracking-[0.18em] font-black">{t('brandShell:nav.support')}</span>
                         </Link>
                         <a
                             href="/docs/getting-started"
@@ -258,12 +266,12 @@ export function PartnerLayout({ children }) {
                             className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl transition-all group text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]"
                         >
                             <BookOpen size={16} className="group-hover:text-[#8a7600] transition-colors" />
-                            <span className="text-[10px] uppercase tracking-[0.18em] font-black">Guides</span>
+                            <span className="text-[10px] uppercase tracking-[0.18em] font-black">{t('brandShell:nav.guides')}</span>
                         </a>
                     </div>
                     {user?.email && (
                         <div className="mb-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
-                            <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
+                            <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">{t('common:states.signedInAs')}</div>
                             <div className="text-[11px] text-[#666] truncate font-mono">{user.email}</div>
                         </div>
                     )}
@@ -271,7 +279,7 @@ export function PartnerLayout({ children }) {
                         onClick={handleSignOut}
                         className="w-full flex items-center justify-center gap-3 h-12 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/40 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all border border-transparent hover:border-red-500/10"
                     >
-                        <LogOut size={16} /> Sign Out
+                        <LogOut size={16} /> {t('common:actions.signOut')}
                     </button>
                 </div>
             </aside>
@@ -282,29 +290,33 @@ export function PartnerLayout({ children }) {
             <main className="flex-1 flex flex-col h-screen overflow-hidden bg-[#F4F4F1] border-l border-[#E6E6E1]">
                 <header className="h-24 border-b border-[#E6E6E1] flex-shrink-0 flex items-center justify-between px-16 bg-[#F4F4F1]/60 backdrop-blur-3xl sticky top-0 z-50">
                     <div className="flex items-center gap-5">
-                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#CCCCCC]">Partner Portal</div>
+                        <div className="text-[10px] uppercase tracking-[0.5em] font-black text-[#CCCCCC]">{t('brandShell:portalName')}</div>
                         <ChevronRight size={13} className="text-[#CCCCCC]" />
                         <div className="flex items-center gap-3">
                             <div className="h-1.5 w-1.5 rounded-full bg-[#E8D200] shadow-[0_0_10px_rgba(232,210,0,0.6)] animate-pulse"></div>
                             <div className="text-[13px] uppercase tracking-[0.3em] font-black text-[#8a7600]">{currentLabel}</div>
                         </div>
                     </div>
-                    {isActingPartner && (
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-3 px-5 py-2.5 bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-full">
-                                <Eye size={13} className="text-[#8B5CF6]" />
-                                <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8B5CF6]">
-                                    Admin preview · {partnerData?.name}
-                                </span>
-                            </div>
-                            <button
-                                onClick={() => setActingPartner(null)}
-                                className="h-10 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#8B5CF6]/40 hover:text-[#8B5CF6] transition-all"
-                            >
-                                Switch Partner
-                            </button>
-                        </div>
-                    )}
+                    <div className="flex items-center gap-4">
+                        {/* Admin preview chrome: POWR staff only, stays English. */}
+                        {isActingPartner && (
+                            <>
+                                <div className="flex items-center gap-3 px-5 py-2.5 bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-full">
+                                    <Eye size={13} className="text-[#8B5CF6]" />
+                                    <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8B5CF6]">
+                                        Admin preview · {partnerData?.name}
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => setActingPartner(null)}
+                                    className="h-10 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#8B5CF6]/40 hover:text-[#8B5CF6] transition-all"
+                                >
+                                    Switch Partner
+                                </button>
+                            </>
+                        )}
+                        <LanguageMenu userId={user?.id} />
+                    </div>
                 </header>
 
                 <div className="flex-1 overflow-y-auto">

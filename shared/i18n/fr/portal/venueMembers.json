@@ -1,0 +1,412 @@
+{
+  "memberName": "Membre POWR",
+  "seePackages": "Voir les formules",
+  "activity": {
+    "gym": "Séance en salle",
+    "running": "Course",
+    "cycling": "Vélo",
+    "swimming": "Natation",
+    "hiit": "HIIT",
+    "yoga": "Yoga",
+    "sports": "Sport",
+    "dance": "Danse",
+    "walking": "Marche",
+    "other": "Séance"
+  },
+  "insights": {
+    "subject": {
+      "running": "La course à pied",
+      "cycling": "Le vélo",
+      "gym": "L’entraînement en salle",
+      "hiit": "Le HIIT",
+      "swimming": "La natation",
+      "yoga": "Le yoga",
+      "sports": "Le sport",
+      "dance": "La danse",
+      "walking": "La marche"
+    },
+    "quiet": {
+      "drifting_one": "{{count}} membre régulier décroche",
+      "drifting_other": "{{count}} membres réguliers décrochent",
+      "driftingAndOneSlipping_one": "{{count}} membre régulier décroche et {{slipping}} autre ralentit",
+      "driftingAndOneSlipping_other": "{{count}} membres réguliers décrochent et {{slipping}} autre ralentit",
+      "driftingAndSlipping_one": "{{count}} membre régulier décroche et {{slipping}} autres ralentissent",
+      "driftingAndSlipping_other": "{{count}} membres réguliers décrochent et {{slipping}} autres ralentissent",
+      "slipping_one": "{{count}} membre régulier ralentit",
+      "slipping_other": "{{count}} membres réguliers ralentissent",
+      "actionPro": "Contactez-les avant une résiliation. Voyez qui dans Fidélisation.",
+      "actionPlus": "Contactez-les avant une résiliation. Clash Pro vous dit qui."
+    },
+    "rise": {
+      "finding": "{{activity}} progresse de {{pct}} % chez les membres",
+      "action": {
+        "running": "Lancez un club de course. Nous apportons le sponsor.",
+        "cycling": "Organisez une sortie vélo le week-end au départ de la salle.",
+        "swimming": "Lancez un défi natation + musculation.",
+        "hiit": "Ajoutez un cours de HIIT à votre heure de pointe.",
+        "yoga": "Ajoutez une séance de mobilité ou de yoga.",
+        "walking": "Ajoutez des cours de renforcement pour débutants.",
+        "gym": "Lancez un défi mensuel qui ne compte que les séances dans votre salle.",
+        "other": "Créez un défi autour de cette activité."
+      }
+    },
+    "walkers": {
+      "finding": "Beaucoup de marche, peu de musculation",
+      "action": "Ajoutez des cours de renforcement pour débutants."
+    },
+    "elsewhere": {
+      "finding": "{{pct}} % de leurs check-ins en salle ont lieu dans d’autres salles",
+      "action": "Donnez-leur une raison de s’entraîner ici : un défi mensuel qui ne compte que les séances à {{gym}}."
+    },
+    "fall": {
+      "finding": "{{activity}} recule de {{pct}} % chez les membres",
+      "action": "Relancez cette activité avec un défi dédié."
+    },
+    "onDays": {
+      "mondays": "le lundi",
+      "tuesdays": "le mardi",
+      "wednesdays": "le mercredi",
+      "thursdays": "le jeudi",
+      "fridays": "le vendredi",
+      "saturdays": "le samedi",
+      "sundays": "le dimanche"
+    },
+    "weekday": {
+      "finding": "L’activité baisse {{days}}",
+      "action": "Programmez un cours ou une journée défi {{days}}."
+    },
+    "month": {
+      "finding": "La régularité a baissé en {{month}}",
+      "action": "Réservez une Clash Night à ce moment-là."
+    },
+    "core": {
+      "finding": "{{n}} de vos membres s’entraînent 5 jours ou plus par semaine",
+      "action": "Offrez-leur une scène : un défi de classement à remporter."
+    }
+  },
+  "members": {
+    "loadError": "Impossible de charger vos membres",
+    "eyebrow": "Membres",
+    "title": "Vos membres",
+    "chose_one": "a choisi {{gym}} comme salle",
+    "chose_other": "ont choisi {{gym}} comme salle",
+    "facts": {
+      "active": "En activité",
+      "activeNote": "partout, 4 dernières semaines",
+      "activeNotePrev": "partout, 4 dernières semaines · {{prev}} avant",
+      "trainedHere": "Venus ici",
+      "trainedHereNote": "28 derniers jours",
+      "drifting": "Décrochent",
+      "driftingNote": "de leurs visites habituelles · voir Fidélisation",
+      "driftingNoteSlipping": "+{{slipping}} en ralentissement · voir Fidélisation",
+      "newHere": "Nouveaux ici",
+      "newHereNote": "première séance cette semaine"
+    },
+    "tooFew": "L’activité de vos membres, où qu’elle ait lieu, s’affiche à partir de {{min}} membres, pour que personne ne soit identifiable. Les membres choisissent leur salle dans l’app POWR.",
+    "unavailable": "L’activité de vos membres, où qu’elle ait lieu, n’est pas disponible pour le moment.",
+    "weekly": {
+      "title": "Personnes venues s’entraîner ici chaque semaine",
+      "now": "En cours",
+      "thisWeek": "Cette semaine",
+      "weekOf": "Semaine du {{date}}",
+      "empty": "Dès que des membres feront un check-in à {{gym}}, leurs semaines apparaîtront ici."
+    },
+    "board": {
+      "title": "Au classement cette semaine",
+      "sub": "Points gagnés à {{gym}}, tels que le grand écran les affiche.",
+      "empty": "Personne n’a encore marqué de points ici cette semaine.",
+      "note": "Les membres masqués des classements sont comptés, jamais nommés."
+    },
+    "numbers": "Ce que disent les chiffres",
+    "mix": {
+      "title": "Ce qu’ils pratiquent",
+      "sub": "Partout, 4 dernières semaines. L’évolution est calculée par membre actif, par rapport aux 4 semaines précédentes.",
+      "empty": "Rien pour l’instant sur les 4 dernières semaines.",
+      "members_one": "{{count}} membre",
+      "members_other": "{{count}} membres"
+    },
+    "where": {
+      "title": "Où, et à quelle fréquence",
+      "sub": "Où ont lieu leurs séances en salle (8 dernières semaines) et combien de jours par semaine ils s’entraînent (4 dernières).",
+      "here": "Dans cette salle",
+      "otherGyms": "Dans d’autres salles",
+      "elsewhere": "Sans check-in",
+      "whereLabel": "Où ont lieu leurs séances en salle",
+      "daysLabel": "Jours d’entraînement par semaine",
+      "note": "Les autres salles ne sont jamais nommées. « Sans check-in » : une séance enregistrée par une montre ou faite à la maison."
+    },
+    "bands": {
+      "high": "5 jours ou plus",
+      "mid": "3 à 4 jours",
+      "low": "1 à 2 jours",
+      "none": "Aucun"
+    },
+    "when": {
+      "title": "Quand ils viennent ici",
+      "sub": "Séances à {{gym}}, 28 derniers jours.",
+      "subDay": "Séances à {{gym}}, 28 derniers jours · pic le {{day}}.",
+      "subDayHour": "Séances à {{gym}}, 28 derniers jours · pic le {{day}} vers {{hour}}.",
+      "empty": "Aucun check-in sur les 28 derniers jours.",
+      "byHour": "Par heure",
+      "byHourLabel": "Séances par heure",
+      "byDay": "Par jour",
+      "byDayLabel": "Séances par jour de la semaine"
+    },
+    "footer": "Des chiffres globaux sur les membres qui ont choisi {{gym}} comme salle : ce qu’ils font partout, pas seulement ici. Jamais leur sommeil, leur fréquence cardiaque, leurs pas ni leur position. Les activités pratiquées par moins de 3 membres ne sont pas affichées."
+  },
+  "people": {
+    "title": "Membres qui partagent avec vous",
+    "status": {
+      "quiet": "À l’arrêt partout",
+      "slowing": "Ralentit partout",
+      "active": "En activité",
+      "inactive": "Pas encore d’activité"
+    },
+    "everyone": "Tout le monde",
+    "ago": {
+      "none": "aucune activité pour l’instant",
+      "today": "aujourd’hui",
+      "yesterday": "hier",
+      "days_one": "il y a {{count}} jour",
+      "days_other": "il y a {{count}} jours"
+    },
+    "locked": {
+      "title": "Voyez tout leur entraînement",
+      "body": "Clash Pro nomme les membres qui partagent tout leur entraînement avec vous : leurs courses, sorties vélo et séances à la maison, en plus de leurs visites ici."
+    },
+    "sharing_one": "{{sharing}} sur {{members}} membre",
+    "sharing_other": "{{sharing}} sur {{members}} membres",
+    "privacy": "Les membres l’activent dans l’app POWR (Paramètres, puis Confidentialité, puis Partager avec {{gym}}) et peuvent le désactiver à tout moment. Vous voyez ce qu’ils font et quand, jamais leur sommeil, leur fréquence cardiaque ni leur position.",
+    "none": "Personne ne partage encore. Les visites ici figurent dans Fidélisation pour tout le monde ; ceci concerne les membres qui partagent aussi leur entraînement ailleurs.",
+    "emptyGroup": "Personne dans ce groupe pour le moment.",
+    "idLine": "POWR ID {{id}} · dernière activité {{when}}",
+    "recent_one": "{{count}} jour actif sur les 2 dernières semaines",
+    "recent_other": "{{count}} jours actifs sur les 2 dernières semaines",
+    "recentUsual_one": "{{count}} jour actif sur les 2 dernières semaines (environ {{usual}} d’habitude)",
+    "recentUsual_other": "{{count}} jours actifs sur les 2 dernières semaines (environ {{usual}} d’habitude)",
+    "sessions_one": "{{sessions}} séance en 4 semaines",
+    "sessions_other": "{{sessions}} séances en 4 semaines",
+    "streak_one": "série de {{count}} jour",
+    "streak_other": "série de {{count}} jours"
+  },
+  "retention": {
+    "loadError": "Impossible de charger Fidélisation",
+    "eyebrow": "Fidélisation",
+    "title": "Qui décroche",
+    "sub": "{{gym}} · visites ici, comparées aux habitudes de chacun",
+    "export": "Exporter",
+    "tooFewTitle": "Pas encore assez de monde",
+    "tooFew": "Fidélisation s’affiche dès qu’au moins {{min}} personnes choisissent {{gym}} dans l’app POWR ou font un check-in ici, pour que personne ne soit identifiable. L’affiche à l’entrée les fait venir.",
+    "status": {
+      "drifting": "Décroche",
+      "slipping": "Ralentit",
+      "lapsed": "Ne vient plus",
+      "new": "Nouveau",
+      "regular": "Dans le rythme",
+      "occasional": "De temps en temps",
+      "unseen": "Aucune visite ici",
+      "locationOff": "Localisation désactivée",
+      "noSignal": "Pas de synchro"
+    },
+    "tabs": {
+      "drifting": "Décrochent",
+      "slipping": "Ralentissent",
+      "lapsed": "Ne viennent plus",
+      "new": "Nouveaux",
+      "regular": "Dans le rythme",
+      "cantSee": "Hors radar",
+      "all": "Tout le monde"
+    },
+    "channels": {
+      "call": "Appel",
+      "text": "SMS",
+      "email": "E-mail",
+      "inPerson": "En personne",
+      "other": "Autre"
+    },
+    "channelDone": {
+      "call": "Appel",
+      "text": "SMS",
+      "email": "E-mail",
+      "inPerson": "Échange en personne",
+      "push": "Relance POWR",
+      "other": "Contact"
+    },
+    "ago": {
+      "notYet": "pas encore",
+      "today": "aujourd’hui",
+      "yesterday": "hier",
+      "days_one": "il y a {{count}} jour",
+      "days_other": "il y a {{count}} jours",
+      "weeks_one": "il y a {{count}} semaine",
+      "weeks_other": "il y a {{count}} semaines"
+    },
+    "quiet": {
+      "days_one": "{{count}} jour sans venir",
+      "days_other": "{{count}} jours sans venir",
+      "weeks_one": "{{count}} semaine sans venir",
+      "weeks_other": "{{count}} semaines sans venir"
+    },
+    "slippingChip": "Ralentit · {{days}} j",
+    "frequency": {
+      "mostDays": "presque tous les jours",
+      "perWeek": "{{n}} fois par semaine",
+      "weekly": "environ une fois par semaine",
+      "fortnightly": "environ toutes les deux semaines"
+    },
+    "dayParts": {
+      "morning": "le matin",
+      "midday": "le midi",
+      "afternoon": "l’après-midi",
+      "evening": "le soir"
+    },
+    "pattern": {
+      "base": "En général {{frequency}}",
+      "withPart": "En général {{frequency}}, {{part}}",
+      "lastDay": "{{rest}} et {{last}}"
+    },
+    "line": {
+      "inToday": "Visite aujourd’hui",
+      "lastVisit": "Dernière visite {{when}}",
+      "phoneQuiet": "POWR n’a plus de nouvelles de son téléphone : la personne s’entraîne peut-être encore",
+      "unseen": "A choisi votre salle, pas encore de check-in ici",
+      "newBack": "Première visite {{when}}, {{n}} visites jusqu’ici",
+      "newOnce": "Première visite {{when}}, pas encore de retour",
+      "occasional": "passe de temps en temps",
+      "lastReach": "{{channel}} {{when}}"
+    },
+    "strip": {
+      "label": "Visites sur les 12 dernières semaines",
+      "dayIn": "{{date}} : visite",
+      "today": "Aujourd’hui",
+      "list_one": "{{count}} visite : {{list}}",
+      "list_other": "{{count}} visites : {{list}}"
+    },
+    "detail": {
+      "logged": "Enregistré. Nous vous dirons si la personne revient.",
+      "nudgeConfirm": "Envoyer une notification POWR à {{name}} ? Elle n’est envoyée qu’une fois, puis plus rien pendant quinze jours.",
+      "sent": "Envoyé.",
+      "hadOne": "Cette personne en a déjà reçu une ces quinze derniers jours.",
+      "lastVisit": "Dernière visite",
+      "last4": "4 dernières semaines",
+      "visits_one": "{{count}} visite",
+      "visits_other": "{{count}} visites",
+      "usualGap": "Écart habituel",
+      "days_one": "{{count}} jour",
+      "days_other": "{{count}} jours",
+      "driftingAfter": "Décroche après",
+      "driftAfterDays_one": "{{count}} jour",
+      "driftAfterDays_other": "{{count}} jours",
+      "picked": "A choisi {{gym}} comme salle dans POWR.",
+      "notPicked": "Fait des check-ins ici ; n’a pas choisi votre salle dans POWR.",
+      "whileUsing": "Sa localisation est réglée sur « Lorsque l’app est active » : POWR ne voit ses visites que si l’app est ouverte ici.",
+      "driftingSince": "Décroche depuis le {{date}}.",
+      "sharesAll": "Partage tout son entraînement avec vous : <members>Membres</members>.",
+      "logTitle": "Noter un contact",
+      "notePlaceholder": "Une note pour l’équipe (facultatif)",
+      "logIt": "Enregistrer",
+      "pushLabel": "POWR · notification",
+      "nudged": "Relance {{when}}",
+      "sending": "Envoi…",
+      "sendNudge": "Envoyer une relance",
+      "teamDid": "Ce qu’a fait l’équipe",
+      "removeNote": "Supprimer cette note"
+    },
+    "nudgeAll": {
+      "counting": "Calcul…",
+      "unavailable": "Les relances ne sont pas disponibles pour le moment.",
+      "plan_one": "Une notification POWR à {{count}} personne qui décroche.",
+      "plan_other": "Une notification POWR aux {{count}} personnes qui décrochent.",
+      "planCooling_one": "Une notification POWR à {{count}} personne qui décroche (et {{cooling}} en attente : relance reçue ces quinze derniers jours).",
+      "planCooling_other": "Une notification POWR aux {{count}} personnes qui décrochent (et {{cooling}} en attente : relance reçue ces quinze derniers jours).",
+      "allCooling": "Toutes les personnes qui décrochent ont reçu une relance ces quinze derniers jours.",
+      "nobody": "Personne à relancer pour le moment.",
+      "button": "Relancer ({{n}})",
+      "confirm_one": "Envoyer une notification POWR à {{count}} personne qui décroche ? Elle n’est envoyée qu’une fois, puis plus rien pendant quinze jours.",
+      "confirm_other": "Envoyer une notification POWR à {{count}} personnes qui décrochent ? Chacune ne la reçoit qu’une fois, puis plus rien pendant quinze jours.",
+      "sentTo_one": "Envoyé à {{count}} personne",
+      "sentTo_other": "Envoyé à {{count}} personnes"
+    },
+    "csv": {
+      "yes": "oui",
+      "no": "non"
+    },
+    "headline_one": "décroche de ses visites habituelles",
+    "headline_other": "décrochent de leurs visites habituelles",
+    "facts": {
+      "regularNote": "viennent comme d’habitude",
+      "slippingNote": "plus tard que d’habitude",
+      "lapsedNote": "aucune visite depuis 60 jours ou plus",
+      "newNote": "première visite ces 4 dernières semaines"
+    },
+    "trend": {
+      "title": "Décrochages par semaine",
+      "ghost": "Ralentissent ou décrochent",
+      "tip": "Semaine jusqu’au {{date}} : {{drifting}} décrochent, {{slipping}} ralentissent"
+    },
+    "wonBack": {
+      "title": "Retours",
+      "nothingYet": "Rien d’enregistré pour l’instant",
+      "nothingNamed": "Notez un appel ou un SMS sur la ligne d’une personne, ou envoyez une relance. Nous vous montrerons qui revient sous deux semaines.",
+      "nothingPlus": "Clash Pro enregistre qui vous avez contacté et montre qui est revenu.",
+      "cameBack": "sur {{reached}} ont fait leur retour",
+      "note": "Personnes contactées ces 90 derniers jours et revenues sous deux semaines.",
+      "rate": "Soit {{pct}} % de celles dont les deux semaines sont écoulées.",
+      "waiting_one": "{{n}} personne est encore dans ses deux semaines.",
+      "waiting_other": "{{n}} personnes sont encore dans leurs deux semaines."
+    },
+    "cantSee": {
+      "title": "Hors radar",
+      "body_one": "POWR n’a pas eu de nouvelles du téléphone de {{n}} personne depuis une semaine, ou sa localisation est désactivée. Elle s’entraîne peut-être encore : elle n’est donc pas comptée comme décrochant et ne reçoit jamais de relance.",
+      "body_other": "POWR n’a pas eu de nouvelles du téléphone de {{n}} personnes depuis une semaine, ou leur localisation est désactivée. Elles s’entraînent peut-être encore : elles ne sont donc pas comptées comme décrochant et ne reçoivent jamais de relance."
+    },
+    "find": "Trouver quelqu’un",
+    "noneDrifting": "Personne ne décroche pour le moment. Toutes les personnes qui ont des habitudes viennent à peu près aussi souvent que d’habitude.",
+    "noneHere": "Personne ici pour le moment.",
+    "locked": {
+      "title": "Sachez qui, avant la résiliation",
+      "body": "Clash Pro nomme toutes les personnes qui ralentissent ou décrochent, avec leurs horaires habituels, un e-mail le matin quand quelqu’un commence à décrocher, une relance POWR en un clic, et l’historique de qui vous avez contacté et de qui est revenu."
+    },
+    "how": {
+      "title": "Comment ça marche",
+      "normalTitle": "Leurs habitudes, pas une règle fixe",
+      "normalBody": "Chaque personne est comparée à son propre écart habituel entre deux visites. Quelqu’un qui vient tous les jours décroche au bout d’une semaine ; quelqu’un qui vient chaque semaine, au bout de trois environ.",
+      "hereTitle": "Uniquement les visites ici",
+      "hereBody": "Seulement les jours et heures de leurs check-ins POWR à {{gym}}. Jamais leurs autres entraînements, leurs données de santé ni leur position.",
+      "choiceTitle": "Leur choix",
+      "choiceBody": "Les membres peuvent désactiver ceci dans l’app POWR (Paramètres, puis Confidentialité). Quiconque le fait disparaît de cette page."
+    },
+    "asOf": "Au {{date}} · {{tz}}"
+  },
+  "poster": {
+    "title": "Faites venir vos membres sur POWR",
+    "intro": "Tout ici compte les membres qui ont choisi {{gym}} comme salle dans l’app. Cette affiche fait passer le message : un QR code qui ouvre l’app, et une phrase qui dit pourquoi.",
+    "posterTitle": "L’affiche",
+    "formats": {
+      "post": "Publication",
+      "story": "Story",
+      "square": "Carré"
+    },
+    "kit": "Un seul ZIP : A4 pour le mur et A5 pour le comptoir (fond perdu de 3 mm, toute imprimante), plus Publication, Story et Carré pour vos réseaux, et la légende à coller. Texte sur fond noir, le style maison, aucune photo nécessaire.",
+    "download": "Télécharger le kit affiche",
+    "downloaded": "Téléchargé. Imprimez l’A4, publiez le reste.",
+    "failed": "Impossible de créer l’affiche.",
+    "fileName": "POWR - {{gym}} - affiche.zip",
+    "linkTitle": "Le lien",
+    "copy": "Copier le lien",
+    "copied": "Lien copié",
+    "copyFailed": "Échec de la copie",
+    "linkNote": "Ouvre l’app POWR, ou la boutique d’applications pour les nouveaux venus. Envoyez-le dans votre e-mail de bienvenue ou votre groupe WhatsApp, et demandez à chacun de choisir {{gym}} comme salle dans l’app : c’est ce qui les fait apparaître dans votre classement.",
+    "places": {
+      "title": "Trois endroits où ça marche",
+      "deskTitle": "L’accueil",
+      "deskBody": "L’A5 près de la caisse, l’A4 sur le mur qu’on voit en faisant son check-in. L’équipe le présente lors de l’accueil des nouveaux membres.",
+      "feedTitle": "Vos réseaux",
+      "feedBody": "La Publication et la Story une fois, puis à nouveau avec le premier événement. La légende est dans le ZIP.",
+      "welcomeTitle": "L’e-mail de bienvenue",
+      "welcomeBody": "Le lien, en une phrase : chaque séance ici compte, téléchargez l’app et choisissez-nous comme salle."
+    },
+    "screens": "Afficher le classement sur la TV",
+    "firstEvent": "Lancer votre premier événement"
+  }
+}

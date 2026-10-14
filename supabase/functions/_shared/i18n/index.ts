@@ -14,11 +14,29 @@ import emailFr from "./email/fr.ts";
 import pushEn from "./push/en.ts";
 import pushEs from "./push/es.ts";
 import pushFr from "./push/fr.ts";
+import brandEn from "./brand/en.ts";
+import brandEs from "./brand/es.ts";
+import brandFr from "./brand/fr.ts";
+import gymEn from "./gym/en.ts";
+import gymEs from "./gym/es.ts";
+import gymFr from "./gym/fr.ts";
+import gymRecapEn from "./gymRecap/en.ts";
+import gymRecapEs from "./gymRecap/es.ts";
+import gymRecapFr from "./gymRecap/fr.ts";
 import { weeklyChallengeKey } from "./challengeNames.ts";
 import { SERVER_LANGUAGES } from "./languages.ts";
 import { makeT } from "./t.ts";
 
-export { previewLanguage, SERVER_DRAFT_LANGUAGES, SERVER_LANGUAGES, serverLanguage } from "./languages.ts";
+export {
+  BUSINESS_DRAFT_LANGUAGES,
+  BUSINESS_LANGUAGES,
+  businessLanguage,
+  businessPreviewLanguage,
+  previewLanguage,
+  SERVER_DRAFT_LANGUAGES,
+  SERVER_LANGUAGES,
+  serverLanguage,
+} from "./languages.ts";
 export { LEVEL_KEYS, LEVEL_NAMES, levelName } from "./levels.ts";
 export { TEMPLATE_TITLE_KEYS, templateTitleKey, weeklyChallengeKey } from "./challengeNames.ts";
 export type { Catalog, Vars } from "./t.ts";
@@ -26,8 +44,20 @@ export type { Catalog, Vars } from "./t.ts";
 export const PUSH_CATALOGS = { en: pushEn, fr: pushFr, es: pushEs };
 export const EMAIL_CATALOGS = { en: emailEn, fr: emailFr, es: emailEs };
 
+/**
+ * Gym and brand emails (vous / usted), keyed by family: gym.* (event, account,
+ * support and invite mails), gymRecap.* (Monday recap, drift digest), brand.*.
+ * Send with businessLanguage() / languagesFor(…, BUSINESS_LANGUAGES).
+ */
+export const BUSINESS_CATALOGS = {
+  en: { gym: gymEn, gymRecap: gymRecapEn, brand: brandEn },
+  fr: { gym: gymFr, gymRecap: gymRecapFr, brand: brandFr },
+  es: { gym: gymEs, gymRecap: gymRecapEs, brand: brandEs },
+};
+
 export const tPush = makeT(PUSH_CATALOGS);
 export const tEmail = makeT(EMAIL_CATALOGS);
+export const tBusiness = makeT(BUSINESS_CATALOGS);
 
 /**
  * A weekly challenge's name in `lang`, by its catalog id. `english` is the

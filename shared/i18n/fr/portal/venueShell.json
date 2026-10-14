@@ -1,0 +1,257 @@
+{
+  "portalName": "Portail salle",
+  "loadingPortal": "Chargement du portail…",
+  "backHome": "Retour sur powr.life",
+  "nav": {
+    "overview": "Vue d’ensemble",
+    "events": "Événements",
+    "discounts": "Réductions",
+    "clashNights": "Clash Nights",
+    "studio": "Studio",
+    "screens": "Écrans",
+    "members": "Membres",
+    "retention": "Fidélisation",
+    "settings": "Paramètres",
+    "package": "Formule"
+  },
+  "tabs": {
+    "home": "Accueil",
+    "events": "Événements",
+    "discounts": "Réductions",
+    "nights": "Nights",
+    "studio": "Studio",
+    "screens": "Écrans",
+    "members": "Membres",
+    "retention": "Fidélité",
+    "settings": "Réglages"
+  },
+  "roles": {
+    "owner": "Propriétaire",
+    "staff": "Équipe"
+  },
+  "layout": {
+    "switchGym": "Changer de salle",
+    "guides": "Guides",
+    "notInPackage": "Pas inclus dans votre formule",
+    "accountMenu": "Compte, formule et déconnexion",
+    "trialBanner": "{{line}} · voir ce qui change"
+  },
+  "packageLine": {
+    "trialEnded": "Essai terminé · formule Clash",
+    "trial_one": "Essai · {{count}} jour restant",
+    "trial_other": "Essai · {{count}} jours restants",
+    "clashFree": "Clash · gratuit"
+  },
+  "locks": {
+    "andPro": "{{name}} et Clash Pro",
+    "youreOn": "Votre formule : {{name}}.",
+    "youreOnFree": "Votre formule : {{name}}, la formule gratuite.",
+    "seePackages": "Voir les formules",
+    "events": {
+      "title": "Vos propres défis sont inclus dans Clash+",
+      "body": "Défis mensuels, sprints du week-end et soirées finales qui tournent tout seuls : le classement, les notifications et le dévoilement des résultats."
+    },
+    "insights": {
+      "title": "Le tableau de bord Membres est inclus dans Clash+",
+      "body": "Qui s’entraîne, quand votre salle est la plus fréquentée et ce que font vos membres, semaine après semaine."
+    },
+    "people": {
+      "title": "Les données nominatives des membres sont incluses dans Clash Pro",
+      "body": "Qui s’éloigne de ses visites habituelles, nommément, et ce que fait chaque membre qui partage tous ses entraînements avec vous."
+    },
+    "retention": {
+      "title": "La fidélisation est incluse dans Clash+",
+      "body": "Voyez qui décroche et s’éloigne de ses visites habituelles avant de résilier, par rapport au rythme habituel de chacun. Clash Pro vous donne les noms."
+    },
+    "studio": {
+      "title": "Studio est inclus dans Clash Pro",
+      "body": "Transformez vos photos et vidéos en posts, reels et affiches en quelques minutes, à partir de vos événements et de votre classement."
+    },
+    "discounts": {
+      "title": "Les réductions partenaires sont incluses dans Clash+",
+      "body": "Les réductions que nos marques partenaires offrent aux membres POWR, pour acheter lots et équipement pour votre salle. Un code quand vous en avez besoin."
+    }
+  },
+  "packages": {
+    "free": "Gratuit",
+    "perMonth": "/ mois",
+    "perYear": "/ an",
+    "clash": {
+      "line": "Entrez dans le classement.",
+      "note": "Toujours",
+      "items": {
+        "board": "Votre salle dans Gym Clash : face aux salles proches, chaque semaine",
+        "perMember": "Salle contre salle, score par membre actif : la taille ne fait pas tout",
+        "leaderboard": "Classement des membres de votre salle",
+        "ranking": "Votre classement en direct"
+      }
+    },
+    "clashPlus": {
+      "line": "Rivalisez et récompensez.",
+      "note": "Sans engagement",
+      "items": {
+        "everything": "Tout Clash",
+        "challenges": "Vos propres défis en salle, chaque mois ou quand vous voulez",
+        "discounts": "Réductions partenaires : lots et équipement au prix membres POWR, un code quand vous en avez besoin",
+        "eventCode": "Si vous le souhaitez, chaque participant à votre événement reçoit le code d’une marque partenaire dans son portefeuille",
+        "dashboard": "Tableau de bord des membres : ce qu’ils font, où ils s’entraînent, quand ils viennent",
+        "retention": "Fidélisation : combien décrochent et s’éloignent de leurs visites habituelles, semaine après semaine"
+      }
+    },
+    "pro": {
+      "line": "Événements, contenus et données. Le moteur complet.",
+      "note": "ou £4,188 / an",
+      "tag": "La plus complète",
+      "items": {
+        "everything": "Tout Clash+",
+        "nights": "4 Clash Nights POWR par an, une par trimestre. Nous apportons le DJ, le photographe et les lots partenaires · réservez vos dates dans Clash Nights",
+        "studio": "Studio et kits d’événement : vos photos et vidéos transformées en posts, reels et carrousels à vos couleurs, dans tous les formats",
+        "footage": "Importez vos propres vidéos de cours et de séances de coaching, et créez du contenu en quelques minutes",
+        "retention": "Fidélisation nominative : qui s’éloigne de ses visites habituelles, un e-mail le matin quand quelqu’un décroche, une relance en un clic, et qui est revenu après votre message",
+        "insights": "Données d’activité complètes pour les membres qui partagent tous leurs entraînements avec vous",
+        "leads": "Prospects à chaque événement : qui a participé sans être membre, nommé pour l’accueil, exportable",
+        "report": "Rapport trimestriel : 3 tendances, 3 actions, avec une marque partenaire adaptée · disponible cette saison"
+      }
+    },
+    "founding": {
+      "line": "Clash Pro au prix fondateur, garanti.",
+      "note": "Payé d’avance. Plus de 50 % d’économie",
+      "tag": "10 premières salles",
+      "items": {
+        "everything": "Tout Clash Pro",
+        "dates": "Les 4 dates de Clash Night réservées dès la signature",
+        "priceLocked": "Prix garanti au renouvellement",
+        "status": "Statut de salle fondatrice dans le classement POWR",
+        "monthly": "Vous préférez payer au mois ? £249 / mois"
+      }
+    }
+  },
+  "package": {
+    "title": "Votre formule",
+    "loadFailed": "Impossible de charger votre formule",
+    "tryAgainSoon": "Réessayez dans une minute.",
+    "confirmAsk": "Demander à POWR de passer {{gym}} à {{name}} ? Nous vous contacterons pour la mise en place et la facturation. Rien n’est débité ici.",
+    "asked": "Demande envoyée pour {{name}}. POWR va vous contacter.",
+    "trialEnded": "Essai terminé",
+    "freeTrial": "Essai gratuit",
+    "daysLeft_one": "jour restant",
+    "daysLeft_other": "jours restants",
+    "endedBody": "Votre essai s’est terminé le {{date}}. {{gym}} est désormais sur la formule {{name}}.",
+    "endedBodyFree": "Votre essai s’est terminé le {{date}}. {{gym}} est désormais sur {{name}}, la formule gratuite.",
+    "trialBody": "Tout est activé jusqu’au {{date}}. Ensuite, {{gym}} passera sur la formule {{name}}, sauf si vous en choisissez une autre.",
+    "trialBodyFree": "Tout est activé jusqu’au {{date}}. Ensuite, {{gym}} passera sur {{name}}, la formule gratuite, sauf si vous en choisissez une autre.",
+    "whatChanges": "<b>Ce qui reste :</b> votre classement et vos écrans Gym Clash, l’affiche d’inscription, votre équipe. <b>Ce qui s’arrête :</b> vos propres événements, les réductions partenaires, le tableau de bord des membres, Studio et les kits d’événement, sauf si vous choisissez Clash+ ou Clash Pro.",
+    "freeBody": "La formule gratuite : votre salle dans Gym Clash, avec son classement et ses écrans.",
+    "billedYearly": "Facturation annuelle.",
+    "billedMonthly": "Facturation mensuelle.",
+    "setUpByPowr": "Mise en place par POWR.",
+    "requested": "Vous avez demandé {{name}} le {{date}}. POWR va vous contacter pour la mise en place.",
+    "yours": "Actuelle",
+    "foundingGone": "Les {{limit}} places sont prises",
+    "foundingLeft_one": "{{count}} place restante sur {{limit}} · seulement pendant votre essai",
+    "foundingLeft_other": "{{count}} places restantes sur {{limit}} · seulement pendant votre essai",
+    "askedOn": "Demandée le {{date}}",
+    "ownerCanAsk": "Le propriétaire de votre salle peut demander à changer.",
+    "asking": "Envoi…",
+    "choose": "Choisir {{name}}",
+    "switchTo": "Passer à {{name}}",
+    "footer": "Chaque salle commence par trois mois gratuits, avec tout activé. POWR met en place votre formule et vous envoie la facture ; rien n’est débité dans le portail."
+  },
+  "auth": {
+    "emailAddress": "Adresse e-mail",
+    "password": "Mot de passe",
+    "optional": "— facultatif",
+    "signingIn": "Connexion…",
+    "sending": "Envoi…",
+    "signIn": "Se connecter",
+    "emailLink": "Recevoir un lien de connexion",
+    "checkEmail": "Consultez vos e-mails",
+    "differentEmail": "Utiliser une autre adresse"
+  },
+  "login": {
+    "enterEmail": "Saisissez d’abord votre e-mail.",
+    "noAccount": "Aucun compte POWR ne correspond à cet e-mail. Utilisez celui auquel votre invitation a été envoyée, ou rouvrez votre lien d’invitation.",
+    "pausedTitle": "Portail en pause",
+    "pausedBody": "Le portail de votre salle est désactivé pour le moment. Contactez POWR et nous réglerons ça.",
+    "notOnTeamTitle": "Hors de l’équipe d’une salle",
+    "notOnTeamBody": "Vous utilisez le compte {{email}}, mais il ne fait partie de l’équipe d’aucune salle. Ouvrez le lien d’invitation envoyé par votre salle ou par POWR, ou connectez-vous avec le compte qui l’a acceptée.",
+    "contact": "Contacter POWR",
+    "signOut": "Se déconnecter",
+    "linkSent": "Nous avons envoyé un lien de connexion à {{email}}. Ouvrez-le sur cet appareil et c’est fait.",
+    "welcome": "Bon retour",
+    "intro": "Connectez-vous avec votre compte POWR. Vous utilisez Google ou Apple dans l’app ? Laissez le mot de passe vide et nous vous enverrons un lien par e-mail.",
+    "forgot": "Oublié ? Recevoir un lien de connexion",
+    "runAGym": "Vous gérez une salle et voulez la voir sur POWR ?",
+    "partnerWithUs": "Devenez partenaire"
+  },
+  "setup": {
+    "enterEmail": "Saisissez l’e-mail que vous utilisez dans l’app.",
+    "noAccount": "Aucun compte POWR ne correspond à cet e-mail. Créez plutôt un accès.",
+    "passwordsDontMatch": "Les mots de passe ne correspondent pas",
+    "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères",
+    "usedTitle": "Lien déjà utilisé",
+    "usedBody": "Ce lien a déjà été utilisé. Si c’était vous, connectez-vous simplement.",
+    "expiredTitle": "Lien expiré",
+    "expiredBody": "Les liens d’accès sont valables 14 jours. Demandez-en un nouveau à la personne qui vous l’a envoyé.",
+    "invalidTitle": "Lien invalide",
+    "invalidBody": "Ce lien d’accès n’est pas valide ou a été révoqué. Demandez-en un nouveau à la personne qui vous l’a envoyé.",
+    "ownerAccess": "Accès propriétaire",
+    "teamAccess": "Accès équipe",
+    "invited": "Invitation",
+    "joinTitle": "Rejoindre {{gym}}",
+    "joinSub": "Le portail salle sera ajouté au compte POWR que vous utilisez : {{email}}.",
+    "adding": "Ajout…",
+    "add": "Ajouter {{gym}}",
+    "notYou": "Ce n’est pas vous ? Utiliser un autre compte",
+    "linkSent": "Nous avons envoyé un lien de connexion à {{email}}. Ouvrez-le sur cet appareil : il vous ramènera ici pour terminer.",
+    "title": "Configurez votre accès",
+    "sub": "Gérez les écrans de votre salle et voyez qui s’entraîne, au même endroit.",
+    "existing": "J’ai un compte",
+    "new": "Nouveau compte",
+    "existingIntro": "Connectez-vous avec le compte que vous utilisez dans l’app POWR. Vous y utilisez Google ou Apple ? Laissez le mot de passe vide et nous vous enverrons un lien par e-mail.",
+    "yourName": "Votre nom",
+    "namePlaceholder": "Prénom et nom",
+    "confirmPassword": "Confirmer le mot de passe",
+    "settingUp": "Configuration…",
+    "createLogin": "Créer mon accès"
+  },
+  "help": {
+    "title": "Aide",
+    "intro": "Un souci, ou quelque chose cloche ? Posez votre question ici : une vraie personne répond, en général le jour même. La réponse s’affiche ci-dessous.",
+    "about": "Sujet",
+    "topics": {
+      "broken": "Quelque chose ne marche pas",
+      "billing": "Formule et facturation",
+      "events": "Événements",
+      "screens": "Écrans et classement",
+      "studio": "Studio",
+      "other": "Autre"
+    },
+    "subject": "Objet",
+    "subjectPlaceholder": "ex. : Le classement sur notre écran ne se met plus à jour",
+    "message": "Ce qui se passe",
+    "messagePlaceholder": "Ce que vous attendiez, ce qui s’est passé à la place, et quand.",
+    "send": "Envoyer à POWR",
+    "sent": "Envoyé. Une personne de POWR vous répond, en général le jour même.",
+    "ask": "Demander à POWR",
+    "guides": "Guides pratiques",
+    "boardOnTv": "Afficher le classement sur une TV",
+    "joinPoster": "L’affiche d’inscription",
+    "yourRequests": "Vos demandes",
+    "kinds": {
+      "question": "Question",
+      "package": "Changement de formule",
+      "clashNight": "Clash Night",
+      "clashCancel": "Clash Night annulée",
+      "eventReview": "Relecture d’événement",
+      "request": "Demande"
+    },
+    "status": {
+      "open": "Chez POWR",
+      "inProgress": "En cours",
+      "resolved": "Répondu",
+      "closed": "Clos"
+    },
+    "orEmail": "Ou écrivez à <mail>{{email}}</mail>."
+  }
+}

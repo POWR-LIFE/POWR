@@ -1,0 +1,449 @@
+{
+  "page": {
+    "overview": "Resumen",
+    "loadFailed": "No se ha podido cargar su gimnasio",
+    "leaderboardLive": "Clasificación en directo",
+    "leaderboardPaused": "Clasificación en pausa",
+    "leagueLive": "Liga en directo",
+    "leaguePaused": "Liga en pausa"
+  },
+  "pulse": {
+    "title": "Esta semana",
+    "sessionsPeople_one": "sesiones · {{n}} persona",
+    "sessionsPeople_other": "sesiones · {{n}} personas",
+    "nowIn": "{{n}} en el gimnasio ahora",
+    "nobodyIn": "Nadie ahora mismo",
+    "stripLabel": "Sesiones de cada día de esta semana, con la semana pasada detrás",
+    "today": "Hoy: {{sessions}} · {{people}}",
+    "sessions_one": "{{n}} sesión",
+    "sessions_other": "{{n}} sesiones",
+    "people_one": "{{n}} persona",
+    "people_other": "{{n}} personas",
+    "checkedIn": "Sesiones con check-in en el gimnasio",
+    "busiest": "más actividad de {{from}} a {{to}}",
+    "thisWeek": "Esta semana",
+    "lastWeek": "Semana pasada"
+  },
+  "pace": {
+    "saidSoFar_one": "{{n}} sesión hasta ahora",
+    "saidSoFar_other": "{{n}} sesiones hasta ahora",
+    "saidHeading": "camino de unas {{n}}",
+    "saidUsual": "una semana normal tiene {{n}}",
+    "saidBest": "el récord de las últimas {{weeks}} semanas fue {{n}}",
+    "usualTip": "Semana normal: {{n}}",
+    "bestTip": "Récord en {{weeks}} semanas: {{n}}",
+    "soFar": "{{n}} hasta ahora",
+    "bySunday": "unas {{n}} para el domingo",
+    "usual": "normal {{n}}",
+    "best": "récord {{n}}"
+  },
+  "week": {
+    "newUsual": "Nueva semana. Aquí una semana normal tiene unas {{n}} sesiones.",
+    "newFresh": "Nueva semana. La clasificación vuelve a empezar hoy.",
+    "noneUsual": "Todavía no hay check-ins esta semana.",
+    "noneFresh": "Todavía no hay check-ins. Cada sesión aparece aquí cuando los socios entrenan.",
+    "bestAlready": "Ya es su semana con más actividad en {{weeks}} semanas, y solo es {{day}}.",
+    "best": "Su semana con más actividad en {{weeks}} semanas.",
+    "onCourseBest": "Camino de su semana con más actividad en {{weeks}} semanas.",
+    "busier": "Más actividad de lo normal: camino de unas {{n}}.",
+    "busierDone": "Una semana con más actividad de lo normal: {{soFar}} frente a unas {{usual}}.",
+    "quieterAhead": "Más tranquila de lo normal por ahora, pero aún falta su día con más actividad: {{days}}.",
+    "quieter": "Más tranquila de lo normal: camino de unas {{n}}.",
+    "quieterDone": "Una semana más tranquila de lo normal: {{soFar}} frente a unas {{usual}}.",
+    "normal": "Una semana normal por ahora: camino de unas {{n}}.",
+    "normalDone": "Una semana normal: {{soFar}} frente a unas {{usual}}.",
+    "soFar_one": "{{n}} sesión por ahora esta semana.",
+    "soFar_other": "{{n}} sesiones por ahora esta semana."
+  },
+  "days": {
+    "long": {
+      "mon": "lunes",
+      "tue": "martes",
+      "wed": "miércoles",
+      "thu": "jueves",
+      "fri": "viernes",
+      "sat": "sábado",
+      "sun": "domingo"
+    },
+    "plural": {
+      "mon": "los lunes",
+      "tue": "los martes",
+      "wed": "los miércoles",
+      "thu": "los jueves",
+      "fri": "los viernes",
+      "sat": "los sábados",
+      "sun": "los domingos"
+    },
+    "letter": {
+      "mon": "L",
+      "tue": "M",
+      "wed": "X",
+      "thu": "J",
+      "fri": "V",
+      "sat": "S",
+      "sun": "D"
+    }
+  },
+  "ordinal": {
+    "one": "{{n}}.º",
+    "two": "{{n}}.º",
+    "few": "{{n}}.º",
+    "other": "{{n}}.º"
+  },
+  "moves": {
+    "title": "Qué hacer esta semana",
+    "caughtUp": "Lo tiene todo al día.",
+    "caughtUpBody": "Todo está hecho o aplazado por ahora. Mañana llegan más.",
+    "notNow": "Ahora no",
+    "hideDay": "Ocultar hasta mañana",
+    "hideWeek": "Ocultar una semana",
+    "comesWith": "Incluido en {{pkg}}",
+    "reveal": {
+      "title": "Revele a los ganadores de {{name}}",
+      "detail": "Al revelarlos se avisa a todos los participantes, en la app y en sus pantallas.",
+      "action": "Revelar"
+    },
+    "note": {
+      "title": "POWR ha pedido un cambio en {{name}}",
+      "detail": "Lea la nota, haga el cambio y vuelva a enviarlo.",
+      "action": "Ver la nota"
+    },
+    "prizes": {
+      "title": "Entregue los premios de {{name}}",
+      "detail": "Los ganadores enseñan su POWR ID en recepción. Marque cada premio al entregarlo.",
+      "action": "Premios"
+    },
+    "draft": {
+      "title": "{{name}} sigue siendo un borrador",
+      "detail": "Publíquelo para que sus socios lo vean en la app.",
+      "action": "Terminarlo"
+    },
+    "pending": {
+      "title": "POWR está revisando {{name}}",
+      "detail": "Se publica en la app en cuanto se apruebe.",
+      "action": "Ver"
+    },
+    "live": {
+      "title": "{{name}} está en directo: {{n}} participando",
+      "detailUntil": "Dura hasta el {{date}}. Vea quién va en cabeza.",
+      "detail": "Vea quién va en cabeza.",
+      "action": "Clasificación"
+    },
+    "soon": {
+      "title": "{{name}} empieza el {{date}}",
+      "joined_one": "Se ha apuntado {{n}} persona por ahora. Ponga el QR de inscripción en recepción y en sus redes.",
+      "joined_other": "Se han apuntado {{n}} personas por ahora. Ponga el QR de inscripción en recepción y en sus redes.",
+      "nobody": "Aún no se ha apuntado nadie. Ponga el QR de inscripción en recepción y en sus redes.",
+      "action": "Promocionar"
+    },
+    "again": {
+      "title": "Ahora no hay nada en marcha para sus socios",
+      "detail": "Repita {{name}}: los mismos premios y reglas, nuevas fechas.",
+      "action": "Repetirlo"
+    },
+    "first": {
+      "title": "Organice su primer evento",
+      "detail": "Un reto mensual funciona solo: la clasificación, las notificaciones y la revelación.",
+      "action": "Crear uno"
+    },
+    "eventsLocked": {
+      "title": "Organice sus propios retos",
+      "detail": "Los retos mensuales y los sprints de fin de semana que funcionan solos vienen con Clash+."
+    },
+    "quietLocked": {
+      "title": "Vea quién se aleja antes de que se dé de baja",
+      "detail": "Clash+ cuenta quién se aleja de sus visitas habituales. Clash Pro le dice quiénes son."
+    },
+    "quiet": {
+      "title_one": "{{n}} habitual se está alejando",
+      "title_other": "{{n}} habituales se están alejando",
+      "detailPro": "Llevan mucho más tiempo del habitual sin venir. Una notificación de POWR les invita a volver.",
+      "detailPlus": "Llevan mucho más tiempo del habitual sin venir. Clash Pro le dice quiénes son y les anima a volver.",
+      "action": "Ver quién"
+    },
+    "league": {
+      "behind": "{{gap}} POWR por detrás de {{rival}}",
+      "passPost_one": "Con {{n}} sesión más, aproximadamente, les adelantaría. Publique la clasificación y movilice a sus socios.",
+      "passPost_other": "Con unas {{n}} sesiones más les adelantaría. Publique la clasificación y movilice a sus socios.",
+      "passScreens_one": "Con {{n}} sesión más, aproximadamente, les adelantaría. Ponga la competición en la tele del gimnasio.",
+      "passScreens_other": "Con unas {{n}} sesiones más les adelantaría. Ponga la competición en la tele del gimnasio.",
+      "top": "Primeros de Gym Clash en {{km}} km a la redonda",
+      "clear": "{{gap}} POWR de ventaja sobre {{rival}}. Cuénteselo a sus socios antes de que acabe la semana.",
+      "level": "Empate con {{rival}}. Diga a sus socios que todo está por decidir.",
+      "makePost": "Crear la publicación",
+      "screens": "Pantallas"
+    },
+    "poster": {
+      "nobody": "Nadie ha elegido aún {{gym}} en la app",
+      "picked_one": "{{n}} persona ha elegido {{gym}} en la app",
+      "picked_other": "{{n}} personas han elegido {{gym}} en la app",
+      "detail": "El cartel de inscripción en recepción suma más gente a su clasificación.",
+      "action": "Imprimirlo"
+    },
+    "plan": "Planificar un evento",
+    "insight": {
+      "up": "Cree un reto en torno {{activity}} mientras está de moda.",
+      "elsewhere": "Un reto que solo cuente las sesiones aquí les da un motivo para volver."
+    },
+    "activity": {
+      "running": "al running",
+      "cycling": "al ciclismo",
+      "gym": "al entreno en el gimnasio",
+      "hiit": "al HIIT",
+      "swimming": "a la natación",
+      "yoga": "al yoga",
+      "sports": "al deporte",
+      "dance": "al baile",
+      "walking": "a caminar"
+    },
+    "weekday": {
+      "title": "Su día más tranquilo: {{days}}",
+      "detail_one": "{{n}} sesión en 4 semanas, frente a {{hi}} {{hiDays}}. Un sprint da a los socios un motivo para venir.",
+      "detail_other": "{{n}} sesiones en 4 semanas, frente a {{hi}} {{hiDays}}. Un sprint da a los socios un motivo para venir."
+    },
+    "screens": {
+      "setupTitle": "Ponga su clasificación en la tele del gimnasio",
+      "setupDetail": "La clasificación de la semana y Gym Clash, en cualquier pantalla con navegador web.",
+      "setupAction": "Configurar",
+      "pausedTitle": "Su pantalla de clasificación está en pausa",
+      "pausedDetail": "Nadie ve la clasificación de la semana en la pared hasta que la vuelva a activar.",
+      "action": "Pantallas"
+    },
+    "trial": {
+      "today": "Su prueba gratuita termina hoy",
+      "endsIn_one": "Su prueba gratuita termina en {{n}} día",
+      "endsIn_other": "Su prueba gratuita termina en {{n}} días",
+      "detail": "Elija un plan para conservar sus eventos, el panel de socios y Studio.",
+      "action": "Planes"
+    },
+    "post": {
+      "title": "Publicación de hoy: {{label}}",
+      "ready": "Lista para publicar. Descárguela y copie el texto.",
+      "locked": "Lista para ver. La descarga viene con Clash Pro.",
+      "postIt": "Publicarla",
+      "seeIt": "Verla"
+    },
+    "joinLink": {
+      "title": "Envíe a sus socios su enlace de inscripción",
+      "detail": "Los socios que eligen {{gym}} en la app entran en su clasificación. Comparta el enlace en su grupo de WhatsApp o en su newsletter.",
+      "action": "Obtener el enlace"
+    },
+    "photo": {
+      "title": "Añada la foto de su gimnasio",
+      "detail": "Va detrás de cada publicación y en la página de su gimnasio en la app.",
+      "action": "Añadirla"
+    },
+    "team": {
+      "title": "Ponga a sus entrenadores en la app",
+      "detail": "Los socios que abren {{gym}} en la app los ven y pueden reservar una sesión directamente desde su ficha.",
+      "action": "Añadirlos"
+    },
+    "recap": {
+      "title": "Reciba el resumen de los lunes",
+      "detail": "Las cifras de la semana pasada, lo más alto de su clasificación y lo que viene, por correo cada lunes.",
+      "action": "Activarlo"
+    },
+    "planNext": {
+      "title": "Planifique el reto del mes que viene",
+      "detail": "Tener algo en el calendario hace que los socios vuelvan. Elija un formato y funciona solo.",
+      "action": "Planificarlo"
+    },
+    "discounts": {
+      "title": "Premios a precio de socio",
+      "detail": "Sus descuentos con marcas asociadas cubren premios y material. Un código cuando lo necesite.",
+      "action": "Descuentos"
+    },
+    "members": {
+      "lastWeek_one": "Semana pasada: {{n}} sesión aquí",
+      "lastWeek_other": "Semana pasada: {{n}} sesiones aquí",
+      "title": "Vea quién entrena",
+      "detail": "Quién entrena, sus horas de más actividad y qué hacen sus socios, semana a semana.",
+      "action": "Socios"
+    },
+    "studio": {
+      "title": "Convierta la clase de hoy en una publicación",
+      "detail": "Suba una foto o un vídeo y Studio lo prepara en todos los tamaños.",
+      "action": "Studio"
+    },
+    "leagueScreen": {
+      "title": "{{rank}} de {{total}} en Gym Clash",
+      "detail": "Ponga la liga en la tele del gimnasio para que los socios vean la competición mientras entrenan.",
+      "action": "Pantallas"
+    }
+  },
+  "nudge": {
+    "sentTo": "Enviada a {{n}}",
+    "counting": "Contando…",
+    "cooling": "Aviso ya enviado esta quincena",
+    "seeWho": "Ver quién",
+    "confirmThem": "¿Enviar esta notificación a esta persona?\n\n{{title}}\n{{body}}\n\nCada persona la recibe una vez, y no otra hasta dentro de dos semanas.",
+    "confirmAll": "¿Enviar esta notificación a las {{n}} personas?\n\n{{title}}\n{{body}}\n\nCada persona la recibe una vez, y no otra hasta dentro de dos semanas.",
+    "confirmSome": "¿Enviar esta notificación a las {{n}} personas que no han recibido ninguna en las últimas dos semanas?\n\n{{title}}\n{{body}}\n\nCada persona la recibe una vez, y no otra hasta dentro de dos semanas.",
+    "sending": "Enviando…",
+    "send": "Avisar a {{n}}"
+  },
+  "people": {
+    "title": "Su gente",
+    "link": "Socios",
+    "member": "Miembro de POWR",
+    "leads": "Lidera la clasificación",
+    "points": "{{n}} POWR",
+    "improved": "Mayor progresión",
+    "gain": "+{{n}} respecto a la semana pasada",
+    "session": "Sesión de la semana",
+    "sessionNote": "{{points}} POWR en {{minutes}} min",
+    "streak": "Racha más larga",
+    "streakDays_one": "{{n}} día",
+    "streakDays_other": "{{n}} días",
+    "members_one": "{{n}} socio",
+    "members_other": "{{n}} socios",
+    "drifting": "{{n}} alejándose",
+    "newFaces_one": "{{n}} cara nueva",
+    "newFaces_other": "{{n}} caras nuevas",
+    "failed": "La clasificación no carga",
+    "empty": "Aún no hay nadie en la clasificación",
+    "failedBody": "Vuelva a intentarlo en un minuto.",
+    "emptyBody": "Quien lidera, la mayor progresión y las caras nuevas aparecen aquí a medida que los socios hacen check-in.",
+    "newThisWeek": "Caras nuevas:",
+    "two": "{{a}} y {{b}}",
+    "andMore_one": "{{name}} y {{n}} más",
+    "andMore_other": "{{name}} y {{n}} más",
+    "more": "La mayor progresión, la sesión de la semana y las caras nuevas aparecen aquí a medida que entrenan más socios."
+  },
+  "league": {
+    "join": "Únase a Gym Clash",
+    "joinBody": "Ponga sus pantallas y su gimnasio entra en Gym Clash: gimnasio contra gimnasio, cada semana.",
+    "error": "La liga no responde ahora mismo. Vuelva a intentarlo en un minuto.",
+    "alone": "Solo usted en {{km}} km a la redonda",
+    "aloneBody": "Todavía no hay otro gimnasio POWR cerca. Amplíe el radio en Pantallas para competir más lejos.",
+    "of": "de {{total}} en {{km}} km a la redonda",
+    "moved": "{{n}} hoy",
+    "tableLabel": "Gym Clash cerca de usted esta semana",
+    "inNow": "{{n}} dentro",
+    "leading": "{{gap}} por delante de {{rival}}",
+    "level": "Empate con {{rival}}",
+    "behind_one": "{{gap}} por detrás de {{rival}} · {{n}} sesión aprox.",
+    "behind_other": "{{gap}} por detrás de {{rival}} · unas {{n}} sesiones",
+    "perMember": "Por socio: <strong>{{rank}} de {{total}}</strong>, donde el tamaño no cuenta · Se reinicia el lunes",
+    "resets": "Se reinicia el lunes",
+    "screens": "Pantallas",
+    "setUp": "Configurar"
+  },
+  "since": {
+    "since": "Desde {{date}}",
+    "lastWeeks": "Últimas 8 semanas",
+    "more": "Más",
+    "sessionsHere": "sesiones aquí",
+    "allTime_one": "{{people}} · {{hours}} hora · {{points}} POWR ganados",
+    "allTime_other": "{{people}} · {{hours}} horas · {{points}} POWR ganados",
+    "inFourWeeks": "sesiones en 4 semanas",
+    "empty": "Cuando los socios hagan check-in en {{gym}}, sus sesiones se irán sumando aquí.",
+    "level": "Igual que las 4 semanas anteriores",
+    "change": "{{change}} respecto a las 4 semanas anteriores",
+    "nothingYet": "Aún no hay nada con qué comparar",
+    "firsts_one": "{{n}} primera visita en 4 semanas",
+    "firsts_other": "{{n}} primeras visitas en 4 semanas",
+    "chartLabel": "Sesiones aquí cada semana",
+    "now": "Ahora",
+    "thisWeek": "Esta semana",
+    "weekOf": "Semana del {{date}}",
+    "locked": "El crecimiento semana a semana viene con Clash+. <packages>Ver planes</packages>"
+  },
+  "posts": {
+    "title": "Publicaciones de esta semana",
+    "titleDates": "Publicaciones de esta semana · {{dates}}",
+    "making": "Preparando las publicaciones de esta semana…",
+    "subPhoto": "Una para cada día, hecha con su semana sobre la foto de su gimnasio. Una serie nueva cada lunes. «Descargar todo» le da las siete en tres tamaños, con los textos.",
+    "subNoPhoto": "Una para cada día, hecha con su semana. Una serie nueva cada lunes. «Descargar todo» le da las siete en tres tamaños, con los textos.",
+    "subLocked": "Una para cada día, hecha con su semana. Una serie nueva cada lunes. La descarga viene con {{pkg}}; el cartel de inscripción es gratis.",
+    "addPhoto": "Añada la foto de su gimnasio en <settings>Ajustes</settings> y aparecerá detrás.",
+    "lookGroup": "Acabado",
+    "lookOption": "Acabado: {{look}}",
+    "looks": {
+      "mixed": "Mixto",
+      "colour": "Color",
+      "film": "Analógico"
+    },
+    "lookBlurbs": {
+      "mixed": "en color casi todos los días, un día en blanco y negro y otro en dorado",
+      "colour": "su foto en color cada día",
+      "film": "blanco y negro, el estilo de la casa"
+    },
+    "earlier": "Publicaciones anteriores",
+    "later": "Más publicaciones",
+    "makingLabel": "Preparando las publicaciones",
+    "downloadAll": "Descargar todo",
+    "everyComesWith": "La descarga de todas las publicaciones viene con {{pkg}}",
+    "rowLabel": "Publicaciones de esta semana",
+    "seeLarge": "Ver en grande la publicación del {{day}}, {{label}}",
+    "drawFailed": "No se ha podido dibujar esta",
+    "today": "{{day}} · Hoy",
+    "download": "Descargar {{label}}",
+    "downloadPostSize": "Descargar en tamaño Publicación",
+    "comesWith": "La descarga viene con {{pkg}}",
+    "oneFailed": "No se ha podido crear esta publicación.",
+    "allFailed": "No se han podido crear las publicaciones.",
+    "zipped_one": "Siete publicaciones, {{n}} archivo",
+    "zipped_other": "Siete publicaciones, {{n}} archivos",
+    "names": {
+      "lastWeek": "La semana pasada",
+      "newWeek": "Nueva semana",
+      "joinUs": "Inscripción",
+      "board": "La clasificación",
+      "leader": "En cabeza",
+      "showUp": "A entrenar",
+      "everySession": "Cada sesión",
+      "theWeekend": "El fin de semana",
+      "results": "Resultados",
+      "weekend": "Fin de semana",
+      "everyMove": "Cada movimiento",
+      "streak": "La racha",
+      "earned": "Ganado"
+    }
+  },
+  "lightbox": {
+    "large": "{{label}}, en grande",
+    "previous": "Publicación anterior",
+    "next": "Publicación siguiente",
+    "renderFailed": "No se ha podido mostrar esta.",
+    "position": "{{index}} de {{total}}",
+    "size": "Tamaño",
+    "sizeOption": "Tamaño: {{size}}",
+    "copied": "Copiado",
+    "copyCaption": "Copiar texto",
+    "download": "Descargar ({{size}})",
+    "looks": {
+      "gold": "Duotono dorado",
+      "colour": "Color",
+      "colourWarm": "Color, cálido",
+      "colourCool": "Color, frío",
+      "film": "Analógico"
+    },
+    "accents": {
+      "powr": "Dorado POWR",
+      "gold": "Titulares en dorado",
+      "signal": "Rojo",
+      "mono": "Sin color",
+      "vary": "Alterno"
+    },
+    "formats": {
+      "post": "Publicación",
+      "portrait": "Vertical",
+      "square": "Cuadrado",
+      "story": "Historia",
+      "reel": "Reel",
+      "landscape": "Horizontal",
+      "link": "Enlace",
+      "header": "Cabecera",
+      "cover": "Portada",
+      "a5": "A5",
+      "a4": "A4",
+      "a3": "A3"
+    }
+  },
+  "charts": {
+    "total": "total",
+    "of": "de {{n}}",
+    "soFar": "(por ahora)"
+  }
+}

@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, Download, Images, Lock } from 'lucide-react';
 import { Card, Micro } from '../../components/portal/ui';
 import { useToast } from '../../lib/toast';
+import { formatLocale } from '../../lib/i18n';
+import { serverErrorText } from '../../lib/serverErrors';
 import { eventFacts, fetchImage, shortName } from '../../studio/data';
 import { gymStudioData } from '../../studio/gymData';
 import { FORMATS } from '../../studio/formats';
@@ -10,7 +13,7 @@ import { assetFrom, mediaFor, postsOf, releaseMedia, renderStill, renderThumb } 
 import { buildWeekKit, planWeekKit, weekSeed, WEEK_LOOKS } from '../../studio/weekKit';
 import { PACKAGE_LABEL } from './packages';
 import { statusKey } from './eventUi';
-import PostLightbox from './PostLightbox';
+import PostLightbox, { postName } from './PostLightbox';
 import { markDone, endOfDay } from './doneStore';
 
 // The week's posts: seven, one for each day, drawn in the browser from the
@@ -19,6 +22,10 @@ import { markDone, endOfDay } from './doneStore';
 // all seven in one ZIP with the captions. Every package sees them;
 // downloading is Clash Pro (it's the Studio), except the join poster, which
 // is on every package because it puts members on the board.
+//
+// What's ON the posts (the week's dates, the day names, the captions) and the
+// files' names stay English: they're published as they are. The page around
+// them follows the reader's language.
 
 const DAY = 86_400_000;
 const THUMB_SCALE = 0.3;     // 324×405 for a post: sharp at 168px wide on a 2× screen
@@ -39,21 +46,28 @@ const keyOf = (job) => JSON.stringify([job.template, job.fields, job.look, job.s
 
 // Noon on day `i` of the week that starts at `startIso`: clear of any clock change.
 const dayOf = (startIso, i) => new Date(Date.parse(startIso) + i * DAY + 12 * 3_600_000);
-const fmt = (d, tz, o) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, ...o }).format(d).replace('Sept', 'Sep');
+// en-GB unless told otherwise: that's what goes on the posts.
+const fmt = (d, tz, o, locale = 'en-GB') => new Intl.DateTimeFormat(locale, { timeZone: tz, ...o }).format(d).replace('Sept', 'Sep');
 
-/** "21–27 Sep", or "29 Sep – 5 Oct" across a month. */
-function weekDates(startIso, tz) {
+/** "21–27 Sep", or "29 Sep – 5 Oct" across a month (English on the posts; `locale` for the page). */
+function weekDates(startIso, tz, locale = 'en-GB') {
     if (!startIso) return 'this week';
     const a = dayOf(startIso, 0);
     const b = dayOf(startIso, 6);
-    const month = (d) => fmt(d, tz, { month: 'short' });
+    const month = (d) => fmt(d, tz, { month: 'short' }, locale);
     return month(a) === month(b)
-        ? `${fmt(a, tz, { day: 'numeric' })}–${fmt(b, tz, { day: 'numeric' })} ${month(b)}`
-        : `${fmt(a, tz, { day: 'numeric' })} ${month(a)} – ${fmt(b, tz, { day: 'numeric' })} ${month(b)}`;
+        ? `${fmt(a, tz, { day: 'numeric' }, locale)}–${fmt(b, tz, { day: 'numeric' }, locale)} ${month(b)}`
+        : `${fmt(a, tz, { day: 'numeric' }, locale)} ${month(a)} – ${fmt(b, tz, { day: 'numeric' }, locale)} ${month(b)}`;
+}
+
+/** A gold link inside a sentence: <Trans> fills in its words. */
+function GoldLink({ to, children }) {
+    return <Link to={to} className="font-bold"><span className="text-[#8a7600]">{children}</span></Link>;
 }
 
 /** 0 = Monday, in the gym's time. */
 function dayIndexIn(tz) {
+    // en-GB to read the weekday back, never shown.
     const d = new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short' }).format(new Date());
     return Math.max(0, ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(d));
 }
@@ -65,6 +79,8 @@ function dayIndexIn(tz) {
  * "Post it" move links back here with ?post=today, which opens it.
  */
 export default function WeekPosts({ gym, name, summary, insights, standing, events, pkg, tz, profile, onToday }) {
+    const { t } = useTranslation();
+    const locale = formatLocale();
     const toast = useToast();
     const canDownload = !!pkg?.features?.studio;
     const [params, setParams] = useSearchParams();
@@ -163,6 +179,11 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
     const jobs = useMemo(() => (week ? planWeekKit(week, { look }) : []), [week, look]);
     const posts = useMemo(() => postsOf(jobs), [jobs]);
     const today = dayIndexIn(tz);
+    // The page's own day names ("Mon 21", "lun. 21"): the kit's dayLabel is the
+    // posts' English (and the files'), so the lightbox gets the page's.
+    const start = summary.week_start_at;
+    const dayText = useCallback((day) => (start ? fmt(dayOf(start, day), tz, { weekday: 'short', day: 'numeric' }, locale) : ''), [start, tz, locale]);
+    const shownPosts = useMemo(() => posts.map((p) => ({ ...p, dayLabel: dayText(p.day) })), [posts, dayText]);
 
     // Tell the Overview what today's post is (its name needs the numbers, not the photo).
     const told = useRef(undefined);
@@ -245,7 +266,7 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
             const m = await mediaFor(job.asset, media.current);
             save(await renderStill(job, m), `${name} - ${job.dayLabel} - ${job.label} - ${FORMATS[job.format].label}.${job.kind}`);
             if (job.day === today) postedToday();
-        } catch (e) { toast.error(e.message || 'That post couldn’t be made.'); }
+        } catch (e) { toast.error(serverErrorText(e, t('venueHome:posts.oneFailed'))); }
     };
     const downloadAll = async () => {
         const ac = new AbortController();
@@ -255,91 +276,99 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
             const { blob, names } = await buildWeekKit({ week, jobs, signal: ac.signal, mediaCache: media.current, onProgress: (fraction) => setBusy({ fraction }) });
             save(blob, `POWR - ${name} - ${week.label}.zip`);
             postedToday();
-            toast.success(`Seven posts, ${names.length} files`);
+            toast.success(t('venueHome:posts.zipped', { count: names.length, n: names.length }));
         } catch (e) {
-            if (!ac.signal.aborted) toast.error(e.message || 'The posts couldn’t be made.');
+            if (!ac.signal.aborted) toast.error(serverErrorText(e, t('venueHome:posts.allFailed')));
         } finally {
             setBusy(null);
             abortRef.current = null;
         }
     };
 
-    const sub = !week ? 'Making this week’s posts…'
-        : canDownload ? `One for each day, made from your week${photo ? ' over your gym’s photo' : ''}. A new set every Monday. Download all gets the seven at three sizes, with the captions.`
-        : `One for each day, made from your week. A new set every Monday. Downloading them comes with ${PACKAGE_LABEL.pro}; the join poster is free.`;
+    const sub = !week ? t('venueHome:posts.making')
+        : canDownload ? (photo ? t('venueHome:posts.subPhoto') : t('venueHome:posts.subNoPhoto'))
+        : t('venueHome:posts.subLocked', { pkg: PACKAGE_LABEL.pro });
+    // The week kit's looks, by id (studio/weekKit.js names them in English).
+    const lookText = (l) => ({
+        mixed: [t('venueHome:posts.looks.mixed'), t('venueHome:posts.lookBlurbs.mixed')],
+        colour: [t('venueHome:posts.looks.colour'), t('venueHome:posts.lookBlurbs.colour')],
+        film: [t('venueHome:posts.looks.film'), t('venueHome:posts.lookBlurbs.film')],
+    })[l.id] ?? [l.label, l.blurb];
 
     return (
         <Card className="p-6">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-x-6 gap-y-3 mb-4">
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2.5"><Images size={14} className="text-[#8a7600]" /><Micro>Posts for this week{week ? ` · ${week.label}` : ''}</Micro></div>
+                    <div className="flex items-center gap-2.5"><Images size={14} className="text-[#8a7600]" /><Micro>{week ? t('venueHome:posts.titleDates', { dates: weekDates(start, tz, locale) }) : t('venueHome:posts.title')}</Micro></div>
                     <p className="text-[12px] text-[#888] leading-snug mt-1.5">
                         {sub}
                         {week && !photo && (
-                            <> Add your gym’s photo in <Link to="/venue/settings" className="font-bold"><span className="text-[#8a7600]">Settings</span></Link> and it goes behind them.</>
+                            <>{' '}<Trans i18nKey="venueHome:posts.addPhoto" components={{ settings: <GoldLink to="/venue/settings" /> }} /></>
                         )}
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <div className="inline-flex rounded-full bg-[#F4F4F1] border border-[#E6E6E1] p-0.5 mr-1" role="radiogroup" aria-label="Look">
+                    <div className="inline-flex rounded-full bg-[#F4F4F1] border border-[#E6E6E1] p-0.5 mr-1" role="radiogroup" aria-label={t('venueHome:posts.lookGroup')}>
                         {WEEK_LOOKS.map((l) => (
-                            <button key={l.id} type="button" role="radio" aria-checked={look === l.id} aria-label={`Look: ${l.label}`} title={l.blurb} onClick={() => setLook(l.id)}
+                            <button key={l.id} type="button" role="radio" aria-checked={look === l.id} aria-label={t('venueHome:posts.lookOption', { look: lookText(l)[0] })} title={lookText(l)[1]} onClick={() => setLook(l.id)}
                                 className={`h-8 px-3 rounded-full text-[9px] font-black uppercase tracking-[0.15em] transition-all ${look === l.id ? 'bg-[#1A1A1A] text-white' : 'text-[#888] hover:text-[#1A1A1A]'}`}>
-                                {l.label}
+                                {lookText(l)[0]}
                             </button>
                         ))}
                     </div>
                     <div className={`${edges.left || edges.right ? 'hidden sm:flex' : 'hidden'} items-center gap-1.5 mr-1`}>
-                        <button type="button" onClick={() => slide(-1)} disabled={!edges.left} aria-label="Earlier posts"
+                        <button type="button" onClick={() => slide(-1)} disabled={!edges.left} aria-label={t('venueHome:posts.earlier')}
                             className="w-9 h-9 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#1A1A1A] disabled:opacity-30 hover:border-[#E8D200]/50"><ChevronLeft size={15} /></button>
-                        <button type="button" onClick={() => slide(1)} disabled={!edges.right} aria-label="More posts"
+                        <button type="button" onClick={() => slide(1)} disabled={!edges.right} aria-label={t('venueHome:posts.later')}
                             className="w-9 h-9 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#1A1A1A] disabled:opacity-30 hover:border-[#E8D200]/50"><ChevronRight size={15} /></button>
                     </div>
                     {canDownload ? (
                         busy ? (
                             <div className="flex items-center gap-3">
-                                <div className="w-32 h-2 rounded-full bg-[#F4F4F1] overflow-hidden" role="progressbar" aria-valuenow={Math.round(busy.fraction * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Making the posts">
+                                <div className="w-32 h-2 rounded-full bg-[#F4F4F1] overflow-hidden" role="progressbar" aria-valuenow={Math.round(busy.fraction * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={t('venueHome:posts.makingLabel')}>
                                     <div className="h-full rounded-full bg-[#E8D200] transition-[width] duration-300" style={{ width: `${Math.round(busy.fraction * 100)}%` }} />
                                 </div>
-                                <button type="button" onClick={() => abortRef.current?.abort()} className="text-[10px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] hover:text-[#1A1A1A]">Cancel</button>
+                                <button type="button" onClick={() => abortRef.current?.abort()} className="text-[10px] uppercase tracking-[0.2em] font-black text-[#AAAAAA] hover:text-[#1A1A1A]">{t('common:actions.cancel')}</button>
                             </div>
                         ) : (
                             <button type="button" onClick={downloadAll} disabled={!week || !posts.length} className={`${PILL} bg-[#E8D200] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(232,210,0,0.25)]`}>
-                                <Download size={12} style={{ color: '#080808' }} /><span style={{ color: '#080808' }}>Download all</span>
+                                <Download size={12} style={{ color: '#080808' }} /><span style={{ color: '#080808' }}>{t('venueHome:posts.downloadAll')}</span>
                             </button>
                         )
                     ) : (
-                        <Link to="/venue/package" className={`${PILL} bg-[#F4F4F1] border border-[#E6E6E1] hover:border-[#E8D200]/50`} title={`Downloading every post comes with ${PACKAGE_LABEL.pro}`}>
+                        <Link to="/venue/package" className={`${PILL} bg-[#F4F4F1] border border-[#E6E6E1] hover:border-[#E8D200]/50`} title={t('venueHome:posts.everyComesWith', { pkg: PACKAGE_LABEL.pro })}>
                             <Lock size={11} className="text-[#8a7600]" /><span className="text-[#8a7600]">{PACKAGE_LABEL.pro}</span>
                         </Link>
                     )}
                 </div>
             </div>
 
-            <div ref={scroller} onScroll={measure} className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-1" style={{ scrollbarWidth: 'none' }} aria-label="This week’s posts">
+            <div ref={scroller} onScroll={measure} className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-1" style={{ scrollbarWidth: 'none' }} aria-label={t('venueHome:posts.rowLabel')}>
                 {!week
                     ? Array.from({ length: 5 }, (_, i) => <div key={i} className="shrink-0 w-[150px] sm:w-[168px] aspect-[4/5] rounded-xl bg-[#1A1A1A] animate-pulse" />)
                     : posts.map((job, i) => {
                         const src = thumbs[keyOf(job)];
                         const isToday = job.day === today;
+                        const day = dayText(job.day);
+                        const label = postName(t, job.label);
                         return (
                             <figure key={job.stem} className="shrink-0 w-[150px] sm:w-[168px] m-0 snap-start">
-                                <button type="button" onClick={() => { setBigFormat('post'); setOpen(i); }} aria-label={`See ${job.dayLabel}’s post, ${job.label}, large`}
+                                <button type="button" onClick={() => { setBigFormat('post'); setOpen(i); }} aria-label={t('venueHome:posts.seeLarge', { day, label })}
                                     className={`block w-full aspect-[4/5] rounded-xl overflow-hidden bg-[#111] border-2 outline-none transition-colors hover:border-[#E8D200] focus-visible:border-[#E8D200] ${isToday ? 'border-[#E8D200]' : 'border-transparent'}`}>
-                                    {src ? <img src={src} alt="" data-thumb className="w-full h-full object-cover" /> : src === null ? <div className="w-full h-full flex items-center justify-center text-[10px] text-white/50">Couldn’t draw this one</div> : <div className="w-full h-full animate-pulse bg-[#1A1A1A]" />}
+                                    {src ? <img src={src} alt="" data-thumb className="w-full h-full object-cover" /> : src === null ? <div className="w-full h-full flex items-center justify-center text-[10px] text-white/50">{t('venueHome:posts.drawFailed')}</div> : <div className="w-full h-full animate-pulse bg-[#1A1A1A]" />}
                                 </button>
                                 <figcaption className="mt-2 flex items-center justify-between gap-2">
                                     <span className="min-w-0">
-                                        <span className={`block text-[9px] uppercase tracking-[0.2em] font-black ${isToday ? 'text-[#8a7600]' : 'text-[#AAAAAA]'}`}>{job.dayLabel}{isToday ? ' · Today' : ''}</span>
-                                        <span className="block truncate text-[10px] uppercase tracking-[0.15em] font-black text-[#1A1A1A] mt-0.5">{job.label}</span>
+                                        <span className={`block text-[9px] uppercase tracking-[0.2em] font-black ${isToday ? 'text-[#8a7600]' : 'text-[#AAAAAA]'}`}>{isToday ? t('venueHome:posts.today', { day }) : day}</span>
+                                        <span className="block truncate text-[10px] uppercase tracking-[0.15em] font-black text-[#1A1A1A] mt-0.5">{label}</span>
                                     </span>
                                     {allowed(job) ? (
-                                        <button type="button" onClick={() => downloadOne(job)} aria-label={`Download ${job.label}`} title="Download the Post size"
+                                        <button type="button" onClick={() => downloadOne(job)} aria-label={t('venueHome:posts.download', { label })} title={t('venueHome:posts.downloadPostSize')}
                                             className="w-7 h-7 shrink-0 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center hover:border-[#E8D200]/60">
                                             <Download size={12} className="text-[#8a7600]" />
                                         </button>
                                     ) : (
-                                        <Link to="/venue/package" aria-label={`Downloading comes with ${PACKAGE_LABEL.pro}`} title={`Downloading comes with ${PACKAGE_LABEL.pro}`}
+                                        <Link to="/venue/package" aria-label={t('venueHome:posts.comesWith', { pkg: PACKAGE_LABEL.pro })} title={t('venueHome:posts.comesWith', { pkg: PACKAGE_LABEL.pro })}
                                             className="w-7 h-7 shrink-0 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center">
                                             <Lock size={11} className="text-[#BBBBBB]" />
                                         </Link>
@@ -351,7 +380,7 @@ export default function WeekPosts({ gym, name, summary, insights, standing, even
             </div>
 
             {open !== null && posts[open] && (
-                <PostLightbox posts={posts} jobs={jobs} index={open} setIndex={setOpen} format={bigFormat} setFormat={setBigFormat}
+                <PostLightbox posts={shownPosts} jobs={jobs} index={open} setIndex={setOpen} format={bigFormat} setFormat={setBigFormat}
                     onClose={() => setOpen(null)} cache={media.current}
                     onDownload={downloadOne} locked={(job) => !allowed(job)} lockLabel={PACKAGE_LABEL.pro} />
             )}

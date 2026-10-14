@@ -6,6 +6,13 @@
 // picked the gym, their activity anywhere, never sleep / heart rate / steps.
 // Pure functions, under jest (__tests__/memberInsights.test.ts); the portal
 // only renders what these return.
+//
+// The words live in the portal's venueMembers catalog (insights.*). The
+// portal passes i18next's t (and its date locale) to get them in the reader's
+// language; without one (gymMoves, the tests) they come out in English,
+// straight from shared/i18n/en/portal/venueMembers.json.
+
+import english from './i18n/en/portal/venueMembers.json';
 
 export type MixRow = {
   type: string;
@@ -42,33 +49,33 @@ export type Insight = {
   tone: 'up' | 'down' | 'watch';
 };
 
-/** The activity as a subject: "Running is up…", "Gym training is down…". */
-export const ACTIVITY_NOUN: Record<string, string> = {
-  running: 'Running',
-  cycling: 'Cycling',
-  gym: 'Gym training',
-  hiit: 'HIIT',
-  swimming: 'Swimming',
-  yoga: 'Yoga',
-  sports: 'Sport',
-  dance: 'Dance',
-  walking: 'Walking',
+/** A full key ('venueMembers:insights.…') and its values → the words. */
+export type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+/**
+ * English from the catalog, for callers without i18next: {{placeholders}},
+ * and `_one` / `_other` picked by `count` like i18next does in English.
+ */
+export const englishText: Translate = (key, values = {}) => {
+  const path = key.replace(/^venueMembers:/, '').split('.');
+  const last = path.pop() as string;
+  let node: unknown = english;
+  for (const k of path) node = (node as Record<string, unknown> | undefined)?.[k];
+  const at = (k: string) => (node as Record<string, unknown> | undefined)?.[k];
+  const count = values.count;
+  const text = (typeof count === 'number' ? at(`${last}_${count === 1 ? 'one' : 'other'}`) : undefined) ?? at(last);
+  if (typeof text !== 'string') return key;
+  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, name: string) => String(values[name] ?? ''));
 };
 
-const RISE_ACTION: Record<string, string> = {
-  running: 'Launch a run club. We bring the sponsor.',
-  cycling: 'Start a weekend ride from the gym.',
-  swimming: 'Run a swim-and-lift challenge.',
-  hiit: 'Put another HIIT class at your busiest hour.',
-  yoga: 'Add a mobility or yoga session.',
-  walking: 'Add beginner strength classes.',
-  gym: 'Run a monthly challenge that only counts sessions at your gym.',
-};
+/** The activity as a subject: "Running is up…", "Gym training is down…" (English). */
+export const ACTIVITY_NOUN: Record<string, string> = english.insights.subject;
 
-const WEEKDAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** Types with their own suggestion when they rise (insights.rise.action.*). */
+const RISE_ACTION_TYPES = new Set(['running', 'cycling', 'swimming', 'hiit', 'yoga', 'walking', 'gym']);
 
-const noun = (type: string) => ACTIVITY_NOUN[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
+/** insights.onDays.* — "Mondays" here, "le lundi" in French. */
+const ON_DAYS = ['mondays', 'tuesdays', 'wednesdays', 'thursdays', 'fridays', 'saturdays', 'sundays'];
 
 /**
  * Up to `limit` findings, most useful first: regulars drifting (Retention),
@@ -78,9 +85,19 @@ const noun = (type: string) => ACTIVITY_NOUN[type] ?? type.charAt(0).toUpperCase
  */
 export function memberInsights(
   a: MemberActivity | null | undefined,
-  opts: { gymName: string; canSeePeople: boolean; limit?: number },
+  opts: {
+    gymName: string;
+    canSeePeople: boolean;
+    limit?: number;
+    /** i18next's t from the portal; English without it. */
+    t?: Translate;
+    /** For month names (Intl); en-GB without it. */
+    locale?: string;
+  },
 ): Insight[] {
   if (!a || a.too_few) return [];
+  const t = opts.t ?? englishText;
+  const noun = (type: string) => (ACTIVITY_NOUN[type] ? t(`venueMembers:insights.subject.${type}`) : type.charAt(0).toUpperCase() + type.slice(1));
   const out: Insight[] = [];
   // An activity only speaks for "members" once 3+ did it and there's enough of it.
   const mix = (a.mix ?? []).filter((r) => r.members >= 3 && r.sessions >= 8);
@@ -90,13 +107,14 @@ export function memberInsights(
   if (quiet + slowing > 0) {
     // quiet/slowing are Retention's drifting/slipping: each person against
     // their own usual gap between visits (gym_member_activity, 20261007120000).
-    const finding = quiet > 0
-      ? `${quiet} regular${quiet === 1 ? ' is' : 's are'} drifting${slowing ? `, and ${slowing} more ${slowing === 1 ? 'is' : 'are'} slipping` : ''}`
-      : `${slowing} regular${slowing === 1 ? ' is' : 's are'} slipping`;
+    const finding = quiet === 0 ? t('venueMembers:insights.quiet.slipping', { count: slowing })
+      : !slowing ? t('venueMembers:insights.quiet.drifting', { count: quiet })
+      : slowing === 1 ? t('venueMembers:insights.quiet.driftingAndOneSlipping', { count: quiet, slipping: slowing })
+      : t('venueMembers:insights.quiet.driftingAndSlipping', { count: quiet, slipping: slowing });
     out.push({
       key: 'quiet',
       finding,
-      action: opts.canSeePeople ? 'Reach out before they cancel. See who in Retention.' : 'Reach out before they cancel. Clash Pro shows you who.',
+      action: opts.canSeePeople ? t('venueMembers:insights.quiet.actionPro') : t('venueMembers:insights.quiet.actionPlus'),
       tone: 'watch',
     });
   }
@@ -107,8 +125,8 @@ export function memberInsights(
   if (riser) {
     out.push({
       key: `up:${riser.type}`,
-      finding: `${noun(riser.type)} is up ${riser.change_pct}% among members`,
-      action: RISE_ACTION[riser.type] ?? 'Build a challenge around it.',
+      finding: t('venueMembers:insights.rise.finding', { activity: noun(riser.type), pct: riser.change_pct ?? 0 }),
+      action: RISE_ACTION_TYPES.has(riser.type) ? t(`venueMembers:insights.rise.action.${riser.type}`) : t('venueMembers:insights.rise.action.other'),
       tone: 'up',
     });
   }
@@ -116,7 +134,7 @@ export function memberInsights(
   const walk = mix.find((r) => r.type === 'walking');
   const lift = mix.find((r) => r.type === 'gym');
   if (walk && walk.members >= 5 && walk.members > 1.5 * (lift?.members ?? 0)) {
-    out.push({ key: 'walkers', finding: 'Heavy walkers, light lifters', action: 'Add beginner strength classes.', tone: 'up' });
+    out.push({ key: 'walkers', finding: t('venueMembers:insights.walkers.finding'), action: t('venueMembers:insights.walkers.action'), tone: 'up' });
   }
 
   const g = a.gym_sessions;
@@ -126,8 +144,8 @@ export function memberInsights(
     if (share >= 0.2) {
       out.push({
         key: 'elsewhere',
-        finding: `${Math.round(share * 100)}% of their gym check-ins are at other gyms`,
-        action: `Give them a reason to train here: a monthly challenge that only counts sessions at ${opts.gymName}.`,
+        finding: t('venueMembers:insights.elsewhere.finding', { pct: Math.round(share * 100) }),
+        action: t('venueMembers:insights.elsewhere.action', { gym: opts.gymName }),
         tone: 'down',
       });
     }
@@ -139,8 +157,8 @@ export function memberInsights(
   if (faller) {
     out.push({
       key: `down:${faller.type}`,
-      finding: `${noun(faller.type)} is down ${Math.abs(faller.change_pct ?? 0)}% among members`,
-      action: 'Win it back with a challenge built around it.',
+      finding: t('venueMembers:insights.fall.finding', { activity: noun(faller.type), pct: Math.abs(faller.change_pct ?? 0) }),
+      action: t('venueMembers:insights.fall.action'),
       tone: 'down',
     });
   }
@@ -151,10 +169,11 @@ export function memberInsights(
     const mean = total / 7;
     const low = wd.indexOf(Math.min(...wd));
     if (wd[low] < 0.7 * mean) {
+      const days = t(`venueMembers:insights.onDays.${ON_DAYS[low]}`);
       out.push({
         key: 'weekday',
-        finding: `Training dips on ${WEEKDAYS[low]}`,
-        action: `Put a class or a challenge day on ${WEEKDAYS[low]}.`,
+        finding: t('venueMembers:insights.weekday.finding', { days }),
+        action: t('venueMembers:insights.weekday.action', { days }),
         tone: 'down',
       });
     }
@@ -168,8 +187,9 @@ export function memberInsights(
     const others = rates.filter((_, i) => i !== low);
     const avg = others.reduce((s, r) => s + r, 0) / others.length;
     if (rates[low] < 0.75 * avg) {
-      const month = MONTHS[Number(months[low].month.slice(5, 7)) - 1];
-      out.push({ key: 'month', finding: `Consistency dipped in ${month}`, action: 'Book a Clash Night exactly then.', tone: 'down' });
+      const month = new Intl.DateTimeFormat(opts.locale ?? 'en-GB', { month: 'long', timeZone: 'UTC' })
+        .format(Date.UTC(2000, Number(months[low].month.slice(5, 7)) - 1, 1));
+      out.push({ key: 'month', finding: t('venueMembers:insights.month.finding', { month }), action: t('venueMembers:insights.month.action'), tone: 'down' });
     }
   }
 
@@ -178,8 +198,8 @@ export function memberInsights(
   if (c && active >= 5 && c.high / active >= 0.4) {
     out.push({
       key: 'core',
-      finding: `${c.high} of your members train 5+ days a week`,
-      action: 'Give them a stage: a leaderboard challenge they can win.',
+      finding: t('venueMembers:insights.core.finding', { n: c.high }),
+      action: t('venueMembers:insights.core.action'),
       tone: 'up',
     });
   }

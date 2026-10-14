@@ -1,0 +1,110 @@
+{
+  "docTitle": "POWR · Scan",
+  "camera": {
+    "starting": "Starting the camera…",
+    "denied": "Camera blocked. Allow camera access for this site in your browser settings, or type the code below.",
+    "unavailable": "No camera here. Type the 6-character code from the member’s phone below.",
+    "kioskLabel": "Hold the voucher up to the camera",
+    "phoneLabel": "Point at the member’s voucher",
+    "notWorking": "CAMERA NOT WORKING?",
+    "typePlaceholder": "Type the 6-character code",
+    "check": "Check"
+  },
+  "result": {
+    "scanAnother": "Scan another",
+    "scanAgain": "Scan again",
+    "applied": "Discount applied",
+    "loggedAtSite": "Logged for {{site}} at {{time}}.",
+    "loggedAt": "Logged at {{time}}.",
+    "scanNext": "Scan next",
+    "valid": "VALID",
+    "opened": "Opened {{time}}",
+    "openedSwiped": "Opened {{time}} · already swiped on their phone",
+    "openedClosesIn": "Opened {{time}} · closes in {{left}}",
+    "spendLabel": "WHAT DID THEY SPEND? (OPTIONAL)",
+    "spendPlaceholder": "0.00",
+    "confirming": "Confirming…",
+    "confirm": "Confirm and apply discount",
+    "used": "ALREADY USED",
+    "usedAtSite": "Used at {{site}} on {{date}} at {{time}}.",
+    "usedOn": "Used on {{date}} at {{time}}.",
+    "usedNoDate": "This reward has been used.",
+    "dontApplyThe": "Don't apply the discount.",
+    "other": "NOT ONE OF YOUR REWARDS",
+    "otherBody": "This voucher is for a different shop.",
+    "dontApplyA": "Don't apply a discount.",
+    "stale": "OLD CODE",
+    "staleBody": "That code is more than a minute old, which usually means a screenshot. Ask the member to show the live voucher in the POWR app.",
+    "closed": "VOUCHER CLOSED",
+    "closedBody": "Time ran out on this one. Ask the member to tap Use in store again for a fresh voucher.",
+    "notFound": "NO MATCH",
+    "notFoundBody": "No live voucher matches that code. Check the code on the member's phone, or scan the QR instead.",
+    "notPowr": "NOT A POWR VOUCHER",
+    "notPowrBody": "That code isn’t a POWR voucher. Scan the QR on the member’s phone.",
+    "isStand": "That’s a shop stand. Scan the voucher on the member’s phone.",
+    "error": "SOMETHING WENT WRONG",
+    "errorBody": "Check the connection and scan again.",
+    "checkAgain": "That took a while. Scan the voucher again to confirm.",
+    "confirmFailed": "Couldn’t confirm. Scan the voucher again."
+  },
+  "gate": {
+    "signedOut": "Open the scan link your manager sent you. It signs this phone in for scanning.",
+    "notPartner": "You’re signed in as {{email}}, which isn’t a partner login, so it can’t scan. Open your scan link, or sign in with your partner login.",
+    "notPartnerNoEmail": "You’re signed in as someone, which isn’t a partner login, so it can’t scan. Open your scan link, or sign in with your partner login.",
+    "revoked": "This scan link no longer works. Ask your manager for a new one.",
+    "title": "Scan POWR rewards",
+    "pasteLabel": "HAVE A SCAN LINK? PASTE IT HERE",
+    "open": "Open",
+    "pasteError": "That doesn’t look like a scan link. It ends in #k= and a long code.",
+    "managerSignIn": "Manager? Sign in to the partner portal"
+  },
+  "header": {
+    "manager": "Manager",
+    "shop": "Shop",
+    "leaveKiosk": "Leave kiosk mode?",
+    "exitKiosk": "Exit kiosk",
+    "kioskTitle": "Kiosk mode for a till tablet",
+    "kioskLabel": "Kiosk mode",
+    "forget": "Forget this scan link",
+    "forgetConfirm": "Forget this scan link on this device? You’ll need the link again to scan."
+  },
+  "kiosk": {
+    "showTab": "Members scan this",
+    "scanTab": "Scan a member",
+    "noShop": "Add a shop in the partner portal to show its stand here.",
+    "headline": "Got a POWR reward?",
+    "headlineBold": "Scan here.",
+    "newCode": "New code in {{seconds}}s · scan with the POWR app, not your camera"
+  },
+  "phone": {
+    "noShops": "No shops added yet. Scans still work; add your shops in the partner portal's In Store page so they're logged by shop.",
+    "todayAt_one": "TODAY AT {{site}}: {{count}} CONFIRMED",
+    "todayAt_other": "TODAY AT {{site}}: {{count}} CONFIRMED",
+    "today_one": "TODAY: {{count}} CONFIRMED",
+    "today_other": "TODAY: {{count}} CONFIRMED",
+    "logged": "{{amount}} LOGGED"
+  },
+  "today": {
+    "title": "TODAY",
+    "titleAt": "TODAY AT {{site}}",
+    "confirmed": "CONFIRMED",
+    "spend": "SPEND LOGGED",
+    "latest": "LATEST",
+    "nothing": "Nothing yet today.",
+    "status": {
+      "confirmed": "CONFIRMED",
+      "swiped": "SWIPED",
+      "closed": "CLOSED UNUSED",
+      "open": "OPEN NOW"
+    },
+    "screenshots": "Vouchers change every few seconds. Screenshots won't scan."
+  },
+  "stand": {
+    "docTitle": "POWR · Use your reward in store",
+    "eyebrow": "SHOP STAND {{code}}",
+    "title": "<light>Scan this </light><gold>in the POWR app</gold>",
+    "body": "Open POWR, go to your Wallet, tap <strong>Use in store</strong> on your reward, then scan the stand from there.",
+    "openWallet": "Open my wallet",
+    "noApp": "No POWR yet? The same link gets you the app."
+  }
+}

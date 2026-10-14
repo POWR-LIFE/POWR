@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StatusBar, Ion, FONT, BEZEL, DEVICE_W, DEVICE_H, TAB_H } from './RewardAppPreview';
 import HOME from './appPreviewHome.json';
 import { storageImage } from '../lib/storage';
@@ -15,6 +16,11 @@ import { storageImage } from '../lib/storage';
 // Everything around the card is the app's own pixels. The card and the sheet
 // are ports that follow their RN sources number for number, at true device
 // points (390×844); the whole phone then scales to fit.
+//
+// Everything inside the phone stays English on purpose: it shows the event as
+// members see it, and members read the app in their own language, not the
+// gym owner's. Only the switch and the caption around the phone are the
+// portal's own words.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // LiveEventCard.tsx / EventRegisterFlow.tsx / EventPrizeList.tsx, each file's own tokens.
@@ -257,6 +263,7 @@ function Sheet({ event, venue }) {
  * @param width  on-screen width of the phone, px (the device scales to fit)
  */
 export default function EventAppPreview({ event, venue, width = 300, pageTheme = 'light', initial = 'home', caption = true }) {
+    const { t } = useTranslation();
     const [screen, setScreen] = useState(initial); // 'home' | 'sheet'
     const scale = width / PHONE_W;
     const lightPage = pageTheme === 'light';
@@ -270,7 +277,7 @@ export default function EventAppPreview({ event, venue, width = 300, pageTheme =
         <div style={{ fontFamily: FONT, width: '100%', maxWidth: width, margin: '0 auto' }}>
             <style>{`@font-face { font-family: 'PreviewIonicons'; src: url('/Ionicons.ttf') format('truetype'); font-display: block; }`}</style>
             <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 14 }}>
-                {[['home', 'On Home'], ['sheet', 'Tap to join']].map(([key, label]) => (
+                {[['home', t('venueEvents:appPreview.onHome')], ['sheet', t('venueEvents:appPreview.tapToJoin')]].map(([key, label]) => (
                     <button key={key} type="button" onClick={() => setScreen(key)} aria-pressed={screen === key} style={{
                         cursor: 'pointer', borderRadius: 999, padding: '6px 12px', fontFamily: FONT,
                         fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
@@ -297,7 +304,7 @@ export default function EventAppPreview({ event, venue, width = 300, pageTheme =
             </div>
             {caption && (
                 <p style={{ textAlign: 'center', fontSize: 10, color: captionColor, marginTop: 12, fontFamily: FONT, letterSpacing: '0.05em' }}>
-                    How it looks in the app · true-to-scale iPhone render
+                    {t('venueEvents:appPreview.caption')}
                 </p>
             )}
         </div>

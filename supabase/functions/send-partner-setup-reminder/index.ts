@@ -10,7 +10,11 @@
 //   choose   — approved, no way for codes to reach members → Integration
 //   connect  — way chosen, no code can reach a member yet → that route's page
 // Each email goes to everyone on the brand's side (logins, invite addresses,
-// submission contact). This function renders, claims the brand's next
+// submission contact), one message per language: a login reads its own
+// profiles.language, an invited address its inviter's (English when POWR sent
+// the invite), the submission contact English — see _shared/brandLanguages.ts.
+// While English is the only live business language that is one message to all,
+// as before. This function renders, claims the brand's next
 // partner_setup_reminder_log slot, and sends.
 //
 // Security: verify_jwt=false; gated by x-resolve-token (verify_resolve_token).
@@ -21,8 +25,9 @@
 //   { brand: "Healthspan Elite" }       → real run for that brand only, and
 //                                         only if it is due today
 //   { dry_run: true }                   → who would get what, sends nothing
-//   { sample: true, only_email, step?: "login"|"submit"|"choose"|"connect" }
-//                                       → representative renders to one address
+//   { sample: true, only_email, step?: "login"|"submit"|"choose"|"connect", lang? }
+//                                       → representative renders to one address,
+//                                         in `lang` ("fr", "es": drafts included)
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -31,8 +36,11 @@ import { type LogoSize, measureLogo } from "../_shared/emails/brand-logo.ts";
 import {
   type DeliveryMethod,
   partnerSetupReminderEmail,
+  partnerSetupReminderSample,
   type SetupStep,
 } from "../_shared/emails/partner-setup-reminder.ts";
+import { brandRecipientLanguages } from "../_shared/brandLanguages.ts";
+import { businessPreviewLanguage } from "../_shared/i18n/index.ts";
 
 const CONCURRENCY = 3;
 const REPLY_TO = "support@powr.life";
@@ -89,7 +97,7 @@ Deno.serve(async (req: Request) => {
     return sizes.get(url)!;
   };
 
-  const render = async (c: Candidate) =>
+  const render = async (c: Candidate, lang = "en") =>
     partnerSetupReminderEmail({
       brandName: c.brand_name,
       step: c.step,
@@ -104,31 +112,17 @@ Deno.serve(async (req: Request) => {
       draftTitle: c.draft_title,
       draftIsEdit: c.draft_is_edit,
       siteUrl,
-    });
+    }, lang);
 
   if (body?.sample === true) {
     const onlyEmail = typeof body?.only_email === "string" ? (body.only_email as string) : null;
     if (!onlyEmail) return json({ error: "only_email required for sample" }, 400);
     const steps = STEPS.includes(body?.step as SetupStep) ? [body.step as SetupStep] : STEPS;
+    const lang = businessPreviewLanguage(typeof body?.lang === "string" ? body.lang : null);
     const sent: string[] = [];
     for (const step of steps) {
-      const email = await render({
-        brand_name: "Healthspan Elite",
-        brand_key: "healthspan elite",
-        step,
-        recipients: [onlyEmail],
-        login_emails: step === "login" ? [] : ["healthspandigital@gmail.com"],
-        contact_name: "Cara James",
-        invite_token: "sample-token-not-valid",
-        reward_title: step === "submit" ? null : "Fuel Up for 25% Less",
-        logo_url: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-submissions/logos/1789985967117-km17c8.png",
-        brand_color: "#c6a13e",
-        method: step === "connect" ? "manual" : null,
-        draft_title: "Fuel Up for 25% Less",
-        draft_is_edit: step !== "submit",
-        waiting_since: new Date().toISOString(),
-        reminder_number: 1,
-      });
+      const sample = partnerSetupReminderSample(step);
+      const email = partnerSetupReminderEmail({ ...sample, logoSize: await sizeOf(sample.logoUrl ?? null), siteUrl }, lang);
       await sendEmail({ to: onlyEmail, subject: `[${step}] ${email.subject}`, html: email.html, text: email.text, replyTo: REPLY_TO, tag: "partner-setup-reminder-sample" });
       sent.push(step);
     }
@@ -148,20 +142,36 @@ Deno.serve(async (req: Request) => {
   const candidates = ((data ?? []) as Candidate[])
     .filter((c) => c.recipients?.length && (!onlyBrand || c.brand_key === onlyBrand));
 
+  // Everyone's language by address (no reads while English is the only one
+  // live), then each brand's people split into one message per language.
+  const languages = await brandRecipientLanguages(admin, candidates.map((c) => c.brand_key), { invites: true });
+  const groupsOf = (c: Candidate) => {
+    const groups = new Map<string, string[]>();
+    for (const to of c.recipients) {
+      const lang = languages.get(to.trim().toLowerCase()) ?? "en";
+      groups.set(lang, [...(groups.get(lang) ?? []), to]);
+    }
+    return [...groups.entries()].map(([lang, to]) => ({ lang, to }));
+  };
+
   if (body?.dry_run === true) {
     return json({
       ok: true,
       mode: "dry_run",
       total: candidates.length,
-      due: await Promise.all(candidates.map(async (c) => ({
-        brand: c.brand_name,
-        step: c.step,
-        to: c.recipients,
-        reminder: c.reminder_number,
-        waiting_since: c.waiting_since,
-        reward: c.reward_title,
-        subject: (await render(c)).subject,
-      }))),
+      due: await Promise.all(candidates.map(async (c) => {
+        const groups = groupsOf(c);
+        return {
+          brand: c.brand_name,
+          step: c.step,
+          to: c.recipients,
+          reminder: c.reminder_number,
+          waiting_since: c.waiting_since,
+          reward: c.reward_title,
+          subject: (await render(c, groups[0]?.lang)).subject,
+          ...(groups.length > 1 ? { languages: groups } : {}),
+        };
+      })),
     });
   }
 
@@ -185,17 +195,29 @@ Deno.serve(async (req: Request) => {
         return;
       }
 
-      const email = await render(c);
-      try {
-        // One email to the brand's whole side, so they can see who else has it.
-        await sendEmail({ to: c.recipients.join(", "), subject: email.subject, html: email.html, text: email.text, replyTo: REPLY_TO, tag: `partner-setup-reminder-${c.step}` });
+      // One email to the brand's whole side, so they can see who else has it
+      // (per language, when they read different ones).
+      let delivered = 0;
+      let lastError: unknown = null;
+      for (const group of groupsOf(c)) {
+        try {
+          const email = await render(c, group.lang);
+          await sendEmail({ to: group.to.join(", "), subject: email.subject, html: email.html, text: email.text, replyTo: REPLY_TO, tag: `partner-setup-reminder-${c.step}` });
+          delivered++;
+        } catch (e) {
+          lastError = e;
+          console.error("send-partner-setup-reminder: send failed for", c.brand_key, group.lang, e);
+        }
+      }
+      if (delivered > 0) {
         sent++;
-      } catch (e) {
+        // Part of the brand got it: keep the slot rather than send those people a second copy tomorrow.
+        if (lastError) failed++;
+      } else {
         failed++;
         // Free the slot so tomorrow's run retries.
         await admin.from("partner_setup_reminder_log").delete()
           .eq("brand_key", c.brand_key).eq("seq", c.reminder_number);
-        console.error("send-partner-setup-reminder: send failed for", c.brand_key, e);
       }
     }));
   }

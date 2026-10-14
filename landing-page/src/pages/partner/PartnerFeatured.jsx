@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Star, X, Clock, CheckCircle, XCircle, Undo2, Award } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { formatLocale } from '../../lib/i18n';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import FeaturedCalendar from '../../components/FeaturedCalendar';
@@ -27,7 +29,7 @@ function nextMonday(from = new Date()) {
 }
 
 function formatWindow(starts, ends) {
-    const fmt = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const fmt = (d) => new Date(d).toLocaleDateString(formatLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
     return `${fmt(starts)} → ${fmt(ends)}`;
 }
 
@@ -47,13 +49,14 @@ function overlaps(aStart, aEnd, bStart, bEnd) {
 }
 
 const REQUEST_STATUS = {
-    pending:   { label: 'Awaiting review', color: '#8a7600', bg: 'bg-[#E8D200]/10 border-[#E8D200]/30', icon: Clock },
-    approved:  { label: 'Confirmed',       color: '#16A34A', bg: 'bg-green-500/10 border-green-500/30', icon: CheckCircle },
-    declined:  { label: 'Not this time',   color: '#999999', bg: 'bg-[#EFEFEC] border-[#E6E6E1]',       icon: XCircle },
-    withdrawn: { label: 'Withdrawn',       color: '#999999', bg: 'bg-[#EFEFEC] border-[#E6E6E1]',       icon: Undo2 },
+    pending:   { labelKey: 'brandPlacements:featured.status.pending',   color: '#8a7600', bg: 'bg-[#E8D200]/10 border-[#E8D200]/30', icon: Clock },
+    approved:  { labelKey: 'brandPlacements:featured.status.approved',  color: '#16A34A', bg: 'bg-green-500/10 border-green-500/30', icon: CheckCircle },
+    declined:  { labelKey: 'brandPlacements:featured.status.declined',  color: '#999999', bg: 'bg-[#EFEFEC] border-[#E6E6E1]',       icon: XCircle },
+    withdrawn: { labelKey: 'brandPlacements:featured.status.withdrawn', color: '#999999', bg: 'bg-[#EFEFEC] border-[#E6E6E1]',       icon: Undo2 },
 };
 
 export default function PartnerFeatured() {
+    const { t } = useTranslation();
     const toast = useToast();
     const { user, partnerData } = useAuth();
     const myBrand = partnerData?.brand_name || null;
@@ -93,7 +96,7 @@ export default function PartnerFeatured() {
         ]);
         // supabase-js resolves rather than throws on a failed query — an empty
         // calendar and a broken one look identical unless we check.
-        if (sched.error || reqs.error || rew.error) toast.error('Some of this page failed to load — try refreshing');
+        if (sched.error || reqs.error || rew.error) toast.error(t('brandPlacements:featured.toast.loadFailed'));
         setSchedule(sched.data || []);
         setRequests(reqs.data || []);
         setMyRewards(rew.data || []);
@@ -104,8 +107,8 @@ export default function PartnerFeatured() {
 
     const rewardLabel = (row) => {
         const r = row.rewards;
-        if (!r) return 'Reward';
-        return r.partners?.name || r.brand_name || r.title || 'Reward';
+        if (!r) return t('brandPlacements:featured.rewardFallback');
+        return r.partners?.name || r.brand_name || r.title || t('brandPlacements:featured.rewardFallback');
     };
 
     const pending = useMemo(() => requests.filter(r => r.status === 'pending'), [requests]);
@@ -128,12 +131,12 @@ export default function PartnerFeatured() {
             ghost: true,
             starts_at: r.requested_start,
             ends_at: r.requested_end,
-            label: `${r.rewards?.title || 'Reward'} (requested)`,
+            label: t('brandPlacements:featured.requestedLabel', { title: r.rewards?.title || t('brandPlacements:featured.rewardFallback') }),
             brand_name: r.rewards?.brand_name || myBrand,
             brandColor: r.rewards?.brand_color || null,
             logo: r.rewards?.image_url || null,
         })),
-    ]), [schedule, pending, myBrand]);
+    ]), [schedule, pending, myBrand, t]);
 
     const current = schedule.find(s => isActive(s.starts_at, s.ends_at));
     const isMine = (row) => myBrand && (row?.rewards?.brand_name || '').trim().toLowerCase() === myBrand.trim().toLowerCase();
@@ -155,7 +158,7 @@ export default function PartnerFeatured() {
 
     const openRequest = (startDate) => {
         if (myRewards.length === 0) {
-            toast.error('Add a live reward first — a featured week has to point at something members can claim');
+            toast.error(t('brandPlacements:featured.toast.needReward'));
             return;
         }
         const start = startDate ? atMidnight(startDate) : nextMonday();
@@ -169,13 +172,13 @@ export default function PartnerFeatured() {
 
     const submitRequest = async (e) => {
         e.preventDefault();
-        if (!form.reward_id) { toast.error('Pick the reward you want featured'); return; }
+        if (!form.reward_id) { toast.error(t('brandPlacements:featured.toast.pickReward')); return; }
         const starts = atMidnight(new Date(`${form.starts}T00:00`));
         const ends = atMidnight(new Date(`${form.ends}T00:00`));
-        if (!(ends > starts)) { toast.error('The end date has to be after the start date'); return; }
-        if (ends <= new Date()) { toast.error('Pick a window that has not already passed'); return; }
+        if (!(ends > starts)) { toast.error(t('brandPlacements:featured.toast.endAfterStart')); return; }
+        if (ends <= new Date()) { toast.error(t('brandPlacements:featured.toast.passed')); return; }
         if (schedule.some(s => overlaps(starts, ends, s.starts_at, s.ends_at))) {
-            toast.error('Part of that window is already booked — pick dates the calendar shows as free');
+            toast.error(t('brandPlacements:featured.toast.overlap'));
             return;
         }
 
@@ -193,13 +196,13 @@ export default function PartnerFeatured() {
         if (error) {
             // The one-pending-per-week exclusion constraint.
             if (error.code === '23P01') {
-                toast.error('You already have a request open on those dates');
+                toast.error(t('brandPlacements:featured.toast.duplicate'));
             } else {
-                toast.error('Could not send that request — please try again');
+                toast.error(t('brandPlacements:featured.toast.sendFailed'));
             }
             return;
         }
-        toast.success('Request sent — the POWR team will confirm or come back to you');
+        toast.success(t('brandPlacements:featured.toast.sent'));
         setForm(null);
         fetchAll();
     };
@@ -210,10 +213,10 @@ export default function PartnerFeatured() {
             .update({ status: 'withdrawn' })
             .eq('id', id);
         if (error) {
-            toast.error('Could not withdraw that request');
+            toast.error(t('brandPlacements:featured.toast.withdrawFailed'));
             return;
         }
-        toast.success('Request withdrawn');
+        toast.success(t('brandPlacements:featured.toast.withdrawn'));
         setSelectedRequest(null);
         fetchAll();
     };
@@ -227,19 +230,18 @@ export default function PartnerFeatured() {
                 <div>
                     <div className="flex items-center gap-3 mb-6">
                         <div className="h-[1px] w-12 bg-[#E8D200]" />
-                        <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Featured Lineup</span>
+                        <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">{t('brandPlacements:featured.eyebrow')}</span>
                     </div>
-                    <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-4">What's On</h1>
+                    <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-4">{t('brandPlacements:featured.title')}</h1>
                     <p className="text-[#888888] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
-                        The reward featured at the top of the POWR rewards screen. Your brand is outlined —
-                        click any free day to ask for a week.
+                        {t('brandPlacements:featured.intro')}
                     </p>
                 </div>
                 <button
                     onClick={() => openRequest()}
                     className="flex items-center gap-4 h-14 px-8 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-3px] shadow-xl shadow-[#E8D200]/20 shrink-0"
                 >
-                    <Star size={16} /> Request A Week
+                    <Star size={16} /> {t('brandPlacements:featured.requestWeek')}
                 </button>
             </div>
 
@@ -250,8 +252,8 @@ export default function PartnerFeatured() {
                         <Star size={18} className="text-[#8a7600]" />
                     </div>
                     <div className="flex-1">
-                        <div className="text-[9px] uppercase tracking-[0.5em] text-[#8a7600] font-black mb-1">Featured Now</div>
-                        <div className="text-base font-bold text-[#1A1A1A]">{rewardLabel(current)}{isMine(current) && <span className="ml-3 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.3em] bg-[#1A1A1A] text-white rounded-full align-middle">You</span>}</div>
+                        <div className="text-[9px] uppercase tracking-[0.5em] text-[#8a7600] font-black mb-1">{t('brandPlacements:featured.featuredNow')}</div>
+                        <div className="text-base font-bold text-[#1A1A1A]">{rewardLabel(current)}{isMine(current) && <span className="ml-3 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.3em] bg-[#1A1A1A] text-white rounded-full align-middle">{t('brandPlacements:featured.you')}</span>}</div>
                         <div className="text-[11px] text-[#888888] mt-0.5 font-black uppercase tracking-[0.2em]">{formatWindow(current.starts_at, current.ends_at)}</div>
                     </div>
                 </div>
@@ -260,7 +262,7 @@ export default function PartnerFeatured() {
             {/* Partner's own upcoming windows */}
             {myUpcoming.length > 0 && (
                 <div className="mb-6 bg-white border border-[#E6E6E1] rounded-3xl px-10 py-6">
-                    <div className="text-[9px] uppercase tracking-[0.4em] text-[#999999] font-black mb-3">Your featured windows</div>
+                    <div className="text-[9px] uppercase tracking-[0.4em] text-[#999999] font-black mb-3">{t('brandPlacements:featured.yourWindows')}</div>
                     <div className="flex flex-wrap gap-3">
                         {myUpcoming.map(s => (
                             <span key={s.id} className="inline-flex items-center gap-2 h-9 px-4 rounded-full bg-[#E8D200]/10 border border-[#E8D200]/20 text-[10px] font-black uppercase tracking-[0.2em] text-[#8a7600]">
@@ -279,10 +281,9 @@ export default function PartnerFeatured() {
                         <Award size={17} className="text-[#999999]" />
                     </div>
                     <div className="flex-1">
-                        <div className="text-[13px] font-bold text-[#1A1A1A] mb-1">A featured week needs a live reward</div>
+                        <div className="text-[13px] font-bold text-[#1A1A1A] mb-1">{t('brandPlacements:featured.noReward.title')}</div>
                         <p className="text-[12px] text-[#888888] leading-relaxed">
-                            The featured card sends members straight to an offer they can claim, so there has to be
-                            one live before you can request a slot. <Link to="/partner/rewards" className="text-[#8a7600] font-bold underline underline-offset-2">Set up a reward</Link>.
+                            <Trans i18nKey="brandPlacements:featured.noReward.body" components={{ action: <Link to="/partner/rewards" className="text-[#8a7600] font-bold underline underline-offset-2" /> }} />
                         </p>
                     </div>
                 </div>
@@ -291,7 +292,7 @@ export default function PartnerFeatured() {
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-48 gap-6">
                     <div className="w-12 h-12 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
-                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">Loading Calendar...</span>
+                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">{t('brandPlacements:featured.loadingCalendar')}</span>
                 </div>
             ) : (
                 <>
@@ -309,7 +310,7 @@ export default function PartnerFeatured() {
                         highlightBrand={myBrand}
                     />
                     <p className="mt-5 text-[10px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black">
-                        Click a free day to request that week · dashed bands are requests, not bookings
+                        {t('brandPlacements:featured.calendarHint')}
                     </p>
                 </>
             )}
@@ -318,10 +319,10 @@ export default function PartnerFeatured() {
             {!loading && requests.length > 0 && (
                 <div className="mt-10 bg-white border border-[#E6E6E1] rounded-3xl p-8">
                     <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">Your Requests</h2>
+                        <h2 className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">{t('brandPlacements:featured.yourRequests')}</h2>
                         {pending.length > 0 && (
                             <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-3 py-1">
-                                {pending.length} awaiting review
+                                {t('brandPlacements:featured.awaitingCount', { count: pending.length })}
                             </span>
                         )}
                     </div>
@@ -336,7 +337,7 @@ export default function PartnerFeatured() {
                                             {formatWindow(r.requested_start, r.requested_end)}
                                         </div>
                                         <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black truncate">
-                                            {r.rewards?.title || 'Reward'}
+                                            {r.rewards?.title || t('brandPlacements:featured.rewardFallback')}
                                         </div>
                                         {r.reviewer_notes && (
                                             <p className="mt-3 text-[12px] text-[#666666] leading-relaxed border-l-2 border-[#E6E6E1] pl-4">
@@ -346,14 +347,14 @@ export default function PartnerFeatured() {
                                     </div>
                                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest shrink-0 ${cfg.bg}`} style={{ color: cfg.color }}>
                                         <StatusIcon size={10} />
-                                        {cfg.label}
+                                        {t(cfg.labelKey)}
                                     </span>
                                     {r.status === 'pending' && (
                                         <button
                                             onClick={() => withdraw(r.id)}
                                             className="text-[9px] uppercase tracking-[0.3em] font-black text-[#BBBBBB] hover:text-red-500 transition-colors shrink-0"
                                         >
-                                            Withdraw
+                                            {t('brandPlacements:featured.withdraw')}
                                         </button>
                                     )}
                                 </div>
@@ -369,8 +370,8 @@ export default function PartnerFeatured() {
                     <div className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl w-full max-w-md p-10" onClick={e => e.stopPropagation()}>
                         <div className="flex items-start justify-between mb-8">
                             <div className="min-w-0">
-                                <div className="text-[9px] uppercase tracking-[0.4em] text-[#8a7600] font-black mb-2">Requested · not confirmed</div>
-                                <div className="text-base font-bold text-[#1A1A1A]">{selectedRequest.rewards?.title || 'Reward'}</div>
+                                <div className="text-[9px] uppercase tracking-[0.4em] text-[#8a7600] font-black mb-2">{t('brandPlacements:featured.requestedNotConfirmed')}</div>
+                                <div className="text-base font-bold text-[#1A1A1A]">{selectedRequest.rewards?.title || t('brandPlacements:featured.rewardFallback')}</div>
                                 <div className="text-[10px] uppercase tracking-[0.2em] text-[#888888] font-black mt-1">
                                     {formatWindow(selectedRequest.requested_start, selectedRequest.requested_end)}
                                 </div>
@@ -383,7 +384,7 @@ export default function PartnerFeatured() {
                             onClick={() => withdraw(selectedRequest.id)}
                             className="w-full h-12 flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.3em] text-[#999999] hover:text-red-500 border border-[#E6E6E1] hover:border-red-500/20 rounded-full transition-all"
                         >
-                            <Undo2 size={14} /> Withdraw Request
+                            <Undo2 size={14} /> {t('brandPlacements:featured.withdrawRequest')}
                         </button>
                     </div>
                 </div>
@@ -397,8 +398,8 @@ export default function PartnerFeatured() {
                             <form onSubmit={submitRequest} className="p-12">
                                 <div className="flex items-start justify-between mb-10">
                                     <div>
-                                        <h2 className="text-3xl font-light tracking-tighter text-[#1A1A1A] mb-2">Request A Week</h2>
-                                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">The POWR team confirms every slot</p>
+                                        <h2 className="text-3xl font-light tracking-tighter text-[#1A1A1A] mb-2">{t('brandPlacements:featured.requestWeek')}</h2>
+                                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">{t('brandPlacements:featured.form.subtitle')}</p>
                                     </div>
                                     <button type="button" onClick={() => setForm(null)} className="w-12 h-12 bg-white border border-[#E6E6E1] rounded-3xl flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all">
                                         <X size={18} />
@@ -406,21 +407,21 @@ export default function PartnerFeatured() {
                                 </div>
 
                                 <div className="mb-8">
-                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Reward to feature</label>
+                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">{t('brandPlacements:featured.form.reward')}</label>
                                     <select
                                         required
                                         className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#222222] tracking-[0.1em] uppercase"
                                         value={form.reward_id}
                                         onChange={e => setForm({ ...form, reward_id: e.target.value })}
                                     >
-                                        <option value="">— Select a reward —</option>
+                                        <option value="">{t('brandPlacements:featured.form.selectReward')}</option>
                                         {myRewards.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
                                     </select>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-6 mb-8">
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">From</label>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">{t('brandPlacements:featured.form.from')}</label>
                                         <input
                                             type="date"
                                             required
@@ -431,7 +432,7 @@ export default function PartnerFeatured() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Until</label>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">{t('brandPlacements:featured.form.until')}</label>
                                         <input
                                             type="date"
                                             required
@@ -445,18 +446,18 @@ export default function PartnerFeatured() {
 
                                 {/* Quick-fill week buttons, mirroring the admin scheduler */}
                                 <div className="mb-8">
-                                    <div className="text-[10px] uppercase tracking-[0.4em] text-[#999999] font-black mb-4">Quick fill — week of</div>
+                                    <div className="text-[10px] uppercase tracking-[0.4em] text-[#999999] font-black mb-4">{t('brandPlacements:featured.form.quickFill')}</div>
                                     <div className="flex flex-wrap gap-3">
                                         {[0, 1, 2, 3].map(offset => {
                                             const start = addDays(nextMonday(), offset * 7);
                                             const taken = schedule.some(s => overlaps(start, addDays(start, 7), s.starts_at, s.ends_at));
-                                            const label = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                                            const label = start.toLocaleDateString(formatLocale(), { day: 'numeric', month: 'short' });
                                             return (
                                                 <button
                                                     key={offset}
                                                     type="button"
                                                     disabled={taken}
-                                                    title={taken ? 'Already booked' : undefined}
+                                                    title={taken ? t('brandPlacements:featured.form.alreadyBooked') : undefined}
                                                     onClick={() => setForm(prev => ({
                                                         ...prev,
                                                         starts: toDateInput(start),
@@ -464,7 +465,7 @@ export default function PartnerFeatured() {
                                                     }))}
                                                     className="h-9 px-5 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#555555] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all disabled:opacity-35 disabled:hover:text-[#555555] disabled:hover:border-[#E6E6E1] disabled:cursor-not-allowed"
                                                 >
-                                                    {label}{taken ? ' · taken' : ''}
+                                                    {taken ? t('brandPlacements:featured.form.taken', { date: label }) : label}
                                                 </button>
                                             );
                                         })}
@@ -472,25 +473,24 @@ export default function PartnerFeatured() {
                                 </div>
 
                                 <div className="mb-8">
-                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Anything we should know? <span className="text-[#BBBBBB]">(optional)</span></label>
+                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4"><Trans i18nKey="brandPlacements:featured.form.note" components={{ muted: <span className="text-[#BBBBBB]" /> }} /></label>
                                     <textarea
                                         rows={4}
                                         value={form.note}
                                         onChange={e => setForm({ ...form, note: e.target.value })}
-                                        placeholder="A launch date, a campaign you're running, why this week matters…"
+                                        placeholder={t('brandPlacements:featured.form.notePlaceholder')}
                                         className="w-full bg-white border border-[#E6E6E1] rounded-2xl p-5 text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none resize-none transition-all"
                                     />
                                 </div>
 
                                 <p className="text-[11px] text-[#888888] leading-relaxed mb-8 bg-white border border-[#E6E6E1] rounded-2xl px-5 py-4">
-                                    Only one reward is featured at a time, so a request holds nothing —
-                                    we'll confirm it here, and you'll see the week turn solid on the calendar.
+                                    {t('brandPlacements:featured.form.holdsNothing')}
                                 </p>
 
                                 <div className="flex justify-end gap-4">
-                                    <button type="button" onClick={() => setForm(null)} className="h-14 px-8 text-[11px] uppercase tracking-[0.4em] font-black text-[#666666] hover:text-[#BBB] transition-colors">Cancel</button>
+                                    <button type="button" onClick={() => setForm(null)} className="h-14 px-8 text-[11px] uppercase tracking-[0.4em] font-black text-[#666666] hover:text-[#BBB] transition-colors">{t('common:actions.cancel')}</button>
                                     <button type="submit" disabled={saving} className="h-14 px-10 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] rounded-full transition-all hover:translate-y-[-2px] shadow-xl shadow-[#E8D200]/20 disabled:opacity-50">
-                                        {saving ? 'Sending...' : 'Send Request'}
+                                        {saving ? t('brandPlacements:featured.form.sending') : t('brandPlacements:featured.form.send')}
                                     </button>
                                 </div>
                             </form>

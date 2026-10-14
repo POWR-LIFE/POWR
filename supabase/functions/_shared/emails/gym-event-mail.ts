@@ -5,10 +5,14 @@
 //   rejected      — POWR asked for one change before it goes out
 //   pulled        — POWR took a published event down, with the reason
 // Sent by send-gym-email from the live_events_gym_mail trigger. Facts come
-// from get_gym_event_mail(); this file is only the words.
+// from get_gym_event_mail(); this file is only the words, in the reader's
+// language (tBusiness "gym.event.*"). POWR's note and the event's own name
+// stay as written.
 
+import { tBusiness } from "../i18n/index.ts";
 import { ctaButton, emailShell, esc, FONT, GOLD, sectionLabel } from "./layout.ts";
-import { fmtDay, lastDay, PORTAL_URL } from "./gym-weekly-recap.ts";
+import { PORTAL_URL } from "./gym-weekly-recap.ts";
+import { fmtCount, fmtDay, fmtDayTime, HTML_MARKUP, labelValue, lastDay } from "./gym-mail-parts.ts";
 
 export type GymEventMailKind = "results_ready" | "approved" | "rejected" | "pulled";
 
@@ -35,17 +39,7 @@ export interface GymEventMailData {
   portalUrl?: string;
 }
 
-const n = (v: number) => Math.max(0, Math.round(v)).toLocaleString("en-GB");
-const plural = (v: number, one: string, many = `${one}s`) => `${n(v)} ${v === 1 ? one : many}`;
-
-function fmtDayTime(iso: string | null | undefined, tz: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: tz });
-}
-
-function podiumRow(r: { rank: number; name: string; points: number; prize?: string | null }, isLast: boolean): string {
+function podiumRow(r: { rank: number; name: string; points: number; prize?: string | null }, isLast: boolean, lang = "en"): string {
   return `
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"${isLast ? "" : ' style="border-bottom:1px solid #161616;"'}>
               <tr>
@@ -57,7 +51,7 @@ function podiumRow(r: { rank: number; name: string; points: number; prize?: stri
                   ${r.prize ? `<p style="margin:2px 0 0;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#8F8203;font-family:${FONT};">${esc(r.prize)}</p>` : ""}
                 </td>
                 <td style="padding:13px 0;vertical-align:middle;text-align:right;white-space:nowrap;">
-                  <span style="font-size:14px;font-weight:600;color:${GOLD};font-family:${FONT};">${n(r.points)}</span>
+                  <span style="font-size:14px;font-weight:600;color:${GOLD};font-family:${FONT};">${fmtCount(r.points, lang)}</span>
                   <span style="font-size:11px;font-weight:300;color:#666666;font-family:${FONT};">&nbsp;POWR</span>
                 </td>
               </tr>
@@ -71,13 +65,15 @@ function quote(note: string): string {
             </table>`;
 }
 
-export function gymEventEmail(data: GymEventMailData): { subject: string; html: string; text: string } {
+export function gymEventEmail(data: GymEventMailData, lang = "en"): { subject: string; html: string; text: string } {
   const gym = data.gymName;
   const ev = data.event;
   const portalUrl = data.portalUrl ?? PORTAL_URL;
   const eventUrl = `${portalUrl}/events/${ev.id}`;
   const top = (data.top ?? []).slice(0, 3);
   const note = (ev.review_note ?? "").trim();
+  const event = ev.name;
+  const markup = { ...HTML_MARKUP, event: esc(ev.name) };
 
   let subject: string;
   let preheader: string;
@@ -90,57 +86,66 @@ export function gymEventEmail(data: GymEventMailData): { subject: string; html: 
 
   switch (data.kind) {
     case "results_ready": {
-      subject = `${ev.name}: the results are in`;
-      headingText = "The results are in.";
-      headingHtml = `The results<br class="br-d"> are <em style="font-style:italic;color:${GOLD};">in.</em>`;
-      const safety = ev.auto_reveal_at ? ` If nobody does, POWR reveals them ${fmtDayTime(ev.auto_reveal_at, data.tz)}.` : "";
-      body = `The board for ${ev.name} sealed after ${lastDay(ev.window_end_at, data.tz)} and the results are set. Reveal the winners from your phone when you're ready: everyone in it gets a notification and your screen flips at the same moment.${safety}`;
-      preheader = top[0] ? `${top[0].name} leads. Reveal from your phone when you're ready.` : `Reveal the winners from your phone when you're ready.`;
-      ctaLabel = "Reveal the winners";
+      subject = tBusiness(lang, "gym.event.resultsReady.subject", { event });
+      headingText = tBusiness(lang, "gym.event.resultsReady.heading");
+      headingHtml = tBusiness(lang, "gym.event.resultsReady.headingHtml", markup);
+      const safety = ev.auto_reveal_at ? ` ${tBusiness(lang, "gym.event.resultsReady.safety", { when: fmtDayTime(ev.auto_reveal_at, data.tz, lang) })}` : "";
+      body = `${tBusiness(lang, "gym.event.resultsReady.body", { event, day: lastDay(ev.window_end_at, data.tz, lang) })}${safety}`;
+      preheader = top[0] ? tBusiness(lang, "gym.event.resultsReady.preheaderLeader", { name: top[0].name }) : tBusiness(lang, "gym.event.resultsReady.preheader");
+      ctaLabel = tBusiness(lang, "gym.event.resultsReady.cta");
       if (top.length) {
         sectionHtml = `
         <tr>
           <td class="sec" style="background-color:#080808;padding:28px 40px 10px;border-bottom:1px solid #111111;">
-            ${sectionLabel("The podium, as it stands")}
-            <p style="margin:6px 0 4px;font-size:12px;font-weight:300;color:#777777;font-family:${FONT};">Only your team can see this until you reveal it.</p>
-            ${top.map((r, i) => podiumRow(r, i === top.length - 1)).join("")}
+            ${sectionLabel(esc(tBusiness(lang, "gym.event.resultsReady.podium")))}
+            <p style="margin:6px 0 4px;font-size:12px;font-weight:300;color:#777777;font-family:${FONT};">${esc(tBusiness(lang, "gym.event.resultsReady.podiumSub"))}</p>
+            ${top.map((r, i) => podiumRow(r, i === top.length - 1, lang)).join("")}
           </td>
         </tr>`;
-        textExtra.push("", "THE PODIUM, AS IT STANDS (only your team can see this until you reveal it)");
-        top.forEach((r) => textExtra.push(`${r.rank}. ${r.name} — ${n(r.points)} POWR${r.prize ? ` (${r.prize})` : ""}`));
+        textExtra.push("", tBusiness(lang, "gym.event.resultsReady.podiumText"));
+        top.forEach((r) => textExtra.push(`${r.rank}. ${r.name} — ${fmtCount(r.points, lang)} POWR${r.prize ? ` (${r.prize})` : ""}`));
       }
       break;
     }
     case "approved": {
-      subject = `${ev.name} is on`;
-      headingText = "It's on.";
-      headingHtml = `It's <em style="font-style:italic;color:${GOLD};">on.</em>`;
-      body = `POWR checked ${ev.name} and it's in the app for your members from now. Scoring starts ${fmtDay(ev.window_start_at, data.tz)}.${data.trusted ? " From here your events go straight out, no check." : ""}`;
-      preheader = `${ev.name} is in the app. Scoring starts ${fmtDay(ev.window_start_at, data.tz)}.`;
-      ctaLabel = "See the event";
-      if (note) { sectionHtml = noteSection("A note from POWR", note); textExtra.push("", `A note from POWR: ${note}`); }
+      const day = fmtDay(ev.window_start_at, data.tz, lang);
+      subject = tBusiness(lang, "gym.event.approved.subject", { event });
+      headingText = tBusiness(lang, "gym.event.approved.heading");
+      headingHtml = tBusiness(lang, "gym.event.approved.headingHtml", markup);
+      body = `${tBusiness(lang, "gym.event.approved.body", { event, day })}${data.trusted ? ` ${tBusiness(lang, "gym.event.approved.trusted")}` : ""}`;
+      preheader = tBusiness(lang, "gym.event.approved.preheader", { event, day });
+      ctaLabel = tBusiness(lang, "gym.event.approved.cta");
+      if (note) {
+        const label = tBusiness(lang, "gym.common.noteFromPowr");
+        sectionHtml = noteSection(esc(label), note);
+        textExtra.push("", labelValue(label, note, lang));
+      }
       break;
     }
     case "rejected": {
-      subject = `${ev.name}: one change before it goes out`;
-      headingText = "One change, then it's on.";
-      headingHtml = `One change,<br class="br-d"> then it's <em style="font-style:italic;color:${GOLD};">on.</em>`;
-      body = `POWR looked at ${ev.name} and asked for a change before it goes out. Edit it in the portal and send it again; it's usually approved within a day.`;
-      preheader = note || `Edit ${ev.name} and send it again.`;
-      ctaLabel = "Edit the event";
-      sectionHtml = noteSection("What to change", note || "Open the event for the note.");
-      textExtra.push("", `What to change: ${note || "open the event for the note."}`);
+      subject = tBusiness(lang, "gym.event.rejected.subject", { event });
+      headingText = tBusiness(lang, "gym.event.rejected.heading");
+      headingHtml = tBusiness(lang, "gym.event.rejected.headingHtml", markup);
+      body = tBusiness(lang, "gym.event.rejected.body", { event });
+      preheader = note || tBusiness(lang, "gym.event.rejected.preheader", { event });
+      ctaLabel = tBusiness(lang, "gym.event.rejected.cta");
+      const label = tBusiness(lang, "gym.event.rejected.label");
+      sectionHtml = noteSection(esc(label), note || tBusiness(lang, "gym.event.rejected.noNote"));
+      textExtra.push("", labelValue(label, note || tBusiness(lang, "gym.event.rejected.noNoteText"), lang));
       break;
     }
     default: {
-      subject = `${ev.name} was pulled`;
-      headingText = `POWR pulled ${ev.name}.`;
-      headingHtml = `POWR pulled<br class="br-d"> <em style="font-style:italic;color:${GOLD};">${esc(ev.name)}.</em>`;
-      body = `It no longer shows in the app for anyone${ev.participants > 0 ? `, including the ${plural(ev.participants, "person", "people")} who had joined` : ""}. If that's a surprise, reply to this email and a person will look.`;
-      preheader = note || `It no longer shows in the app. Reply if that's a surprise.`;
-      ctaLabel = "Open the event";
-      sectionHtml = noteSection("The reason", note || "Reply to this email and we'll explain.");
-      textExtra.push("", `The reason: ${note || "reply to this email and we'll explain."}`);
+      subject = tBusiness(lang, "gym.event.pulled.subject", { event });
+      headingText = tBusiness(lang, "gym.event.pulled.heading", { event });
+      headingHtml = tBusiness(lang, "gym.event.pulled.headingHtml", markup);
+      body = ev.participants > 0
+        ? tBusiness(lang, "gym.event.pulled.bodyJoined", { count: ev.participants, n: fmtCount(ev.participants, lang) })
+        : tBusiness(lang, "gym.event.pulled.body");
+      preheader = note || tBusiness(lang, "gym.event.pulled.preheader");
+      ctaLabel = tBusiness(lang, "gym.event.pulled.cta");
+      const label = tBusiness(lang, "gym.event.pulled.label");
+      sectionHtml = noteSection(esc(label), note || tBusiness(lang, "gym.event.pulled.noNote"));
+      textExtra.push("", labelValue(label, note || tBusiness(lang, "gym.event.pulled.noNoteText"), lang));
       break;
     }
   }
@@ -157,12 +162,12 @@ export function gymEventEmail(data: GymEventMailData): { subject: string; html: 
   const cta = `
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:34px 40px;text-align:center;border-bottom:1px solid #161616;">
-            ${ctaButton(ctaLabel, eventUrl)}
-            <p style="margin:18px 0 0;font-size:12px;font-weight:300;color:#777777;line-height:1.6;font-family:${FONT};">Sent to the team at ${esc(gym)} on POWR.</p>
+            ${ctaButton(esc(ctaLabel), eventUrl)}
+            <p style="margin:18px 0 0;font-size:12px;font-weight:300;color:#777777;line-height:1.6;font-family:${FONT};">${tBusiness(lang, "gym.event.sentToTeamHtml", { gym: esc(gym) })}</p>
           </td>
         </tr>`;
 
-  const html = emailShell({ title: `${ev.name} · ${gym}`, preheader, rows: hero + sectionHtml + cta, unsubscribe: false });
+  const html = emailShell({ title: `${ev.name} · ${gym}`, preheader, rows: hero + sectionHtml + cta, unsubscribe: false, lang });
 
   const text = [
     `${gym} · ${ev.name}`,
@@ -172,7 +177,7 @@ export function gymEventEmail(data: GymEventMailData): { subject: string; html: 
     body,
     ...textExtra,
     "",
-    `${ctaLabel}: ${eventUrl}`,
+    labelValue(ctaLabel, eventUrl, lang),
     "",
     "— POWR",
     "https://powr.life",

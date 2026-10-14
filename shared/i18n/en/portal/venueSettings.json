@@ -1,0 +1,266 @@
+{
+  "days": {
+    "mon": "Monday",
+    "tue": "Tuesday",
+    "wed": "Wednesday",
+    "thu": "Thursday",
+    "fri": "Friday",
+    "sat": "Saturday",
+    "sun": "Sunday"
+  },
+  "hours": {
+    "to": "to",
+    "closed": "Closed",
+    "opens": "{{day}} opens",
+    "closes": "{{day}} closes",
+    "save": "Save hours"
+  },
+  "logoBg": {
+    "dark": "On dark",
+    "black": "On black",
+    "white": "On white",
+    "label": "Logo background"
+  },
+  "fields": {
+    "gymName": "Gym name",
+    "about": "About",
+    "address": "Address",
+    "phone": "Phone",
+    "website": "Website",
+    "websitePlaceholder": "yourgym.com",
+    "openingHours": "Opening hours",
+    "logo": "Logo"
+  },
+  "status": {
+    "saving": "Saving",
+    "saved": "Saved.",
+    "uploading": "Uploading",
+    "undo": "Undo",
+    "remove": "Remove",
+    "replace": "Replace",
+    "upload": "Upload"
+  },
+  "errors": {
+    "didntSave": "That didn’t save.",
+    "uploadFailed": "That upload failed."
+  },
+  "settings": {
+    "loadFailed": "Couldn’t load your settings",
+    "eyebrow": "Settings",
+    "title": "Your gym",
+    "readOnly": "Only an owner can change these details. You can see them, and the team.",
+    "nothingYet": "Nothing yet",
+    "details": {
+      "title": "Details",
+      "intro": "What members see in the app, on your screens and on every post. The name and address also place you on the map.",
+      "aboutHint": "A sentence or two, up to 400 characters. Shown on your gym’s page in the app.",
+      "save": "Save details"
+    },
+    "logo": {
+      "label": "Your logo",
+      "hint": "A PNG with a transparent background is best. It appears on your screens, in the app and on every post the Studio makes.",
+      "looksRight": "It looks right",
+      "bgHint": "Pick the background your logo is made for, so it never sits on the wrong one."
+    },
+    "photo": {
+      "title": "Photo",
+      "label": "Your gym",
+      "hint": "The big picture on your gym’s page in the app. Landscape, the floor or the front, people in it if you can."
+    },
+    "package": {
+      "title": "Package",
+      "body": "What’s switched on, what each package includes, and how to change it.",
+      "see": "See packages"
+    },
+    "email": {
+      "title": "Email",
+      "recapTitle": "Your gym’s week, every Monday",
+      "recapBody": "Sessions, athletes, new faces, the top of the board and your events, in one email. Each of the team chooses for themselves.",
+      "driftTitle": "When someone starts drifting",
+      "driftBody": "A morning email on days when someone goes well past their usual gap between visits. Never more than one a day.",
+      "driftBodyWho": "A morning email on days when someone goes well past their usual gap between visits, with who. Never more than one a day."
+    }
+  },
+  "team": {
+    "title": "Team",
+    "introOwner": "Give the people who run {{gym}} their own login. They can use their POWR app account, or set one up from the link.",
+    "introStaff": "Everyone who can run {{gym}} in the portal. Ask an owner to add someone.",
+    "emailPlaceholder": "name@gym.com",
+    "invite": "Invite",
+    "copyLink": "Copy a setup link instead",
+    "latestLink": "Latest link — works once, for 14 days",
+    "loadFailed": "Couldn’t load the team — nothing has changed.",
+    "waiting": "Waiting to join",
+    "setupLink": "Setup link",
+    "owner": "Owner",
+    "member": "Team",
+    "expires": "expires {{date}}",
+    "onTeam": "On the team",
+    "nobodyYet": "Nobody yet.",
+    "you": "You",
+    "neverSignedIn": "Never signed in",
+    "signedInToday": "Signed in today",
+    "signedInYesterday": "Signed in yesterday",
+    "signedInDaysAgo": "Signed in {{days}}d ago",
+    "confirmRemove": "Remove {{name}} from {{gym}}? They lose access to the portal straight away.",
+    "toast": {
+      "emailed": "Invite emailed to {{email}}",
+      "emailFailed": "Email failed — link copied instead",
+      "linkCopied": "Setup link copied",
+      "cancelled": "Invite cancelled",
+      "removed": "Removed from the team"
+    },
+    "errors": {
+      "load": "Failed to load",
+      "invite": "Failed to create invite",
+      "revoke": "Revoke failed",
+      "remove": "Remove failed"
+    }
+  },
+  "app": {
+    "title": "Your gym in the app",
+    "whatMembersSee": "What a member sees when they tap your pin on Discover",
+    "notLoading": "Your page isn’t loading right now. Try again in a minute.",
+    "readOnly": "Only an owner can change your page. You can see everything here.",
+    "savedLive": "Saved. Members see it now.",
+    "complete": "Your page is complete",
+    "ready": "Ready for members",
+    "notSaved": "Not saved yet",
+    "teamCount": "Your team ({{n}})",
+    "items": {
+      "cover": "Cover photo",
+      "coverHint": "The first thing they see",
+      "logoHint": "On your pin and your page",
+      "name": "Name & address",
+      "nameHint": "How members find you",
+      "hoursHint": "Open or closed, live",
+      "aboutHint": "What it’s like here",
+      "team": "Your team",
+      "teamHint": "Trainers members can book"
+    },
+    "upload": {
+      "notImage": "That isn’t an image. Try a JPG or PNG.",
+      "tooBig": "That image is over {{mb}} MB. Try a smaller one."
+    },
+    "photo": {
+      "change": "Change photo",
+      "add": "Add photo",
+      "none": "No photo",
+      "changeShort": "Change"
+    },
+    "cover": {
+      "body": "The big picture at the top of your page. Landscape works best: the floor or the front, with people in it if you can.",
+      "none": "No cover yet",
+      "upload": "Upload a photo",
+      "studio": "It also goes behind the posts the Studio makes for you."
+    },
+    "logo": {
+      "body": "On your page, on your pin on the map, on your screens and on every post. A PNG with a see-through background is best.",
+      "none": "No logo",
+      "upload": "Upload your logo",
+      "madeFor": "It’s made for",
+      "bgHint": "The background your logo is drawn for, so it never sits on the wrong one."
+    },
+    "name": {
+      "body": "At the top of your page and under your pin. Moving the pin itself is on us: tap it on the map.",
+      "addressPlaceholder": "12 High Street, London"
+    },
+    "hours": {
+      "body": "Members see “Open now” or “Closed” as it happens, and today’s hours under it.",
+      "sameAsMonday": "Same as Monday, every day"
+    },
+    "about": {
+      "body": "A line or two under your name: what it’s like here, who it’s for, what you’re known for.",
+      "placeholder": "Independent strength gym in Hackney. Open 24/7, coached classes every evening, and the best playlist in E8.",
+      "aria": "About your gym"
+    },
+    "pin": {
+      "title": "Your pin",
+      "body": "Where members find you on the map, and where Get Directions takes them. It should sit on your front door.",
+      "noAddress": "No address yet",
+      "wrongPlace": "In the wrong place, or on the wrong side of the building? Tell us and we’ll move it. It matters: it’s how members get to you.",
+      "ask": "Ask POWR to move it"
+    },
+    "home": {
+      "title": "Set as Home Gym",
+      "body": "The button that makes you someone’s gym in POWR.",
+      "detail": "A member who taps it counts as one of yours: on your board, for you in Gym Clash, and in your numbers here. The quickest way to get them to tap it is your join link.",
+      "joinLink": "Get your join link"
+    },
+    "member": {
+      "addTitle": "Add someone",
+      "detailsTitle": "Their details",
+      "addIntro": "A trainer, a coach, anyone members should know. They show on your page as you fill this in.",
+      "editIntro": "Changes show on the phone as you type, and reach members when you save.",
+      "name": "Name",
+      "namePlaceholder": "Sam Carter",
+      "experience": "Experience",
+      "experiencePlaceholder": "8 years",
+      "role": "What they do",
+      "specialties": "Specialties",
+      "bio": "Bio",
+      "bioPlaceholder": "Former county rugby player. Strength first, and making it stick around a busy week.",
+      "booking": "Booking link",
+      "bookingPlaceholder": "calendly.com/sam",
+      "bookingHint": "Gives them a <strong>Book Session</strong> button. Any booking page, or a WhatsApp link.",
+      "profile": "Profile link",
+      "profilePlaceholder": "instagram.com/sam",
+      "profileHint": "Gives them a <strong>View Profile</strong> button: their Instagram or their page on your site.",
+      "show": "Show them in the app",
+      "showHint": "Untick to hide them for now without losing their details.",
+      "add": "Add to your page",
+      "addAnother": "Add someone else",
+      "takeOff": "Take off",
+      "confirmLeaveNamed": "Leave {{name}}’s changes unsaved?",
+      "confirmLeave": "Leave these changes unsaved?",
+      "confirmRemove": "Take {{name}} off your page in the app?",
+      "full": "That’s {{max}} people already. Take someone off first."
+    },
+    "specialties": {
+      "addAnother": "Add another",
+      "typeOne": "Type one and press Enter",
+      "aria": "Add a specialty",
+      "remove": "Remove {{name}}",
+      "hint": "Up to 6. They show as tags when a member opens their card."
+    },
+    "specialtyTags": {
+      "strength": "Strength",
+      "weightLoss": "Weight loss",
+      "muscle": "Muscle building",
+      "mobility": "Mobility",
+      "hiit": "HIIT",
+      "hyrox": "Hyrox",
+      "boxing": "Boxing",
+      "rehab": "Rehab",
+      "nutrition": "Nutrition",
+      "natal": "Pre & postnatal",
+      "yoga": "Yoga",
+      "pilates": "Pilates"
+    },
+    "roles": {
+      "personalTrainer": "Personal trainer",
+      "coach": "Coach",
+      "classInstructor": "Class instructor",
+      "physio": "Physio",
+      "nutritionist": "Nutritionist",
+      "manager": "Manager"
+    },
+    "team": {
+      "body": "Trainers, coaches and staff, on your page in the app. Members can book a session straight from someone’s card.",
+      "notLoading": "Your team isn’t loading right now. Try again in a minute.",
+      "emptyTitle": "Nobody on your page yet",
+      "emptyBody": "Put your PTs in front of every member who opens your page. Each one gets a card with their photo, what they’re good at and a Book Session button.",
+      "addFirst": "Add your first",
+      "hidden": "Hidden",
+      "noBookingLink": "no booking link",
+      "moveUp": "Move {{name}} up",
+      "moveDown": "Move {{name}} down",
+      "hide": "Hide {{name}}",
+      "show": "Show {{name}}",
+      "hideTitle": "Hide from members",
+      "showTitle": "Show to members",
+      "takeOff": "Take {{name}} off",
+      "add": "Add someone"
+    }
+  }
+}

@@ -1,0 +1,238 @@
+{
+  "page": {
+    "status": "Estado",
+    "loadErrorTitle": "No hemos podido cargar sus cifras.",
+    "loadErrorBody": "Algo ha fallado al cargar esta página. No ha cambiado nada en su cuenta.",
+    "checked": "Comprobado ahora mismo",
+    "checkedNamed": "{{name}}: comprobado ahora mismo",
+    "because": "Por qué",
+    "moreThings_one": "{{count}} cosa más requiere su atención",
+    "moreThings_other": "{{count}} cosas más requieren su atención",
+    "delivery": "Entrega",
+    "last30": "Últimos 30 días",
+    "last30Truncated": "Últimos 30 días · se muestran hasta {{max}} canjes",
+    "today": "Hoy"
+  },
+  "actions": {
+    "chooseDelivery": "Elegir método de entrega",
+    "finishConnecting": "Terminar de conectar {{method}}",
+    "finishConnectingFallback": "Terminar de configurar la entrega",
+    "getRewardLive": "Activar una recompensa",
+    "topUp": "Reponer sus códigos",
+    "reconnect": "Reconectar {{method}}",
+    "reconnectFallback": "Reconectar la entrega",
+    "createFirst": "Crear su primera recompensa",
+    "revise": "Revisar su recompensa",
+    "finishDraft": "Terminar su borrador",
+    "reviewListing": "Revisar su ficha",
+    "viewRewards": "Ver mis recompensas"
+  },
+  "method": {
+    "notFinished": "Falta terminar {{method}}",
+    "notFinishedFallback": "Falta terminar la entrega"
+  },
+  "verdict": {
+    "paused": {
+      "headline": "Ahora mismo los miembros no pueden canjear nada de su marca.",
+      "supportHadClaims_one": "No tiene nada activo. Sus recompensas consiguieron {{n}} canje antes de detenerse.",
+      "supportHadClaims_other": "No tiene nada activo. Sus recompensas consiguieron {{n}} canjes antes de detenerse.",
+      "supportNoMethod": "Su recompensa está aprobada, pero aún no tiene forma de entregar códigos. Elija cómo llegan los códigos a los miembros y cárguelos: POWR activará la recompensa en cuanto haya códigos.",
+      "supportNotConnected": "{{status}}. En cuanto los códigos tengan una vía de entrega, POWR activará su recompensa.",
+      "supportConnected": "No tiene nada activo, así que los miembros no tienen nada que canjear."
+    },
+    "dry": {
+      "headline": "Los miembros no pueden canjear {{reward}}: se ha quedado sin códigos.",
+      "supportMany": "{{n}} de sus recompensas activas ya no tienen códigos canjeables.",
+      "supportOne": "La reserva de esta recompensa está vacía, así que un miembro que intente canjearla se quedará bloqueado."
+    },
+    "disconnected": {
+      "headline": "Los miembros no pueden canjear: falta conectar {{method}}.",
+      "headlineFallback": "Los miembros no pueden canjear: su integración no está conectada.",
+      "support": "{{status}}. Sus recompensas siguen visibles, así que los miembros las ven y fallan en el último paso.",
+      "connectionDown": "La conexión no funciona"
+    },
+    "empty": {
+      "headlineConnected": "Aún no hay nada activo. Le falta un paso.",
+      "headline": "Aún no hay nada activo. Le faltan dos pasos.",
+      "supportConnected": "La conexión con {{method}} está lista. Envíe su primera recompensa y POWR la revisará (suele tardar un día).",
+      "supportConnectedFallback": "La entrega está lista. Envíe su primera recompensa y POWR la revisará (suele tardar un día).",
+      "supportNotConnected": "{{status}}. En cuanto los códigos tengan una vía de entrega, envíe su primera recompensa a revisión.",
+      "supportNoMethod": "Elija cómo llegan los códigos a los miembros y después envíe su primera recompensa. POWR la revisa antes de activarla."
+    },
+    "rejected": {
+      "headline": "Su recompensa necesita cambios antes de activarse.",
+      "support": "POWR ha pedido cambios. Revísela y vuelva a enviarla a revisión."
+    },
+    "draft": {
+      "headline": "Tiene una recompensa a medio escribir.",
+      "support": "Su borrador está guardado. Termínelo y envíelo a POWR: la revisión suele tardar un día."
+    },
+    "pending": {
+      "headline": "Está a la espera de POWR. Suele tardar un día.",
+      "support": "Nuestro equipo está revisando su recompensa. No tiene que hacer nada: le avisaremos por correo en cuanto se apruebe."
+    },
+    "unclaimed": {
+      "headline": "Ya está en la app y aún no hay canjes.",
+      "support": "La entrega funciona, así que no es un problema técnico, sino de alcance. Compruebe que su ficha se entiende bien y que el precio parece asequible."
+    },
+    "quiet": {
+      "headline_one": "Está en la app, pero todo está tranquilo. {{n}} día desde el último canje.",
+      "headline_other": "Está en la app, pero todo está tranquilo. {{n}} días desde el último canje.",
+      "support": "La entrega funciona y su ficha está completa, así que no es un problema técnico, sino de alcance."
+    },
+    "good": {
+      "headline_one": "Todo funciona. {{n}} canje en los últimos 30 días.",
+      "headline_other": "Todo funciona. {{n}} canjes en los últimos 30 días.",
+      "support": "Los códigos llegan a los miembros y hoy no hay nada pendiente."
+    }
+  },
+  "facts": {
+    "liveRewards": "Recompensas activas",
+    "claimsBeforeStop": "Canjes antes de parar",
+    "rewardSlots": "Cupo de recompensas",
+    "rewardSlotsUsed": "Cupo usado",
+    "delivery": "Entrega",
+    "outOfStock": "Recompensas sin stock",
+    "stillLive": "Siguen activas",
+    "claimsAllTime": "Canjes en total",
+    "reviewTime": "Tiempo de revisión",
+    "needsChanges": "Requieren cambios",
+    "drafts": "Borradores",
+    "withPowr": "En POWR",
+    "price": "Precio",
+    "lastClaim": "Último canje",
+    "powrSpent": "POWR gastados en su marca",
+    "claims": "Canjes"
+  },
+  "values": {
+    "slots": "{{used}} de {{limit}}",
+    "ready": "Listo",
+    "notChosen": "Sin elegir",
+    "reviewTime": "~1 día",
+    "price": "{{cost}} POWR"
+  },
+  "qual": {
+    "pausedCount_one": "{{n}} recompensa en pausa o pendiente de aprobación",
+    "pausedCount_other": "{{n}} recompensas en pausa o pendientes de aprobación",
+    "mostRecent_one": "el último hace {{count}} día",
+    "mostRecent_other": "el último hace {{count}} días",
+    "submitToGoLive": "envíe una a revisión para activarla",
+    "connectedReady": "conectado y listo para generar códigos",
+    "chooseHow": "elija cómo llegan los códigos a los miembros",
+    "emptyPool": "activas en la app con la reserva vacía",
+    "visibleNow": "visibles para los miembros ahora mismo",
+    "noneYet": "ninguno todavía",
+    "undeliverable": "visibles pero sin entrega posible",
+    "notConnected": "sin conectar",
+    "nothingSubmitted": "nada enviado todavía",
+    "howCodesReach": "cómo llegan los códigos a los miembros",
+    "typicalOnceSubmit": "plazo habitual tras el envío",
+    "sentBack": "devueltas por el equipo de POWR",
+    "unaffected": "sin cambios y aún canjeables",
+    "nothingMeantime": "nada activo mientras tanto",
+    "usedByApproved": "ocupado por recompensas aprobadas",
+    "savedWaiting": "guardados y pendientes de usted",
+    "roomToSubmit": "hay hueco para enviar",
+    "stillToConnect": "pendiente de conectar",
+    "inReview": "en revisión ahora mismo",
+    "connectedGoLive": "conectado, así que puede activarse al momento",
+    "connectBeforeApproval": "conéctelo antes de la aprobación",
+    "typical": "plazo habitual",
+    "listedFor_one": "en la app desde hace {{n}} día",
+    "listedFor_other": "en la app desde hace {{n}} días",
+    "listedToday": "en la app desde hoy",
+    "cheapest": "lo que paga un miembro por su recompensa más barata",
+    "lastClaim_one": "días · {{n}} canje en total",
+    "lastClaim_other": "días · {{n}} canjes en total",
+    "approvedVisible": "aprobadas y visibles ahora",
+    "earnedFirst": "los miembros los ganaron antes de gastarlos",
+    "in30_one": "en 30 días · {{n}} canje en total",
+    "in30_other": "en 30 días · {{n}} canjes en total"
+  },
+  "items": {
+    "revise": "Revisar {{title}}",
+    "reviseFallback": "Revisar su solicitud de recompensa",
+    "reviseDetail": "POWR ha pedido cambios antes de continuar con la revisión.",
+    "finish": "Terminar {{title}}",
+    "finishFallback": "Terminar su borrador de recompensa",
+    "finishDetail": "Su borrador está guardado y listo para continuar.",
+    "addCodes": "Añadir códigos para {{title}}",
+    "addCodesFallback": "Añadir códigos para su recompensa",
+    "addCodesDetail": "Esta recompensa activa ya no tiene códigos canjeables.",
+    "connectDetail": "Los códigos no pueden llegar a los miembros hasta que esto esté hecho.",
+    "backInApp": "Volver a poner una recompensa en la app",
+    "backInAppDetail": "Tiene recompensas, pero ninguna está activa para los miembros."
+  },
+  "chain": {
+    "listed": "Publicado",
+    "stocked": "Con stock",
+    "connected": "Conectado",
+    "delivered": "Entregado",
+    "used": "Usado",
+    "listedSome_one": "{{n}} recompensa visible para los miembros.",
+    "listedSome_other": "{{n}} recompensas visibles para los miembros.",
+    "listedNone": "Todavía no tiene nada en la app, y todo lo demás depende de esto.",
+    "stockedOnDemand": "{{method}} genera un código a demanda, así que no hay reserva que reponer.",
+    "stockedOnDemandFallback": "Su integración genera un código a demanda, así que no hay reserva que reponer.",
+    "stockedDry": "Una recompensa activa se ha quedado sin códigos canjeables.",
+    "stockedOk": "Su reserva tiene códigos listos para entregar.",
+    "connectedNone": "Elija cómo llegan los códigos a los miembros.",
+    "deliveredSome_one": "Se ha entregado {{n}} código a los miembros.",
+    "deliveredSome_other": "Se han entregado {{n}} códigos a los miembros.",
+    "deliveredNone": "Ningún miembro ha canjeado un código todavía.",
+    "usedSome": "Los códigos se usan al pagar y se confirman a POWR.",
+    "usedHeld": "Hay miembros con códigos que aún no han usado.",
+    "usedNone": "Todavía no se ha usado nada al pagar."
+  },
+  "preview": {
+    "aria": "Vista previa: {{title}}",
+    "needsFinishing": "Por terminar",
+    "needsFinishingBody": "Aprobada y lista para verse así: los miembros la verán en cuanto los códigos puedan llegarles.",
+    "liveInApp": "Activa en la app",
+    "exact": "Esto es exactamente lo que ven los miembros.",
+    "oneOther": "Su único canje vino de otra recompensa.",
+    "allOther": "Los {{n}} canjes vinieron de sus otras recompensas.",
+    "oneThis": "Su único canje vino de esta.",
+    "allThis": "Los {{n}} canjes vinieron de esta.",
+    "someThis_one": "{{count}} de sus {{total}} canjes vino de esta.",
+    "someThis_other": "{{count}} de sus {{total}} canjes vinieron de esta.",
+    "nothingLive": "Nada activo todavía",
+    "nothingLiveBody": "Las recompensas aprobadas aparecen aquí tal y como las ven los miembros en la app.",
+    "lastListing_one": "Su última ficha consiguió {{n}} canje.",
+    "lastListing_other": "Su última ficha consiguió {{n}} canjes."
+  },
+  "redemptions": {
+    "eyebrow": "Analítica",
+    "title": "Canjes",
+    "range": "Últimos {{days}} días",
+    "loadErrorTitle": "No se han podido cargar sus cifras",
+    "loadErrorBody": "Algo ha fallado al cargar sus canjes. No ha cambiado nada en su cuenta.",
+    "nothingTitle": "No hay canjes que mostrar",
+    "nothingNoRewards": "Todavía no ha creado ninguna recompensa. En cuanto una esté activa, cada canje aparecerá aquí con totales diarios y un desglose por recompensa.",
+    "nothingNotLive": "Ninguna de sus recompensas está activa todavía, así que los miembros no tienen nada que canjear. Sus cifras empezarán en cuanto se apruebe una.",
+    "statTotal": "Total",
+    "statRedemptions": "canjes",
+    "statDailyAvg": "Media diaria",
+    "statPerDay": "por día",
+    "statRewards": "Recompensas",
+    "statLive": "activas",
+    "byReward": "Por recompensa",
+    "inactive": "Inactiva",
+    "recent": "Actividad reciente",
+    "emptyRange": "Ningún canje en los últimos {{days}} días",
+    "emptyRangeLive": "Sus recompensas activas siguen en la app: los canjes aparecerán aquí a medida que los miembros los hagan. Amplíe el periodo para ver actividad anterior.",
+    "emptyRangeNotLive": "Ahora mismo no tiene nada activo, así que los miembros no tienen nada que canjear.",
+    "colDate": "Fecha y hora",
+    "colReward": "Recompensa",
+    "colCode": "Código",
+    "showing": "Se muestran 50 de {{total}}. Acote las fechas para ver más",
+    "copyCode": "Copiar código",
+    "copyFailed": "No se ha podido copiar. Selecciónelo a mano",
+    "status": {
+      "claimed": "Canjeado",
+      "used": "Usado",
+      "expired": "Caducado",
+      "refunded": "Reembolsado"
+    }
+  }
+}

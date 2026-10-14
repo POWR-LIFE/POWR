@@ -12,18 +12,26 @@
 // RPC against Vault (same pattern as the other cron functions).
 //
 // Operational body params (all optional):
-//   { dry_run, only_email, deliver_to, week_start, limit, sample }
+//   { dry_run, only_email, deliver_to, week_start, limit, sample, lang }
 //   - deliver_to redirects delivery and is honoured only alongside only_email,
 //     so a full run can never be re-routed to a single inbox by accident.
-//   - sample renders representative data to only_email (still token-gated).
+//   - sample renders representative data to only_email (still token-gated),
+//     in `lang` ("fr", "es": drafts included) — English otherwise.
+//
+// Language: each portal login gets the report in its own profiles.language
+// (BUSINESS_LANGUAGES; English until the partner portal speaks theirs), with
+// the week label in the same language.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/mailgun.ts";
 import {
+  partnerWeekLabel,
   partnerWeeklySummaryEmail,
   type PartnerWeeklySummaryData,
 } from "../_shared/emails/partner-weekly-summary.ts";
+import { brandRecipientLanguages } from "../_shared/brandLanguages.ts";
+import { businessPreviewLanguage } from "../_shared/i18n/index.ts";
 
 const REPLY_TO = "support@powr.life";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -35,17 +43,6 @@ function mostRecentMondayUTC(now: Date): Date {
   const daysSinceMonday = (d.getUTCDay() + 6) % 7;
   d.setUTCDate(d.getUTCDate() - daysSinceMonday);
   return d;
-}
-
-/** "9–15 Jun" or "30 Jun – 6 Jul" for the [since, untilExclusive) window. */
-function formatWeekLabel(since: Date, untilExclusive: Date): string {
-  const end = new Date(untilExclusive.getTime() - DAY_MS);
-  const mon = (dt: Date) => dt.toLocaleString("en-GB", { month: "short", timeZone: "UTC" });
-  const ds = since.getUTCDate();
-  const de = end.getUTCDate();
-  return mon(since) === mon(end)
-    ? `${ds}–${de} ${mon(end)}`
-    : `${ds} ${mon(since)} – ${de} ${mon(end)}`;
 }
 
 interface BrandReportRow {
@@ -130,7 +127,13 @@ Deno.serve(async (req: Request) => {
     : new Date(mostRecentMondayUTC(now).getTime() - 7 * DAY_MS);
   const until = new Date(since.getTime() + 7 * DAY_MS);
   const prevSince = new Date(since.getTime() - 7 * DAY_MS);
-  const weekLabel = formatWeekLabel(since, until);
+  // "9–15 Jun" — the English one is also the run's label in the response.
+  const weekLabel = partnerWeekLabel(since, until);
+  const labels = new Map<string, string>([["en", weekLabel]]);
+  const weekLabelIn = (lang: string) => {
+    if (!labels.has(lang)) labels.set(lang, partnerWeekLabel(since, until, lang));
+    return labels.get(lang)!;
+  };
 
   if (sample) {
     if (!onlyEmail) {
@@ -138,7 +141,8 @@ Deno.serve(async (req: Request) => {
         status: 400, headers: { "Content-Type": "application/json" },
       });
     }
-    const rendered = partnerWeeklySummaryEmail(sampleData(weekLabel));
+    const lang = businessPreviewLanguage(typeof body?.lang === "string" ? body.lang : null);
+    const rendered = partnerWeeklySummaryEmail(sampleData(weekLabelIn(lang)), lang);
     if (!dryRun) {
       await sendEmail({ to: onlyEmail, subject: rendered.subject, html: rendered.html, text: rendered.text, replyTo: REPLY_TO });
     }
@@ -164,6 +168,9 @@ Deno.serve(async (req: Request) => {
   if (onlyEmail) recipients = recipients.filter((r) => r.portal_email.toLowerCase() === onlyEmail);
   if (limit !== null) recipients = recipients.slice(0, limit);
 
+  // Each login's language, by address (no reads while English is the only one live).
+  const languages = await brandRecipientLanguages(admin, null);
+
   const results: { email: string; brand: string; ok: boolean; error?: string }[] = [];
   let sent = 0;
 
@@ -172,7 +179,8 @@ Deno.serve(async (req: Request) => {
     await Promise.all(
       batch.map(async (row) => {
         const to = deliverTo ?? row.portal_email;
-        const rendered = partnerWeeklySummaryEmail(rowToEmailData(row, weekLabel));
+        const lang = languages.get(row.portal_email.trim().toLowerCase()) ?? "en";
+        const rendered = partnerWeeklySummaryEmail(rowToEmailData(row, weekLabelIn(lang)), lang);
         try {
           if (!dryRun) {
             await sendEmail({ to, subject: rendered.subject, html: rendered.html, text: rendered.text, replyTo: REPLY_TO });

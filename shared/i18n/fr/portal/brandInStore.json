@@ -1,0 +1,266 @@
+{
+  "errors": {
+    "generic": "Une erreur s’est produite"
+  },
+  "copy": {
+    "button": "Copier",
+    "linkCopied": "Lien copié",
+    "failed": "Échec de la copie. Sélectionnez le texte et copiez-le."
+  },
+  "where": {
+    "online": {
+      "label": "En ligne",
+      "blurb": "Un code ou un lien pour votre site. Disponible dès aujourd’hui."
+    },
+    "inStore": {
+      "label": "En magasin",
+      "blurb": "Un bon live que les membres présentent à votre caisse."
+    },
+    "both": {
+      "label": "Les deux",
+      "blurb": "Une seule récompense. Les membres l’utilisent comme ils veulent."
+    }
+  },
+  "check": {
+    "staffScan": {
+      "label": "Scan par le personnel",
+      "blurb": "Le personnel scanne le bon sur powr.life/scan, depuis n’importe quel téléphone ou une tablette en caisse.",
+      "reports": "Confirmé"
+    },
+    "look": {
+      "label": "Contrôle à l’écran",
+      "blurb": "Le personnel vérifie le bon live et glisse pour le valider sur le téléphone du membre. Rien à installer.",
+      "reports": "Présenté, non confirmé"
+    },
+    "tillBarcode": {
+      "label": "Code-barres en caisse",
+      "blurb": "Les membres présentent l’un de vos propres codes-barres et votre caisse le scanne. Pour les enseignes.",
+      "reports": "Confirmé via votre rapport de caisse"
+    }
+  },
+  "describe": {
+    "onlineOnly": "En ligne uniquement",
+    "both": "En ligne + en magasin",
+    "inStore": "En magasin"
+  },
+  "time": {
+    "justNow": "à l’instant",
+    "minutesAgo": "il y a {{count}} min",
+    "hoursAgo": "il y a {{count}} h",
+    "yesterday": "hier",
+    "daysAgo_one": "il y a {{count}} jour",
+    "daysAgo_other": "il y a {{count}} jours"
+  },
+  "comingSoon": {
+    "title": "L’utilisation en magasin arrive bientôt",
+    "body": "Les membres pourront utiliser vos récompenses à votre caisse avec un bon live. Nous vous préviendrons dès que ce sera prêt pour vos magasins."
+  },
+  "page": {
+    "eyebrow": "En magasin",
+    "title": "Vos magasins",
+    "intro": "Les membres échangent leurs points contre une récompense, puis présentent un bon live à votre caisse. Il change toutes les quelques secondes : une capture d’écran ne fonctionne pas.",
+    "loadFailed": "Impossible de charger vos magasins",
+    "loadFailedBody": "{{error}} Rien n’a changé sur votre compte."
+  },
+  "steps": {
+    "addShop": "Ajouter un magasin",
+    "addShopHint": "Ajoutez chaque magasin avec un repère sur la carte, pour que les membres sachent où utiliser vos récompenses.",
+    "turnOn": "Activer une récompense",
+    "turnOnHint": "Choisissez une récompense, puis En magasin ou Les deux.",
+    "till": "Préparer la caisse",
+    "tillHint": "Donnez à chaque membre du personnel son propre lien de scan, ou ouvrez la page de scan sur une tablette en caisse.",
+    "done": "Tout est prêt. Les membres peuvent utiliser vos récompenses en caisse."
+  },
+  "tabs": {
+    "label": "En magasin",
+    "rewards": "Récompenses",
+    "sites": "Magasins",
+    "staff": "Personnel",
+    "scan": "Page de scan"
+  },
+  "rewards": {
+    "emptyTitle": "Aucune récompense pour l’instant",
+    "emptyBody": "Créez d’abord une récompense. Choisissez « En magasin » comme mode de livraison : elle apparaîtra ici, prête à configurer.",
+    "create": "Créer une récompense",
+    "notLive": "Inactive",
+    "inStore": "En magasin",
+    "recommended": "Recommandé",
+    "reports": "Dans les rapports : {{outcome}}"
+  },
+  "editor": {
+    "memberSteps": {
+      "claim": "Échange ses points contre la récompense.",
+      "openAtTill": "À votre caisse, l’ouvre et touche « Utiliser en magasin ».",
+      "scanStand": "Scanne le présentoir POWR sur votre comptoir.",
+      "showForScan": "Présente le bon live. Votre personnel le scanne.",
+      "showForSwipe": "Présente le bon live. Votre personnel le vérifie et glisse pour valider.",
+      "showBarcode": "Présente votre code-barres. Votre caisse le scanne.",
+      "orOnline": "Ou utilise le code lors du paiement sur votre site.",
+      "online": "Utilise le code lors du paiement sur votre site."
+    },
+    "needs": {
+      "scanPage": "powr.life/scan ouvert sur un téléphone, ou une tablette en caisse",
+      "ownLink": "Un lien de scan personnel, depuis l’onglet Personnel",
+      "look": "Connaître l’offre, et glisser pour valider le bon sur le téléphone du membre",
+      "barcode": "Rien de nouveau. Votre caisse accepte déjà ces codes.",
+      "stand": "Un présentoir POWR imprimé sur chaque comptoir (onglet Magasins)",
+      "online": "Rien. Tout se passe lors du paiement sur votre site."
+    },
+    "pickShop": "Choisissez au moins un magasin, ou tous les magasins.",
+    "saved": "Enregistré. Les membres voient le changement immédiatement.",
+    "savedOnline": "Enregistré. Cette récompense est uniquement en ligne.",
+    "whereTitle": "Où les membres peuvent-ils l’utiliser ?",
+    "switchToInStore": "Les membres ne recevront plus de code pour cette récompense : ils présenteront un bon live à votre caisse. Les codes déjà obtenus restent valables.",
+    "onlineNeedsCodes": "L’utilisation en ligne nécessite des codes. Chargez-les dans Codes promo avant que les membres l’obtiennent en ligne.",
+    "checkTitle": "Comment votre magasin la vérifie-t-il ?",
+    "barcodeType": "Type de code-barres lu par votre caisse",
+    "barcodeHelp": "Importez vos codes dans Codes promo. Pour confirmer ceux qui ont été utilisés, importez la liste des codes utilisés de votre caisse dans Codes promo › Rapprochement.",
+    "goPromoCodes": "Aller à Codes promo",
+    "standLabel": "Les membres scannent d’abord votre présentoir QR",
+    "standDetail": "Prouve que le membre est dans le magasin avant l’ouverture du bon. Imprimez un présentoir pour chaque magasin dans l’onglet Magasins.",
+    "spendLabel": "Demander le montant au personnel",
+    "spendDetail": "Le personnel peut saisir le montant dépensé par le membre, pour que vous voyiez ce que l’offre rapporte. Ce n’est pas obligatoire.",
+    "windowLabel": "Le bon reste ouvert",
+    "minutes_one": "{{count}} minute",
+    "minutes_other": "{{count}} minutes",
+    "windowHint": "L’ouvrir ne le consomme pas. Si le temps est écoulé, le membre l’ouvre simplement à nouveau.",
+    "shopsTitle": "Quels magasins ?",
+    "noShops": "Vous n’avez pas encore ajouté de magasin. <add>Ajoutez-en un dans Magasins</add> pour que les membres sachent où l’utiliser.",
+    "allShops": "Tous les magasins, y compris ceux ajoutés plus tard",
+    "memberTitle": "Ce que fait le membre",
+    "staffTitle": "Ce dont votre personnel a besoin"
+  },
+  "sites": {
+    "rotateConfirm": "Créer un nouveau présentoir pour {{name}} ? L’ancien présentoir imprimé cessera de fonctionner : imprimez le nouveau et remplacez-le tout de suite.",
+    "rotated": "Nouveau présentoir prêt à imprimer",
+    "add": "Ajouter un magasin",
+    "emptyTitle": "Aucun magasin pour l’instant",
+    "emptyBody": "Ajoutez chaque magasin avec son repère sur la carte. Les membres voient quels magasins acceptent vos récompenses, et chaque magasin reçoit son propre présentoir de comptoir.",
+    "noAddress": "Aucune adresse",
+    "lastScan": "Dernier scan {{when}}",
+    "swipesNoScans": "Glissements, pas encore de scan",
+    "noVisits": "Aucune visite pour l’instant",
+    "mapPin": "Repère sur la carte",
+    "pinSet": "Placé",
+    "radius": "Les membres à moins de {{radius}} m comptent comme présents dans le magasin.",
+    "edit": "Modifier le magasin",
+    "qrStand": "Présentoir QR",
+    "standSize": "A5, pour le comptoir. Propre à ce magasin.",
+    "print": "Imprimer le présentoir",
+    "replaceTitle": "Remplacer un présentoir perdu ou copié",
+    "newStand": "Nouveau présentoir",
+    "rewardsHere": "Récompenses ici",
+    "inStoreCount_one": "{{count}} en magasin",
+    "inStoreCount_other": "{{count}} en magasin",
+    "noneYet": "Aucune pour l’instant",
+    "turnOnHint": "Activez une récompense dans l’onglet Récompenses."
+  },
+  "siteEditor": {
+    "noGeolocation": "Ce navigateur ne peut pas partager sa position.",
+    "locationFailed": "Impossible d’obtenir votre position. Placez plutôt le repère sur la carte.",
+    "needName": "Donnez un nom au magasin",
+    "needPin": "Placez un repère sur la carte pour ce magasin",
+    "added": "Magasin ajouté",
+    "saved": "Magasin enregistré",
+    "removeConfirm": "Supprimer {{name}} ? Les membres ne le verront plus et son présentoir cessera de fonctionner.",
+    "removed": "Magasin supprimé",
+    "addTitle": "Ajouter un magasin",
+    "editTitle": "Modifier {{name}}",
+    "name": "Nom du magasin",
+    "namePlaceholder": "ex. : Le Marais",
+    "address": "Adresse",
+    "addressPlaceholder": "Rue, code postal",
+    "paste": "Coller un lien Google Maps (facultatif)",
+    "pastePlaceholder": "https://maps.google.com/… ou 51.5246, -0.0786",
+    "useHere": "Je suis dans le magasin",
+    "mapLabel": "Magasin",
+    "radiusLabel": "Compte comme dans le magasin à moins de",
+    "pinAt": "Repère : {{lat}}, {{lng}}",
+    "pinHint": "Recherchez, cliquez sur la carte ou collez un lien pour placer le repère.",
+    "add": "Ajouter le magasin",
+    "save": "Enregistrer le magasin",
+    "remove": "Supprimer le magasin"
+  },
+  "staff": {
+    "needName": "Ajoutez son nom",
+    "reissueConfirm": "Créer un nouveau lien pour {{name}} ? Son ancien lien cessera de fonctionner.",
+    "revokeConfirm": "Retirer {{name}} ? Son lien de scan cessera de fonctionner immédiatement.",
+    "removed": "Accès de {{name}} supprimé",
+    "intro": "Chaque personne reçoit son propre lien de scan. Elle l’ouvre une fois sur son téléphone, qui s’en souvient. Un lien de scan sert uniquement à vérifier et confirmer des bons : pas de rapports, pas de paramètres. Chaque scan est associé à une personne et à un magasin.",
+    "name": "Nom",
+    "namePlaceholder": "ex. : Camille",
+    "usualShop": "Magasin habituel",
+    "anyShop": "Tous les magasins",
+    "make": "Créer un lien de scan",
+    "linkFor": "Lien de scan pour {{name}}",
+    "linkOnce": "Envoyez-le maintenant. Par sécurité, il ne s’affiche qu’une fois ; vous pouvez en créer un nouveau à tout moment.",
+    "hideLink": "Masquer le lien",
+    "listTitle": "Personnel avec un lien de scan",
+    "nobody": "Personne pour l’instant. Les utilisateurs connectés au portail peuvent toujours scanner depuis powr.life/scan.",
+    "lastScan": "Dernier scan {{when}}",
+    "openedNoScans": "Lien ouvert, aucun scan pour l’instant",
+    "notOpened": "Lien pas encore ouvert",
+    "newLink": "Nouveau lien",
+    "remove": "Retirer"
+  },
+  "scanTab": {
+    "phone": "Sur un téléphone",
+    "phoneBody": "Chaque membre du personnel ouvre son lien de scan une fois, et c’est réglé. Vous pouvez aussi l’ouvrir ici tant que votre session est ouverte.",
+    "openScanPage": "Ouvrir la page de scan",
+    "tablet": "Sur une tablette en caisse",
+    "tabletBody": "Le mode borne fait deux choses. Il affiche un QR code qui change toutes les 30 secondes, à scanner par les membres, et il scanne leurs bons avec la caméra frontale. Il affiche aussi le bilan du jour.",
+    "openKiosk": "Ouvrir le mode borne"
+  },
+  "report": {
+    "loadFailed": "Impossible de charger les chiffres en magasin pour le moment.",
+    "title": "En magasin",
+    "outcome": {
+      "confirmed": "Confirmé",
+      "swiped": "Glissé, non confirmé",
+      "closed": "Fermé sans utilisation",
+      "open": "Ouvert en ce moment"
+    },
+    "tip": "{{label}} · {{n}} sur {{total}} · {{pct}}",
+    "segmentA11y": "{{label}} : {{n}} sur {{total}}, {{pct}}",
+    "opened": "Ouverts en caisse",
+    "openedSub": "Récompenses ouvertes par les membres dans vos magasins",
+    "confirmed": "Confirmés",
+    "confirmedSub": "{{pct}} des bons ouverts · scannés par le personnel",
+    "swiped": "Glissés, non confirmés",
+    "swipedSub": "Présentés et glissés, jamais scannés",
+    "spend": "Dépenses enregistrées",
+    "spendSub_one": "Sur {{count}} visite · moyenne {{average}}",
+    "spendSub_other": "Sur {{count}} visites · moyenne {{average}}",
+    "spendNone": "Le personnel peut saisir le montant au moment du scan",
+    "breakdown_one": "Ce qu’est devenu le bon ouvert",
+    "breakdown_other": "Ce que sont devenus les {{count}} bons ouverts",
+    "byShop": "Par magasin",
+    "columns": {
+      "shop": "Magasin",
+      "opened": "Ouverts",
+      "confirmed": "Confirmés",
+      "swiped": "Glissés seulement",
+      "closed": "Fermés sans utilisation",
+      "rate": "Taux de confirmation",
+      "spend": "Dépenses"
+    },
+    "latest": "Dernières utilisations en magasin",
+    "scannedBy": "scanné par {{name}}",
+    "swipedOnPhone": "glissé sur le téléphone du membre",
+    "footnote": "Confirmé signifie que votre personnel a scanné le bon. Glissé signifie que le personnel l’a validé en glissant sur le téléphone du membre : nous le comptons, mais cela ne prouve pas que la réduction a été accordée.",
+    "barcodes": "Codes-barres en caisse : <strong>{{issued}}</strong> distribués, <strong>{{used}}</strong> confirmés par votre rapport de caisse.",
+    "barcodesReconcile": "Importez votre liste de codes utilisés dans Codes promo › Rapprochement pour mettre ce chiffre à jour."
+  },
+  "stand": {
+    "docTitle": "Présentoir POWR · {{name}}",
+    "gone": "Ce magasin a été supprimé, ou il appartient à une autre marque.",
+    "print": "Imprimer",
+    "printHint": "A5, portrait. Utilisez du papier cartonné épais si possible.",
+    "headline": "Une récompense POWR ?",
+    "headlineBold": "Scanne ici, en caisse.",
+    "stepOpen": "Ouvre POWR",
+    "stepWallet": "Portefeuille",
+    "stepUse": "Utiliser en magasin",
+    "footer": "PRÉSENTOIR {{code}} · POWR.LIFE"
+  }
+}

@@ -3,8 +3,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeftRight, BookOpen, Check, ChevronDown, ChevronRight, Code2, LifeBuoy, Minus, Store, Ticket, TriangleAlert } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
+import i18n from '../../lib/i18n';
 import { DOCS_PATHS } from '../../lib/partnerApi';
 
 export const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
@@ -14,49 +16,72 @@ export const BTN_GHOST = 'h-9 px-4 text-[9px] font-black uppercase tracking-[0.2
 // The one place the three delivery methods are described. Order matters:
 // this is the pitch order on the chooser (API first, then Shopify, then
 // manual) and everywhere cards are rendered.
+//
+// The words are keys (brandIntegration:methods.*), translated where they
+// render. `label` is a getter so every page that reads method.label
+// (Overview, Settings, the wrong-method notice) gets it in the language on
+// screen at the moment it renders, never the one the file loaded in.
 export const DELIVERY_METHODS = [
     {
         id: 'api',
-        label: 'API',
+        labelKey: 'brandIntegration:methods.api.label',
         icon: Code2,
         path: '/partner/integration/api',
-        tagline: 'Full control from your own stack — API keys, signed webhooks, and just-in-time code minting.',
-        bestFor: 'Teams with engineers',
-        beats: ['Create an API key', 'Receive signed webhooks', 'Mint codes on demand'],
+        taglineKey: 'brandIntegration:methods.api.tagline',
+        bestForKey: 'brandIntegration:methods.api.bestFor',
+        beatKeys: [
+            'brandIntegration:methods.api.beats.key',
+            'brandIntegration:methods.api.beats.webhooks',
+            'brandIntegration:methods.api.beats.mint',
+        ],
+        get label() { return i18n.t(this.labelKey); },
     },
     {
         id: 'shopify',
-        label: 'Shopify',
+        labelKey: 'brandIntegration:methods.shopify.label',
         icon: Store,
         path: '/partner/integration/shopify',
-        tagline: 'Connect your store once — POWR mints a fresh single-use discount per redemption and marks it used at your checkout.',
-        bestFor: 'Stores on Shopify',
-        beats: ['Connect your store', 'Pick a template discount', 'Codes mint & reconcile themselves'],
+        taglineKey: 'brandIntegration:methods.shopify.tagline',
+        bestForKey: 'brandIntegration:methods.shopify.bestFor',
+        beatKeys: [
+            'brandIntegration:methods.shopify.beats.connect',
+            'brandIntegration:methods.shopify.beats.template',
+            'brandIntegration:methods.shopify.beats.reconcile',
+        ],
+        get label() { return i18n.t(this.labelKey); },
     },
     {
         id: 'manual',
-        label: 'Promo Codes',
+        labelKey: 'brandIntegration:methods.manual.label',
         icon: Ticket,
         path: '/partner/promo-codes',
-        tagline: 'Upload or generate batches of codes right here in the portal — no development work at all.',
-        bestFor: 'Getting live fast',
-        beats: ['Upload or generate codes', 'POWR hands them to members', 'Reconcile used codes anytime'],
+        taglineKey: 'brandIntegration:methods.manual.tagline',
+        bestForKey: 'brandIntegration:methods.manual.bestFor',
+        beatKeys: [
+            'brandIntegration:methods.manual.beats.upload',
+            'brandIntegration:methods.manual.beats.handOut',
+            'brandIntegration:methods.manual.beats.reconcile',
+        ],
+        get label() { return i18n.t(this.labelKey); },
     },
 ];
 
 export const methodMeta = (id) => DELIVERY_METHODS.find(m => m.id === id) ?? null;
 export const integrationPathFor = (id) => methodMeta(id)?.path ?? '/partner/integration';
 
+// Reads in the language on screen; pages drop it into sentences as {{when}}
+// ("Used {{when}}"), so it's phrased to follow a verb: "5m ago", "il y a 5 min".
 export const timeAgo = (iso) => {
     if (!iso) return '—';
     const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-    if (s < 60) return 'just now';
-    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-    return `${Math.floor(s / 86400)}d ago`;
+    if (s < 60) return i18n.t('brandIntegration:shared.timeAgo.justNow');
+    if (s < 3600) return i18n.t('brandIntegration:shared.timeAgo.minutes', { n: Math.floor(s / 60) });
+    if (s < 86400) return i18n.t('brandIntegration:shared.timeAgo.hours', { n: Math.floor(s / 3600) });
+    return i18n.t('brandIntegration:shared.timeAgo.days', { n: Math.floor(s / 86400) });
 };
 
-export function CopyButton({ value, label = 'Copy' }) {
+export function CopyButton({ value, label }) {
+    const { t } = useTranslation();
     const toast = useToast();
     const [copied, setCopied] = useState(false);
     return (
@@ -69,11 +94,11 @@ export function CopyButton({ value, label = 'Copy' }) {
                     setCopied(true);
                     setTimeout(() => setCopied(false), 1500);
                 } catch {
-                    toast.error('Could not copy — select it manually');
+                    toast.error(t('brandIntegration:shared.copyFailed'));
                 }
             }}
         >
-            {copied ? <span className="flex items-center gap-1.5"><Check size={11} /> Copied</span> : label}
+            {copied ? <span className="flex items-center gap-1.5"><Check size={11} /> {t('brandIntegration:shared.copied')}</span> : (label ?? t('brandIntegration:shared.copy'))}
         </button>
     );
 }
@@ -88,6 +113,7 @@ export function CopyButton({ value, label = 'Copy' }) {
 //  - forceOpen: keep the step expanded even once done (e.g. a shown-once
 //    secret is on screen); a manual collapse still wins
 export function SetupFlow({ steps }) {
+    const { t } = useTranslation();
     const [toggled, setToggled] = useState({});
     const current = steps.find(s => !s.done && !s.optional) ?? steps.find(s => !s.done) ?? null;
     const doneCount = steps.filter(s => s.done).length;
@@ -103,7 +129,9 @@ export function SetupFlow({ steps }) {
                     />
                 </div>
                 <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999] shrink-0">
-                    {allDone ? 'All set — this now runs itself' : `${doneCount} of ${steps.length} steps done`}
+                    {allDone
+                        ? t('brandIntegration:shared.setup.allDone')
+                        : t('brandIntegration:shared.setup.progress', { count: doneCount, total: steps.length })}
                 </span>
             </div>
 
@@ -133,21 +161,21 @@ export function SetupFlow({ steps }) {
                             </span>
                             <span className="flex-1 min-w-0">
                                 <span className="flex items-center gap-2.5 flex-wrap">
-                                    <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBB]">Step {i + 1}</span>
+                                    <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBB]">{t('brandIntegration:shared.setup.step', { n: i + 1 })}</span>
                                     {step.optional && (
                                         <span className="text-[8px] uppercase tracking-[0.2em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-2.5 py-0.5">
-                                            {step.optional === true ? 'Optional' : step.optional}
+                                            {step.optional === true ? t('brandIntegration:shared.setup.optional') : step.optional}
                                         </span>
                                     )}
                                     {isCurrent && (
                                         <span className="text-[8px] uppercase tracking-[0.2em] font-black text-[#080808] bg-[#E8D200] rounded-full px-2.5 py-0.5">
-                                            Do this next
+                                            {t('brandIntegration:shared.setup.doNext')}
                                         </span>
                                     )}
                                 </span>
                                 <span className="block text-[17px] font-bold tracking-tight text-[#1A1A1A] mt-1">{step.title}</span>
                                 <span className={`block text-[11px] mt-0.5 leading-relaxed ${step.done ? 'text-emerald-600 font-bold' : 'text-[#999]'}`}>
-                                    {step.done ? (step.summary ?? 'Done') : step.detail}
+                                    {step.done ? (step.summary ?? t('brandIntegration:shared.setup.done')) : step.detail}
                                 </span>
                             </span>
                             <ChevronDown size={15} className={`text-[#BBB] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
@@ -164,6 +192,7 @@ export function SetupFlow({ steps }) {
 // put (promo codes) — same numbered-circle language as SetupFlow, plus a
 // one-line hint that always says what to do next.
 export function StageStrip({ steps, doneHint }) {
+    const { t } = useTranslation();
     const current = steps.find(s => !s.done) ?? null;
     const allDone = !current;
     return (
@@ -191,7 +220,7 @@ export function StageStrip({ steps, doneHint }) {
                 })}
             </div>
             <p className={`text-[11px] leading-relaxed mt-3 ${allDone ? 'text-emerald-600 font-bold' : 'text-[#999]'}`}>
-                {allDone ? (doneHint ?? 'All set.') : current.hint}
+                {allDone ? (doneHint ?? t('brandIntegration:shared.stageAllSet')) : current.hint}
             </p>
         </div>
     );
@@ -267,10 +296,11 @@ export function RailLink({ to, icon: Icon, label, detail }) {
 // Header link back to the hub — every method page carries one so switching
 // is always one click away.
 export function ChangeMethodLink() {
+    const { t } = useTranslation();
     return (
         <Link to="/partner/integration"
             className="flex items-center gap-2 h-9 px-4 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#1A1A1A]/30 hover:text-[#1A1A1A] transition-all">
-            <ArrowLeftRight size={11} /> Change method
+            <ArrowLeftRight size={11} /> {t('brandIntegration:shared.changeMethod')}
         </Link>
     );
 }
@@ -278,12 +308,13 @@ export function ChangeMethodLink() {
 // Every method page carries a link to its own public guide, in the same slot,
 // so "how do I set this up" never depends on knowing the docs exist.
 export function GuideLink({ method, label }) {
+    const { t } = useTranslation();
     const path = DOCS_PATHS[method];
     if (!path) return null;
     return (
         <a href={path} target="_blank" rel="noreferrer"
             className="flex items-center gap-2 h-11 px-6 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all">
-            <BookOpen size={14} /> {label ?? 'Setup guide'}
+            <BookOpen size={14} /> {label ?? t('brandIntegration:shared.setupGuide')}
         </a>
     );
 }
@@ -292,6 +323,7 @@ export function GuideLink({ method, label }) {
 // open and prepare a different method's page (migration prep), but it's
 // flagged so nobody thinks two paths are live at once.
 export function WrongMethodNotice({ pageMethod }) {
+    const { t } = useTranslation();
     const { deliveryMethod } = useAuth();
     if (!deliveryMethod || deliveryMethod === pageMethod) return null;
     const current = methodMeta(deliveryMethod);
@@ -300,12 +332,11 @@ export function WrongMethodNotice({ pageMethod }) {
         <div className="mb-8 p-5 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center gap-4 flex-wrap">
             <TriangleAlert size={15} className="text-amber-600 shrink-0" />
             <p className="text-[11px] font-bold text-amber-600 leading-relaxed flex-1 min-w-[240px]">
-                Your rewards currently deliver via {current?.label}. You can prepare {here?.label} here,
-                but it won't take over until you switch methods.
+                {t('brandIntegration:shared.wrongMethod.body', { current: current?.label ?? '', here: here?.label ?? '' })}
             </p>
             <Link to="/partner/integration"
                 className="h-9 px-4 flex items-center text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-amber-500/30 rounded-full text-amber-600 hover:border-amber-500/60 transition-all shrink-0">
-                Switch method
+                {t('brandIntegration:shared.wrongMethod.switch')}
             </Link>
         </div>
     );
@@ -315,16 +346,16 @@ export function WrongMethodNotice({ pageMethod }) {
 // promo-codes workspace stays reachable from their pages even though it's
 // hidden from their nav.
 export function FallbackPoolCard() {
+    const { t } = useTranslation();
     return (
-        <SectionCard icon={LifeBuoy} title="Fallback Codes">
+        <SectionCard icon={LifeBuoy} title={t('brandIntegration:shared.fallback.title')}>
             <div className="flex items-center justify-between gap-6 flex-wrap">
                 <p className="text-[12px] text-[#999] leading-relaxed max-w-xl">
-                    Keep a small buffer of pre-loaded codes — if your integration is ever unavailable at
-                    redemption time, POWR falls back to the pool automatically so members never hit a wall.
+                    {t('brandIntegration:shared.fallback.body')}
                 </p>
                 <Link to="/partner/promo-codes"
                     className="flex items-center gap-2 h-11 px-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all shrink-0">
-                    <Ticket size={13} /> Manage fallback pool
+                    <Ticket size={13} /> {t('brandIntegration:shared.fallback.manage')}
                 </Link>
             </div>
         </SectionCard>

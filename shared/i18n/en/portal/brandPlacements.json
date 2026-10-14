@@ -1,0 +1,261 @@
+{
+  "days": {
+    "sun": "Sun",
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat"
+  },
+  "activities": {
+    "walking": "walking",
+    "running": "running",
+    "cycling": "cycling",
+    "swimming": "swimming",
+    "gym": "gym",
+    "hiit": "hiit",
+    "sports": "sports",
+    "yoga": "yoga",
+    "dance": "dance",
+    "sleep": "sleep"
+  },
+  "status": {
+    "draft": "Draft",
+    "pending_review": "In review",
+    "scheduled": "Scheduled",
+    "live": "Live",
+    "paused": "Paused",
+    "ended": "Ended",
+    "rejected": "Needs changes"
+  },
+  "map": {
+    "map": "Map",
+    "satellite": "Satellite"
+  },
+  "calendar": {
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "requestedTitle": "{{label}} — requested"
+  },
+  "geofence": {
+    "unavailable": "Map unavailable — {{error}}",
+    "searchPlaceholder": "SEARCH A VENUE OR ADDRESS TO DROP THE PIN...",
+    "noCoordinates": "No coordinates on this node",
+    "placePrompt": "Search above or click the map to place this node",
+    "switchToMap": "Switch to map",
+    "switchToSatellite": "Switch to satellite",
+    "recentre": "Recentre on the fence",
+    "fence": "Check-in fence · {{radius}}m",
+    "wakeRing": "Wake ring · {{radius}}m",
+    "dragHint": "Drag the gold ring to adjust"
+  },
+  "gridMap": {
+    "tooLarge": "Area too large — zoom in a little and try again",
+    "loopTooSmall": "Draw a larger loop, or zoom in for finer squares",
+    "loadFailed": "Map couldn’t load",
+    "loadFailedHelp": "{{error}}. Enable the “Maps JavaScript API” and add this domain to the key’s referrer allow-list in Google Cloud Console.",
+    "modes": {
+      "pan": "Pan",
+      "paint": "Paint",
+      "draw": "Draw",
+      "erase": "Erase"
+    },
+    "lassoHint": "Drag to draw an area — squares inside fill in",
+    "searchPlaceholder": "Search a place or address…",
+    "myLocation": "My location",
+    "zoomIn": "Zoom in to select squares"
+  },
+  "explainer": {
+    "eyebrow": "How it works",
+    "title": "Your reward, waiting in the street.",
+    "intro": "A placement buys a piece of the real world. Members inside it get your offer pushed to the front of their rewards — at the moment they are stood in the place you care about.",
+    "beats": {
+      "paint": {
+        "title": "Paint the ground",
+        "copy": "Draw straight onto the map — a high street, the park everyone runs in, the blocks around a gym. Then set the days and hours it should run."
+      },
+      "walkIn": {
+        "title": "A member walks in",
+        "copy": "When a POWR member is physically inside your squares during those hours, their phone knows. No beacon, no scan, nothing for them to do."
+      },
+      "leads": {
+        "title": "Your reward leads",
+        "copy": "Your offer jumps the queue — straight to the top of their vault, in the hero slot, priced in points they have already earned."
+      }
+    },
+    "reportsBack": "Every campaign reports back",
+    "funnel": {
+      "seen": "Seen",
+      "seenSub": "in-app",
+      "visited": "Visited",
+      "visitedSub": "in your squares",
+      "pushed": "Pushed",
+      "pushedSub": "notified",
+      "redeemed": "Redeemed",
+      "redeemedSub": "points spent"
+    },
+    "oneBrand": "<lead>One brand per square.</lead> While your campaign holds a square for a time slot, no other brand can book it.",
+    "mapAlt": "A map of central London with six squares painted gold, and one square another brand has already booked in red.",
+    "mapBadge": "6 squares · Mon–Fri · 6–10am",
+    "booked": "Booked"
+  },
+  "featured": {
+    "eyebrow": "Featured Lineup",
+    "title": "What's On",
+    "intro": "The reward featured at the top of the POWR rewards screen. Your brand is outlined — click any free day to ask for a week.",
+    "requestWeek": "Request A Week",
+    "featuredNow": "Featured Now",
+    "you": "You",
+    "yourWindows": "Your featured windows",
+    "noReward": {
+      "title": "A featured week needs a live reward",
+      "body": "The featured card sends members straight to an offer they can claim, so there has to be one live before you can request a slot. <action>Set up a reward</action>."
+    },
+    "loadingCalendar": "Loading Calendar...",
+    "calendarHint": "Click a free day to request that week · dashed bands are requests, not bookings",
+    "yourRequests": "Your Requests",
+    "awaitingCount_one": "{{count}} awaiting review",
+    "awaitingCount_other": "{{count}} awaiting review",
+    "withdraw": "Withdraw",
+    "requestedNotConfirmed": "Requested · not confirmed",
+    "withdrawRequest": "Withdraw Request",
+    "rewardFallback": "Reward",
+    "requestedLabel": "{{title}} (requested)",
+    "status": {
+      "pending": "Awaiting review",
+      "approved": "Confirmed",
+      "declined": "Not this time",
+      "withdrawn": "Withdrawn"
+    },
+    "form": {
+      "subtitle": "The POWR team confirms every slot",
+      "reward": "Reward to feature",
+      "selectReward": "— Select a reward —",
+      "from": "From",
+      "until": "Until",
+      "quickFill": "Quick fill — week of",
+      "alreadyBooked": "Already booked",
+      "taken": "{{date}} · taken",
+      "note": "Anything we should know? <muted>(optional)</muted>",
+      "notePlaceholder": "A launch date, a campaign you're running, why this week matters…",
+      "holdsNothing": "Only one reward is featured at a time, so a request holds nothing — we'll confirm it here, and you'll see the week turn solid on the calendar.",
+      "sending": "Sending...",
+      "send": "Send Request"
+    },
+    "toast": {
+      "loadFailed": "Some of this page failed to load — try refreshing",
+      "needReward": "Add a live reward first — a featured week has to point at something members can claim",
+      "pickReward": "Pick the reward you want featured",
+      "endAfterStart": "The end date has to be after the start date",
+      "passed": "Pick a window that has not already passed",
+      "overlap": "Part of that window is already booked — pick dates the calendar shows as free",
+      "duplicate": "You already have a request open on those dates",
+      "sendFailed": "Could not send that request — please try again",
+      "sent": "Request sent — the POWR team will confirm or come back to you",
+      "withdrawFailed": "Could not withdraw that request",
+      "withdrawn": "Request withdrawn"
+    }
+  },
+  "placements": {
+    "eyebrow": "Location Boosts",
+    "title": "Placements",
+    "intro": "Boost one of your rewards for members in a place, at the times that matter.",
+    "hideHow": "Hide",
+    "showHow": "How placements work",
+    "newPlacement": "New Placement",
+    "noReward": {
+      "title": "One thing first — you need a live reward",
+      "body": "A placement always boosts a reward you already run. Get one live, then come back and paint its area.",
+      "cta": "Go to my rewards"
+    },
+    "ready": {
+      "title": "Ready when you are",
+      "body": "Pick a reward, paint the area where it should shine, choose the hours. You can save a draft and come back.",
+      "cta": "Create your first placement"
+    },
+    "rewardFallback": "Reward",
+    "squares_one": "{{count}} square",
+    "squares_other": "{{count}} squares",
+    "anyDay": "any day",
+    "statsTitle": "Seen · Visited · Pushed · Redeemed",
+    "revise": "Revise",
+    "continue": "Continue",
+    "reviewing": "POWR is reviewing",
+    "managed": "Managed by POWR",
+    "steps": {
+      "offer": "Offer",
+      "offerDetail": "Choose the reward",
+      "place": "Place & time",
+      "placeDetail": "Set where and when",
+      "review": "Audience & review",
+      "reviewDetail": "Confirm your plan"
+    },
+    "form": {
+      "back": "Back to Placements",
+      "editTitle": "Edit campaign",
+      "newTitle": "New campaign",
+      "subtitle": "Build a draft in stages, then send it to POWR for review",
+      "delete": "Delete",
+      "saveDraft": "Save draft",
+      "coverage": "Coverage area",
+      "clear": "Clear",
+      "legend": {
+        "selected": "Selected",
+        "booked": "Booked (these times)",
+        "requested": "Requested by another brand"
+      },
+      "yourOffer": "Your offer",
+      "summary": "Campaign summary",
+      "startTitle": "Start with the member reward.",
+      "untitled": "Untitled campaign",
+      "startBody": "Choose the reward you want to put in front of nearby POWR members. You can save this and return before choosing a place.",
+      "reviewBody": "Check the choices below. Submission keeps this campaign off until the POWR team has reviewed it.",
+      "summaryReward": "Reward",
+      "summaryArea": "Area",
+      "summaryTiming": "Timing",
+      "notChosen": "Not chosen",
+      "selectedSquares_one": "{{count}} selected square",
+      "selectedSquares_other": "{{count}} selected squares",
+      "dateRange": "{{start}} to {{end}}",
+      "open": "Open",
+      "alwaysOn": "Always on",
+      "campaignName": "Campaign name *",
+      "campaignNamePlaceholder": "e.g. Weekend studio launch",
+      "campaignNameHint": "This is private to your team and makes campaigns easier to find later.",
+      "reward": "Reward *",
+      "chooseReward": "Choose a reward…",
+      "inactive": "{{title}} (inactive)",
+      "rewardsLoading": "Checking which of your rewards are live…",
+      "rewardsError": "Your rewards failed to load — refresh the page to try again.",
+      "noRewards": "You have no live rewards yet — add one under My Rewards first.",
+      "runDates": "Run dates <muted>(empty = always live)</muted>",
+      "dateTo": "to",
+      "days": "Days <muted>(none = every day)</muted>",
+      "certainHours": "Only certain hours",
+      "hourTo": "to",
+      "whoSees": "Who sees it <muted>(none = everyone nearby)</muted>",
+      "whoSeesHint": "Match members by the activities they care about.",
+      "showAtMost": "Show at most <muted>(per member / day)</muted>",
+      "noLimit": "No limit",
+      "beta": "This programme is in beta. Sending your campaign for review never makes it live automatically; the POWR team confirms availability and launch timing first.",
+      "saving": "Saving...",
+      "saveContinue": "Save & continue",
+      "sending": "Sending...",
+      "submit": "Submit for review"
+    },
+    "toast": {
+      "loadFailed": "Failed to load placements",
+      "chooseReward": "Choose which reward to place",
+      "nameCampaign": "Name this campaign so you can find it later",
+      "paintOne": "Paint at least one square on the map",
+      "endBeforeStart": "End date is before the start date",
+      "cellConflict": "Some squares are already booked for these times (shown in red). Erase them and try again.",
+      "draftSaved": "Draft saved",
+      "submitted": "Campaign submitted for review",
+      "confirmRemove": "Remove this placement?",
+      "deleteFailed": "Delete failed",
+      "removed": "Placement removed"
+    }
+  }
+}

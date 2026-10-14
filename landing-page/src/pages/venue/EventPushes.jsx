@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { BellRing, Send } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../lib/i18n';
+import { serverErrorText } from '../../lib/serverErrors';
 import { Card, Micro, BTN_GHOST, fmtNum } from '../../components/portal/ui';
 import { fetchEventPushes, sendStandingsNow, setEventPush } from './venueApi';
 import { fmtDayTime } from './eventUi';
@@ -9,10 +12,21 @@ import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushC
 // previews render _shared/eventPushCopy.ts, the same code send-push builds
 // the real push with, from the same facts (gym_event_push_status.payload).
 // The gym only chooses which go out and when the daily standings land.
+//
+// The previews show what members receive, so they stay English until they
+// follow each member's own language; the words around them are the portal's.
 
 export const STANDINGS_HOURS = Array.from({ length: 15 }, (_, i) => 7 + i);   // 7am–9pm, as gym_event_set_push allows
-const hourLabel = (h) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? 'am' : 'pm'}`;
-const people = (n) => `${fmtNum(n)} ${n === 1 ? 'person' : 'people'}`;
+
+/** "7am" in English; French and Spanish read the 24-hour clock ("07:00"). */
+function hourLabel(h) {
+    if ((i18n.language || 'en') !== 'en') return `${String(h).padStart(2, '0')}:00`;
+    return `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? 'am' : 'pm'}`;
+}
+
+function people(n) {
+    return i18n.t('venueEvents:pushes.people', { count: n, n: fmtNum(n) });
+}
 
 export function Switch({ on, disabled, onChange, label }) {
     return (
@@ -28,6 +42,8 @@ export function Switch({ on, disabled, onChange, label }) {
     );
 }
 
+// What lands on a member's phone, word for word — English until previews
+// follow the member's language (eventPushCopy takes a lang for that).
 export function Preview({ type, payload, off }) {
     const { title, body } = eventPushCopy(type, payload ?? {});
     return (
@@ -59,17 +75,18 @@ function Row({ title, detail, sent, control, children }) {
 }
 
 export default function EventPushes({ ev, gymName, toast }) {
+    const { t } = useTranslation();
     const [status, setStatus] = useState(null);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(null);
 
     const load = useCallback(() => {
-        fetchEventPushes(ev.id).then(setStatus).catch(err => setError(err.message));
+        fetchEventPushes(ev.id).then(setStatus).catch(err => setError(serverErrorText(err)));
     }, [ev.id]);
     // Publishing, joins and sends all change what this card says.
     useEffect(() => { load(); }, [load, ev.status, ev.participants]);
 
-    if (error) return <Card className="p-6 sm:p-8"><Micro>Notifications</Micro><p className="text-sm text-[#888] mt-3">{error}</p></Card>;
+    if (error) return <Card className="p-6 sm:p-8"><Micro>{t('venueEvents:pushes.title')}</Micro><p className="text-sm text-[#888] mt-3">{error}</p></Card>;
     if (!status) return null;
 
     const open = status.editable && ev.editable;
@@ -77,7 +94,7 @@ export default function EventPushes({ ev, gymName, toast }) {
     const sends = (kind) => (status.sent ?? []).filter(s => s.kind === kind);
     const once = (kind) => {
         const s = sends(kind)[0];
-        return s ? `Sent ${fmtDayTime(s.at)} to ${people(s.recipients)}` : null;
+        return s ? t('venueEvents:pushes.sent', { when: fmtDayTime(s.at), people: people(s.recipients) }) : null;
     };
 
     const change = async (patch, ok) => {
@@ -86,7 +103,7 @@ export default function EventPushes({ ev, gymName, toast }) {
             setStatus(await setEventPush(ev.id, patch));
             toast.success(ok);
         } catch (err) {
-            toast.error(err.message);
+            toast.error(serverErrorText(err));
         } finally {
             setBusy(null);
         }
@@ -97,13 +114,13 @@ export default function EventPushes({ ev, gymName, toast }) {
         try {
             const dry = await sendStandingsNow(ev.id, true);
             const n = dry?.recipients ?? 0;
-            if (!n) { toast.error('Nobody on the board yet'); return; }
-            if (!window.confirm(`Send today’s standings to ${people(n)} now? You can do this once a day, and the scheduled one still goes out.`)) return;
+            if (!n) { toast.error(t('venueEvents:pushes.nobodyOnBoard')); return; }
+            if (!window.confirm(t('venueEvents:pushes.confirmSend', { people: people(n) }))) return;
             const res = await sendStandingsNow(ev.id, false);
-            toast.success(`Sent to ${people(res?.recipients ?? n)}`);
+            toast.success(t('venueEvents:pushes.sentTo', { people: people(res?.recipients ?? n) }));
             load();
         } catch (err) {
-            toast.error(err.message);
+            toast.error(serverErrorText(err));
         } finally {
             setBusy(null);
         }
@@ -112,72 +129,72 @@ export default function EventPushes({ ev, gymName, toast }) {
     const a = status.audience ?? { people: 0, reachable: 0 };
     const r = status.registrants ?? { people: 0, reachable: 0 };
     const audience = a.people > 0
-        ? `Your members and recent visitors who haven’t joined: ${people(a.people)} right now, ${fmtNum(a.reachable)} with notifications on.`
-        : `Nobody yet. It goes to members who pick ${gymName} as their gym and anyone who’s trained there in the last 60 days.`;
+        ? t('venueEvents:pushes.audience', { people: people(a.people), reachable: fmtNum(a.reachable) })
+        : t('venueEvents:pushes.audienceNone', { gym: gymName });
     const joined = unpublished
-        ? 'Everyone who joins.'
-        : `Everyone who’s joined: ${people(r.people)} so far, ${fmtNum(r.reachable)} with notifications on.`;
+        ? t('venueEvents:pushes.joinedDraft')
+        : t('venueEvents:pushes.joined', { people: people(r.people), reachable: fmtNum(r.reachable) });
     const rankSends = sends('rank');
     const lastRank = rankSends[0];
 
     return (
         <Card className="p-6 sm:p-8">
-            <div className="flex items-center gap-3 mb-2"><BellRing size={15} className="text-[#8a7600]" /><Micro>Notifications</Micro></div>
+            <div className="flex items-center gap-3 mb-2"><BellRing size={15} className="text-[#8a7600]" /><Micro>{t('venueEvents:pushes.title')}</Micro></div>
             <p className="text-[12px] text-[#999] leading-relaxed mb-6 max-w-2xl">
-                POWR writes them and sends them at the right moment; you choose which go out. Members can turn notifications off in the app.
-                {unpublished && ' Nothing goes out until the event is published.'}
-                {!status.editable && ' The event is over, so here’s what went out.'}
+                {t('venueEvents:pushes.intro')}
+                {unpublished && ` ${t('venueEvents:pushes.introDraft')}`}
+                {!status.editable && ` ${t('venueEvents:pushes.introOver')}`}
             </p>
 
             <div className="divide-y divide-[#F0F0EC]">
                 <Row
-                    title="Announcement"
-                    detail={`${audience} Sent once, in the daytime, at least 30 minutes after the event is published.`}
+                    title={t('venueEvents:pushes.announce')}
+                    detail={`${audience} ${t('venueEvents:pushes.announceWhen')}`}
                     sent={once('announce')}
-                    control={<Switch label="Announcement" on={status.announce} disabled={!open || !!busy}
-                        onChange={on => change({ announce: on }, on ? 'Announcement on' : 'Announcement off')} />}
+                    control={<Switch label={t('venueEvents:pushes.announce')} on={status.announce} disabled={!open || !!busy}
+                        onChange={on => change({ announce: on }, on ? t('venueEvents:pushes.announceOn') : t('venueEvents:pushes.announceOff'))} />}
                 >
                     <Preview type="event_announced" payload={status.payload} off={!status.announce} />
                 </Row>
 
                 <Row
-                    title="Day one"
-                    detail={`${joined} Sent the morning scoring starts.`}
+                    title={t('venueEvents:pushes.kickoff')}
+                    detail={`${joined} ${t('venueEvents:pushes.kickoffWhen')}`}
                     sent={once('kickoff')}
-                    control={<Switch label="Day one" on={status.kickoff} disabled={!open || !!busy}
-                        onChange={on => change({ kickoff: on }, on ? 'Day-one push on' : 'Day-one push off')} />}
+                    control={<Switch label={t('venueEvents:pushes.kickoff')} on={status.kickoff} disabled={!open || !!busy}
+                        onChange={on => change({ kickoff: on }, on ? t('venueEvents:pushes.kickoffOn') : t('venueEvents:pushes.kickoffOff'))} />}
                 >
                     <Preview type="event_kickoff" payload={status.payload} off={!status.kickoff} />
                 </Row>
 
                 {status.finale && (
                     <Row
-                        title="Finale night"
-                        detail={`${joined} Sent the morning of the finale.`}
+                        title={t('venueEvents:pushes.doors')}
+                        detail={`${joined} ${t('venueEvents:pushes.doorsWhen')}`}
                         sent={once('doors')}
-                        control={<Switch label="Finale night" on={status.doors} disabled={!open || !!busy}
-                            onChange={on => change({ doors: on }, on ? 'Finale-night push on' : 'Finale-night push off')} />}
+                        control={<Switch label={t('venueEvents:pushes.doors')} on={status.doors} disabled={!open || !!busy}
+                            onChange={on => change({ doors: on }, on ? t('venueEvents:pushes.doorsOn') : t('venueEvents:pushes.doorsOff'))} />}
                     >
                         <Preview type="event_doors_open" payload={status.payload} off={!status.doors} />
                     </Row>
                 )}
 
                 <Row
-                    title="Daily standings"
-                    detail="Each member gets their own rank and points, and how far they are from the place above. Only while the board is live, never once it’s sealed."
-                    sent={lastRank ? `Last sent ${fmtDayTime(lastRank.at)} to ${people(lastRank.recipients)}${lastRank.source === 'manual' ? ', by your team' : ''}` : null}
+                    title={t('venueEvents:pushes.standings')}
+                    detail={t('venueEvents:pushes.standingsDetail')}
+                    sent={!lastRank ? null : t(lastRank.source === 'manual' ? 'venueEvents:pushes.lastSentTeam' : 'venueEvents:pushes.lastSent', { when: fmtDayTime(lastRank.at), people: people(lastRank.recipients) })}
                     control={
                         <select
-                            aria-label="Daily standings time"
+                            aria-label={t('venueEvents:pushes.standingsTimeA11y')}
                             value={status.rank_at ?? ''}
                             disabled={!open || !!busy}
                             onChange={e => {
                                 const v = e.target.value || null;
-                                change({ rank_at: v }, v ? `Daily standings at ${hourLabel(Number(v.slice(0, 2)))}` : 'Daily standings off');
+                                change({ rank_at: v }, v ? t('venueEvents:pushes.standingsAt', { time: hourLabel(Number(v.slice(0, 2))) }) : t('venueEvents:pushes.standingsOff'));
                             }}
                             className="h-11 pl-4 pr-8 shrink-0 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[12px] font-bold text-[#1A1A1A] disabled:opacity-40 focus:outline-none focus:border-[#E8D200]/60"
                         >
-                            <option value="">Off</option>
+                            <option value="">{t('venueEvents:pushes.off')}</option>
                             {STANDINGS_HOURS.map(h => {
                                 const v = `${String(h).padStart(2, '0')}:00`;
                                 return <option key={h} value={v}>{hourLabel(h)}</option>;
@@ -187,7 +204,7 @@ export default function EventPushes({ ev, gymName, toast }) {
                 >
                     {open && status.rank_ready && (
                         <button type="button" onClick={sendNow} disabled={!!busy} className={`${BTN_GHOST} mt-4 h-10`}>
-                            <Send size={12} /> {busy === 'send' ? 'Sending…' : 'Send today’s standings now'}
+                            <Send size={12} /> {busy === 'send' ? t('venueEvents:pushes.sending') : t('venueEvents:pushes.sendNow')}
                         </button>
                     )}
                 </Row>

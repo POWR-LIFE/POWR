@@ -25,6 +25,20 @@ export const APP_LANGUAGES: readonly string[] = ['en', 'fr', 'es'];
 export const APP_DRAFT_LANGUAGES: readonly string[] = [];
 
 /**
+ * Languages the gym portal (/venue) and the partner portal (/partner) show.
+ * Same rule as the app: a language joins only when every portal screen reads
+ * its text from shared/i18n/<lang>/portal/ and it covers every English string.
+ * __tests__/portalI18n.test.ts holds both portals to it.
+ */
+export const PORTAL_LANGUAGES: readonly string[] = ['en'];
+
+/**
+ * Portal drafts: seen only through the translator preview, `?lang=fr` on any
+ * portal URL (it sticks for the tab; `?lang=off` clears it).
+ */
+export const PORTAL_DRAFT_LANGUAGES: readonly string[] = ['fr', 'es'];
+
+/**
  * Each language in its own words. A picker always lists a language the way its
  * speakers write it, so someone who can't read the current UI can still find
  * their own.

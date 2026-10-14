@@ -10,7 +10,10 @@
 
 export type TeamRow = { role?: string | null; experience?: string | null };
 
-const PT = /^(personal trainers?|pt)$/i;
+// English, plus the role the French and Spanish gym portals fill in for a
+// personal trainer (venueSettings:…personalTrainer), so a team picked from
+// those chips still reads as all trainers.
+const PT = /^(personal trainers?|pt|coachs? sportifs?|entrenador(a|es|as)? personal(es)?)$/i;
 
 export function isPersonalTrainer(role?: string | null): boolean {
   const r = (role ?? '').trim();

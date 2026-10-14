@@ -1,0 +1,215 @@
+{
+  "portalName": "Partner Portal",
+  "loadingPortal": "Loading portal...",
+  "nav": {
+    "overview": "Overview",
+    "myRewards": "My Rewards",
+    "api": "API",
+    "shopify": "Shopify",
+    "promoCodes": "Promo Codes",
+    "integration": "Integration",
+    "inStore": "In Store",
+    "whatsOn": "What's On",
+    "placements": "Placements",
+    "studio": "Studio",
+    "redemptions": "Redemptions",
+    "settings": "Settings",
+    "support": "Support",
+    "guides": "Guides"
+  },
+  "auth": {
+    "emailAddress": "Email address",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "signIn": "Sign In",
+    "passwordsDontMatch": "Passwords do not match",
+    "passwordTooShort": "Password must be at least 8 characters"
+  },
+  "login": {
+    "tagline": "Manage your rewards",
+    "authenticating": "Authenticating...",
+    "loadingPortal": "Loading your portal...",
+    "processing": "Processing...",
+    "backHome": "Back to home"
+  },
+  "setup": {
+    "creatingAccount": "Creating your account...",
+    "signingIn": "Signing you in...",
+    "somethingWrong": "Something went wrong",
+    "invalidTitle": "Invalid link",
+    "invalidBody": "This setup link isn't valid or has been revoked. Contact POWR for a new one.",
+    "usedTitle": "Already set up",
+    "usedBody": "This link has already been used to create an account.",
+    "eyebrow": "Partner Portal Setup",
+    "yourBrand": "Your brand",
+    "title": "Create your account",
+    "sub": "Manage your rewards, track redemptions and update your listing — all in one place.",
+    "yourName": "Your name",
+    "namePlaceholder": "First & last name",
+    "emailPlaceholder": "you@brand.com",
+    "settingUp": "Setting up...",
+    "createAccount": "Create Account",
+    "haveAccount": "Already have an account? <action>Sign in</action>"
+  },
+  "settings": {
+    "eyebrow": "Account",
+    "title": "Settings",
+    "brandInfo": "Brand Info",
+    "brandName": "Brand name",
+    "brandNameHint": "Brand name is managed by POWR. Contact us to change it.",
+    "deliveryMethod": "Delivery Method",
+    "checking": "Checking…",
+    "notChosen": "Not chosen yet",
+    "deliveryHint": "How codes reach members when they redeem — view status or switch method.",
+    "changePassword": "Change Password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmNewPassword": "Confirm new password",
+    "updating": "Updating...",
+    "updatePassword": "Update Password",
+    "currentPasswordWrong": "Current password is incorrect",
+    "passwordUpdated": "Password updated",
+    "help": {
+      "title": "Need a Hand?",
+      "body": "Brand name changes and anything you can't edit here go through the POWR team — send a ticket and we'll reply within one business day.",
+      "contact": "Contact Support"
+    },
+    "listing": {
+      "title": "Your Brand on POWR",
+      "body": "Your logo, imagery and reward descriptions live on each reward listing — that's exactly what members see in the app.",
+      "edit": "Edit Your Listings"
+    }
+  },
+  "team": {
+    "title": "Team",
+    "intro": "Invite teammates to manage {{brand}} with you. Email them an invite or copy a setup link to share — either way they choose their own email and password.",
+    "inviteByEmail": "Invite by email",
+    "send": "Send",
+    "or": "or",
+    "copyLink": "Copy a setup link instead",
+    "loadFailed": "Couldn't load your team",
+    "loadFailedBody": "We couldn't reach the server just then — nothing has changed.",
+    "openLinks": "Open Setup Links",
+    "emailedOn": "Emailed to {{email}} {{date}} · unused",
+    "createdOn": "Created {{date}} · unused",
+    "copied": "Copied",
+    "copy": "Copy",
+    "revoke": "Revoke",
+    "members": "Team Members",
+    "noUsers": "No portal users yet",
+    "you": "You",
+    "invitePending": "Invite pending",
+    "lastLogin": {
+      "never": "Last login: Never",
+      "today": "Last login: Today",
+      "yesterday": "Last login: Yesterday",
+      "daysAgo": "Last login: {{days}}d ago"
+    },
+    "toast": {
+      "linkCreated": "Setup link created & copied — send it to your teammate",
+      "emailed": "Invite emailed to {{email}}",
+      "emailFailed": "Email failed — link copied instead",
+      "linkRevoked": "Setup link revoked",
+      "accessRevoked": "Access revoked"
+    },
+    "errors": {
+      "load": "Failed to load",
+      "createLink": "Failed to create link",
+      "sendInvite": "Failed to send invite",
+      "revoke": "Revoke failed",
+      "remove": "Remove failed"
+    }
+  },
+  "support": {
+    "eyebrow": "Help",
+    "title": "Support",
+    "intro": "Stuck getting set up, or something not working as expected? Send us a ticket and the POWR team will get back to you within one business day.",
+    "categories": {
+      "setup": {
+        "label": "Setup & Integration",
+        "hint": "Getting started, Shopify, API keys, webhooks"
+      },
+      "rewards": {
+        "label": "Rewards & Codes",
+        "hint": "Rewards, promo codes, redemptions"
+      },
+      "account": {
+        "label": "Account & Team",
+        "hint": "Logins, team members, brand details"
+      },
+      "other": {
+        "label": "Something Else",
+        "hint": "Anything not covered above"
+      }
+    },
+    "status": {
+      "open": "Open",
+      "inProgress": "In Progress",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "timeAgo": {
+      "justNow": "just now",
+      "minutes": "{{n}}m ago",
+      "hours": "{{n}}h ago",
+      "days": "{{n}}d ago"
+    },
+    "toast": {
+      "missing": "Please add a subject and a message",
+      "failed": "Could not send your message — please try again",
+      "sent": "Ticket sent — we'll reply within one business day"
+    },
+    "newTicket": "New Ticket",
+    "about": "What's it about?",
+    "subject": "Subject",
+    "subjectPlaceholder": "A short summary of the issue",
+    "message": "Message",
+    "messagePlaceholder": "Tell us what happened, what you expected, and any error messages you saw…",
+    "repliesTo": "Replies go to {{email}}",
+    "sending": "Sending…",
+    "send": "Send Ticket",
+    "yourTickets": "Your Tickets",
+    "awaiting_one": "{{count}} awaiting reply",
+    "awaiting_other": "{{count}} awaiting reply",
+    "caughtUp": "All caught up",
+    "noTickets": "No tickets yet",
+    "categoryFallback": "Support",
+    "yourMessage": "Your Message",
+    "powrSupport": "POWR Support",
+    "waiting": "Waiting on the POWR team",
+    "expect": {
+      "title": "What to Expect",
+      "dayLabel": "One business day",
+      "dayDetail": "The POWR team replies to every ticket — usually much sooner during UK hours.",
+      "repliesLabel": "Replies land here",
+      "repliesDetail": "Answers appear on the ticket below and go to {{email}}.",
+      "repliesDetailNoEmail": "Answers appear on the ticket below and go to your email.",
+      "detailLabel": "Detail speeds things up",
+      "detailDetail": "Include the reward, member or exact error text involved so we can dig in straight away."
+    },
+    "faster": {
+      "title": "Fix It Faster",
+      "guidesLabel": "How-to guides",
+      "guidesDetail": "Step-by-step guides to every page of the portal.",
+      "integrationLabel": "Integration status",
+      "integrationDetail": "Connection health and setup steps for your delivery method.",
+      "rewardsLabel": "Reward listings",
+      "rewardsDetail": "Edit imagery, descriptions and what members see in the app.",
+      "teamLabel": "Team & account",
+      "teamDetail": "Invite teammates or change your password."
+    }
+  },
+  "studio": {
+    "eyebrow": "Studio",
+    "title": "Posts for {{brand}}",
+    "modes": {
+      "post": "One post",
+      "drafts": "Drafts"
+    },
+    "blurb": {
+      "drafts": "Posts saved to finish later. Open one to carry on where it was left — every slide, photo or clip, the words and the look.",
+      "withReward": "Pick a template, add a photo or video, and it’s filled from your reward: the offer, points, logo and colour. Save a draft to finish it later.",
+      "noReward": "Pick a template, add a photo or video, and upload your logo under Words. Once your reward is live, its offer, points and colour fill in too."
+    }
+  }
+}

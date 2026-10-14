@@ -39,6 +39,15 @@
 // Nothing goes to a gym whose portal is off, except the answer to a question
 // it asked while it was on. Never members.
 //
+// Language: each recipient reads their own (profiles.language, gated by
+// BUSINESS_LANGUAGES), so one gym's send splits into one render per language,
+// same content otherwise. The RPCs return addresses; the gym's team
+// (get_gym_mail_context) maps them to users, and anyone it doesn't cover
+// reads English. An invite reminder goes to someone who isn't a user yet: it
+// reads in the inviter's language. While English is the only live business
+// language none of this touches the database, and a failed lookup only ever
+// means English, never a dropped email.
+//
 // Security: verify_jwt=false (pg_net and pg_cron are not users); access is
 // gated by x-resolve-token, validated via verify_resolve_token against
 // Vault, like the other cron mail.
@@ -55,6 +64,8 @@
 //     pick package_changed's.
 //   - lifecycle with only_email runs for that address only, for real: an
 //     invite reminder is a real link, so it never goes to deliver_to.
+//   - lang (samples only): fr | es renders the sample in that language, drafts
+//     included, for review before a language goes live.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -84,6 +95,7 @@ import {
 } from "../_shared/emails/gym-mail.samples.ts";
 import { gymEventEmail, type GymEventMailData, type GymEventMailKind } from "../_shared/emails/gym-event-mail.ts";
 import { gymDriftDigestEmail, type GymDriftDigestData, type GymDriftPerson } from "../_shared/emails/gym-drift-digest.ts";
+import { BUSINESS_LANGUAGES, businessPreviewLanguage, languagesFor } from "../_shared/i18n/index.ts";
 
 const REPLY_TO = "support@powr.life";
 const SITE_URL = Deno.env.get("SITE_URL") ?? "https://powr.life";
@@ -139,6 +151,8 @@ interface DriftRow {
 
 interface SendResult { to: string; gym?: string; ok: boolean; error?: string }
 
+type Rendered = { subject: string; html: string; text: string };
+
 interface TeamMember { user_id: string; role: "owner" | "staff"; email: string; name: string | null }
 
 interface MailContext {
@@ -193,10 +207,10 @@ function newToken(): string {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function recapData(row: RecapRow, notice: GymNoticeReturns | null = null): GymWeeklyRecapData {
+function recapData(row: RecapRow, notice: GymNoticeReturns | null = null, lang = "en"): GymWeeklyRecapData {
   return {
     gymName: row.name,
-    weekLabel: weekLabel(row.week_start, row.week_end, row.tz),
+    weekLabel: weekLabel(row.week_start, row.week_end, row.tz, lang),
     tz: row.tz,
     sessions: row.this?.sessions ?? 0,
     prevSessions: row.last?.sessions ?? 0,
@@ -246,14 +260,14 @@ function eventData(row: EventMailRow, kind: GymEventMailKind): GymEventMailData 
 }
 
 /** Representative data for design QA (send to one address via `sample: true`). */
-function sampleRecap(): GymWeeklyRecapData {
+function sampleRecap(lang = "en"): GymWeeklyRecapData {
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
   const monday = new Date(now); monday.setUTCHours(0, 0, 0, 0); monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
   const start = new Date(monday.getTime() - 7 * day).toISOString();
   return {
     gymName: "POWR Gym Leamington",
-    weekLabel: weekLabel(start, monday.toISOString(), "Europe/London"),
+    weekLabel: weekLabel(start, monday.toISOString(), "Europe/London", lang),
     tz: "Europe/London",
     sessions: 84, prevSessions: 71, athletes: 31, prevAthletes: 28, minutes: 4620,
     newFaces: 3, members: 41,
@@ -328,6 +342,59 @@ async function deliver(
   return sent;
 }
 
+/** Does any gym email go out in a language other than English yet? */
+const multilingual = () => BUSINESS_LANGUAGES.some((lang) => lang !== "en");
+
+// deno-lint-ignore no-explicit-any
+type Admin = any;
+type Person = { email: string | null; user_id: string | null };
+
+/**
+ * One gym's recipients grouped by the language each reads, English first.
+ * `people` maps addresses to users (the gym's team from get_gym_mail_context;
+ * read here for `partnerId` when not given). Addresses it doesn't cover read
+ * English. English only: nothing is read. Never throws.
+ */
+async function byLanguage(admin: Admin, partnerId: string | null, emails: string[], people?: Person[]): Promise<[string, string[]][]> {
+  if (emails.length === 0) return [];
+  if (!multilingual()) return [["en", emails]];
+  const groups = new Map<string, string[]>([["en", []]]);
+  try {
+    let team = people;
+    if (!team && partnerId) {
+      const { data } = await admin.rpc("get_gym_mail_context", { p_partner_id: partnerId });
+      team = (data?.team ?? []) as Person[];
+    }
+    const userOf = new Map<string, string>();
+    for (const p of team ?? []) if (p?.email && p.user_id) userOf.set(p.email.toLowerCase(), p.user_id);
+    const langs = await languagesFor(admin as unknown as Parameters<typeof languagesFor>[0], [...userOf.values()], BUSINESS_LANGUAGES);
+    for (const email of emails) {
+      const id = userOf.get(email.toLowerCase());
+      const lang = (id && langs.get(id)) || "en";
+      groups.set(lang, [...(groups.get(lang) ?? []), email]);
+    }
+  } catch (err) {
+    console.error("[send-gym-email] language lookup failed, sending English:", err);
+    return [["en", emails]];
+  }
+  return [...groups].filter(([, tos]) => tos.length > 0);
+}
+
+/** Renders once per language group and delivers each. `subject` is the first group's. */
+async function deliverByLanguage(
+  groups: [string, string[]][], render: (lang: string) => Rendered, tag: string,
+  dryRun: boolean, results: SendResult[], gym: string | undefined, deliverTo: string | null,
+): Promise<{ sent: number; subject: string | null }> {
+  let sent = 0;
+  let subject: string | null = null;
+  for (const [lang, tos] of groups) {
+    const rendered = render(lang);
+    subject ??= rendered.subject;
+    sent += await deliver(tos.map((to) => deliverTo ?? to), rendered, tag, dryRun, results, gym);
+  }
+  return { sent, subject };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
 
@@ -356,50 +423,52 @@ Deno.serve(async (req: Request) => {
   // ── Samples: one representative email to one address ──────────────────
   if (sample) {
     if (!onlyEmail) return json({ error: "only_email required for sample" }, 400);
-    let rendered: { subject: string; html: string; text: string };
+    // Drafts allowed here (review before a language goes live).
+    const lang = businessPreviewLanguage(str("lang"));
+    let rendered: Rendered;
     let tag: string;
     if (kind === "weekly_recap") {
-      rendered = gymWeeklyRecapEmail(sampleRecap());
+      rendered = gymWeeklyRecapEmail(sampleRecap(lang), lang);
       tag = "gym-weekly-recap";
     } else if (kind === "results_ready") {
-      rendered = gymEventEmail(sampleEvent("results_ready"));
+      rendered = gymEventEmail(sampleEvent("results_ready"), lang);
       tag = "gym-results-ready";
     } else if (kind === "drift_digest") {
-      rendered = gymDriftDigestEmail(sampleDrift());
+      rendered = gymDriftDigestEmail(sampleDrift(), lang);
       tag = "gym-drift-digest";
     } else if (kind === "review_result") {
       const decision = ["approved", "rejected", "pulled"].includes(String(body?.decision)) ? (body.decision as GymEventMailKind) : "approved";
-      rendered = gymEventEmail(sampleEvent(decision));
+      rendered = gymEventEmail(sampleEvent(decision), lang);
       tag = "gym-review-result";
     } else if (kind === "welcome") {
-      rendered = gymWelcomeEmail(sampleWelcome(str("role") === "staff" ? "staff" : "owner"));
+      rendered = gymWelcomeEmail(sampleWelcome(str("role") === "staff" ? "staff" : "owner"), lang);
       tag = "gym-welcome";
     } else if (kind === "invite_reminder") {
-      rendered = gymInviteReminderEmail(sampleInviteReminder(SITE_URL));
+      rendered = gymInviteReminderEmail(sampleInviteReminder(SITE_URL), lang);
       tag = "gym-invite-reminder";
     } else if (kind === "trial_ending") {
-      rendered = gymTrialEmail(sampleTrial("trial_ending", Number(body?.stage) === 3 ? 3 : 14));
+      rendered = gymTrialEmail(sampleTrial("trial_ending", Number(body?.stage) === 3 ? 3 : 14), lang);
       tag = "gym-trial";
     } else if (kind === "trial_ended") {
-      rendered = gymTrialEmail(sampleTrial("trial_ended"));
+      rendered = gymTrialEmail(sampleTrial("trial_ended"), lang);
       tag = "gym-trial";
     } else if (kind === "package_changed") {
       const from = PACKAGES.includes(str("from") ?? "") ? str("from")! : "clash";
       const to = PACKAGES.includes(str("to") ?? "") ? str("to")! : "clash_plus";
-      rendered = gymPackageEmail(samplePackage(from, to));
+      rendered = gymPackageEmail(samplePackage(from, to), lang);
       tag = "gym-package";
     } else if (kind === "support_reply") {
-      rendered = gymSupportReplyEmail(sampleSupportReply(body?.updated === true));
+      rendered = gymSupportReplyEmail(sampleSupportReply(body?.updated === true), lang);
       tag = "gym-support-reply";
     } else if (kind === "clash_night") {
       const d = str("decision");
-      rendered = gymClashNightEmail(sampleClashNight(d === "declined" || d === "called_off" ? d : "confirmed"));
+      rendered = gymClashNightEmail(sampleClashNight(d === "declined" || d === "called_off" ? d : "confirmed"), lang);
       tag = "gym-clash-night";
     } else {
       return json({ error: "unknown_kind" }, 400);
     }
     if (!dryRun) await sendEmail({ to: onlyEmail, subject: rendered.subject, html: rendered.html, text: rendered.text, replyTo: REPLY_TO, tag });
-    return json({ sent: dryRun ? 0 : 1, dry_run: dryRun, mode: "sample", kind, to: onlyEmail, subject: rendered.subject });
+    return json({ sent: dryRun ? 0 : 1, dry_run: dryRun, mode: "sample", kind, lang, to: onlyEmail, subject: rendered.subject });
   }
 
   // ── Monday: every gym's week ──────────────────────────────────────────
@@ -426,8 +495,9 @@ Deno.serve(async (req: Request) => {
         p_partner_id: row.partner_id, p_from: row.week_start, p_to: row.week_end,
       }) as { data: NoticeRow | null; error: unknown };
       if (nrErr) console.error(`get_gym_notice_returns (${row.name}) error:`, nrErr);
-      const rendered = gymWeeklyRecapEmail(recapData(row, nrErr ? null : noticeData(nr, row.week_end)));
-      sent += await deliver(tos.map((to) => deliverTo ?? to), rendered, "gym-weekly-recap", dryRun, results, row.name);
+      const notice = nrErr ? null : noticeData(nr, row.week_end);
+      const groups = await byLanguage(admin, row.partner_id, tos);
+      sent += (await deliverByLanguage(groups, (lang) => gymWeeklyRecapEmail(recapData(row, notice, lang), lang), "gym-weekly-recap", dryRun, results, row.name, deliverTo)).sent;
     }
     const week = rows[0] ? weekLabel(rows[0].week_start, rows[0].week_end, rows[0].tz) : null;
     return json({ kind, week, gyms: rows.length, sent, dry_run: dryRun, skipped, results });
@@ -455,8 +525,8 @@ Deno.serve(async (req: Request) => {
       if (!row.new_count) { skipped.push({ gym: row.name, why: "nobody_new" }); continue; }
       if (row.too_few) { skipped.push({ gym: row.name, why: "too_few" }); continue; }
       if (tos.length === 0) { skipped.push({ gym: row.name, why: "no_recipients" }); continue; }
-      const rendered = gymDriftDigestEmail(driftData(row));
-      sent += await deliver(tos.map((to) => deliverTo ?? to), rendered, "gym-drift-digest", dryRun, results, row.name);
+      const groups = await byLanguage(admin, row.partner_id, tos);
+      sent += (await deliverByLanguage(groups, (lang) => gymDriftDigestEmail(driftData(row), lang), "gym-drift-digest", dryRun, results, row.name, deliverTo)).sent;
     }
     return json({ kind, committed: commit, gyms: rows.length, sent, dry_run: dryRun, skipped, results });
   }
@@ -490,10 +560,10 @@ Deno.serve(async (req: Request) => {
 
     const tos = (data.recipients ?? []).map((e) => e.toLowerCase()).filter((e) => !onlyEmail || e === onlyEmail);
     if (tos.length === 0) return json({ kind, event_id: eventId, skipped: "no_recipients" });
-    const rendered = gymEventEmail(eventData(data, mailKind));
     const results: SendResult[] = [];
-    const sent = await deliver(tos.map((to) => deliverTo ?? to), rendered, tag, dryRun, results, data.gym.name);
-    return json({ kind, mail: mailKind, event_id: eventId, event: data.event.name, gym: data.gym.name, sent, dry_run: dryRun, subject: rendered.subject, results });
+    const groups = await byLanguage(admin, data.gym.id, tos);
+    const { sent, subject } = await deliverByLanguage(groups, (lang) => gymEventEmail(eventData(data, mailKind), lang), tag, dryRun, results, data.gym.name, deliverTo);
+    return json({ kind, mail: mailKind, event_id: eventId, event: data.event.name, gym: data.gym.name, sent, dry_run: dryRun, subject, results });
   }
 
   const context = async (partnerId: string | null): Promise<MailContext | null> => {
@@ -503,11 +573,12 @@ Deno.serve(async (req: Request) => {
     return data?.gym ? data : null;
   };
   const only = (emails: string[]) => [...new Set(emails.map((e) => e.toLowerCase()))].filter((e) => !onlyEmail || e === onlyEmail);
-  const one = async (tos: string[], rendered: { subject: string; html: string; text: string }, tag: string, gym: string, extra: Record<string, unknown> = {}) => {
+  // One email to some of a gym's people, rendered in each one's language.
+  const one = async (tos: string[], people: Person[], render: (lang: string) => Rendered, tag: string, gym: string, extra: Record<string, unknown> = {}) => {
     if (tos.length === 0) return json({ kind, ...extra, gym, skipped: "no_recipients" });
     const results: SendResult[] = [];
-    const sent = await deliver(tos.map((to) => deliverTo ?? to), rendered, tag, dryRun, results, gym);
-    return json({ kind, ...extra, gym, sent, dry_run: dryRun, subject: rendered.subject, results });
+    const { sent, subject } = await deliverByLanguage(await byLanguage(admin, null, tos, people), render, tag, dryRun, results, gym, deliverTo);
+    return json({ kind, ...extra, gym, sent, dry_run: dryRun, subject, results });
   };
 
   try {
@@ -522,11 +593,11 @@ Deno.serve(async (req: Request) => {
       const notice = !ctx.member_notice_at
         ? { sentAt: null, count: null }
         : ctx.member_notice_count != null ? { sentAt: ctx.member_notice_at, count: ctx.member_notice_count } : null;
-      const rendered = gymWelcomeEmail({
+      const render = (lang: string) => gymWelcomeEmail({
         gymName: ctx.gym.name, role: who.role, tz: ctx.gym.tz,
         trialEndsAt: ctx.on_trial ? ctx.trial_ends_at : null, notice,
-      });
-      return await one(only([who.email]), rendered, "gym-welcome", ctx.gym.name, { role: who.role });
+      }, lang);
+      return await one(only([who.email]), ctx.team, render, "gym-welcome", ctx.gym.name, { role: who.role });
     }
 
     // ── POWR set the package (owners) ────────────────────────────────────
@@ -539,11 +610,11 @@ Deno.serve(async (req: Request) => {
       const ctx = await context(str("partner_id"));
       if (!ctx) return json({ kind, skipped: "not_found" }, 404);
       if (!ctx.live) return json({ kind, gym: ctx.gym.name, skipped: "portal_off" });
-      const rendered = gymPackageEmail({
+      const render = (lang: string) => gymPackageEmail({
         gymName: ctx.gym.name, tz: ctx.gym.tz, from, to, billing: ctx.billing,
         onTrial: ctx.on_trial, trialEndsAt: ctx.trial_ends_at,
-      });
-      return await one(only(owners(ctx)), rendered, "gym-package", ctx.gym.name, { from, to });
+      }, lang);
+      return await one(only(owners(ctx)), ctx.team, render, "gym-package", ctx.gym.name, { from, to });
     }
 
     // ── POWR answered a question from Settings, then Help ────────────────
@@ -551,7 +622,7 @@ Deno.serve(async (req: Request) => {
       const ticketId = str("ticket_id");
       if (!ticketId) return json({ error: "ticket_id required" }, 400);
       const { data: t } = await admin.from("support_tickets")
-        .select("id, email, subject, message, admin_reply, category, gym_partner_id")
+        .select("id, user_id, email, subject, message, admin_reply, category, gym_partner_id")
         .eq("id", ticketId).maybeSingle();
       if (!t) return json({ kind, skipped: "not_found" }, 404);
       if (t.category !== "gym_help" || !t.gym_partner_id) return json({ kind, skipped: "not_gym_help" });
@@ -560,11 +631,13 @@ Deno.serve(async (req: Request) => {
       // asked while it was on.
       const ctx = await context(t.gym_partner_id);
       if (!ctx) return json({ kind, skipped: "gym_not_found" }, 404);
-      const rendered = gymSupportReplyEmail({
+      // POWR's answer stays as typed; the words around it are in the asker's language.
+      const render = (lang: string) => gymSupportReplyEmail({
         gymName: ctx.gym.name, subject: t.subject, message: t.message, reply: t.admin_reply,
         updated: body?.updated === true,
-      });
-      return await one(only([t.email]), rendered, "gym-support-reply", ctx.gym.name, { ticket_id: ticketId });
+      }, lang);
+      const asker: Person[] = t.user_id ? [{ email: t.email, user_id: t.user_id }] : [];
+      return await one(only([t.email]), [...ctx.team, ...asker], render, "gym-support-reply", ctx.gym.name, { ticket_id: ticketId });
     }
 
     // ── POWR decided a Clash Night (owners + whoever asked) ──────────────
@@ -581,11 +654,11 @@ Deno.serve(async (req: Request) => {
       if (!ctx) return json({ kind, skipped: "gym_not_found" }, 404);
       if (!ctx.live) return json({ kind, gym: ctx.gym.name, skipped: "portal_off" });
       const asker = ctx.team.find((m) => m.user_id === night.requested_by)?.email;
-      const rendered = gymClashNightEmail({
+      const render = (lang: string) => gymClashNightEmail({
         gymName: ctx.gym.name, decision: night.status, was: str("was") ?? "requested",
         nightDate: night.night_date, startTime: night.start_time, backupDate: night.backup_date, note: night.admin_note,
-      });
-      return await one(only([...owners(ctx), ...(asker ? [asker] : [])]), rendered, "gym-clash-night", ctx.gym.name, { night_id: nightId, status: night.status });
+      }, lang);
+      return await one(only([...owners(ctx), ...(asker ? [asker] : [])]), ctx.team, render, "gym-clash-night", ctx.gym.name, { night_id: nightId, status: night.status });
     }
 
     // ── Daily: invite reminders and the free trial ───────────────────────
@@ -616,11 +689,12 @@ Deno.serve(async (req: Request) => {
             continue;
           }
         }
-        const rendered = gymTrialEmail({
+        const render = (lang: string) => gymTrialEmail({
           kind: t.kind, gymName: t.gym, tz: t.tz, trialEndsAt: t.trial_ends_at,
           daysLeft: t.days_left, package: t.package, lost: t.lost ?? [],
-        });
-        const n = await deliver(tos.map((to) => deliverTo ?? to), rendered, "gym-trial", dryRun, results, t.gym);
+        }, lang);
+        const groups = await byLanguage(admin, t.partner_id, tos);
+        const n = (await deliverByLanguage(groups, render, "gym-trial", dryRun, results, t.gym, deliverTo)).sent;
         sent += n;
         if (record && n === 0) {
           await admin.from("gym_email_log").delete().match({ partner_id: t.partner_id, kind: t.kind, ref: t.ref });
@@ -635,16 +709,19 @@ Deno.serve(async (req: Request) => {
         const { data: upd, error: updErr } = await admin.from("gym_staff_invites")
           .update({ reminder_token_hash: await sha256Hex(token), reminded_at: new Date().toISOString() })
           .eq("id", inv.invite_id).eq("status", "invited").is("reminded_at", null)
-          .select("id");
+          .select("id, created_by");
         if (updErr || (upd ?? []).length !== 1) {
           if (updErr) console.error(`invite reminder (${inv.gym}) error:`, updErr);
           skipped.push({ gym: inv.gym, what: "invite_reminder", why: updErr ? "update_failed" : "taken" });
           continue;
         }
+        // Not a user yet: the reminder reads in the inviter's language.
+        const inviter = (upd?.[0] as { created_by?: string | null } | undefined)?.created_by ?? null;
+        const lang = inviter ? (await languagesFor(admin as unknown as Parameters<typeof languagesFor>[0], [inviter], BUSINESS_LANGUAGES)).get(inviter) ?? "en" : "en";
         const rendered = gymInviteReminderEmail({
           gymName: inv.gym, role: inv.role, tz: inv.tz, setupUrl: `${SITE_URL}/venue/setup/${token}`,
           invitedAt: inv.created_at, expiresAt: inv.expires_at,
-        });
+        }, lang);
         // A real setup link: only ever to the person it was meant for.
         const n = await deliver([inv.email], rendered, "gym-invite-reminder", false, results, inv.gym);
         sent += n;

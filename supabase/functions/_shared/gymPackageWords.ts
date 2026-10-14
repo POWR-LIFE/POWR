@@ -2,8 +2,12 @@
 // rule itself is SQL (_gym_features: level 0 Clash, 1 Clash+, 2 Clash Pro /
 // Founding Pro and the free trial); this file mirrors its keys so an email
 // can say what a gym keeps, gains or loses. The portal's own copy is
-// landing-page/src/pages/venue/packages.jsx. Pure, no imports: Deno and jest
-// both take it (__tests__/gym-account-email.test.ts).
+// landing-page/src/pages/venue/packages.jsx. The words live in the gym email
+// catalog (_shared/i18n/gym/<lang>.ts, features.*): featureWords() and
+// alwaysOn() read them in a language, FEATURE_WORDS and ALWAYS_ON are the
+// English. Deno and jest both take it (__tests__/gym-account-email.test.ts).
+
+import { tBusiness } from './i18n/index.ts';
 
 export type GymPackage = 'clash' | 'clash_plus' | 'pro' | 'founding';
 export type GymFeature = 'events' | 'insights' | 'people' | 'studio';
@@ -29,27 +33,35 @@ export function packageLabel(pkg: string | null | undefined): string {
 const NEEDS: Record<GymFeature, number> = { events: 1, insights: 1, people: 2, studio: 2 };
 const ORDER: GymFeature[] = ['events', 'insights', 'people', 'studio'];
 
+/** A feature's name and one-line description, in `lang`. */
+export function featureWords(feature: GymFeature, lang = 'en'): { name: string; line: string } {
+  switch (feature) {
+    case 'events':
+      return { name: tBusiness(lang, 'gym.features.events.name'), line: tBusiness(lang, 'gym.features.events.line') };
+    case 'insights':
+      return { name: tBusiness(lang, 'gym.features.insights.name'), line: tBusiness(lang, 'gym.features.insights.line') };
+    case 'people':
+      return { name: tBusiness(lang, 'gym.features.people.name'), line: tBusiness(lang, 'gym.features.people.line') };
+    case 'studio':
+      return { name: tBusiness(lang, 'gym.features.studio.name'), line: tBusiness(lang, 'gym.features.studio.line') };
+  }
+}
+
+/** What the free board package always keeps, whatever else switches off, in `lang`. */
+export function alwaysOn(lang = 'en'): string {
+  return tBusiness(lang, 'gym.features.alwaysOn');
+}
+
+/** The English words, as before. */
 export const FEATURE_WORDS: Record<GymFeature, { name: string; line: string }> = {
-  events: {
-    name: 'Your own challenges',
-    line: 'Monthly challenges, sprints and finale nights, plus partner discounts for buying prizes',
-  },
-  insights: {
-    name: 'Members and Retention',
-    line: 'What your members do, when they come in, and how many are slipping from their usual visits',
-  },
-  people: {
-    name: 'Retention by name',
-    line: 'Who’s drifting, the morning email when someone starts, and the one-tap nudge',
-  },
-  studio: {
-    name: 'Studio and event kits',
-    line: 'Your photos and clips turned into posts, reels and posters at every size',
-  },
+  events: featureWords('events'),
+  insights: featureWords('insights'),
+  people: featureWords('people'),
+  studio: featureWords('studio'),
 };
 
-/** What the free board package always keeps, whatever else switches off. */
-export const ALWAYS_ON = 'Your board on the TV, Gym Clash against the gyms near you, and your live ranking';
+/** What the free board package always keeps, in English. */
+export const ALWAYS_ON = alwaysOn();
 
 /** Features on at `level`, in the order the emails list them. */
 export function featuresAt(level: number): GymFeature[] {

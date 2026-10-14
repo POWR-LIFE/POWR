@@ -7,14 +7,17 @@
 //
 // POST ?lang=fr|es { key: "powr-email-previews", only?: string[], to?: string }
 //   `only` filters by preview id: welcome | weekly | weekly_down | weekly_starter |
-//   invite | invite_approved | partner_welcome | partner_weekly | recovery | level_up |
+//   invite | invite_approved | partner_welcome | partner_weekly |
+//   setup_reminder_login | setup_reminder_submit | setup_reminder_choose |
+//   setup_reminder_connect | recovery | level_up |
 //   reengagement_lapsed_1 | reengagement_lapsed_2 | reengagement_new_1 |
 //   reengagement_new_2 | receipt_code | receipt_link
 //   `to` must be one of ALLOWED_RECIPIENTS (default: the first).
 //   `?lang=` renders the member emails (welcome, weekly*, level_up,
-//   reengagement_*, receipt_*) in that language — drafts included, so French
-//   and Spanish can be reviewed before they go live; anything else is English.
-//   The partner/brand mails and the recovery template stay English.
+//   reengagement_*, receipt_*) and the brand emails (invite*, partner_*,
+//   setup_reminder_*) in that language — drafts included, so French and
+//   Spanish can be reviewed before they go live. The recovery template stays
+//   English. Gym emails preview through send-gym-email's own sample mode.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { sendEmail } from "../_shared/mailgun.ts";
@@ -30,7 +33,9 @@ import { reEngagementEmail, type ReEngagementData } from "../_shared/emails/re-e
 import { redemptionReceiptEmail } from "../_shared/emails/redemption-receipt.ts";
 import { tierLabel } from "../_shared/emails/member-copy.ts";
 import { WEEKLY_SAMPLES, weeklySample } from "../_shared/emails/weekly-summary.samples.ts";
-import { levelName, previewLanguage } from "../_shared/i18n/index.ts";
+import { businessPreviewLanguage, levelName, previewLanguage } from "../_shared/i18n/index.ts";
+import { partnerWeekLabel } from "../_shared/emails/partner-weekly-summary.ts";
+import { partnerSetupReminderEmail, partnerSetupReminderSample } from "../_shared/emails/partner-setup-reminder.ts";
 import { rewardsReadyFor } from "../_shared/reward-catalogue.ts";
 
 // Work inbox + Jamie's personal Gmail (Gmail is where font/dark-mode quirks show).
@@ -143,8 +148,10 @@ function receiptSample(kind: "code" | "link", lang: string) {
   }, lang);
 }
 
-/** Every preview in send order, with realistic sample data. Member emails in `lang`. */
+/** Every preview in send order, with realistic sample data. Member and brand emails in `lang`. */
 function buildPreviews(lang: string): { id: string; email: { subject: string; html: string; text: string } }[] {
+  // Brand emails have their own live list (they switch on with the portals).
+  const blang = businessPreviewLanguage(lang);
   return [
     {
       id: "welcome",
@@ -164,7 +171,7 @@ function buildPreviews(lang: string): { id: string; email: { subject: string; ht
       email: brandInviteEmail({
         brandName: "Forge Athletics",
         setupUrl: "https://powr.life/partner/setup/preview-token-only",
-      }),
+      }, blang),
     },
     {
       // The variant the Submissions queue sends when a brand's first reward is approved.
@@ -177,20 +184,20 @@ function buildPreviews(lang: string): { id: string; email: { subject: string; ht
         logoUrl: "https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-submissions/logos/1789985967117-km17c8.png",
         brandColor: "#c6a13e",
         setupUrl: "https://powr.life/partner/setup/preview-token-only",
-      }),
+      }, blang),
     },
     {
       id: "partner_welcome",
       email: partnerWelcomeEmail({
         brandName: "Forge Athletics",
         contactName: "Jamie Wright",
-      }),
+      }, blang),
     },
     {
       id: "partner_weekly",
       email: partnerWeeklySummaryEmail({
         brandName: "Forge Athletics",
-        weekLabel: "7–13 Jul",
+        weekLabel: partnerWeekLabel(new Date(Date.UTC(2026, 6, 7)), new Date(Date.UTC(2026, 6, 14)), blang),
         redemptions: 23,
         prevRedemptions: 17,
         powrSpent: 9660,
@@ -202,8 +209,12 @@ function buildPreviews(lang: string): { id: string; email: { subject: string; ht
         ],
         lowStock: [{ title: "Free shaker with any order", remaining: 9 }],
         pendingSubmissions: 1,
-      }),
+      }, blang),
     },
+    ...(["login", "submit", "choose", "connect"] as const).map((step) => ({
+      id: `setup_reminder_${step}`,
+      email: partnerSetupReminderEmail({ ...partnerSetupReminderSample(step), siteUrl: "https://powr.life" }, blang),
+    })),
     { id: "recovery", email: recoveryPreview() },
     {
       id: "level_up",

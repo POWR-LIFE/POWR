@@ -1,0 +1,250 @@
+{
+  "clash": {
+    "eyebrow": "Clash Pro",
+    "title": "Clash Nights",
+    "loadError": "No se han podido cargar sus Clash Nights",
+    "status": {
+      "requested": "Solicitada",
+      "confirmed": "Confirmada",
+      "declined": "No es posible",
+      "cancelled": "Cancelada"
+    },
+    "quarter": "{{from}}–{{to}}",
+    "calendar": {
+      "previous": "Mes anterior",
+      "next": "Mes siguiente",
+      "taken": "Ocupado",
+      "dayAria": "{{day}}: {{why}}",
+      "why": {
+        "confirmed": "Su Clash Night",
+        "requested": "Ha solicitado esta noche",
+        "tooSoon_one": "Requiere {{count}} día de antelación",
+        "tooSoon_other": "Requiere {{count}} días de antelación",
+        "tooFar": "Con más de un año de antelación",
+        "taken": "POWR está en otro gimnasio esa noche",
+        "quarterUsed": "Ya tiene una noche este trimestre",
+        "pick": "Elegir esta noche"
+      },
+      "legend": {
+        "free": "Libre",
+        "cantBook": "No disponible"
+      }
+    },
+    "locked": {
+      "eyebrow": "Clash Pro y Founding Pro",
+      "title": "Las Clash Nights vienen con Clash Pro",
+      "body": "Cuatro Clash Nights de POWR al año, una por trimestre, en su gimnasio. Nosotros ponemos el DJ, el fotógrafo y los premios de las marcas asociadas, y usted elige las fechas aquí.",
+      "cta": "Ver los planes"
+    },
+    "how": {
+      "eyebrow": "Cómo funciona",
+      "included_one": "Su plan incluye {{count}} Clash Night al año, una por trimestre. Nosotros ponemos el DJ, el fotógrafo y los premios de las marcas asociadas.",
+      "included_other": "Su plan incluye {{count}} Clash Nights al año, una por trimestre. Nosotros ponemos el DJ, el fotógrafo y los premios de las marcas asociadas.",
+      "notice_one": "Elija una noche con al menos <strong>{{count}} semana de antelación</strong>. La primera fecha posible es el {{date}}.",
+      "notice_other": "Elija una noche con al menos <strong>{{count}} semanas de antelación</strong>. La primera fecha posible es el {{date}}.",
+      "confirm": "POWR recibe su solicitud y después le confirma la fecha.",
+      "founding": "Founding Pro: elija ya las cuatro fechas, una en cada trimestre.",
+      "freeToBook": "Disponible"
+    },
+    "form": {
+      "pickNight": "Elegir una noche",
+      "yourNight": "Su noche",
+      "quarterNight": "Su noche del trimestre {{quarter}}",
+      "startsAt": "Hora de inicio",
+      "backup": "Fecha alternativa (opcional)",
+      "backupHint": "Si no podemos en su primera opción, probaremos con esta.",
+      "notes": "Algo que debamos saber",
+      "notesPlaceholder": "Cuántas personas espera, una temática, dónde puede montar el DJ…",
+      "sending": "Enviando…",
+      "submit": "Pedir esta noche a POWR",
+      "clear": "Borrar",
+      "empty": "Elija una fecha libre en el calendario. Los días en gris están demasiado cerca, caen en un trimestre ya reservado o los tiene otro gimnasio."
+    },
+    "list": {
+      "title": "Sus noches",
+      "backup": "Alternativa: {{date}}",
+      "notes": "«{{notes}}»",
+      "powrNote": "POWR:",
+      "callOff": "Cancelar"
+    },
+    "toast": {
+      "asked": "Solicitud enviada para el {{date}}. POWR se la confirmará.",
+      "callOffConfirm": "¿Cancelar la Clash Night del {{date}}? POWR recibirá el aviso al momento.",
+      "calledOff": "Cancelada. Ese trimestre vuelve a estar libre."
+    }
+  },
+  "partners": {
+    "eyebrow": "Para su gimnasio",
+    "title": "Descuentos de marcas",
+    "loadError": "No se han podido cargar los descuentos",
+    "kind": {
+      "pool": "Código de un solo uso",
+      "shared": "Código compartido",
+      "link": "Enlace"
+    },
+    "how": {
+      "eyebrow": "Cómo funciona",
+      "title": "Compre premios y material al precio que pagan los socios de POWR.",
+      "steps": {
+        "pick": {
+          "title": "Elegir una marca",
+          "body": "Todas las marcas asociadas a POWR, con el descuento de nuestros socios."
+        },
+        "code": {
+          "title": "Obtener su código",
+          "body": "Con un clic, cuando lo necesite. Durante una semana recibirá el mismo código."
+        },
+        "shop": {
+          "title": "Comprar",
+          "body": "Úselo al pagar en la tienda de la marca, como cualquier código de descuento."
+        }
+      },
+      "events": "¿Organiza un evento? También puede enviar a todos los participantes un código de una marca asociada en la revelación, desde el paso Premios del evento.",
+      "eventsLink": "Sus eventos"
+    },
+    "empty": {
+      "title": "No hay descuentos de marcas por ahora",
+      "body": "Cada vez se unen más marcas a POWR. Vuelva pronto."
+    },
+    "footer": "Estos códigos son para las compras de su gimnasio. Los socios tienen los suyos en la app POWR, así que le rogamos que no los comparta. ¿Necesita otro código antes? Escriba a support@powr.life.",
+    "card": {
+      "terms": "Condiciones",
+      "soldOut": "No quedan códigos por ahora. Vuelva pronto.",
+      "getting": "Obteniendo…",
+      "getLink": "Obtener el enlace",
+      "getCode": "Obtener un código",
+      "poolLow_one": "Solo queda {{count}} · un solo uso, reservado para su gimnasio",
+      "poolLow_other": "Solo quedan {{count}} · un solo uso, reservado para su gimnasio",
+      "pool": "Un solo uso, reservado para su gimnasio",
+      "shared": "El código que usan los socios de POWR",
+      "link": "El enlace POWR de la marca",
+      "lastCode": "Su último código, <code>{{code}}</code>, vale hasta el {{date}} si no se ha usado."
+    },
+    "code": {
+      "yourCode": "Su código",
+      "yourLink": "Su enlace",
+      "copyCode": "Copiar el código",
+      "copyLink": "Copiar el enlace",
+      "pool": "Reservado para su gimnasio. Uno nuevo a partir del {{date}}.",
+      "shared": "El mismo código que usan los socios de POWR.",
+      "link": "Úselo cada vez que compre en esta marca.",
+      "shopAt": "Comprar en {{brand}}"
+    },
+    "toast": {
+      "copied": "Copiado",
+      "copyFailed": "No se ha podido copiar. Selecciónelo y cópielo a mano."
+    }
+  },
+  "screens": {
+    "eyebrow": "Pantallas",
+    "title": "Su gimnasio en pantalla grande",
+    "loadError": "No se han podido cargar sus pantallas",
+    "live": "En directo",
+    "paused": "En pausa",
+    "loading": "Cargando",
+    "tvTitle": "{{title}}, tal como se ve en el televisor",
+    "previewShows": "Qué muestra la vista previa",
+    "yourGym": "Su gimnasio",
+    "actions": {
+      "open": "Abrir",
+      "copyLink": "Copiar enlace",
+      "pause": "Pausar",
+      "resume": "Reanudar",
+      "newLink": "Nuevo enlace"
+    },
+    "setup": {
+      "tvTitle": "Su clasificación, antes de activarla",
+      "teaserTitle": "{{gym}} · esta semana",
+      "teaserLines": "La clasificación semanal, en directo en su televisor",
+      "eyebrow": "Dos pantallas, un solo interruptor",
+      "title": "Active sus pantallas",
+      "body": "Una clasificación semanal de los puntos ganados en {{gym}}, pensada para un televisor en la sala. Se reinicia cada lunes, muestra al n.º 1 de la semana pasada y lleva un código QR para que los socios se unan. Además tiene <strong>Gym Clash</strong>: su gimnasio compitiendo contra todos los gimnasios POWR cercanos.",
+      "linkLabel": "Enlace de su pantalla",
+      "linkAria": "Nombre del enlace de la pantalla",
+      "linkHint": "Minúsculas, números y guiones. Forma parte del enlace que abrirá en el televisor, así que elíjalo bien desde el principio.",
+      "switching": "Activando…",
+      "switchOn": "Activar las pantallas",
+      "switchedOn": "Pantallas activadas",
+      "ownerOnly": "Los propietarios de su gimnasio pueden activar las pantallas desde aquí."
+    },
+    "board": {
+      "eyebrow": "Pantalla 1",
+      "title": "Clasificación semanal",
+      "blurb": "Los puntos ganados en {{gym}}, de lunes a domingo, con el n.º 1 de la semana pasada y un código QR para unirse. Cambia de escena sola y se actualiza cada pocos segundos.",
+      "sample": "Socios de ejemplo",
+      "paused": "En pausa: el televisor se queda en negro en la próxima actualización",
+      "live": "Clasificación en directo",
+      "viewing": "Distancia de visionado",
+      "viewingSet": "Distancia de visionado: {{label}}",
+      "viewings": {
+        "near": {
+          "label": "Cerca",
+          "hint": "Un monitor o una pantalla detrás de recepción. Se muestra todo."
+        },
+        "standard": {
+          "label": "Estándar",
+          "hint": "Un televisor de 50 pulgadas en una sala. Un tercio más grande, algo menos en pantalla."
+        },
+        "far": {
+          "label": "Lejos",
+          "hint": "Al otro lado de la sala. Una idea por escena, legible desde la pared del fondo."
+        }
+      },
+      "size": "Tamaño de la clasificación",
+      "sizeSet": "Se muestran los {{n}} primeros",
+      "top": "Top {{n}}"
+    },
+    "league": {
+      "eyebrow": "Pantalla 2",
+      "title": "Gym Clash",
+      "blurb": "{{gym}} contra los gimnasios cercanos esta semana y después contra toda la red POWR, con un cara a cara con el gimnasio que va justo por delante.",
+      "sample": "Gimnasios de ejemplo",
+      "paused": "Liga en pausa",
+      "live": "Liga en directo",
+      "radius": "Radio de proximidad",
+      "radiusHint": "En una ciudad hacen falta 10–15 km para encontrar vecinos de verdad; en una localidad pequeña, 25–50.",
+      "radiusSet": "Cerca: gimnasios a menos de {{km}} km",
+      "km": "{{km}} km"
+    },
+    "tv": {
+      "eyebrow": "Ponerlo en el televisor",
+      "steps": {
+        "open": {
+          "title": "Abrir el enlace",
+          "body": "En el navegador del propio televisor, o enviándole una pestaña del portátil. Copie el enlace de la pantalla que quiera."
+        },
+        "fullScreen": {
+          "title": "Pantalla completa",
+          "body": "Pulse F11 (o el botón de pantalla completa del navegador). La clasificación se adapta a cualquier tamaño de pantalla."
+        },
+        "leave": {
+          "title": "Dejarlo funcionando",
+          "body": "Se actualiza sola, cambia de escena y empieza una semana nueva cada lunes. No hay que tocar nada."
+        }
+      },
+      "linksNote": "Los dos enlaces comparten una clave, y cada enlace solo muestra su pantalla. Úselos solo en sus pantallas: cualquiera que tenga un enlace puede abrirlo.",
+      "linksNoteOwner": "Si alguno se ha filtrado, cree una clave nueva: todos los televisores con los enlaces antiguos se quedan en negro hasta que abra los nuevos.",
+      "rotateConfirm": "¿Cambiar el enlace de las pantallas? Cualquier televisor con el enlace antiguo se queda en negro hasta que abra en él el nuevo.",
+      "rotated": "Nuevo enlace creado: ábralo en sus televisores"
+    },
+    "toast": {
+      "copied": "Enlace copiado",
+      "copyFailed": "No se ha podido copiar"
+    }
+  },
+  "studio": {
+    "eyebrow": "Studio",
+    "title": "Publicaciones para {{name}}",
+    "loadError": "No se ha podido abrir el Studio",
+    "modes": {
+      "post": "Una publicación",
+      "pack": "Un pack de una sesión de fotos",
+      "drafts": "Borradores"
+    },
+    "blurb": {
+      "post": "Elija una plantilla, añada una foto o un vídeo y rellénela con sus eventos o con la clasificación de esta semana. Guarde un borrador para terminarla más tarde.",
+      "pack": "Suelte una carpeta, fotos o un ZIP de una sesión, elija el evento y obtenga de una vez todas las publicaciones que necesita: descargadas y guardadas aquí para volver a ellas.",
+      "drafts": "Publicaciones guardadas para terminar más tarde. Abra una para seguir donde se quedó: cada diapositiva, foto o clip, el texto y el estilo."
+    }
+  }
+}

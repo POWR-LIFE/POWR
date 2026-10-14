@@ -1,0 +1,260 @@
+{
+  "steps": {
+    "aria": "Pasos",
+    "format": {
+      "title": "Formato",
+      "hint": "El tipo de evento"
+    },
+    "when": {
+      "title": "Cuándo",
+      "hint": "Nombre, fechas, revelación"
+    },
+    "scoring": {
+      "title": "Puntuación",
+      "hint": "Qué cuenta"
+    },
+    "prizes": {
+      "title": "Premios",
+      "hint": "Qué se gana"
+    },
+    "promote": {
+      "title": "Promoción",
+      "hint": "Imagen y alcance"
+    },
+    "review": {
+      "title": "Revisión",
+      "hint": "Revisar y guardar"
+    }
+  },
+  "problems": {
+    "pickFormat": "Elija un formato para empezar",
+    "nameShort": "Ponga un nombre al evento",
+    "nameLong": "El nombre admite 48 caracteres como máximo",
+    "pickFirstDay": "Elija el primer día",
+    "firstDayPast": "El primer día no puede ser una fecha pasada",
+    "firstDayFar": "Elija un primer día dentro de los próximos 90 días",
+    "pickReveal": "Elija cuándo se revelan los ganadores",
+    "revealWindow": "Revele a los ganadores entre {{from}} y {{to}}",
+    "pickActivity": "Elija al menos una actividad",
+    "addPrize": "Añada al menos un premio",
+    "prizeNameShort": "Ponga a cada premio un nombre de 2 caracteres o más",
+    "prizePhotoName": "Ponga nombre a cada foto de premio",
+    "pickPartner": "Elija la marca asociada o desactive el código de marca",
+    "partnerNoCodes": "Esa marca no tiene códigos disponibles ahora mismo. Elija otra",
+    "bookingHttps": "Un enlace de reserva empieza por https://",
+    "bookingEmail": "Un enlace de reserva no puede pedir el correo electrónico de los socios"
+  },
+  "field": {
+    "optional": "opcional"
+  },
+  "upload": {
+    "tooBig": "Máximo {{mb}} MB",
+    "failed": "No se ha podido subir",
+    "uploading": "Subiendo…"
+  },
+  "actions": {
+    "change": "Cambiar",
+    "next": "Siguiente: {{step}}",
+    "saveChanges": "Guardar cambios",
+    "saveDraft": "Guardar como borrador",
+    "working": "Procesando…",
+    "publish": "Publicar",
+    "sendToPowr": "Enviar a POWR",
+    "needsClashPlus": "Publicar requiere Clash+",
+    "startOver": "Empezar de nuevo"
+  },
+  "schedule": {
+    "pickFirstDay": "Elija el primer día para ver todas las fechas.",
+    "scoring": "Puntuación: {{from}} → {{to}}",
+    "finale": "Noche final: {{day}}, {{from}}–{{to}}",
+    "atGym": "en {{gym}}",
+    "seals": "La clasificación se sella a medianoche tras el último día. Los socios pueden unirse hasta entonces."
+  },
+  "load": {
+    "title": "No se puede abrir este evento",
+    "notYours": "Solo el gimnasio que organiza este evento puede cambiarlo.",
+    "pending": "POWR lo está revisando. Retírelo desde la página del evento para cambiarlo.",
+    "finished": "Este evento ha terminado, así que ya no se puede cambiar. Vuelva a lanzarlo como evento nuevo.",
+    "noFormat": "Este tipo de evento ya no se ofrece. Contacte con POWR para cambiarlo."
+  },
+  "save": {
+    "partial": "Guardado, pero {{problems}}",
+    "separator": "; ",
+    "notificationsFailed": "las notificaciones no se han guardado ({{error}})",
+    "revealFailed": "la hora de la revelación no se ha guardado ({{error}})",
+    "publishFailed": "aún no está publicado: {{error}}",
+    "sentForCheck": "Enviado a POWR para una revisión rápida",
+    "published": "Publicado. Sus socios ya pueden verlo",
+    "saved": "Guardado",
+    "draftSaved": "Borrador guardado"
+  },
+  "lockedNote": "El evento ya ha empezado, así que solo se pueden cambiar el nombre, el titular, el logotipo, la imagen y el enlace de reserva, además del código de marca, las notificaciones y cuándo se revelan los ganadores.",
+  "format": {
+    "titleEdit": "El formato",
+    "titleNew": "¿Qué tipo de evento?",
+    "subEdit": "El formato queda fijado al guardar el evento. Vuelva a lanzarlo como evento nuevo para elegir otro.",
+    "subNew": "Elija un formato. La duración, qué cuenta y lo demás se eligen en los pasos siguientes.",
+    "dayRange": "{{min}} a {{max}}",
+    "withFinale": "{{days}} + noche final",
+    "countsVenue": "Cuenta las sesiones en {{gym}}. Puede cambiarlo.",
+    "countsAll": "Cuenta cualquier entreno verificado. Puede cambiarlo."
+  },
+  "when": {
+    "title": "Nombre y fechas",
+    "sub": "El primer día empieza a medianoche. Las demás fechas salen de lo que elija aquí.",
+    "name": "Nombre del evento",
+    "namePlaceholder": "Clash de octubre {{gym}}",
+    "firstDay": "Primer día",
+    "howLong": "Duración",
+    "nightStarts": "La noche final empieza",
+    "nightLasts": "Duración de la noche",
+    "nightLengthAria": "Duración de la noche final",
+    "hours_one": "{{count}} hora",
+    "hours_other": "{{count}} horas"
+  },
+  "reveal": {
+    "label": "Revelación de los ganadores",
+    "manualTitle": "Los revelo yo",
+    "manualBody_one": "Pulse Revelar desde su móvil o desde el portal. La app y su pantalla cambian a la vez. Si nadie lo hace, POWR los revela unos {{count}} día después de que se selle la clasificación.",
+    "manualBody_other": "Pulse Revelar desde su móvil o desde el portal. La app y su pantalla cambian a la vez. Si nadie lo hace, POWR los revela unos {{count}} días después de que se selle la clasificación.",
+    "manualBodyFinale_one": "Pulse Revelar desde su móvil durante la noche final o desde el portal. La app y su pantalla cambian a la vez. Si nadie lo hace, POWR los revela unos {{count}} día después de que se selle la clasificación.",
+    "manualBodyFinale_other": "Pulse Revelar desde su móvil durante la noche final o desde el portal. La app y su pantalla cambian a la vez. Si nadie lo hace, POWR los revela unos {{count}} días después de que se selle la clasificación.",
+    "atTitle": "A una hora fijada",
+    "atBody": "Elija una hora después de que se selle la clasificación y dentro de la semana siguiente.",
+    "timeAria": "Hora de la revelación"
+  },
+  "scoring": {
+    "title": "Qué cuenta",
+    "sub": "Los socios suman puntos con actividad verificada. Elija qué actividad mueve esta clasificación.",
+    "allTitle": "Cualquier entreno verificado",
+    "allBody": "Todo lo que hagan los socios, en cualquier sitio: check-ins en el gimnasio y entrenos de su reloj o móvil.",
+    "venueTitle": "Solo sesiones en {{gym}}",
+    "venueBody": "Los socios hacen check-in con POWR al llegar. Lo más difícil de falsear, y una afluencia que usted puede ver.",
+    "pickTitle": "Elegir las actividades",
+    "pickBody": "Elija qué cuenta, por ejemplo correr y ciclismo para un club de running.",
+    "activitiesAria": "Actividades",
+    "walkingNote": "Caminar incluye los pasos diarios de todos, así que puede pesar más que los entrenos.",
+    "manualNote": "Los entrenos registrados a mano nunca cuentan. POWR verifica todo lo demás.",
+    "board": "Clasificación",
+    "boardHint": "Cuántos puestos se ven en la clasificación, en la app y en su pantalla.",
+    "boardAria": "Tamaño de la clasificación",
+    "top": "Top {{n}}",
+    "bonus": "Bonus de la noche final",
+    "bonusHint": "{{blurb}} POWR lo paga a los socios inscritos que hagan check-in en {{gym}} esa noche.",
+    "rules": "Normas",
+    "rulesWritten": "Redactadas para usted a partir de lo que ha elegido",
+    "rulesPick": "Elija una actividad para verlas.",
+    "ownRuleAria": "Su norma {{n}}",
+    "ownRulePlaceholder": "Una norma propia",
+    "removeRule": "Quitar la norma",
+    "addRule": "Añadir una norma propia"
+  },
+  "prizes": {
+    "sub": "Primero el 1.er puesto. Los entrega usted: los ganadores enseñan su POWR ID en recepción.",
+    "places": {
+      "1": "1.º",
+      "2": "2.º",
+      "3": "3.º",
+      "4": "4.º",
+      "5": "5.º"
+    },
+    "prizeAria": "Premio del {{place}} puesto",
+    "placeholders": {
+      "1": "Un mes gratis",
+      "2": "Una sesión con entrenador personal",
+      "3": "Merchandising del gimnasio",
+      "other": "Premio"
+    },
+    "remove": "Quitar el premio del {{place}} puesto",
+    "removePhoto": "Quitar la foto",
+    "addPhoto": "Añadir una foto",
+    "add": "Añadir un premio",
+    "photosNote": "Las fotos aparecen con los premios en la app, en la página para compartir y en su pantalla. ¿Va a comprar los premios? <partners><gold>Sus descuentos de marcas asociadas</gold></partners> le dan el precio que pagan los miembros de POWR."
+  },
+  "partner": {
+    "optional": "Opcional",
+    "title": "Un código de marca para todos los participantes",
+    "body": "Cuando revele a los ganadores, todos los que hayan puntuado recibirán un código de descuento de la marca asociada a POWR que elija. Les llega a la cartera de la app.",
+    "loadFailed": "No se han podido cargar las marcas asociadas.",
+    "none": "Ahora mismo ninguna marca tiene códigos disponibles.",
+    "aria": "Marca asociada",
+    "shared": "Un código para todos",
+    "codesLeft_one": "Queda {{n}} código",
+    "codesLeft_other": "Quedan {{n}} códigos",
+    "noneLeft": "No quedan códigos ahora mismo",
+    "note": "Uno por persona, para todos los que sigan en el evento con puntos. Si no hay códigos suficientes, los primeros de la clasificación los reciben antes. Dígalo en su titular para que los socios sepan que llega."
+  },
+  "pushes": {
+    "announce": {
+      "title": "Anuncio",
+      "detail": "A sus socios y visitantes recientes que aún no se han unido. Una vez, de día, después de publicar."
+    },
+    "kickoff": {
+      "title": "Primer día",
+      "detail": "A todos los inscritos, la mañana en que empieza la puntuación."
+    },
+    "doors": {
+      "title": "Noche final",
+      "detail": "A todos los inscritos, la mañana de la final."
+    }
+  },
+  "promote": {
+    "title": "Promociónelo",
+    "sub": "Su aspecto, quién lo ve y las notificaciones que POWR envía por usted.",
+    "logo": "Logotipo",
+    "logoHint": "Aparece en la tarjeta del evento en la app. Funciona mejor un logotipo ancho con fondo transparente.",
+    "logoAlt": "Logotipo del evento",
+    "uploadLogo": "Subir un logotipo",
+    "removeLogo": "Quitar el logotipo",
+    "logoOnly": "Mostrar el logotipo en lugar del nombre",
+    "headline": "Titular",
+    "headlineHint": "Una línea bajo el nombre, en la app y en las tarjetas para compartir.",
+    "headlinePlaceholder": "Quien más sesiones haga en octubre gana un mes gratis",
+    "media": "Imagen o vídeo",
+    "mediaHint": "La imagen grande de la tarjeta del evento en la app y en las tarjetas para compartir. Un vídeo corto se reproduce sin sonido.",
+    "upload": "Subir",
+    "removeMedia": "Quitar la imagen",
+    "booking": "Enlace de reserva",
+    "bookingHint": "Si los socios reservan plaza en su propio sistema, enlácelo aquí y la app mostrará un botón Reservar. {name} rellena su nombre.",
+    "audience": "Quién lo ve en la app",
+    "audienceHint": "Sus socios y cualquiera que haya entrenado hace poco en {{gym}} siempre lo ven. Cualquiera puede unirse desde su código QR o su enlace.",
+    "audienceAria": "Quién lo ve",
+    "justMembers": "Solo mis socios",
+    "withinKm": "También a menos de {{km}} km",
+    "notifications": "Notificaciones",
+    "notificationsHint": "POWR redacta cada palabra y las envía en el momento justo. No sale nada hasta que el evento se publica, y los socios pueden desactivar las notificaciones.",
+    "standings": "Clasificación diaria",
+    "standingsBody": "El puesto y los puntos de cada socio, y cuánto le falta para el puesto de arriba. Solo mientras la clasificación está en marcha.",
+    "standingsAria": "Hora de la clasificación diaria",
+    "off": "Desactivado"
+  },
+  "review": {
+    "title": "Revíselo todo",
+    "subEdit": "Guarde para actualizarlo en todos los sitios donde aparece.",
+    "subNew": "No sale nada hasta que lo publique. Puede guardarlo como borrador y volver más tarde.",
+    "revealAuto": "Ganadores revelados automáticamente: {{at}}",
+    "revealManual": "Usted revela a los ganadores",
+    "boardTop": "Top {{n}} en la clasificación",
+    "finaleBonus": "+{{points}} POWR por venir a la noche final",
+    "partnerCode": "Además, un código de {{brand}} para todos los que puntúen, en su cartera al revelar los ganadores",
+    "audienceKm": "Sus socios, los visitantes recientes y cualquiera a menos de {{km}} km",
+    "audience": "Sus socios y los visitantes recientes",
+    "notifications": "Notificaciones: {{list}}",
+    "noNotifications": "Sin notificaciones puntuales",
+    "standingsAt": ", clasificación diaria a las {{time}}",
+    "booking": "Reserva: {{url}}"
+  },
+  "page": {
+    "backToEvent": "Volver al evento",
+    "events": "Eventos",
+    "edit": "Editar evento",
+    "again": "Repetir evento",
+    "new": "Nuevo evento",
+    "hidePhone": "Ocultar la vista previa de la app",
+    "showPhone": "Verlo en la app"
+  },
+  "publish": {
+    "trusted": "Al publicarlo, sus socios lo verán de inmediato.",
+    "check": "Su primer evento pasa una revisión rápida de POWR antes de publicarse, normalmente en un día."
+  }
+}

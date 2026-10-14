@@ -1,0 +1,202 @@
+{
+  "header": {
+    "eyebrow": "Code Management",
+    "title": "Promo Codes",
+    "intro": "Upload the discount codes from your store, or let POWR mint them. Members draw one from the pool when they redeem.",
+    "deliveryApi": "You deliver codes via the API — codes loaded here act as a fallback buffer if your integration is ever unavailable at redemption time.",
+    "deliveryShopify": "You deliver codes via Shopify — codes loaded here act as a fallback buffer if your integration is ever unavailable at redemption time."
+  },
+  "loadError": {
+    "title": "Couldn't load your rewards",
+    "body": "Your code pools are safe — the list just didn't come back this time."
+  },
+  "empty": {
+    "title": "No digital rewards yet",
+    "body": "Code pools hang off a digital reward — create one and its pool appears here.",
+    "create": "Create a reward"
+  },
+  "stages": {
+    "pick": "Pick a reward",
+    "pickHint": "Choose which reward these codes unlock — each reward keeps its own pool.",
+    "load": "Load codes",
+    "loadHintDry": "The pool has run dry — every code is used or expired. Add a fresh batch so members can keep redeeming.",
+    "loadHintEmpty": "Generate a batch right here or upload the codes from your store — either takes under a minute.",
+    "redeem": "Members redeem",
+    "redeemHintLive": "POWR hands a code to each member automatically when they redeem — nothing else to set up.",
+    "redeemHintReady": "Codes are ready — once this reward goes live in the app, members draw from the pool automatically.",
+    "done": "This reward is live — POWR hands a code to each member automatically. Reconcile used codes or top up the pool anytime below.",
+    "checking": "Checking this pool"
+  },
+  "selector": {
+    "label": "Your Rewards",
+    "placeholder": "Select a reward",
+    "inactive": "Inactive",
+    "available_one": "{{count}} available",
+    "available_other": "{{count}} available",
+    "untitled": "Untitled reward"
+  },
+  "pool": {
+    "title": "Code Pool",
+    "avail_one": "{{count}} avail",
+    "avail_other": "{{count}} avail",
+    "reserved_one": "{{count}} reserved",
+    "reserved_other": "{{count}} reserved",
+    "used_one": "{{count}} used",
+    "used_other": "{{count}} used",
+    "expired_one": "{{count}} exp",
+    "expired_other": "{{count}} exp",
+    "counting": "Counting",
+    "expiringSoon_one": "{{count}} expires by {{date}} — extend below",
+    "expiringSoon_other": "{{count}} expire by {{date}} — extend below",
+    "template": "Template"
+  },
+  "modes": {
+    "add": "Add codes",
+    "reconcile": "Reconcile",
+    "manage": "Manage pool"
+  },
+  "format": {
+    "title": "Code Format",
+    "placeholder": "Enter one example code to define the format — e.g. POWR-BRAND-ABC123",
+    "detected": "Detected:",
+    "legend": "· gold = fixed · green = variable",
+    "invalid": "Must start with POWR- and contain only A–Z, 0–9, and dashes",
+    "defaultHint": "Leave blank to use the default POWR-XXXX-XXXXXX (6-char) format"
+  },
+  "expiry": {
+    "title": "New Codes Expire",
+    "applied": "applied to new batches below",
+    "default": "blank = default 90-day expiry"
+  },
+  "generate": {
+    "title": "Auto-Generate",
+    "unit": "codes",
+    "generating": "Generating...",
+    "button": "Generate Batch",
+    "usingScheme": "using {{prefix}}•••",
+    "usingDefault": "using default POWR format"
+  },
+  "upload": {
+    "title": "Upload Your Codes",
+    "singlePlaceholder": "POWR-BRAND-XXXXXX  (single code)",
+    "singlePlaceholderScheme": "{{prefix}}XXXXXX  (single code)",
+    "add": "Add",
+    "csv": "Upload CSV",
+    "pastePlaceholder": "Paste codes or drop a CSV — Status + Deleted at columns are respected automatically",
+    "detected_one": "{{count}} code detected",
+    "detected_other": "{{count}} codes detected",
+    "uploading": "Uploading...",
+    "button": "Upload Batch"
+  },
+  "reconcile": {
+    "title": "Reconcile store redemptions",
+    "body": "Paste or upload the codes your store reports as redeemed. POWR marks only codes already assigned to a member as used; unassigned, expired, and unknown codes stay unchanged.",
+    "import": "Import CSV",
+    "placeholder": "Paste a code list or a CSV with a Code column",
+    "reconciling": "Reconciling...",
+    "button": "Reconcile Used Codes",
+    "confirm_one": "Reconcile {{count}} store redemption? Only codes already assigned by POWR can be marked used.",
+    "confirm_other": "Reconcile {{count}} store redemptions? Only codes already assigned by POWR can be marked used."
+  },
+  "ledger": {
+    "title": "Ledger",
+    "titleWithTotal": "Ledger · {{total}} total",
+    "apply": "Apply",
+    "applying": "Applying…",
+    "search": "Search codes…",
+    "loading": "Loading",
+    "emptySearch": "No codes matching \"{{search}}\"",
+    "emptyStatus": "No codes with status \"{{status}}\"",
+    "emptyNone": "No codes uploaded yet",
+    "columns": {
+      "code": "Code",
+      "status": "Status",
+      "claimed": "Claimed",
+      "used": "Used",
+      "expires": "Expires"
+    },
+    "saveExpiry": "Save expiry",
+    "editExpiry": "Edit expiry",
+    "expireCode": "Expire this code",
+    "reactivateCode": "Re-activate this code",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "prev": "← Prev",
+    "next": "Next →"
+  },
+  "status": {
+    "all": "all",
+    "available": "available",
+    "reserved": "reserved",
+    "used": "used",
+    "expired": "expired"
+  },
+  "bulkExpiry": {
+    "label": {
+      "all": "Set expiry for all codes",
+      "available": "Set expiry for available codes",
+      "reserved": "Set expiry for reserved codes",
+      "used": "Set expiry for used codes",
+      "expired": "Set expiry for expired codes"
+    },
+    "confirm": {
+      "all": "Set expiry to {{date}} for all codes in this pool?",
+      "available": "Set expiry to {{date}} for available codes in this pool?",
+      "reserved": "Set expiry to {{date}} for reserved codes in this pool?",
+      "used": "Set expiry to {{date}} for used codes in this pool?",
+      "expired": "Set expiry to {{date}} for expired codes in this pool?"
+    }
+  },
+  "toast": {
+    "loadFailed": "Could not load codes",
+    "generated_one": "{{count}} code generated",
+    "generated_other": "{{count}} codes generated",
+    "generatedSkipped_one": "{{count}} code generated · {{skipped}} skipped (duplicates)",
+    "generatedSkipped_other": "{{count}} codes generated · {{skipped}} skipped (duplicates)",
+    "generateFailed": "Generation failed",
+    "noCodes": "No codes detected",
+    "added_one": "{{count}} added",
+    "added_other": "{{count}} added",
+    "alreadyInPool_one": "{{count}} already in pool",
+    "alreadyInPool_other": "{{count}} already in pool",
+    "rejected_one": "{{count}} rejected",
+    "rejected_other": "{{count}} rejected",
+    "uploadFailed": "Upload failed",
+    "fileLoaded": "Loaded {{name}}",
+    "fileUnreadable": "Could not read file",
+    "markedUsed_one": "{{count}} marked used",
+    "markedUsed_other": "{{count}} marked used",
+    "alreadyReconciled_one": "{{count}} already reconciled",
+    "alreadyReconciled_other": "{{count}} already reconciled",
+    "notAssigned_one": "{{count}} not assigned",
+    "notAssigned_other": "{{count}} not assigned",
+    "notInPool_one": "{{count}} not in this pool",
+    "notInPool_other": "{{count}} not in this pool",
+    "reconcileFailed": "Reconciliation failed",
+    "codeAdded": "Code added",
+    "codeAlreadyInPool": "Code already in pool",
+    "codeRejected": "Rejected: {{reason}}",
+    "failed": "Failed",
+    "toggleFailed": "Toggle failed",
+    "pickDate": "Pick a date first",
+    "expiryUpdatedOn_one": "Expiry updated on {{count}} code",
+    "expiryUpdatedOn_other": "Expiry updated on {{count}} codes",
+    "bulkFailed": "Bulk update failed",
+    "expiryUpdated": "Expiry updated",
+    "updateFailed": "Update failed",
+    "exported_one": "{{count}} code exported",
+    "exported_other": "{{count}} codes exported",
+    "exportFailed": "Export failed"
+  },
+  "rejectReasons": {
+    "duplicateInBatch": "duplicate in this batch",
+    "invalidFormat": "invalid format",
+    "wrongPartnerPrefix": "wrong brand prefix",
+    "codeInDifferentReward": "already linked to another reward",
+    "alreadyExists": "code already exists",
+    "insertFailed": "couldn’t be added",
+    "invalid": "invalid"
+  },
+  "errors": {
+    "rewardNotFound": "Reward not found"
+  }
+}
