@@ -280,6 +280,20 @@ Each recipient's language comes from `profiles.language` (the app keeps it curre
 
 Admin-written text stays as written: broadcasts, and the notification-copy overrides in the admin panel. Those overrides apply to English readers only; everyone else gets the translated default.
 
+## Gym and brand emails
+
+What POWR sends to the people who run a gym or a brand: the Monday recap, drift digest, event and account mails, support replies, team invites (gym), and the invite, welcome, weekly report and setup reminder (brand). Catalogs: `supabase/functions/_shared/i18n/{gym,gymRecap,brand}/<lang>.ts`, used as `tBusiness(lang, "gym.…")`. Tone as the portals: *vous* / *usted*.
+
+- **Their own switch:** `BUSINESS_LANGUAGES` in `_shared/i18n/languages.ts`. `__tests__/serverI18n.test.ts` holds it equal to the portals' `PORTAL_LANGUAGES`, so a gym never gets French mail before its portal speaks French.
+- **Who reads what:** each recipient's `profiles.language` (the portal keeps it current), through `languagesFor(supabase, ids, BUSINESS_LANGUAGES)`; a send to several people splits per language. An invite to someone with no account yet follows the inviter (brand invites sent by POWR staff from the admin stay English).
+- **Previews:** brand emails in `email-previews?lang=fr|es`; gym emails through `send-gym-email`'s sample mode with `lang`.
+
+## Going live with the portals (and their emails)
+
+1. Add the language to `PORTAL_LANGUAGES` (`shared/i18n/index.ts`) **and** `BUSINESS_LANGUAGES` (`_shared/i18n/languages.ts`). The tests refuse one without the other, and refuse a language that misses a string.
+2. Merge: the portals ship with the website (Vercel). No OTA.
+3. Redeploy every function that sends a gym or brand email: send-gym-email, manage-gym-staff, send-brand-weekly-report, send-partner-setup-reminder, manage-partner-user, email-previews. Until each is redeployed it keeps sending English.
+
 ## Native (next build only)
 
 The iOS permission prompts (location, Health, camera, photos) and the list of languages the phone shows for POWR are baked into the app binary, so they can't be loaded from these files at runtime. They change the app fingerprint, so they're added **only when a native build is being cut**. Until then the app runs in French or Spanish while those few system prompts stay English.

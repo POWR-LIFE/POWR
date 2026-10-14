@@ -1,3 +1,4 @@
+import { tBusiness } from "../i18n/index.ts";
 import { brandLogoImg } from "./brand-logo.ts";
 
 export interface BrandInviteData {
@@ -31,58 +32,63 @@ const oneLine = (s: string) =>
 
 interface Step { title: string; detail: string }
 
-function stepsFor(data: BrandInviteData): Step[] {
+// Titles and details are HTML (entities allowed); the text part runs them through plain().
+function stepsFor(data: BrandInviteData, lang: string): Step[] {
   if (!data.rewardTitle) {
     return [
-      { title: "Create &amp; manage your rewards", detail: "Submit new offers and edit your listings" },
-      { title: "Track redemptions", detail: "See how members are engaging with your rewards" },
-      { title: "Reach active members", detail: "Put your brand in front of people who show up" },
+      { title: tBusiness(lang, "brand.invite.invited.steps.createHtml"), detail: tBusiness(lang, "brand.invite.invited.steps.createDetailHtml") },
+      { title: tBusiness(lang, "brand.invite.invited.steps.trackHtml"), detail: tBusiness(lang, "brand.invite.invited.steps.trackDetailHtml") },
+      { title: tBusiness(lang, "brand.invite.invited.steps.reachHtml"), detail: tBusiness(lang, "brand.invite.invited.steps.reachDetailHtml") },
     ];
   }
   const supply: Step =
     data.deliveryMethod === "shopify"
-      ? { title: "Connect your Shopify store", detail: "POWR creates a unique discount code for every redemption &mdash; nothing to upload" }
+      ? { title: tBusiness(lang, "brand.invite.approved.steps.shopifyHtml"), detail: tBusiness(lang, "brand.invite.approved.steps.shopifyDetailHtml") }
       : data.deliveryMethod === "api"
-        ? { title: "Connect your system", detail: "Add your API key or mint endpoint so codes are issued automatically" }
+        ? { title: tBusiness(lang, "brand.invite.approved.steps.apiHtml"), detail: tBusiness(lang, "brand.invite.approved.steps.apiDetailHtml") }
         : data.deliveryMethod === "affiliate"
-          ? { title: "Confirm your link", detail: "Check the destination URL members are sent to" }
+          ? { title: tBusiness(lang, "brand.invite.approved.steps.affiliateHtml"), detail: tBusiness(lang, "brand.invite.approved.steps.affiliateDetailHtml") }
           : data.deliveryMethod === "manual_fulfilment"
-            ? { title: "Confirm how you&#8217;ll fulfil", detail: "Tell us how each redemption reaches the member" }
-            : { title: "Choose how codes are delivered", detail: "Three options in the Integration tab: upload a pool of single-use codes, connect your Shopify store so POWR mints a unique code per redemption, or connect your own system through our API" };
+            ? { title: tBusiness(lang, "brand.invite.approved.steps.fulfilmentHtml"), detail: tBusiness(lang, "brand.invite.approved.steps.fulfilmentDetailHtml") }
+            : { title: tBusiness(lang, "brand.invite.approved.steps.chooseHtml"), detail: tBusiness(lang, "brand.invite.approved.steps.chooseDetailHtml") };
   return [
-    { title: "Set up your login", detail: "Pick your email and password &mdash; about a minute" },
+    { title: tBusiness(lang, "brand.invite.approved.steps.loginHtml"), detail: tBusiness(lang, "brand.invite.approved.steps.loginDetailHtml") },
     supply,
-    { title: "Go live", detail: "We switch the reward on as soon as codes are in place, and you can watch redemptions come in" },
+    { title: tBusiness(lang, "brand.invite.approved.steps.liveHtml"), detail: tBusiness(lang, "brand.invite.approved.steps.liveDetailHtml") },
   ];
 }
 
-export function brandInviteEmail(data: BrandInviteData): { subject: string; html: string; text: string } {
+/** `lang`: the reader's language — the inviter's for someone who isn't a POWR user yet (see manage-partner-user). */
+export function brandInviteEmail(data: BrandInviteData, lang: string = "en"): { subject: string; html: string; text: string } {
   const { brandName, setupUrl } = data;
   const approved = !!data.rewardTitle?.trim();
   const rewardTitle = (data.rewardTitle ?? "").trim();
   const safeBrandNameForHeader = oneLine(brandName);
   const safeRewardTitleForHeader = oneLine(rewardTitle);
   const firstName = (data.contactName ?? "").trim().split(/\s+/)[0] ?? "";
-  const greeting = firstName ? `Hi ${escapeHtml(firstName)}, ` : "";
-  const steps = stepsFor(data);
+  const steps = stepsFor(data, lang);
+  // Markup the catalog's Html keys wrap around their words.
+  const em = { newline: "<br>", em: `<em style="font-style:italic;color:${GOLD};">`, end: "</em>" };
+  const strong = { newline: "<br>", strong: '<strong style="font-weight:500;color:#bbbbbb;">', end: "</strong>" };
 
   const subject = approved
-    ? `${safeRewardTitleForHeader} is approved — set up your ${safeBrandNameForHeader} portal on POWR`
-    : `You're invited to the ${safeBrandNameForHeader} rewards portal on POWR`;
+    ? tBusiness(lang, "brand.invite.approved.subject", { reward: safeRewardTitleForHeader, brand: safeBrandNameForHeader })
+    : tBusiness(lang, "brand.invite.invited.subject", { brand: safeBrandNameForHeader });
   const preheader = approved
-    ? `${safeRewardTitleForHeader} is ready to go live. Set up your ${safeBrandNameForHeader} portal to load codes and switch it on.`
-    : `Set up your ${safeBrandNameForHeader} portal on POWR — pick your email and password, takes a minute.`;
-  const pill = approved ? "Reward approved" : "Rewards Partner";
+    ? tBusiness(lang, "brand.invite.approved.preheader", { reward: safeRewardTitleForHeader, brand: safeBrandNameForHeader })
+    : tBusiness(lang, "brand.invite.invited.preheader", { brand: safeBrandNameForHeader });
+  const pill = approved ? tBusiness(lang, "brand.invite.approved.pill") : tBusiness(lang, "brand.common.rewardsPartner");
   const heading = approved
-    ? `Your reward is<br><em style="font-style:italic;color:${GOLD};">approved.</em>`
-    : `Welcome to the<br><em style="font-style:italic;color:${GOLD};">${escapeHtml(brandName)} portal.</em>`;
+    ? tBusiness(lang, "brand.invite.approved.headingHtml", em)
+    : tBusiness(lang, "brand.invite.invited.headingHtml", { ...em, brand: escapeHtml(brandName) });
+  const introVars = { ...strong, name: escapeHtml(firstName), reward: escapeHtml(rewardTitle), brand: escapeHtml(brandName) };
   const intro = approved
-    ? `${greeting}<strong style="font-weight:500;color:#bbbbbb;">${escapeHtml(rewardTitle)}</strong> is ready to go live on POWR.<br>Set up your ${escapeHtml(brandName)} portal to load codes and switch it on &mdash; it takes about a minute.`
-    : `${greeting}You&#8217;ve been invited to manage ${escapeHtml(brandName)} rewards on POWR.<br>Set up your login below &mdash; it takes about a minute.`;
-  const stepsHeading = approved ? "Three steps to live" : "In the portal you can";
-  const cta = "Set up your portal";
-  const footerNote = `This invite link is single-use and tied to your brand.<br>
-            ${approved ? "Questions about your listing? Reply to this email." : "Didn&#8217;t expect this? Reply to this email and we&#8217;ll sort it."}`;
+    ? (firstName ? tBusiness(lang, "brand.invite.approved.introNamedHtml", introVars) : tBusiness(lang, "brand.invite.approved.introHtml", introVars))
+    : (firstName ? tBusiness(lang, "brand.invite.invited.introNamedHtml", introVars) : tBusiness(lang, "brand.invite.invited.introHtml", introVars));
+  const stepsHeading = approved ? tBusiness(lang, "brand.invite.approved.stepsTitle") : tBusiness(lang, "brand.invite.invited.stepsTitle");
+  const cta = tBusiness(lang, "brand.invite.cta");
+  const footerNote = `${tBusiness(lang, "brand.invite.footerHtml")}<br>
+            ${approved ? tBusiness(lang, "brand.invite.approved.questionsHtml") : tBusiness(lang, "brand.invite.invited.unexpectedHtml")}`;
   const accent = /^#[0-9a-f]{6}$/i.test(data.brandColor ?? "") ? data.brandColor! : GOLD;
   // The brand's own mark sits straight on the black hero, as it does on a
   // reward card in the app (see brand-logo.ts).
@@ -106,11 +112,11 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
               </tr>`).join("");
 
   const html = `<!DOCTYPE html>
-<html lang="en">
+<html lang="${escapeHtml(lang)}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>POWR Rewards Portal</title>
+<title>${escapeHtml(tBusiness(lang, "brand.invite.title"))}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#111111;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#111111;">${escapeHtml(preheader)}&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>
@@ -156,7 +162,7 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
                 </td>
               </tr>
             </table>
-            <p style="margin:20px 0 0;font-size:11px;font-weight:300;color:#444444;line-height:1.6;font-family:Arial,Helvetica,sans-serif;">Or paste this link into your browser:<br><span style="color:#666666;word-break:break-all;">${setupUrl}</span></p>
+            <p style="margin:20px 0 0;font-size:11px;font-weight:300;color:#444444;line-height:1.6;font-family:Arial,Helvetica,sans-serif;">${tBusiness(lang, "brand.invite.pasteLinkHtml")}<br><span style="color:#666666;word-break:break-all;">${setupUrl}</span></p>
           </td>
         </tr>
 
@@ -188,31 +194,31 @@ export function brandInviteEmail(data: BrandInviteData): { subject: string; html
 </html>`;
 
   const plain = (s: string) => s.replace(/&mdash;/g, "—").replace(/&#8217;/g, "’").replace(/&amp;/g, "&");
-  const textSteps = steps.map((s, i) => `${i + 1}. ${plain(s.title)} — ${plain(s.detail)}`).join("\n");
+  const textSteps = steps.map((s, i) => tBusiness(lang, "brand.invite.text.step", { n: i + 1, title: plain(s.title), detail: plain(s.detail) })).join("\n");
   const text = approved
-    ? `${firstName ? `Hi ${firstName},\n\n` : ""}${rewardTitle} is approved and ready to go live on POWR.
+    ? `${firstName ? `${tBusiness(lang, "brand.invite.approved.text.hi", { name: firstName })}\n\n` : ""}${tBusiness(lang, "brand.invite.approved.text.ready", { reward: rewardTitle })}
 
-Set up your ${brandName} portal to load codes and switch it on — it takes about a minute:
+${tBusiness(lang, "brand.invite.approved.text.setUp", { brand: brandName })}
 ${setupUrl}
 
-THREE STEPS TO LIVE
+${stepsHeading.toUpperCase()}
 ${textSteps}
 
-This invite link is single-use and tied to your brand. Questions about your listing? Reply to this email.
+${tBusiness(lang, "brand.invite.approved.text.footer")}
 
 — POWR
 https://powr.life`
-    : `Welcome to the ${brandName} portal on POWR.
+    : `${tBusiness(lang, "brand.invite.invited.text.welcome", { brand: brandName })}
 
-${firstName ? `Hi ${firstName}, you` : "You"}'ve been invited to manage ${brandName} rewards on POWR. Set up your login below — it takes about a minute.
+${firstName ? tBusiness(lang, "brand.invite.invited.text.introNamed", { name: firstName, brand: brandName }) : tBusiness(lang, "brand.invite.invited.text.intro", { brand: brandName })}
 
-Set up your portal:
+${tBusiness(lang, "brand.invite.invited.text.setUp")}
 ${setupUrl}
 
-IN THE PORTAL YOU CAN
+${stepsHeading.toUpperCase()}
 ${textSteps}
 
-This invite link is single-use and tied to your brand. Didn't expect this? Reply to this email and we'll sort it.
+${tBusiness(lang, "brand.invite.invited.text.footer")}
 
 — POWR
 https://powr.life`;

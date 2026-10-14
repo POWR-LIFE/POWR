@@ -1,3 +1,5 @@
+import { tBusiness } from "../i18n/index.ts";
+
 export interface PartnerWelcomeData {
   /** The reward brand whose portal was just set up. */
   brandName: string;
@@ -24,19 +26,22 @@ function stepRow(n: number, label: string, sub: string, isLast: boolean): string
               </tr>`;
 }
 
-export function partnerWelcomeEmail(data: PartnerWelcomeData): { subject: string; html: string; text: string } {
+/** `lang`: the reader's language (manage-partner-user: the inviter's, as the new login has none yet). */
+export function partnerWelcomeEmail(data: PartnerWelcomeData, lang: string = "en"): { subject: string; html: string; text: string } {
   const { brandName } = data;
   const firstName = data.contactName?.split(" ")[0] ?? null;
   const portalUrl = data.portalUrl ?? "https://powr.life/partner";
-  const greeting = firstName ? `You're in, ${firstName}.` : "You're in.";
-  const preheader = `${brandName} is live on POWR — here's how to get your first reward in front of members.`;
+  const greeting = firstName ? tBusiness(lang, "brand.welcome.greetingNamed", { name: firstName }) : tBusiness(lang, "brand.welcome.greeting");
+  const preheader = tBusiness(lang, "brand.welcome.preheader", { brand: brandName });
+  const live = tBusiness(lang, "brand.welcome.live", { brand: brandName });
+  const brandVars = { brand: brandName, newline: "<br>" };
 
   const html = `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang.replace(/[^\w-]/g, "")}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${brandName} is live on POWR</title>
+<title>${tBusiness(lang, "brand.welcome.title", { brand: brandName })}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#111111;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#111111;">${preheader}&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>
@@ -61,14 +66,14 @@ export function partnerWelcomeEmail(data: PartnerWelcomeData): { subject: string
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                     <tr>
                       <td style="width:6px;height:6px;background-color:${GOLD};border-radius:50%;vertical-align:middle;font-size:0;line-height:0;">&nbsp;</td>
-                      <td style="padding-left:7px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:#888888;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;white-space:nowrap;">Rewards Partner</td>
+                      <td style="padding-left:7px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:#888888;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;white-space:nowrap;">${tBusiness(lang, "brand.common.rewardsPartner")}</td>
                     </tr>
                   </table>
                 </td>
               </tr>
             </table>
-            <h1 style="margin:0 0 6px;font-size:40px;font-weight:200;letter-spacing:0.5px;line-height:1.15;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">${greeting}<br><em style="font-style:italic;color:${GOLD};">${brandName} is live on POWR.</em></h1>
-            <p style="margin:18px 0 0;font-size:15px;font-weight:300;color:#777777;line-height:1.7;font-family:Arial,Helvetica,sans-serif;">Your portal is set up and ready. From here, everything ${brandName}<br>does on POWR runs through one place.</p>
+            <h1 style="margin:0 0 6px;font-size:40px;font-weight:200;letter-spacing:0.5px;line-height:1.15;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">${greeting}<br><em style="font-style:italic;color:${GOLD};">${live}</em></h1>
+            <p style="margin:18px 0 0;font-size:15px;font-weight:300;color:#777777;line-height:1.7;font-family:Arial,Helvetica,sans-serif;">${tBusiness(lang, "brand.welcome.introHtml", brandVars)}</p>
           </td>
         </tr>
 
@@ -78,7 +83,7 @@ export function partnerWelcomeEmail(data: PartnerWelcomeData): { subject: string
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
               <tr>
                 <td style="border-radius:100px;background-color:${GOLD};">
-                  <a href="${portalUrl}" target="_blank" style="display:inline-block;padding:16px 40px;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#080808;text-decoration:none;font-family:Arial,Helvetica,sans-serif;">Open your portal</a>
+                  <a href="${portalUrl}" target="_blank" style="display:inline-block;padding:16px 40px;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#080808;text-decoration:none;font-family:Arial,Helvetica,sans-serif;">${tBusiness(lang, "brand.common.openPortal")}</a>
                 </td>
               </tr>
             </table>
@@ -88,11 +93,11 @@ export function partnerWelcomeEmail(data: PartnerWelcomeData): { subject: string
         <!-- WHAT HAPPENS NEXT -->
         <tr>
           <td style="background-color:#0a0a0a;padding:32px 40px;border-bottom:1px solid #161616;">
-            <p style="margin:0 0 20px;font-size:11px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:#333333;font-family:Arial,Helvetica,sans-serif;">Your first reward, in three steps</p>
+            <p style="margin:0 0 20px;font-size:11px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:#333333;font-family:Arial,Helvetica,sans-serif;">${tBusiness(lang, "brand.welcome.stepsTitle")}</p>
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-${stepRow(1, "Create your first reward", "A few fields — what it is, what it's worth, how it's delivered", false)}
-${stepRow(2, "We give it a quick review", "Usually same day. You'll see the status in your portal", false)}
-${stepRow(3, "Members start redeeming", "Your reward goes in front of people earning points by moving", true)}
+${stepRow(1, tBusiness(lang, "brand.welcome.steps.create"), tBusiness(lang, "brand.welcome.steps.createDetail"), false)}
+${stepRow(2, tBusiness(lang, "brand.welcome.steps.review"), tBusiness(lang, "brand.welcome.steps.reviewDetail"), false)}
+${stepRow(3, tBusiness(lang, "brand.welcome.steps.redeem"), tBusiness(lang, "brand.welcome.steps.redeemDetail"), true)}
             </table>
           </td>
         </tr>
@@ -100,8 +105,8 @@ ${stepRow(3, "Members start redeeming", "Your reward goes in front of people ear
         <!-- WEEKLY DIGEST PROMISE -->
         <tr>
           <td style="background-color:#080808;padding:28px 40px;border-bottom:1px solid #161616;text-align:center;">
-            <p style="margin:0 0 6px;font-size:11px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:#444444;font-family:Arial,Helvetica,sans-serif;">Every Monday</p>
-            <p style="margin:0;font-size:14px;font-weight:300;color:#999999;line-height:1.7;font-family:Arial,Helvetica,sans-serif;">We'll send you ${brandName}'s week in numbers &mdash; redemptions,<br>POWR spent on your rewards, and what's working.</p>
+            <p style="margin:0 0 6px;font-size:11px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:#444444;font-family:Arial,Helvetica,sans-serif;">${tBusiness(lang, "brand.welcome.mondayTitle")}</p>
+            <p style="margin:0;font-size:14px;font-weight:300;color:#999999;line-height:1.7;font-family:Arial,Helvetica,sans-serif;">${tBusiness(lang, "brand.welcome.mondayHtml", brandVars)}</p>
           </td>
         </tr>
 
@@ -110,8 +115,8 @@ ${stepRow(3, "Members start redeeming", "Your reward goes in front of people ear
           <td style="background-color:#050505;padding:32px 40px;text-align:center;">
             <img src="${POWR_LOGO}" alt="POWR" height="16" style="height:16px;width:auto;display:block;margin:0 auto 16px;opacity:0.15;">
             <p style="margin:0;font-size:11px;font-weight:300;color:#282828;line-height:2;font-family:Arial,Helvetica,sans-serif;">
-              You're receiving this because you manage ${brandName} on POWR.<br>
-              Stuck on anything? Reply to this email and we'll sort it.
+              ${tBusiness(lang, "brand.welcome.footerReceiving", { brand: brandName })}<br>
+              ${tBusiness(lang, "brand.welcome.footerStuck")}
             </p>
           </td>
         </tr>
@@ -123,27 +128,27 @@ ${stepRow(3, "Members start redeeming", "Your reward goes in front of people ear
 </body>
 </html>`;
 
-  const text = `${greeting} ${brandName} is live on POWR.
+  const text = `${greeting} ${live}
 
-Your portal is set up and ready. From here, everything ${brandName} does on POWR runs through one place.
+${tBusiness(lang, "brand.welcome.text.intro", { brand: brandName })}
 
-Open your portal: ${portalUrl}
+${tBusiness(lang, "brand.common.text.openPortal", { url: portalUrl })}
 
-YOUR FIRST REWARD, IN THREE STEPS
-1. Create your first reward — a few fields: what it is, what it's worth, how it's delivered
-2. We give it a quick review — usually same day; you'll see the status in your portal
-3. Members start redeeming — your reward goes in front of people earning points by moving
+${tBusiness(lang, "brand.welcome.stepsTitle").toUpperCase()}
+1. ${tBusiness(lang, "brand.welcome.text.create")}
+2. ${tBusiness(lang, "brand.welcome.text.review")}
+3. ${tBusiness(lang, "brand.welcome.text.redeem")}
 
-EVERY MONDAY
-We'll send you ${brandName}'s week in numbers — redemptions, POWR spent on your rewards, and what's working.
+${tBusiness(lang, "brand.welcome.mondayTitle").toUpperCase()}
+${tBusiness(lang, "brand.welcome.text.monday", { brand: brandName })}
 
-You're receiving this because you manage ${brandName} on POWR. Stuck on anything? Reply to this email and we'll sort it.
+${tBusiness(lang, "brand.welcome.footerReceiving", { brand: brandName })} ${tBusiness(lang, "brand.welcome.footerStuck")}
 
 — POWR
 https://powr.life`;
 
   return {
-    subject: `${brandName} is live on POWR — your portal is ready`,
+    subject: tBusiness(lang, "brand.welcome.subject", { brand: brandName }),
     html,
     text,
   };
