@@ -1,0 +1,110 @@
+{
+  "docTitle": "POWR · Scanner",
+  "camera": {
+    "starting": "Démarrage de la caméra…",
+    "denied": "Caméra bloquée. Autorisez l’accès à la caméra pour ce site dans les réglages du navigateur, ou saisissez le code ci-dessous.",
+    "unavailable": "Pas de caméra ici. Saisissez ci-dessous le code à 6 caractères affiché sur le téléphone du membre.",
+    "kioskLabel": "Présentez le bon devant la caméra",
+    "phoneLabel": "Visez le bon du membre",
+    "notWorking": "LA CAMÉRA NE FONCTIONNE PAS ?",
+    "typePlaceholder": "Saisissez le code à 6 caractères",
+    "check": "Vérifier"
+  },
+  "result": {
+    "scanAnother": "Scanner un autre bon",
+    "scanAgain": "Scanner à nouveau",
+    "applied": "Réduction appliquée",
+    "loggedAtSite": "Enregistré pour {{site}} à {{time}}.",
+    "loggedAt": "Enregistré à {{time}}.",
+    "scanNext": "Scanner le suivant",
+    "valid": "VALIDE",
+    "opened": "Ouvert à {{time}}",
+    "openedSwiped": "Ouvert à {{time}} · déjà glissé sur son téléphone",
+    "openedClosesIn": "Ouvert à {{time}} · se ferme dans {{left}}",
+    "spendLabel": "MONTANT DÉPENSÉ ? (FACULTATIF)",
+    "spendPlaceholder": "0,00",
+    "confirming": "Confirmation…",
+    "confirm": "Confirmer et appliquer la réduction",
+    "used": "DÉJÀ UTILISÉ",
+    "usedAtSite": "Utilisé au magasin {{site}} le {{date}} à {{time}}.",
+    "usedOn": "Utilisé le {{date}} à {{time}}.",
+    "usedNoDate": "Cette récompense a déjà été utilisée.",
+    "dontApplyThe": "N’appliquez pas la réduction.",
+    "other": "PAS UNE DE VOS RÉCOMPENSES",
+    "otherBody": "Ce bon est valable dans un autre magasin.",
+    "dontApplyA": "N’appliquez aucune réduction.",
+    "stale": "CODE PÉRIMÉ",
+    "staleBody": "Ce code date de plus d’une minute, ce qui indique généralement une capture d’écran. Demandez au membre de présenter le bon live dans l’app POWR.",
+    "closed": "BON FERMÉ",
+    "closedBody": "Le temps est écoulé pour ce bon. Demandez au membre de toucher à nouveau « Utiliser en magasin » pour obtenir un nouveau bon.",
+    "notFound": "AUCUNE CORRESPONDANCE",
+    "notFoundBody": "Aucun bon live ne correspond à ce code. Vérifiez le code sur le téléphone du membre, ou scannez plutôt le QR code.",
+    "notPowr": "PAS UN BON POWR",
+    "notPowrBody": "Ce code n’est pas un bon POWR. Scannez le QR code sur le téléphone du membre.",
+    "isStand": "C’est un présentoir de magasin. Scannez le bon sur le téléphone du membre.",
+    "error": "UN PROBLÈME EST SURVENU",
+    "errorBody": "Vérifiez la connexion et scannez à nouveau.",
+    "checkAgain": "Cela a pris trop de temps. Scannez à nouveau le bon pour confirmer.",
+    "confirmFailed": "Impossible de confirmer. Scannez à nouveau le bon."
+  },
+  "gate": {
+    "signedOut": "Ouvrez le lien de scan envoyé par votre responsable. Il prépare ce téléphone pour scanner.",
+    "notPartner": "La session ouverte ({{email}}) n’est pas un compte partenaire : elle ne peut pas scanner. Ouvrez votre lien de scan, ou connectez-vous avec votre compte partenaire.",
+    "notPartnerNoEmail": "La session ouverte n’est pas un compte partenaire : elle ne peut pas scanner. Ouvrez votre lien de scan, ou connectez-vous avec votre compte partenaire.",
+    "revoked": "Ce lien de scan ne fonctionne plus. Demandez-en un nouveau à votre responsable.",
+    "title": "Scanner des récompenses POWR",
+    "pasteLabel": "VOUS AVEZ UN LIEN DE SCAN ? COLLEZ-LE ICI",
+    "open": "Ouvrir",
+    "pasteError": "Ce n’est pas un lien de scan. Il se termine par #k= suivi d’un long code.",
+    "managerSignIn": "Responsable ? Connectez-vous au portail partenaire"
+  },
+  "header": {
+    "manager": "Responsable",
+    "shop": "Magasin",
+    "leaveKiosk": "Quitter le mode borne ?",
+    "exitKiosk": "Quitter la borne",
+    "kioskTitle": "Mode borne pour une tablette en caisse",
+    "kioskLabel": "Mode borne",
+    "forget": "Oublier ce lien de scan",
+    "forgetConfirm": "Oublier ce lien de scan sur cet appareil ? Il vous faudra à nouveau le lien pour scanner."
+  },
+  "kiosk": {
+    "showTab": "À scanner par les membres",
+    "scanTab": "Scanner un membre",
+    "noShop": "Ajoutez un magasin dans le portail partenaire pour afficher son présentoir ici.",
+    "headline": "Une récompense POWR ?",
+    "headlineBold": "Scanne ici.",
+    "newCode": "Nouveau code dans {{seconds}} s · scanne avec l’app POWR, pas avec l’appareil photo"
+  },
+  "phone": {
+    "noShops": "Aucun magasin ajouté pour l’instant. Les scans fonctionnent quand même ; ajoutez vos magasins dans la page En magasin du portail partenaire pour les suivre par magasin.",
+    "todayAt_one": "AUJOURD’HUI À {{site}} : {{count}} CONFIRMÉ",
+    "todayAt_other": "AUJOURD’HUI À {{site}} : {{count}} CONFIRMÉS",
+    "today_one": "AUJOURD’HUI : {{count}} CONFIRMÉ",
+    "today_other": "AUJOURD’HUI : {{count}} CONFIRMÉS",
+    "logged": "{{amount}} ENREGISTRÉS"
+  },
+  "today": {
+    "title": "AUJOURD’HUI",
+    "titleAt": "AUJOURD’HUI À {{site}}",
+    "confirmed": "CONFIRMÉS",
+    "spend": "DÉPENSES SAISIES",
+    "latest": "DERNIERS",
+    "nothing": "Rien pour l’instant aujourd’hui.",
+    "status": {
+      "confirmed": "CONFIRMÉ",
+      "swiped": "GLISSÉ",
+      "closed": "FERMÉ SANS UTILISATION",
+      "open": "OUVERT"
+    },
+    "screenshots": "Les bons changent toutes les quelques secondes. Les captures d’écran ne passent pas."
+  },
+  "stand": {
+    "docTitle": "POWR · Utilise ta récompense en magasin",
+    "eyebrow": "PRÉSENTOIR DU MAGASIN {{code}}",
+    "title": "<light>Scanne-le </light><gold>dans l’app POWR</gold>",
+    "body": "Ouvre POWR, va dans ton Portefeuille, touche <strong>Utiliser en magasin</strong> sur ta récompense, puis scanne le présentoir depuis là.",
+    "openWallet": "Ouvrir mon portefeuille",
+    "noApp": "Pas encore sur POWR ? Le même lien te donne l’app."
+  }
+}

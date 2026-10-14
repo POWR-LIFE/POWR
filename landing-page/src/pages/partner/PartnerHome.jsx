@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, FilePenLine, CircleAlert, Ticket, Send, Plug, Smartphone, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { formatLocale } from '../../lib/i18n';
 import { useAuth } from '../../App';
 import { integrationPathFor, methodMeta } from './integrationShared';
 import { fetchMethodStatuses } from '../../lib/partnerApi';
@@ -21,7 +23,10 @@ const QUIET_AFTER_DAYS = 30;
 const DAY = 86400000;
 const SERIES_DAYS = 30;
 
-const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+// Counts go into the copy as { count, n }: count picks the plural form,
+// n is the same number formatted for the reader ("1,000" / "1 000").
+const fmt = (n) => n.toLocaleString(formatLocale());
+const counted = (n) => ({ count: n, n: fmt(n) });
 const daysBetween = (a, b) => Math.floor((a - b) / DAY);
 
 // Tone drives the status dot, the chain and nothing else — the verdict is a
@@ -33,6 +38,7 @@ const TONE = {
 };
 
 export default function PartnerHome() {
+    const { t } = useTranslation();
     const { partnerData, deliveryMethod } = useAuth();
 
     const [rewards, setRewards] = useState([]);
@@ -180,6 +186,19 @@ export default function PartnerHome() {
 
     const claimsFor = (rewardId) => claims.filter(c => c.reward_id === rewardId).length;
 
+    // The method's name (API, Shopify, Promo Codes) comes from
+    // integrationShared; each sentence that names it has a fallback key for
+    // when no method resolves.
+    const methodLabel = method?.label;
+    const finishConnecting = () => (methodLabel
+        ? t('brandHome:actions.finishConnecting', { method: methodLabel })
+        : t('brandHome:actions.finishConnectingFallback'));
+    const notFinished = () => (methodLabel
+        ? t('brandHome:method.notFinished', { method: methodLabel })
+        : t('brandHome:method.notFinishedFallback'));
+    const mostRecent = () => t('brandHome:qual.mostRecent', { count: daysSinceLast });
+    const slots = (used) => t('brandHome:values.slots', { used, limit: rewardLimit });
+
     // ── The verdict ladder ────────────────────────────────────────
     // Ordered, first match wins. Rung 1-3 mean a member is blocked RIGHT NOW;
     // 4-9 mean something needs the brand but nobody is stuck; 10 is clear.
@@ -190,81 +209,89 @@ export default function PartnerHome() {
 
         if (rewards.length > 0 && liveRewards.length === 0) return {
             tone: 'bad',
-            headline: 'Members can’t claim anything from you right now.',
+            headline: t('brandHome:verdict.paused.headline'),
             covers: ['paused'],
             // An approved-but-inactive reward is almost always waiting on a
             // code route, so point at that first — "get a reward live" sends
             // the brand to a page where nothing they can do makes it live.
             support: claims.length
-                ? `Nothing of yours is live. Your rewards took ${plural(claims.length, 'claim', 'claims')} before they stopped.`
+                ? t('brandHome:verdict.paused.supportHadClaims', counted(claims.length))
                 : !deliveryMethod
-                    ? 'Your reward is approved but has no way to deliver codes yet. Choose how codes reach members and load them — POWR switches the reward on once codes are in.'
+                    ? t('brandHome:verdict.paused.supportNoMethod')
                     : !connected
-                        ? `${methodStatus?.line ?? `${method?.label} isn’t finished`}. Once codes have a route, POWR switches your reward on.`
-                        : 'Nothing of yours is live, so there is nothing for members to claim.',
+                        ? t('brandHome:verdict.paused.supportNotConnected', { status: methodStatus?.line ?? notFinished() })
+                        : t('brandHome:verdict.paused.supportConnected'),
             action: !deliveryMethod
-                ? { label: 'Choose delivery method', to: integrationPathFor(null) }
+                ? { label: t('brandHome:actions.chooseDelivery'), to: integrationPathFor(null) }
                 : !connected
-                    ? { label: `Finish connecting ${method?.label ?? 'delivery'}`, to: integrationPathFor(deliveryMethod) }
-                    : { label: 'Get a reward live', to: '/partner/rewards' },
+                    ? { label: finishConnecting(), to: integrationPathFor(deliveryMethod) }
+                    : { label: t('brandHome:actions.getRewardLive'), to: '/partner/rewards' },
             facts: [
-                fact('Live rewards', '0', `${plural(rewards.length, 'reward', 'rewards')} paused or awaiting approval`),
+                fact(t('brandHome:facts.liveRewards'), '0', t('brandHome:qual.pausedCount', counted(rewards.length))),
                 claims.length
-                    ? fact('Claims before it stopped', claims.length.toLocaleString(), `most recent ${daysSinceLast} days ago`)
-                    : fact('Reward slots', `${rewards.length} of ${rewardLimit}`, 'submit one for review to go live'),
-                fact('Delivery', connected ? (method?.label ?? 'Ready') : (method?.label ?? 'Not chosen'),
-                    connected ? 'connected and ready to mint' : (methodStatus?.line ?? 'choose how codes reach members')),
+                    ? fact(t('brandHome:facts.claimsBeforeStop'), fmt(claims.length), mostRecent())
+                    : fact(t('brandHome:facts.rewardSlots'), slots(rewards.length), t('brandHome:qual.submitToGoLive')),
+                fact(t('brandHome:facts.delivery'), connected ? (methodLabel ?? t('brandHome:values.ready')) : (methodLabel ?? t('brandHome:values.notChosen')),
+                    connected ? t('brandHome:qual.connectedReady') : (methodStatus?.line ?? t('brandHome:qual.chooseHow'))),
             ],
         };
 
         if (dryRewards.length > 0) return {
             tone: 'bad',
-            headline: `Members can’t claim ${dryRewards[0].title} — you’re out of codes.`,
+            // The reward's title is the brand's own words, quoted as written.
+            headline: t('brandHome:verdict.dry.headline', { reward: dryRewards[0].title }),
             // For a manual brand "no codes" and "not connected" are the same
             // fact, so the headline covers both. For Shopify or API they are
             // genuinely separate failures and both deserve saying.
             covers: deliveryMethod === 'manual' ? ['dry', 'connection'] : ['dry'],
             support: dryRewards.length > 1
-                ? `${dryRewards.length} of your live rewards have no claimable codes left.`
-                : 'The pool behind this reward is empty, so a member who tries to claim it hits a wall.',
-            action: { label: 'Top up your codes', to: deliveryMethod && deliveryMethod !== 'manual' ? integrationPathFor(deliveryMethod) : '/partner/promo-codes' },
+                ? t('brandHome:verdict.dry.supportMany', { n: dryRewards.length })
+                : t('brandHome:verdict.dry.supportOne'),
+            action: { label: t('brandHome:actions.topUp'), to: deliveryMethod && deliveryMethod !== 'manual' ? integrationPathFor(deliveryMethod) : '/partner/promo-codes' },
             facts: [
-                fact('Rewards out of stock', dryRewards.length.toLocaleString(), 'live in the app with an empty pool'),
-                fact('Still live', liveRewards.length.toLocaleString(), 'visible to members right now'),
-                fact('Claims all-time', claims.length.toLocaleString(), daysSinceLast === null ? 'none yet' : `most recent ${daysSinceLast} days ago`),
+                fact(t('brandHome:facts.outOfStock'), fmt(dryRewards.length), t('brandHome:qual.emptyPool')),
+                fact(t('brandHome:facts.stillLive'), fmt(liveRewards.length), t('brandHome:qual.visibleNow')),
+                fact(t('brandHome:facts.claimsAllTime'), fmt(claims.length), daysSinceLast === null ? t('brandHome:qual.noneYet') : mostRecent()),
             ],
         };
 
         if (liveRewards.length > 0 && deliveryMethod && !connected) return {
             tone: 'bad',
-            headline: `Members can’t claim — ${method?.label ?? 'your integration'} isn’t connected.`,
+            headline: methodLabel
+                ? t('brandHome:verdict.disconnected.headline', { method: methodLabel })
+                : t('brandHome:verdict.disconnected.headlineFallback'),
             covers: ['connection'],
-            support: `${methodStatus?.line ?? 'The connection is down'}. Your rewards are still listed, so members can see them and then fail at the last step.`,
-            action: { label: `Reconnect ${method?.label ?? 'delivery'}`, to: integrationPathFor(deliveryMethod) },
+            support: t('brandHome:verdict.disconnected.support', { status: methodStatus?.line ?? t('brandHome:verdict.disconnected.connectionDown') }),
+            action: {
+                label: methodLabel ? t('brandHome:actions.reconnect', { method: methodLabel }) : t('brandHome:actions.reconnectFallback'),
+                to: integrationPathFor(deliveryMethod),
+            },
             facts: [
-                fact('Live rewards', liveRewards.length.toLocaleString(), 'visible but undeliverable'),
-                fact('Delivery', method?.label ?? '—', methodStatus?.line ?? 'not connected'),
-                fact('Claims all-time', claims.length.toLocaleString(), daysSinceLast === null ? 'none yet' : `most recent ${daysSinceLast} days ago`),
+                fact(t('brandHome:facts.liveRewards'), fmt(liveRewards.length), t('brandHome:qual.undeliverable')),
+                fact(t('brandHome:facts.delivery'), methodLabel ?? '—', methodStatus?.line ?? t('brandHome:qual.notConnected')),
+                fact(t('brandHome:facts.claimsAllTime'), fmt(claims.length), daysSinceLast === null ? t('brandHome:qual.noneYet') : mostRecent()),
             ],
         };
 
         if (rewards.length === 0 && authored.length === 0) return {
             tone: 'warn',
-            headline: connected ? 'Nothing’s live yet. One step and you are.' : 'Nothing’s live yet. Two steps and you are.',
+            headline: connected ? t('brandHome:verdict.empty.headlineConnected') : t('brandHome:verdict.empty.headline'),
             covers: ['connection'],
             support: connected
-                ? `${method?.label ?? 'Delivery'} is connected and ready. Submit your first reward and POWR reviews it — usually about a day.`
+                ? (methodLabel
+                    ? t('brandHome:verdict.empty.supportConnected', { method: methodLabel })
+                    : t('brandHome:verdict.empty.supportConnectedFallback'))
                 : deliveryMethod
                     // They have already chosen — don't send them back to choose again.
-                    ? `${methodStatus?.line ?? `${method?.label} isn’t finished`}. Once codes have a route, submit your first reward for review.`
-                    : 'Choose how codes reach members, then submit your first reward. POWR reviews it before it goes live.',
+                    ? t('brandHome:verdict.empty.supportNotConnected', { status: methodStatus?.line ?? notFinished() })
+                    : t('brandHome:verdict.empty.supportNoMethod'),
             action: connected
-                ? { label: 'Create your first reward', to: '/partner/rewards' }
-                : { label: deliveryMethod ? `Finish connecting ${method?.label}` : 'Choose delivery method', to: integrationPathFor(deliveryMethod) },
+                ? { label: t('brandHome:actions.createFirst'), to: '/partner/rewards' }
+                : { label: deliveryMethod ? finishConnecting() : t('brandHome:actions.chooseDelivery'), to: integrationPathFor(deliveryMethod) },
             facts: [
-                fact('Reward slots used', `0 of ${rewardLimit}`, 'nothing submitted yet'),
-                fact('Delivery', method?.label ?? 'Not chosen', methodStatus?.line ?? 'how codes reach members'),
-                fact('Review time', '~1 day', 'typical turnaround once you submit'),
+                fact(t('brandHome:facts.rewardSlotsUsed'), slots(0), t('brandHome:qual.nothingSubmitted')),
+                fact(t('brandHome:facts.delivery'), methodLabel ?? t('brandHome:values.notChosen'), methodStatus?.line ?? t('brandHome:qual.howCodesReach')),
+                fact(t('brandHome:facts.reviewTime'), t('brandHome:values.reviewTime'), t('brandHome:qual.typicalOnceSubmit')),
             ],
         };
 
@@ -274,77 +301,78 @@ export default function PartnerHome() {
         // becoming the whole story.
         if (rejected.length > 0 && liveRewards.length === 0) return {
             tone: 'warn',
-            headline: 'Your reward needs changes before it can go live.',
+            headline: t('brandHome:verdict.rejected.headline'),
             covers: ['rejected'],
-            support: rejected[0].partner_feedback || 'POWR has asked for changes. Revise it and send it back for review.',
-            action: { label: 'Revise your reward', to: '/partner/rewards' },
+            // partner_feedback is written by POWR staff and shown as written.
+            support: rejected[0].partner_feedback || t('brandHome:verdict.rejected.support'),
+            action: { label: t('brandHome:actions.revise'), to: '/partner/rewards' },
             facts: [
-                fact('Needs changes', rejected.length.toLocaleString(), 'sent back by the POWR team'),
-                fact('Live rewards', liveRewards.length.toLocaleString(), liveRewards.length ? 'unaffected and still claimable' : 'nothing live in the meantime'),
-                fact('Reward slots', `${rewards.length} of ${rewardLimit}`, 'used by approved rewards'),
+                fact(t('brandHome:facts.needsChanges'), fmt(rejected.length), t('brandHome:qual.sentBack')),
+                fact(t('brandHome:facts.liveRewards'), fmt(liveRewards.length), liveRewards.length ? t('brandHome:qual.unaffected') : t('brandHome:qual.nothingMeantime')),
+                fact(t('brandHome:facts.rewardSlots'), slots(rewards.length), t('brandHome:qual.usedByApproved')),
             ],
         };
 
         if (drafts.length > 0 && liveRewards.length === 0) return {
             tone: 'warn',
-            headline: 'You’ve a reward half-written.',
+            headline: t('brandHome:verdict.draft.headline'),
             covers: ['draft'],
-            support: 'Your draft is saved. Finish it and send it to POWR — review usually takes about a day.',
-            action: { label: 'Finish your draft', to: '/partner/rewards' },
+            support: t('brandHome:verdict.draft.support'),
+            action: { label: t('brandHome:actions.finishDraft'), to: '/partner/rewards' },
             facts: [
-                fact('Drafts', drafts.length.toLocaleString(), 'saved and waiting on you'),
-                fact('Reward slots', `${rewards.length} of ${rewardLimit}`, 'room to submit'),
-                fact('Delivery', connected ? (method?.label ?? 'Ready') : (method?.label ?? 'Not chosen'),
-                    connected ? 'connected and ready to mint' : (methodStatus?.line ?? 'still to connect')),
+                fact(t('brandHome:facts.drafts'), fmt(drafts.length), t('brandHome:qual.savedWaiting')),
+                fact(t('brandHome:facts.rewardSlots'), slots(rewards.length), t('brandHome:qual.roomToSubmit')),
+                fact(t('brandHome:facts.delivery'), connected ? (methodLabel ?? t('brandHome:values.ready')) : (methodLabel ?? t('brandHome:values.notChosen')),
+                    connected ? t('brandHome:qual.connectedReady') : (methodStatus?.line ?? t('brandHome:qual.stillToConnect'))),
             ],
         };
 
         if (pending.length > 0 && liveRewards.length === 0) return {
             tone: 'warn',
-            headline: 'You’re waiting on POWR. Usually about a day.',
-            support: 'Your reward is with our team for review. Nothing needs you — we’ll email you the moment it’s approved.',
+            headline: t('brandHome:verdict.pending.headline'),
+            support: t('brandHome:verdict.pending.support'),
             action: null,
             facts: [
-                fact('With POWR', pending.length.toLocaleString(), 'in review right now'),
-                fact('Delivery', connected ? (method?.label ?? 'Ready') : (method?.label ?? 'Not chosen'),
-                    connected ? 'connected, so it can go live immediately' : (methodStatus?.line ?? 'connect it before approval')),
-                fact('Review time', '~1 day', 'typical turnaround'),
+                fact(t('brandHome:facts.withPowr'), fmt(pending.length), t('brandHome:qual.inReview')),
+                fact(t('brandHome:facts.delivery'), connected ? (methodLabel ?? t('brandHome:values.ready')) : (methodLabel ?? t('brandHome:values.notChosen')),
+                    connected ? t('brandHome:qual.connectedGoLive') : (methodStatus?.line ?? t('brandHome:qual.connectBeforeApproval'))),
+                fact(t('brandHome:facts.reviewTime'), t('brandHome:values.reviewTime'), t('brandHome:qual.typical')),
             ],
         };
 
         if (liveRewards.length > 0 && claims.length === 0) return {
             tone: 'warn',
-            headline: 'You’re live, and no one’s claimed yet.',
-            support: 'Delivery is healthy, so this isn’t plumbing — it’s reach. Check your listing reads well and your price feels attainable.',
-            action: { label: 'Review your listing', to: '/partner/rewards' },
+            headline: t('brandHome:verdict.unclaimed.headline'),
+            support: t('brandHome:verdict.unclaimed.support'),
+            action: { label: t('brandHome:actions.reviewListing'), to: '/partner/rewards' },
             facts: [
-                fact('Live rewards', liveRewards.length.toLocaleString(), daysLive > 0 ? `listed for ${plural(daysLive, 'day', 'days')}` : 'listed today'),
-                fact('Delivery', method?.label ?? 'Ready', 'connected and ready to mint'),
-                fact('Price', `${(liveRewards[0].powr_cost ?? 0).toLocaleString()} POWR`, 'what a member pays for your cheapest reward'),
+                fact(t('brandHome:facts.liveRewards'), fmt(liveRewards.length), daysLive > 0 ? t('brandHome:qual.listedFor', counted(daysLive)) : t('brandHome:qual.listedToday')),
+                fact(t('brandHome:facts.delivery'), methodLabel ?? t('brandHome:values.ready'), t('brandHome:qual.connectedReady')),
+                fact(t('brandHome:facts.price'), t('brandHome:values.price', { cost: fmt(Math.min(...liveRewards.map(r => r.powr_cost ?? 0))) }), t('brandHome:qual.cheapest')),
             ],
         };
 
         if (liveRewards.length > 0 && daysSinceLast !== null && daysSinceLast > QUIET_AFTER_DAYS) return {
             tone: 'warn',
-            headline: `You’re live and quiet. ${plural(daysSinceLast, 'day', 'days')} since the last claim.`,
-            support: 'Delivery is healthy and your listing is complete, so this isn’t plumbing — it’s reach.',
-            action: { label: 'Review your listing', to: '/partner/rewards' },
+            headline: t('brandHome:verdict.quiet.headline', counted(daysSinceLast)),
+            support: t('brandHome:verdict.quiet.support'),
+            action: { label: t('brandHome:actions.reviewListing'), to: '/partner/rewards' },
             facts: [
-                fact('Last claim', daysSinceLast.toLocaleString(), `days ago · ${plural(claims.length, 'claim', 'claims')} all-time`),
-                fact('Live rewards', liveRewards.length.toLocaleString(), 'approved and visible now'),
-                fact('POWR spent with you', spent.toLocaleString(), 'members earned this before spending it'),
+                fact(t('brandHome:facts.lastClaim'), fmt(daysSinceLast), t('brandHome:qual.lastClaim', counted(claims.length))),
+                fact(t('brandHome:facts.liveRewards'), fmt(liveRewards.length), t('brandHome:qual.approvedVisible')),
+                fact(t('brandHome:facts.powrSpent'), fmt(spent), t('brandHome:qual.earnedFirst')),
             ],
         };
 
         return {
             tone: 'good',
-            headline: `Everything’s running. ${plural(claimsIn30, 'claim', 'claims')} in the last 30 days.`,
-            support: 'Codes are reaching members and nothing needs you today.',
+            headline: t('brandHome:verdict.good.headline', counted(claimsIn30)),
+            support: t('brandHome:verdict.good.support'),
             action: null,
             facts: [
-                fact('Claims', claimsIn30.toLocaleString(), `in 30 days · ${plural(claims.length, 'claim', 'claims')} all-time`),
-                fact('Live rewards', liveRewards.length.toLocaleString(), 'approved and visible now'),
-                fact('POWR spent with you', spent.toLocaleString(), 'members earned this before spending it'),
+                fact(t('brandHome:facts.claims'), fmt(claimsIn30), t('brandHome:qual.in30', counted(claims.length))),
+                fact(t('brandHome:facts.liveRewards'), fmt(liveRewards.length), t('brandHome:qual.approvedVisible')),
+                fact(t('brandHome:facts.powrSpent'), fmt(spent), t('brandHome:qual.earnedFirst')),
             ],
         };
     })();
@@ -352,35 +380,36 @@ export default function PartnerHome() {
     // ── Everything else that needs them ───────────────────────────
     // Built independently of the verdict, then the item the verdict already
     // states is dropped so the page never says the same thing twice.
+    // Titles and partner_feedback are the brand's and POWR staff's own words.
     const openItems = [
         ...rejected.map(s => ({
             key: `rejected-${s.id}`, kind: 'rejected', icon: CircleAlert,
-            title: `Revise ${s.title || 'your reward request'}`,
-            detail: s.partner_feedback || 'POWR has requested changes before review can continue.',
+            title: s.title ? t('brandHome:items.revise', { title: s.title }) : t('brandHome:items.reviseFallback'),
+            detail: s.partner_feedback || t('brandHome:items.reviseDetail'),
             to: '/partner/rewards',
         })),
         ...drafts.map(s => ({
             key: `draft-${s.id}`, kind: 'draft', icon: FilePenLine,
-            title: `Finish ${s.title || 'your reward draft'}`,
-            detail: 'Your draft is saved and ready to continue.',
+            title: s.title ? t('brandHome:items.finish', { title: s.title }) : t('brandHome:items.finishFallback'),
+            detail: t('brandHome:items.finishDetail'),
             to: '/partner/rewards',
         })),
         ...dryRewards.map(r => ({
             key: `dry-${r.id}`, kind: 'dry', icon: Ticket,
-            title: `Add codes for ${r.title || 'your reward'}`,
-            detail: 'This live reward has no claimable codes left.',
+            title: r.title ? t('brandHome:items.addCodes', { title: r.title }) : t('brandHome:items.addCodesFallback'),
+            detail: t('brandHome:items.addCodesDetail'),
             to: deliveryMethod && deliveryMethod !== 'manual' ? integrationPathFor(deliveryMethod) : '/partner/promo-codes',
         })),
         ...(deliveryMethod && !connected ? [{
             key: 'disconnected', kind: 'connection', icon: Plug,
-            title: `Finish connecting ${method?.label ?? 'delivery'}`,
-            detail: methodStatus?.line ?? 'Codes have no route to members until this is done.',
+            title: finishConnecting(),
+            detail: methodStatus?.line ?? t('brandHome:items.connectDetail'),
             to: integrationPathFor(deliveryMethod),
         }] : []),
         ...(rewards.length > 0 && liveRewards.length === 0 && pending.length === 0 && drafts.length === 0 && rejected.length === 0 ? [{
             key: 'nothing-live', kind: 'paused', icon: Send,
-            title: 'Get a reward back in the app',
-            detail: 'You have rewards, but none of them are live for members.',
+            title: t('brandHome:items.backInApp'),
+            detail: t('brandHome:items.backInAppDetail'),
             to: '/partner/rewards',
         }] : []),
     ];
@@ -404,42 +433,44 @@ export default function PartnerHome() {
     const poolBacked = rewards.some(r => r.active && r.integration_type === 'POOL');
     const chain = [
         {
-            id: 'listed', label: 'Listed',
+            id: 'listed', label: t('brandHome:chain.listed'),
             state: liveRewards.length > 0 ? 'ok' : rewards.length > 0 ? 'bad' : 'idle',
             detail: liveRewards.length > 0
-                ? `${plural(liveRewards.length, 'reward', 'rewards')} visible to members.`
-                : 'Nothing of yours is in the app yet — everything downstream waits on this.',
+                ? t('brandHome:chain.listedSome', counted(liveRewards.length))
+                : t('brandHome:chain.listedNone'),
         },
         {
-            id: 'stocked', label: 'Stocked',
+            id: 'stocked', label: t('brandHome:chain.stocked'),
             state: !poolBacked ? (connected ? 'ok' : 'idle')
                 : dryRewards.length > 0 ? 'bad'
                 : liveRewards.length > 0 ? 'ok' : 'idle',
             detail: !poolBacked
-                ? `${method?.label ?? 'Your integration'} mints a code on demand — there is no pool to keep stocked.`
-                : dryRewards.length > 0 ? 'A live reward has run out of claimable codes.'
-                : 'Your pool has codes ready to hand out.',
+                ? (methodLabel
+                    ? t('brandHome:chain.stockedOnDemand', { method: methodLabel })
+                    : t('brandHome:chain.stockedOnDemandFallback'))
+                : dryRewards.length > 0 ? t('brandHome:chain.stockedDry')
+                : t('brandHome:chain.stockedOk'),
         },
         {
-            id: 'connected', label: 'Connected',
+            id: 'connected', label: t('brandHome:chain.connected'),
             state: !deliveryMethod ? 'idle' : connected ? 'ok' : 'bad',
-            detail: methodStatus?.line ?? 'Choose how codes reach members.',
+            detail: methodStatus?.line ?? t('brandHome:chain.connectedNone'),
         },
         {
-            id: 'delivered', label: 'Delivered',
+            id: 'delivered', label: t('brandHome:chain.delivered'),
             state: claims.length > 0 ? 'ok' : 'idle',
             detail: claims.length > 0
-                ? `${plural(claims.length, 'code has', 'codes have')} gone out to members.`
-                : 'No member has claimed a code yet.',
+                ? t('brandHome:chain.deliveredSome', counted(claims.length))
+                : t('brandHome:chain.deliveredNone'),
         },
         {
-            id: 'used', label: 'Used',
+            id: 'used', label: t('brandHome:chain.used'),
             state: anyCodeUsed ? 'ok' : 'idle',
             detail: anyCodeUsed
-                ? 'Codes are being spent at checkout and confirmed back to POWR.'
+                ? t('brandHome:chain.usedSome')
                 : claims.length > 0
-                    ? 'Members hold codes they haven’t spent yet.'
-                    : 'Nothing has been spent at checkout.',
+                    ? t('brandHome:chain.usedHeld')
+                    : t('brandHome:chain.usedNone'),
         },
     ];
     // One detail line at a time — the first link that isn't running, else the last.
@@ -456,7 +487,7 @@ export default function PartnerHome() {
     }
     const busiestDay = Math.max(...dayCounts, 0);
     const stripStart = new Date(startOfToday.getTime() - (SERIES_DAYS - 1) * DAY)
-        .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        .toLocaleDateString(formatLocale(), { day: 'numeric', month: 'short' });
 
     // The phone shows what members see. An approved reward that is merely
     // paused (waiting on a code route) is still real and already looks the
@@ -482,21 +513,21 @@ export default function PartnerHome() {
                         <>
                             <div className="flex items-center gap-3 mb-7">
                                 <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: TONE.warn.dot }} />
-                                <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">Status</span>
+                                <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">{t('brandHome:page.status')}</span>
                                 <span className="flex-1 h-[1px] bg-[#E6E6E1]" />
                             </div>
                             <h1 className="text-4xl font-light tracking-tighter text-[#1A1A1A] leading-tight max-w-[17ch] mb-3">
-                                We couldn’t reach your figures.
+                                {t('brandHome:page.loadErrorTitle')}
                             </h1>
                             <p className="text-[12.5px] text-[#888] leading-relaxed max-w-[46ch]">
-                                Something went wrong loading this page. Nothing on your account has changed.
+                                {t('brandHome:page.loadErrorBody')}
                             </p>
                             <button
                                 type="button"
                                 onClick={() => window.location.reload()}
                                 className="inline-flex items-center gap-2 h-10 px-6 mt-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all"
                             >
-                                Try again
+                                {t('common:actions.retry')}
                             </button>
                         </>
                     ) : (
@@ -505,7 +536,7 @@ export default function PartnerHome() {
                             <div className="flex items-center gap-3 mb-7">
                                 <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: TONE[verdict.tone].dot }} />
                                 <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">
-                                    {partnerData?.name ? `${partnerData.name} — checked just now` : 'Checked just now'}
+                                    {partnerData?.name ? t('brandHome:page.checkedNamed', { name: partnerData.name }) : t('brandHome:page.checked')}
                                 </span>
                                 <span className="flex-1 h-[1px] bg-[#E6E6E1]" />
                             </div>
@@ -529,7 +560,7 @@ export default function PartnerHome() {
                             {/* ── Because — three facts chosen BY the verdict, so a
                                    column can never hold an irrelevant zero ── */}
                             <div className="mt-9 pt-4 border-t border-[#E6E6E1]">
-                                <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">Because</span>
+                                <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">{t('brandHome:page.because')}</span>
                                 <div className="grid grid-cols-3 gap-0 mt-3">
                                     {verdict.facts.map((f, i) => (
                                         <div key={f.label} className={i < 2 ? 'pr-5 border-r border-[#E6E6E1]' : 'pl-5'}>
@@ -550,7 +581,7 @@ export default function PartnerHome() {
                                     <button type="button" onClick={() => setShowMore(v => !v)}
                                         className="flex items-center justify-between w-full group">
                                         <span className="text-[11.5px] font-bold text-[#333]">
-                                            {rest.length === 1 ? '1 more thing needs you' : `${rest.length} more things need you`}
+                                            {t('brandHome:page.moreThings', { count: rest.length })}
                                         </span>
                                         <ChevronRight size={14}
                                             className={`text-[#CCC] group-hover:text-[#8a7600] transition-all ${showMore ? 'rotate-90' : ''}`} />
@@ -575,7 +606,7 @@ export default function PartnerHome() {
 
                             {/* ── Delivery chain — is the break plumbing or demand? ── */}
                             <div className="mt-7 pt-4 border-t border-[#E6E6E1]">
-                                <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">Delivery</span>
+                                <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">{t('brandHome:page.delivery')}</span>
                                 <div className="flex items-center mt-3.5">
                                     {chain.map((node, i) => (
                                         <React.Fragment key={node.id}>
@@ -600,7 +631,7 @@ export default function PartnerHome() {
                             {claims.length > 0 && (
                                 <div className="mt-7 pt-4 border-t border-[#E6E6E1]">
                                     <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">
-                                        Last 30 days{truncated ? ' · showing up to 1,000 claims' : ''}
+                                        {truncated ? t('brandHome:page.last30Truncated', { max: fmt(1000) }) : t('brandHome:page.last30')}
                                     </span>
                                     <div className="relative h-[26px] mt-4">
                                         <div className="absolute left-0 right-0 bottom-[6px] h-[1px] bg-[#DEDED8]" />
@@ -616,7 +647,7 @@ export default function PartnerHome() {
                                     </div>
                                     <div className="flex justify-between mt-1.5">
                                         <span className="text-[8.5px] uppercase tracking-[0.22em] font-black text-[#CCCCCC]">{stripStart}</span>
-                                        <span className="text-[8.5px] uppercase tracking-[0.22em] font-black text-[#CCCCCC]">Today</span>
+                                        <span className="text-[8.5px] uppercase tracking-[0.22em] font-black text-[#CCCCCC]">{t('brandHome:page.today')}</span>
                                     </div>
                                 </div>
                             )}
@@ -635,7 +666,7 @@ export default function PartnerHome() {
                                 <div className="flex items-center justify-center gap-2 mt-5">
                                     {previewRewards.map((r, i) => (
                                         <button key={r.id} type="button" onClick={() => setPreviewIdx(i)} title={r.title}
-                                            aria-label={`Preview ${r.title}`}
+                                            aria-label={t('brandHome:preview.aria', { title: r.title })}
                                             className={`h-2 rounded-full transition-all ${
                                                 i === Math.min(previewIdx, previewRewards.length - 1)
                                                     ? 'w-6 bg-[#8a7600]' : 'w-2 bg-[#D5D5D0] hover:bg-[#BBBBBB]'
@@ -650,10 +681,10 @@ export default function PartnerHome() {
                                 <div className="mt-4 text-center">
                                     <div className="flex items-center justify-center gap-2">
                                         <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B] shadow-[0_0_10px_rgba(245,158,11,0.6)]" />
-                                        <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#8a7600]">Needs finishing</span>
+                                        <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#8a7600]">{t('brandHome:preview.needsFinishing')}</span>
                                     </div>
                                     <p className="text-[10.5px] text-[#999] leading-relaxed mt-2">
-                                        Approved and ready to look like this — members will see it once codes can reach them.
+                                        {t('brandHome:preview.needsFinishingBody')}
                                     </p>
                                     {verdict.action && (
                                         <Link to={verdict.action.to}
@@ -666,20 +697,20 @@ export default function PartnerHome() {
                             <div className="mt-4 text-center">
                                 <div className="flex items-center justify-center gap-2">
                                     <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.6)]" />
-                                    <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#8a7600]">Live in app</span>
+                                    <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#8a7600]">{t('brandHome:preview.liveInApp')}</span>
                                 </div>
                                 <p className="text-[10.5px] text-[#999] leading-relaxed mt-2">
                                     {claims.length === 0
-                                        ? 'This is exactly what members see.'
+                                        ? t('brandHome:preview.exact')
                                         : previewClaims === 0
                                             ? claims.length === 1
-                                                ? 'Your one claim came from a different reward.'
-                                                : `All ${claims.length} claims came from your other rewards.`
+                                                ? t('brandHome:preview.oneOther')
+                                                : t('brandHome:preview.allOther', { n: claims.length })
                                             : previewClaims === claims.length
                                                 ? claims.length === 1
-                                                    ? 'Your only claim came from this one.'
-                                                    : `All ${claims.length} claims came from this one.`
-                                                : `${previewClaims} of your ${claims.length} claims came from this one.`}
+                                                    ? t('brandHome:preview.oneThis')
+                                                    : t('brandHome:preview.allThis', { n: claims.length })
+                                                : t('brandHome:preview.someThis', { count: previewClaims, total: claims.length })}
                                 </p>
                             </div>
                             )}
@@ -688,14 +719,14 @@ export default function PartnerHome() {
                         <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl px-8 py-14 text-center">
                             <Smartphone size={24} className="text-[#DDDDDD] mx-auto mb-5" />
                             <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black leading-relaxed mb-3">
-                                Nothing live yet
+                                {t('brandHome:preview.nothingLive')}
                             </p>
                             <p className="text-[11px] text-[#BBBBBB] leading-relaxed">
-                                Approved rewards appear here exactly as members see them in the app.
+                                {t('brandHome:preview.nothingLiveBody')}
                             </p>
                             {claims.length > 0 && (
                                 <p className="text-[10.5px] text-[#BBBBBB] leading-relaxed mt-4 flex items-center justify-center gap-1.5">
-                                    <Clock size={11} /> Your last listing took {plural(claims.length, 'claim', 'claims')}.
+                                    <Clock size={11} /> {t('brandHome:preview.lastListing', counted(claims.length))}
                                 </p>
                             )}
                         </div>

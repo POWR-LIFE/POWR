@@ -1,0 +1,238 @@
+{
+  "page": {
+    "status": "Statut",
+    "loadErrorTitle": "Impossible de charger vos chiffres.",
+    "loadErrorBody": "Un problème est survenu lors du chargement de cette page. Rien n’a changé sur votre compte.",
+    "checked": "Vérifié à l’instant",
+    "checkedNamed": "{{name}} — vérifié à l’instant",
+    "because": "Pourquoi",
+    "moreThings_one": "{{count}} autre action vous attend",
+    "moreThings_other": "{{count}} autres actions vous attendent",
+    "delivery": "Distribution",
+    "last30": "30 derniers jours",
+    "last30Truncated": "30 derniers jours · jusqu’à {{max}} échanges affichés",
+    "today": "Aujourd’hui"
+  },
+  "actions": {
+    "chooseDelivery": "Choisir la méthode de distribution",
+    "finishConnecting": "Finir de connecter {{method}}",
+    "finishConnectingFallback": "Finir de configurer la distribution",
+    "getRewardLive": "Mettre une récompense en ligne",
+    "topUp": "Recharger vos codes",
+    "reconnect": "Reconnecter {{method}}",
+    "reconnectFallback": "Reconnecter la distribution",
+    "createFirst": "Créer votre première récompense",
+    "revise": "Modifier votre récompense",
+    "finishDraft": "Terminer votre brouillon",
+    "reviewListing": "Revoir votre fiche",
+    "viewRewards": "Voir mes récompenses"
+  },
+  "method": {
+    "notFinished": "La configuration de {{method}} n’est pas terminée",
+    "notFinishedFallback": "La configuration de la distribution n’est pas terminée"
+  },
+  "verdict": {
+    "paused": {
+      "headline": "Les membres ne peuvent rien échanger chez vous pour l’instant.",
+      "supportHadClaims_one": "Rien de votre marque n’est en ligne. Vos récompenses ont généré {{n}} échange avant leur arrêt.",
+      "supportHadClaims_other": "Rien de votre marque n’est en ligne. Vos récompenses ont généré {{n}} échanges avant leur arrêt.",
+      "supportNoMethod": "Votre récompense est validée, mais n’a encore aucun moyen de distribuer des codes. Choisissez comment les codes parviennent aux membres et chargez-les — POWR active la récompense dès que les codes sont là.",
+      "supportNotConnected": "{{status}}. Dès que les codes peuvent parvenir aux membres, POWR active votre récompense.",
+      "supportConnected": "Rien de votre marque n’est en ligne, les membres n’ont donc rien à échanger."
+    },
+    "dry": {
+      "headline": "Les membres ne peuvent pas échanger {{reward}} — vous n’avez plus de codes.",
+      "supportMany": "{{n}} de vos récompenses en ligne n’ont plus de codes disponibles.",
+      "supportOne": "La réserve de cette récompense est vide, donc un membre qui tente de l’échanger reste bloqué."
+    },
+    "disconnected": {
+      "headline": "Les membres ne peuvent pas échanger — la connexion {{method}} n’est pas établie.",
+      "headlineFallback": "Les membres ne peuvent pas échanger — votre intégration n’est pas connectée.",
+      "support": "{{status}}. Vos récompenses restent affichées : les membres les voient, puis échouent à la dernière étape.",
+      "connectionDown": "La connexion est interrompue"
+    },
+    "empty": {
+      "headlineConnected": "Rien n’est encore en ligne. Plus qu’une étape.",
+      "headline": "Rien n’est encore en ligne. Plus que deux étapes.",
+      "supportConnected": "La connexion {{method}} est en place. Soumettez votre première récompense et POWR la vérifie — en général en un jour environ.",
+      "supportConnectedFallback": "La distribution est en place. Soumettez votre première récompense et POWR la vérifie — en général en un jour environ.",
+      "supportNotConnected": "{{status}}. Dès que les codes peuvent parvenir aux membres, soumettez votre première récompense pour validation.",
+      "supportNoMethod": "Choisissez comment les codes parviennent aux membres, puis soumettez votre première récompense. POWR la vérifie avant sa mise en ligne."
+    },
+    "rejected": {
+      "headline": "Votre récompense doit être modifiée avant sa mise en ligne.",
+      "support": "POWR a demandé des modifications. Modifiez-la et renvoyez-la pour validation."
+    },
+    "draft": {
+      "headline": "Vous avez une récompense à moitié rédigée.",
+      "support": "Votre brouillon est enregistré. Terminez-le et envoyez-le à POWR — la validation prend en général un jour environ."
+    },
+    "pending": {
+      "headline": "Vous attendez POWR. En général, un jour environ.",
+      "support": "Notre équipe examine votre récompense. Vous n’avez rien à faire — nous vous écrirons dès qu’elle sera validée."
+    },
+    "unclaimed": {
+      "headline": "Vous êtes en ligne, mais personne n’a encore échangé.",
+      "support": "La distribution fonctionne, ce n’est donc pas un problème technique — c’est une question de visibilité. Vérifiez que votre fiche est claire et que votre prix semble accessible."
+    },
+    "quiet": {
+      "headline_one": "Vous êtes en ligne, mais c’est calme. {{n}} jour depuis le dernier échange.",
+      "headline_other": "Vous êtes en ligne, mais c’est calme. {{n}} jours depuis le dernier échange.",
+      "support": "La distribution fonctionne et votre fiche est complète, ce n’est donc pas un problème technique — c’est une question de visibilité."
+    },
+    "good": {
+      "headline_one": "Tout fonctionne. {{n}} échange sur les 30 derniers jours.",
+      "headline_other": "Tout fonctionne. {{n}} échanges sur les 30 derniers jours.",
+      "support": "Les codes parviennent aux membres et vous n’avez rien à faire aujourd’hui."
+    }
+  },
+  "facts": {
+    "liveRewards": "Récompenses en ligne",
+    "claimsBeforeStop": "Échanges avant l’arrêt",
+    "rewardSlots": "Quota de récompenses",
+    "rewardSlotsUsed": "Quota utilisé",
+    "delivery": "Distribution",
+    "outOfStock": "Récompenses épuisées",
+    "stillLive": "Toujours en ligne",
+    "claimsAllTime": "Échanges au total",
+    "reviewTime": "Délai de validation",
+    "needsChanges": "À modifier",
+    "drafts": "Brouillons",
+    "withPowr": "Chez POWR",
+    "price": "Prix",
+    "lastClaim": "Dernier échange",
+    "powrSpent": "POWR dépensés chez vous",
+    "claims": "Échanges"
+  },
+  "values": {
+    "slots": "{{used}} sur {{limit}}",
+    "ready": "Prêt",
+    "notChosen": "Non choisi",
+    "reviewTime": "~1 jour",
+    "price": "{{cost}} POWR"
+  },
+  "qual": {
+    "pausedCount_one": "{{n}} récompense en pause ou en attente de validation",
+    "pausedCount_other": "{{n}} récompenses en pause ou en attente de validation",
+    "mostRecent_one": "le dernier il y a {{count}} jour",
+    "mostRecent_other": "le dernier il y a {{count}} jours",
+    "submitToGoLive": "soumettez-en une pour la mettre en ligne",
+    "connectedReady": "connecté, prêt à générer des codes",
+    "chooseHow": "choisissez comment les codes parviennent aux membres",
+    "emptyPool": "en ligne dans l’app, réserve vide",
+    "visibleNow": "visibles par les membres en ce moment",
+    "noneYet": "aucun pour l’instant",
+    "undeliverable": "visibles mais impossibles à distribuer",
+    "notConnected": "non connecté",
+    "nothingSubmitted": "rien de soumis pour l’instant",
+    "howCodesReach": "comment les codes parviennent aux membres",
+    "typicalOnceSubmit": "délai habituel après envoi",
+    "sentBack": "renvoyées par l’équipe POWR",
+    "unaffected": "non concernées, toujours disponibles",
+    "nothingMeantime": "rien en ligne d’ici là",
+    "usedByApproved": "occupé par les récompenses validées",
+    "savedWaiting": "enregistrés, en attente de vous",
+    "roomToSubmit": "de la place pour en soumettre",
+    "stillToConnect": "reste à connecter",
+    "inReview": "en cours de validation",
+    "connectedGoLive": "connecté, mise en ligne immédiate possible",
+    "connectBeforeApproval": "à connecter avant la validation",
+    "typical": "délai habituel",
+    "listedFor_one": "en ligne depuis {{n}} jour",
+    "listedFor_other": "en ligne depuis {{n}} jours",
+    "listedToday": "en ligne depuis aujourd’hui",
+    "cheapest": "le prix payé par un membre pour votre récompense la moins chère",
+    "lastClaim_one": "jours écoulés · {{n}} échange au total",
+    "lastClaim_other": "jours écoulés · {{n}} échanges au total",
+    "approvedVisible": "validées et visibles maintenant",
+    "earnedFirst": "gagnés par les membres avant d’être dépensés",
+    "in30_one": "sur 30 jours · {{n}} échange au total",
+    "in30_other": "sur 30 jours · {{n}} échanges au total"
+  },
+  "items": {
+    "revise": "Modifier {{title}}",
+    "reviseFallback": "Modifier votre demande de récompense",
+    "reviseDetail": "POWR demande des modifications avant de poursuivre la validation.",
+    "finish": "Terminer {{title}}",
+    "finishFallback": "Terminer votre brouillon de récompense",
+    "finishDetail": "Votre brouillon est enregistré, vous pouvez le reprendre.",
+    "addCodes": "Ajouter des codes pour {{title}}",
+    "addCodesFallback": "Ajouter des codes pour votre récompense",
+    "addCodesDetail": "Cette récompense en ligne n’a plus de codes disponibles.",
+    "connectDetail": "Les codes ne peuvent pas parvenir aux membres tant que ce n’est pas fait.",
+    "backInApp": "Remettre une récompense dans l’app",
+    "backInAppDetail": "Vous avez des récompenses, mais aucune n’est en ligne pour les membres."
+  },
+  "chain": {
+    "listed": "Publié",
+    "stocked": "En stock",
+    "connected": "Connecté",
+    "delivered": "Distribué",
+    "used": "Utilisé",
+    "listedSome_one": "{{n}} récompense visible par les membres.",
+    "listedSome_other": "{{n}} récompenses visibles par les membres.",
+    "listedNone": "Rien de votre marque n’est encore dans l’app — tout le reste en dépend.",
+    "stockedOnDemand": "{{method}} génère un code à la demande — aucune réserve à réapprovisionner.",
+    "stockedOnDemandFallback": "Votre intégration génère un code à la demande — aucune réserve à réapprovisionner.",
+    "stockedDry": "Une récompense en ligne n’a plus de codes disponibles.",
+    "stockedOk": "Votre réserve contient des codes prêts à être distribués.",
+    "connectedNone": "Choisissez comment les codes parviennent aux membres.",
+    "deliveredSome_one": "{{n}} code a été remis aux membres.",
+    "deliveredSome_other": "{{n}} codes ont été remis aux membres.",
+    "deliveredNone": "Aucun membre n’a encore échangé de code.",
+    "usedSome": "Les codes sont utilisés au paiement et confirmés à POWR.",
+    "usedHeld": "Des membres ont des codes qu’ils n’ont pas encore utilisés.",
+    "usedNone": "Aucun code n’a encore été utilisé au paiement."
+  },
+  "preview": {
+    "aria": "Aperçu : {{title}}",
+    "needsFinishing": "À finaliser",
+    "needsFinishingBody": "Validée et prête à s’afficher ainsi — les membres la verront dès que les codes pourront leur parvenir.",
+    "liveInApp": "En ligne dans l’app",
+    "exact": "C’est exactement ce que voient les membres.",
+    "oneOther": "Votre unique échange vient d’une autre récompense.",
+    "allOther": "Vos {{n}} échanges viennent tous de vos autres récompenses.",
+    "oneThis": "Votre unique échange vient de celle-ci.",
+    "allThis": "Vos {{n}} échanges viennent tous de celle-ci.",
+    "someThis_one": "{{count}} de vos {{total}} échanges vient de celle-ci.",
+    "someThis_other": "{{count}} de vos {{total}} échanges viennent de celle-ci.",
+    "nothingLive": "Rien en ligne pour l’instant",
+    "nothingLiveBody": "Les récompenses validées s’affichent ici exactement comme les membres les voient dans l’app.",
+    "lastListing_one": "Votre dernière fiche a généré {{n}} échange.",
+    "lastListing_other": "Votre dernière fiche a généré {{n}} échanges."
+  },
+  "redemptions": {
+    "eyebrow": "Statistiques",
+    "title": "Échanges",
+    "range": "{{days}} derniers jours",
+    "loadErrorTitle": "Impossible de charger vos chiffres",
+    "loadErrorBody": "Un problème est survenu lors du chargement de vos échanges. Rien n’a changé sur votre compte.",
+    "nothingTitle": "Aucun échange à signaler",
+    "nothingNoRewards": "Vous n’avez pas encore créé de récompense. Dès qu’une récompense sera en ligne, chaque échange s’affichera ici, avec les totaux du jour et le détail par récompense.",
+    "nothingNotLive": "Aucune de vos récompenses n’est encore en ligne, les membres n’ont donc rien à échanger. Vos chiffres démarrent dès qu’une récompense est validée.",
+    "statTotal": "Total",
+    "statRedemptions": "échanges",
+    "statDailyAvg": "Moy. par jour",
+    "statPerDay": "par jour",
+    "statRewards": "Récompenses",
+    "statLive": "en ligne",
+    "byReward": "Par récompense",
+    "inactive": "Inactive",
+    "recent": "Activité récente",
+    "emptyRange": "Aucun échange sur les {{days}} derniers jours",
+    "emptyRangeLive": "Vos récompenses en ligne sont toujours dans l’app — les échanges s’afficheront ici au fur et à mesure. Élargissez la période pour voir l’activité plus ancienne.",
+    "emptyRangeNotLive": "Vous n’avez rien en ligne pour le moment, les membres n’ont donc rien à échanger.",
+    "colDate": "Date et heure",
+    "colReward": "Récompense",
+    "colCode": "Code",
+    "showing": "50 sur {{total}} affichés — réduisez la période pour en voir plus",
+    "copyCode": "Copier le code",
+    "copyFailed": "Copie impossible — sélectionnez-le manuellement",
+    "status": {
+      "claimed": "Échangé",
+      "used": "Utilisé",
+      "expired": "Expiré",
+      "refunded": "Remboursé"
+    }
+  }
+}

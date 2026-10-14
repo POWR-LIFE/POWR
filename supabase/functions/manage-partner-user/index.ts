@@ -28,11 +28,19 @@
 //
 // ADMIN-only:
 //   invite        { brand_name, email }   → email invite via Supabase (needs SMTP configured)
+//
+// Language of the emails (BUSINESS_LANGUAGES; English until the partner portal
+// speaks another): the invited address isn't a user yet, so the setup link
+// goes out in the inviter's language — a teammate's own, English when POWR
+// staff send it from the admin (the Submissions approval included). The
+// welcome after setup follows the same inviter, as the new login has no
+// language of its own yet. A failed lookup means English, never a lost email.
 
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '../_shared/mailgun.ts';
 import { brandInviteEmail } from '../_shared/emails/brand-invite.ts';
 import { partnerWelcomeEmail } from '../_shared/emails/partner-welcome.ts';
+import { inviterLanguage } from '../_shared/brandLanguages.ts';
 
 const REPLY_TO = 'support@powr.life';
 
@@ -156,7 +164,8 @@ Deno.serve(async (req) => {
 
     // Post-setup welcome — best-effort; a send failure must not fail the setup.
     try {
-      const tpl = partnerWelcomeEmail({ brandName: inv.brand_name, contactName: contact_name?.trim() || null });
+      const lang = await inviterLanguage(adminClient, inv.created_by);
+      const tpl = partnerWelcomeEmail({ brandName: inv.brand_name, contactName: contact_name?.trim() || null }, lang);
       await sendEmail({ to: cleanEmail, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO });
     } catch (err) {
       console.error('redeem_invite: welcome email failed:', err);
@@ -274,8 +283,9 @@ Deno.serve(async (req) => {
     // the link instead.
     let emailed = false;
     if (email) {
+      const lang = await inviterLanguage(adminClient, user.id, isAdmin);
       try {
-        const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, ...(await brandLook(adminClient, brandName)), ...inviteContext });
+        const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, ...(await brandLook(adminClient, brandName)), ...inviteContext }, lang);
         await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO, tag: inviteContext.rewardTitle ? 'partner-approved' : 'partner-invite' });
         emailed = true;
       } catch (err) {

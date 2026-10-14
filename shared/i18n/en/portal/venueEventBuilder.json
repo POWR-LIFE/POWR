@@ -1,0 +1,260 @@
+{
+  "steps": {
+    "aria": "Steps",
+    "format": {
+      "title": "Format",
+      "hint": "The kind of event"
+    },
+    "when": {
+      "title": "When",
+      "hint": "Name, dates, reveal"
+    },
+    "scoring": {
+      "title": "Scoring",
+      "hint": "What counts"
+    },
+    "prizes": {
+      "title": "Prizes",
+      "hint": "What they win"
+    },
+    "promote": {
+      "title": "Promote",
+      "hint": "Look and reach"
+    },
+    "review": {
+      "title": "Review",
+      "hint": "Check and save"
+    }
+  },
+  "problems": {
+    "pickFormat": "Pick a format to start",
+    "nameShort": "Give the event a name",
+    "nameLong": "Keep the name to 48 characters",
+    "pickFirstDay": "Pick the first day",
+    "firstDayPast": "The first day can’t be in the past",
+    "firstDayFar": "Pick a first day in the next 90 days",
+    "pickReveal": "Pick when the winners are revealed",
+    "revealWindow": "Reveal between {{from}} and {{to}}",
+    "pickActivity": "Pick at least one activity",
+    "addPrize": "Add at least one prize",
+    "prizeNameShort": "Give each prize a name of 2 characters or more",
+    "prizePhotoName": "Give each prize photo a name",
+    "pickPartner": "Pick the partner brand, or switch the partner code off",
+    "partnerNoCodes": "That brand has no codes to give right now. Pick another",
+    "bookingHttps": "A booking link starts with https://",
+    "bookingEmail": "A booking link can’t ask for members’ email addresses"
+  },
+  "field": {
+    "optional": "optional"
+  },
+  "upload": {
+    "tooBig": "Keep it under {{mb}} MB",
+    "failed": "Upload failed",
+    "uploading": "Uploading…"
+  },
+  "actions": {
+    "change": "Change",
+    "next": "Next: {{step}}",
+    "saveChanges": "Save changes",
+    "saveDraft": "Save as a draft",
+    "working": "Working…",
+    "publish": "Publish",
+    "sendToPowr": "Send to POWR",
+    "needsClashPlus": "Publishing needs Clash+",
+    "startOver": "Start over"
+  },
+  "schedule": {
+    "pickFirstDay": "Pick the first day to see every date.",
+    "scoring": "Scoring {{from}} → {{to}}",
+    "finale": "Finale night {{day}}, {{from}}–{{to}}",
+    "atGym": "at {{gym}}",
+    "seals": "The board seals at midnight after the last day. Members can join until then."
+  },
+  "load": {
+    "title": "Can’t open this event",
+    "notYours": "Only the gym that runs this event can change it.",
+    "pending": "It’s with POWR for a quick check. Pull it back from the event page to change it.",
+    "finished": "This event has finished, so it can’t change. Run it again as a new event.",
+    "noFormat": "This kind of event is no longer offered. Contact POWR to change it."
+  },
+  "save": {
+    "partial": "Saved, but {{problems}}",
+    "separator": "; ",
+    "notificationsFailed": "the notifications weren’t saved ({{error}})",
+    "revealFailed": "the reveal time wasn’t saved ({{error}})",
+    "publishFailed": "it isn’t published yet: {{error}}",
+    "sentForCheck": "Sent to POWR for a quick check",
+    "published": "Published. Your members can see it now",
+    "saved": "Saved",
+    "draftSaved": "Draft saved"
+  },
+  "lockedNote": "It’s under way, so only the name, headline, logo, picture and booking link can change, plus the partner code, the notifications and when the winners are revealed.",
+  "format": {
+    "titleEdit": "The format",
+    "titleNew": "What kind of event?",
+    "subEdit": "The format is set once an event is saved. Run it again as a new event to pick another.",
+    "subNew": "Pick a format. You choose how long it runs, what counts and more in the next steps.",
+    "dayRange": "{{min}} to {{max}}",
+    "withFinale": "{{days}} + finale night",
+    "countsVenue": "Counts sessions at {{gym}}. You can change this.",
+    "countsAll": "Counts any verified workout. You can change this."
+  },
+  "when": {
+    "title": "Name and dates",
+    "sub": "The first day starts at midnight. Every other date follows from the choices here.",
+    "name": "Event name",
+    "namePlaceholder": "{{gym}} October Clash",
+    "firstDay": "First day",
+    "howLong": "How long",
+    "nightStarts": "Finale night starts",
+    "nightLasts": "And lasts",
+    "nightLengthAria": "Finale night length",
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours"
+  },
+  "reveal": {
+    "label": "Revealing the winners",
+    "manualTitle": "I’ll reveal them",
+    "manualBody_one": "Press Reveal from your phone or the portal. The app and your screen flip together. If nobody does, POWR reveals them about {{count}} day after the board seals.",
+    "manualBody_other": "Press Reveal from your phone or the portal. The app and your screen flip together. If nobody does, POWR reveals them about {{count}} days after the board seals.",
+    "manualBodyFinale_one": "Press Reveal from your phone on the finale night or the portal. The app and your screen flip together. If nobody does, POWR reveals them about {{count}} day after the board seals.",
+    "manualBodyFinale_other": "Press Reveal from your phone on the finale night or the portal. The app and your screen flip together. If nobody does, POWR reveals them about {{count}} days after the board seals.",
+    "atTitle": "At a set time",
+    "atBody": "Pick a time after the board seals and within a week of it.",
+    "timeAria": "Reveal time"
+  },
+  "scoring": {
+    "title": "What counts",
+    "sub": "Members score points for verified activity. Choose which activity moves this board.",
+    "allTitle": "Every verified workout",
+    "allBody": "Anything members do, anywhere: gym check-ins, and workouts from their watch or phone.",
+    "venueTitle": "Only sessions at {{gym}}",
+    "venueBody": "Members check in with POWR when they arrive. The hardest to game, and footfall you can see.",
+    "pickTitle": "Pick the activities",
+    "pickBody": "Choose what counts, like running and cycling for a run club.",
+    "activitiesAria": "Activities",
+    "walkingNote": "Walking includes everyone’s daily steps, so it can outweigh workouts.",
+    "manualNote": "Workouts typed in by hand never count. POWR checks everything else.",
+    "board": "Leaderboard",
+    "boardHint": "How many places show on the board in the app and on your screen.",
+    "boardAria": "Leaderboard size",
+    "top": "Top {{n}}",
+    "bonus": "Finale night bonus",
+    "bonusHint": "{{blurb}} POWR pays it to members who joined and check in at {{gym}} on the night.",
+    "rules": "Rules",
+    "rulesWritten": "Written for you from your choices",
+    "rulesPick": "Pick an activity to see them.",
+    "ownRuleAria": "Your rule {{n}}",
+    "ownRulePlaceholder": "A rule of your own",
+    "removeRule": "Remove rule",
+    "addRule": "Add a rule of your own"
+  },
+  "prizes": {
+    "sub": "1st place first. You give these out: winners show their POWR ID at the front desk.",
+    "places": {
+      "1": "1st",
+      "2": "2nd",
+      "3": "3rd",
+      "4": "4th",
+      "5": "5th"
+    },
+    "prizeAria": "{{place}} prize",
+    "placeholders": {
+      "1": "A free month",
+      "2": "A PT session",
+      "3": "Gym merch",
+      "other": "Prize"
+    },
+    "remove": "Remove {{place}} prize",
+    "removePhoto": "Remove photo",
+    "addPhoto": "Add a photo",
+    "add": "Add a prize",
+    "photosNote": "Photos show with the prizes in the app, on the share page and on your screen. Buying prizes? <partners><gold>Your partner discounts</gold></partners> get you the price POWR members pay."
+  },
+  "partner": {
+    "optional": "Optional",
+    "title": "A partner code for everyone who takes part",
+    "body": "When you reveal the winners, everyone who scored gets a discount code from the POWR partner you pick. It lands in their Wallet in the app.",
+    "loadFailed": "The partner brands couldn’t load just now.",
+    "none": "No partner has codes to give right now.",
+    "aria": "Partner brand",
+    "shared": "One code for everyone",
+    "codesLeft_one": "{{n}} code left",
+    "codesLeft_other": "{{n}} codes left",
+    "noneLeft": "No codes left right now",
+    "note": "One each, for everyone still in the event with points. If the codes run short, the top of the board get theirs first. Say so in your headline, so members know it’s coming."
+  },
+  "pushes": {
+    "announce": {
+      "title": "Announcement",
+      "detail": "To your members and recent visitors who haven’t joined. Once, in the daytime, after you publish."
+    },
+    "kickoff": {
+      "title": "Day one",
+      "detail": "To everyone who’s joined, the morning scoring starts."
+    },
+    "doors": {
+      "title": "Finale night",
+      "detail": "To everyone who’s joined, the morning of the finale."
+    }
+  },
+  "promote": {
+    "title": "Promote it",
+    "sub": "How it looks, who sees it, and the notifications POWR sends for you.",
+    "logo": "Logo",
+    "logoHint": "Shown on the event’s card in the app. A wide logo on a transparent background works best.",
+    "logoAlt": "Event logo",
+    "uploadLogo": "Upload a logo",
+    "removeLogo": "Remove logo",
+    "logoOnly": "Show the logo instead of the name",
+    "headline": "Headline",
+    "headlineHint": "One line under the name, in the app and on share cards.",
+    "headlinePlaceholder": "Most sessions in October wins a free month",
+    "media": "Picture or video",
+    "mediaHint": "The big picture on the event’s card in the app and on share cards. A short video plays silently.",
+    "upload": "Upload",
+    "removeMedia": "Remove picture",
+    "booking": "Booking link",
+    "bookingHint": "If members book a place on your own system, link it here and the app shows a Book button. {name} fills in their name.",
+    "audience": "Who sees it in the app",
+    "audienceHint": "Your members and anyone who’s trained at {{gym}} lately always see it. Anyone can join from your QR code or link.",
+    "audienceAria": "Who sees it",
+    "justMembers": "Just my members",
+    "withinKm": "Also within {{km}} km",
+    "notifications": "Notifications",
+    "notificationsHint": "POWR writes every word and sends them at the right moment. Nothing goes out until the event is published, and members can turn notifications off.",
+    "standings": "Daily standings",
+    "standingsBody": "Each member’s own rank and points, and how far they are from the place above. Only while the board is live.",
+    "standingsAria": "Daily standings time",
+    "off": "Off"
+  },
+  "review": {
+    "title": "Check it over",
+    "subEdit": "Save to update it everywhere it shows.",
+    "subNew": "Nothing goes out until you publish. You can save it as a draft and come back.",
+    "revealAuto": "Winners revealed automatically {{at}}",
+    "revealManual": "You reveal the winners",
+    "boardTop": "Top {{n}} on the board",
+    "finaleBonus": "+{{points}} POWR for coming to the finale night",
+    "partnerCode": "Plus a {{brand}} code for everyone who scores, in their Wallet at the reveal",
+    "audienceKm": "Your members, recent visitors and anyone within {{km}} km",
+    "audience": "Your members and recent visitors",
+    "notifications": "Notifications: {{list}}",
+    "noNotifications": "No one-off notifications",
+    "standingsAt": ", daily standings at {{time}}",
+    "booking": "Booking: {{url}}"
+  },
+  "page": {
+    "backToEvent": "Back to the event",
+    "events": "Events",
+    "edit": "Edit event",
+    "again": "Run it again",
+    "new": "New event",
+    "hidePhone": "Hide the app preview",
+    "showPhone": "See it in the app"
+  },
+  "publish": {
+    "trusted": "Publishing puts it in front of your members straight away.",
+    "check": "Your first event gets a quick check from POWR before it goes out, usually within a day."
+  }
+}

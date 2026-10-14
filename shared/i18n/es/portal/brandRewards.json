@@ -1,0 +1,243 @@
+{
+  "sectors": {
+    "food": "Comer",
+    "gym": "Moverse",
+    "health": "Mente",
+    "gear": "Sueño"
+  },
+  "valueTypes": {
+    "custom": "Texto libre",
+    "percentage": "Descuento en %",
+    "fixedAmount": "Descuento en £"
+  },
+  "status": {
+    "draft": "Borrador",
+    "pending": "En revisión",
+    "approved": "Aprobada",
+    "rejected": "Requiere cambios",
+    "live": "Publicada",
+    "inactive": "Inactiva"
+  },
+  "steps": {
+    "offer": {
+      "label": "La oferta",
+      "hint": "Lo que reciben"
+    },
+    "details": {
+      "label": "Detalles",
+      "hint": "Textos y condiciones"
+    },
+    "delivery": {
+      "label": "Canje",
+      "hint": "Cómo se canjea"
+    },
+    "imagery": {
+      "label": "Imágenes",
+      "hint": "Logotipo e imagen"
+    },
+    "review": {
+      "label": "Resumen",
+      "hint": "Revisar y enviar"
+    }
+  },
+  "errors": {
+    "title": "El título de la recompensa es obligatorio",
+    "description": "La descripción breve es obligatoria",
+    "discountValue": "Introduzca un valor mayor que 0",
+    "valueLabel": "Añada una etiqueta de valor (p. ej., valor de 20 £)",
+    "offer": "El detalle de la oferta es obligatorio",
+    "partnerBlurb": "Es obligatoria una frase sobre su marca",
+    "terms": "Los términos y condiciones son obligatorios",
+    "codePrefix": "El nombre del código necesita al menos 2 caracteres",
+    "url": "Es obligatoria una URL de destino de afiliado",
+    "fulfilmentNotes": "Explique cómo entregará su equipo esta recompensa",
+    "logo": "Suba un logotipo",
+    "hero": "Suba una imagen principal"
+  },
+  "toasts": {
+    "signInAgain": "Vuelva a iniciar sesión",
+    "requestSent": "Gracias. Nuestro equipo se pondrá en contacto con usted en breve",
+    "videoTooLarge": "El vídeo debe pesar menos de 50 MB: use un bucle corto y comprimido",
+    "imageTooLarge": "La imagen debe pesar menos de 5 MB",
+    "uploadFailed": "No se ha podido subir el archivo",
+    "brandLoading": "Su perfil de marca aún se está cargando",
+    "changesSaved": "Cambios guardados",
+    "draftSaved": "Borrador guardado",
+    "needsAttention": "Aún hay algunos campos por completar",
+    "changesSubmitted": "Cambios enviados: se publicarán cuando POWR los apruebe",
+    "submissionUpdated": "Propuesta actualizada",
+    "submitted": "Recompensa enviada para su revisión"
+  },
+  "form": {
+    "backToList": "Volver a Mis recompensas",
+    "titleEditListing": "Editar ficha",
+    "titleEditSubmission": "Editar propuesta",
+    "titleNew": "Proponer una recompensa",
+    "subtitleEditListing": "Su ficha publicada no cambia hasta que POWR apruebe estos cambios",
+    "subtitleNew": "Prepare un borrador por pasos y envíelo a POWR para su revisión",
+    "savedAt": "Guardado a las {{time}}",
+    "back": "← Volver",
+    "saveDraft": "Guardar borrador",
+    "submitting": "Enviando…",
+    "submitChanges": "Enviar cambios",
+    "resubmit": "Reenviar para revisión",
+    "updateSubmission": "Actualizar propuesta",
+    "submitForReview": "Enviar para revisión",
+    "saving": "Guardando…",
+    "saveAndContinue": "Guardar y continuar →"
+  },
+  "offer": {
+    "titleLabel": "Título de la recompensa *",
+    "titlePlaceholder": "P. ej., 30 % de descuento en su primer pedido",
+    "descriptionLabel": "Descripción breve *",
+    "descriptionPlaceholder": "P. ej., Su marca · Cualquier producto",
+    "valueTypeLabel": "Tipo de valor *",
+    "percentOffLabel": "Descuento en % *",
+    "amountOffLabel": "Descuento en £ *",
+    "valueLabelLabel": "Etiqueta de valor *",
+    "valueLabelPlaceholder": "P. ej., valor de 20 £",
+    "sectorLabel": "Sector *",
+    "rewardTypeLabel": "Tipo de recompensa *",
+    "digital": "Código digital",
+    "physical": "Artículo físico"
+  },
+  "details": {
+    "offerLabel": "Detalle de la oferta * (vista ampliada)",
+    "offerPlaceholder": "P. ej., 30 % de descuento en un pedido. Solo clientes nuevos.",
+    "blurbLabel": "Sobre su marca *",
+    "blurbPlaceholder": "Una frase breve que presente su marca.",
+    "termsLabel": "Términos y condiciones *",
+    "termsPlaceholder": "P. ej., Un uso por miembro. No acumulable con otras ofertas.",
+    "websiteLabel": "URL del sitio web <muted>(opcional)</muted>",
+    "websitePlaceholder": "https://sumarca.com"
+  },
+  "delivery": {
+    "methodLabel": "Forma de canje *",
+    "codePool": {
+      "label": "Código único",
+      "detail": "POWR asigna uno de sus códigos en cada canje"
+    },
+    "affiliate": {
+      "label": "Enlace compartido",
+      "detail": "Los miembros canjean a través de su enlace de destino"
+    },
+    "inStore": {
+      "label": "En tienda",
+      "detail": "Los miembros enseñan un vale activo en caja. Sin códigos"
+    },
+    "codeNameLabel": "Nombre del código * (segmento de su marca)",
+    "codeNamePlaceholder": "P. ej., TRIBE",
+    "membersReceive": "Los miembros reciben",
+    "codeSample": "MARCA",
+    "atYourTill": "En caja",
+    "inStoreBody": "Los miembros abren un vale activo en la app POWR y su personal lo escanea. Cuando se apruebe, configure sus tiendas y los enlaces de escaneo del personal en la página «En tienda».",
+    "affiliateUrlLabel": "URL de destino de afiliado *",
+    "affiliateUrlPlaceholder": "https://sumarca.com/powr",
+    "fulfilmentLabel": "Plan de entrega *",
+    "fulfilmentPlaceholder": "Explique qué ocurre cuando un miembro canjea la recompensa, incluidos los plazos de entrega y los datos que necesita su equipo.",
+    "stockLabel": "Límite de stock <muted>opcional</muted>",
+    "perMemberLabel": "Canjes por miembro <muted>opcional</muted>",
+    "unlimited": "Ilimitado"
+  },
+  "imagery": {
+    "upload": "Subir",
+    "logoLabel": "Logotipo / marca * (cuadrado, mín. 512×512 px)",
+    "heroLabel": "Imagen principal / banner * (horizontal 16:9, mín. 1200×675 px)",
+    "videoLabel": "Vídeo principal (opcional): se reproduce en lugar de la imagen; MP4, máx. 50 MB. La imagen se mantiene como alternativa fija.",
+    "removeVideo": "Quitar vídeo",
+    "videoUrlPlaceholder": "O pegue un enlace directo: https://…/clip.mp4",
+    "videoUrlHint": "Enlace directo .mp4 / .m3u8 / .webm o Cloudflare Stream · Los enlaces de YouTube y Vimeo no se reproducen",
+    "videoUrl": {
+      "notUrl": "Introduzca una URL completa que empiece por https://",
+      "streamingSite": "Es un enlace a una página tipo YouTube o Vimeo, que no puede usarse como fondo de la tarjeta. Suba el archivo o pegue un enlace directo .mp4/.m3u8 (p. ej., Cloudflare Stream).",
+      "notAFile": "Guardado, pero ese enlace no termina en .mp4/.m3u8/.webm. Si es una página web y no un archivo de vídeo directo, la tarjeta solo mostrará la imagen."
+    }
+  },
+  "review": {
+    "intro": "Revise todo a continuación y envíelo. Haga clic en cualquier paso de arriba para editarlo.",
+    "rows": {
+      "title": "Título",
+      "description": "Descripción",
+      "value": "Valor",
+      "sector": "Sector",
+      "rewardType": "Tipo de recompensa",
+      "offer": "Detalle de la oferta",
+      "about": "Sobre la marca",
+      "terms": "Condiciones",
+      "website": "Sitio web",
+      "delivery": "Canje",
+      "fulfilment": "Entrega",
+      "imagery": "Imágenes"
+    },
+    "deliveryCode": "Código único · {{code}}",
+    "deliveryAffiliate": "Enlace de afiliado compartido",
+    "deliveryInStore": "En tienda · vale activo en caja",
+    "deliveryManual": "Entrega manual",
+    "imageryLogo": "Logotipo",
+    "imageryHero": "Imagen principal",
+    "imageryVideo": "Vídeo",
+    "noteEditListing": "POWR revisará sus cambios y los aplicará a la ficha publicada.",
+    "noteNew": "Nuestro equipo fijará el precio en puntos y la revisará antes de publicarla."
+  },
+  "list": {
+    "eyebrow": "Gestión de recompensas",
+    "title": "Mis recompensas",
+    "tabs": {
+      "live": "Recompensas publicadas",
+      "submissions": "Propuestas"
+    },
+    "counter": "{{used}}/{{limit}} recompensas",
+    "counterAtLimit": "{{used}}/{{limit}} recompensas · límite alcanzado",
+    "requestMore": "Solicitar más",
+    "submitReward": "Proponer recompensa",
+    "checking": "Comprobando sus recompensas…",
+    "withPowr": "En revisión por POWR",
+    "nothingLive": "Aún no hay nada publicado",
+    "inReview_one": "{{count}} propuesta en revisión. Las recompensas aprobadas aparecerán aquí.",
+    "inReview_other": "{{count}} propuestas en revisión. Las recompensas aprobadas aparecerán aquí.",
+    "workInProgress": "Su trabajo en curso está en la pestaña Propuestas: termínelo y envíelo para revisión.",
+    "viewSubmissions": "Ver propuestas",
+    "noLiveRewards": "Aún no hay recompensas publicadas",
+    "noLiveRewardsBody": "Proponga una recompensa y nuestro equipo la revisará y la publicará.",
+    "submitFirst": "Proponer su primera recompensa",
+    "columns": {
+      "reward": "Recompensa",
+      "category": "Categoría",
+      "cost": "Coste",
+      "status": "Estado",
+      "submitted": "Fecha de envío"
+    },
+    "categoryValue": {
+      "food": "Comer",
+      "gym": "Moverse",
+      "health": "Mente",
+      "gear": "Sueño"
+    },
+    "pts": "{{points}} pts",
+    "makePost": "Crear publicación",
+    "updateInReview": "Cambio en revisión",
+    "editListing": "Editar ficha",
+    "noSubmissions": "Aún no hay propuestas",
+    "untitled": "Sin título",
+    "listingUpdate": "Cambio de ficha",
+    "feedback": "Comentarios: {{feedback}}",
+    "revise": "Corregir",
+    "continue": "Continuar",
+    "edit": "Editar"
+  },
+  "preview": {
+    "nothingYet": "Aún no hay nada que previsualizar",
+    "nothingYetBody": "Las recompensas aparecen aquí tal y como las ven los miembros en la app.",
+    "submit": "Proponer una recompensa",
+    "select": "Seleccione una recompensa<nl/>para verla en la app"
+  },
+  "limit": {
+    "title": "Límite de recompensas alcanzado",
+    "body_one": "Las marcas pueden tener hasta <strong>{{count}} recompensa</strong> publicada o en revisión a la vez. ¿Quiere ofrecer más? Cuéntenos brevemente qué desea añadir y nuestro equipo se pondrá en contacto con usted.",
+    "body_other": "Las marcas pueden tener hasta <strong>{{count}} recompensas</strong> publicadas o en revisión a la vez. ¿Quiere ofrecer más? Cuéntenos brevemente qué desea añadir y nuestro equipo se pondrá en contacto con usted.",
+    "noteLabel": "¿Algo que debamos saber? (opcional)",
+    "notePlaceholder": "P. ej., Nos gustaría añadir una oferta de temporada y una recompensa exclusiva para miembros.",
+    "sending": "Enviando…",
+    "getInTouch": "Contactar"
+  }
+}

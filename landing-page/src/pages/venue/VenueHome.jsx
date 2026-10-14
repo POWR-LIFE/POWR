@@ -1,21 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import {
     ArrowRight, CalendarDays, Flag, Flame, Lock, Megaphone, Package, Send, Sparkles, TrendingUp, Trophy, Tv, UserPlus, Users, Zap,
 } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Card, Micro, Spinner, Empty, fmtNum, BTN_GHOST } from '../../components/portal/ui';
 import { useToast } from '../../lib/toast';
+import { formatLocale } from '../../lib/i18n';
+import { serverErrorText } from '../../lib/serverErrors';
 import { fetchGymBoard, fetchGymEvents, fetchGymInsights, fetchGymLeague, fetchGymProfile, fetchGymSummary, fetchGymTeam, fetchMemberActivity, nudgeQuietMembers } from './venueApi';
 import { Columns } from './charts';
-import { boardName, ordinal, pctChange, weekLabel } from '../../../../shared/gymBoard.ts';
+import { pctChange, weekLabel } from '../../../../shared/gymBoard.ts';
 import { localGyms, rankByEffort, rankGyms, ranksAtDayStart, rivalOf, sessionsToClose } from '../../../../shared/gymLeague.ts';
 import { gymMoves } from '../../../../shared/gymMoves.ts';
 import { weekStory, hourName } from '../../../../shared/gymWeek.ts';
+import { ordinalIn } from '../../../../shared/venueHomeText.ts';
 import { eventPushCopy } from '../../../../supabase/functions/_shared/eventPushCopy.ts';
 import { usePackage, trialDaysLeft, PACKAGE_LABEL } from './packages';
 import { statusKey, fmtDay, lastDay } from './eventUi';
 import WeekPosts from './WeekPosts';
+import { postName } from './PostLightbox';
 import GymAppCard from './GymAppCard';
 import { markDone, useDone, endOfDay } from './doneStore';
 
@@ -39,12 +44,35 @@ import { markDone, useDone, endOfDay } from './doneStore';
 const REFRESH_MS = 60_000;
 const SLOW_EVERY = 5;          // insights (the 8 weeks, the board): every 5th refresh
 const WEEKS = 9;               // 8 complete weeks + this one: the last 4 against the 4 before
-const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const DAY_LETTERS = [
+    'venueHome:days.letter.mon', 'venueHome:days.letter.tue', 'venueHome:days.letter.wed', 'venueHome:days.letter.thu',
+    'venueHome:days.letter.fri', 'venueHome:days.letter.sat', 'venueHome:days.letter.sun',
+];
+// en-CA only for its YYYY-MM-DD shape: a date key, never shown.
 const isoDayIn = (tz, d = new Date()) =>
     new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-const plural = (n, word) => `${fmtNum(n)} ${word}${n === 1 ? '' : 's'}`;
-const people = (n) => `${fmtNum(n)} ${n === 1 ? 'person' : 'people'}`;
 const sum = (rows, key) => rows.reduce((s, r) => s + (r[key] ?? 0), 0);
+
+/** "3 people" / "1 person", in the reader's language. */
+function peopleText(t, n) {
+    return t('venueHome:pulse.people', { count: n ?? 0, n: fmtNum(n) });
+}
+
+/** A member's name as the board shows it (gymBoard's boardName, with its stand-in translated). */
+function nameOf(t, row) {
+    return row.display_name || row.username || t('venueHome:people.member');
+}
+
+/** The rush hour's ends: the wall's own "5pm" in English, the 24-hour clock ("17:00") otherwise. */
+function hourText(lang, h) {
+    if (lang === 'en') return hourName(h);
+    return new Intl.DateTimeFormat(formatLocale(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'UTC' }).format(Date.UTC(2000, 0, 1, h % 24));
+}
+
+/** A gold link inside a sentence: <Trans> fills in its words. */
+function GoldLink({ to, children }) {
+    return <Link to={to} className="font-bold"><span className="text-[#8a7600]">{children}</span></Link>;
+}
 
 function Head({ icon: Icon, children, to, linkLabel }) {
     return (
@@ -60,7 +88,8 @@ function Head({ icon: Icon, children, to, linkLabel }) {
 }
 
 function Avatar({ row, size = 'w-7 h-7', ring = '' }) {
-    const name = boardName(row);
+    const { t } = useTranslation();
+    const name = nameOf(t, row);
     return row.avatar_url
         ? <img src={row.avatar_url} alt="" title={name} className={`${size} rounded-full object-cover border border-[#E6E6E1] shrink-0 bg-white ${ring}`} />
         : <div title={name} className={`${size} rounded-full bg-[#FBF8E1] border border-[#E8D200]/40 flex items-center justify-center text-[10px] font-black text-[#8a7600] uppercase shrink-0 ${ring}`}>{name?.[0] ?? '?'}</div>;
@@ -69,17 +98,19 @@ function Avatar({ row, size = 'w-7 h-7', ring = '' }) {
 // ── This week: the pulse ───────────────────────────────────────────────────
 
 function NowPill({ n }) {
+    const { t } = useTranslation();
     const on = n > 0;
     return (
         <div className={`shrink-0 inline-flex items-center gap-2 h-9 px-4 rounded-full border text-[10px] font-black uppercase tracking-[0.15em] whitespace-nowrap ${on ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white' : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#888]'}`}>
             <span className={`w-2 h-2 rounded-full ${on ? 'bg-[#E8D200] animate-pulse' : 'bg-[#CCCCCC]'}`} />
-            {on ? `${n} in the gym now` : 'Nobody in right now'}
+            {on ? t('venueHome:pulse.nowIn', { n }) : t('venueHome:pulse.nobodyIn')}
         </div>
     );
 }
 
 /** Seven columns, Monday to Sunday: this week's sessions in ink (today in gold), last week's same day as a ghost behind. */
 function WeekStrip({ days, tz }) {
+    const { t } = useTranslation();
     if (!days || days.length < 14) return <div className="flex-1" />;
     const last = days.slice(0, 7);
     const week = days.slice(7);
@@ -87,7 +118,7 @@ function WeekStrip({ days, tz }) {
     const max = Math.max(1, ...week.map(d => d.sessions), ...last.map(d => d.sessions));
     const pct = (n) => `${Math.round((n / max) * 100)}%`;
     return (
-        <div className="flex-1 min-h-[80px] flex items-end gap-2 sm:gap-3 mt-4 pt-5" role="img" aria-label="Sessions each day this week, with last week behind">
+        <div className="flex-1 min-h-[80px] flex items-end gap-2 sm:gap-3 mt-4 pt-5" role="img" aria-label={t('venueHome:pulse.stripLabel')}>
             {week.map((d, i) => {
                 const isToday = d.day === today;
                 const future = d.day > today;
@@ -102,7 +133,7 @@ function WeekStrip({ days, tz }) {
                                 </div>
                             )}
                         </div>
-                        <div className={`mt-1.5 text-center text-[9px] font-black uppercase tracking-[0.15em] ${isToday ? 'text-[#8a7600]' : future ? 'text-[#D8D8D2]' : 'text-[#AAAAAA]'}`}>{DAY_LETTERS[i]}</div>
+                        <div className={`mt-1.5 text-center text-[9px] font-black uppercase tracking-[0.15em] ${isToday ? 'text-[#8a7600]' : future ? 'text-[#D8D8D2]' : 'text-[#AAAAAA]'}`}>{t(DAY_LETTERS[i])}</div>
                     </div>
                 );
             })}
@@ -118,26 +149,32 @@ const TONE_INK = { up: 'text-[#0B7A57]', down: 'text-[#B45309]', even: 'text-[#1
  * key underneath carries the numbers, so nothing is colour alone.
  */
 function PaceBar({ story }) {
+    const { t } = useTranslation();
     const { soFar, projected, usual, best } = story;
     const heading = projected != null && projected > soFar && story.dayIndex < 6 ? projected : null;
     if (!usual && !best && heading == null) return null;
     const max = Math.max(1, soFar, heading ?? 0, usual ?? 0, best ?? 0) * 1.06;
     const pct = (n) => `${Math.min(100, (n / max) * 100)}%`;
-    const said = [`${fmtNum(soFar)} sessions so far`, heading != null && `heading for about ${fmtNum(heading)}`, usual && `a usual week is ${fmtNum(usual)}`, best && `the best of the last ${story.bestOf} weeks was ${fmtNum(best)}`].filter(Boolean).join(', ');
+    const said = [
+        t('venueHome:pace.saidSoFar', { count: soFar, n: fmtNum(soFar) }),
+        heading != null && t('venueHome:pace.saidHeading', { n: fmtNum(heading) }),
+        usual && t('venueHome:pace.saidUsual', { n: fmtNum(usual) }),
+        best && t('venueHome:pace.saidBest', { weeks: story.bestOf, n: fmtNum(best) }),
+    ].filter(Boolean).join(', ');
     return (
         <figure className="m-0 mt-4 shrink-0" aria-label={said}>
             <div className="relative h-3">
                 <div className="absolute inset-0 rounded-full bg-[#F4F4F1]" />
                 {heading != null && <div className="absolute inset-y-0 left-0 rounded-full border-2 border-dashed border-[#E8D200] bg-[#E8D200]/15" style={{ width: pct(heading) }} />}
                 <div className="absolute inset-y-0 left-0 rounded-full bg-[#E8D200]" style={{ width: pct(soFar) }} />
-                {usual ? <span className="absolute -top-1 -bottom-1 w-[2px] -ml-px rounded-full bg-[#1A1A1A]" style={{ left: pct(usual) }} title={`A usual week: ${fmtNum(usual)}`} /> : null}
-                {best && best !== usual ? <span className="absolute -top-1 -bottom-1 w-[2px] -ml-px rounded-full bg-[#8a7600]" style={{ left: pct(best) }} title={`Best in ${story.bestOf} weeks: ${fmtNum(best)}`} /> : null}
+                {usual ? <span className="absolute -top-1 -bottom-1 w-[2px] -ml-px rounded-full bg-[#1A1A1A]" style={{ left: pct(usual) }} title={t('venueHome:pace.usualTip', { n: fmtNum(usual) })} /> : null}
+                {best && best !== usual ? <span className="absolute -top-1 -bottom-1 w-[2px] -ml-px rounded-full bg-[#8a7600]" style={{ left: pct(best) }} title={t('venueHome:pace.bestTip', { weeks: story.bestOf, n: fmtNum(best) })} /> : null}
             </div>
             <figcaption className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-bold text-[#888]">
-                <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] bg-[#E8D200]" />{fmtNum(soFar)} so far</span>
-                {heading != null && <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] border-2 border-dashed border-[#E8D200]" />about {fmtNum(heading)} by Sunday</span>}
-                {usual ? <span className="inline-flex items-center gap-1.5"><i className="w-[2px] h-3 rounded-full bg-[#1A1A1A]" />usual {fmtNum(usual)}</span> : null}
-                {best && best !== usual ? <span className="inline-flex items-center gap-1.5"><i className="w-[2px] h-3 rounded-full bg-[#8a7600]" />best {fmtNum(best)}</span> : null}
+                <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] bg-[#E8D200]" />{t('venueHome:pace.soFar', { n: fmtNum(soFar) })}</span>
+                {heading != null && <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] border-2 border-dashed border-[#E8D200]" />{t('venueHome:pace.bySunday', { n: fmtNum(heading) })}</span>}
+                {usual ? <span className="inline-flex items-center gap-1.5"><i className="w-[2px] h-3 rounded-full bg-[#1A1A1A]" />{t('venueHome:pace.usual', { n: fmtNum(usual) })}</span> : null}
+                {best && best !== usual ? <span className="inline-flex items-center gap-1.5"><i className="w-[2px] h-3 rounded-full bg-[#8a7600]" />{t('venueHome:pace.best', { n: fmtNum(best) })}</span> : null}
             </figcaption>
         </figure>
     );
@@ -149,21 +186,22 @@ function PaceBar({ story }) {
  * against a usual week and the best, the days, who's in, and the rush.
  */
 function Pulse({ summary, insights, tz }) {
+    const { t, i18n } = useTranslation();
     const wk = summary.week ?? {};
     const todayIso = isoDayIn(tz);
     const story = weekStory({
         days: summary.days, todayIso, soFar: wk.sessions ?? 0, lastWeek: summary.last_week?.sessions ?? 0,
         weeks: insights?.weeks ?? null, weekdays: insights?.days ?? null, hours: insights?.hours ?? null,
-    });
+    }, t);
     const today = summary.days ? summary.days.slice(7).find(d => d.day === todayIso) : null;
     return (
         <Card glow className="flex-1 p-6 flex flex-col min-h-0">
             <div className="flex flex-wrap items-start justify-between gap-3 shrink-0">
                 <div>
-                    <Micro gold>This week</Micro>
+                    <Micro gold>{t('venueHome:pulse.title')}</Micro>
                     <div className="mt-2 flex items-baseline gap-3">
                         <span className="text-5xl lg:text-6xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{fmtNum(wk.sessions)}</span>
-                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">sessions · {people(wk.athletes ?? 0)}</span>
+                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">{t('venueHome:pulse.sessionsPeople', { count: wk.athletes ?? 0, n: fmtNum(wk.athletes ?? 0) })}</span>
                     </div>
                 </div>
                 {summary.now != null && <NowPill n={summary.now} />}
@@ -173,13 +211,15 @@ function Pulse({ summary, insights, tz }) {
             <WeekStrip days={summary.days} tz={tz} />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] font-bold text-[#AAAAAA] shrink-0">
                 <span>
-                    {today ? `Today: ${plural(today.sessions, 'session')} · ${people(today.athletes)}` : 'Sessions checked in at the gym'}
-                    {story.rush && <> · <span className="text-[#666]">busiest {hourName(story.rush.from)}–{hourName(story.rush.to)}</span></>}
+                    {today
+                        ? t('venueHome:pulse.today', { sessions: t('venueHome:pulse.sessions', { count: today.sessions ?? 0, n: fmtNum(today.sessions) }), people: peopleText(t, today.athletes) })
+                        : t('venueHome:pulse.checkedIn')}
+                    {story.rush && <> · <span className="text-[#666]">{t('venueHome:pulse.busiest', { from: hourText(i18n.language, story.rush.from), to: hourText(i18n.language, story.rush.to) })}</span></>}
                 </span>
                 {summary.days && (
                     <span className="inline-flex items-center gap-3">
-                        <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] bg-[#1A1A1A]" />This week</span>
-                        <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] bg-[#ECECE8]" />Last week</span>
+                        <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] bg-[#1A1A1A]" />{t('venueHome:pulse.thisWeek')}</span>
+                        <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-[3px] bg-[#ECECE8]" />{t('venueHome:pulse.lastWeek')}</span>
                     </span>
                 )}
             </div>
@@ -196,9 +236,10 @@ const PILL_GOLD = `${PILL} bg-[#E8D200] hover:-translate-y-0.5 hover:shadow-[0_8
 const PILL_GHOST = `${PILL} bg-[#F4F4F1] border border-[#E6E6E1] hover:border-[#E8D200]/50`;
 
 function ActionLink({ action, primary }) {
+    const { t } = useTranslation();
     if (action.lock) {
         return (
-            <Link to={action.to} className={PILL_GHOST} title={`Comes with ${LOCK_LABEL[action.lock]}`}>
+            <Link to={action.to} className={PILL_GHOST} title={t('venueHome:moves.comesWith', { pkg: LOCK_LABEL[action.lock] })}>
                 <Lock size={11} className="text-[#8a7600]" /><span className="text-[#8a7600]">{LOCK_LABEL[action.lock]}</span>
             </Link>
         );
@@ -218,6 +259,7 @@ function ActionLink({ action, primary }) {
  * one in the last fortnight.
  */
 function NudgeAction({ gym, quiet, primary }) {
+    const { t } = useTranslation();
     const toast = useToast();
     const [plan, setPlan] = useState(null);     // { recipients, cooling } | { unavailable }
     const [busy, setBusy] = useState(false);
@@ -230,43 +272,47 @@ function NudgeAction({ gym, quiet, primary }) {
         return () => { alive = false; };
     }, [gym.partner_id, quiet]);
 
-    if (sent != null) return <span className="inline-flex items-center h-9 text-[11px] font-bold text-[#0B7A57] whitespace-nowrap">Sent to {sent}</span>;
-    if (!plan) return <span className={`${PILL_GHOST} text-[#AAAAAA]`}>Counting…</span>;
+    if (sent != null) return <span className="inline-flex items-center h-9 text-[11px] font-bold text-[#0B7A57] whitespace-nowrap">{t('venueHome:nudge.sentTo', { n: sent })}</span>;
+    if (!plan) return <span className={`${PILL_GHOST} text-[#AAAAAA]`}>{t('venueHome:nudge.counting')}</span>;
     if (!plan.recipients) {
         return plan.cooling
-            ? <span className="inline-flex items-center h-9 text-[11px] font-bold text-[#888] whitespace-nowrap">Nudged in the last fortnight</span>
-            : <ActionLink action={{ label: 'See who', to: '/venue/retention' }} primary={false} />;
+            ? <span className="inline-flex items-center h-9 text-[11px] font-bold text-[#888] whitespace-nowrap">{t('venueHome:nudge.cooling')}</span>
+            : <ActionLink action={{ label: t('venueHome:nudge.seeWho'), to: '/venue/retention' }} primary={false} />;
     }
     const send = async () => {
+        // The push itself (title and body) previews what members get: English
+        // until push previews follow the member's language.
         const copy = eventPushCopy('gym_quiet_nudge', { gym_name: gym.name, weeks: 2 });
-        const who = plan.recipients === quiet
-            ? `${plan.recipients === 1 ? 'them' : `all ${plan.recipients}`}`
-            : `the ${plan.recipients} of them who haven’t had one in the last fortnight`;
-        if (!window.confirm(`Send this push to ${who}?\n\n${copy.title}\n${copy.body}\n\nEach gets it once, and not again for a fortnight.`)) return;
+        const values = { n: plan.recipients, title: copy.title, body: copy.body };
+        const ask = plan.recipients !== quiet ? t('venueHome:nudge.confirmSome', values)
+            : plan.recipients === 1 ? t('venueHome:nudge.confirmThem', values)
+            : t('venueHome:nudge.confirmAll', values);
+        if (!window.confirm(ask)) return;
         setBusy(true);
         try {
             const r = await nudgeQuietMembers(gym.partner_id, false);
             setSent(r.recipients);
-            toast.success(`Sent to ${r.recipients}`);
-        } catch (e) { toast.error(e.message); }
+            toast.success(t('venueHome:nudge.sentTo', { n: r.recipients }));
+        } catch (e) { toast.error(serverErrorText(e)); }
         finally { setBusy(false); }
     };
     return (
         <button type="button" onClick={send} disabled={busy} className={primary ? PILL_GOLD : PILL_GHOST}>
             <Send size={11} style={{ color: primary ? '#080808' : '#8a7600' }} />
-            <span style={{ color: primary ? '#080808' : '#1A1A1A' }}>{busy ? 'Sending…' : `Nudge ${plan.recipients}`}</span>
+            <span style={{ color: primary ? '#080808' : '#1A1A1A' }}>{busy ? t('venueHome:nudge.sending') : t('venueHome:nudge.send', { n: plan.recipients })}</span>
         </button>
     );
 }
 
 function Moves({ moves, gym, quiet, onLater }) {
+    const { t } = useTranslation();
     return (
         <Card className="flex-1 p-6 flex flex-col min-h-0" glow={!!moves?.[0]?.urgent}>
-            <Head icon={Megaphone}>Worth doing this week</Head>
+            <Head icon={Megaphone}>{t('venueHome:moves.title')}</Head>
             {moves == null ? <Spinner className="py-6" /> : moves.length === 0 ? (
                 <div className="flex-1 min-h-0 flex flex-col justify-center">
-                    <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">You’re all caught up.</div>
-                    <p className="text-[13px] text-[#888] leading-relaxed mt-2 max-w-sm">Everything here is done or put off for now. New ones arrive tomorrow.</p>
+                    <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">{t('venueHome:moves.caughtUp')}</div>
+                    <p className="text-[13px] text-[#888] leading-relaxed mt-2 max-w-sm">{t('venueHome:moves.caughtUpBody')}</p>
                 </div>
             ) : (
                 <ol className="flex-1 min-h-0 flex flex-col divide-y divide-[#F0F0EC]">
@@ -283,8 +329,8 @@ function Moves({ moves, gym, quiet, onLater }) {
                                         <p className="text-[12px] text-[#888] leading-snug mt-1">{m.detail}</p>
                                         {m.snooze && (
                                             <button type="button" onClick={() => onLater(m)} className="mt-1.5 text-[9px] uppercase tracking-[0.2em] font-black text-[#BBBBBB] hover:text-[#1A1A1A]"
-                                                title={m.snooze === 'day' ? 'Hide it until tomorrow' : 'Hide it for a week'}>
-                                                Not now
+                                                title={m.snooze === 'day' ? t('venueHome:moves.hideDay') : t('venueHome:moves.hideWeek')}>
+                                                {t('venueHome:moves.notNow')}
                                             </button>
                                         )}
                                     </div>
@@ -306,17 +352,19 @@ function Moves({ moves, gym, quiet, onLater }) {
 // ── Your people ────────────────────────────────────────────────────────────
 
 /** "Leo P." / "Leo P. and Priya S." / "Leo P. and 2 more" */
-function namesOf(rows) {
-    const n = rows.map(boardName);
-    return n.length <= 2 ? n.join(' and ') : `${n[0]} and ${n.length - 1} more`;
+function namesOf(t, rows) {
+    const n = rows.map((r) => nameOf(t, r));
+    if (n.length > 2) return t('venueHome:people.andMore', { count: n.length - 1, name: n[0], n: n.length - 1 });
+    return n.length === 2 ? t('venueHome:people.two', { a: n[0], b: n[1] }) : n.join('');
 }
 
 function Shoutout({ icon: Icon, row, what, note }) {
+    const { t } = useTranslation();
     return (
         <li className="flex items-center gap-3 py-2 first:pt-0 last:pb-0 min-w-0">
             <Avatar row={row} size="w-8 h-8" />
             <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-bold text-[#1A1A1A] truncate">{boardName(row)}</div>
+                <div className="text-[13px] font-bold text-[#1A1A1A] truncate">{nameOf(t, row)}</div>
                 <div className="text-[11px] text-[#888] truncate">
                     <Icon size={11} className="inline -mt-0.5 mr-1 text-[#8a7600]" /><span className="font-bold text-[#666]">{what}</span>{note && <> · {note}</>}
                 </div>
@@ -333,30 +381,31 @@ function Shoutout({ icon: Icon, row, what, note }) {
  * board's leader from the insights stands in. The counts sit underneath.
  */
 function People({ wall, top, failed, summary, activity }) {
+    const { t } = useTranslation();
     const spot = wall?.spotlight ?? null;
     const leader = wall?.standings?.[0] ?? top?.[0] ?? null;
     const shouts = [];
-    if (leader && (leader.points ?? 0) > 0) shouts.push({ key: 'lead', icon: Trophy, row: leader, what: 'Leads the board', note: `${fmtNum(leader.points)} POWR` });
-    if (spot?.improved) shouts.push({ key: 'improved', icon: TrendingUp, row: spot.improved, what: 'Most improved', note: `+${fmtNum(spot.improved.gain)} on last week` });
+    if (leader && (leader.points ?? 0) > 0) shouts.push({ key: 'lead', icon: Trophy, row: leader, what: t('venueHome:people.leads'), note: t('venueHome:people.points', { n: fmtNum(leader.points) }) });
+    if (spot?.improved) shouts.push({ key: 'improved', icon: TrendingUp, row: spot.improved, what: t('venueHome:people.improved'), note: t('venueHome:people.gain', { n: fmtNum(spot.improved.gain) }) });
     if (spot?.session) {
-        shouts.push({ key: 'session', icon: Zap, row: spot.session, what: 'Session of the week', note: `${fmtNum(spot.session.points)} POWR in ${spot.session.minutes} min` });
+        shouts.push({ key: 'session', icon: Zap, row: spot.session, what: t('venueHome:people.session'), note: t('venueHome:people.sessionNote', { points: fmtNum(spot.session.points), minutes: spot.session.minutes }) });
     }
     const longest = wall?.community_stats?.streaks?.longest;
-    if (longest && (longest.streak ?? 0) >= 3) shouts.push({ key: 'streak', icon: Flame, row: longest, what: 'Longest streak', note: `${longest.streak} days` });
+    if (longest && (longest.streak ?? 0) >= 3) shouts.push({ key: 'streak', icon: Flame, row: longest, what: t('venueHome:people.streak'), note: t('venueHome:people.streakDays', { count: longest.streak, n: longest.streak }) });
     const fresh = spot?.new_members ?? [];
     const quiet = activity && !activity.too_few ? (activity.quiet ?? 0) : null;
     const counts = [
-        `${fmtNum(summary.members ?? 0)} member${summary.members === 1 ? '' : 's'}`,
-        quiet != null && `${fmtNum(quiet)} drifting`,
-        summary.new_faces ? `${fmtNum(summary.new_faces)} new face${summary.new_faces === 1 ? '' : 's'}` : null,
+        t('venueHome:people.members', { count: summary.members ?? 0, n: fmtNum(summary.members ?? 0) }),
+        quiet != null && t('venueHome:people.drifting', { n: fmtNum(quiet) }),
+        summary.new_faces ? t('venueHome:people.newFaces', { count: summary.new_faces, n: fmtNum(summary.new_faces) }) : null,
     ].filter(Boolean).join(' · ');
     return (
         <Card className="flex-1 p-6 flex flex-col min-h-0">
-            <Head icon={Users} to="/venue/members" linkLabel="Members">Your people</Head>
+            <Head icon={Users} to="/venue/members" linkLabel={t('venueHome:people.link')}>{t('venueHome:people.title')}</Head>
             {top === null && !wall ? <Spinner className="py-6" /> : shouts.length === 0 && fresh.length === 0 ? (
                 <div className="flex-1 min-h-0 flex flex-col justify-center">
-                    <div className="text-xl font-light tracking-tight text-[#1A1A1A]">{failed ? 'The board isn’t loading' : 'Nobody on the board yet'}</div>
-                    <p className="text-[13px] text-[#888] leading-relaxed mt-1.5">{failed ? 'Try again in a minute.' : 'The leader, the most improved and the new faces show up here as members check in.'}</p>
+                    <div className="text-xl font-light tracking-tight text-[#1A1A1A]">{failed ? t('venueHome:people.failed') : t('venueHome:people.empty')}</div>
+                    <p className="text-[13px] text-[#888] leading-relaxed mt-1.5">{failed ? t('venueHome:people.failedBody') : t('venueHome:people.emptyBody')}</p>
                 </div>
             ) : (
                 <>
@@ -365,12 +414,12 @@ function People({ wall, top, failed, summary, activity }) {
                     </ul>
                     {fresh.length > 0 && (
                         <div className="mt-3 flex items-center gap-2.5 min-w-0">
-                            <div className="flex -space-x-2 shrink-0">{fresh.slice(0, 4).map((r) => <Avatar key={r.key ?? boardName(r)} row={r} size="w-7 h-7" ring="ring-2 ring-white" />)}</div>
-                            <span className="min-w-0 truncate text-[11px] text-[#666]"><span className="font-bold text-[#0B7A57]">New this week:</span> {namesOf(fresh)}</span>
+                            <div className="flex -space-x-2 shrink-0">{fresh.slice(0, 4).map((r) => <Avatar key={r.key ?? nameOf(t, r)} row={r} size="w-7 h-7" ring="ring-2 ring-white" />)}</div>
+                            <span className="min-w-0 truncate text-[11px] text-[#666]"><span className="font-bold text-[#0B7A57]">{t('venueHome:people.newThisWeek')}</span> {namesOf(t, fresh)}</span>
                         </div>
                     )}
                     {shouts.length + (fresh.length ? 1 : 0) < 3 && (
-                        <p className="mt-3 text-[11px] text-[#AAAAAA] leading-relaxed">The most improved, the session of the week and new faces show up here as more members train.</p>
+                        <p className="mt-3 text-[11px] text-[#AAAAAA] leading-relaxed">{t('venueHome:people.more')}</p>
                     )}
                 </>
             )}
@@ -405,23 +454,25 @@ function standingOf(data) {
  * each right now, and the per-member table, where size doesn't win.
  */
 function League({ board, standing, error, founding }) {
+    const { t } = useTranslation();
+    const ordinal = (n) => ordinalIn(t, formatLocale(), n);
     let body;
     if (!board) {
         body = (
             <div className="flex-1 min-h-0 flex flex-col justify-center">
-                <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">Join Gym Clash</div>
-                <p className="text-[13px] text-[#888] leading-relaxed mt-2">Put your screens up and your gym goes into Gym Clash: gym against gym, every week.</p>
+                <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">{t('venueHome:league.join')}</div>
+                <p className="text-[13px] text-[#888] leading-relaxed mt-2">{t('venueHome:league.joinBody')}</p>
             </div>
         );
     } else if (error) {
-        body = <p className="text-[13px] text-[#888] font-light">The league isn’t answering right now. Try again in a minute.</p>;
+        body = <p className="text-[13px] text-[#888] font-light">{t('venueHome:league.error')}</p>;
     } else if (!standing) {
         body = <Spinner className="py-6" />;
     } else if (standing.local.length < 2 || !standing.host) {
         body = (
             <div className="flex-1 min-h-0 flex flex-col justify-center">
-                <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">Only you within {standing.radius} km</div>
-                <p className="text-[13px] text-[#888] leading-relaxed mt-2">No other gym on POWR nearby yet. Widen the radius on Screens to race further afield.</p>
+                <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">{t('venueHome:league.alone', { km: standing.radius })}</div>
+                <p className="text-[13px] text-[#888] leading-relaxed mt-2">{t('venueHome:league.aloneBody')}</p>
             </div>
         );
     } else {
@@ -433,23 +484,24 @@ function League({ board, standing, error, founding }) {
             <>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 shrink-0">
                     <span className="text-4xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{ordinal(rank)}</span>
-                    <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">of {local.length} within {standing.radius} km</span>
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">{t('venueHome:league.of', { total: local.length, km: standing.radius })}</span>
                     {moved !== 0 && (
                         <span className={`inline-flex items-center h-5 px-2 rounded-full text-[9px] font-black uppercase tracking-[0.15em] ${moved > 0 ? 'bg-emerald-50 text-[#0B7A57]' : 'bg-amber-50 text-[#B45309]'}`}>
-                            {moved > 0 ? '▲' : '▼'} {Math.abs(moved)} today
+                            {moved > 0 ? '▲' : '▼'} {t('venueHome:league.moved', { n: Math.abs(moved) })}
                         </span>
                     )}
                 </div>
-                <ol className="mt-3 space-y-1 shrink-0" aria-label="Gym Clash near you this week">
+                <ol className="mt-3 space-y-1 shrink-0" aria-label={t('venueHome:league.tableLabel')}>
                     {shown.map(({ g, r }) => {
                         const me = g.key === host.key;
                         return (
                             <li key={g.key} className={`flex items-center gap-2.5 h-8 px-2.5 rounded-lg ${me ? 'bg-[#FBF8E1] border border-[#E8D200]/50' : ''}`}>
                                 <span className={`w-4 text-[11px] font-black tabular-nums ${r === 1 ? 'text-[#8a7600]' : 'text-[#AAAAAA]'}`}>{r}</span>
                                 <span className={`flex-1 min-w-0 truncate text-[12px] ${me ? 'font-black text-[#1A1A1A]' : 'font-bold text-[#666]'}`}>
+                                    {/* "Founding": the package's name, like PACKAGE_LABEL's */}
                                     {g.name}{me && founding ? <span className="ml-1.5 text-[8px] font-black uppercase tracking-[0.2em] text-[#8a7600]">Founding</span> : null}
                                 </span>
-                                {g.in_now > 0 && <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-[#0B7A57]"><i className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{g.in_now} in</span>}
+                                {g.in_now > 0 && <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-[#0B7A57]"><i className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{t('venueHome:league.inNow', { n: g.in_now })}</span>}
                                 <span className="w-14 shrink-0 text-right text-[12px] font-bold tabular-nums text-[#1A1A1A]">{fmtNum(g.points_week)}</span>
                             </li>
                         );
@@ -459,15 +511,17 @@ function League({ board, standing, error, founding }) {
                     {rival && (
                         <div className={`text-[12px] font-bold ${ahead ? 'text-[#0B7A57]' : 'text-[#B45309]'}`}>
                             {ahead
-                                ? (gap > 0 ? `Leading ${rival.name} by ${fmtNum(gap)}` : `Level with ${rival.name}`)
-                                : (gap > 0 ? `${fmtNum(gap)} behind ${rival.name} · about ${plural(sessionsToClose(gap), 'session')}` : `Level with ${rival.name}`)}
+                                ? (gap > 0 ? t('venueHome:league.leading', { rival: rival.name, gap: fmtNum(gap) }) : t('venueHome:league.level', { rival: rival.name }))
+                                : (gap > 0
+                                    ? t('venueHome:league.behind', { count: sessionsToClose(gap), n: fmtNum(sessionsToClose(gap)), gap: fmtNum(gap), rival: rival.name })
+                                    : t('venueHome:league.level', { rival: rival.name }))}
                         </div>
                     )}
                     <div className="text-[11px] text-[#888]">
                         {effortRank > 0 && effortOf >= 2
-                            ? <>Per member: <span className="font-bold text-[#1A1A1A]">{ordinal(effortRank)} of {effortOf}</span>, where size doesn’t win · </>
-                            : null}
-                        Resets Monday
+                            ? <Trans i18nKey="venueHome:league.perMember" values={{ rank: ordinal(effortRank), total: effortOf }}
+                                components={{ strong: <span className="font-bold text-[#1A1A1A]" /> }} />
+                            : t('venueHome:league.resets')}
                     </div>
                 </div>
             </>
@@ -475,7 +529,7 @@ function League({ board, standing, error, founding }) {
     }
     return (
         <Card className="flex-1 p-6 flex flex-col min-h-0" glow={!board}>
-            <Head icon={Flag} to="/venue/screens" linkLabel={board ? 'Screens' : 'Set up'}>Gym Clash</Head>
+            <Head icon={Flag} to="/venue/screens" linkLabel={board ? t('venueHome:league.screens') : t('venueHome:league.setUp')}>Gym Clash</Head>
             {body}
         </Card>
     );
@@ -490,9 +544,10 @@ function League({ board, standing, error, founding }) {
  * whether it's growing, and the first-timers.
  */
 function Since({ wall, insights, tz, gymName, locked }) {
+    const { t } = useTranslation();
     const all = wall?.community_stats?.all_time;
     const since = all?.since && (all.sessions ?? 0) > 0
-        ? new Intl.DateTimeFormat('en-GB', { timeZone: tz, month: 'long', year: 'numeric' }).format(new Date(all.since))
+        ? new Intl.DateTimeFormat(formatLocale(), { timeZone: tz, month: 'long', year: 'numeric' }).format(new Date(all.since))
         : null;
     const weeks = !locked && insights && !insights.failed ? (insights.weeks ?? []) : null;
     const done = weeks ? weeks.slice(0, -1) : [];
@@ -501,12 +556,12 @@ function Since({ wall, insights, tz, gymName, locked }) {
     const now4 = sum(last4, 'sessions');
     const change = prev4.length === 4 ? pctChange(now4, sum(prev4, 'sessions')) : null;
     const firsts = sum(last4, 'new_athletes');
-    const fmtWeek = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, day: 'numeric', month: 'short' }).format(new Date(iso)).replace('Sept', 'Sep');
+    const fmtWeek = (iso) => new Intl.DateTimeFormat(formatLocale(), { timeZone: tz, day: 'numeric', month: 'short' }).format(new Date(iso)).replace('Sept', 'Sep');
     const shown = weeks ? weeks.slice(-8) : [];
     const cols = shown.map((w, i) => ({
         key: w.week_start,
-        tick: i === shown.length - 1 ? 'Now' : fmtWeek(w.week_start),
-        tip: i === shown.length - 1 ? 'This week' : `Week of ${fmtWeek(w.week_start)}`,
+        tick: i === shown.length - 1 ? t('venueHome:since.now') : fmtWeek(w.week_start),
+        tip: i === shown.length - 1 ? t('venueHome:since.thisWeek') : t('venueHome:since.weekOf', { date: fmtWeek(w.week_start) }),
         value: w.sessions ?? 0,
         partial: i === shown.length - 1,
     }));
@@ -514,44 +569,49 @@ function Since({ wall, insights, tz, gymName, locked }) {
     const loading = !locked && insights == null && !wall;
     return (
         <Card className="flex-1 p-6 flex flex-col min-h-0">
-            <Head icon={TrendingUp} to={locked ? null : '/venue/members'} linkLabel="More">{since ? `Since ${since}` : 'Last 8 weeks'}</Head>
+            <Head icon={TrendingUp} to={locked ? null : '/venue/members'} linkLabel={t('venueHome:since.more')}>{since ? t('venueHome:since.since', { date: since }) : t('venueHome:since.lastWeeks')}</Head>
             {loading ? <Spinner className="py-6" /> : (
                 <>
                     {since ? (
                         <div className="shrink-0">
                             <div className="flex items-baseline gap-2">
                                 <span className="text-4xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{fmtNum(all.sessions)}</span>
-                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">sessions here</span>
+                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">{t('venueHome:since.sessionsHere')}</span>
                             </div>
                             <div className="mt-1.5 text-[12px] font-bold text-[#666]">
-                                {people(all.members ?? 0)} · {fmtNum(Math.round((all.minutes ?? 0) / 60))} hours · {fmtNum(all.points ?? 0)} POWR earned
+                                {t('venueHome:since.allTime', {
+                                    count: Math.round((all.minutes ?? 0) / 60),
+                                    people: peopleText(t, all.members ?? 0),
+                                    hours: fmtNum(Math.round((all.minutes ?? 0) / 60)),
+                                    points: fmtNum(all.points ?? 0),
+                                })}
                             </div>
                         </div>
                     ) : hasWeeks ? (
                         <div className="shrink-0">
                             <div className="flex items-baseline gap-2">
                                 <span className="text-4xl font-extralight tracking-tighter text-[#1A1A1A] tabular-nums leading-none">{fmtNum(now4)}</span>
-                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">sessions in 4 weeks</span>
+                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">{t('venueHome:since.inFourWeeks')}</span>
                             </div>
                         </div>
                     ) : (
-                        <p className="text-[13px] text-[#888] font-light leading-relaxed">Once members check in at {gymName}, their sessions add up here.</p>
+                        <p className="text-[13px] text-[#888] font-light leading-relaxed">{t('venueHome:since.empty', { gym: gymName })}</p>
                     )}
                     {hasWeeks ? (
                         <div className="flex-1 min-h-0 flex flex-col justify-end">
                             <div className="mt-3 text-[11px] font-bold text-[#666]">
                                 {change
-                                    ? <span className={change.pct > 0 ? 'text-[#0B7A57]' : change.pct < 0 ? 'text-[#B45309]' : 'text-[#888]'}>{change.pct === 0 ? 'Level with the 4 weeks before' : `${change.label} on the 4 weeks before`}</span>
-                                    : <span className="text-[#AAAAAA]">Nothing to compare yet</span>}
-                                {' · '}{plural(firsts, 'first-timer')} in 4 weeks
+                                    ? <span className={change.pct > 0 ? 'text-[#0B7A57]' : change.pct < 0 ? 'text-[#B45309]' : 'text-[#888]'}>{change.pct === 0 ? t('venueHome:since.level') : t('venueHome:since.change', { change: change.label })}</span>
+                                    : <span className="text-[#AAAAAA]">{t('venueHome:since.nothingYet')}</span>}
+                                {' · '}{t('venueHome:since.firsts', { count: firsts, n: fmtNum(firsts) })}
                             </div>
                             <div className="pt-6">
-                                <Columns data={cols} label="Sessions here each week" height={56} tickEvery={2} />
+                                <Columns data={cols} label={t('venueHome:since.chartLabel')} height={56} tickEvery={2} />
                             </div>
                         </div>
                     ) : locked ? (
                         <p className="mt-auto pt-4 text-[11px] text-[#AAAAAA] leading-relaxed">
-                            Week-by-week growth comes with Clash+. <Link to="/venue/package" className="font-bold"><span className="text-[#8a7600]">See packages</span></Link>
+                            <Trans i18nKey="venueHome:since.locked" components={{ packages: <GoldLink to="/venue/package" /> }} />
                         </p>
                     ) : null}
                 </>
@@ -563,6 +623,8 @@ function Since({ wall, insights, tz, gymName, locked }) {
 // ── The page ───────────────────────────────────────────────────────────────
 
 export default function VenueHome() {
+    const { t } = useTranslation();
+    const locale = formatLocale();
     const { gym } = useAuth();
     const { pkg } = usePackage();
     const insightsAllowed = pkg && !pkg.unknown ? !!pkg.features?.insights : null;
@@ -625,7 +687,7 @@ export default function VenueHome() {
                 if (slow) fetchGymBoard(s.board.slug, s.board.display_token).then(setWall).catch(() => {});
             }
         } catch (err) {
-            if (first) setError(err.message);
+            if (first) setError(serverErrorText(err));
         }
     }, [gym.partner_id]);
 
@@ -675,7 +737,8 @@ export default function VenueHome() {
             activity: activity && !activity.locked ? activity : null,
             weekdays: Array.isArray(insights.days) ? insights.days : null,
             posterMade,
-            todayPost,
+            // Today's post by its name in the reader's language (WeekPosts reports it in English).
+            todayPost: todayPost && { ...todayPost, label: postName(t, todayPost.label) },
             hasPhoto: profile && 'image_url' in profile ? !!profile.image_url : !!summary.gym?.image_url,
             teamCount: team.members ? team.members.filter((m) => m.active).length : null,
             recapOn: typeof profile.recap_email === 'boolean' ? profile.recap_email : null,
@@ -683,11 +746,13 @@ export default function VenueHome() {
             done,
             fmtDay,
             lastDay,
+            t,
+            locale,
         });
-    }, [summary, pkg, insights, activityDone, leagueSettled, profile, team, todayPost, done, activity, events, standing, name]);
+    }, [summary, pkg, insights, activityDone, leagueSettled, profile, team, todayPost, done, activity, events, standing, name, t, locale]);
     const later = useCallback((m) => markDone(gym.partner_id, m.key, m.snooze === 'day' ? endOfDay(tz) : new Date(Date.now() + 7 * 86_400_000)), [gym.partner_id, tz]);
 
-    if (error) return <Empty title="Couldn’t load your gym" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
+    if (error) return <Empty title={t('venueHome:page.loadFailed')} action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>{t('common:actions.retry')}</button>}>{error}</Empty>;
     if (!summary) return <Spinner />;
 
     const board = summary.board;
@@ -697,15 +762,15 @@ export default function VenueHome() {
         <div>
             <div className="creator-rise flex flex-wrap items-end justify-between gap-x-6 gap-y-2 mb-5 lg:mb-6">
                 <div className="min-w-0">
-                    <Micro gold>Overview</Micro>
+                    <Micro gold>{t('venueHome:page.overview')}</Micro>
                     <h1 className="text-3xl sm:text-4xl font-light tracking-tighter text-[#1A1A1A] leading-none mt-2 truncate">{name}</h1>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] uppercase tracking-[0.25em] font-black text-[#BBBBBB]">
-                    <span>{weekLabel(summary.week_start_at, summary.week_end_at, tz)}</span>
+                    <span>{weekLabel(summary.week_start_at, summary.week_end_at, tz, locale)}</span>
                     {board && (
                         <Link to="/venue/screens" className="inline-flex items-center gap-4">
-                            <span className="inline-flex items-center gap-1.5"><i className={`w-1.5 h-1.5 rounded-full ${board.enabled ? 'bg-emerald-500' : 'bg-[#CCCCCC]'}`} /><span className="text-[#888]">Leaderboard {board.enabled ? 'live' : 'paused'}</span></span>
-                            <span className="inline-flex items-center gap-1.5"><i className={`w-1.5 h-1.5 rounded-full ${board.league_enabled !== false ? 'bg-emerald-500' : 'bg-[#CCCCCC]'}`} /><span className="text-[#888]">League {board.league_enabled !== false ? 'live' : 'paused'}</span></span>
+                            <span className="inline-flex items-center gap-1.5"><i className={`w-1.5 h-1.5 rounded-full ${board.enabled ? 'bg-emerald-500' : 'bg-[#CCCCCC]'}`} /><span className="text-[#888]">{board.enabled ? t('venueHome:page.leaderboardLive') : t('venueHome:page.leaderboardPaused')}</span></span>
+                            <span className="inline-flex items-center gap-1.5"><i className={`w-1.5 h-1.5 rounded-full ${board.league_enabled !== false ? 'bg-emerald-500' : 'bg-[#CCCCCC]'}`} /><span className="text-[#888]">{board.league_enabled !== false ? t('venueHome:page.leagueLive') : t('venueHome:page.leaguePaused')}</span></span>
                         </Link>
                     )}
                 </div>

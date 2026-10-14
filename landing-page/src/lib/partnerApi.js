@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { invokeFn } from './invokeFn';
+import i18n, { formatLocale } from './i18n';
 
 // Client helpers for the brand developer-integration surface (API keys,
 // webhook endpoints, JIT minting). All WRITES go through manage-partner-api
@@ -17,31 +18,33 @@ export const DOCS_PATHS = {
     manual: '/docs/promo-codes',
 };
 
+// id is the event name developers subscribe to and receive — never translated.
+// The label and description are keys, translated where they render.
 export const WEBHOOK_EVENTS = [
     {
         id: 'code.assigned',
-        label: 'Code assigned',
-        description: 'A member redeemed a reward and was handed one of your codes.',
+        labelKey: 'brandIntegration:webhookEvents.codeAssigned.label',
+        descriptionKey: 'brandIntegration:webhookEvents.codeAssigned.description',
     },
     {
         id: 'code.used',
-        label: 'Code used',
-        description: 'A code was confirmed as used in your system (via reconciliation).',
+        labelKey: 'brandIntegration:webhookEvents.codeUsed.label',
+        descriptionKey: 'brandIntegration:webhookEvents.codeUsed.description',
     },
     {
         id: 'pool.low',
-        label: 'Pool running low',
-        description: 'A reward’s available code stock dipped below your threshold.',
+        labelKey: 'brandIntegration:webhookEvents.poolLow.label',
+        descriptionKey: 'brandIntegration:webhookEvents.poolLow.description',
     },
     {
         id: 'voucher.confirmed',
-        label: 'Voucher confirmed in store',
-        description: 'Your staff scanned a member’s in-store voucher at the till.',
+        labelKey: 'brandIntegration:webhookEvents.voucherConfirmed.label',
+        descriptionKey: 'brandIntegration:webhookEvents.voucherConfirmed.description',
     },
     {
         id: 'voucher.swiped',
-        label: 'Voucher swiped in store',
-        description: 'Your staff swiped a member’s in-store voucher on their phone (shown, not scanned).',
+        labelKey: 'brandIntegration:webhookEvents.voucherSwiped.label',
+        descriptionKey: 'brandIntegration:webhookEvents.voucherSwiped.description',
     },
 ];
 
@@ -84,7 +87,9 @@ export async function fetchIntegration(brandName) {
 
 // One { configured, line } status per delivery method — drives the hub cards
 // and the Overview connection bar. allSettled so one flaky source degrades to
-// its "not set up" line instead of blanking everything.
+// its "not set up" line instead of blanking everything. `line` is a getter:
+// pages keep this object in state, and reading it at render time keeps the
+// words in the language on screen even after a switch.
 export async function fetchMethodStatuses(brandName) {
     const [keysRes, epsRes, integRes, shopRes, rewardsRes] = await Promise.allSettled([
         callPartnerApi('list_keys', brandName),
@@ -117,22 +122,33 @@ export async function fetchMethodStatuses(brandName) {
     return {
         api: {
             configured: activeKeys > 0 || activeEps > 0 || !!mintOn,
-            line: activeKeys === 0 && activeEps === 0 && !mintOn
-                ? 'Not set up yet'
-                : [`${activeKeys} key${activeKeys === 1 ? '' : 's'}`, `${activeEps} webhook${activeEps === 1 ? '' : 's'}`, mintOn ? 'JIT minting on' : null]
-                    .filter(Boolean).join(' · '),
+            get line() {
+                if (activeKeys === 0 && activeEps === 0 && !mintOn) return i18n.t('brandIntegration:status.api.notSetUp');
+                return [
+                    i18n.t('brandIntegration:status.api.keys', { count: activeKeys }),
+                    i18n.t('brandIntegration:status.api.webhooks', { count: activeEps }),
+                    mintOn ? i18n.t('brandIntegration:status.api.jitOn') : null,
+                ].filter(Boolean).join(' · ');
+            },
         },
         shopify: {
             configured: !!shop?.connected,
-            line: shop?.connected ? `Connected to ${shop.shop_domain}`
-                : shop?.status === 'uninstalled' ? 'App uninstalled — reconnect to resume'
-                : 'Not connected yet',
+            get line() {
+                return shop?.connected ? i18n.t('brandIntegration:status.shopify.connected', { domain: shop.shop_domain })
+                    : shop?.status === 'uninstalled' ? i18n.t('brandIntegration:status.shopify.uninstalled')
+                    : i18n.t('brandIntegration:status.shopify.notConnected');
+            },
         },
         manual: {
             configured: availableCodes > 0,
-            line: availableCodes > 0
-                ? `${availableCodes.toLocaleString()} code${availableCodes === 1 ? '' : 's'} available`
-                : 'No codes uploaded yet',
+            get line() {
+                return availableCodes > 0
+                    ? i18n.t('brandIntegration:status.manual.available', {
+                        count: availableCodes,
+                        codes: availableCodes.toLocaleString(formatLocale()),
+                    })
+                    : i18n.t('brandIntegration:status.manual.none');
+            },
         },
     };
 }

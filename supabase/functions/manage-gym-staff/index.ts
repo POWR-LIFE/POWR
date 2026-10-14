@@ -27,6 +27,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '../_shared/mailgun.ts';
 import { gymInviteEmail } from '../_shared/emails/gym-invite.ts';
+import { BUSINESS_LANGUAGES, languagesFor } from '../_shared/i18n/index.ts';
 
 const REPLY_TO = 'support@powr.life';
 
@@ -274,7 +275,11 @@ Deno.serve(async (req) => {
         const inviterName = role === 'owner'
           ? String(user.user_metadata?.full_name ?? '').trim().split(/\s+/)[0] || null
           : null;
-        const tpl = gymInviteEmail({ gymName: gym.name, setupUrl: url, role: inviteRole, logoUrl: gym.logo_url, inviterName });
+        // The invitee may not have a POWR account yet: the email reads in the
+        // language of whoever sent it (their profiles.language, through
+        // BUSINESS_LANGUAGES; English if the read fails, never no email).
+        const lang = (await languagesFor(adminClient, [user.id], BUSINESS_LANGUAGES)).get(user.id) ?? 'en';
+        const tpl = gymInviteEmail({ gymName: gym.name, setupUrl: url, role: inviteRole, logoUrl: gym.logo_url, inviterName }, lang);
         await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO, tag: 'gym-invite' });
         emailed = true;
       } catch (err) {

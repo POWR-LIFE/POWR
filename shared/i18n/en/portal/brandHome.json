@@ -1,0 +1,238 @@
+{
+  "page": {
+    "status": "Status",
+    "loadErrorTitle": "We couldn’t reach your figures.",
+    "loadErrorBody": "Something went wrong loading this page. Nothing on your account has changed.",
+    "checked": "Checked just now",
+    "checkedNamed": "{{name}} — checked just now",
+    "because": "Because",
+    "moreThings_one": "{{count}} more thing needs you",
+    "moreThings_other": "{{count}} more things need you",
+    "delivery": "Delivery",
+    "last30": "Last 30 days",
+    "last30Truncated": "Last 30 days · showing up to {{max}} claims",
+    "today": "Today"
+  },
+  "actions": {
+    "chooseDelivery": "Choose delivery method",
+    "finishConnecting": "Finish connecting {{method}}",
+    "finishConnectingFallback": "Finish connecting delivery",
+    "getRewardLive": "Get a reward live",
+    "topUp": "Top up your codes",
+    "reconnect": "Reconnect {{method}}",
+    "reconnectFallback": "Reconnect delivery",
+    "createFirst": "Create your first reward",
+    "revise": "Revise your reward",
+    "finishDraft": "Finish your draft",
+    "reviewListing": "Review your listing",
+    "viewRewards": "View my rewards"
+  },
+  "method": {
+    "notFinished": "{{method}} isn’t finished",
+    "notFinishedFallback": "Delivery isn’t finished"
+  },
+  "verdict": {
+    "paused": {
+      "headline": "Members can’t claim anything from you right now.",
+      "supportHadClaims_one": "Nothing of yours is live. Your rewards took {{n}} claim before they stopped.",
+      "supportHadClaims_other": "Nothing of yours is live. Your rewards took {{n}} claims before they stopped.",
+      "supportNoMethod": "Your reward is approved but has no way to deliver codes yet. Choose how codes reach members and load them — POWR switches the reward on once codes are in.",
+      "supportNotConnected": "{{status}}. Once codes have a route, POWR switches your reward on.",
+      "supportConnected": "Nothing of yours is live, so there is nothing for members to claim."
+    },
+    "dry": {
+      "headline": "Members can’t claim {{reward}} — you’re out of codes.",
+      "supportMany": "{{n}} of your live rewards have no claimable codes left.",
+      "supportOne": "The pool behind this reward is empty, so a member who tries to claim it hits a wall."
+    },
+    "disconnected": {
+      "headline": "Members can’t claim — {{method}} isn’t connected.",
+      "headlineFallback": "Members can’t claim — your integration isn’t connected.",
+      "support": "{{status}}. Your rewards are still listed, so members can see them and then fail at the last step.",
+      "connectionDown": "The connection is down"
+    },
+    "empty": {
+      "headlineConnected": "Nothing’s live yet. One step and you are.",
+      "headline": "Nothing’s live yet. Two steps and you are.",
+      "supportConnected": "{{method}} is connected and ready. Submit your first reward and POWR reviews it — usually about a day.",
+      "supportConnectedFallback": "Delivery is connected and ready. Submit your first reward and POWR reviews it — usually about a day.",
+      "supportNotConnected": "{{status}}. Once codes have a route, submit your first reward for review.",
+      "supportNoMethod": "Choose how codes reach members, then submit your first reward. POWR reviews it before it goes live."
+    },
+    "rejected": {
+      "headline": "Your reward needs changes before it can go live.",
+      "support": "POWR has asked for changes. Revise it and send it back for review."
+    },
+    "draft": {
+      "headline": "You’ve a reward half-written.",
+      "support": "Your draft is saved. Finish it and send it to POWR — review usually takes about a day."
+    },
+    "pending": {
+      "headline": "You’re waiting on POWR. Usually about a day.",
+      "support": "Your reward is with our team for review. Nothing needs you — we’ll email you the moment it’s approved."
+    },
+    "unclaimed": {
+      "headline": "You’re live, and no one’s claimed yet.",
+      "support": "Delivery is healthy, so this isn’t plumbing — it’s reach. Check your listing reads well and your price feels attainable."
+    },
+    "quiet": {
+      "headline_one": "You’re live and quiet. {{n}} day since the last claim.",
+      "headline_other": "You’re live and quiet. {{n}} days since the last claim.",
+      "support": "Delivery is healthy and your listing is complete, so this isn’t plumbing — it’s reach."
+    },
+    "good": {
+      "headline_one": "Everything’s running. {{n}} claim in the last 30 days.",
+      "headline_other": "Everything’s running. {{n}} claims in the last 30 days.",
+      "support": "Codes are reaching members and nothing needs you today."
+    }
+  },
+  "facts": {
+    "liveRewards": "Live rewards",
+    "claimsBeforeStop": "Claims before it stopped",
+    "rewardSlots": "Reward slots",
+    "rewardSlotsUsed": "Reward slots used",
+    "delivery": "Delivery",
+    "outOfStock": "Rewards out of stock",
+    "stillLive": "Still live",
+    "claimsAllTime": "Claims all-time",
+    "reviewTime": "Review time",
+    "needsChanges": "Needs changes",
+    "drafts": "Drafts",
+    "withPowr": "With POWR",
+    "price": "Price",
+    "lastClaim": "Last claim",
+    "powrSpent": "POWR spent with you",
+    "claims": "Claims"
+  },
+  "values": {
+    "slots": "{{used}} of {{limit}}",
+    "ready": "Ready",
+    "notChosen": "Not chosen",
+    "reviewTime": "~1 day",
+    "price": "{{cost}} POWR"
+  },
+  "qual": {
+    "pausedCount_one": "{{n}} reward paused or awaiting approval",
+    "pausedCount_other": "{{n}} rewards paused or awaiting approval",
+    "mostRecent_one": "most recent {{count}} day ago",
+    "mostRecent_other": "most recent {{count}} days ago",
+    "submitToGoLive": "submit one for review to go live",
+    "connectedReady": "connected and ready to mint",
+    "chooseHow": "choose how codes reach members",
+    "emptyPool": "live in the app with an empty pool",
+    "visibleNow": "visible to members right now",
+    "noneYet": "none yet",
+    "undeliverable": "visible but undeliverable",
+    "notConnected": "not connected",
+    "nothingSubmitted": "nothing submitted yet",
+    "howCodesReach": "how codes reach members",
+    "typicalOnceSubmit": "typical turnaround once you submit",
+    "sentBack": "sent back by the POWR team",
+    "unaffected": "unaffected and still claimable",
+    "nothingMeantime": "nothing live in the meantime",
+    "usedByApproved": "used by approved rewards",
+    "savedWaiting": "saved and waiting on you",
+    "roomToSubmit": "room to submit",
+    "stillToConnect": "still to connect",
+    "inReview": "in review right now",
+    "connectedGoLive": "connected, so it can go live immediately",
+    "connectBeforeApproval": "connect it before approval",
+    "typical": "typical turnaround",
+    "listedFor_one": "listed for {{n}} day",
+    "listedFor_other": "listed for {{n}} days",
+    "listedToday": "listed today",
+    "cheapest": "what a member pays for your cheapest reward",
+    "lastClaim_one": "days ago · {{n}} claim all-time",
+    "lastClaim_other": "days ago · {{n}} claims all-time",
+    "approvedVisible": "approved and visible now",
+    "earnedFirst": "members earned this before spending it",
+    "in30_one": "in 30 days · {{n}} claim all-time",
+    "in30_other": "in 30 days · {{n}} claims all-time"
+  },
+  "items": {
+    "revise": "Revise {{title}}",
+    "reviseFallback": "Revise your reward request",
+    "reviseDetail": "POWR has requested changes before review can continue.",
+    "finish": "Finish {{title}}",
+    "finishFallback": "Finish your reward draft",
+    "finishDetail": "Your draft is saved and ready to continue.",
+    "addCodes": "Add codes for {{title}}",
+    "addCodesFallback": "Add codes for your reward",
+    "addCodesDetail": "This live reward has no claimable codes left.",
+    "connectDetail": "Codes have no route to members until this is done.",
+    "backInApp": "Get a reward back in the app",
+    "backInAppDetail": "You have rewards, but none of them are live for members."
+  },
+  "chain": {
+    "listed": "Listed",
+    "stocked": "Stocked",
+    "connected": "Connected",
+    "delivered": "Delivered",
+    "used": "Used",
+    "listedSome_one": "{{n}} reward visible to members.",
+    "listedSome_other": "{{n}} rewards visible to members.",
+    "listedNone": "Nothing of yours is in the app yet — everything downstream waits on this.",
+    "stockedOnDemand": "{{method}} mints a code on demand — there is no pool to keep stocked.",
+    "stockedOnDemandFallback": "Your integration mints a code on demand — there is no pool to keep stocked.",
+    "stockedDry": "A live reward has run out of claimable codes.",
+    "stockedOk": "Your pool has codes ready to hand out.",
+    "connectedNone": "Choose how codes reach members.",
+    "deliveredSome_one": "{{n}} code has gone out to members.",
+    "deliveredSome_other": "{{n}} codes have gone out to members.",
+    "deliveredNone": "No member has claimed a code yet.",
+    "usedSome": "Codes are being spent at checkout and confirmed back to POWR.",
+    "usedHeld": "Members hold codes they haven’t spent yet.",
+    "usedNone": "Nothing has been spent at checkout."
+  },
+  "preview": {
+    "aria": "Preview {{title}}",
+    "needsFinishing": "Needs finishing",
+    "needsFinishingBody": "Approved and ready to look like this — members will see it once codes can reach them.",
+    "liveInApp": "Live in app",
+    "exact": "This is exactly what members see.",
+    "oneOther": "Your one claim came from a different reward.",
+    "allOther": "All {{n}} claims came from your other rewards.",
+    "oneThis": "Your only claim came from this one.",
+    "allThis": "All {{n}} claims came from this one.",
+    "someThis_one": "{{count}} of your {{total}} claims came from this one.",
+    "someThis_other": "{{count}} of your {{total}} claims came from this one.",
+    "nothingLive": "Nothing live yet",
+    "nothingLiveBody": "Approved rewards appear here exactly as members see them in the app.",
+    "lastListing_one": "Your last listing took {{n}} claim.",
+    "lastListing_other": "Your last listing took {{n}} claims."
+  },
+  "redemptions": {
+    "eyebrow": "Analytics",
+    "title": "Redemptions",
+    "range": "Last {{days}} days",
+    "loadErrorTitle": "Couldn't load your figures",
+    "loadErrorBody": "Something went wrong fetching your redemptions. Nothing on your account has changed.",
+    "nothingTitle": "No redemptions to report",
+    "nothingNoRewards": "You have not created a reward yet. Once one is live, every member claim lands here with daily totals and a breakdown by reward.",
+    "nothingNotLive": "None of your rewards are live yet, so there is nothing for members to claim. Your figures start building the moment one is approved.",
+    "statTotal": "Total",
+    "statRedemptions": "redemptions",
+    "statDailyAvg": "Daily avg",
+    "statPerDay": "per day",
+    "statRewards": "Rewards",
+    "statLive": "live",
+    "byReward": "By Reward",
+    "inactive": "Inactive",
+    "recent": "Recent Activity",
+    "emptyRange": "No redemptions in the last {{days}} days",
+    "emptyRangeLive": "Your live rewards are still in the app — claims will appear here as members make them. Widen the range to see older activity.",
+    "emptyRangeNotLive": "You have nothing live at the moment, so there is nothing for members to claim.",
+    "colDate": "Date & Time",
+    "colReward": "Reward",
+    "colCode": "Code",
+    "showing": "Showing 50 of {{total}} — narrow the date range to see more",
+    "copyCode": "Copy code",
+    "copyFailed": "Could not copy — select it manually",
+    "status": {
+      "claimed": "Claimed",
+      "used": "Used",
+      "expired": "Expired",
+      "refunded": "Refunded"
+    }
+  }
+}

@@ -1,0 +1,371 @@
+{
+  "methods": {
+    "api": {
+      "label": "API",
+      "tagline": "Full control from your own stack — API keys, signed webhooks, and just-in-time code minting.",
+      "bestFor": "Teams with engineers",
+      "beats": {
+        "key": "Create an API key",
+        "webhooks": "Receive signed webhooks",
+        "mint": "Mint codes on demand"
+      }
+    },
+    "shopify": {
+      "label": "Shopify",
+      "tagline": "Connect your store once — POWR mints a fresh single-use discount per redemption and marks it used at your checkout.",
+      "bestFor": "Stores on Shopify",
+      "beats": {
+        "connect": "Connect your store",
+        "template": "Pick a template discount",
+        "reconcile": "Codes mint & reconcile themselves"
+      }
+    },
+    "manual": {
+      "label": "Promo Codes",
+      "tagline": "Upload or generate batches of codes right here in the portal — no development work at all.",
+      "bestFor": "Getting live fast",
+      "beats": {
+        "upload": "Upload or generate codes",
+        "handOut": "POWR hands them to members",
+        "reconcile": "Reconcile used codes anytime"
+      }
+    }
+  },
+  "status": {
+    "api": {
+      "notSetUp": "Not set up yet",
+      "keys_one": "{{count}} key",
+      "keys_other": "{{count}} keys",
+      "webhooks_one": "{{count}} webhook",
+      "webhooks_other": "{{count}} webhooks",
+      "jitOn": "JIT minting on"
+    },
+    "shopify": {
+      "connected": "Connected to {{domain}}",
+      "uninstalled": "App uninstalled — reconnect to resume",
+      "notConnected": "Not connected yet"
+    },
+    "manual": {
+      "available_one": "{{codes}} code available",
+      "available_other": "{{codes}} codes available",
+      "none": "No codes uploaded yet"
+    }
+  },
+  "webhookEvents": {
+    "codeAssigned": {
+      "label": "Code assigned",
+      "description": "A member redeemed a reward and was handed one of your codes."
+    },
+    "codeUsed": {
+      "label": "Code used",
+      "description": "A code was confirmed as used in your system (via reconciliation)."
+    },
+    "poolLow": {
+      "label": "Pool running low",
+      "description": "A reward’s available code stock dipped below your threshold."
+    },
+    "voucherConfirmed": {
+      "label": "Voucher confirmed in store",
+      "description": "Your staff scanned a member’s in-store voucher at the till."
+    },
+    "voucherSwiped": {
+      "label": "Voucher swiped in store",
+      "description": "Your staff swiped a member’s in-store voucher on their phone (shown, not scanned)."
+    }
+  },
+  "shared": {
+    "timeAgo": {
+      "justNow": "just now",
+      "minutes": "{{n}}m ago",
+      "hours": "{{n}}h ago",
+      "days": "{{n}}d ago"
+    },
+    "networkError": "network error",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Could not copy — select it manually",
+    "copySecret": "Copy secret",
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "httpStatus": "HTTP {{status}}",
+    "setup": {
+      "allDone": "All set — this now runs itself",
+      "progress_one": "{{count}} of {{total}} steps done",
+      "progress_other": "{{count}} of {{total}} steps done",
+      "step": "Step {{n}}",
+      "optional": "Optional",
+      "recommended": "Recommended",
+      "doNext": "Do this next",
+      "done": "Done"
+    },
+    "stageAllSet": "All set.",
+    "changeMethod": "Change method",
+    "setupGuide": "Setup guide",
+    "wrongMethod": {
+      "body": "Your rewards currently deliver via {{current}}. You can prepare {{here}} here, but it won't take over until you switch methods.",
+      "switch": "Switch method"
+    },
+    "fallback": {
+      "title": "Fallback Codes",
+      "body": "Keep a small buffer of pre-loaded codes — if your integration is ever unavailable at redemption time, POWR falls back to the pool automatically so members never hit a wall.",
+      "manage": "Manage fallback pool"
+    }
+  },
+  "hub": {
+    "eyebrowFirstRun": "One decision to get started",
+    "eyebrow": "Integration",
+    "titleFirstRun": "How will you deliver rewards to members?",
+    "title": "Delivery method",
+    "introFirstRun": "When a member redeems one of your rewards, POWR hands them a code. Pick how those codes reach us — you can change this at any time.",
+    "intro": "How codes reach members when they redeem your rewards. Switching is non-destructive — existing setup keeps working.",
+    "confirmSwitch": "Switch your delivery method to {{method}}? Nothing is deleted — your existing setup keeps working and you can switch back anytime.",
+    "current": "Current method",
+    "readGuide": "Read the guide →",
+    "bestFor": "Best for",
+    "openSetup": "Open setup",
+    "choose": "Choose {{method}}",
+    "switch": "Switch",
+    "decideLater": "Not sure yet? Decide later — you can pick a method anytime from the sidebar"
+  },
+  "api": {
+    "eyebrow": "Integration · API",
+    "docs": "API Docs",
+    "intro": "Automate your code supply and usage reconciliation in four steps — push codes, hear about redemptions the second they happen, and skip the CSV uploads entirely.",
+    "copyBaseUrl": "Copy base URL",
+    "toast": {
+      "loadFailed": "Some data failed to load — refresh to retry ({{reason}})",
+      "keyRevoked": "Key revoked",
+      "enterUrl": "Enter an endpoint URL",
+      "pickEvent": "Pick at least one event",
+      "endpointAdded": "Endpoint added",
+      "endpointDeleted": "Endpoint deleted",
+      "redeliveryQueued": "Queued for redelivery",
+      "settingsSaved": "Integration settings saved"
+    },
+    "confirm": {
+      "revokeKey": "Revoke this key? Integrations using it will stop working immediately.",
+      "deleteEndpoint": "Delete this endpoint? Its delivery history goes with it."
+    },
+    "steps": {
+      "key": {
+        "title": "Create an API key",
+        "detail": "Your server authenticates every call with a bearer key — create one and store it somewhere safe.",
+        "summaryCalled_one": "{{count}} active key · last call {{when}}",
+        "summaryCalled_other": "{{count}} active keys · last call {{when}}",
+        "summaryNotCalled_one": "{{count}} active key · not called yet",
+        "summaryNotCalled_other": "{{count}} active keys · not called yet"
+      },
+      "webhook": {
+        "title": "Add a webhook endpoint",
+        "detail": "We POST signed events to your system the moment they happen — a code is assigned, a code is used, a pool runs low, a voucher is confirmed or swiped in store.",
+        "summary_one": "{{count}} active endpoint",
+        "summary_other": "{{count}} active endpoints",
+        "summaryDelivered_one": "{{count}} active endpoint · last delivery {{when}}",
+        "summaryDelivered_other": "{{count}} active endpoints · last delivery {{when}}"
+      },
+      "jit": {
+        "title": "Turn on just-in-time minting",
+        "detail": "The deepest integration — POWR asks your endpoint for a fresh code at each redemption. Skip it if you'd rather pre-load code pools.",
+        "summary": "On — POWR mints from your endpoint at redemption time."
+      },
+      "verify": {
+        "title": "Verify the integration",
+        "detail": "Fire a signed test at everything you've wired up and watch it come back green.",
+        "summaryPassed": "All test calls passed.",
+        "summaryDelivered": "Verified — webhook delivered {{when}}."
+      }
+    },
+    "keys": {
+      "freshTitle": "Copy your new key now — it will not be shown again",
+      "dismiss": "Done",
+      "empty": "No API keys yet. Create one to start calling the API.",
+      "revoked": "Revoked",
+      "used": "Used {{when}}",
+      "neverUsed": "Never used",
+      "revoke": "Revoke",
+      "labelPlaceholder": "Key label (e.g. Shopify sync)",
+      "creating": "Creating…",
+      "create": "Create key",
+      "pingHint": "Then prove it works from your server: <code>GET {{url}}/ping</code> with the key as a bearer token. Full details in the <docs>API docs</docs>."
+    },
+    "webhooks": {
+      "empty": "No endpoints yet. Add one and we'll POST signed events to it as they happen.",
+      "test": "Test",
+      "disable": "Disable",
+      "enable": "Enable",
+      "signingSecret": "Signing secret",
+      "testDelivered": "Test delivered — HTTP {{status}}",
+      "testFailed": "Test failed — {{error}}",
+      "sendingTest": "Sending test event…",
+      "add": "Add endpoint",
+      "adding": "Adding…"
+    },
+    "deliveries": {
+      "title": "Recent Deliveries",
+      "empty": "Nothing delivered yet. Events appear here the moment members interact with your rewards.",
+      "status": {
+        "delivered": "delivered",
+        "pending": "pending",
+        "failed": "failed",
+        "skipped": "skipped"
+      },
+      "attempts_one": "{{count}} attempt",
+      "attempts_other": "{{count}} attempts",
+      "redeliver": "Redeliver"
+    },
+    "jit": {
+      "intro": "When a member redeems, POWR asks <em>your</em> endpoint for a fresh single-use code — no pre-loaded pools, no reconciliation. Applies to rewards set to API-validated delivery. Keep a small buffer of pool codes loaded as a fallback for outages.",
+      "mintUrl": "Mint endpoint URL",
+      "mintSecret": "Mint signing secret",
+      "threshold": "Pool-low alert threshold",
+      "thresholdHint": "We send pool.low when a reward's available codes dip to this level. 0 turns it off.",
+      "mintOk": "Mint endpoint working — responded in {{ms}}ms with a valid code ({{code}}).",
+      "mintOkWarning": "Mint endpoint working — responded in {{ms}}ms with a valid code ({{code}}). ⚠ {{warning}}",
+      "mintFailed": "Mint test failed — {{error}}",
+      "sendingMint": "Sending a test mint request…",
+      "statusOn": "JIT minting is ON",
+      "statusOff": "JIT minting is OFF",
+      "testMint": "Test mint endpoint",
+      "turnOff": "Turn off",
+      "turnOn": "Turn on",
+      "save": "Save settings"
+    },
+    "verify": {
+      "intro": "One click fires a signed test event at every active webhook endpoint — plus a probe of your mint endpoint if you've configured one — and shows you exactly what came back.",
+      "testing": "Testing…",
+      "run": "Run connection test",
+      "results": "Live test results",
+      "callFailed": "Test call failed",
+      "webhookTo": "Webhook → {{host}}",
+      "delivered": "Delivered — HTTP {{status}}",
+      "mintLabel": "JIT mint endpoint",
+      "mintResponded": "Responded in {{ms}}ms with a valid code",
+      "mintRespondedWarning": "Responded in {{ms}}ms with a valid code — {{warning}}",
+      "webhooksLabel": "Webhooks",
+      "noEndpoint": "No active endpoint to test — add one below."
+    },
+    "health": {
+      "title": "Connection Health",
+      "key": {
+        "label": "API key",
+        "none": "No key yet — create one in step 1.",
+        "working": "Working — last call {{when}}.",
+        "unused": "Key created but never used — try GET /v1/ping from your server."
+      },
+      "webhook": {
+        "label": "Webhook endpoint",
+        "autoDisabled": "Your endpoint was auto-disabled after repeated failures — fix it, then re-enable it in step 2.",
+        "none": "No endpoint yet — add one in step 2 to hear about redemptions live.",
+        "failing_one": "{{count}} recent delivery failed — check your receiver, or hit Test.",
+        "failing_other": "{{count}} recent deliveries failed — check your receiver, or hit Test.",
+        "receiving": "Receiving — last successful delivery {{when}}.",
+        "active": "Endpoint active — verify in step 4 to confirm it receives signed events."
+      },
+      "jit": {
+        "label": "Just-in-time minting",
+        "none": "Optional — configure it in step 3 if you want codes minted from your system at redemption time.",
+        "paused": "Paused after repeated mint failures — test your endpoint in step 3; it resumes automatically.",
+        "on": "On — POWR asks your endpoint for a fresh code at each redemption.",
+        "off": "Configured but off — run \"Test mint endpoint\" in step 3, then turn it on."
+      }
+    }
+  },
+  "shopify": {
+    "eyebrow": "Integration · Shopify",
+    "intro": "The zero-effort integration: three steps and every redemption mints a fresh single-use code in your store — marked used the moment it's spent at your checkout. No CSVs, no API work, nothing to host.",
+    "toast": {
+      "unreachable": "Couldn't reach Shopify — your store's connection is unchanged, retry in a moment",
+      "connected": "Shopify connected — pick which discount each reward mints from",
+      "connectFailed": "Shopify connection failed ({{reason}}) — try again",
+      "unknownReason": "unknown",
+      "enterDomain": "Enter your store domain (your-store.myshopify.com)",
+      "mapped": "Reward now mints from that discount",
+      "unmapped": "Mapping removed",
+      "disconnected": "Shopify disconnected"
+    },
+    "confirmDisconnect": "Disconnect Shopify? Minting stops immediately; mapped rewards fall back to any buffer pool codes.",
+    "steps": {
+      "connect": {
+        "title": "Connect your store",
+        "detail": "Approve the POWR app on your Shopify store — one click, no code, takes a minute.",
+        "summary": "{{domain}} · connected"
+      },
+      "map": {
+        "title": "Pick a discount for each reward",
+        "detailUnmapped_one": "{{count}} live reward still has no discount behind it — pick one for each below.",
+        "detailUnmapped_other": "{{count}} live rewards still have no discount behind them — pick one for each below.",
+        "detail": "Create a template discount in Shopify, then choose it here — POWR clones it into a fresh single-use code per redemption.",
+        "summaryLive_one": "{{mapped}} of {{count}} live reward minting from your discounts",
+        "summaryLive_other": "{{mapped}} of {{count}} live rewards minting from your discounts",
+        "summary_one": "{{count}} reward minting from your discounts",
+        "summary_other": "{{count}} rewards minting from your discounts"
+      },
+      "test": {
+        "title": "Test the full loop",
+        "detail": "Mint a real test code and spend it at your own checkout — proves minting and order tracking end to end.",
+        "summary": "Full loop proven — minted, spent at checkout, confirmed back to POWR."
+      }
+    },
+    "connect": {
+      "unreachable": "Couldn't reach Shopify just now, so we can't show your store's status. Nothing has changed at your end — if you were connected, you still are, and minting carries on.",
+      "uninstalled": "The POWR app was uninstalled from your store — reconnect below to resume minting.",
+      "redirecting": "Redirecting…",
+      "connect": "Connect Shopify",
+      "approveHint": "You'll approve the POWR Rewards app on Shopify's screen and land straight back here.",
+      "connected": "Connected",
+      "disconnect": "Disconnect",
+      "sessionExpired": "Shopify session expired — hit Connect Shopify again to restore minting and order tracking.",
+      "ordersInactive": "Order tracking isn't active yet, so used codes won't confirm automatically. In your Shopify app settings, approve “Protected customer data” access (reason: app functionality), then reload this page — it repairs itself."
+    },
+    "map": {
+      "waiting": "Waiting on your store — retry in step 1 and your Shopify discounts will appear here to choose from.",
+      "connectFirst": "Connect your store first — your Shopify discounts will appear here to choose from.",
+      "discountsFailed": "Couldn't load the discounts in your store, so the pickers below stay locked. Any mapping you already have keeps minting.",
+      "noRewards": "No rewards yet — create one in My Rewards and it appears here. It doesn't need to be live in the app to wire up minting.",
+      "createReward": "Create a reward",
+      "noDiscountsTitle": "No discounts to clone",
+      "noDiscountsBody": "We couldn't find a discount in your store that POWR can copy. Create one in Shopify — percentage or fixed amount off, no code needed — then refresh and it appears here for every reward.",
+      "notLive": "Not live in app yet",
+      "mintsFrom": "Mints from “{{discount}}”",
+      "notMinting": "Not minting yet — pick a discount",
+      "noMinting": "No minting",
+      "currentOption": "{{discount}} (current)",
+      "templateHint": "Create the template discount in Shopify (percentage or fixed amount) — POWR clones it into a single-use code per redemption. Codes confirm as used automatically when spent at your checkout."
+    },
+    "test": {
+      "waiting": "Waiting on your store — retry in step 1.",
+      "connectFirst": "Connect your store first.",
+      "mapFirst": "Map a reward to a discount in step 2 first.",
+      "intro": "Mints one single-use code from your mapped template — exactly like a member redemption, just without the member. Apply it at your own checkout and watch it confirm as used automatically.",
+      "minting": "Minting…",
+      "create": "Create test code",
+      "used": "Used — reconciled",
+      "waitingCheckout": "Waiting for checkout",
+      "check": "Check",
+      "loopWorks": "The full loop works: minted in Shopify, spent at checkout, confirmed back to POWR.",
+      "realCode": "This is a real single-use discount in your store (it expires in 7 days). Place a test order with it — the status here flips to Used within a minute."
+    },
+    "health": {
+      "title": "Store Health",
+      "connection": {
+        "label": "Store connection",
+        "unreachable": "Couldn't reach Shopify just now — retry in step 1 to see your store's health.",
+        "none": "Not connected yet — start with step 1.",
+        "expired": "Session expired — reconnect in step 1 to restore minting.",
+        "connected": "Connected to {{domain}}."
+      },
+      "orders": {
+        "label": "Order tracking",
+        "none": "Activates automatically when your store connects.",
+        "live": "Live — codes spent at your checkout confirm as used by themselves.",
+        "inactive": "Not active — approve “Protected customer data” in your Shopify app settings, then reload."
+      },
+      "minting": {
+        "label": "Reward minting",
+        "count_one": "{{count}} reward minting from your discounts.",
+        "count_other": "{{count}} rewards minting from your discounts.",
+        "none": "No rewards minting yet — map one in step 2."
+      }
+    }
+  }
+}

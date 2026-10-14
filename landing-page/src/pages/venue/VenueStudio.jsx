@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../App';
 import { Micro, Spinner, Empty, BTN_GHOST } from '../../components/portal/ui';
 import StudioEditor from '../../studio/StudioEditor';
@@ -9,15 +10,17 @@ import { useDrafts } from '../../studio/drafts/useDrafts';
 import { gymStudioData } from '../../studio/gymData';
 import { loadTrending } from '../../studio/trending';
 import { cityOf } from '../../studio/data';
+import { serverErrorText } from '../../lib/serverErrors';
 import { fetchGymSummary } from './venueApi';
 
 // The admin Studio, for a gym: the same templates (the week's Trending ones
 // too), grade and exports, filled from this gym's own events and weekly board
 // (studio/gymData.js). Photos and clips stay on the device until a post is
 // downloaded, or saved as a draft (kept in the gym's own storage folder).
-const MODES = [['post', 'One post'], ['pack', 'A pack from a shoot'], ['drafts', 'Drafts']];
+const MODES = [['post', 'venueGrowth:studio.modes.post'], ['pack', 'venueGrowth:studio.modes.pack'], ['drafts', 'venueGrowth:studio.modes.drafts']];
 
 export default function VenueStudio() {
+    const { t } = useTranslation();
     const { gym } = useAuth();
     const [params, setParams] = useSearchParams();
     // "A pack from a shoot" opens with ?mode=pack, Drafts with ?mode=drafts.
@@ -43,7 +46,7 @@ export default function VenueStudio() {
         // Trending registers before the editor mounts (it can't fail).
         Promise.all([fetchGymSummary(gym.partner_id), loadTrending()])
             .then(([s]) => { if (alive) setSummary(s); })
-            .catch((e) => { if (alive) setError(e.message); });
+            .catch((e) => { if (alive) setError(e); });
         return () => { alive = false; };
     }, [gym.partner_id]);
 
@@ -66,23 +69,21 @@ export default function VenueStudio() {
 
     const venue = useMemo(() => ({ name, city: cityOf(summary?.gym?.address) }), [name, summary]);
 
-    if (error) return <Empty title="Couldn’t open the Studio" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
+    if (error) return <Empty title={t('venueGrowth:studio.loadError')} action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>{t('common:actions.retry')}</button>}>{serverErrorText(error)}</Empty>;
     if (!data) return <Spinner />;
 
-    const blurb = mode === 'pack'
-        ? 'Drop a folder, photos or a ZIP from a shoot, pick the event, and get every post it needs in one go — downloaded, and kept here to come back to.'
-        : mode === 'drafts'
-            ? 'Posts saved to finish later. Open one to carry on where it was left — every slide, photo or clip, the words and the look.'
-            : 'Pick a template, add a photo or video, and fill it from your events or this week’s board. Save a draft to finish it later.';
+    const blurb = mode === 'pack' ? t('venueGrowth:studio.blurb.pack')
+        : mode === 'drafts' ? t('venueGrowth:studio.blurb.drafts')
+        : t('venueGrowth:studio.blurb.post');
     const intro = (
         <div className="px-1 pb-1">
-            <Micro gold className="mb-3">Studio</Micro>
-            <h1 className="text-3xl sm:text-4xl font-light tracking-tighter text-[#1A1A1A] leading-[1.05]">Posts for {name}</h1>
+            <Micro gold className="mb-3">{t('venueGrowth:studio.eyebrow')}</Micro>
+            <h1 className="text-3xl sm:text-4xl font-light tracking-tighter text-[#1A1A1A] leading-[1.05]">{t('venueGrowth:studio.title', { name })}</h1>
             <div className="mt-4 inline-flex rounded-xl bg-[#EAEAE5] p-1">
-                {MODES.map(([id, label]) => (
+                {MODES.map(([id, labelKey]) => (
                     <button key={id} type="button" onClick={() => choose(id)}
                         className={`rounded-lg px-3 py-1.5 text-[13px] transition-colors ${mode === id ? 'bg-white font-semibold text-[#111] shadow-sm' : 'text-[#666] hover:text-[#111]'}`}>
-                        {label}
+                        {t(labelKey)}
                         {id === 'drafts' && dr.count > 0 && (
                             <span className={`ml-1.5 rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${mode === id ? 'bg-[#FFFBE0] text-[#111]' : 'bg-black/5 text-[#666]'}`}>{dr.count}</span>
                         )}

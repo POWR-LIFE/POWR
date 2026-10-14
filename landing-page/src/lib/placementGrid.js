@@ -8,6 +8,25 @@
 // Activity-preference tokens — must match the mobile app's constants/activities.
 export const ACTIVITIES = ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'];
 export const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; // index = JS getDay() / resolver p_local_dow
+
+// Translation keys for the partner portal (the admin pages keep the English
+// above). Keys only — translated where they render, never here.
+export const ACTIVITY_KEYS = {
+    walking: 'brandPlacements:activities.walking',
+    running: 'brandPlacements:activities.running',
+    cycling: 'brandPlacements:activities.cycling',
+    swimming: 'brandPlacements:activities.swimming',
+    gym: 'brandPlacements:activities.gym',
+    hiit: 'brandPlacements:activities.hiit',
+    sports: 'brandPlacements:activities.sports',
+    yoga: 'brandPlacements:activities.yoga',
+    dance: 'brandPlacements:activities.dance',
+    sleep: 'brandPlacements:activities.sleep',
+};
+export const DOW_KEYS = [
+    'brandPlacements:days.sun', 'brandPlacements:days.mon', 'brandPlacements:days.tue', 'brandPlacements:days.wed',
+    'brandPlacements:days.thu', 'brandPlacements:days.fri', 'brandPlacements:days.sat',
+]; // same index as DOW
 export const DEFAULT_CENTER = { lat: 51.5074, lng: -0.1278 };
 export const GOLD = '#E8D200';
 export const RED = '#ef4444';
@@ -28,6 +47,16 @@ export const STATUS_LABELS = {
     paused: 'Paused',
     ended: 'Ended',
     rejected: 'Needs changes',
+};
+// The same states as translation keys, for the partner portal.
+export const STATUS_KEYS = {
+    draft: 'brandPlacements:status.draft',
+    pending_review: 'brandPlacements:status.pending_review',
+    scheduled: 'brandPlacements:status.scheduled',
+    live: 'brandPlacements:status.live',
+    paused: 'brandPlacements:status.paused',
+    ended: 'brandPlacements:status.ended',
+    rejected: 'brandPlacements:status.rejected',
 };
 export function effectiveStatus(p, now = Date.now()) {
     const stored = p.status || (p.active ? 'live' : 'paused');

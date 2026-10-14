@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Copy, ExternalLink, Maximize2, MonitorPlay, Pause, Play, RefreshCw, Tv, CalendarClock } from 'lucide-react';
 import { useAuth } from '../../App';
 import { useToast } from '../../lib/toast';
+import { serverErrorText } from '../../lib/serverErrors';
 import { Page, Card, Micro, PageTitle, Spinner, Empty, BTN_GOLD, INPUT, LABEL, BTN_GHOST } from '../../components/portal/ui';
 import { fetchGymSummary, setupGymScreens, updateGymScreens } from './venueApi';
 import { boardUrl, gymSlug, VIEWINGS, VIEWING_LABEL } from '../../../../shared/gymBoard.ts';
@@ -15,6 +17,22 @@ import { LEAGUE_RADII, leagueUrl } from '../../../../shared/gymLeague.ts';
 // the screens on or change the link key.
 
 const BOARD_SIZES = [10, 25, 50];
+
+// shared/gymBoard.ts's VIEWING_LABEL is English (it also drives the big
+// screens), so the portal keeps its own words for each viewing distance. A
+// distance added there without a row here shows its English label.
+const VIEWING_KEYS = {
+    near: { label: 'venueGrowth:screens.board.viewings.near.label', hint: 'venueGrowth:screens.board.viewings.near.hint' },
+    standard: { label: 'venueGrowth:screens.board.viewings.standard.label', hint: 'venueGrowth:screens.board.viewings.standard.hint' },
+    far: { label: 'venueGrowth:screens.board.viewings.far.label', hint: 'venueGrowth:screens.board.viewings.far.hint' },
+};
+
+// Putting it on the TV: [icon, title, body] with keys, translated where they render.
+const TV_STEPS = [
+    [MonitorPlay, 'venueGrowth:screens.tv.steps.open.title', 'venueGrowth:screens.tv.steps.open.body'],
+    [Maximize2, 'venueGrowth:screens.tv.steps.fullScreen.title', 'venueGrowth:screens.tv.steps.fullScreen.body'],
+    [CalendarClock, 'venueGrowth:screens.tv.steps.leave.title', 'venueGrowth:screens.tv.steps.leave.body'],
+];
 
 const pill = (on) =>
     `h-9 px-3.5 rounded-full border text-[10px] font-black uppercase tracking-[0.15em] transition-all disabled:opacity-40 ${
@@ -33,10 +51,11 @@ function Action({ icon: Icon, label, onClick, href, tone = 'neutral', disabled }
 }
 
 function LivePill({ on }) {
+    const { t } = useTranslation();
     return (
         <span className={`inline-flex items-center gap-2 h-7 px-3 rounded-full text-[9px] font-black uppercase tracking-[0.2em] ${on ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-[#F4F4F1] text-[#888] border border-[#E6E6E1]'}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${on ? 'bg-emerald-500 animate-pulse' : 'bg-[#BBBBBB]'}`} />
-            {on ? 'Live' : 'Paused'}
+            {on ? t('venueGrowth:screens.live') : t('venueGrowth:screens.paused')}
         </span>
     );
 }
@@ -48,6 +67,7 @@ function LivePill({ on }) {
  * crisp. It is display only: the wall has nothing to click either.
  */
 function Television({ src, title, paused, children }) {
+    const { t } = useTranslation();
     const ref = useRef(null);
     const [width, setWidth] = useState(0);
     useEffect(() => {
@@ -64,7 +84,7 @@ function Television({ src, title, paused, children }) {
                 {/* Behind the frame while it loads or reloads (switching to sample
                     data reloads it), so a dark moment reads as loading, not broken. */}
                 {src && !paused && (
-                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black uppercase tracking-[0.35em] text-white/25">Loading</div>
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black uppercase tracking-[0.35em] text-white/25">{t('venueGrowth:screens.loading')}</div>
                 )}
                 {src && !paused && k > 0 && (
                     <iframe
@@ -77,7 +97,7 @@ function Television({ src, title, paused, children }) {
                 {paused && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/40">
                         <Pause size={22} />
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em]">Paused</span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('venueGrowth:screens.paused')}</span>
                     </div>
                 )}
             </div>
@@ -108,18 +128,19 @@ function Setting({ label, hint, children }) {
 
 /** One screen: the television, and beside it what it shows and how to change it. */
 function ScreenRow({ eyebrow, title, blurb, live, src, sampleSrc, shortLink, copyLink, openHref, onPause, onResume, acting, children, sampleLabel }) {
+    const { t } = useTranslation();
     const [sample, setSample] = useState(false);
     return (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-5 lg:gap-8 items-start">
             <div>
-                <Television src={sample ? sampleSrc : src} title={`${title}, as it shows on the TV`} paused={!live} />
+                <Television src={sample ? sampleSrc : src} title={t('venueGrowth:screens.tvTitle', { title })} paused={!live} />
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1">
                     <div className="flex items-center gap-3 min-w-0">
                         <LivePill on={live} />
                         <span className="text-[11px] font-mono text-[#999] truncate">{shortLink}</span>
                     </div>
-                    <div className="inline-flex rounded-full bg-[#F4F4F1] border border-[#E6E6E1] p-0.5" role="radiogroup" aria-label="What the preview shows">
-                        {[[false, 'Your gym'], [true, sampleLabel]].map(([v, l]) => (
+                    <div className="inline-flex rounded-full bg-[#F4F4F1] border border-[#E6E6E1] p-0.5" role="radiogroup" aria-label={t('venueGrowth:screens.previewShows')}>
+                        {[[false, t('venueGrowth:screens.yourGym')], [true, sampleLabel]].map(([v, l]) => (
                             <button key={String(v)} type="button" role="radio" aria-checked={sample === v} onClick={() => setSample(v)}
                                 className={`h-7 px-3 rounded-full text-[9px] font-black uppercase tracking-[0.15em] transition-all ${sample === v ? 'bg-[#1A1A1A] text-white' : 'text-[#888] hover:text-[#1A1A1A]'}`}>
                                 {l}
@@ -134,11 +155,11 @@ function ScreenRow({ eyebrow, title, blurb, live, src, sampleSrc, shortLink, cop
                 <h2 className="text-2xl font-light tracking-tight text-[#1A1A1A] mt-2">{title}</h2>
                 <p className="text-[12px] text-[#888] leading-relaxed mt-2">{blurb}</p>
                 <div className="flex flex-wrap gap-2 mt-5">
-                    <Action icon={ExternalLink} label="Open" href={openHref} tone="gold" />
-                    <Action icon={Copy} label="Copy link" onClick={copyLink} />
+                    <Action icon={ExternalLink} label={t('venueGrowth:screens.actions.open')} href={openHref} tone="gold" />
+                    <Action icon={Copy} label={t('venueGrowth:screens.actions.copyLink')} onClick={copyLink} />
                     {live
-                        ? <Action icon={Pause} label="Pause" disabled={acting} onClick={onPause} />
-                        : <Action icon={Play} label="Resume" disabled={acting} onClick={onResume} />}
+                        ? <Action icon={Pause} label={t('venueGrowth:screens.actions.pause')} disabled={acting} onClick={onPause} />
+                        : <Action icon={Play} label={t('venueGrowth:screens.actions.resume')} disabled={acting} onClick={onResume} />}
                 </div>
                 <div className="mt-7 pt-6 border-t border-[#F0F0EC] space-y-6">{children}</div>
             </Card>
@@ -147,6 +168,7 @@ function ScreenRow({ eyebrow, title, blurb, live, src, sampleSrc, shortLink, cop
 }
 
 export default function VenueScreens() {
+    const { t } = useTranslation();
     const { gym, isActingGym } = useAuth();
     const toast = useToast();
     const [summary, setSummary] = useState(null);
@@ -158,18 +180,19 @@ export default function VenueScreens() {
         let alive = true;
         fetchGymSummary(gym.partner_id)
             .then(s => { if (alive) setSummary(s); })
-            .catch(err => { if (alive) setError(err.message); });
+            .catch(err => { if (alive) setError(err); });
         return () => { alive = false; };
     }, [gym.partner_id]);
 
-    if (error) return <Empty title="Couldn’t load your screens" action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>Try again</button>}>{error}</Empty>;
+    if (error) return <Empty title={t('venueGrowth:screens.loadError')} action={<button type="button" onClick={() => window.location.reload()} className={BTN_GHOST}>{t('common:actions.retry')}</button>}>{serverErrorText(error)}</Empty>;
     if (!summary) return <Spinner />;
 
     const board = summary.board;
     const canOwn = summary.role === 'owner' || summary.role === 'admin';
     const gymName = summary.gym?.name ?? gym.name;
 
-    // An admin previewing a gym looks; changes go through the admin pages.
+    // An admin previewing a gym looks; changes go through the admin pages
+    // (admin-only, so the message stays English).
     const previewOnly = () => { if (!isActingGym) return false; toast.error('Preview only. Change a gym’s screens from the admin pages.'); return true; };
     const run = async (fn, ok) => {
         setActing(true);
@@ -178,50 +201,49 @@ export default function VenueScreens() {
             setSummary(s => ({ ...s, board: next }));
             if (ok) toast.success(ok);
         } catch (err) {
-            toast.error(err.message);
+            toast.error(serverErrorText(err));
         } finally {
             setActing(false);
         }
     };
     const update = (patch, ok) => { if (previewOnly()) return; run(() => updateGymScreens(gym.partner_id, patch), ok); };
     const copy = async (text) => {
-        try { await navigator.clipboard.writeText(text); toast.success('Link copied'); } catch { toast.error('Copy failed'); }
+        try { await navigator.clipboard.writeText(text); toast.success(t('venueGrowth:screens.toast.copied')); } catch { toast.error(t('venueGrowth:screens.toast.copyFailed')); }
     };
 
     // ── Not switched on yet: the television, dark, and the switch ─────────
     if (!board) {
         return (
             <Page>
-                <PageTitle eyebrow="Screens" title="Your gym on the big screen" sub={gymName} />
+                <PageTitle eyebrow={t('venueGrowth:screens.eyebrow')} title={t('venueGrowth:screens.title')} sub={gymName} />
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-5 lg:gap-8 items-start">
-                    <Television title="Your leaderboard, before it's switched on">
-                        <Teaser title={`${gymName} · this week`} lines="The weekly leaderboard, live on your TV" />
+                    <Television title={t('venueGrowth:screens.setup.tvTitle')}>
+                        <Teaser title={t('venueGrowth:screens.setup.teaserTitle', { gym: gymName })} lines={t('venueGrowth:screens.setup.teaserLines')} />
                     </Television>
                     <Card className="p-6 sm:p-8" glow>
-                        <Micro gold>Two screens, one switch</Micro>
-                        <h2 className="text-2xl font-light tracking-tight text-[#1A1A1A] mt-2">Switch on your screens</h2>
+                        <Micro gold>{t('venueGrowth:screens.setup.eyebrow')}</Micro>
+                        <h2 className="text-2xl font-light tracking-tight text-[#1A1A1A] mt-2">{t('venueGrowth:screens.setup.title')}</h2>
                         <p className="text-[13px] text-[#666] font-light leading-relaxed mt-3">
-                            A weekly leaderboard of points earned at {gymName}, made for a TV on the gym floor. It resets every Monday, shows last
-                            week’s champion and carries a QR code so members can join. You also get <span className="font-semibold text-[#1A1A1A]">Gym Clash</span>:
-                            your gym racing every other POWR gym nearby.
+                            <Trans i18nKey="venueGrowth:screens.setup.body" values={{ gym: gymName }}
+                                components={{ strong: <span className="font-semibold text-[#1A1A1A]" /> }} />
                         </p>
                         {canOwn ? (
                             <div className="mt-7 space-y-4">
                                 <div>
-                                    <label className={LABEL}>Your screen link</label>
+                                    <label className={LABEL}>{t('venueGrowth:screens.setup.linkLabel')}</label>
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-[12px] font-mono text-[#999]">powr.life/gym/</span>
                                         <input value={slugDraft} onChange={e => setSlugDraft(e.target.value)} onBlur={() => setSlugDraft(gymSlug(slugDraft))}
-                                            className={`${INPUT} flex-1 min-w-[10rem] font-mono`} aria-label="Screen link name" />
+                                            className={`${INPUT} flex-1 min-w-[10rem] font-mono`} aria-label={t('venueGrowth:screens.setup.linkAria')} />
                                     </div>
-                                    <p className="text-[11px] text-[#AAAAAA] mt-2">Lower-case letters, numbers and dashes. It’s part of the link you’ll open on the TV, so pick it once.</p>
+                                    <p className="text-[11px] text-[#AAAAAA] mt-2">{t('venueGrowth:screens.setup.linkHint')}</p>
                                 </div>
-                                <button disabled={acting} onClick={() => { if (previewOnly()) return; run(() => setupGymScreens(gym.partner_id, gymSlug(slugDraft)), 'Screens switched on'); }} className={BTN_GOLD}>
-                                    <Tv size={14} /> {acting ? 'Switching on…' : 'Switch on the screens'}
+                                <button disabled={acting} onClick={() => { if (previewOnly()) return; run(() => setupGymScreens(gym.partner_id, gymSlug(slugDraft)), t('venueGrowth:screens.setup.switchedOn')); }} className={BTN_GOLD}>
+                                    <Tv size={14} /> {acting ? t('venueGrowth:screens.setup.switching') : t('venueGrowth:screens.setup.switchOn')}
                                 </button>
                             </div>
                         ) : (
-                            <p className="mt-6 text-[13px] text-[#888]">Your gym’s owner can switch the screens on from here.</p>
+                            <p className="mt-6 text-[13px] text-[#888]">{t('venueGrowth:screens.setup.ownerOnly')}</p>
                         )}
                     </Card>
                 </div>
@@ -237,44 +259,46 @@ export default function VenueScreens() {
     const radius = board.league_radius_km ?? 15;
     const viewing = board.viewing ?? 'standard';
     const leagueLive = board.league_enabled !== false;
+    const viewingLabel = (v) => (VIEWING_KEYS[v] ? t(VIEWING_KEYS[v].label) : VIEWING_LABEL[v]?.label);
+    const viewingHint = (v) => (VIEWING_KEYS[v] ? t(VIEWING_KEYS[v].hint) : VIEWING_LABEL[v]?.hint);
 
     const rotate = () => {
-        if (!window.confirm('Change the screen link? Any TV showing the old link goes blank until you open the new one on it.')) return;
-        update({ rotate_token: true }, 'New link made — open it on your TVs');
+        if (!window.confirm(t('venueGrowth:screens.tv.rotateConfirm'))) return;
+        update({ rotate_token: true }, t('venueGrowth:screens.tv.rotated'));
     };
 
     return (
         <Page>
-            <PageTitle eyebrow="Screens" title="Your gym on the big screen" sub={gymName} />
+            <PageTitle eyebrow={t('venueGrowth:screens.eyebrow')} title={t('venueGrowth:screens.title')} sub={gymName} />
 
             <ScreenRow
-                eyebrow="Screen 1" title="Weekly leaderboard"
-                blurb={`Points earned at ${gymName}, Monday to Sunday, with last week’s champion and a QR code to join. It changes scene by itself and updates every few seconds.`}
+                eyebrow={t('venueGrowth:screens.board.eyebrow')} title={t('venueGrowth:screens.board.title')}
+                blurb={t('venueGrowth:screens.board.blurb', { gym: gymName })}
                 live={board.enabled}
                 src={boardUrl(board.slug, board.display_token, null, here)}
                 sampleSrc={boardUrl(board.slug, board.display_token, 'sample', here)}
-                sampleLabel="Sample members"
+                sampleLabel={t('venueGrowth:screens.board.sample')}
                 shortLink={`powr.life/gym/${board.slug}`}
                 copyLink={() => copy(bUrl)}
                 openHref={boardUrl(board.slug, board.display_token, null, here)}
-                onPause={() => update({ enabled: false }, 'Paused — the TV goes blank on its next refresh')}
-                onResume={() => update({ enabled: true }, 'Leaderboard live')}
+                onPause={() => update({ enabled: false }, t('venueGrowth:screens.board.paused'))}
+                onResume={() => update({ enabled: true }, t('venueGrowth:screens.board.live'))}
                 acting={acting}
             >
-                <Setting label="Viewing distance" hint={VIEWING_LABEL[viewing]?.hint}>
+                <Setting label={t('venueGrowth:screens.board.viewing')} hint={viewingHint(viewing)}>
                     <div className="flex flex-wrap gap-2">
                         {VIEWINGS.map(v => (
-                            <button key={v} disabled={acting} onClick={() => v !== viewing && update({ viewing: v }, `Viewing distance: ${VIEWING_LABEL[v].label}`)} className={pill(viewing === v)}>
-                                {VIEWING_LABEL[v].label}
+                            <button key={v} disabled={acting} onClick={() => v !== viewing && update({ viewing: v }, t('venueGrowth:screens.board.viewingSet', { label: viewingLabel(v) }))} className={pill(viewing === v)}>
+                                {viewingLabel(v)}
                             </button>
                         ))}
                     </div>
                 </Setting>
-                <Setting label="Board size">
+                <Setting label={t('venueGrowth:screens.board.size')}>
                     <div className="flex flex-wrap gap-2">
                         {BOARD_SIZES.map(n => (
-                            <button key={n} disabled={acting} onClick={() => n !== board.board_size && update({ board_size: n }, `Showing the top ${n}`)} className={pill(board.board_size === n)}>
-                                Top {n}
+                            <button key={n} disabled={acting} onClick={() => n !== board.board_size && update({ board_size: n }, t('venueGrowth:screens.board.sizeSet', { n }))} className={pill(board.board_size === n)}>
+                                {t('venueGrowth:screens.board.top', { n })}
                             </button>
                         ))}
                     </div>
@@ -282,24 +306,24 @@ export default function VenueScreens() {
             </ScreenRow>
 
             <ScreenRow
-                eyebrow="Screen 2" title="Gym Clash"
-                blurb={`${gymName} against the gyms nearby this week, then the whole POWR network, with a head-to-head against the gym just above you.`}
+                eyebrow={t('venueGrowth:screens.league.eyebrow')} title={t('venueGrowth:screens.league.title')}
+                blurb={t('venueGrowth:screens.league.blurb', { gym: gymName })}
                 live={leagueLive}
                 src={leagueUrl(board.slug, board.display_token, null, here)}
                 sampleSrc={leagueUrl(board.slug, board.display_token, 'sample', here)}
-                sampleLabel="Sample gyms"
+                sampleLabel={t('venueGrowth:screens.league.sample')}
                 shortLink={`powr.life/league/${board.slug}`}
                 copyLink={() => copy(lUrl)}
                 openHref={leagueUrl(board.slug, board.display_token, null, here)}
-                onPause={() => update({ league_enabled: false }, 'League paused')}
-                onResume={() => update({ league_enabled: true }, 'League live')}
+                onPause={() => update({ league_enabled: false }, t('venueGrowth:screens.league.paused'))}
+                onResume={() => update({ league_enabled: true }, t('venueGrowth:screens.league.live'))}
                 acting={acting}
             >
-                <Setting label="Nearby means within" hint="A city needs 10–15 km to catch real neighbours, a town 25–50.">
+                <Setting label={t('venueGrowth:screens.league.radius')} hint={t('venueGrowth:screens.league.radiusHint')}>
                     <div className="flex flex-wrap gap-2">
                         {LEAGUE_RADII.map(km => (
-                            <button key={km} disabled={acting} onClick={() => km !== radius && update({ league_radius_km: km }, `Nearby: gyms within ${km} km`)} className={pill(radius === km)}>
-                                {km} km
+                            <button key={km} disabled={acting} onClick={() => km !== radius && update({ league_radius_km: km }, t('venueGrowth:screens.league.radiusSet', { km }))} className={pill(radius === km)}>
+                                {t('venueGrowth:screens.league.km', { km })}
                             </button>
                         ))}
                     </div>
@@ -307,28 +331,24 @@ export default function VenueScreens() {
             </ScreenRow>
 
             <Card className="p-6 sm:p-8">
-                <Micro gold className="mb-5">Putting it on the TV</Micro>
+                <Micro gold className="mb-5">{t('venueGrowth:screens.tv.eyebrow')}</Micro>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {[
-                        [MonitorPlay, 'Open the link', 'In the TV’s own browser, or cast a laptop tab to it. Copy the link from the screen you want.'],
-                        [Maximize2, 'Go full screen', 'Press F11 (or the browser’s full-screen button). The board fits any size of screen.'],
-                        [CalendarClock, 'Leave it running', 'It refreshes itself, changes scene, and starts a new week every Monday. Nothing to touch.'],
-                    ].map(([Icon, t, body], i) => (
-                        <div key={t} className="flex gap-4">
+                    {TV_STEPS.map(([Icon, title, body], i) => (
+                        <div key={title} className="flex gap-4">
                             <span className="w-10 h-10 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#8a7600] shrink-0"><Icon size={16} /></span>
                             <div>
-                                <div className="text-[13px] font-bold text-[#1A1A1A]"><span className="text-[#BBBBBB] mr-1.5">{i + 1}</span>{t}</div>
-                                <p className="text-[12px] text-[#888] leading-relaxed mt-1">{body}</p>
+                                <div className="text-[13px] font-bold text-[#1A1A1A]"><span className="text-[#BBBBBB] mr-1.5">{i + 1}</span>{t(title)}</div>
+                                <p className="text-[12px] text-[#888] leading-relaxed mt-1">{t(body)}</p>
                             </div>
                         </div>
                     ))}
                 </div>
                 <div className="mt-6 pt-5 border-t border-[#F0F0EC] flex flex-wrap items-center justify-between gap-4">
                     <p className="text-[11px] text-[#AAAAAA] leading-relaxed max-w-xl">
-                        Both links share one key, and a link can only show its board. Keep them to your screens: anyone with a link can open it.
-                        {canOwn && ' If one has got out, make a new key: every TV on the old links goes blank until you open the new ones.'}
+                        {t('venueGrowth:screens.tv.linksNote')}
+                        {canOwn && ` ${t('venueGrowth:screens.tv.linksNoteOwner')}`}
                     </p>
-                    {canOwn && <Action icon={RefreshCw} label="Make a new link" tone="danger" disabled={acting} onClick={rotate} />}
+                    {canOwn && <Action icon={RefreshCw} label={t('venueGrowth:screens.actions.newLink')} tone="danger" disabled={acting} onClick={rotate} />}
                 </div>
             </Card>
         </Page>

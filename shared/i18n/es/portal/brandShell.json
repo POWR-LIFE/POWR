@@ -1,0 +1,215 @@
+{
+  "portalName": "Portal de marcas",
+  "loadingPortal": "Cargando el portal…",
+  "nav": {
+    "overview": "Resumen",
+    "myRewards": "Mis recompensas",
+    "api": "API",
+    "shopify": "Shopify",
+    "promoCodes": "Códigos promo",
+    "integration": "Integración",
+    "inStore": "En tienda",
+    "whatsOn": "En cartel",
+    "placements": "Posiciones",
+    "studio": "Studio",
+    "redemptions": "Canjes",
+    "settings": "Ajustes",
+    "support": "Ayuda",
+    "guides": "Guías"
+  },
+  "auth": {
+    "emailAddress": "Correo electrónico",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar contraseña",
+    "signIn": "Iniciar sesión",
+    "passwordsDontMatch": "Las contraseñas no coinciden",
+    "passwordTooShort": "La contraseña debe tener al menos 8 caracteres"
+  },
+  "login": {
+    "tagline": "Gestione sus recompensas",
+    "authenticating": "Iniciando sesión…",
+    "loadingPortal": "Cargando su portal…",
+    "processing": "Iniciando sesión…",
+    "backHome": "Volver al inicio"
+  },
+  "setup": {
+    "creatingAccount": "Creando su cuenta…",
+    "signingIn": "Iniciando sesión…",
+    "somethingWrong": "Algo ha fallado",
+    "invalidTitle": "Enlace no válido",
+    "invalidBody": "Este enlace de acceso no es válido o se ha revocado. Póngase en contacto con POWR para obtener uno nuevo.",
+    "usedTitle": "Cuenta ya creada",
+    "usedBody": "Este enlace ya se ha usado para crear una cuenta.",
+    "eyebrow": "Alta en el portal de marcas",
+    "yourBrand": "Su marca",
+    "title": "Cree su cuenta",
+    "sub": "Gestione sus recompensas, siga los canjes y actualice su ficha, todo en un mismo sitio.",
+    "yourName": "Su nombre",
+    "namePlaceholder": "Nombre y apellidos",
+    "emailPlaceholder": "nombre@marca.com",
+    "settingUp": "Configurando…",
+    "createAccount": "Crear cuenta",
+    "haveAccount": "¿Ya tiene una cuenta? <action>Inicie sesión</action>"
+  },
+  "settings": {
+    "eyebrow": "Cuenta",
+    "title": "Ajustes",
+    "brandInfo": "Datos de la marca",
+    "brandName": "Nombre de la marca",
+    "brandNameHint": "POWR gestiona el nombre de la marca. Póngase en contacto con nosotros para cambiarlo.",
+    "deliveryMethod": "Método de entrega",
+    "checking": "Comprobando…",
+    "notChosen": "Sin elegir todavía",
+    "deliveryHint": "Cómo llegan los códigos a los miembros cuando canjean: consulte el estado o cambie de método.",
+    "changePassword": "Cambiar contraseña",
+    "currentPassword": "Contraseña actual",
+    "newPassword": "Nueva contraseña",
+    "confirmNewPassword": "Confirmar nueva contraseña",
+    "updating": "Actualizando…",
+    "updatePassword": "Actualizar contraseña",
+    "currentPasswordWrong": "La contraseña actual no es correcta",
+    "passwordUpdated": "Contraseña actualizada",
+    "help": {
+      "title": "¿Necesita ayuda?",
+      "body": "Los cambios de nombre de la marca y todo lo que no pueda editar aquí pasan por el equipo de POWR. Envíe una solicitud y le responderemos en un día laborable.",
+      "contact": "Contactar con soporte"
+    },
+    "listing": {
+      "title": "Su marca en POWR",
+      "body": "Su logotipo, sus imágenes y las descripciones de sus recompensas están en cada ficha de recompensa: es exactamente lo que ven los miembros en la app.",
+      "edit": "Editar sus fichas"
+    }
+  },
+  "team": {
+    "title": "Equipo",
+    "intro": "Invite a su equipo a gestionar {{brand}} con usted. Envíe una invitación por correo o copie un enlace de acceso para compartirlo: en ambos casos, cada persona elige su propio correo y contraseña.",
+    "inviteByEmail": "Invitar por correo",
+    "send": "Enviar",
+    "or": "o",
+    "copyLink": "Copiar un enlace de acceso",
+    "loadFailed": "No se ha podido cargar su equipo",
+    "loadFailedBody": "No hemos podido contactar con el servidor. No ha cambiado nada.",
+    "openLinks": "Enlaces de acceso pendientes",
+    "emailedOn": "Enviado a {{email}} el {{date}} · sin usar",
+    "createdOn": "Creado el {{date}} · sin usar",
+    "copied": "Copiado",
+    "copy": "Copiar",
+    "revoke": "Revocar",
+    "members": "Miembros del equipo",
+    "noUsers": "Todavía no hay usuarios del portal",
+    "you": "Usted",
+    "invitePending": "Invitación pendiente",
+    "lastLogin": {
+      "never": "Último acceso: nunca",
+      "today": "Último acceso: hoy",
+      "yesterday": "Último acceso: ayer",
+      "daysAgo": "Último acceso: hace {{days}} d"
+    },
+    "toast": {
+      "linkCreated": "Enlace de acceso creado y copiado. Compártalo con su equipo",
+      "emailed": "Invitación enviada a {{email}}",
+      "emailFailed": "No se ha podido enviar el correo; se ha copiado el enlace",
+      "linkRevoked": "Enlace de acceso revocado",
+      "accessRevoked": "Acceso revocado"
+    },
+    "errors": {
+      "load": "No se ha podido cargar",
+      "createLink": "No se ha podido crear el enlace",
+      "sendInvite": "No se ha podido enviar la invitación",
+      "revoke": "No se ha podido revocar",
+      "remove": "No se ha podido retirar el acceso"
+    }
+  },
+  "support": {
+    "eyebrow": "Ayuda",
+    "title": "Soporte",
+    "intro": "¿Algún problema con la configuración o algo no funciona como esperaba? Envíenos una solicitud y el equipo de POWR le responderá en un día laborable.",
+    "categories": {
+      "setup": {
+        "label": "Configuración e integración",
+        "hint": "Primeros pasos, Shopify, claves API, webhooks"
+      },
+      "rewards": {
+        "label": "Recompensas y códigos",
+        "hint": "Recompensas, códigos promocionales, canjes"
+      },
+      "account": {
+        "label": "Cuenta y equipo",
+        "hint": "Accesos, miembros del equipo, datos de la marca"
+      },
+      "other": {
+        "label": "Otra cosa",
+        "hint": "Cualquier otro tema"
+      }
+    },
+    "status": {
+      "open": "Abierta",
+      "inProgress": "En curso",
+      "resolved": "Resuelta",
+      "closed": "Cerrada"
+    },
+    "timeAgo": {
+      "justNow": "justo ahora",
+      "minutes": "hace {{n}} min",
+      "hours": "hace {{n}} h",
+      "days": "hace {{n}} d"
+    },
+    "toast": {
+      "missing": "Añada un asunto y un mensaje",
+      "failed": "No se ha podido enviar su mensaje. Inténtelo de nuevo",
+      "sent": "Solicitud enviada. Le responderemos en un día laborable"
+    },
+    "newTicket": "Nueva solicitud",
+    "about": "¿De qué se trata?",
+    "subject": "Asunto",
+    "subjectPlaceholder": "Un breve resumen del problema",
+    "message": "Mensaje",
+    "messagePlaceholder": "Cuéntenos qué ocurrió, qué esperaba y cualquier mensaje de error que viera…",
+    "repliesTo": "Las respuestas llegan a {{email}}",
+    "sending": "Enviando…",
+    "send": "Enviar solicitud",
+    "yourTickets": "Sus solicitudes",
+    "awaiting_one": "{{count}} pendiente de respuesta",
+    "awaiting_other": "{{count}} pendientes de respuesta",
+    "caughtUp": "Todo al día",
+    "noTickets": "Todavía no hay solicitudes",
+    "categoryFallback": "Soporte",
+    "yourMessage": "Su mensaje",
+    "powrSupport": "Soporte de POWR",
+    "waiting": "Pendiente del equipo de POWR",
+    "expect": {
+      "title": "Qué esperar",
+      "dayLabel": "Un día laborable",
+      "dayDetail": "El equipo de POWR responde a todas las solicitudes, normalmente mucho antes en horario del Reino Unido.",
+      "repliesLabel": "Las respuestas llegan aquí",
+      "repliesDetail": "Las respuestas aparecen en la solicitud de abajo y se envían a {{email}}.",
+      "repliesDetailNoEmail": "Las respuestas aparecen en la solicitud de abajo y se envían a su correo.",
+      "detailLabel": "Los detalles agilizan",
+      "detailDetail": "Indique la recompensa, el miembro o el texto exacto del error para que podamos investigarlo de inmediato."
+    },
+    "faster": {
+      "title": "Resuélvalo antes",
+      "guidesLabel": "Guías prácticas",
+      "guidesDetail": "Guías paso a paso de cada página del portal.",
+      "integrationLabel": "Estado de la integración",
+      "integrationDetail": "Estado de la conexión y pasos de configuración de su método de entrega.",
+      "rewardsLabel": "Fichas de recompensas",
+      "rewardsDetail": "Edite las imágenes, las descripciones y lo que ven los miembros en la app.",
+      "teamLabel": "Equipo y cuenta",
+      "teamDetail": "Invite a su equipo o cambie su contraseña."
+    }
+  },
+  "studio": {
+    "eyebrow": "Studio",
+    "title": "Publicaciones para {{brand}}",
+    "modes": {
+      "post": "Una publicación",
+      "drafts": "Borradores"
+    },
+    "blurb": {
+      "drafts": "Publicaciones guardadas para terminarlas más tarde. Abra una para seguir donde lo dejó: cada diapositiva, foto o clip, los textos y el acabado.",
+      "withReward": "Elija una plantilla, añada una foto o un vídeo y se rellenará con su recompensa: la oferta, los puntos, el logotipo y el color. Guarde un borrador para terminarlo más tarde.",
+      "noReward": "Elija una plantilla, añada una foto o un vídeo y suba su logotipo en Textos. Cuando su recompensa esté activa, su oferta, sus puntos y su color también se rellenarán."
+    }
+  }
+}

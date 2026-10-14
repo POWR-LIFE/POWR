@@ -3,12 +3,14 @@
 // labels every in-store surface shares. The code maths lives in
 // shared/inStore.ts so the app, this site and Postgres agree.
 import { supabase } from './supabase';
+import i18n, { formatLocale } from './i18n';
 
 // RPC errors carry a sentence written for people (see the migration's
-// `raise exception` messages). Surface it as-is.
+// `raise exception` messages). Surface it as-is; pages show it through
+// serverErrorText() so known messages read in the portal's language.
 async function rpc(name, args) {
     const { data, error } = await supabase.rpc(name, args);
-    if (error) throw new Error(error.message || 'Something went wrong');
+    if (error) throw new Error(error.message || i18n.t('brandInStore:errors.generic'));
     return data;
 }
 
@@ -73,31 +75,33 @@ export const staffLink = (token) => `${window.location.origin}/scan#k=${token}`;
 export const scanPageUrl = () => `${window.location.origin}/scan`;
 
 // ── Shared labels ───────────────────────────────────────────────────────────
+// Labels are translation keys (brandInStore:…), translated where they render.
 
 export const WHERE_OPTIONS = [
-    { value: 'online', label: 'Online', blurb: 'A code or link for your website. Works today.' },
-    { value: 'in_store', label: 'In store', blurb: 'A live voucher members show at your till.' },
-    { value: 'both', label: 'Both', blurb: 'One reward. Members use it either way.' },
+    { value: 'online', labelKey: 'brandInStore:where.online.label', blurbKey: 'brandInStore:where.online.blurb' },
+    { value: 'in_store', labelKey: 'brandInStore:where.inStore.label', blurbKey: 'brandInStore:where.inStore.blurb' },
+    { value: 'both', labelKey: 'brandInStore:where.both.label', blurbKey: 'brandInStore:where.both.blurb' },
 ];
 
 export const CHECK_OPTIONS = [
     {
-        value: 'staff_scan', label: 'Staff scan', recommended: true,
-        blurb: 'Staff scan the voucher on powr.life/scan, from any phone or a tablet at the till.',
-        reports: 'Confirmed', tone: 'good',
+        value: 'staff_scan', labelKey: 'brandInStore:check.staffScan.label', recommended: true,
+        blurbKey: 'brandInStore:check.staffScan.blurb',
+        reportsKey: 'brandInStore:check.staffScan.reports', tone: 'good',
     },
     {
-        value: 'look', label: 'Look at the screen',
-        blurb: 'Staff check the live voucher and swipe it on the member’s phone. Nothing to set up.',
-        reports: 'Shown, not confirmed', tone: 'warn',
+        value: 'look', labelKey: 'brandInStore:check.look.label',
+        blurbKey: 'brandInStore:check.look.blurb',
+        reportsKey: 'brandInStore:check.look.reports', tone: 'warn',
     },
     {
-        value: 'till_barcode', label: 'Till barcode',
-        blurb: 'Members show one of your own barcodes and your till scans it. For chains.',
-        reports: 'Confirmed from your till report', tone: 'good',
+        value: 'till_barcode', labelKey: 'brandInStore:check.tillBarcode.label',
+        blurbKey: 'brandInStore:check.tillBarcode.blurb',
+        reportsKey: 'brandInStore:check.tillBarcode.reports', tone: 'good',
     },
 ];
 
+// Symbology names: the same in every language.
 export const BARCODE_FORMATS = [
     { value: 'ean13', label: 'EAN-13' },
     { value: 'code128', label: 'Code 128' },
@@ -105,26 +109,34 @@ export const BARCODE_FORMATS = [
 ];
 
 export const describeInStore = (r) => {
-    if (!r || r.where === 'online') return 'Online only';
-    const where = r.where === 'both' ? 'Online + in store' : 'In store';
-    const how = CHECK_OPTIONS.find(o => o.value === r.check)?.label ?? '';
+    if (!r || r.where === 'online') return i18n.t('brandInStore:describe.onlineOnly');
+    const where = i18n.t(r.where === 'both' ? 'brandInStore:describe.both' : 'brandInStore:describe.inStore');
+    const check = CHECK_OPTIONS.find(o => o.value === r.check);
+    const how = check ? i18n.t(check.labelKey) : '';
     return `${where} · ${how}`;
 };
 
-export const formatPence = (p) => `£${((p ?? 0) / 100).toFixed(2)}`;
+// Pounds whatever the language; only the number style follows it. No
+// thousands separator, as before (English reads "£1234.50").
+export const formatPence = (p) => new Intl.NumberFormat(formatLocale(), {
+    style: 'currency', currency: 'GBP', currencyDisplay: 'narrowSymbol', useGrouping: false,
+}).format((p ?? 0) / 100);
 export const formatPounds = (p) => {
     const v = (p ?? 0) / 100;
-    return `£${v >= 1000 ? Math.round(v).toLocaleString('en-GB') : v.toFixed(v % 1 ? 2 : 0)}`;
+    const digits = v >= 1000 || !(v % 1) ? 0 : 2;
+    return new Intl.NumberFormat(formatLocale(), {
+        style: 'currency', currency: 'GBP', currencyDisplay: 'narrowSymbol', minimumFractionDigits: digits, maximumFractionDigits: digits,
+    }).format(v);
 };
 
 export function timeAgoShort(iso) {
     if (!iso) return null;
     const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-    if (s < 60) return 'just now';
-    if (s < 3600) return `${Math.round(s / 60)} min ago`;
-    if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+    if (s < 60) return i18n.t('brandInStore:time.justNow');
+    if (s < 3600) return i18n.t('brandInStore:time.minutesAgo', { count: Math.round(s / 60) });
+    if (s < 86400) return i18n.t('brandInStore:time.hoursAgo', { count: Math.round(s / 3600) });
     const d = Math.round(s / 86400);
-    return d === 1 ? 'yesterday' : `${d} days ago`;
+    return d === 1 ? i18n.t('brandInStore:time.yesterday') : i18n.t('brandInStore:time.daysAgo', { count: d });
 }
 
 // Google Maps share links and pasted "lat, lng" pairs -> { lat, lng }.

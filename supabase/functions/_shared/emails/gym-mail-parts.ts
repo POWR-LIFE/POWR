@@ -1,9 +1,58 @@
 // The rows the gym's team emails are built from (welcome, reminders, trial,
 // package, support, Clash Nights). Same look as gym-event-mail.ts: a centred
 // hero, then sections, then one gold button. Every helper escapes what it
-// is given unless the parameter says Html.
+// is given unless the parameter says Html. The words come from the caller,
+// in its language (tBusiness "gym.*"); the helpers that format anything
+// themselves (dates, numbers, the text part's "label: value") take `lang`
+// last, English by default.
 
+import { formatLocale, tBusiness } from "../i18n/index.ts";
 import { ctaButton, esc, FONT, GOLD, sectionLabel } from "./layout.ts";
+
+/** The markup the gym catalog's Html keys carry: {{br}}, {{newline}}, {{gold}} … {{end}}. */
+export const HTML_MARKUP = {
+  br: '<br class="br-d">',
+  newline: "<br>",
+  gold: `<em style="font-style:italic;color:${GOLD};">`,
+  end: "</em>",
+} as const;
+
+/** A whole number as the gym emails show it ("1,234"; "1 234" in French). */
+export const fmtCount = (v: number, lang = "en") => Math.max(0, Math.round(v)).toLocaleString(formatLocale(lang));
+
+/**
+ * A day in the gym's time zone. English keeps its short "Wed 21 Oct"; French
+ * and Spanish write it out, as it reads in a sentence ("mercredi 21 octobre",
+ * "miércoles 21 de octubre": "21 oct." would end a sentence on two dots).
+ */
+export function fmtDay(iso: string | null | undefined, tz: string, lang = "en"): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  if (lang === "en") return d.toLocaleDateString(formatLocale(lang), { weekday: "short", day: "numeric", month: "short", timeZone: tz });
+  const day = d.toLocaleDateString(formatLocale(lang), { weekday: "long", day: "numeric", month: "long", timeZone: tz });
+  return lang === "es" ? day.replace(",", "") : day;
+}
+
+/** A day and a time: "Sat 10 Oct, 13:00" (as English always had it), "samedi 10 octobre à 13:00". */
+export function fmtDayTime(iso: string | null | undefined, tz: string, lang = "en"): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  if (lang === "en") {
+    return d.toLocaleString(formatLocale(lang), { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: tz });
+  }
+  const time = d.toLocaleTimeString(formatLocale(lang), { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: tz });
+  return tBusiness(lang, "gym.common.dayAtTime", { day: fmtDay(iso, tz, lang), time });
+}
+
+/** The last day of a window whose end is the midnight after it. */
+export function lastDay(endIso: string, tz: string, lang = "en"): string {
+  return fmtDay(new Date(new Date(endIso).getTime() - 60_000).toISOString(), tz, lang);
+}
+
+/** "label: value" for the text part (French puts a no-break space before the colon). */
+export const labelValue = (label: string, value: string, lang = "en") => tBusiness(lang, "gym.common.labelValue", { label, value });
 
 /** Gold italic accent for a heading word. */
 export const gold = (text: string) => `<em style="font-style:italic;color:${GOLD};">${esc(text)}</em>`;
@@ -98,12 +147,12 @@ export function noteRow(label: string, text: string): string {
 }
 
 /** Plain-text twin of listSection. */
-export function listText(label: string, items: Item[], marker: "steps" | "on" | "off"): string[] {
+export function listText(label: string, items: Item[], marker: "steps" | "on" | "off", lang = "en"): string[] {
   if (items.length === 0) return [];
   return [
     "",
     label.toUpperCase(),
-    ...items.map((it, i) => `${marker === "steps" ? `${i + 1}.` : marker === "on" ? "+" : "-"} ${it.title}: ${it.line}${it.href ? ` (${it.href})` : ""}`),
+    ...items.map((it, i) => `${marker === "steps" ? `${i + 1}.` : marker === "on" ? "+" : "-"} ${labelValue(it.title, it.line, lang)}${it.href ? ` (${it.href})` : ""}`),
   ];
 }
 

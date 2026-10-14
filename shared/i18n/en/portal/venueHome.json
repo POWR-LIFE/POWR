@@ -1,0 +1,449 @@
+{
+  "page": {
+    "overview": "Overview",
+    "loadFailed": "Couldn’t load your gym",
+    "leaderboardLive": "Leaderboard live",
+    "leaderboardPaused": "Leaderboard paused",
+    "leagueLive": "League live",
+    "leaguePaused": "League paused"
+  },
+  "pulse": {
+    "title": "This week",
+    "sessionsPeople_one": "sessions · {{n}} person",
+    "sessionsPeople_other": "sessions · {{n}} people",
+    "nowIn": "{{n}} in the gym now",
+    "nobodyIn": "Nobody in right now",
+    "stripLabel": "Sessions each day this week, with last week behind",
+    "today": "Today: {{sessions}} · {{people}}",
+    "sessions_one": "{{n}} session",
+    "sessions_other": "{{n}} sessions",
+    "people_one": "{{n}} person",
+    "people_other": "{{n}} people",
+    "checkedIn": "Sessions checked in at the gym",
+    "busiest": "busiest {{from}}–{{to}}",
+    "thisWeek": "This week",
+    "lastWeek": "Last week"
+  },
+  "pace": {
+    "saidSoFar_one": "{{n}} session so far",
+    "saidSoFar_other": "{{n}} sessions so far",
+    "saidHeading": "heading for about {{n}}",
+    "saidUsual": "a usual week is {{n}}",
+    "saidBest": "the best of the last {{weeks}} weeks was {{n}}",
+    "usualTip": "A usual week: {{n}}",
+    "bestTip": "Best in {{weeks}} weeks: {{n}}",
+    "soFar": "{{n}} so far",
+    "bySunday": "about {{n}} by Sunday",
+    "usual": "usual {{n}}",
+    "best": "best {{n}}"
+  },
+  "week": {
+    "newUsual": "New week. A usual one here is about {{n}} sessions.",
+    "newFresh": "New week. The board starts again today.",
+    "noneUsual": "No check-ins yet this week.",
+    "noneFresh": "No check-ins yet. Each session shows up here as members train.",
+    "bestAlready": "Your busiest week in {{weeks}} weeks already, and it’s only {{day}}.",
+    "best": "Your busiest week in {{weeks}} weeks.",
+    "onCourseBest": "On course for your busiest week in {{weeks}} weeks.",
+    "busier": "Busier than usual: on course for about {{n}}.",
+    "busierDone": "A busier week than usual: {{soFar}} against about {{usual}}.",
+    "quieterAhead": "Quieter than usual so far. {{days}} are your busiest, and it’s still to come.",
+    "quieter": "Quieter than usual: on course for about {{n}}.",
+    "quieterDone": "A quieter week than usual: {{soFar}} against about {{usual}}.",
+    "normal": "A normal week so far: on course for about {{n}}.",
+    "normalDone": "A normal week: {{soFar}} against about {{usual}}.",
+    "soFar_one": "{{n}} session so far this week.",
+    "soFar_other": "{{n}} sessions so far this week."
+  },
+  "days": {
+    "long": {
+      "mon": "Monday",
+      "tue": "Tuesday",
+      "wed": "Wednesday",
+      "thu": "Thursday",
+      "fri": "Friday",
+      "sat": "Saturday",
+      "sun": "Sunday"
+    },
+    "plural": {
+      "mon": "Mondays",
+      "tue": "Tuesdays",
+      "wed": "Wednesdays",
+      "thu": "Thursdays",
+      "fri": "Fridays",
+      "sat": "Saturdays",
+      "sun": "Sundays"
+    },
+    "letter": {
+      "mon": "M",
+      "tue": "T",
+      "wed": "W",
+      "thu": "T",
+      "fri": "F",
+      "sat": "S",
+      "sun": "S"
+    }
+  },
+  "ordinal": {
+    "one": "{{n}}st",
+    "two": "{{n}}nd",
+    "few": "{{n}}rd",
+    "other": "{{n}}th"
+  },
+  "moves": {
+    "title": "Worth doing this week",
+    "caughtUp": "You’re all caught up.",
+    "caughtUpBody": "Everything here is done or put off for now. New ones arrive tomorrow.",
+    "notNow": "Not now",
+    "hideDay": "Hide it until tomorrow",
+    "hideWeek": "Hide it for a week",
+    "comesWith": "Comes with {{pkg}}",
+    "reveal": {
+      "title": "Reveal the winners of {{name}}",
+      "detail": "Revealing tells everyone who took part, in the app and on your screens.",
+      "action": "Reveal"
+    },
+    "note": {
+      "title": "POWR asked for a change to {{name}}",
+      "detail": "Read the note, make the change and send it back.",
+      "action": "See the note"
+    },
+    "prizes": {
+      "title": "Hand over the prizes for {{name}}",
+      "detail": "Winners show their POWR ID at the desk. Tick each prize off as it goes.",
+      "action": "Prizes"
+    },
+    "draft": {
+      "title": "{{name}} is still a draft",
+      "detail": "Publish it so your members can see it in the app.",
+      "action": "Finish it"
+    },
+    "pending": {
+      "title": "{{name}} is with POWR for a quick check",
+      "detail": "It goes live in the app as soon as it’s approved.",
+      "action": "View"
+    },
+    "live": {
+      "title": "{{name}} is live: {{n}} in",
+      "detailUntil": "It runs until {{date}}. See who’s out in front.",
+      "detail": "See who’s out in front.",
+      "action": "Standings"
+    },
+    "soon": {
+      "title": "{{name}} starts {{date}}",
+      "joined_one": "{{n}} person has joined so far. Put the join QR at the desk and on your socials.",
+      "joined_other": "{{n}} people have joined so far. Put the join QR at the desk and on your socials.",
+      "nobody": "Nobody’s joined yet. Put the join QR at the desk and on your socials.",
+      "action": "Promote"
+    },
+    "again": {
+      "title": "Nothing on for your members right now",
+      "detail": "Run {{name}} again: the same prizes and rules, new dates.",
+      "action": "Run it again"
+    },
+    "first": {
+      "title": "Run your first event",
+      "detail": "A monthly challenge runs itself: the board, the pushes and the reveal.",
+      "action": "Start one"
+    },
+    "eventsLocked": {
+      "title": "Run your own challenges",
+      "detail": "Monthly challenges and weekend sprints that run themselves come with Clash+."
+    },
+    "quietLocked": {
+      "title": "See who’s drifting before they cancel",
+      "detail": "Clash+ counts who’s drifting from their usual visits. Clash Pro names them."
+    },
+    "quiet": {
+      "title_one": "{{n}} regular is drifting",
+      "title_other": "{{n}} regulars are drifting",
+      "detailPro": "Well past their usual gap between visits. One push from POWR invites them back.",
+      "detailPlus": "Well past their usual gap between visits. Clash Pro names them and nudges them back.",
+      "action": "See who"
+    },
+    "league": {
+      "behind": "{{gap}} POWR behind {{rival}}",
+      "passPost_one": "About {{n}} more session would pass them. Post the board and rally your members.",
+      "passPost_other": "About {{n}} more sessions would pass them. Post the board and rally your members.",
+      "passScreens_one": "About {{n}} more session would pass them. Keep the race on your gym TV.",
+      "passScreens_other": "About {{n}} more sessions would pass them. Keep the race on your gym TV.",
+      "top": "Top of Gym Clash within {{km}} km",
+      "clear": "{{gap}} POWR clear of {{rival}}. Tell your members before the week ends.",
+      "level": "Level with {{rival}}. Tell your members it’s all to play for.",
+      "makePost": "Make the post",
+      "screens": "Screens"
+    },
+    "poster": {
+      "nobody": "Nobody’s picked {{gym}} in the app yet",
+      "picked_one": "{{n}} member has picked {{gym}} in the app",
+      "picked_other": "{{n}} members have picked {{gym}} in the app",
+      "detail": "The join poster at the desk puts more of them on your board.",
+      "action": "Print it"
+    },
+    "plan": "Plan an event",
+    "insight": {
+      "up": "Build a challenge around {{activity}} while it’s popular.",
+      "elsewhere": "A challenge that only counts sessions here gives them a reason to come back."
+    },
+    "activity": {
+      "running": "running",
+      "cycling": "cycling",
+      "gym": "gym training",
+      "hiit": "HIIT",
+      "swimming": "swimming",
+      "yoga": "yoga",
+      "sports": "sport",
+      "dance": "dance",
+      "walking": "walking"
+    },
+    "weekday": {
+      "title": "{{days}} are your quietest day",
+      "detail_one": "{{n}} session in 4 weeks, against {{hi}} on {{hiDays}}. A sprint gives members a reason to come in.",
+      "detail_other": "{{n}} sessions in 4 weeks, against {{hi}} on {{hiDays}}. A sprint gives members a reason to come in."
+    },
+    "screens": {
+      "setupTitle": "Put your leaderboard on the gym TV",
+      "setupDetail": "This week’s board and Gym Clash, on any screen with a web browser.",
+      "setupAction": "Set up",
+      "pausedTitle": "Your leaderboard screen is paused",
+      "pausedDetail": "Nobody sees this week’s board on the wall until you switch it back on.",
+      "action": "Screens"
+    },
+    "trial": {
+      "today": "Your free trial ends today",
+      "endsIn_one": "Your free trial ends in {{n}} day",
+      "endsIn_other": "Your free trial ends in {{n}} days",
+      "detail": "Choose a package to keep your events, members dashboard and Studio.",
+      "action": "Packages"
+    },
+    "post": {
+      "title": "Today’s post: {{label}}",
+      "ready": "Ready to go. Download it and copy the caption.",
+      "locked": "Ready to see. Downloading it comes with Clash Pro.",
+      "postIt": "Post it",
+      "seeIt": "See it"
+    },
+    "joinLink": {
+      "title": "Send members your join link",
+      "detail": "Members who pick {{gym}} in the app land on your board. Drop the link in your WhatsApp group or newsletter.",
+      "action": "Get the link"
+    },
+    "photo": {
+      "title": "Add your gym’s photo",
+      "detail": "It goes behind every post, and on your gym’s page in the app.",
+      "action": "Add it"
+    },
+    "team": {
+      "title": "Put your trainers in the app",
+      "detail": "Members who open {{gym}} in the app see them, and can book a session straight from their card.",
+      "action": "Add them"
+    },
+    "recap": {
+      "title": "Get the Monday recap",
+      "detail": "Last week’s numbers, the top of your board and what’s coming, by email every Monday.",
+      "action": "Switch it on"
+    },
+    "planNext": {
+      "title": "Plan next month’s challenge",
+      "detail": "Something on the calendar keeps members coming back. Pick a format and it runs itself.",
+      "action": "Plan it"
+    },
+    "discounts": {
+      "title": "Prizes at the members’ price",
+      "detail": "Your partner discounts cover prizes and kit. One code when you need it.",
+      "action": "Discounts"
+    },
+    "members": {
+      "lastWeek_one": "Last week: {{n}} session here",
+      "lastWeek_other": "Last week: {{n}} sessions here",
+      "title": "See who’s training",
+      "detail": "Who trains, when you’re busiest and what your members do, week by week.",
+      "action": "Members"
+    },
+    "studio": {
+      "title": "Turn today’s class into a post",
+      "detail": "Drop in a photo or a clip and the Studio makes it at every size.",
+      "action": "Studio"
+    },
+    "leagueScreen": {
+      "title": "{{rank}} of {{total}} in Gym Clash",
+      "detail": "Keep the league on your gym TV, so members see the race while they train.",
+      "action": "Screens"
+    }
+  },
+  "nudge": {
+    "sentTo": "Sent to {{n}}",
+    "counting": "Counting…",
+    "cooling": "Nudged in the last fortnight",
+    "seeWho": "See who",
+    "confirmThem": "Send this push to them?\n\n{{title}}\n{{body}}\n\nEach gets it once, and not again for a fortnight.",
+    "confirmAll": "Send this push to all {{n}}?\n\n{{title}}\n{{body}}\n\nEach gets it once, and not again for a fortnight.",
+    "confirmSome": "Send this push to the {{n}} of them who haven’t had one in the last fortnight?\n\n{{title}}\n{{body}}\n\nEach gets it once, and not again for a fortnight.",
+    "sending": "Sending…",
+    "send": "Nudge {{n}}"
+  },
+  "people": {
+    "title": "Your people",
+    "link": "Members",
+    "member": "POWR member",
+    "leads": "Leads the board",
+    "points": "{{n}} POWR",
+    "improved": "Most improved",
+    "gain": "+{{n}} on last week",
+    "session": "Session of the week",
+    "sessionNote": "{{points}} POWR in {{minutes}} min",
+    "streak": "Longest streak",
+    "streakDays_one": "{{n}} day",
+    "streakDays_other": "{{n}} days",
+    "members_one": "{{n}} member",
+    "members_other": "{{n}} members",
+    "drifting": "{{n}} drifting",
+    "newFaces_one": "{{n}} new face",
+    "newFaces_other": "{{n}} new faces",
+    "failed": "The board isn’t loading",
+    "empty": "Nobody on the board yet",
+    "failedBody": "Try again in a minute.",
+    "emptyBody": "The leader, the most improved and the new faces show up here as members check in.",
+    "newThisWeek": "New this week:",
+    "two": "{{a}} and {{b}}",
+    "andMore_one": "{{name}} and {{n}} more",
+    "andMore_other": "{{name}} and {{n}} more",
+    "more": "The most improved, the session of the week and new faces show up here as more members train."
+  },
+  "league": {
+    "join": "Join Gym Clash",
+    "joinBody": "Put your screens up and your gym goes into Gym Clash: gym against gym, every week.",
+    "error": "The league isn’t answering right now. Try again in a minute.",
+    "alone": "Only you within {{km}} km",
+    "aloneBody": "No other gym on POWR nearby yet. Widen the radius on Screens to race further afield.",
+    "of": "of {{total}} within {{km}} km",
+    "moved": "{{n}} today",
+    "tableLabel": "Gym Clash near you this week",
+    "inNow": "{{n}} in",
+    "leading": "Leading {{rival}} by {{gap}}",
+    "level": "Level with {{rival}}",
+    "behind_one": "{{gap}} behind {{rival}} · about {{n}} session",
+    "behind_other": "{{gap}} behind {{rival}} · about {{n}} sessions",
+    "perMember": "Per member: <strong>{{rank}} of {{total}}</strong>, where size doesn’t win · Resets Monday",
+    "resets": "Resets Monday",
+    "screens": "Screens",
+    "setUp": "Set up"
+  },
+  "since": {
+    "since": "Since {{date}}",
+    "lastWeeks": "Last 8 weeks",
+    "more": "More",
+    "sessionsHere": "sessions here",
+    "allTime_one": "{{people}} · {{hours}} hours · {{points}} POWR earned",
+    "allTime_other": "{{people}} · {{hours}} hours · {{points}} POWR earned",
+    "inFourWeeks": "sessions in 4 weeks",
+    "empty": "Once members check in at {{gym}}, their sessions add up here.",
+    "level": "Level with the 4 weeks before",
+    "change": "{{change}} on the 4 weeks before",
+    "nothingYet": "Nothing to compare yet",
+    "firsts_one": "{{n}} first-timer in 4 weeks",
+    "firsts_other": "{{n}} first-timers in 4 weeks",
+    "chartLabel": "Sessions here each week",
+    "now": "Now",
+    "thisWeek": "This week",
+    "weekOf": "Week of {{date}}",
+    "locked": "Week-by-week growth comes with Clash+. <packages>See packages</packages>"
+  },
+  "posts": {
+    "title": "Posts for this week",
+    "titleDates": "Posts for this week · {{dates}}",
+    "making": "Making this week’s posts…",
+    "subPhoto": "One for each day, made from your week over your gym’s photo. A new set every Monday. Download all gets the seven at three sizes, with the captions.",
+    "subNoPhoto": "One for each day, made from your week. A new set every Monday. Download all gets the seven at three sizes, with the captions.",
+    "subLocked": "One for each day, made from your week. A new set every Monday. Downloading them comes with {{pkg}}; the join poster is free.",
+    "addPhoto": "Add your gym’s photo in <settings>Settings</settings> and it goes behind them.",
+    "lookGroup": "Look",
+    "lookOption": "Look: {{look}}",
+    "looks": {
+      "mixed": "Mixed",
+      "colour": "Colour",
+      "film": "Film"
+    },
+    "lookBlurbs": {
+      "mixed": "colour most days, a black-and-white day and a gold day",
+      "colour": "your photo in colour every day",
+      "film": "black and white, the house look"
+    },
+    "earlier": "Earlier posts",
+    "later": "More posts",
+    "makingLabel": "Making the posts",
+    "downloadAll": "Download all",
+    "everyComesWith": "Downloading every post comes with {{pkg}}",
+    "rowLabel": "This week’s posts",
+    "seeLarge": "See {{day}}’s post, {{label}}, large",
+    "drawFailed": "Couldn’t draw this one",
+    "today": "{{day}} · Today",
+    "download": "Download {{label}}",
+    "downloadPostSize": "Download the Post size",
+    "comesWith": "Downloading comes with {{pkg}}",
+    "oneFailed": "That post couldn’t be made.",
+    "allFailed": "The posts couldn’t be made.",
+    "zipped_one": "Seven posts, {{n}} file",
+    "zipped_other": "Seven posts, {{n}} files",
+    "names": {
+      "lastWeek": "Last week",
+      "newWeek": "New week",
+      "joinUs": "Join us",
+      "board": "The board",
+      "leader": "Top of the board",
+      "showUp": "Show up",
+      "everySession": "Every session",
+      "theWeekend": "The weekend",
+      "results": "Results",
+      "weekend": "Weekend",
+      "everyMove": "Every move",
+      "streak": "The streak",
+      "earned": "Earned"
+    }
+  },
+  "lightbox": {
+    "large": "{{label}}, large",
+    "previous": "Previous post",
+    "next": "Next post",
+    "renderFailed": "Couldn’t render this one.",
+    "position": "{{index}} of {{total}}",
+    "size": "Size",
+    "sizeOption": "Size: {{size}}",
+    "copied": "Copied",
+    "copyCaption": "Copy caption",
+    "download": "Download {{size}}",
+    "looks": {
+      "gold": "Gold duotone",
+      "colour": "Colour",
+      "colourWarm": "Colour, warm",
+      "colourCool": "Colour, cool",
+      "film": "Film"
+    },
+    "accents": {
+      "powr": "POWR gold",
+      "gold": "Gold headlines",
+      "signal": "Red",
+      "mono": "No colour",
+      "vary": "Vary"
+    },
+    "formats": {
+      "post": "Post",
+      "portrait": "Portrait",
+      "square": "Square",
+      "story": "Story",
+      "reel": "Reel",
+      "landscape": "Landscape",
+      "link": "Link",
+      "header": "Header",
+      "cover": "Cover",
+      "a5": "A5",
+      "a4": "A4",
+      "a3": "A3"
+    }
+  },
+  "charts": {
+    "total": "total",
+    "of": "of {{n}}",
+    "soFar": "(so far)"
+  }
+}

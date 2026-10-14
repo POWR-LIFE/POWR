@@ -5,11 +5,14 @@
 //   clash_night    POWR confirmed or declined a Clash Night, or called off
 //                  one it had confirmed. To the owners and whoever asked.
 // Sent by send-gym-email from the triggers in 20261007180000. This file is
-// only the words.
+// only the words, in the reader's language (tBusiness "gym.support.*",
+// "gym.clashNight.*"). POWR's answer and note, and what the gym wrote, stay
+// as typed.
 
-import { emailShell } from "./layout.ts";
-import { fmtDay, PORTAL_URL } from "./gym-weekly-recap.ts";
-import { ctaRow, gold, heroRow, noteRow, quoteSection, TEXT_SIGNOFF } from "./gym-mail-parts.ts";
+import { tBusiness } from "../i18n/index.ts";
+import { emailShell, esc } from "./layout.ts";
+import { PORTAL_URL } from "./gym-weekly-recap.ts";
+import { ctaRow, fmtDay, HTML_MARKUP, heroRow, labelValue, noteRow, quoteSection, TEXT_SIGNOFF } from "./gym-mail-parts.ts";
 
 type Rendered = { subject: string; html: string; text: string };
 
@@ -36,33 +39,39 @@ export function splitTopic(message: string): { topic: string | null; body: strin
 
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
 
-export function gymSupportReplyEmail(data: GymSupportReplyData): Rendered {
+export function gymSupportReplyEmail(data: GymSupportReplyData, lang = "en"): Rendered {
   const gym = oneLine(data.gymName);
   const url = `${data.portalUrl ?? PORTAL_URL}/settings#help`;
-  const topicSubject = oneLine(data.subject) || "Your question";
+  const topicSubject = oneLine(data.subject) || tBusiness(lang, "gym.support.yourQuestion");
   const { topic, body } = splitTopic(data.message);
   const asked = clip(body.trim(), 600);
+  // The reply prefix every mail client threads on, in every language.
   const subject = `Re: ${topicSubject}`;
-  const headingHtml = data.updated ? `POWR updated<br class="br-d"> its ${gold("answer.")}` : `POWR ${gold("answered.")}`;
-  const headingText = data.updated ? "POWR updated its answer." : "POWR answered.";
+  const headingHtml = data.updated ? tBusiness(lang, "gym.support.headingUpdatedHtml", HTML_MARKUP) : tBusiness(lang, "gym.support.headingHtml", HTML_MARKUP);
+  const headingText = data.updated ? tBusiness(lang, "gym.support.headingUpdated") : tBusiness(lang, "gym.support.heading");
   const lead = data.updated
-    ? `We've changed our answer to "${topicSubject}". Here it is in full.`
-    : `Here's our answer to "${topicSubject}".`;
+    ? tBusiness(lang, "gym.support.leadUpdated", { subject: topicSubject })
+    : tBusiness(lang, "gym.support.lead", { subject: topicSubject });
+  const eyebrow = tBusiness(lang, "gym.support.eyebrow", { gym });
+  const ourAnswer = tBusiness(lang, "gym.support.ourAnswer");
+  const youAsked = tBusiness(lang, "gym.support.youAsked");
+  const cta = tBusiness(lang, "gym.support.cta");
+  const carryOn = tBusiness(lang, "gym.support.carryOn");
 
-  const rows = heroRow(`${gym} · POWR support`, headingHtml, lead)
-    + quoteSection("Our answer", data.reply.trim())
-    + quoteSection("You asked", asked, topic ?? undefined)
-    + ctaRow("See it in your portal", url, "Reply to this email to carry on the conversation.");
+  const rows = heroRow(eyebrow, headingHtml, lead)
+    + quoteSection(ourAnswer, data.reply.trim())
+    + quoteSection(youAsked, asked, topic ?? undefined)
+    + ctaRow(esc(cta), url, carryOn);
 
   const text = [
-    `${gym} · POWR support`, "", headingText, "", lead, "",
-    "OUR ANSWER", data.reply.trim(), "",
-    `YOU ASKED${topic ? ` (${topic})` : ""}`, asked, "",
-    `See it in your portal: ${url}`, "", "Reply to this email to carry on the conversation.", ...TEXT_SIGNOFF,
+    eyebrow, "", headingText, "", lead, "",
+    ourAnswer.toUpperCase(), data.reply.trim(), "",
+    `${youAsked.toUpperCase()}${topic ? ` (${topic})` : ""}`, asked, "",
+    labelValue(cta, url, lang), "", carryOn, ...TEXT_SIGNOFF,
   ];
   return {
     subject,
-    html: emailShell({ title: subject, preheader: clip(oneLine(data.reply), 140), rows, unsubscribe: false }),
+    html: emailShell({ title: subject, preheader: clip(oneLine(data.reply), 140), rows, unsubscribe: false, lang }),
     text: text.join("\n"),
   };
 }
@@ -82,25 +91,26 @@ export interface GymClashNightData {
 }
 
 /** "Fri 14 Nov" for a plain date (no time zone shift). */
-function plainDay(ymd: string | null | undefined): string {
+function plainDay(ymd: string | null | undefined, lang = "en"): string {
   if (!ymd || !/^\d{4}-\d{2}-\d{2}/.test(ymd)) return "";
-  return fmtDay(`${ymd.slice(0, 10)}T12:00:00Z`, "UTC");
+  return fmtDay(`${ymd.slice(0, 10)}T12:00:00Z`, "UTC", lang);
 }
 
-/** "7pm" / "7:30pm" from "19:00:00". */
-export function clockTime(hms: string | null | undefined): string {
+/** "7pm" / "7:30pm" from "19:00:00"; French and Spanish use the 24-hour clock ("19:00"). */
+export function clockTime(hms: string | null | undefined, lang = "en"): string {
   const m = /^(\d{1,2}):(\d{2})/.exec(hms ?? "");
   if (!m) return "";
   const h = Number(m[1]);
   const min = Number(m[2]);
+  if (lang !== "en") return `${String(h).padStart(2, "0")}:${m[2]}`;
   return `${h % 12 === 0 ? 12 : h % 12}${min ? `:${m[2]}` : ""}${h < 12 ? "am" : "pm"}`;
 }
 
-export function gymClashNightEmail(data: GymClashNightData): Rendered {
+export function gymClashNightEmail(data: GymClashNightData, lang = "en"): Rendered {
   const gym = oneLine(data.gymName);
   const url = `${data.portalUrl ?? PORTAL_URL}/clash-nights`;
-  const day = plainDay(data.nightDate);
-  const time = clockTime(data.startTime);
+  const day = plainDay(data.nightDate, lang);
+  const time = clockTime(data.startTime, lang);
   const note = (data.note ?? "").trim();
   const calledOff = data.decision === "declined" && data.was === "confirmed";
 
@@ -110,43 +120,50 @@ export function gymClashNightEmail(data: GymClashNightData): Rendered {
   let body: string;
   let cta: string;
   if (data.decision === "confirmed") {
-    subject = `Clash Night confirmed: ${day}`;
-    headingText = "It's confirmed.";
-    headingHtml = `It's ${gold("confirmed.")}`;
-    body = `${gym}'s Clash Night is on ${day}${time ? ` from ${time}` : ""}. POWR brings the DJ, the photographer and partner prizes. We'll be in touch about the plan for the night.`;
-    cta = "See your Clash Nights";
+    subject = tBusiness(lang, "gym.clashNight.confirmed.subject", { day });
+    headingText = tBusiness(lang, "gym.clashNight.confirmed.heading");
+    headingHtml = tBusiness(lang, "gym.clashNight.confirmed.headingHtml", HTML_MARKUP);
+    body = time
+      ? tBusiness(lang, "gym.clashNight.confirmed.bodyTime", { gym, day, time })
+      : tBusiness(lang, "gym.clashNight.confirmed.body", { gym, day });
+    cta = tBusiness(lang, "gym.clashNight.confirmed.cta");
   } else if (calledOff) {
-    subject = `Clash Night on ${day} is off`;
-    headingText = "We've had to call it off.";
-    headingHtml = `We've had to<br class="br-d"> call it ${gold("off.")}`;
-    body = `POWR has called off ${gym}'s Clash Night on ${day}. We're sorry for the change. The quarter is free again: pick another date and we'll confirm it.`;
-    cta = "Pick another date";
+    subject = tBusiness(lang, "gym.clashNight.calledOff.subject", { day });
+    headingText = tBusiness(lang, "gym.clashNight.calledOff.heading");
+    headingHtml = tBusiness(lang, "gym.clashNight.calledOff.headingHtml", HTML_MARKUP);
+    body = tBusiness(lang, "gym.clashNight.calledOff.body", { gym, day });
+    cta = tBusiness(lang, "gym.clashNight.pickAnother");
   } else {
-    const backup = plainDay(data.backupDate);
-    subject = `Clash Night on ${day}: pick another date`;
-    headingText = "Not that night.";
-    headingHtml = `Not that ${gold("night.")}`;
-    body = `POWR can't do ${day}${backup ? ` or ${backup}` : ""} for ${gym}'s Clash Night. The quarter is still yours: pick another date and we'll confirm it.`;
-    cta = "Pick another date";
+    const backup = plainDay(data.backupDate, lang);
+    subject = tBusiness(lang, "gym.clashNight.declined.subject", { day });
+    headingText = tBusiness(lang, "gym.clashNight.declined.heading");
+    headingHtml = tBusiness(lang, "gym.clashNight.declined.headingHtml", HTML_MARKUP);
+    body = backup
+      ? tBusiness(lang, "gym.clashNight.declined.bodyBackup", { day, backup, gym })
+      : tBusiness(lang, "gym.clashNight.declined.body", { day, gym });
+    cta = tBusiness(lang, "gym.clashNight.pickAnother");
   }
 
   let rows = heroRow(`${gym} · Clash Night`, headingHtml, body);
   const text = [`${gym} · Clash Night`, "", headingText, "", body];
   if (note) {
-    rows += quoteSection("A note from POWR", note);
-    text.push("", "A NOTE FROM POWR", note);
+    const label = tBusiness(lang, "gym.common.noteFromPowr");
+    rows += quoteSection(label, note);
+    text.push("", label.toUpperCase(), note);
   }
   if (data.decision === "confirmed") {
-    const prep = "Tell your members early: it's the night of the quarter. The join poster and the Studio are in your portal for exactly this.";
-    rows += noteRow("Before the night", prep);
-    text.push("", "BEFORE THE NIGHT", prep);
+    const prep = tBusiness(lang, "gym.clashNight.prep");
+    const before = tBusiness(lang, "gym.clashNight.before");
+    rows += noteRow(before, prep);
+    text.push("", before.toUpperCase(), prep);
   }
-  rows += ctaRow(cta, url, "Questions about the night? Reply to this email.");
-  text.push("", `${cta}: ${url}`, "", "Questions about the night? Reply to this email.", ...TEXT_SIGNOFF);
+  const questions = tBusiness(lang, "gym.clashNight.questions");
+  rows += ctaRow(esc(cta), url, questions);
+  text.push("", labelValue(cta, url, lang), "", questions, ...TEXT_SIGNOFF);
 
   return {
     subject,
-    html: emailShell({ title: subject, preheader: note ? oneLine(note).slice(0, 140) : body.slice(0, 140), rows, unsubscribe: false }),
+    html: emailShell({ title: subject, preheader: note ? oneLine(note).slice(0, 140) : body.slice(0, 140), rows, unsubscribe: false, lang }),
     text: text.join("\n"),
   };
 }

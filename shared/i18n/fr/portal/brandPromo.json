@@ -1,0 +1,202 @@
+{
+  "header": {
+    "eyebrow": "Gestion des codes",
+    "title": "Codes promo",
+    "intro": "Importez les codes de réduction de votre boutique, ou laissez POWR les générer. Chaque membre en reçoit un du stock au moment de l’échange.",
+    "deliveryApi": "Vous livrez vos codes via l’API — les codes chargés ici servent de réserve de secours si votre intégration est indisponible au moment d’un échange.",
+    "deliveryShopify": "Vous livrez vos codes via Shopify — les codes chargés ici servent de réserve de secours si votre intégration est indisponible au moment d’un échange."
+  },
+  "loadError": {
+    "title": "Impossible de charger vos récompenses",
+    "body": "Vos stocks de codes sont intacts — la liste n’a simplement pas pu être chargée cette fois."
+  },
+  "empty": {
+    "title": "Aucune récompense numérique pour l’instant",
+    "body": "Chaque réserve de codes est rattachée à une récompense numérique — créez-en une et sa réserve apparaîtra ici.",
+    "create": "Créer une récompense"
+  },
+  "stages": {
+    "pick": "Choisir une récompense",
+    "pickHint": "Choisissez la récompense que ces codes débloquent — chaque récompense a son propre stock.",
+    "load": "Charger des codes",
+    "loadHintDry": "Le stock est épuisé — tous les codes sont utilisés ou expirés. Ajoutez un nouveau lot pour que les membres puissent continuer d’échanger.",
+    "loadHintEmpty": "Générez un lot ici même ou importez les codes de votre boutique — moins d’une minute dans les deux cas.",
+    "redeem": "Les membres échangent",
+    "redeemHintLive": "POWR remet automatiquement un code à chaque membre lors de l’échange — rien d’autre à configurer.",
+    "redeemHintReady": "Les codes sont prêts — dès que cette récompense sera en ligne dans l’app, les membres puiseront automatiquement dans le stock.",
+    "done": "Cette récompense est en ligne — POWR remet automatiquement un code à chaque membre. Rapprochez les codes utilisés ou réapprovisionnez le stock à tout moment ci-dessous.",
+    "checking": "Vérification du stock"
+  },
+  "selector": {
+    "label": "Vos récompenses",
+    "placeholder": "Sélectionner une récompense",
+    "inactive": "Inactive",
+    "available_one": "{{count}} disponible",
+    "available_other": "{{count}} disponibles",
+    "untitled": "Récompense sans titre"
+  },
+  "pool": {
+    "title": "Stock de codes",
+    "avail_one": "{{count}} dispo.",
+    "avail_other": "{{count}} dispo.",
+    "reserved_one": "{{count}} réservé",
+    "reserved_other": "{{count}} réservés",
+    "used_one": "{{count}} utilisé",
+    "used_other": "{{count}} utilisés",
+    "expired_one": "{{count}} exp.",
+    "expired_other": "{{count}} exp.",
+    "counting": "Comptage",
+    "expiringSoon_one": "{{count}} expire d’ici le {{date}} — prolongez ci-dessous",
+    "expiringSoon_other": "{{count}} expirent d’ici le {{date}} — prolongez ci-dessous",
+    "template": "Modèle"
+  },
+  "modes": {
+    "add": "Ajouter des codes",
+    "reconcile": "Rapprocher",
+    "manage": "Gérer le stock"
+  },
+  "format": {
+    "title": "Format des codes",
+    "placeholder": "Saisissez un exemple de code pour définir le format — ex. POWR-BRAND-ABC123",
+    "detected": "Détecté :",
+    "legend": "· or = fixe · vert = variable",
+    "invalid": "Doit commencer par POWR- et ne contenir que A–Z, 0–9 et des tirets",
+    "defaultHint": "Laissez vide pour utiliser le format par défaut POWR-XXXX-XXXXXX (6 caractères)"
+  },
+  "expiry": {
+    "title": "Expiration des nouveaux codes",
+    "applied": "appliquée aux nouveaux lots ci-dessous",
+    "default": "vide = expiration par défaut à 90 jours"
+  },
+  "generate": {
+    "title": "Génération automatique",
+    "unit": "codes",
+    "generating": "Génération…",
+    "button": "Générer le lot",
+    "usingScheme": "avec {{prefix}}•••",
+    "usingDefault": "avec le format POWR par défaut"
+  },
+  "upload": {
+    "title": "Importer vos codes",
+    "singlePlaceholder": "POWR-BRAND-XXXXXX  (un seul code)",
+    "singlePlaceholderScheme": "{{prefix}}XXXXXX  (un seul code)",
+    "add": "Ajouter",
+    "csv": "Importer un CSV",
+    "pastePlaceholder": "Collez des codes ou déposez un CSV — les colonnes « Status » et « Deleted at » sont prises en compte automatiquement",
+    "detected_one": "{{count}} code détecté",
+    "detected_other": "{{count}} codes détectés",
+    "uploading": "Import…",
+    "button": "Importer le lot"
+  },
+  "reconcile": {
+    "title": "Rapprocher les codes utilisés en boutique",
+    "body": "Collez ou importez les codes que votre boutique signale comme utilisés. POWR ne marque comme utilisés que les codes déjà attribués à un membre ; les codes non attribués, expirés ou inconnus restent inchangés.",
+    "import": "Importer un CSV",
+    "placeholder": "Collez une liste de codes ou un CSV avec une colonne « Code »",
+    "reconciling": "Rapprochement…",
+    "button": "Rapprocher les codes utilisés",
+    "confirm_one": "Rapprocher {{count}} code utilisé en boutique ? Seuls les codes déjà attribués par POWR peuvent être marqués comme utilisés.",
+    "confirm_other": "Rapprocher {{count}} codes utilisés en boutique ? Seuls les codes déjà attribués par POWR peuvent être marqués comme utilisés."
+  },
+  "ledger": {
+    "title": "Registre",
+    "titleWithTotal": "Registre · {{total}} au total",
+    "apply": "Appliquer",
+    "applying": "Application…",
+    "search": "Rechercher des codes…",
+    "loading": "Chargement",
+    "emptySearch": "Aucun code ne correspond à « {{search}} »",
+    "emptyStatus": "Aucun code au statut « {{status}} »",
+    "emptyNone": "Aucun code importé pour l’instant",
+    "columns": {
+      "code": "Code",
+      "status": "Statut",
+      "claimed": "Attribué",
+      "used": "Utilisé",
+      "expires": "Expire"
+    },
+    "saveExpiry": "Enregistrer l’expiration",
+    "editExpiry": "Modifier l’expiration",
+    "expireCode": "Marquer ce code comme expiré",
+    "reactivateCode": "Réactiver ce code",
+    "range": "{{from}}–{{to}} sur {{total}}",
+    "prev": "← Préc.",
+    "next": "Suiv. →"
+  },
+  "status": {
+    "all": "tous",
+    "available": "disponible",
+    "reserved": "réservé",
+    "used": "utilisé",
+    "expired": "expiré"
+  },
+  "bulkExpiry": {
+    "label": {
+      "all": "Expiration de tous les codes",
+      "available": "Expiration des codes disponibles",
+      "reserved": "Expiration des codes réservés",
+      "used": "Expiration des codes utilisés",
+      "expired": "Expiration des codes expirés"
+    },
+    "confirm": {
+      "all": "Fixer l’expiration au {{date}} pour tous les codes de ce stock ?",
+      "available": "Fixer l’expiration au {{date}} pour les codes disponibles de ce stock ?",
+      "reserved": "Fixer l’expiration au {{date}} pour les codes réservés de ce stock ?",
+      "used": "Fixer l’expiration au {{date}} pour les codes utilisés de ce stock ?",
+      "expired": "Fixer l’expiration au {{date}} pour les codes expirés de ce stock ?"
+    }
+  },
+  "toast": {
+    "loadFailed": "Impossible de charger les codes",
+    "generated_one": "{{count}} code généré",
+    "generated_other": "{{count}} codes générés",
+    "generatedSkipped_one": "{{count}} code généré · doublons ignorés : {{skipped}}",
+    "generatedSkipped_other": "{{count}} codes générés · doublons ignorés : {{skipped}}",
+    "generateFailed": "Échec de la génération",
+    "noCodes": "Aucun code détecté",
+    "added_one": "{{count}} ajouté",
+    "added_other": "{{count}} ajoutés",
+    "alreadyInPool_one": "{{count}} déjà dans le stock",
+    "alreadyInPool_other": "{{count}} déjà dans le stock",
+    "rejected_one": "{{count}} refusé",
+    "rejected_other": "{{count}} refusés",
+    "uploadFailed": "Échec de l’import",
+    "fileLoaded": "Fichier chargé : {{name}}",
+    "fileUnreadable": "Impossible de lire le fichier",
+    "markedUsed_one": "{{count}} marqué comme utilisé",
+    "markedUsed_other": "{{count}} marqués comme utilisés",
+    "alreadyReconciled_one": "{{count}} déjà rapproché",
+    "alreadyReconciled_other": "{{count}} déjà rapprochés",
+    "notAssigned_one": "{{count}} non attribué",
+    "notAssigned_other": "{{count}} non attribués",
+    "notInPool_one": "{{count}} hors de ce stock",
+    "notInPool_other": "{{count}} hors de ce stock",
+    "reconcileFailed": "Échec du rapprochement",
+    "codeAdded": "Code ajouté",
+    "codeAlreadyInPool": "Code déjà dans le stock",
+    "codeRejected": "Refusé : {{reason}}",
+    "failed": "Échec",
+    "toggleFailed": "Échec du changement de statut",
+    "pickDate": "Choisissez d’abord une date",
+    "expiryUpdatedOn_one": "Expiration mise à jour pour {{count}} code",
+    "expiryUpdatedOn_other": "Expiration mise à jour pour {{count}} codes",
+    "bulkFailed": "Échec de la mise à jour groupée",
+    "expiryUpdated": "Expiration mise à jour",
+    "updateFailed": "Échec de la mise à jour",
+    "exported_one": "{{count}} code exporté",
+    "exported_other": "{{count}} codes exportés",
+    "exportFailed": "Échec de l’export"
+  },
+  "rejectReasons": {
+    "duplicateInBatch": "doublon dans le lot",
+    "invalidFormat": "format invalide",
+    "wrongPartnerPrefix": "préfixe de marque incorrect",
+    "codeInDifferentReward": "code déjà lié à une autre récompense",
+    "alreadyExists": "code déjà existant",
+    "insertFailed": "échec de l’ajout",
+    "invalid": "invalide"
+  },
+  "errors": {
+    "rewardNotFound": "Récompense introuvable"
+  }
+}

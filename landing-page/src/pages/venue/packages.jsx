@@ -1,57 +1,64 @@
 import React, { createContext, useContext } from 'react';
 import { Link } from 'react-router-dom';
 import { Lock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import i18n, { formatLocale } from '../../lib/i18n';
 import { Card, Micro, Spinner, BTN_GOLD } from '../../components/portal/ui';
 
 // Gym Clash packages (Jamie's "Gym Clash packages" sheet, 2026-09-24). What a
 // package UNLOCKS is decided in the database (_gym_features) and arrives here
 // as gym_package().features; this file is only the words and prices the
 // portal shows, and the lock panel.
+//
+// Package names (Clash, Clash+, Clash Pro, Founding Pro) are product names and
+// stay as they are in every language. `price` / `per` stay English for the
+// admin pages (GymPortals); the gym's own pages show `priceKey` / `perKey`.
+// `line`, `note`, `tag` and `items` are venueShell keys, translated where shown.
 
 export const PACKAGE_LABEL = { clash: 'Clash', clash_plus: 'Clash+', pro: 'Clash Pro', founding: 'Founding Pro' };
 
 export const PACKAGES = [
     {
-        key: 'clash', name: 'Clash', line: 'Get on the board.', price: 'Free', per: '', note: 'Always',
+        key: 'clash', name: 'Clash', line: 'venueShell:packages.clash.line', price: 'Free', priceKey: 'venueShell:packages.free', per: '', note: 'venueShell:packages.clash.note',
         items: [
-            'Your gym in Gym Clash: the gyms near you, every week',
-            'Gym vs gym, scored per active member so size doesn’t win',
-            'Member leaderboard inside your gym',
-            'Your live ranking',
+            'venueShell:packages.clash.items.board',
+            'venueShell:packages.clash.items.perMember',
+            'venueShell:packages.clash.items.leaderboard',
+            'venueShell:packages.clash.items.ranking',
         ],
     },
     {
-        key: 'clash_plus', name: 'Clash+', line: 'Compete and reward.', price: '£129', per: '/ month', note: 'Cancel anytime',
+        key: 'clash_plus', name: 'Clash+', line: 'venueShell:packages.clashPlus.line', price: '£129', per: '/ month', perKey: 'venueShell:packages.perMonth', note: 'venueShell:packages.clashPlus.note',
         items: [
-            'Everything in Clash',
-            'Run your own in-gym challenges, monthly or whenever you want',
-            'Partner discounts: buy prizes and kit at the POWR members’ price, one code when you need it',
-            'If you like, everyone who takes part in your event gets a partner brand’s code in their Wallet',
-            'Members dashboard: what they do, where they train, when they come in',
-            'Retention: how many are slipping and drifting from their usual visits, week by week',
+            'venueShell:packages.clashPlus.items.everything',
+            'venueShell:packages.clashPlus.items.challenges',
+            'venueShell:packages.clashPlus.items.discounts',
+            'venueShell:packages.clashPlus.items.eventCode',
+            'venueShell:packages.clashPlus.items.dashboard',
+            'venueShell:packages.clashPlus.items.retention',
         ],
     },
     {
-        key: 'pro', name: 'Clash Pro', line: 'Events, content and data. The full engine.', price: '£349', per: '/ month', note: 'or £4,188 / year', tag: 'Most complete',
+        key: 'pro', name: 'Clash Pro', line: 'venueShell:packages.pro.line', price: '£349', per: '/ month', perKey: 'venueShell:packages.perMonth', note: 'venueShell:packages.pro.note', tag: 'venueShell:packages.pro.tag',
         items: [
-            'Everything in Clash+',
-            '4 POWR Clash Nights a year, one per quarter. We bring the DJ, photographer and partner prizes · book your dates in Clash Nights',
-            'Studio and event kits: your photos and clips turned into branded posts, reels and carousels, at every size',
-            'Upload your own footage from classes and PT sessions, and make content in minutes',
-            'Retention by name: who’s drifting from their own usual visits, a morning email when someone starts, a one-tap nudge, and who came back after you reached out',
-            'Full activity insights for members who share all their training with you',
-            'Guest leads from every event: who joined without being a member, named for the front desk, with export',
-            'Quarterly insights report: 3 trends, 3 actions, with a matched brand partner · coming this season',
+            'venueShell:packages.pro.items.everything',
+            'venueShell:packages.pro.items.nights',
+            'venueShell:packages.pro.items.studio',
+            'venueShell:packages.pro.items.footage',
+            'venueShell:packages.pro.items.retention',
+            'venueShell:packages.pro.items.insights',
+            'venueShell:packages.pro.items.leads',
+            'venueShell:packages.pro.items.report',
         ],
     },
     {
-        key: 'founding', name: 'Founding Pro', line: 'Clash Pro at the founding price, locked in.', price: '£1,995', per: '/ year', note: 'Paid upfront. Save over 50%', tag: 'First 10 gyms',
+        key: 'founding', name: 'Founding Pro', line: 'venueShell:packages.founding.line', price: '£1,995', per: '/ year', perKey: 'venueShell:packages.perYear', note: 'venueShell:packages.founding.note', tag: 'venueShell:packages.founding.tag',
         items: [
-            'Everything in Clash Pro',
-            'All 4 Clash Night dates booked at signing',
-            'Price locked on renewal',
-            'Founding gym status on the POWR leaderboard',
-            'Prefer monthly? £249 / month',
+            'venueShell:packages.founding.items.everything',
+            'venueShell:packages.founding.items.dates',
+            'venueShell:packages.founding.items.priceLocked',
+            'venueShell:packages.founding.items.status',
+            'venueShell:packages.founding.items.monthly',
         ],
     },
 ];
@@ -61,30 +68,30 @@ export const FEATURE_PACKAGE = { events: 'clash_plus', insights: 'clash_plus', s
 
 const LOCKS = {
     events: {
-        title: 'Your own challenges come with Clash+',
-        body: 'Monthly challenges, weekend sprints and finale nights that run themselves: the board, the pushes and the reveal.',
+        title: 'venueShell:locks.events.title',
+        body: 'venueShell:locks.events.body',
     },
     insights: {
-        title: 'The Members dashboard comes with Clash+',
-        body: 'Who’s training, when your gym is busiest and what your members do, week by week.',
+        title: 'venueShell:locks.insights.title',
+        body: 'venueShell:locks.insights.body',
     },
     people: {
-        title: 'Named member insights come with Clash Pro',
-        body: 'Who’s drifting from their usual visits by name, and what each member who shares all their training with you has been doing.',
+        title: 'venueShell:locks.people.title',
+        body: 'venueShell:locks.people.body',
     },
     // Unlocked with 'insights' (Clash+), in its own words.
     retention: {
-        title: 'Retention comes with Clash+',
-        body: 'See who’s slipping and drifting from their usual visits before they cancel, measured against each person’s own normal. Clash Pro names them.',
+        title: 'venueShell:locks.retention.title',
+        body: 'venueShell:locks.retention.body',
     },
     studio: {
-        title: 'Studio comes with Clash Pro',
-        body: 'Turn your photos and clips into posts, reels and posters in minutes, filled from your events and your board.',
+        title: 'venueShell:locks.studio.title',
+        body: 'venueShell:locks.studio.body',
     },
     // Unlocked with 'events' (Clash+), in its own words.
     discounts: {
-        title: 'Partner discounts come with Clash+',
-        body: 'The discounts POWR members get from our brand partners, for buying prizes and kit for your gym. One code when you need it.',
+        title: 'venueShell:locks.discounts.title',
+        body: 'venueShell:locks.discounts.body',
     },
 };
 
@@ -94,18 +101,18 @@ export function trialDaysLeft(pkg) {
 }
 
 export const fmtDate = (iso) => (iso
-    ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
+    ? new Intl.DateTimeFormat(formatLocale(), { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
     : '');
 
-/** "Free trial · 91 days left" or "Clash+". */
+/** "Trial · 91 days left" or "Clash+", in the language on screen. */
 export function packageLine(pkg) {
     if (!pkg) return '';
     if (pkg.on_trial) {
         const n = trialDaysLeft(pkg);
-        if (n === 0) return 'Trial ended · on Clash';
-        return `Trial · ${n} day${n === 1 ? '' : 's'} left`;
+        if (n === 0) return i18n.t('venueShell:packageLine.trialEnded');
+        return i18n.t('venueShell:packageLine.trial', { count: n });
     }
-    return pkg.package === 'clash' ? 'Clash · free' : PACKAGE_LABEL[pkg.package];
+    return pkg.package === 'clash' ? i18n.t('venueShell:packageLine.clashFree') : PACKAGE_LABEL[pkg.package];
 }
 
 // Stand-in when gym_package can't be read: every page opens, no package shown.
@@ -117,6 +124,7 @@ export const usePackage = () => useContext(PackageContext);
 
 /** What a gym sees in place of a part its package doesn't include. */
 export function Locked({ feature, lock: lockKey }) {
+    const { t } = useTranslation();
     const { pkg } = usePackage();
     const lock = LOCKS[lockKey ?? feature];
     const want = PACKAGES.find((p) => p.key === FEATURE_PACKAGE[feature]);
@@ -124,16 +132,16 @@ export function Locked({ feature, lock: lockKey }) {
         <Card className="p-8 sm:p-12" glow>
             <div className="flex items-center gap-3 mb-5">
                 <Lock size={14} className="text-[#8a7600]" />
-                <Micro gold>{want.name}{want.key === 'clash_plus' ? ' and Clash Pro' : ''}</Micro>
+                <Micro gold>{want.key === 'clash_plus' ? t('venueShell:locks.andPro', { name: want.name }) : want.name}</Micro>
             </div>
-            <h2 className="text-3xl sm:text-4xl font-light tracking-tighter text-[#1A1A1A] leading-[1.05] max-w-2xl">{lock.title}</h2>
-            <p className="text-[14px] text-[#777] leading-relaxed mt-4 max-w-xl">{lock.body}</p>
+            <h2 className="text-3xl sm:text-4xl font-light tracking-tighter text-[#1A1A1A] leading-[1.05] max-w-2xl">{t(lock.title)}</h2>
+            <p className="text-[14px] text-[#777] leading-relaxed mt-4 max-w-xl">{t(lock.body)}</p>
             {pkg && !pkg.on_trial && (
                 <p className="text-[12px] text-[#AAAAAA] mt-3">
-                    You’re on {PACKAGE_LABEL[pkg.package]}{pkg.package === 'clash' ? ', the free package' : ''}.
+                    {t(pkg.package === 'clash' ? 'venueShell:locks.youreOnFree' : 'venueShell:locks.youreOn', { name: PACKAGE_LABEL[pkg.package] })}
                 </p>
             )}
-            <Link to="/venue/package" className={`${BTN_GOLD} mt-8`} style={{ color: '#080808' }}>See packages</Link>
+            <Link to="/venue/package" className={`${BTN_GOLD} mt-8`} style={{ color: '#080808' }}>{t('venueShell:locks.seePackages')}</Link>
         </Card>
     );
 }

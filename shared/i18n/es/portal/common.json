@@ -1,0 +1,22 @@
+{
+  "language": {
+    "label": "Idioma",
+    "change": "Cambiar de idioma (ahora {{language}})"
+  },
+  "actions": {
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "back": "Volver",
+    "retry": "Reintentar",
+    "signOut": "Salir"
+  },
+  "states": {
+    "loading": "Cargando…",
+    "signedInAs": "Sesión iniciada como"
+  },
+  "errors": {
+    "generic": "Se ha producido un error. Inténtelo de nuevo."
+  }
+}

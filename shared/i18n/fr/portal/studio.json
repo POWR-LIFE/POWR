@@ -1,0 +1,498 @@
+{
+  "actions": {
+    "dismiss": "Fermer"
+  },
+  "editor": {
+    "template": "Modèle",
+    "templateLibrary": "Bibliothèque de modèles",
+    "photoOrVideo": "Photo ou vidéo",
+    "replace": "Remplacer — {{name}}",
+    "dropMedia": "Déposez une photo ou une vidéo ici, ou cliquez pour l’importer",
+    "zoom": "Zoom",
+    "centreHint": "Cliquez sur le sujet dans l’aperçu pour centrer le cadrage dessus.",
+    "clip": "Extrait",
+    "seconds": "{{n}} s",
+    "clipLengthMax": "{{length}} s · max. {{max}} s",
+    "startsAt": "Début",
+    "endsAt": "Fin",
+    "keepSound": "Garder le son d’origine de la vidéo",
+    "keepSoundHint": "Désactivé par défaut — ajoutez plutôt un son tendance dans Instagram ou TikTok ; il porte plus loin et évite les réclamations de droits musicaux.",
+    "words": "Textes",
+    "reset": "Réinitialiser",
+    "startingPoints": "Points de départ",
+    "uploadImage": "Importez ou déposez une image",
+    "remove": "Retirer",
+    "style": "Style",
+    "styleNotePage": "Les couleurs et les polices s’appliquent à chaque page, pour un ensemble cohérent.",
+    "styleNoteSlide": "Les couleurs et les polices s’appliquent à chaque visuel, pour un ensemble cohérent.",
+    "accentColour": "Couleur d’accent",
+    "useColourway": "Utiliser la palette",
+    "headlineFont": "Police du titre",
+    "templateDefault": "Par défaut du modèle",
+    "fontOption": "{{font}} — {{note}}",
+    "photoTint": "Teinte de la photo",
+    "blackWhite": "Noir et blanc",
+    "look": "Rendu",
+    "fontsMissing": "Certaines polices ne se sont pas chargées ({{n}}) — vérifiez la connexion et rechargez la page.",
+    "carouselExportFailed": "L’export du carrousel a échoué.",
+    "videoExportFailed": "L’export de la vidéo a échoué."
+  },
+  "productZoom": {
+    "zoomOut": "Dézoomer",
+    "zoomIn": "Zoomer",
+    "slider": "Zoom sur le produit",
+    "smaller": "Plus petit",
+    "whole": "Entier",
+    "bigger": "Plus grand",
+    "fill": "Remplir",
+    "closer": "Plus près",
+    "removeBackground": "Supprimer le fond uni",
+    "untick": "Décochez si une partie du produit est devenue transparente.",
+    "kept": "Conservé : le produit est proche de la couleur du fond, le détourer pourrait en effacer une partie.",
+    "everyTemplate": "S’applique à tous les modèles."
+  },
+  "fill": {
+    "event": {
+      "title": "Remplir depuis un événement",
+      "pick": "Choisir un événement…",
+      "what": "nom, date, lieu, QR code pour rejoindre et classement"
+    },
+    "reward": {
+      "title": "Remplir depuis une récompense",
+      "pick": "Choisir une récompense…",
+      "what": "l’offre, les points, le logo et la couleur de la marque"
+    },
+    "board": {
+      "title": "Remplir depuis le classement de votre salle",
+      "pick": "Choisir une semaine…",
+      "what": "le top 5, tel que l’affiche l’écran de votre salle"
+    },
+    "loadFailed": "Chargement impossible — voir ci-dessous",
+    "noneYet": "Aucun pour l’instant",
+    "again": "Remplir à nouveau — reprend les modifications de l’événement et le dernier classement",
+    "filled": "Rempli depuis {{name}} : {{templates}}. Tout reste modifiable.",
+    "fills": "Remplit {{templates}} en une fois — {{what}}.",
+    "brandPhoto": "Utiliser la photo de {{brand}}",
+    "templates_one": "{{count}} modèle",
+    "templates_other": "{{count}} modèles",
+    "notes": {
+      "noStandingsHeld": "Pas encore de classement, Results n’est donc pas encore rempli.",
+      "noStandingsKept": "Pas encore de classement — Results garde ses propres lignes jusqu’à l’ouverture du classement.",
+      "sealedHeld": "Le classement est scellé jusqu’à l’annonce des gagnants. Results se remplira après le dévoilement.",
+      "sealed": "Le classement est scellé jusqu’au dévoilement — attendez pour publier Results. (Top {{n}} rempli.)",
+      "liveTop": "Top {{n}} en direct ajouté à Results, à {{time}}.",
+      "finalTop": "Top {{n}} final ajouté à Results, à {{time}}.",
+      "boardTop": "Top {{n}} ajouté à Results, à {{time}}.",
+      "boardEmpty": "Personne n’a encore gagné de points à la salle cette semaine — Results garde ses propres lignes.",
+      "pillarFilled": "Les modèles {{category}} sont aussi remplis avec {{brand}}.",
+      "rewardOff": "Cette récompense est désactivée — elle n’est pas dans l’app en ce moment.",
+      "logoFailed": "Leur logo n’a pas pu être chargé — importez-le dans Textes."
+    }
+  },
+  "event": {
+    "hidden": "Cet événement est masqué dans l’app — son QR code mène à une page encore invisible.",
+    "draft": "Encore un brouillon — les dates et le lieu peuvent changer."
+  },
+  "draft": {
+    "name": "Nom du brouillon",
+    "progress": "{{label}} {{n}} sur {{total}}",
+    "unsaved": "Modifications non enregistrées · dernier enregistrement : {{when}}",
+    "saved": "Enregistré dans Brouillons · {{when}}",
+    "notSaved": "Non enregistré — gardez-le dans Brouillons pour le finir plus tard",
+    "saveCopyTitle": "Enregistrer comme nouveau brouillon — celui-ci reste tel qu’enregistré",
+    "saveCopy": "Enregistrer une copie",
+    "newPost": "Nouvelle publication",
+    "saveTitle": "Enregistrer dans Brouillons ({{shortcut}})",
+    "saving": "Enregistrement",
+    "savedButton": "Enregistré",
+    "saveDraft": "Enregistrer le brouillon",
+    "confirmNewChanged": "Commencer une nouvelle publication ? Les modifications apportées à « {{title}} » depuis le dernier enregistrement seront perdues.",
+    "confirmNewUnsaved": "Commencer une nouvelle publication ? Celle-ci n’est pas enregistrée."
+  },
+  "preview": {
+    "safeZones": "Zones de sécurité",
+    "thisPageTitle": "Seulement la page affichée",
+    "thisSlideTitle": "Seulement le visuel affiché",
+    "thisPage": "Cette page",
+    "thisSlide": "Ce visuel",
+    "pdfTitle": "Un seul PDF, une page par visuel — LinkedIn publie les carrousels en documents PDF",
+    "carouselPrintTitle": "Un PDF prêt à imprimer, {{n}} pages, {{w}}×{{h}} mm + {{bleed}} mm de fond perdu",
+    "carouselFilesTitle": "{{n}} fichiers numérotés en {{w}}×{{h}} — PNG, ou MP4 pour les visuels vidéo",
+    "downloadPdfPages": "Télécharger le PDF · {{n}} pages",
+    "downloadSlides": "Télécharger {{n}} visuels",
+    "pngTitle": "PNG {{w}}×{{h}} à 300 dpi, sans fond perdu",
+    "coverTitle": "Cette image en PNG — à utiliser comme couverture du Reel",
+    "cover": "Couverture",
+    "printTitle": "PDF prêt à imprimer, {{w}}×{{h}} mm + {{bleed}} mm de fond perdu, 300 dpi",
+    "mp4Title": "MP4 {{w}}×{{h}}, {{fps}} i/s",
+    "pngExactTitle": "PNG {{w}}×{{h}} — exactement ce que montre l’aperçu",
+    "downloadPdf": "Télécharger le PDF",
+    "downloadMp4": "Télécharger le MP4",
+    "download": "Télécharger",
+    "addPageTitle": "Ajouter une page — le verso d’un flyer, par exemple. Elle part d’une copie de celle-ci.",
+    "makeCarouselTitle": "Créer un carrousel — le nouveau visuel part d’une copie de celui-ci",
+    "addPage": "Ajouter une page",
+    "addSlide": "Ajouter un visuel",
+    "loadingType": "Chargement des polices…",
+    "addMedia": "Ajouter une photo ou une vidéo",
+    "rendering": "Rendu du MP4… {{percent}} %",
+    "pause": "Pause",
+    "play": "Lecture",
+    "pageN": "page {{n}}",
+    "slideN": "visuel {{n}}",
+    "addPageThumb": "Ajouter une page — elle part d’une copie de celle-ci",
+    "addSlideThumb": "Ajouter un visuel — il part d’une copie de celui-ci",
+    "pageEarlier": "Avancer cette page",
+    "slideEarlier": "Avancer ce visuel",
+    "pageLater": "Reculer cette page",
+    "slideLater": "Reculer ce visuel",
+    "deletePage": "Supprimer cette page",
+    "deleteSlide": "Supprimer ce visuel"
+  },
+  "formats": {
+    "groups": {
+      "social": "Réseaux",
+      "banners": "Bannières",
+      "print": "Impression"
+    },
+    "all": {
+      "social": "Toutes les tailles",
+      "banners": "Toutes les tailles",
+      "print": "Toutes les tailles"
+    },
+    "allTitle": {
+      "social": "Toutes les tailles réseaux : {{sizes}}",
+      "banners": "Toutes les tailles de bannière : {{sizes}}",
+      "print": "Toutes les tailles d’impression : {{sizes}}"
+    },
+    "labels": {
+      "post": "Publication",
+      "portrait": "Portrait",
+      "square": "Carré",
+      "story": "Story",
+      "reel": "Reel",
+      "landscape": "Paysage",
+      "link": "Lien",
+      "header": "En-tête",
+      "cover": "Couverture"
+    },
+    "ratios": {
+      "a5": "flyer",
+      "a4": "feuille",
+      "a3": "affiche"
+    },
+    "notes": {
+      "reel": "1080×1920 · à l’écart des boutons et de la légende des Reels",
+      "landscape": "YouTube · web · écrans de salle",
+      "link": "Publications LinkedIn et Facebook",
+      "header": "Bannière X · e-mail",
+      "cover": "Couverture LinkedIn"
+    }
+  },
+  "libraries": {
+    "core": "Essentiels",
+    "move": "Bouger",
+    "eat": "Manger",
+    "mind": "Mental",
+    "sleep": "Sommeil"
+  },
+  "categories": {
+    "trending": "Tendances",
+    "brand": "Marque",
+    "partners": "Partenaires",
+    "events": "Événements",
+    "challenges": "Défis",
+    "move": "Bouger",
+    "eat": "Manger",
+    "mind": "Mental",
+    "sleep": "Sommeil"
+  },
+  "sections": {
+    "lifestyle": "Style de vie",
+    "products": "Produits"
+  },
+  "colourways": {
+    "gold": "Or",
+    "mono": "Mono",
+    "signal": "Signal"
+  },
+  "tints": {
+    "none": "Neutre",
+    "warm": "Chaud",
+    "cool": "Froid",
+    "gold": "Or"
+  },
+  "fontNotes": {
+    "anton": "condensée",
+    "shoulders": "haute",
+    "grotesk": "grotesque",
+    "heavy": "grasse",
+    "wide": "large",
+    "brandL": "POWR, fine",
+    "serif": "à empattements",
+    "serifI": "à empattements, italique"
+  },
+  "look": {
+    "exposure": "Luminosité",
+    "contrast": "Contraste",
+    "grain": "Grain",
+    "motion": "Flou de mouvement",
+    "vignette": "Vignettage",
+    "size": "Taille du titre"
+  },
+  "units": {
+    "kb": "{{n}} Ko",
+    "mb": "{{n}} Mo",
+    "gb": "{{n}} Go"
+  },
+  "pack": {
+    "event": "Événement",
+    "loadingEvents": "Chargement des événements…",
+    "noEvent": "Sans événement — un pack de marque",
+    "phases": {
+      "before": {
+        "label": "Avant",
+        "blurb": "l’annoncer : dates, lieu, QR code pour rejoindre, affiche"
+      },
+      "during": {
+        "label": "En direct",
+        "blurb": "pendant l’événement : le classement et une invitation à rejoindre"
+      },
+      "after": {
+        "label": "Après",
+        "blurb": "résultats, remerciements et carrousel récap"
+      },
+      "brand": {
+        "label": "Sans événement",
+        "blurb": "publications de marque sur les meilleures photos"
+      }
+    },
+    "sealedAfter": "Le classement est scellé jusqu’au dévoilement — le pack laisse Results de côté d’ici là.",
+    "photosClips": "Photos et vidéos",
+    "clear": "Effacer",
+    "reading": "Lecture…",
+    "readingFiles": "Lecture des fichiers",
+    "looking": "Analyse des photos",
+    "progress": "{{label}} {{n}}/{{total}}",
+    "drop": "Déposez ici un dossier, des photos et vidéos, ou un ZIP",
+    "filesOrZip": "Fichiers ou ZIP",
+    "folder": "Un dossier",
+    "limits": "Jusqu’à {{photos}} photos et {{clips}} vidéos. Tout est lu ici, dans le navigateur.",
+    "count": {
+      "photos_one": "{{count}} photo",
+      "photos_other": "{{count}} photos",
+      "clips_one": "{{count}} vidéo",
+      "clips_other": "{{count}} vidéos",
+      "dups_one": "{{count}} quasi-doublon mis de côté",
+      "dups_other": "{{count}} quasi-doublons mis de côté",
+      "weak_one": "{{count}} faible",
+      "weak_other": "{{count}} faibles",
+      "files_one": "{{count}} fichier",
+      "files_other": "{{count}} fichiers",
+      "photosOrClips_one": "{{count}} photo ou vidéo",
+      "photosOrClips_other": "{{count}} photos et vidéos"
+    },
+    "heic_one": "{{count}} photo HEIC ignorée — Chrome ne peut pas ouvrir les fichiers HEIC de l’iPhone. Exportez-les en JPEG (Photos → Fichier → Exporter), ou ouvrez le Studio dans Safari.",
+    "heic_other": "{{count}} photos HEIC ignorées — Chrome ne peut pas ouvrir les fichiers HEIC de l’iPhone. Exportez-les en JPEG (Photos → Fichier → Exporter), ou ouvrez le Studio dans Safari.",
+    "unreadable_one": "{{count}} fichier n’a pas pu être lu.",
+    "unreadable_other": "{{count}} fichiers n’ont pas pu être lus.",
+    "readFailed": "Ces fichiers n’ont pas pu être lus.",
+    "leftOut": {
+      "total_one": "{{count}} fichier écarté : {{reasons}}.",
+      "total_other": "{{count}} fichiers écartés : {{reasons}}.",
+      "overLimit_one": "{{count}} au-delà de la limite de {{photos}} photos / {{clips}} vidéos",
+      "overLimit_other": "{{count}} au-delà de la limite de {{photos}} photos / {{clips}} vidéos",
+      "tooBig_one": "{{count}} trop lourd (photos {{photoMb}} Mo, vidéos {{clipMb}} Mo, ZIP 2 Go)",
+      "tooBig_other": "{{count}} trop lourds (photos {{photoMb}} Mo, vidéos {{clipMb}} Mo, ZIP 2 Go)",
+      "unsupported_one": "{{count}} qui n’est ni une photo ni une vidéo",
+      "unsupported_other": "{{count}} qui ne sont ni des photos ni des vidéos",
+      "badZip_one": "{{count}} ZIP impossible à ouvrir",
+      "badZip_other": "{{count}} ZIP impossibles à ouvrir",
+      "duplicate_one": "{{count}} déjà ajouté",
+      "duplicate_other": "{{count}} déjà ajoutés"
+    },
+    "tile": {
+      "title": "{{path}} · qualité {{quality}}",
+      "titleDup": "{{path}} — quasi-doublon · qualité {{quality}}",
+      "titleWeak": "{{path}} — {{weak}} · qualité {{quality}}",
+      "titleDupWeak": "{{path}} — quasi-doublon — {{weak}} · qualité {{quality}}",
+      "dup": "doublon",
+      "makeLead": "En faire la photo principale",
+      "useIt": "Inclure",
+      "leaveOut": "Écarter"
+    },
+    "weakness": {
+      "dark": "sombre",
+      "soft": "floue",
+      "bright": "trop claire",
+      "small": "petite"
+    },
+    "leadHint": "★ la photo principale va sur la publication phare. Survolez une photo pour changer la photo principale ou l’écarter.",
+    "pack": "Pack",
+    "sizes": "Tailles",
+    "look": "Rendu",
+    "colour": "Couleur",
+    "looks": {
+      "film": {
+        "label": "Argentique",
+        "blurb": "noir et blanc, le style maison"
+      },
+      "mixed": {
+        "label": "Mixte",
+        "blurb": "moitié en couleur (les photos les plus colorées), moitié argentique"
+      },
+      "colour": {
+        "label": "Couleur",
+        "blurb": "les photos telles quelles"
+      }
+    },
+    "include": {
+      "poster": "Une affiche A4 du modèle Ticket, pour le lieu",
+      "carousel": "Un carrousel récap des meilleures photos",
+      "reels": "Un reel Story par vidéo (3 max., les 12 premières secondes)",
+      "extras": "Une publication pour chaque autre bonne photo"
+    },
+    "saved": {
+      "forEvent": "Enregistrés pour cet événement",
+      "packs": "Packs enregistrés",
+      "refresh": "Actualiser",
+      "empty": "Rien d’enregistré pour l’instant — chaque pack que vous créez est conservé ici.",
+      "meta": "{{files}} · {{sources}} sources · {{size}}",
+      "stillSaving": "Enregistrement en cours — ou la page a été fermée avant la fin",
+      "unfinished": "Enregistrement inachevé",
+      "open": "Ouvrir",
+      "delete": "Supprimer",
+      "fetching": "Récupération…",
+      "fetchingN": "Récupération {{n}}/{{total}}",
+      "opening": "Ouverture…",
+      "fetchingPhotos": "Récupération des photos {{n}}/{{total}}",
+      "readingN": "Lecture {{n}}/{{total}}",
+      "deleting": "Suppression…",
+      "opened": "« {{title}} » ouvert. Modifiez ce que vous voulez et recréez-le — il sera enregistré comme nouveau pack ; celui-ci reste tel quel.",
+      "confirmDelete": "Supprimer « {{title}} » et tout ce qui a été enregistré avec ? Cette action est irréversible."
+    },
+    "replanned": "Le pack a été recalculé — les échanges et modifications de texte précédents ont été annulés.",
+    "stages": {
+      "rendering": "Rendu",
+      "zipping": "Création du ZIP",
+      "savingEvent": "Enregistrement dans l’événement",
+      "saving": "Enregistrement"
+    },
+    "stage": "{{stage}}…",
+    "done": "Téléchargé et enregistré — {{files}}. Conservé avec le pack : {{media}}.",
+    "skipped_one": "{{count}} vidéo de plus de 50 Mo n’a pas été conservée (ses publications, oui).",
+    "skipped_other": "{{count}} vidéos de plus de 50 Mo n’ont pas été conservées (leurs publications, oui).",
+    "cancelledSaving": "Enregistrement annulé — le ZIP a été téléchargé ; la copie enregistrée est marquée comme inachevée.",
+    "cancelled": "Annulé.",
+    "saveFailed": "Le ZIP a été téléchargé, mais l’enregistrement a échoué : {{message}}",
+    "title": {
+      "event": "{{event}} — {{phase}}",
+      "brand": "Pack de marque — {{date}}"
+    },
+    "summary": {
+      "posts": "{{posts}} en {{sizes}}",
+      "post_one": "{{count}} publication",
+      "post_other": "{{count}} publications",
+      "size_one": "{{count}} taille",
+      "size_other": "{{count}} tailles",
+      "poster_one": "une affiche A4",
+      "poster_other": "{{count}} affiches A4",
+      "carousel": "un carrousel de {{n}} visuels",
+      "carouselAn": "un carrousel de {{n}} visuels",
+      "reel_one": "un reel",
+      "reel_other": "{{count}} reels",
+      "total_one": "{{list}} — {{count}} fichier",
+      "total_other": "{{list}} — {{count}} fichiers"
+    },
+    "addPhotosToPlan": "Ajoutez des photos pour préparer le pack",
+    "make": "Créer le pack — télécharger et enregistrer",
+    "addEventPhotos": "Ajoutez les photos de l’événement",
+    "pickEvent": "Choisissez un événement, ou ajoutez des photos pour un pack de marque",
+    "planNotes": {
+      "noStandings": "Pas encore de classement à afficher",
+      "sealed": "Le classement est scellé jusqu’au dévoilement — Results attend",
+      "noFinal": "Pas encore de classement final",
+      "noCarousel": "Pas assez de photos différentes pour un carrousel — il en faut trois qui ne se répètent pas."
+    },
+    "edit": "Modifier {{template}}",
+    "anotherPhoto": "Autre photo",
+    "anotherTemplate": "Autre modèle",
+    "leavePostOut": "Retirer cette publication",
+    "carousel_one": "Carrousel · {{count}} visuel",
+    "carousel_other": "Carrousel · {{count}} visuels",
+    "editSlide": "Modifier le visuel",
+    "remove": "Retirer",
+    "reels": "Reels · Story 9:16",
+    "editReel": "Modifier le reel {{template}}",
+    "pauseReel": "Mettre le reel en pause",
+    "playReel": "Lire le reel",
+    "reel": "Reel · {{template}}",
+    "leaveReelOut": "Retirer ce reel",
+    "wordsOf": "{{template}} — textes",
+    "footer": "Cliquez sur une publication pour modifier ses textes · <shuffle></shuffle> autre photo · <refresh></refresh> autre modèle",
+    "footerEdited": "Cliquez sur une publication pour modifier ses textes · <shuffle></shuffle> autre photo · <refresh></refresh> autre modèle · changer d’événement, d’étape ou de photos recalcule le pack"
+  },
+  "drafts": {
+    "confirmOpenChanged": "Ouvrir « {{title}} » ? Les modifications apportées à « {{current}} » depuis le dernier enregistrement seront perdues.",
+    "confirmOpenUnsaved": "Ouvrir « {{title}} » ? La publication en cours n’est pas enregistrée — elle sera perdue.",
+    "opening": "Ouverture…",
+    "fetching": "Récupération {{n}} sur {{total}}…",
+    "deleting": "Suppression…",
+    "loading": "Chargement des brouillons…",
+    "count_one": "{{count}} brouillon",
+    "count_other": "{{count}} brouillons",
+    "find": "Rechercher un brouillon",
+    "refresh": "Actualiser",
+    "emptyTitle": "Aucun brouillon pour l’instant",
+    "emptyBody": "Dans « Un post », cliquez sur <strong>Enregistrer le brouillon</strong> : le modèle, les textes, le rendu et la photo ou la vidéo sont conservés ici pour être terminés plus tard.",
+    "makePost": "Créer une publication",
+    "noMatch": "Aucun brouillon nommé « {{query}} ».",
+    "list": "Brouillons",
+    "openNamed": "Ouvrir {{title}}",
+    "open": "Ouvrir",
+    "openBadge": "Ouvert",
+    "openUnsaved": "Ouvert · non enregistré",
+    "noPreview": "Pas d’aperçu",
+    "video": "Vidéo",
+    "edited": {
+      "justNow": "Modifié à l’instant",
+      "minutes": "Modifié il y a {{n}} min",
+      "hours": "Modifié il y a {{n}} h",
+      "yesterday": "Modifié hier",
+      "days_one": "Modifié il y a {{count}} jour",
+      "days_other": "Modifié il y a {{count}} jours",
+      "date": "Modifié le {{date}}"
+    },
+    "deleteForGood": "Supprimer définitivement ?",
+    "delete": "Supprimer",
+    "keep": "Le garder",
+    "backToIt": "Reprendre",
+    "rename": "Renommer",
+    "renameNamed": "Renommer {{title}}",
+    "deleteNamed": "Supprimer {{title}}"
+  },
+  "store": {
+    "tooBig": "{{file}} fait {{size}} — au-delà des 50 Mo qu’un brouillon peut conserver.",
+    "uploadFailed": "Échec de l’envoi ({{file}}) : {{message}}",
+    "encodeFailed": "Impossible d’encoder l’image.",
+    "reencodeFailed": "Ce navigateur ne peut pas réencoder cette vidéo.",
+    "keepingClipPercent": "Conservation de la vidéo… {{percent}} %",
+    "clipTrimmed": "« {{name}} » fait {{size}}, le brouillon n’en garde donc que les {{seconds}} s utilisées ({{kept}}).",
+    "keepingClip": "Conservation de la vidéo…",
+    "keepingPhoto": "Conservation de la photo…",
+    "keepingImages": "Conservation des images…",
+    "saved": "Enregistré",
+    "mediaNotKept": "« {{name}} » n’a pas été conservé ({{reason}}) — déposez-le à nouveau en ouvrant le brouillon.",
+    "assetNotKept": "« {{name}} » n’a pas été conservé ({{reason}}).",
+    "saveFailed": "Impossible d’enregistrer le brouillon — {{message}}",
+    "signFailed": "Impossible d’ouvrir les fichiers enregistrés — {{message}}",
+    "listFailed": "Impossible de charger les brouillons — {{message}}",
+    "openFailed": "Impossible d’ouvrir le brouillon — {{message}}",
+    "missingFile": "« {{name}} » n’a pas été conservé avec ce brouillon — déposez-le à nouveau.",
+    "fileWontOpen": "« {{name}} » ne s’ouvre pas ({{reason}}) — déposez-le à nouveau.",
+    "assetWontOpen": "« {{name}} » ne s’ouvre pas — importez-le à nouveau.",
+    "renameFailed": "Impossible de renommer le brouillon — {{message}}",
+    "deleteFilesFailed": "Impossible de supprimer les fichiers du brouillon — {{message}}",
+    "deleteFailed": "Impossible de supprimer le brouillon — {{message}}"
+  }
+}

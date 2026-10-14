@@ -1,0 +1,266 @@
+{
+  "errors": {
+    "generic": "Something went wrong"
+  },
+  "copy": {
+    "button": "Copy",
+    "linkCopied": "Link copied",
+    "failed": "Copy failed. Select the text and copy it."
+  },
+  "where": {
+    "online": {
+      "label": "Online",
+      "blurb": "A code or link for your website. Works today."
+    },
+    "inStore": {
+      "label": "In store",
+      "blurb": "A live voucher members show at your till."
+    },
+    "both": {
+      "label": "Both",
+      "blurb": "One reward. Members use it either way."
+    }
+  },
+  "check": {
+    "staffScan": {
+      "label": "Staff scan",
+      "blurb": "Staff scan the voucher on powr.life/scan, from any phone or a tablet at the till.",
+      "reports": "Confirmed"
+    },
+    "look": {
+      "label": "Look at the screen",
+      "blurb": "Staff check the live voucher and swipe it on the member’s phone. Nothing to set up.",
+      "reports": "Shown, not confirmed"
+    },
+    "tillBarcode": {
+      "label": "Till barcode",
+      "blurb": "Members show one of your own barcodes and your till scans it. For chains.",
+      "reports": "Confirmed from your till report"
+    }
+  },
+  "describe": {
+    "onlineOnly": "Online only",
+    "both": "Online + in store",
+    "inStore": "In store"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}} h ago",
+    "yesterday": "yesterday",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago"
+  },
+  "comingSoon": {
+    "title": "In store is coming soon",
+    "body": "Members will be able to use your rewards at your till with a live voucher. We'll let you know when it's ready for your shops."
+  },
+  "page": {
+    "eyebrow": "In store",
+    "title": "Your shops",
+    "intro": "Members claim a reward with their points, then show a live voucher at your till. It changes every few seconds, so a screenshot won't work.",
+    "loadFailed": "Couldn't load your shops",
+    "loadFailedBody": "{{error}} Nothing on your account has changed."
+  },
+  "steps": {
+    "addShop": "Add a shop",
+    "addShopHint": "Add each shop with a pin on the map, so members see where to use your rewards.",
+    "turnOn": "Turn on a reward",
+    "turnOnHint": "Pick a reward and choose In store or Both.",
+    "till": "Set up your till",
+    "tillHint": "Give each member of staff their own scan link, or open the scan page on a till tablet.",
+    "done": "You're ready. Members can use your rewards at the till."
+  },
+  "tabs": {
+    "label": "In store",
+    "rewards": "Rewards",
+    "sites": "Sites",
+    "staff": "Staff",
+    "scan": "Scan page"
+  },
+  "rewards": {
+    "emptyTitle": "No rewards yet",
+    "emptyBody": "Create a reward first. Choose \"In store\" as the delivery and it lands here ready to set up.",
+    "create": "Create a reward",
+    "notLive": "Not live",
+    "inStore": "In store",
+    "recommended": "Recommended",
+    "reports": "Reports: {{outcome}}"
+  },
+  "editor": {
+    "memberSteps": {
+      "claim": "Claims the reward with their points.",
+      "openAtTill": "At your till, opens it and taps Use in store.",
+      "scanStand": "Scans the POWR stand on your counter.",
+      "showForScan": "Shows the live voucher. Your staff scan it.",
+      "showForSwipe": "Shows the live voucher. Your staff check it and swipe.",
+      "showBarcode": "Shows your barcode. Your till scans it.",
+      "orOnline": "Or uses the code at your online checkout.",
+      "online": "Uses the code at your online checkout."
+    },
+    "needs": {
+      "scanPage": "powr.life/scan open on a phone, or a tablet at the till",
+      "ownLink": "Their own scan link, from the Staff tab",
+      "look": "To know the offer, and to swipe the voucher on the member’s phone",
+      "barcode": "Nothing new. Your till already takes these codes.",
+      "stand": "A printed POWR stand on each counter (Sites tab)",
+      "online": "Nothing. It all happens at your online checkout."
+    },
+    "pickShop": "Pick at least one shop, or all shops.",
+    "saved": "Saved. Members see the change straight away.",
+    "savedOnline": "Saved. This reward is online only.",
+    "whereTitle": "Where can members use it?",
+    "switchToInStore": "Members will stop getting a code for this reward and show a live voucher at your till instead. Codes already claimed still work.",
+    "onlineNeedsCodes": "Online needs codes. Load them in Promo Codes before members claim this online.",
+    "checkTitle": "How does your shop check it?",
+    "barcodeType": "Barcode type your till reads",
+    "barcodeHelp": "Upload your codes in Promo Codes. To confirm which were used, upload the used list from your till in Promo Codes › Reconcile.",
+    "goPromoCodes": "Go to Promo Codes",
+    "standLabel": "Members scan your QR stand first",
+    "standDetail": "Proves the member is in the shop before the voucher opens. Print a stand for each shop in the Sites tab.",
+    "spendLabel": "Ask staff for the spend",
+    "spendDetail": "Staff can type what the member spent, so you see what the offer brings in. They can skip it.",
+    "windowLabel": "Voucher stays open for",
+    "minutes_one": "{{count}} minute",
+    "minutes_other": "{{count}} minutes",
+    "windowHint": "Opening it doesn't use it up. If time runs out the member just opens it again.",
+    "shopsTitle": "Which shops?",
+    "noShops": "You haven't added a shop yet. <add>Add one in Sites</add> so members see where to use it.",
+    "allShops": "All shops, including ones you add later",
+    "memberTitle": "What the member does",
+    "staffTitle": "What your staff need"
+  },
+  "sites": {
+    "rotateConfirm": "Make a new stand for {{name}}? The stand you printed before stops working, so print and swap the new one straight away.",
+    "rotated": "New stand ready to print",
+    "add": "Add a shop",
+    "emptyTitle": "No shops yet",
+    "emptyBody": "Add each shop with its pin on the map. Members see which shops take your rewards, and each shop gets its own counter stand.",
+    "noAddress": "No address added",
+    "lastScan": "Last scan {{when}}",
+    "swipesNoScans": "Swipes but no scans yet",
+    "noVisits": "No visits yet",
+    "mapPin": "Map pin",
+    "pinSet": "Set",
+    "radius": "Members within {{radius}} m count as in the shop.",
+    "edit": "Edit shop",
+    "qrStand": "QR stand",
+    "standSize": "A5, for the counter. Unique to this shop.",
+    "print": "Print stand",
+    "replaceTitle": "Replace a lost or copied stand",
+    "newStand": "New stand",
+    "rewardsHere": "Rewards here",
+    "inStoreCount_one": "{{count}} in store",
+    "inStoreCount_other": "{{count}} in store",
+    "noneYet": "None yet",
+    "turnOnHint": "Turn a reward on in the Rewards tab."
+  },
+  "siteEditor": {
+    "noGeolocation": "This browser can’t share its location.",
+    "locationFailed": "Couldn’t get your location. Drop the pin on the map instead.",
+    "needName": "Give the shop a name",
+    "needPin": "Drop a pin on the map for this shop",
+    "added": "Shop added",
+    "saved": "Shop saved",
+    "removeConfirm": "Remove {{name}}? Members stop seeing it, and its stand stops working.",
+    "removed": "Shop removed",
+    "addTitle": "Add a shop",
+    "editTitle": "Edit {{name}}",
+    "name": "Shop name",
+    "namePlaceholder": "e.g. Shoreditch",
+    "address": "Address",
+    "addressPlaceholder": "Street, postcode",
+    "paste": "Paste a Google Maps link (optional)",
+    "pastePlaceholder": "https://maps.google.com/… or 51.5246, -0.0786",
+    "useHere": "I'm in the shop now",
+    "mapLabel": "Shop",
+    "radiusLabel": "Counts as in the shop within",
+    "pinAt": "Pin at {{lat}}, {{lng}}",
+    "pinHint": "Search, click the map, or paste a link to place the pin.",
+    "add": "Add shop",
+    "save": "Save shop",
+    "remove": "Remove shop"
+  },
+  "staff": {
+    "needName": "Add their name",
+    "reissueConfirm": "Make a new link for {{name}}? Their old link stops working.",
+    "revokeConfirm": "Remove {{name}}? Their scan link stops working straight away.",
+    "removed": "{{name}} removed",
+    "intro": "Each person gets their own scan link. They open it once on their phone and it remembers them. A scan link can only check and confirm vouchers: no reports, no settings. Every scan is tied to a person and a shop.",
+    "name": "Name",
+    "namePlaceholder": "e.g. Sam",
+    "usualShop": "Usual shop",
+    "anyShop": "Any shop",
+    "make": "Make scan link",
+    "linkFor": "Scan link for {{name}}",
+    "linkOnce": "Send it to them now. For security it's only shown once; you can make a new one any time.",
+    "hideLink": "Hide link",
+    "listTitle": "Staff with a scan link",
+    "nobody": "Nobody yet. Signed-in portal users can always scan from powr.life/scan.",
+    "lastScan": "Last scan {{when}}",
+    "openedNoScans": "Link opened, no scans yet",
+    "notOpened": "Link not opened yet",
+    "newLink": "New link",
+    "remove": "Remove"
+  },
+  "scanTab": {
+    "phone": "On a phone",
+    "phoneBody": "Staff open their own scan link once and they're set. You can open it here too while you're signed in.",
+    "openScanPage": "Open scan page",
+    "tablet": "On a tablet at the till",
+    "tabletBody": "Kiosk mode does two jobs. It shows a QR that changes every 30 seconds for members to scan, and it scans members' vouchers with the front camera. It also shows today's tally.",
+    "openKiosk": "Open kiosk mode"
+  },
+  "report": {
+    "loadFailed": "Couldn't load in-store figures just now.",
+    "title": "In store",
+    "outcome": {
+      "confirmed": "Confirmed",
+      "swiped": "Swiped, not confirmed",
+      "closed": "Closed unused",
+      "open": "Open now"
+    },
+    "tip": "{{label}} · {{n}} of {{total}} · {{pct}}",
+    "segmentA11y": "{{label}}: {{n}} of {{total}}, {{pct}}",
+    "opened": "Opened at the till",
+    "openedSub": "Rewards members opened in your shops",
+    "confirmed": "Confirmed",
+    "confirmedSub": "{{pct}} of opened · scanned by staff",
+    "swiped": "Swiped, not confirmed",
+    "swipedSub": "Shown and swiped, never scanned",
+    "spend": "Spend recorded",
+    "spendSub_one": "On {{count}} visit · average {{average}}",
+    "spendSub_other": "On {{count}} visits · average {{average}}",
+    "spendNone": "Staff can add the spend when they scan",
+    "breakdown_one": "What happened to the {{count}} opened",
+    "breakdown_other": "What happened to the {{count}} opened",
+    "byShop": "By shop",
+    "columns": {
+      "shop": "Shop",
+      "opened": "Opened",
+      "confirmed": "Confirmed",
+      "swiped": "Swiped only",
+      "closed": "Closed unused",
+      "rate": "Confirm rate",
+      "spend": "Spend"
+    },
+    "latest": "Latest in store",
+    "scannedBy": "scanned by {{name}}",
+    "swipedOnPhone": "swiped on the member’s phone",
+    "footnote": "Confirmed means your staff scanned the voucher. Swiped means staff swiped it on the member's phone: we count it, but it doesn't prove the discount was given.",
+    "barcodes": "Till barcodes: <strong>{{issued}}</strong> handed out, <strong>{{used}}</strong> confirmed from your till report.",
+    "barcodesReconcile": "Upload your used list in Promo Codes › Reconcile to update this."
+  },
+  "stand": {
+    "docTitle": "POWR stand · {{name}}",
+    "gone": "This shop has been removed, or it belongs to another brand.",
+    "print": "Print",
+    "printHint": "A5, portrait. Use thick card if you can.",
+    "headline": "Got a POWR reward?",
+    "headlineBold": "Scan here at the till.",
+    "stepOpen": "Open POWR",
+    "stepWallet": "Wallet",
+    "stepUse": "Use in store",
+    "footer": "STAND {{code}} · POWR.LIFE"
+  }
+}

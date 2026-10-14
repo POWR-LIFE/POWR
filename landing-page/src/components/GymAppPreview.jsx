@@ -14,6 +14,10 @@ import { teamHeading, teamLine } from '../../../shared/gymTeam.ts';
 // the logo, the name and address, the hours, the about, each person on the
 // team, plus the pin and Home Gym (which explain rather than edit). Dashed
 // boxes for things not added yet are editing hints; members never see them.
+//
+// Stays English on purpose: the phone shows the page as members see it in
+// the app, and members read their own language, not the gym owner's. It gets
+// translated once the preview can be told which member language to show.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // discover.tsx's own tokens.

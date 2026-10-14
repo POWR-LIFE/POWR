@@ -1,0 +1,412 @@
+{
+  "memberName": "POWR member",
+  "seePackages": "See packages",
+  "activity": {
+    "gym": "Gym session",
+    "running": "Run",
+    "cycling": "Ride",
+    "swimming": "Swim",
+    "hiit": "HIIT",
+    "yoga": "Yoga",
+    "sports": "Sport",
+    "dance": "Dance",
+    "walking": "Walk",
+    "other": "Session"
+  },
+  "insights": {
+    "subject": {
+      "running": "Running",
+      "cycling": "Cycling",
+      "gym": "Gym training",
+      "hiit": "HIIT",
+      "swimming": "Swimming",
+      "yoga": "Yoga",
+      "sports": "Sport",
+      "dance": "Dance",
+      "walking": "Walking"
+    },
+    "quiet": {
+      "drifting_one": "{{count}} regular is drifting",
+      "drifting_other": "{{count}} regulars are drifting",
+      "driftingAndOneSlipping_one": "{{count}} regular is drifting, and {{slipping}} more is slipping",
+      "driftingAndOneSlipping_other": "{{count}} regulars are drifting, and {{slipping}} more is slipping",
+      "driftingAndSlipping_one": "{{count}} regular is drifting, and {{slipping}} more are slipping",
+      "driftingAndSlipping_other": "{{count}} regulars are drifting, and {{slipping}} more are slipping",
+      "slipping_one": "{{count}} regular is slipping",
+      "slipping_other": "{{count}} regulars are slipping",
+      "actionPro": "Reach out before they cancel. See who in Retention.",
+      "actionPlus": "Reach out before they cancel. Clash Pro shows you who."
+    },
+    "rise": {
+      "finding": "{{activity}} is up {{pct}}% among members",
+      "action": {
+        "running": "Launch a run club. We bring the sponsor.",
+        "cycling": "Start a weekend ride from the gym.",
+        "swimming": "Run a swim-and-lift challenge.",
+        "hiit": "Put another HIIT class at your busiest hour.",
+        "yoga": "Add a mobility or yoga session.",
+        "walking": "Add beginner strength classes.",
+        "gym": "Run a monthly challenge that only counts sessions at your gym.",
+        "other": "Build a challenge around it."
+      }
+    },
+    "walkers": {
+      "finding": "Heavy walkers, light lifters",
+      "action": "Add beginner strength classes."
+    },
+    "elsewhere": {
+      "finding": "{{pct}}% of their gym check-ins are at other gyms",
+      "action": "Give them a reason to train here: a monthly challenge that only counts sessions at {{gym}}."
+    },
+    "fall": {
+      "finding": "{{activity}} is down {{pct}}% among members",
+      "action": "Win it back with a challenge built around it."
+    },
+    "onDays": {
+      "mondays": "Mondays",
+      "tuesdays": "Tuesdays",
+      "wednesdays": "Wednesdays",
+      "thursdays": "Thursdays",
+      "fridays": "Fridays",
+      "saturdays": "Saturdays",
+      "sundays": "Sundays"
+    },
+    "weekday": {
+      "finding": "Training dips on {{days}}",
+      "action": "Put a class or a challenge day on {{days}}."
+    },
+    "month": {
+      "finding": "Consistency dipped in {{month}}",
+      "action": "Book a Clash Night exactly then."
+    },
+    "core": {
+      "finding": "{{n}} of your members train 5+ days a week",
+      "action": "Give them a stage: a leaderboard challenge they can win."
+    }
+  },
+  "members": {
+    "loadError": "Couldn’t load your members",
+    "eyebrow": "Members",
+    "title": "Your members",
+    "chose_one": "chose {{gym}} as their gym",
+    "chose_other": "chose {{gym}} as their gym",
+    "facts": {
+      "active": "Active",
+      "activeNote": "anywhere, last 4 weeks",
+      "activeNotePrev": "anywhere, last 4 weeks · {{prev}} before that",
+      "trainedHere": "Trained here",
+      "trainedHereNote": "last 28 days",
+      "drifting": "Drifting",
+      "driftingNote": "from their usual visits · see Retention",
+      "driftingNoteSlipping": "+{{slipping}} slipping · see Retention",
+      "newHere": "New here",
+      "newHereNote": "first session this week"
+    },
+    "tooFew": "What your members do anywhere appears at {{min}} members, so nobody can be picked out. Members choose their gym in the POWR app.",
+    "unavailable": "What your members do anywhere isn’t available right now.",
+    "weekly": {
+      "title": "People who trained here each week",
+      "now": "Now",
+      "thisWeek": "This week",
+      "weekOf": "Week of {{date}}",
+      "empty": "Once members check in at {{gym}}, their weeks show up here."
+    },
+    "board": {
+      "title": "On the board this week",
+      "sub": "Points earned at {{gym}}, as the big screen shows them.",
+      "empty": "Nobody’s scored here yet this week.",
+      "note": "Members who hide from leaderboards are counted, never named."
+    },
+    "numbers": "What the numbers say",
+    "mix": {
+      "title": "What they do",
+      "sub": "Anywhere, last 4 weeks. The change is per active member, against the 4 weeks before.",
+      "empty": "Nothing yet in the last 4 weeks.",
+      "members_one": "{{count}} member",
+      "members_other": "{{count}} members"
+    },
+    "where": {
+      "title": "Where, and how often",
+      "sub": "Where their gym sessions happen (last 8 weeks) and how many days a week they train (last 4).",
+      "here": "At this gym",
+      "otherGyms": "At other gyms",
+      "elsewhere": "Not checked in",
+      "whereLabel": "Where their gym sessions happen",
+      "daysLabel": "Days a week they train",
+      "note": "Other gyms are never named. “Not checked in” is a watch or home workout."
+    },
+    "bands": {
+      "high": "5 or more days",
+      "mid": "3 to 4 days",
+      "low": "1 to 2 days",
+      "none": "Not at all"
+    },
+    "when": {
+      "title": "When they come here",
+      "sub": "Sessions at {{gym}}, last 28 days.",
+      "subDay": "Sessions at {{gym}}, last 28 days · busiest {{day}}.",
+      "subDayHour": "Sessions at {{gym}}, last 28 days · busiest {{day}} around {{hour}}.",
+      "empty": "No check-ins in the last 28 days.",
+      "byHour": "By hour",
+      "byHourLabel": "Sessions by hour",
+      "byDay": "By day",
+      "byDayLabel": "Sessions by weekday"
+    },
+    "footer": "Numbers in the round for the members who chose {{gym}} as their gym: what they do anywhere, not just here. Never their sleep, heart rate, steps or where they are. Activities fewer than 3 members did are left out."
+  },
+  "people": {
+    "title": "Members who share with you",
+    "status": {
+      "quiet": "Quiet everywhere",
+      "slowing": "Slowing everywhere",
+      "active": "Active",
+      "inactive": "Not active yet"
+    },
+    "everyone": "Everyone",
+    "ago": {
+      "none": "no activity yet",
+      "today": "today",
+      "yesterday": "yesterday",
+      "days_one": "{{count}} day ago",
+      "days_other": "{{count}} days ago"
+    },
+    "locked": {
+      "title": "See everything they train",
+      "body": "Clash Pro names the members who share all their training with you: their runs, rides and home workouts as well as their visits here."
+    },
+    "sharing_one": "{{sharing}} of {{members}} member",
+    "sharing_other": "{{sharing}} of {{members}} members",
+    "privacy": "Members switch this on in the POWR app (Settings, then Privacy, then Share with {{gym}}) and can switch it off any time. You see what they do and when, never their sleep, heart rate or where they are.",
+    "none": "Nobody shares yet. Visits here are in Retention for everyone; this is for members who also share their training elsewhere.",
+    "emptyGroup": "Nobody in this group right now.",
+    "idLine": "POWR ID {{id}} · last active {{when}}",
+    "recent_one": "{{count}} active day in the last 2 weeks",
+    "recent_other": "{{count}} active days in the last 2 weeks",
+    "recentUsual_one": "{{count}} active day in the last 2 weeks (usually about {{usual}})",
+    "recentUsual_other": "{{count}} active days in the last 2 weeks (usually about {{usual}})",
+    "sessions_one": "{{sessions}} session in 4 weeks",
+    "sessions_other": "{{sessions}} sessions in 4 weeks",
+    "streak_one": "{{count}}-day streak",
+    "streak_other": "{{count}}-day streak"
+  },
+  "retention": {
+    "loadError": "Couldn’t load Retention",
+    "eyebrow": "Retention",
+    "title": "Who’s drifting",
+    "sub": "{{gym}} · visits here, against each person’s own normal",
+    "export": "Export",
+    "tooFewTitle": "Not enough people yet",
+    "tooFew": "Retention shows up once at least {{min}} people pick {{gym}} in the POWR app or check in here, so nobody can be picked out. The poster by the door gets them on.",
+    "status": {
+      "drifting": "Drifting",
+      "slipping": "Slipping",
+      "lapsed": "Lapsed",
+      "new": "New",
+      "regular": "On track",
+      "occasional": "Occasional",
+      "unseen": "Not seen here",
+      "locationOff": "Location off",
+      "noSignal": "Not syncing"
+    },
+    "tabs": {
+      "drifting": "Drifting",
+      "slipping": "Slipping",
+      "lapsed": "Lapsed",
+      "new": "New",
+      "regular": "On track",
+      "cantSee": "Can’t see",
+      "all": "Everyone"
+    },
+    "channels": {
+      "call": "Called",
+      "text": "Texted",
+      "email": "Emailed",
+      "inPerson": "In person",
+      "other": "Other"
+    },
+    "channelDone": {
+      "call": "Called",
+      "text": "Texted",
+      "email": "Emailed",
+      "inPerson": "Spoke in person",
+      "push": "POWR nudge",
+      "other": "Reached out"
+    },
+    "ago": {
+      "notYet": "not yet",
+      "today": "today",
+      "yesterday": "yesterday",
+      "days_one": "{{count}} day ago",
+      "days_other": "{{count}} days ago",
+      "weeks_one": "{{count}} week ago",
+      "weeks_other": "{{count}} weeks ago"
+    },
+    "quiet": {
+      "days_one": "{{count}} day quiet",
+      "days_other": "{{count}} days quiet",
+      "weeks_one": "{{count}} week quiet",
+      "weeks_other": "{{count}} weeks quiet"
+    },
+    "slippingChip": "Slipping · {{days}}d",
+    "frequency": {
+      "mostDays": "most days",
+      "perWeek": "{{n}}× a week",
+      "weekly": "about once a week",
+      "fortnightly": "every couple of weeks"
+    },
+    "dayParts": {
+      "morning": "mornings",
+      "midday": "lunchtimes",
+      "afternoon": "afternoons",
+      "evening": "evenings"
+    },
+    "pattern": {
+      "base": "Usually {{frequency}}",
+      "withPart": "Usually {{frequency}}, {{part}}",
+      "lastDay": "{{rest}} & {{last}}"
+    },
+    "line": {
+      "inToday": "In today",
+      "lastVisit": "Last visit {{when}}",
+      "phoneQuiet": "POWR hasn't heard from their phone, so they may still be training",
+      "unseen": "Picked your gym, not checked in here yet",
+      "newBack": "First visit {{when}}, {{n}} visits so far",
+      "newOnce": "First visit {{when}}, not back yet",
+      "occasional": "drops in now and then",
+      "lastReach": "{{channel}} {{when}}"
+    },
+    "strip": {
+      "label": "Visits over the last 12 weeks",
+      "dayIn": "{{date}}: in",
+      "today": "Today",
+      "list_one": "{{count}} visit: {{list}}",
+      "list_other": "{{count}} visits: {{list}}"
+    },
+    "detail": {
+      "logged": "Logged. We’ll tell you if they come back.",
+      "nudgeConfirm": "Send {{name}} one push from POWR? They get it once, and not again for a fortnight.",
+      "sent": "Sent.",
+      "hadOne": "They had one in the last fortnight.",
+      "lastVisit": "Last visit",
+      "last4": "Last 4 weeks",
+      "visits_one": "{{count}} visit",
+      "visits_other": "{{count}} visits",
+      "usualGap": "Usual gap",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "driftingAfter": "Drifting after",
+      "driftAfterDays_one": "{{count}} day",
+      "driftAfterDays_other": "{{count}} days",
+      "picked": "Picked {{gym}} as their gym in POWR.",
+      "notPicked": "Checks in here; hasn’t picked you as their gym in POWR.",
+      "whileUsing": "Their location is set to “while using”, so POWR only sees visits when they open the app here.",
+      "driftingSince": "Drifting since {{date}}.",
+      "sharesAll": "Shares all their training with you: <members>Members</members>.",
+      "logTitle": "Log a reach-out",
+      "notePlaceholder": "A note for the team (optional)",
+      "logIt": "Log it",
+      "pushLabel": "POWR · push",
+      "nudged": "Nudged {{when}}",
+      "sending": "Sending…",
+      "sendNudge": "Send nudge",
+      "teamDid": "What the team did",
+      "removeNote": "Remove this note"
+    },
+    "nudgeAll": {
+      "counting": "Counting…",
+      "unavailable": "Nudges aren’t available right now.",
+      "plan_one": "One push from POWR to the {{count}} drifting.",
+      "plan_other": "One push from POWR to the {{count}} drifting.",
+      "planCooling_one": "One push from POWR to the {{count}} drifting ({{cooling}} had one in the last fortnight and wait).",
+      "planCooling_other": "One push from POWR to the {{count}} drifting ({{cooling}} had one in the last fortnight and wait).",
+      "allCooling": "Everyone drifting had a nudge in the last fortnight.",
+      "nobody": "Nobody to nudge right now.",
+      "button": "Nudge {{n}}",
+      "confirm_one": "Send one push from POWR to {{count}} person who is drifting? They get it once, and not again for a fortnight.",
+      "confirm_other": "Send one push from POWR to {{count}} people who are drifting? Each gets it once, and not again for a fortnight.",
+      "sentTo_one": "Sent to {{count}}",
+      "sentTo_other": "Sent to {{count}}"
+    },
+    "csv": {
+      "yes": "yes",
+      "no": "no"
+    },
+    "headline_one": "drifting from their usual visits",
+    "headline_other": "drifting from their usual visits",
+    "facts": {
+      "regularNote": "coming in as usual",
+      "slippingNote": "later than usual",
+      "lapsedNote": "not in for 60+ days",
+      "newNote": "first visit in 4 weeks"
+    },
+    "trend": {
+      "title": "Drifting each week",
+      "ghost": "Slipping or drifting",
+      "tip": "Week to {{date}}: {{drifting}} drifting, {{slipping}} slipping"
+    },
+    "wonBack": {
+      "title": "Won back",
+      "nothingYet": "Nothing logged yet",
+      "nothingNamed": "Log a call or a text on someone’s row, or send a nudge. We’ll show who came back within two weeks.",
+      "nothingPlus": "Clash Pro logs who you reached out to and shows who came back.",
+      "cameBack": "of {{reached}} came back",
+      "note": "Reached out to in the last 90 days, back within two weeks.",
+      "rate": "That’s {{pct}}% of those whose two weeks are up.",
+      "waiting_one": "{{n}} still inside their two weeks.",
+      "waiting_other": "{{n}} still inside their two weeks."
+    },
+    "cantSee": {
+      "title": "Can’t see",
+      "body_one": "POWR hasn’t heard from {{n}} person’s phone in a week, or their location is off. They may still be training, so they’re not counted as drifting and never nudged.",
+      "body_other": "POWR hasn’t heard from {{n}} people’s phones in a week, or their location is off. They may still be training, so they’re not counted as drifting and never nudged."
+    },
+    "find": "Find someone",
+    "noneDrifting": "Nobody is drifting right now. Everyone with a pattern is coming in about as often as usual.",
+    "noneHere": "Nobody here right now.",
+    "locked": {
+      "title": "See who, before they cancel",
+      "body": "Clash Pro names everyone who’s slipping or drifting, with when they usually come in, a morning email when someone starts, a one-tap nudge from POWR, and a log of who you reached out to and who came back."
+    },
+    "how": {
+      "title": "How it works",
+      "normalTitle": "Their normal, not a fixed rule",
+      "normalBody": "Each person is measured against their own usual gap between visits. Someone who trains daily is drifting after a week; someone who comes weekly, after about three.",
+      "hereTitle": "Visits here only",
+      "hereBody": "Only the days and times POWR checked them in at {{gym}}. Never their other training, health data or where they are.",
+      "choiceTitle": "Their choice",
+      "choiceBody": "Members can switch this off in the POWR app (Settings, then Privacy). Anyone who does disappears from this page."
+    },
+    "asOf": "As of {{date}} · {{tz}}"
+  },
+  "poster": {
+    "title": "Get your members on POWR",
+    "intro": "Everything here counts members who picked {{gym}} as their gym in the app. This poster does the telling: a QR that opens the app, and a line that says why.",
+    "posterTitle": "The poster",
+    "formats": {
+      "post": "Post",
+      "story": "Story",
+      "square": "Square"
+    },
+    "kit": "One ZIP: A4 for the wall and A5 for the counter (3 mm bleed, any printer), plus Post, Story and Square for your feed, and the caption to paste. Type on black, the house look, no photo needed.",
+    "download": "Download the poster kit",
+    "downloaded": "Downloaded. Print the A4, post the rest.",
+    "failed": "The poster couldn’t be made.",
+    "fileName": "POWR - {{gym}} - join poster.zip",
+    "linkTitle": "The link",
+    "copy": "Copy the link",
+    "copied": "Link copied",
+    "copyFailed": "Copy failed",
+    "linkNote": "Opens the POWR app, or the app store for someone new. Send it in your welcome email or WhatsApp group, and ask people to pick {{gym}} as their gym in the app: that is what puts them on your board.",
+    "places": {
+      "title": "Three places it works",
+      "deskTitle": "The front desk",
+      "deskBody": "The A5 by the till, the A4 on the wall people face when they check in. Staff point at it at induction.",
+      "feedTitle": "Your feed",
+      "feedBody": "The Post and the Story once, then again with the first event. The caption is in the ZIP.",
+      "welcomeTitle": "The welcome email",
+      "welcomeBody": "The link, one line: every session here counts, get the app and pick us as your gym."
+    },
+    "screens": "Put the board on the TV",
+    "firstEvent": "Run your first event"
+  }
+}

@@ -1,6 +1,6 @@
 # Translations
 
-One place for every language POWR speaks. The app reads `shared/i18n/<lang>/app/*.json`; the portals will read `shared/i18n/<lang>/portal.json` once #513 lands.
+One place for every language POWR speaks. The app reads `shared/i18n/<lang>/app/*.json`; the gym and partner portals read `shared/i18n/<lang>/portal/*.json` (see *Portals* below).
 
 | Language | App status |
 |---|---|
@@ -184,6 +184,82 @@ Terms that stay in English are product names. Use them exactly as written, with 
 
 Add to this table whenever a new term comes up, so every screen uses the same word.
 
+## Portals (gym portal /venue, partner portal /partner)
+
+Same files, same rules as the app, with these differences:
+
+- **Catalogs:** `shared/i18n/<lang>/portal/<namespace>.json`. `landing-page/src/lib/i18n.js` loads every file there by glob, so a new namespace is just a new file per language. English is bundled; French and Spanish load on demand.
+- **Live list:** `PORTAL_LANGUAGES` / `PORTAL_DRAFT_LANGUAGES` in `index.ts`. `__tests__/portalI18n.test.ts` holds the portals to the same checks as the app.
+- **Preview:** add `?lang=fr` (or `es`) to any portal URL. It sticks for the tab; `?lang=off` clears it. The sidebar then shows a Language picker.
+- **Using a key:** `const { t } = useTranslation();` then `t('venueHome:week.title')`. Outside React (helpers, toasts), `import i18n from '…/lib/i18n'` and call `i18n.t(…)` inside the function, never at module level. Module-level arrays (nav items, option lists) hold keys, translated where they render.
+- **Dates and numbers:** `formatLocale()` from `lib/i18n` instead of `'en-GB'` (English stays en-GB). Money stays in pounds: `Intl.NumberFormat(formatLocale(), { style: 'currency', currency: 'GBP', currencyDisplay: 'narrowSymbol' })` (without `narrowSymbol` French prints "12,50 £GB" and Spanish "12,50 GBP"). Fixed price strings inside a sentence stay as written.
+- **Server errors:** show them with `serverErrorText(error)` from `lib/serverErrors` instead of `error.message`. English is unchanged; known messages get their own words in the `serverErrors` namespace.
+- **Stays English:** admin-only UI (the "view portal as" pickers, admin preview banners), legal text, brand-written and POWR-staff-written text, CSV headers that are parsed back on upload, and anything sent to the server.
+- **Where text appears to members** (app previews inside the portal, push previews): it follows the **member's** language, not the owner's. Until those previews are wired to a member language, keep them English and say so in a comment.
+
+### Portal tone
+
+- **French: "vous".** Gym owners and brands are businesses. Polite, direct, short. Buttons and menu items use the infinitive or a noun (*Enregistrer*, *Paramètres*); sentences addressed to the reader use *vous* (*Ajoutez votre logo*).
+- **Spanish: "usted", Spain Spanish.** Buttons in the infinitive (*Guardar*), sentences with *usted* (*Añada su logotipo*). No spaced dashes, same as the app.
+- **Shoppers and members get *tu/tú*,** as in the app: the printed counter stand, the kiosk's QR panel, `/s/:code`, and anything printed for a gym's members (join posters: use the infinitive, *Scanner pour participer* / *Escanear para unirse*).
+- Keep POWR's energy, lose the slang. Short beats complete: French runs 15–30% longer, and the sidebar is 288 px.
+
+### Portal glossary
+
+| English | French | Spanish | Notes |
+|---|---|---|---|
+| gym portal | portail salle | portal del gimnasio | |
+| partner portal | portail partenaire | portal de marcas | "brand" = *marque* / *marca*; Spanish avoids *socio* here (that word means a gym member) |
+| member (a gym's POWR member) | membre | socio / socia | Spain's gyms say *socios*; avoid gendered forms where a neutral phrasing exists |
+| owner | propriétaire | propietario/a | |
+| team, staff | équipe | equipo | |
+| Overview (dashboard) | Vue d’ensemble | Resumen | |
+| event | événement | evento | |
+| live event | événement live | evento en directo | as in the app |
+| Clash Night, Gym Clash, Studio, The Drop, Vault | (unchanged) | (unchanged) | Product names |
+| package (the gym's plan) | formule | plan | |
+| trial | essai | prueba | "14-day trial" → *essai de 14 jours* / *prueba de 14 días* |
+| retention | fidélisation | fidelización | |
+| big screen, screen | écran | pantalla | |
+| poster | affiche | cartel | |
+| discount | réduction | descuento | |
+| reward | récompense | recompensa | as in the app |
+| redemption (a member redeeming) | échange | canje | verb: *échanger* / *canjear* |
+| promo code | code promo | código promocional | |
+| placement (paid slot in the app) | emplacement | posición | |
+| in store, till, voucher, stand | en magasin, caisse, bon, présentoir | en tienda, caja, vale, expositor | as in the app |
+| check-in | check-in | check-in | as in the app |
+| sign in / sign out | se connecter / se déconnecter | iniciar sesión / cerrar sesión | |
+| member (partner portal, in a shop) | membre | miembro | *socio* is a gym's member; brands and shops say *miembro* |
+| POWR members (in general) | membres POWR | miembros de POWR | |
+| What's On | À l’affiche | En cartel | Partner nav |
+| My Rewards | Mes récompenses | Mis recompensas | Partner nav |
+| Support (nav) | Aide | Ayuda | Page title *Assistance* / *Soporte* |
+| delivery method | méthode de distribution | método de entrega | |
+| code pool | réserve de codes | reserva de códigos | |
+| mint (codes) | générer | generar | JIT = *génération à la demande* / *generación bajo demanda* |
+| live (reward in the app) | en ligne | publicada | |
+| listing | fiche | ficha | |
+| submission / review (POWR approval) | proposition / validation | propuesta / revisión | |
+| reconcile | rapprocher | conciliar | |
+| batch | lot | lote | |
+| template | modèle | plantilla | |
+| draft | brouillon | borrador | |
+| upload | importer | subir | |
+| API key | clé API | clave de API | webhook, endpoint unchanged |
+| board (event leaderboard), daily standings | classement, classement du jour | clasificación, clasificación diaria | |
+| the reveal (winners) | le dévoilement / dévoiler | la revelación / revelar | |
+| prize | lot | premio | Step "Prizes" = *Lots* / *Premios* |
+| finale night | soirée finale | noche final | |
+| sealed | scellé | sellado | |
+| partner code | code partenaire | código de marca | |
+| front desk | accueil | recepción | |
+| drifting / slipping (retention) | décrocher / ralentir | alejarse / aflojar | |
+| nudge | relance | aviso | |
+| backup date (Clash Night) | date de secours | fecha alternativa | |
+| kiosk mode | mode borne | modo quiosco | |
+| times | 18:00 | 18:00 | English keeps "6pm"; French and Spanish use the 24-hour clock |
+
 ## Server: pushes and emails
 
 Text the server sends lives in `supabase/functions/_shared/i18n/` (edge functions can't import this folder):
@@ -203,6 +279,20 @@ Each recipient's language comes from `profiles.language` (the app keeps it curre
 4. Redeploy every function that bundles `_shared/i18n`: send-push-notification, gym-visit-beacon, dispatch-daily-nudges, streak-rescue-sweep, send-welcome-email, send-weekly-summary, send-level-up-email, send-reengagement-email, send-redemption-receipt, email-previews. Each edge function freezes its own copy of `_shared` at deploy time.
 
 Admin-written text stays as written: broadcasts, and the notification-copy overrides in the admin panel. Those overrides apply to English readers only; everyone else gets the translated default.
+
+## Gym and brand emails
+
+What POWR sends to the people who run a gym or a brand: the Monday recap, drift digest, event and account mails, support replies, team invites (gym), and the invite, welcome, weekly report and setup reminder (brand). Catalogs: `supabase/functions/_shared/i18n/{gym,gymRecap,brand}/<lang>.ts`, used as `tBusiness(lang, "gym.…")`. Tone as the portals: *vous* / *usted*.
+
+- **Their own switch:** `BUSINESS_LANGUAGES` in `_shared/i18n/languages.ts`. `__tests__/serverI18n.test.ts` holds it equal to the portals' `PORTAL_LANGUAGES`, so a gym never gets French mail before its portal speaks French.
+- **Who reads what:** each recipient's `profiles.language` (the portal keeps it current), through `languagesFor(supabase, ids, BUSINESS_LANGUAGES)`; a send to several people splits per language. An invite to someone with no account yet follows the inviter (brand invites sent by POWR staff from the admin stay English).
+- **Previews:** brand emails in `email-previews?lang=fr|es`; gym emails through `send-gym-email`'s sample mode with `lang`.
+
+## Going live with the portals (and their emails)
+
+1. Add the language to `PORTAL_LANGUAGES` (`shared/i18n/index.ts`) **and** `BUSINESS_LANGUAGES` (`_shared/i18n/languages.ts`). The tests refuse one without the other, and refuse a language that misses a string.
+2. Merge: the portals ship with the website (Vercel). No OTA.
+3. Redeploy every function that sends a gym or brand email: send-gym-email, manage-gym-staff, send-brand-weekly-report, send-partner-setup-reminder, manage-partner-user, email-previews. Until each is redeployed it keeps sending English.
 
 ## Native (next build only)
 

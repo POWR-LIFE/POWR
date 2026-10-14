@@ -1,0 +1,260 @@
+{
+  "steps": {
+    "aria": "Étapes",
+    "format": {
+      "title": "Format",
+      "hint": "Le type d’événement"
+    },
+    "when": {
+      "title": "Quand",
+      "hint": "Nom, dates, dévoilement"
+    },
+    "scoring": {
+      "title": "Points",
+      "hint": "Ce qui compte"
+    },
+    "prizes": {
+      "title": "Lots",
+      "hint": "Ce qu’on gagne"
+    },
+    "promote": {
+      "title": "Promotion",
+      "hint": "Visuel et portée"
+    },
+    "review": {
+      "title": "Vérification",
+      "hint": "Vérifier et enregistrer"
+    }
+  },
+  "problems": {
+    "pickFormat": "Choisissez un format pour commencer",
+    "nameShort": "Donnez un nom à l’événement",
+    "nameLong": "Le nom ne doit pas dépasser 48 caractères",
+    "pickFirstDay": "Choisissez le premier jour",
+    "firstDayPast": "Le premier jour ne peut pas être dans le passé",
+    "firstDayFar": "Choisissez un premier jour dans les 90 prochains jours",
+    "pickReveal": "Choisissez quand les gagnants sont dévoilés",
+    "revealWindow": "Dévoilez les gagnants entre {{from}} et {{to}}",
+    "pickActivity": "Choisissez au moins une activité",
+    "addPrize": "Ajoutez au moins un lot",
+    "prizeNameShort": "Donnez à chaque lot un nom d’au moins 2 caractères",
+    "prizePhotoName": "Donnez un nom à chaque photo de lot",
+    "pickPartner": "Choisissez la marque partenaire, ou désactivez le code partenaire",
+    "partnerNoCodes": "Cette marque n’a plus de codes à offrir pour l’instant. Choisissez-en une autre",
+    "bookingHttps": "Un lien de réservation commence par https://",
+    "bookingEmail": "Un lien de réservation ne peut pas demander l’adresse e-mail des membres"
+  },
+  "field": {
+    "optional": "facultatif"
+  },
+  "upload": {
+    "tooBig": "{{mb}} Mo maximum",
+    "failed": "Échec de l’importation",
+    "uploading": "Importation…"
+  },
+  "actions": {
+    "change": "Modifier",
+    "next": "Suivant : {{step}}",
+    "saveChanges": "Enregistrer les modifications",
+    "saveDraft": "Enregistrer en brouillon",
+    "working": "En cours…",
+    "publish": "Publier",
+    "sendToPowr": "Envoyer à POWR",
+    "needsClashPlus": "Publication réservée à Clash+",
+    "startOver": "Recommencer"
+  },
+  "schedule": {
+    "pickFirstDay": "Choisissez le premier jour pour voir toutes les dates.",
+    "scoring": "Points : {{from}} → {{to}}",
+    "finale": "Soirée finale : {{day}}, {{from}}–{{to}}",
+    "atGym": "chez {{gym}}",
+    "seals": "Le classement est scellé à minuit après le dernier jour. Les membres peuvent s’inscrire jusque-là."
+  },
+  "load": {
+    "title": "Impossible d’ouvrir cet événement",
+    "notYours": "Seule la salle qui organise cet événement peut le modifier.",
+    "pending": "POWR le vérifie rapidement. Retirez-le depuis la page de l’événement pour le modifier.",
+    "finished": "Cet événement est terminé et ne peut plus changer. Relancez-le comme nouvel événement.",
+    "noFormat": "Ce type d’événement n’est plus proposé. Contactez POWR pour le modifier."
+  },
+  "save": {
+    "partial": "Enregistré, mais {{problems}}",
+    "separator": " ; ",
+    "notificationsFailed": "les notifications n’ont pas été enregistrées ({{error}})",
+    "revealFailed": "l’heure du dévoilement n’a pas été enregistrée ({{error}})",
+    "publishFailed": "il n’est pas encore publié : {{error}}",
+    "sentForCheck": "Envoyé à POWR pour une vérification rapide",
+    "published": "Publié. Vos membres le voient dès maintenant",
+    "saved": "Enregistré",
+    "draftSaved": "Brouillon enregistré"
+  },
+  "lockedNote": "L’événement a commencé : seuls le nom, l’accroche, le logo, l’image et le lien de réservation peuvent changer, ainsi que le code partenaire, les notifications et le moment où les gagnants sont dévoilés.",
+  "format": {
+    "titleEdit": "Le format",
+    "titleNew": "Quel type d’événement ?",
+    "subEdit": "Le format est fixé dès que l’événement est enregistré. Relancez-le comme nouvel événement pour en choisir un autre.",
+    "subNew": "Choisissez un format. La durée, ce qui compte et le reste se règlent aux étapes suivantes.",
+    "dayRange": "{{min}} à {{max}}",
+    "withFinale": "{{days}} + soirée finale",
+    "countsVenue": "Compte les séances chez {{gym}}. Vous pourrez le modifier.",
+    "countsAll": "Compte toute séance vérifiée. Vous pourrez le modifier."
+  },
+  "when": {
+    "title": "Nom et dates",
+    "sub": "Le premier jour commence à minuit. Toutes les autres dates découlent des choix faits ici.",
+    "name": "Nom de l’événement",
+    "namePlaceholder": "Clash d’octobre {{gym}}",
+    "firstDay": "Premier jour",
+    "howLong": "Durée",
+    "nightStarts": "Début de la soirée finale",
+    "nightLasts": "Durée de la soirée",
+    "nightLengthAria": "Durée de la soirée finale",
+    "hours_one": "{{count}} heure",
+    "hours_other": "{{count}} heures"
+  },
+  "reveal": {
+    "label": "Dévoilement des gagnants",
+    "manualTitle": "Je les dévoile moi-même",
+    "manualBody_one": "Appuyez sur Dévoiler depuis votre téléphone ou le portail. L’app et votre écran basculent en même temps. Si personne ne le fait, POWR les dévoile environ {{count}} jour après le scellement du classement.",
+    "manualBody_other": "Appuyez sur Dévoiler depuis votre téléphone ou le portail. L’app et votre écran basculent en même temps. Si personne ne le fait, POWR les dévoile environ {{count}} jours après le scellement du classement.",
+    "manualBodyFinale_one": "Appuyez sur Dévoiler depuis votre téléphone pendant la soirée finale, ou depuis le portail. L’app et votre écran basculent en même temps. Si personne ne le fait, POWR les dévoile environ {{count}} jour après le scellement du classement.",
+    "manualBodyFinale_other": "Appuyez sur Dévoiler depuis votre téléphone pendant la soirée finale, ou depuis le portail. L’app et votre écran basculent en même temps. Si personne ne le fait, POWR les dévoile environ {{count}} jours après le scellement du classement.",
+    "atTitle": "À une heure précise",
+    "atBody": "Choisissez une heure après le scellement du classement, dans la semaine qui suit.",
+    "timeAria": "Heure du dévoilement"
+  },
+  "scoring": {
+    "title": "Ce qui compte",
+    "sub": "Les membres marquent des points avec leurs activités vérifiées. Choisissez celles qui font bouger ce classement.",
+    "allTitle": "Toutes les séances vérifiées",
+    "allBody": "Tout ce que font les membres, où qu’ils soient : check-ins en salle et séances de leur montre ou de leur téléphone.",
+    "venueTitle": "Uniquement les séances chez {{gym}}",
+    "venueBody": "Les membres font un check-in avec POWR en arrivant. Le plus difficile à contourner, et une fréquentation que vous voyez.",
+    "pickTitle": "Choisir les activités",
+    "pickBody": "Choisissez ce qui compte, par exemple la course et le vélo pour un club de course.",
+    "activitiesAria": "Activités",
+    "walkingNote": "La marche inclut les pas quotidiens de chacun : elle peut peser plus lourd que les séances.",
+    "manualNote": "Les séances saisies à la main ne comptent jamais. POWR vérifie tout le reste.",
+    "board": "Classement",
+    "boardHint": "Nombre de places affichées au classement, dans l’app et sur votre écran.",
+    "boardAria": "Taille du classement",
+    "top": "Top {{n}}",
+    "bonus": "Bonus de la soirée finale",
+    "bonusHint": "{{blurb}} POWR le verse aux membres inscrits qui font un check-in chez {{gym}} ce soir-là.",
+    "rules": "Règles",
+    "rulesWritten": "Rédigées pour vous d’après vos choix",
+    "rulesPick": "Choisissez une activité pour les voir.",
+    "ownRuleAria": "Votre règle {{n}}",
+    "ownRulePlaceholder": "Une règle à vous",
+    "removeRule": "Supprimer la règle",
+    "addRule": "Ajouter votre propre règle"
+  },
+  "prizes": {
+    "sub": "La 1re place d’abord. C’est vous qui les remettez : les gagnants présentent leur POWR ID à l’accueil.",
+    "places": {
+      "1": "1er",
+      "2": "2e",
+      "3": "3e",
+      "4": "4e",
+      "5": "5e"
+    },
+    "prizeAria": "{{place}} lot",
+    "placeholders": {
+      "1": "Un mois offert",
+      "2": "Une séance de coaching",
+      "3": "Des goodies de la salle",
+      "other": "Lot"
+    },
+    "remove": "Retirer le {{place}} lot",
+    "removePhoto": "Retirer la photo",
+    "addPhoto": "Ajouter une photo",
+    "add": "Ajouter un lot",
+    "photosNote": "Les photos accompagnent les lots dans l’app, sur la page de partage et sur votre écran. Vous achetez des lots ? <partners><gold>Vos réductions partenaires</gold></partners> vous donnent le prix payé par les membres POWR."
+  },
+  "partner": {
+    "optional": "Facultatif",
+    "title": "Un code partenaire pour tous les participants",
+    "body": "Quand vous dévoilez les gagnants, chaque participant ayant marqué des points reçoit un code de réduction du partenaire POWR choisi. Il arrive dans son portefeuille, dans l’app.",
+    "loadFailed": "Les marques partenaires n’ont pas pu se charger.",
+    "none": "Aucun partenaire n’a de codes à offrir pour l’instant.",
+    "aria": "Marque partenaire",
+    "shared": "Un code pour tous",
+    "codesLeft_one": "{{n}} code restant",
+    "codesLeft_other": "{{n}} codes restants",
+    "noneLeft": "Plus de codes pour l’instant",
+    "note": "Un code chacun, pour tous ceux encore dans l’événement avec des points. S’il n’y en a pas assez, le haut du classement est servi en premier. Dites-le dans votre accroche pour que les membres sachent qu’il arrive."
+  },
+  "pushes": {
+    "announce": {
+      "title": "Annonce",
+      "detail": "À vos membres et visiteurs récents qui ne sont pas inscrits. Une fois, en journée, après la publication."
+    },
+    "kickoff": {
+      "title": "Jour 1",
+      "detail": "À tous les inscrits, le matin où les points commencent."
+    },
+    "doors": {
+      "title": "Soirée finale",
+      "detail": "À tous les inscrits, le matin de la finale."
+    }
+  },
+  "promote": {
+    "title": "Faites-le connaître",
+    "sub": "Son allure, qui le voit, et les notifications que POWR envoie pour vous.",
+    "logo": "Logo",
+    "logoHint": "Affiché sur la carte de l’événement dans l’app. Idéal : un logo large sur fond transparent.",
+    "logoAlt": "Logo de l’événement",
+    "uploadLogo": "Importer un logo",
+    "removeLogo": "Retirer le logo",
+    "logoOnly": "Afficher le logo à la place du nom",
+    "headline": "Accroche",
+    "headlineHint": "Une ligne sous le nom, dans l’app et sur les cartes de partage.",
+    "headlinePlaceholder": "Le plus de séances en octobre gagne un mois offert",
+    "media": "Image ou vidéo",
+    "mediaHint": "La grande image de la carte de l’événement dans l’app et sur les cartes de partage. Une courte vidéo est lue sans le son.",
+    "upload": "Importer",
+    "removeMedia": "Retirer l’image",
+    "booking": "Lien de réservation",
+    "bookingHint": "Si les membres réservent sur votre propre système, ajoutez le lien ici : l’app affiche un bouton Réserver. {name} insère leur nom.",
+    "audience": "Qui le voit dans l’app",
+    "audienceHint": "Vos membres et toute personne venue s’entraîner récemment chez {{gym}} le voient toujours. Tout le monde peut s’inscrire via votre QR code ou votre lien.",
+    "audienceAria": "Qui le voit",
+    "justMembers": "Mes membres seulement",
+    "withinKm": "Aussi à moins de {{km}} km",
+    "notifications": "Notifications",
+    "notificationsHint": "POWR rédige chaque mot et les envoie au bon moment. Rien ne part avant la publication de l’événement, et les membres peuvent désactiver les notifications.",
+    "standings": "Classement du jour",
+    "standingsBody": "Le rang et les points de chaque membre, et l’écart avec la place au-dessus. Uniquement pendant que le classement est ouvert.",
+    "standingsAria": "Heure du classement du jour",
+    "off": "Désactivé"
+  },
+  "review": {
+    "title": "Vérifiez tout",
+    "subEdit": "Enregistrez pour le mettre à jour partout où il apparaît.",
+    "subNew": "Rien ne part avant la publication. Vous pouvez l’enregistrer en brouillon et y revenir.",
+    "revealAuto": "Gagnants dévoilés automatiquement : {{at}}",
+    "revealManual": "Vous dévoilez les gagnants",
+    "boardTop": "Top {{n}} au classement",
+    "finaleBonus": "+{{points}} POWR pour la venue à la soirée finale",
+    "partnerCode": "Plus un code {{brand}} pour chaque participant ayant marqué des points, dans son portefeuille au dévoilement",
+    "audienceKm": "Vos membres, les visiteurs récents et toute personne à moins de {{km}} km",
+    "audience": "Vos membres et les visiteurs récents",
+    "notifications": "Notifications : {{list}}",
+    "noNotifications": "Aucune notification ponctuelle",
+    "standingsAt": ", classement du jour à {{time}}",
+    "booking": "Réservation : {{url}}"
+  },
+  "page": {
+    "backToEvent": "Retour à l’événement",
+    "events": "Événements",
+    "edit": "Modifier l’événement",
+    "again": "Relancer",
+    "new": "Nouvel événement",
+    "hidePhone": "Masquer l’aperçu de l’app",
+    "showPhone": "Voir dans l’app"
+  },
+  "publish": {
+    "trusted": "La publication le montre tout de suite à vos membres.",
+    "check": "Votre premier événement fait l’objet d’une vérification rapide par POWR avant sa diffusion, généralement sous 24 heures."
+  }
+}

@@ -1,7 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 
+import { PORTAL_DRAFT_LANGUAGES, PORTAL_LANGUAGES } from '@/shared/i18n';
 import {
+  BUSINESS_CATALOGS,
+  BUSINESS_DRAFT_LANGUAGES,
+  BUSINESS_LANGUAGES,
+  businessLanguage,
+  businessPreviewLanguage,
   EMAIL_CATALOGS,
   LEVEL_KEYS,
   LEVEL_NAMES,
@@ -152,6 +158,72 @@ describe.each([['push', PUSH_CATALOGS], ['email', EMAIL_CATALOGS]] as const)('%s
   });
 });
 
+describe('gym and brand emails', () => {
+  const english = flatten((BUSINESS_CATALOGS as any).en);
+  const offered = (key: string) => {
+    if (!PLURAL.test(key)) return placeholders(english[key] ?? '');
+    const base = key.replace(PLURAL, '');
+    return [...new Set(Object.keys(english).filter(k => k.replace(PLURAL, '') === base).flatMap(k => placeholders(english[k])))].sort();
+  };
+
+  it('switch on together with the portals, never before', () => {
+    expect([...BUSINESS_LANGUAGES].sort()).toEqual([...PORTAL_LANGUAGES].sort());
+    expect([...BUSINESS_DRAFT_LANGUAGES].sort()).toEqual([...PORTAL_DRAFT_LANGUAGES].sort());
+  });
+
+  it('send only live languages, and preview drafts', () => {
+    for (const draft of BUSINESS_DRAFT_LANGUAGES) {
+      expect(businessLanguage(draft)).toBe(BUSINESS_LANGUAGES.includes(draft) ? draft : 'en');
+      expect(businessPreviewLanguage(draft)).toBe(draft);
+    }
+    expect(businessLanguage('de')).toBe('en');
+    expect(businessLanguage(null)).toBe('en');
+  });
+
+  it('has a catalog for every live and draft language', () => {
+    for (const lang of [...BUSINESS_LANGUAGES, ...BUSINESS_DRAFT_LANGUAGES]) expect((BUSINESS_CATALOGS as any)[lang]).toBeDefined();
+  });
+
+  it.each(['fr', 'es'])('%s has no keys English lacks, and keeps its {{placeholders}} and plural forms', lang => {
+    const strings = flatten((BUSINESS_CATALOGS as any)[lang]);
+    const problems: string[] = [];
+    for (const [key, text] of Object.entries(strings)) {
+      const plural = PLURAL.test(key);
+      const known = plural ? english[`${key.replace(PLURAL, '')}_other`] !== undefined : english[key] !== undefined;
+      if (!known) { problems.push(`${key}: not in English`); continue; }
+      if (!text.trim()) continue;
+      const used = placeholders(text);
+      const ok = plural ? used.every(p => offered(key).includes(p)) : used.join() === offered(key).join();
+      if (!ok) problems.push(`${key}: placeholders ${used.join() || '(none)'} ≠ English ${offered(key).join() || '(none)'}`);
+    }
+    for (const base of new Set(Object.keys(strings).filter(k => PLURAL.test(k)).map(k => k.replace(PLURAL, '')))) {
+      for (const form of ['one', 'other']) if (!strings[`${base}_${form}`]?.trim()) problems.push(`${base}_${form}: missing`);
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('only sends live languages that cover every English string', () => {
+    for (const lang of BUSINESS_LANGUAGES.filter(l => l !== 'en')) {
+      const strings = flatten((BUSINESS_CATALOGS as any)[lang]);
+      const missing = Object.keys(english).filter(k => !PLURAL.test(k) || k.endsWith('_other')).filter(k => !strings[k]?.trim());
+      expect({ lang, missing }).toEqual({ lang, missing: [] });
+    }
+  });
+
+  it('writes French with typographic apostrophes and no-break spaces, and Spanish without spaced dashes', () => {
+    const fr = flatten((BUSINESS_CATALOGS as any).fr);
+    const es = flatten((BUSINESS_CATALOGS as any).es);
+    const problems = [
+      ...Object.entries(fr).flatMap(([key, text]) => [
+        ...(text.includes("'") ? [`fr ${key}: straight apostrophe`] : []),
+        ...(/ [?!:;»]|« /.test(text) ? [`fr ${key}: plain space where French needs U+00A0`] : []),
+      ]),
+      ...Object.entries(es).filter(([, text]) => / [—–] /.test(text)).map(([key]) => `es ${key}: spaced dash`),
+    ];
+    expect(problems).toEqual([]);
+  });
+});
+
 describe('level names', () => {
   it('cover the server ladder, in order, with the same English names', () => {
     expect(LEVEL_KEYS.length).toBe(LEVELS.length);
@@ -194,14 +266,14 @@ describe('server source', () => {
     }
   };
   walk(path.join(__dirname, '..', 'supabase/functions'));
-  const CALL = /\bt(Push|Email)\(\s*[^,()]+,\s*['"`]([\w.]+)['"`]/g;
+  const CALL = /\bt(Push|Email|Business)\(\s*[^,()]+,\s*['"`]([\w.]+)['"`]/g;
 
   it('only uses keys that exist in English', () => {
     const missing: string[] = [];
     for (const file of files) {
       const source = fs.readFileSync(file, 'utf8');
       for (const [, kind, key] of source.matchAll(CALL)) {
-        const english = flatten(kind === 'Push' ? (PUSH_CATALOGS as any).en : (EMAIL_CATALOGS as any).en);
+        const english = flatten((kind === 'Push' ? PUSH_CATALOGS : kind === 'Email' ? EMAIL_CATALOGS : BUSINESS_CATALOGS as any).en);
         if (english[key] === undefined && english[`${key}_other`] === undefined) missing.push(`${path.relative(path.join(__dirname, '..'), file)}: t${kind} ${key}`);
       }
     }

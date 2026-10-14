@@ -1,5 +1,6 @@
 import React from 'react';
 import { Eye, Footprints, Bell, Gift, Lock } from 'lucide-react';
+import { Trans, useTranslation } from 'react-i18next';
 import { GOLD, RED } from '../lib/placementGrid';
 import { TEXT, DIM, MUTED, FONT } from './RewardAppPreview';
 
@@ -23,6 +24,11 @@ import { TEXT, DIM, MUTED, FONT } from './RewardAppPreview';
 //
 // Personalised where we can: the brand's own name and first live reward go
 // into the push and the vault row, so they see THEIR offer in the slot.
+//
+// Language: the panel speaks the portal's language, but the push and vault
+// mocks (beats 2 and 3, and the "Your brand" / "Your reward" stand-ins that
+// fill them) stay English — they preview what a MEMBER sees, and members read
+// their own language. Wire them to a member language when previews get one.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PANEL = 'relative h-[210px] rounded-2xl overflow-hidden bg-[#0b0b0b] border border-black/5';
@@ -50,6 +56,7 @@ const FILLER_ROWS = [
 ];
 
 export default function PlacementExplainer({ brandName, rewardTitle, logoUrl, points }) {
+    const { t } = useTranslation();
     const brand = (brandName || '').trim() || 'Your brand';
     const reward = (rewardTitle || '').trim() || 'Your reward';
     const cost = Number.isFinite(Number(points)) && Number(points) > 0 ? Number(points) : 800;
@@ -57,20 +64,20 @@ export default function PlacementExplainer({ brandName, rewardTitle, logoUrl, po
     const beats = [
         {
             n: '01',
-            title: 'Paint the ground',
-            copy: 'Draw straight onto the map — a high street, the park everyone runs in, the blocks around a gym. Then set the days and hours it should run.',
+            title: t('brandPlacements:explainer.beats.paint.title'),
+            copy: t('brandPlacements:explainer.beats.paint.copy'),
             visual: <MapVisual />,
         },
         {
             n: '02',
-            title: 'A member walks in',
-            copy: 'When a POWR member is physically inside your squares during those hours, their phone knows. No beacon, no scan, nothing for them to do.',
+            title: t('brandPlacements:explainer.beats.walkIn.title'),
+            copy: t('brandPlacements:explainer.beats.walkIn.copy'),
             visual: <PushVisual brand={brand} reward={reward} />,
         },
         {
             n: '03',
-            title: 'Your reward leads',
-            copy: 'Your offer jumps the queue — straight to the top of their vault, in the hero slot, priced in points they have already earned.',
+            title: t('brandPlacements:explainer.beats.leads.title'),
+            copy: t('brandPlacements:explainer.beats.leads.copy'),
             visual: <VaultVisual brand={brand} reward={reward} logoUrl={logoUrl} cost={cost} />,
         },
     ];
@@ -80,14 +87,13 @@ export default function PlacementExplainer({ brandName, rewardTitle, logoUrl, po
             <div className="px-8 pt-10 pb-8 md:px-10">
                 <div className="flex items-center gap-3 mb-5">
                     <div className="h-[1px] w-10 bg-[#E8D200]" />
-                    <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">How it works</span>
+                    <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">{t('brandPlacements:explainer.eyebrow')}</span>
                 </div>
                 <h2 className="text-4xl md:text-5xl font-light tracking-tighter text-[#1A1A1A] max-w-2xl leading-[1.05]">
-                    Your reward, waiting in the street.
+                    {t('brandPlacements:explainer.title')}
                 </h2>
                 <p className="text-sm text-[#777] leading-relaxed mt-4 max-w-xl">
-                    A placement buys a piece of the real world. Members inside it get your offer pushed to the
-                    front of their rewards — at the moment they are stood in the place you care about.
+                    {t('brandPlacements:explainer.intro')}
                 </p>
             </div>
 
@@ -106,19 +112,19 @@ export default function PlacementExplainer({ brandName, rewardTitle, logoUrl, po
 
             <div className="px-8 py-7 md:px-10 flex flex-wrap items-center justify-between gap-x-10 gap-y-6">
                 <div>
-                    <p className="text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-4">Every campaign reports back</p>
+                    <p className="text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-4">{t('brandPlacements:explainer.reportsBack')}</p>
                     <div className="flex flex-wrap items-center gap-x-7 gap-y-3">
                         {[
-                            [Eye, 'Seen', 'in-app'],
-                            [Footprints, 'Visited', 'in your squares'],
-                            [Bell, 'Pushed', 'notified'],
-                            [Gift, 'Redeemed', 'points spent'],
-                        ].map(([Icon, label, sub], i) => (
-                            <div key={label} className="flex items-center gap-2.5">
+                            [Eye, 'brandPlacements:explainer.funnel.seen', 'brandPlacements:explainer.funnel.seenSub'],
+                            [Footprints, 'brandPlacements:explainer.funnel.visited', 'brandPlacements:explainer.funnel.visitedSub'],
+                            [Bell, 'brandPlacements:explainer.funnel.pushed', 'brandPlacements:explainer.funnel.pushedSub'],
+                            [Gift, 'brandPlacements:explainer.funnel.redeemed', 'brandPlacements:explainer.funnel.redeemedSub'],
+                        ].map(([Icon, labelKey, subKey], i) => (
+                            <div key={labelKey} className="flex items-center gap-2.5">
                                 <Icon size={15} className={i === 3 ? 'text-[#8a7600]' : 'text-[#BBB]'} />
                                 <span className="text-[11px]">
-                                    <span className={`font-black uppercase tracking-[0.12em] ${i === 3 ? 'text-[#8a7600]' : 'text-[#555]'}`}>{label}</span>
-                                    <span className="text-[#BBB] ml-1.5">{sub}</span>
+                                    <span className={`font-black uppercase tracking-[0.12em] ${i === 3 ? 'text-[#8a7600]' : 'text-[#555]'}`}>{t(labelKey)}</span>
+                                    <span className="text-[#BBB] ml-1.5">{t(subKey)}</span>
                                 </span>
                             </div>
                         ))}
@@ -127,8 +133,7 @@ export default function PlacementExplainer({ brandName, rewardTitle, logoUrl, po
                 <div className="flex items-start gap-3 max-w-xs">
                     <Lock size={14} className="text-[#8a7600] shrink-0 mt-0.5" />
                     <p className="text-[11px] text-[#999] leading-relaxed">
-                        <span className="text-[#555] font-bold">One brand per square.</span> While your campaign holds
-                        a square for a time slot, no other brand can book it.
+                        <Trans i18nKey="brandPlacements:explainer.oneBrand" components={{ lead: <span className="text-[#555] font-bold" /> }} />
                     </p>
                 </div>
             </div>
@@ -140,11 +145,12 @@ export default function PlacementExplainer({ brandName, rewardTitle, logoUrl, po
 // Just the image plus its overlays. The cells are already painted into it (in
 // the editor's own colours) — nothing here loads, computes or costs anything.
 function MapVisual() {
+    const { t } = useTranslation();
     return (
         <>
             <img
                 src={MAP_SRC}
-                alt="A map of central London with six squares painted gold, and one square another brand has already booked in red."
+                alt={t('brandPlacements:explainer.mapAlt')}
                 className="absolute inset-0 w-full h-full object-cover"
                 loading="lazy"
                 draggable={false}
@@ -154,10 +160,10 @@ function MapVisual() {
                 ~250px panel width three columns give on a laptop. */}
             <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
                 <span className="px-2.5 py-1.5 rounded-full bg-black/60 backdrop-blur-sm text-[9px] font-black uppercase tracking-[0.12em] text-white/70">
-                    6 squares · Mon–Fri · 6–10am
+                    {t('brandPlacements:explainer.mapBadge')}
                 </span>
                 <span className="flex items-center gap-1.5 px-2 py-1.5 rounded-full bg-black/60 backdrop-blur-sm text-[8px] font-black uppercase tracking-[0.12em] text-white/50">
-                    <span className="w-2 h-2 rounded-[2px]" style={{ background: RED, opacity: 0.7 }} /> Booked
+                    <span className="w-2 h-2 rounded-[2px]" style={{ background: RED, opacity: 0.7 }} /> {t('brandPlacements:explainer.booked')}
                 </span>
             </div>
 

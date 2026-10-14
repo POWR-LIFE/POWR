@@ -1,0 +1,498 @@
+{
+  "actions": {
+    "dismiss": "Dismiss"
+  },
+  "editor": {
+    "template": "Template",
+    "templateLibrary": "Template library",
+    "photoOrVideo": "Photo or video",
+    "replace": "Replace — {{name}}",
+    "dropMedia": "Drop a photo or video here, or click to upload",
+    "zoom": "Zoom",
+    "centreHint": "Click the subject in the preview to centre the crop on them.",
+    "clip": "Clip",
+    "seconds": "{{n}} s",
+    "clipLengthMax": "{{length}} s · max {{max}} s",
+    "startsAt": "Starts at",
+    "endsAt": "Ends at",
+    "keepSound": "Keep the clip’s own sound",
+    "keepSoundHint": "Off by default — add trending audio in Instagram or TikTok instead; it reaches further and avoids music claims.",
+    "words": "Words",
+    "reset": "Reset",
+    "startingPoints": "Starting points",
+    "uploadImage": "Upload or drop an image",
+    "remove": "Remove",
+    "style": "Style",
+    "styleNotePage": "Colours and fonts apply to every page, so they belong together.",
+    "styleNoteSlide": "Colours and fonts apply to every slide, so they belong together.",
+    "accentColour": "Accent colour",
+    "useColourway": "Use colourway",
+    "headlineFont": "Headline font",
+    "templateDefault": "Template default",
+    "fontOption": "{{font}} — {{note}}",
+    "photoTint": "Photo tint",
+    "blackWhite": "Black & white",
+    "look": "Look",
+    "fontsMissing": "Some fonts didn't load ({{n}}) — check the connection and reload.",
+    "carouselExportFailed": "The carousel export failed.",
+    "videoExportFailed": "The video export failed."
+  },
+  "productZoom": {
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "slider": "Product zoom",
+    "smaller": "Smaller",
+    "whole": "Whole",
+    "bigger": "Bigger",
+    "fill": "Fill",
+    "closer": "Closer",
+    "removeBackground": "Remove the plain background",
+    "untick": "Untick if any of the product has gone see-through.",
+    "kept": "Kept: the product is close to its background colour, so cutting it out could lose parts of it.",
+    "everyTemplate": "Applies to every template."
+  },
+  "fill": {
+    "event": {
+      "title": "Fill from an event",
+      "pick": "Pick an event…",
+      "what": "name, date, venue, the join QR and the standings"
+    },
+    "reward": {
+      "title": "Fill from a reward",
+      "pick": "Pick a reward…",
+      "what": "the offer, points, logo and brand colour"
+    },
+    "board": {
+      "title": "Fill from your gym board",
+      "pick": "Pick a week…",
+      "what": "the top five, as your gym’s screen shows them"
+    },
+    "loadFailed": "Couldn’t load — see below",
+    "noneYet": "None yet",
+    "again": "Fill again — picks up edits to the event and the latest standings",
+    "filled": "Filled {{templates}} from {{name}}. Edit anything after.",
+    "fills": "Fills {{templates}} in one go — {{what}}.",
+    "brandPhoto": "Use {{brand}}’s own photo",
+    "templates_one": "{{count}} template",
+    "templates_other": "{{count}} templates",
+    "notes": {
+      "noStandingsHeld": "No standings yet, so Results isn’t filled yet.",
+      "noStandingsKept": "No standings yet — Results keeps its own rows until the board opens.",
+      "sealedHeld": "The board is sealed until the winners are revealed. Results fills in after the reveal.",
+      "sealed": "The board is sealed until the reveal — hold a Results post until then. (Top {{n}} filled in.)",
+      "liveTop": "Live top {{n}} filled into Results, as of {{time}}.",
+      "finalTop": "Final top {{n}} filled into Results, as of {{time}}.",
+      "boardTop": "Top {{n}} filled into Results, as of {{time}}.",
+      "boardEmpty": "Nobody’s earned at the gym yet this week — Results keeps its own rows.",
+      "pillarFilled": "The {{category}} templates are filled with {{brand}} too.",
+      "rewardOff": "This reward is switched off — it isn’t in the app right now.",
+      "logoFailed": "Their logo wouldn’t load — upload it under Words."
+    }
+  },
+  "event": {
+    "hidden": "This event is hidden in the app — its QR leads to a page people can’t see yet.",
+    "draft": "Still a draft — the dates and venue may change."
+  },
+  "draft": {
+    "name": "Draft name",
+    "progress": "{{label}} {{n}} of {{total}}",
+    "unsaved": "Unsaved changes · last saved {{when}}",
+    "saved": "Saved in Drafts · {{when}}",
+    "notSaved": "Not saved — keep it in Drafts to finish later",
+    "saveCopyTitle": "Save as a new draft — this one stays as it was last saved",
+    "saveCopy": "Save as a copy",
+    "newPost": "Start a new post",
+    "saveTitle": "Save to Drafts ({{shortcut}})",
+    "saving": "Saving",
+    "savedButton": "Saved",
+    "saveDraft": "Save draft",
+    "confirmNewChanged": "Start a new post? Changes to “{{title}}” since it was saved will be lost.",
+    "confirmNewUnsaved": "Start a new post? This one isn’t saved."
+  },
+  "preview": {
+    "safeZones": "Safe zones",
+    "thisPageTitle": "Just the page you're on",
+    "thisSlideTitle": "Just the slide you're on",
+    "thisPage": "This page",
+    "thisSlide": "This slide",
+    "pdfTitle": "One PDF, a page per slide — LinkedIn posts carousels as PDF documents",
+    "carouselPrintTitle": "One print-ready PDF, {{n}} pages, {{w}}×{{h}} mm + {{bleed}} mm bleed",
+    "carouselFilesTitle": "{{n}} numbered files at {{w}}×{{h}} — PNG, or MP4 for video slides",
+    "downloadPdfPages": "Download PDF · {{n}} pages",
+    "downloadSlides": "Download {{n}} slides",
+    "pngTitle": "{{w}}×{{h}} PNG at 300 dpi, no bleed",
+    "coverTitle": "This frame as a PNG — use it as the Reel cover",
+    "cover": "Cover",
+    "printTitle": "Print-ready PDF, {{w}}×{{h}} mm + {{bleed}} mm bleed, 300 dpi",
+    "mp4Title": "{{w}}×{{h}} MP4, {{fps}} fps",
+    "pngExactTitle": "{{w}}×{{h}} PNG — exactly what's in the preview",
+    "downloadPdf": "Download PDF",
+    "downloadMp4": "Download MP4",
+    "download": "Download",
+    "addPageTitle": "Add a page — a flyer back, say. It starts as a copy of this one.",
+    "makeCarouselTitle": "Make a carousel — the new slide starts as a copy of this one",
+    "addPage": "Add page",
+    "addSlide": "Add slide",
+    "loadingType": "Loading type…",
+    "addMedia": "Add a photo or video",
+    "rendering": "Rendering MP4… {{percent}}%",
+    "pause": "Pause",
+    "play": "Play",
+    "pageN": "page {{n}}",
+    "slideN": "slide {{n}}",
+    "addPageThumb": "Add a page — it starts as a copy of this one",
+    "addSlideThumb": "Add a slide — it starts as a copy of this one",
+    "pageEarlier": "Move this page earlier",
+    "slideEarlier": "Move this slide earlier",
+    "pageLater": "Move this page later",
+    "slideLater": "Move this slide later",
+    "deletePage": "Delete this page",
+    "deleteSlide": "Delete this slide"
+  },
+  "formats": {
+    "groups": {
+      "social": "Social",
+      "banners": "Banners",
+      "print": "Print"
+    },
+    "all": {
+      "social": "All social",
+      "banners": "All banners",
+      "print": "All print"
+    },
+    "allTitle": {
+      "social": "Every social size: {{sizes}}",
+      "banners": "Every banners size: {{sizes}}",
+      "print": "Every print size: {{sizes}}"
+    },
+    "labels": {
+      "post": "Post",
+      "portrait": "Portrait",
+      "square": "Square",
+      "story": "Story",
+      "reel": "Reel",
+      "landscape": "Landscape",
+      "link": "Link",
+      "header": "Header",
+      "cover": "Cover"
+    },
+    "ratios": {
+      "a5": "flyer",
+      "a4": "sheet",
+      "a3": "poster"
+    },
+    "notes": {
+      "reel": "1080×1920 · clear of the Reels buttons & caption",
+      "landscape": "YouTube · web · gym screens",
+      "link": "LinkedIn & Facebook posts",
+      "header": "X header · email",
+      "cover": "LinkedIn cover"
+    }
+  },
+  "libraries": {
+    "core": "Core",
+    "move": "Move",
+    "eat": "Eat",
+    "mind": "Mind",
+    "sleep": "Sleep"
+  },
+  "categories": {
+    "trending": "Trending",
+    "brand": "Brand",
+    "partners": "Partners",
+    "events": "Events",
+    "challenges": "Challenges",
+    "move": "Move",
+    "eat": "Eat",
+    "mind": "Mind",
+    "sleep": "Sleep"
+  },
+  "sections": {
+    "lifestyle": "Lifestyle",
+    "products": "Products"
+  },
+  "colourways": {
+    "gold": "Gold",
+    "mono": "Mono",
+    "signal": "Signal"
+  },
+  "tints": {
+    "none": "Neutral",
+    "warm": "Warm",
+    "cool": "Cool",
+    "gold": "Gold"
+  },
+  "fontNotes": {
+    "anton": "condensed",
+    "shoulders": "tall",
+    "grotesk": "grotesk",
+    "heavy": "heavy",
+    "wide": "wide",
+    "brandL": "POWR, light",
+    "serif": "serif",
+    "serifI": "serif, italic"
+  },
+  "look": {
+    "exposure": "Brightness",
+    "contrast": "Contrast",
+    "grain": "Grain",
+    "motion": "Motion blur",
+    "vignette": "Vignette",
+    "size": "Headline size"
+  },
+  "units": {
+    "kb": "{{n}} KB",
+    "mb": "{{n}} MB",
+    "gb": "{{n}} GB"
+  },
+  "pack": {
+    "event": "Event",
+    "loadingEvents": "Loading events…",
+    "noEvent": "No event — a brand pack",
+    "phases": {
+      "before": {
+        "label": "Before",
+        "blurb": "announce it: dates, venue, the join QR, a poster"
+      },
+      "during": {
+        "label": "Live",
+        "blurb": "while it runs: the standings and a nudge to join"
+      },
+      "after": {
+        "label": "After",
+        "blurb": "results, a thank-you and a recap carousel"
+      },
+      "brand": {
+        "label": "No event",
+        "blurb": "brand posts over the best photos"
+      }
+    },
+    "sealedAfter": "The board is sealed until the reveal — the pack leaves out Results until then.",
+    "photosClips": "Photos & clips",
+    "clear": "Clear",
+    "reading": "Reading…",
+    "readingFiles": "Reading files",
+    "looking": "Looking at the photos",
+    "progress": "{{label}} {{n}}/{{total}}",
+    "drop": "Drop a folder, photos and clips, or a ZIP here",
+    "filesOrZip": "Files or a ZIP",
+    "folder": "A folder",
+    "limits": "Up to {{photos}} photos and {{clips}} clips. Everything is read here in the browser.",
+    "count": {
+      "photos_one": "{{count}} photo",
+      "photos_other": "{{count}} photos",
+      "clips_one": "{{count}} clip",
+      "clips_other": "{{count}} clips",
+      "dups_one": "{{count}} near-duplicate set aside",
+      "dups_other": "{{count}} near-duplicates set aside",
+      "weak_one": "{{count}} weak",
+      "weak_other": "{{count}} weak",
+      "files_one": "{{count}} file",
+      "files_other": "{{count}} files",
+      "photosOrClips_one": "{{count}} photo or clip",
+      "photosOrClips_other": "{{count}} photos and clips"
+    },
+    "heic_one": "{{count}} HEIC photo skipped — Chrome can’t open iPhone HEIC files. Export them as JPEG (Photos → File → Export), or open the Studio in Safari.",
+    "heic_other": "{{count}} HEIC photos skipped — Chrome can’t open iPhone HEIC files. Export them as JPEG (Photos → File → Export), or open the Studio in Safari.",
+    "unreadable_one": "{{count}} file couldn’t be read.",
+    "unreadable_other": "{{count}} files couldn’t be read.",
+    "readFailed": "Those files couldn’t be read.",
+    "leftOut": {
+      "total_one": "{{count}} left out: {{reasons}}.",
+      "total_other": "{{count}} left out: {{reasons}}.",
+      "overLimit_one": "{{count}} over the {{photos}}-photo / {{clips}}-clip limit",
+      "overLimit_other": "{{count}} over the {{photos}}-photo / {{clips}}-clip limit",
+      "tooBig_one": "{{count}} too big (photos {{photoMb}} MB, clips {{clipMb}} MB, ZIPs 2 GB)",
+      "tooBig_other": "{{count}} too big (photos {{photoMb}} MB, clips {{clipMb}} MB, ZIPs 2 GB)",
+      "unsupported_one": "{{count}} not a photo or clip",
+      "unsupported_other": "{{count}} not a photo or clip",
+      "badZip_one": "{{count}} a ZIP that wouldn’t open",
+      "badZip_other": "{{count}} a ZIP that wouldn’t open",
+      "duplicate_one": "{{count}} already added",
+      "duplicate_other": "{{count}} already added"
+    },
+    "tile": {
+      "title": "{{path}} · quality {{quality}}",
+      "titleDup": "{{path}} — a near-duplicate · quality {{quality}}",
+      "titleWeak": "{{path}} — {{weak}} · quality {{quality}}",
+      "titleDupWeak": "{{path}} — a near-duplicate — {{weak}} · quality {{quality}}",
+      "dup": "dup",
+      "makeLead": "Make this the lead photo",
+      "useIt": "Use it",
+      "leaveOut": "Leave it out"
+    },
+    "weakness": {
+      "dark": "dark",
+      "soft": "soft",
+      "bright": "bright",
+      "small": "small"
+    },
+    "leadHint": "★ the lead photo goes on the headline post. Hover a photo to change the lead or leave it out.",
+    "pack": "Pack",
+    "sizes": "Sizes",
+    "look": "Look",
+    "colour": "Colour",
+    "looks": {
+      "film": {
+        "label": "Film",
+        "blurb": "black and white, the house look"
+      },
+      "mixed": {
+        "label": "Mixed",
+        "blurb": "half in colour — the most colourful photos — half film"
+      },
+      "colour": {
+        "label": "Colour",
+        "blurb": "the photos as shot"
+      }
+    },
+    "include": {
+      "poster": "An A4 poster of the ticket, for the venue",
+      "carousel": "A recap carousel of the best photos",
+      "reels": "A Story reel from each clip (up to 3, first 12 s)",
+      "extras": "A post for every other good photo"
+    },
+    "saved": {
+      "forEvent": "Saved for this event",
+      "packs": "Saved packs",
+      "refresh": "Refresh",
+      "empty": "Nothing saved yet — every pack you make is kept here.",
+      "meta": "{{files}} · {{sources}} made from · {{size}}",
+      "stillSaving": "Still saving — or the page closed before it finished",
+      "unfinished": "Didn’t finish saving",
+      "open": "Open",
+      "delete": "Delete",
+      "fetching": "Fetching…",
+      "fetchingN": "Fetching {{n}}/{{total}}",
+      "opening": "Opening…",
+      "fetchingPhotos": "Fetching photos {{n}}/{{total}}",
+      "readingN": "Reading {{n}}/{{total}}",
+      "deleting": "Deleting…",
+      "opened": "Opened “{{title}}”. Change anything and make it again — it saves as a new pack; this one stays as it was.",
+      "confirmDelete": "Delete “{{title}}” and everything saved with it? This can’t be undone."
+    },
+    "replanned": "The pack was replanned — earlier swaps and word changes were reset.",
+    "stages": {
+      "rendering": "Rendering",
+      "zipping": "Packing the ZIP",
+      "savingEvent": "Saving to the event",
+      "saving": "Saving"
+    },
+    "stage": "{{stage}}…",
+    "done": "Downloaded and saved — {{files}}, {{media}} kept with it.",
+    "skipped_one": "{{count}} clip over 50 MB weren’t kept (their posts were).",
+    "skipped_other": "{{count}} clips over 50 MB weren’t kept (their posts were).",
+    "cancelledSaving": "Saving was cancelled — the ZIP was downloaded; the saved copy is marked as unfinished.",
+    "cancelled": "Cancelled.",
+    "saveFailed": "The ZIP was downloaded, but saving failed: {{message}}",
+    "title": {
+      "event": "{{event}} — {{phase}}",
+      "brand": "Brand pack — {{date}}"
+    },
+    "summary": {
+      "posts": "{{posts}} at {{sizes}}",
+      "post_one": "{{count}} post",
+      "post_other": "{{count}} posts",
+      "size_one": "{{count}} size",
+      "size_other": "{{count}} sizes",
+      "poster_one": "an A4 poster",
+      "poster_other": "{{count}} A4 posters",
+      "carousel": "a {{n}}-slide carousel",
+      "carouselAn": "an {{n}}-slide carousel",
+      "reel_one": "a reel",
+      "reel_other": "{{count}} reels",
+      "total_one": "{{list}} — {{count}} file",
+      "total_other": "{{list}} — {{count}} files"
+    },
+    "addPhotosToPlan": "Add photos to plan the pack",
+    "make": "Make pack — download & save",
+    "addEventPhotos": "Add the photos from the event",
+    "pickEvent": "Pick an event, or add photos for a brand pack",
+    "planNotes": {
+      "noStandings": "No standings to show yet",
+      "sealed": "The board is sealed until the reveal — Results waits for it",
+      "noFinal": "No final standings yet",
+      "noCarousel": "Not enough different photos for a carousel — it needs three that don’t repeat each other."
+    },
+    "edit": "Edit {{template}}",
+    "anotherPhoto": "Another photo",
+    "anotherTemplate": "Another template",
+    "leavePostOut": "Leave this post out",
+    "carousel_one": "Carousel · {{count}} slide",
+    "carousel_other": "Carousel · {{count}} slides",
+    "editSlide": "Edit slide",
+    "remove": "Remove",
+    "reels": "Reels · Story 9:16",
+    "editReel": "Edit reel {{template}}",
+    "pauseReel": "Pause the reel",
+    "playReel": "Play the reel",
+    "reel": "Reel · {{template}}",
+    "leaveReelOut": "Leave this reel out",
+    "wordsOf": "{{template}} — words",
+    "footer": "Click a post to change its words · <shuffle></shuffle> another photo · <refresh></refresh> another template",
+    "footerEdited": "Click a post to change its words · <shuffle></shuffle> another photo · <refresh></refresh> another template · changing the event, stage or photos replans the pack"
+  },
+  "drafts": {
+    "confirmOpenChanged": "Open “{{title}}”? Changes to “{{current}}” since it was saved will be lost.",
+    "confirmOpenUnsaved": "Open “{{title}}”? The post in the editor isn’t saved — it will be lost.",
+    "opening": "Opening…",
+    "fetching": "Fetching {{n}} of {{total}}…",
+    "deleting": "Deleting…",
+    "loading": "Loading drafts…",
+    "count_one": "{{count}} draft",
+    "count_other": "{{count}} drafts",
+    "find": "Find a draft",
+    "refresh": "Refresh",
+    "emptyTitle": "No drafts yet",
+    "emptyBody": "In One post, press <strong>Save draft</strong> — the template, words, look and photo or clip are kept here to finish later.",
+    "makePost": "Make a post",
+    "noMatch": "No drafts called “{{query}}”.",
+    "list": "Drafts",
+    "openNamed": "Open {{title}}",
+    "open": "Open",
+    "openBadge": "Open",
+    "openUnsaved": "Open · unsaved",
+    "noPreview": "No preview",
+    "video": "Video",
+    "edited": {
+      "justNow": "Edited just now",
+      "minutes": "Edited {{n}} min ago",
+      "hours": "Edited {{n}} h ago",
+      "yesterday": "Edited yesterday",
+      "days_one": "Edited {{count}} day ago",
+      "days_other": "Edited {{count}} days ago",
+      "date": "Edited {{date}}"
+    },
+    "deleteForGood": "Delete for good?",
+    "delete": "Delete",
+    "keep": "Keep it",
+    "backToIt": "Back to it",
+    "rename": "Rename",
+    "renameNamed": "Rename {{title}}",
+    "deleteNamed": "Delete {{title}}"
+  },
+  "store": {
+    "tooBig": "{{file}} is {{size}} — over the 50 MB a draft can keep.",
+    "uploadFailed": "Upload failed ({{file}}): {{message}}",
+    "encodeFailed": "Couldn’t encode the image.",
+    "reencodeFailed": "This browser can’t re-encode that clip.",
+    "keepingClipPercent": "Keeping the clip… {{percent}}%",
+    "clipTrimmed": "“{{name}}” is {{size}}, so the draft keeps the {{seconds}} s it uses ({{kept}}).",
+    "keepingClip": "Keeping the clip…",
+    "keepingPhoto": "Keeping the photo…",
+    "keepingImages": "Keeping the images…",
+    "saved": "Saved",
+    "mediaNotKept": "“{{name}}” wasn’t kept ({{reason}}) — drop it in again when you open the draft.",
+    "assetNotKept": "“{{name}}” wasn’t kept ({{reason}}).",
+    "saveFailed": "Couldn’t save the draft — {{message}}",
+    "signFailed": "Couldn’t open the saved files — {{message}}",
+    "listFailed": "Couldn’t load the drafts — {{message}}",
+    "openFailed": "Couldn’t open the draft — {{message}}",
+    "missingFile": "“{{name}}” wasn’t kept with this draft — drop it in again.",
+    "fileWontOpen": "“{{name}}” wouldn’t open ({{reason}}) — drop it in again.",
+    "assetWontOpen": "“{{name}}” wouldn’t open — upload it again.",
+    "renameFailed": "Couldn’t rename the draft — {{message}}",
+    "deleteFilesFailed": "Couldn’t delete the draft’s files — {{message}}",
+    "deleteFailed": "Couldn’t delete the draft — {{message}}"
+  }
+}

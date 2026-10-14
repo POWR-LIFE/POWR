@@ -1,0 +1,250 @@
+{
+  "clash": {
+    "eyebrow": "Clash Pro",
+    "title": "Clash Nights",
+    "loadError": "Impossible de charger vos Clash Nights",
+    "status": {
+      "requested": "Demandée",
+      "confirmed": "Confirmée",
+      "declined": "Impossible",
+      "cancelled": "Annulée"
+    },
+    "quarter": "{{from}} – {{to}}",
+    "calendar": {
+      "previous": "Mois précédent",
+      "next": "Mois suivant",
+      "taken": "Pris",
+      "dayAria": "{{day}} : {{why}}",
+      "why": {
+        "confirmed": "Votre Clash Night",
+        "requested": "Vous avez demandé cette soirée",
+        "tooSoon_one": "Préavis de {{count}} jour requis",
+        "tooSoon_other": "Préavis de {{count}} jours requis",
+        "tooFar": "Plus d’un an à l’avance",
+        "taken": "POWR est dans une autre salle ce soir-là",
+        "quarterUsed": "Vous avez déjà une soirée ce trimestre",
+        "pick": "Choisir cette soirée"
+      },
+      "legend": {
+        "free": "Libre",
+        "cantBook": "Indisponible"
+      }
+    },
+    "locked": {
+      "eyebrow": "Clash Pro et Founding Pro",
+      "title": "Les Clash Nights sont incluses dans Clash Pro",
+      "body": "Quatre Clash Nights POWR par an, une par trimestre, dans votre salle. Nous venons avec le DJ, le photographe et les lots de nos partenaires, et vous choisissez les dates ici.",
+      "cta": "Voir les formules"
+    },
+    "how": {
+      "eyebrow": "Comment ça marche",
+      "included_one": "Votre formule comprend {{count}} Clash Night par an, une par trimestre. Nous venons avec le DJ, le photographe et les lots de nos partenaires.",
+      "included_other": "Votre formule comprend {{count}} Clash Nights par an, une par trimestre. Nous venons avec le DJ, le photographe et les lots de nos partenaires.",
+      "notice_one": "Choisissez une soirée au moins <strong>{{count}} semaine à l’avance</strong>. La première date possible est le {{date}}.",
+      "notice_other": "Choisissez une soirée au moins <strong>{{count}} semaines à l’avance</strong>. La première date possible est le {{date}}.",
+      "confirm": "POWR reçoit votre demande, puis confirme la date avec vous.",
+      "founding": "Founding Pro : choisissez dès maintenant vos quatre dates, une par trimestre.",
+      "freeToBook": "Disponible"
+    },
+    "form": {
+      "pickNight": "Choisir une soirée",
+      "yourNight": "Votre soirée",
+      "quarterNight": "Votre soirée du trimestre {{quarter}}",
+      "startsAt": "Heure de début",
+      "backup": "Date de secours (facultatif)",
+      "backupHint": "Si votre premier choix n’est pas possible, nous essaierons celle-ci.",
+      "notes": "Ce que nous devons savoir",
+      "notesPlaceholder": "Combien de personnes vous attendez, un thème, où installer le DJ…",
+      "sending": "Envoi…",
+      "submit": "Demander cette soirée à POWR",
+      "clear": "Effacer",
+      "empty": "Choisissez une date libre dans le calendrier. Les jours grisés sont trop proches, dans un trimestre déjà réservé ou pris par une autre salle."
+    },
+    "list": {
+      "title": "Vos soirées",
+      "backup": "Secours : {{date}}",
+      "notes": "« {{notes}} »",
+      "powrNote": "POWR :",
+      "callOff": "Annuler"
+    },
+    "toast": {
+      "asked": "Demande envoyée pour le {{date}}. POWR la confirmera avec vous.",
+      "callOffConfirm": "Annuler la Clash Night du {{date}} ? POWR sera prévenu tout de suite.",
+      "calledOff": "Annulée. Ce trimestre est de nouveau libre."
+    }
+  },
+  "partners": {
+    "eyebrow": "Pour votre salle",
+    "title": "Réductions partenaires",
+    "loadError": "Impossible de charger les réductions",
+    "kind": {
+      "pool": "Code à usage unique",
+      "shared": "Code partagé",
+      "link": "Lien"
+    },
+    "how": {
+      "eyebrow": "Comment ça marche",
+      "title": "Achetez lots et équipement au prix des membres POWR.",
+      "steps": {
+        "pick": {
+          "title": "Choisir une marque",
+          "body": "Tous les partenaires POWR, avec la réduction dont profitent nos membres."
+        },
+        "code": {
+          "title": "Obtenir votre code",
+          "body": "En un clic, quand vous en avez besoin. Le même code vous est redonné pendant une semaine."
+        },
+        "shop": {
+          "title": "Acheter",
+          "body": "Utilisez-le au paiement sur le site de la marque, comme tout code de réduction."
+        }
+      },
+      "events": "Vous organisez un événement ? Vous pouvez aussi envoyer un code partenaire à tous les participants au moment du dévoilement, depuis l’étape Lots de l’événement.",
+      "eventsLink": "Vos événements"
+    },
+    "empty": {
+      "title": "Aucune réduction partenaire pour le moment",
+      "body": "De nouvelles marques rejoignent POWR en permanence. Revenez bientôt."
+    },
+    "footer": "Ces codes sont réservés aux achats de votre salle. Les membres ont les leurs dans l’app POWR, merci de ne pas les leur transmettre. Besoin d’un autre code plus tôt ? Écrivez à support@powr.life.",
+    "card": {
+      "terms": "Conditions",
+      "soldOut": "Plus aucun code pour le moment. Revenez bientôt.",
+      "getting": "Obtention…",
+      "getLink": "Obtenir le lien",
+      "getCode": "Obtenir un code",
+      "poolLow_one": "Plus que {{count}} code · usage unique, réservé à votre salle",
+      "poolLow_other": "Plus que {{count}} codes · usage unique, réservé à votre salle",
+      "pool": "Usage unique, réservé à votre salle",
+      "shared": "Le code des membres POWR",
+      "link": "Le lien POWR de la marque",
+      "lastCode": "Votre dernier code, <code>{{code}}</code>, reste valable jusqu’au {{date}} s’il n’a pas servi."
+    },
+    "code": {
+      "yourCode": "Votre code",
+      "yourLink": "Votre lien",
+      "copyCode": "Copier le code",
+      "copyLink": "Copier le lien",
+      "pool": "Réservé à votre salle. Un nouveau à partir du {{date}}.",
+      "shared": "Le même code que les membres POWR.",
+      "link": "Passez par ce lien pour tous vos achats chez cette marque.",
+      "shopAt": "Acheter chez {{brand}}"
+    },
+    "toast": {
+      "copied": "Copié",
+      "copyFailed": "Copie impossible. Sélectionnez-le et copiez-le vous-même."
+    }
+  },
+  "screens": {
+    "eyebrow": "Écrans",
+    "title": "Votre salle sur grand écran",
+    "loadError": "Impossible de charger vos écrans",
+    "live": "En direct",
+    "paused": "En pause",
+    "loading": "Chargement",
+    "tvTitle": "{{title}}, comme sur la TV",
+    "previewShows": "Contenu de l’aperçu",
+    "yourGym": "Votre salle",
+    "actions": {
+      "open": "Ouvrir",
+      "copyLink": "Copier le lien",
+      "pause": "Pause",
+      "resume": "Reprendre",
+      "newLink": "Nouveau lien"
+    },
+    "setup": {
+      "tvTitle": "Votre classement, avant son activation",
+      "teaserTitle": "{{gym}} · cette semaine",
+      "teaserLines": "Le classement de la semaine, en direct sur votre TV",
+      "eyebrow": "Deux écrans, un seul bouton",
+      "title": "Activez vos écrans",
+      "body": "Un classement hebdomadaire des points gagnés chez {{gym}}, conçu pour une TV en salle. Il repart à zéro chaque lundi, affiche le n° 1 de la semaine passée et porte un QR code pour que les membres puissent s’inscrire. Vous avez aussi <strong>Gym Clash</strong> : votre salle face à toutes les autres salles POWR des environs.",
+      "linkLabel": "Lien de votre écran",
+      "linkAria": "Nom du lien de l’écran",
+      "linkHint": "Lettres minuscules, chiffres et tirets. Il fait partie du lien que vous ouvrirez sur la TV : choisissez-le une fois pour toutes.",
+      "switching": "Activation…",
+      "switchOn": "Activer les écrans",
+      "switchedOn": "Écrans activés",
+      "ownerOnly": "Les propriétaires de votre salle peuvent activer les écrans ici."
+    },
+    "board": {
+      "eyebrow": "Écran 1",
+      "title": "Classement de la semaine",
+      "blurb": "Les points gagnés chez {{gym}}, du lundi au dimanche, avec le n° 1 de la semaine passée et un QR code pour s’inscrire. Il change de scène tout seul et se met à jour en continu.",
+      "sample": "Membres fictifs",
+      "paused": "En pause — la TV s’éteint à sa prochaine actualisation",
+      "live": "Classement en direct",
+      "viewing": "Distance de lecture",
+      "viewingSet": "Distance de lecture : {{label}}",
+      "viewings": {
+        "near": {
+          "label": "Proche",
+          "hint": "Un moniteur, ou un écran derrière l’accueil. Tout s’affiche."
+        },
+        "standard": {
+          "label": "Standard",
+          "hint": "Une TV de 50 pouces dans une pièce. Un tiers plus grand, un peu moins de contenu."
+        },
+        "far": {
+          "label": "Loin",
+          "hint": "D’un bout à l’autre de la salle. Une idée par scène, lisible depuis le mur du fond."
+        }
+      },
+      "size": "Taille du classement",
+      "sizeSet": "Affichage du top {{n}}",
+      "top": "Top {{n}}"
+    },
+    "league": {
+      "eyebrow": "Écran 2",
+      "title": "Gym Clash",
+      "blurb": "{{gym}} face aux salles des environs cette semaine, puis à tout le réseau POWR, avec un duel contre la salle juste au-dessus de vous.",
+      "sample": "Salles fictives",
+      "paused": "Ligue en pause",
+      "live": "Ligue en direct",
+      "radius": "Rayon de proximité",
+      "radiusHint": "En ville, comptez 10 à 15 km pour trouver de vrais voisins ; dans une petite ville, 25 à 50.",
+      "radiusSet": "À proximité : salles à moins de {{km}} km",
+      "km": "{{km}} km"
+    },
+    "tv": {
+      "eyebrow": "Installation sur la TV",
+      "steps": {
+        "open": {
+          "title": "Ouvrir le lien",
+          "body": "Dans le navigateur de la TV, ou en y diffusant un onglet d’ordinateur. Copiez le lien de l’écran voulu."
+        },
+        "fullScreen": {
+          "title": "Passer en plein écran",
+          "body": "Appuyez sur F11 (ou sur le bouton plein écran du navigateur). Le classement s’adapte à toutes les tailles d’écran."
+        },
+        "leave": {
+          "title": "Laisser tourner",
+          "body": "Il s’actualise, change de scène et démarre une nouvelle semaine chaque lundi. Rien à faire."
+        }
+      },
+      "linksNote": "Les deux liens partagent une même clé, et chaque lien n’affiche que son écran. Réservez-les à vos écrans : toute personne qui a un lien peut l’ouvrir.",
+      "linksNoteOwner": "Si l’un d’eux a circulé, créez une nouvelle clé : toutes les TV sur les anciens liens s’éteignent jusqu’à ce que vous ouvriez les nouveaux.",
+      "rotateConfirm": "Changer le lien des écrans ? Toute TV affichant l’ancien lien s’éteint jusqu’à ce que vous y ouvriez le nouveau.",
+      "rotated": "Nouveau lien créé — ouvrez-le sur vos TV"
+    },
+    "toast": {
+      "copied": "Lien copié",
+      "copyFailed": "Échec de la copie"
+    }
+  },
+  "studio": {
+    "eyebrow": "Studio",
+    "title": "Posts pour {{name}}",
+    "loadError": "Impossible d’ouvrir le Studio",
+    "modes": {
+      "post": "Un post",
+      "pack": "Un pack depuis un shooting",
+      "drafts": "Brouillons"
+    },
+    "blurb": {
+      "post": "Choisissez un modèle, ajoutez une photo ou une vidéo, et remplissez-le avec vos événements ou le classement de la semaine. Enregistrez un brouillon pour le terminer plus tard.",
+      "pack": "Déposez un dossier, des photos ou un ZIP d’un shooting, choisissez l’événement, et obtenez d’un coup tous les posts nécessaires — téléchargés, et gardés ici pour y revenir.",
+      "drafts": "Les posts enregistrés pour plus tard. Ouvrez-en un pour reprendre là où il en était — chaque diapositive, photo ou clip, le texte et le style."
+    }
+  }
+}

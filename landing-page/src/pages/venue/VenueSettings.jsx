@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Building2, Clock, Image as ImageIcon, Mail, Package, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '../../App';
 import { Page, PageTitle, Card, Micro, Spinner, Empty, INPUT, LABEL, BTN_GOLD, BTN_GHOST } from '../../components/portal/ui';
@@ -8,6 +9,7 @@ import GymHelp from './GymHelp';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
 import { fetchGymProfile, setDriftEmail, setRecapEmail, updateGymProfile } from './venueApi';
 import { PackageContext, packageLine } from './packages';
+import { serverErrorText } from '../../lib/serverErrors';
 
 // Settings: the gym's own details (what the app, the boards and every post
 // show), its logo and photo, opening hours, the team, the package and help.
@@ -16,10 +18,11 @@ import { PackageContext, packageLine } from './packages';
 // Overview's app page. Staff can see them.
 
 const SUPPORT_EMAIL = 'support@powr.life';
-const DAYS = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']];
+// Day keys are what's stored in opening_hours; the second item is the label's key.
+const DAYS = [['mon', 'venueSettings:days.mon'], ['tue', 'venueSettings:days.tue'], ['wed', 'venueSettings:days.wed'], ['thu', 'venueSettings:days.thu'], ['fri', 'venueSettings:days.fri'], ['sat', 'venueSettings:days.sat'], ['sun', 'venueSettings:days.sun']];
 const TEXT_FIELDS = ['name', 'description', 'address', 'phone', 'website'];
 const BG = { dark: '#141414', black: '#000000', white: '#FFFFFF' };
-const BG_LABEL = { dark: 'On dark', black: 'On black', white: 'On white' };
+const BG_LABEL = { dark: 'venueSettings:logoBg.dark', black: 'venueSettings:logoBg.black', white: 'venueSettings:logoBg.white' };
 
 const pick = (p) => Object.fromEntries(TEXT_FIELDS.map((k) => [k, p?.[k] ?? '']));
 const hoursFrom = (h) => Object.fromEntries(DAYS.map(([k]) => [k, h?.[k] ? { open: h[k].open, close: h[k].close } : null]));
@@ -36,6 +39,7 @@ function Field({ label, hint, children }) {
 
 /** An image slot: preview, upload, remove. Uploads go to our storage under the gym's folder. */
 function ImageSlot({ label, hint, url, bg, prefix, canEdit, onChange, wide = false }) {
+    const { t } = useTranslation();
     const [busy, setBusy] = useState(false);
     const [err, setErr] = useState(null);
     const inputRef = useRef(null);
@@ -46,7 +50,7 @@ function ImageSlot({ label, hint, url, bg, prefix, canEdit, onChange, wide = fal
         try {
             const next = await uploadPublicImage('reward-images', file, prefix);
             await onChange(next);
-        } catch (e) { setErr(e.message || 'That upload failed.'); }
+        } catch (e) { setErr(serverErrorText(e, t('venueSettings:errors.uploadFailed'))); }
         finally { setBusy(false); }
     };
     return (
@@ -55,12 +59,12 @@ function ImageSlot({ label, hint, url, bg, prefix, canEdit, onChange, wide = fal
             <div className={`rounded-2xl overflow-hidden border border-[#E6E6E1] flex items-center justify-center ${wide ? 'aspect-[16/9]' : 'aspect-square'}`} style={{ background: bg ?? '#F4F4F1' }}>
                 {url
                     ? <img src={storageImage(url, 800)} alt="" className={`${wide ? 'w-full h-full object-cover' : 'max-w-[70%] max-h-[70%] object-contain'}`} />
-                    : <span className="text-[10px] uppercase tracking-[0.25em] font-black" style={{ color: bg === '#FFFFFF' ? '#BBBBBB' : 'rgba(255,255,255,0.35)' }}>{busy ? 'Uploading' : 'Nothing yet'}</span>}
+                    : <span className="text-[10px] uppercase tracking-[0.25em] font-black" style={{ color: bg === '#FFFFFF' ? '#BBBBBB' : 'rgba(255,255,255,0.35)' }}>{busy ? t('venueSettings:status.uploading') : t('venueSettings:settings.nothingYet')}</span>}
             </div>
             {canEdit && (
                 <div className="flex flex-wrap gap-2 mt-3">
-                    <button type="button" onClick={() => inputRef.current?.click()} disabled={busy} className={`${BTN_GHOST} h-10`}><Upload size={13} /> {url ? 'Replace' : 'Upload'}</button>
-                    {url && <button type="button" onClick={() => onChange(null)} disabled={busy} className={`${BTN_GHOST} h-10`}><Trash2 size={13} /> Remove</button>}
+                    <button type="button" onClick={() => inputRef.current?.click()} disabled={busy} className={`${BTN_GHOST} h-10`}><Upload size={13} /> {url ? t('venueSettings:status.replace') : t('venueSettings:status.upload')}</button>
+                    {url && <button type="button" onClick={() => onChange(null)} disabled={busy} className={`${BTN_GHOST} h-10`}><Trash2 size={13} /> {t('venueSettings:status.remove')}</button>}
                     <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { take(e.target.files?.[0]); e.target.value = ''; }} aria-label={label} />
                 </div>
             )}
@@ -71,6 +75,7 @@ function ImageSlot({ label, hint, url, bg, prefix, canEdit, onChange, wide = fal
 }
 
 export default function VenueSettings() {
+    const { t } = useTranslation();
     const { gym, user, isActingGym, refreshGymMemberships } = useAuth();
     const { pkg } = React.useContext(PackageContext) ?? {};
     const location = useLocation();
@@ -89,7 +94,7 @@ export default function VenueSettings() {
             setProfile(p);
             setForm(pick(p));
             setHours(hoursFrom(p.opening_hours));
-        } catch (e) { setLoadError(e.message); }
+        } catch (e) { setLoadError(serverErrorText(e)); }
     };
     useEffect(() => { setProfile(null); load(); }, [gym.partner_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -117,7 +122,7 @@ export default function VenueSettings() {
             setSaved(what);
             if ('name' in patch || 'logo_url' in patch || 'logo_bg' in patch) refreshGymMemberships?.();
             setTimeout(() => setSaved((s) => (s === what ? null : s)), 2500);
-        } catch (e) { setError(e.message || 'That didn’t save.'); }
+        } catch (e) { setError(serverErrorText(e, t('venueSettings:errors.didntSave'))); }
         finally { setSaving(null); }
     };
     const saveDetails = () => {
@@ -136,13 +141,13 @@ export default function VenueSettings() {
             setProfile((p) => ({ ...p, [`${key}_email`]: v }));
             setSaved(key);
             setTimeout(() => setSaved((s) => (s === key ? null : s)), 2500);
-        } catch (e) { setError(e.message || 'That didn’t save.'); }
+        } catch (e) { setError(serverErrorText(e, t('venueSettings:errors.didntSave'))); }
         finally { setSaving(null); }
     };
     const setRecap = setEmail('recap', setRecapEmail);
     const setDrift = setEmail('drift', setDriftEmail);
 
-    if (loadError) return <Page><Empty title="Couldn’t load your settings" action={<button type="button" onClick={load} className={BTN_GHOST}>Try again</button>}>{loadError}</Empty></Page>;
+    if (loadError) return <Page><Empty title={t('venueSettings:settings.loadFailed')} action={<button type="button" onClick={load} className={BTN_GHOST}>{t('common:actions.retry')}</button>}>{loadError}</Empty></Page>;
     if (!profile) return <Page><Spinner /></Page>;
 
     const prefix = `gym-events/${gym.partner_id}/brand`;
@@ -150,8 +155,9 @@ export default function VenueSettings() {
 
     return (
         <Page>
-            <PageTitle eyebrow="Settings" title="Your gym" sub={profile.name} />
-            {!canEdit && <p className="text-[12px] text-[#888] mt-4">Only an owner can change these details. You can see them, and the team.</p>}
+            <PageTitle eyebrow={t('venueSettings:settings.eyebrow')} title={t('venueSettings:settings.title')} sub={profile.name} />
+            {!canEdit && <p className="text-[12px] text-[#888] mt-4">{t('venueSettings:settings.readOnly')}</p>}
+            {/* POWR admins only: stays English */}
             {isActingGym && canEdit && (
                 <div className="mt-4 flex items-start gap-2.5 text-[12px] text-[#6b5c00] bg-[#FBF8E1] border border-[#E8D200]/60 rounded-xl px-4 py-3 max-w-2xl">
                     <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#E8D200] shrink-0" />
@@ -164,33 +170,34 @@ export default function VenueSettings() {
                 <div className="space-y-6 min-w-0">
                     {/* Details */}
                     <Card className="p-6 sm:p-8">
-                        <div className="flex items-center gap-3 mb-6"><Building2 size={15} className="text-[#8a7600]" /><Micro>Details</Micro></div>
-                        <p className="text-[12px] text-[#888] leading-relaxed mb-6">What members see in the app, on your screens and on every post. The name and address also place you on the map.</p>
+                        <div className="flex items-center gap-3 mb-6"><Building2 size={15} className="text-[#8a7600]" /><Micro>{t('venueSettings:settings.details.title')}</Micro></div>
+                        <p className="text-[12px] text-[#888] leading-relaxed mb-6">{t('venueSettings:settings.details.intro')}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                            <div className="sm:col-span-2"><Field label="Gym name"><input className={INPUT} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} disabled={!canEdit} maxLength={60} /></Field></div>
+                            <div className="sm:col-span-2"><Field label={t('venueSettings:fields.gymName')}><input className={INPUT} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} disabled={!canEdit} maxLength={60} /></Field></div>
                             <div className="sm:col-span-2">
-                                <Field label="About" hint="A sentence or two, up to 400 characters. Shown on your gym’s page in the app.">
+                                <Field label={t('venueSettings:fields.about')} hint={t('venueSettings:settings.details.aboutHint')}>
                                     <textarea className={`${INPUT} h-auto py-3 min-h-[96px] resize-y`} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} disabled={!canEdit} maxLength={400} rows={3} />
                                 </Field>
                             </div>
-                            <div className="sm:col-span-2"><Field label="Address"><input className={INPUT} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} disabled={!canEdit} maxLength={200} /></Field></div>
-                            <Field label="Phone"><input className={INPUT} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} disabled={!canEdit} maxLength={30} inputMode="tel" /></Field>
-                            <Field label="Website"><input className={INPUT} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} disabled={!canEdit} maxLength={200} placeholder="yourgym.com" inputMode="url" /></Field>
+                            <div className="sm:col-span-2"><Field label={t('venueSettings:fields.address')}><input className={INPUT} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} disabled={!canEdit} maxLength={200} /></Field></div>
+                            <Field label={t('venueSettings:fields.phone')}><input className={INPUT} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} disabled={!canEdit} maxLength={30} inputMode="tel" /></Field>
+                            <Field label={t('venueSettings:fields.website')}><input className={INPUT} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} disabled={!canEdit} maxLength={200} placeholder={t('venueSettings:fields.websitePlaceholder')} inputMode="url" /></Field>
                         </div>
                         {canEdit && (
                             <div className="flex items-center gap-4 mt-6">
-                                <button type="button" onClick={saveDetails} disabled={!dirty || busy('details')} className={BTN_GOLD}>{busy('details') ? 'Saving' : 'Save details'}</button>
-                                {saved === 'details' && <span className="text-[11px] font-bold text-[#0B7A57]">Saved.</span>}
-                                {dirty && saved !== 'details' && <button type="button" onClick={() => setForm(pick(profile))} className="text-[10px] uppercase tracking-[0.25em] font-black text-[#AAAAAA] hover:text-[#1A1A1A]">Undo</button>}
+                                <button type="button" onClick={saveDetails} disabled={!dirty || busy('details')} className={BTN_GOLD}>{busy('details') ? t('venueSettings:status.saving') : t('venueSettings:settings.details.save')}</button>
+                                {saved === 'details' && <span className="text-[11px] font-bold text-[#0B7A57]">{t('venueSettings:status.saved')}</span>}
+                                {dirty && saved !== 'details' && <button type="button" onClick={() => setForm(pick(profile))} className="text-[10px] uppercase tracking-[0.25em] font-black text-[#AAAAAA] hover:text-[#1A1A1A]">{t('venueSettings:status.undo')}</button>}
                             </div>
                         )}
                     </Card>
 
                     {/* Opening hours */}
                     <Card className="p-6 sm:p-8">
-                        <div className="flex items-center gap-3 mb-6"><Clock size={15} className="text-[#8a7600]" /><Micro>Opening hours</Micro></div>
+                        <div className="flex items-center gap-3 mb-6"><Clock size={15} className="text-[#8a7600]" /><Micro>{t('venueSettings:fields.openingHours')}</Micro></div>
                         <div className="divide-y divide-[#F0F0EC]">
-                            {DAYS.map(([k, label]) => {
+                            {DAYS.map(([k, labelKey]) => {
+                                const label = t(labelKey);
                                 const d = hours[k];
                                 return (
                                     <div key={k} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
@@ -200,19 +207,19 @@ export default function VenueSettings() {
                                         </label>
                                         {d ? (
                                             <div className="flex items-center gap-2 text-[12px] text-[#666]">
-                                                <input type="time" value={d.open} disabled={!canEdit} onChange={(e) => setDay(k, { ...d, open: e.target.value })} className={`${INPUT} h-10 w-32 px-3`} aria-label={`${label} opens`} />
-                                                <span>to</span>
-                                                <input type="time" value={d.close} disabled={!canEdit} onChange={(e) => setDay(k, { ...d, close: e.target.value })} className={`${INPUT} h-10 w-32 px-3`} aria-label={`${label} closes`} />
+                                                <input type="time" value={d.open} disabled={!canEdit} onChange={(e) => setDay(k, { ...d, open: e.target.value })} className={`${INPUT} h-10 w-32 px-3`} aria-label={t('venueSettings:hours.opens', { day: label })} />
+                                                <span>{t('venueSettings:hours.to')}</span>
+                                                <input type="time" value={d.close} disabled={!canEdit} onChange={(e) => setDay(k, { ...d, close: e.target.value })} className={`${INPUT} h-10 w-32 px-3`} aria-label={t('venueSettings:hours.closes', { day: label })} />
                                             </div>
-                                        ) : <span className="text-[12px] text-[#AAAAAA]">Closed</span>}
+                                        ) : <span className="text-[12px] text-[#AAAAAA]">{t('venueSettings:hours.closed')}</span>}
                                     </div>
                                 );
                             })}
                         </div>
                         {canEdit && (
                             <div className="flex items-center gap-4 mt-6">
-                                <button type="button" onClick={saveHours} disabled={!hoursDirty || busy('hours')} className={BTN_GOLD}>{busy('hours') ? 'Saving' : 'Save hours'}</button>
-                                {saved === 'hours' && <span className="text-[11px] font-bold text-[#0B7A57]">Saved.</span>}
+                                <button type="button" onClick={saveHours} disabled={!hoursDirty || busy('hours')} className={BTN_GOLD}>{busy('hours') ? t('venueSettings:status.saving') : t('venueSettings:hours.save')}</button>
+                                {saved === 'hours' && <span className="text-[11px] font-bold text-[#0B7A57]">{t('venueSettings:status.saved')}</span>}
                             </div>
                         )}
                     </Card>
@@ -229,63 +236,63 @@ export default function VenueSettings() {
                 <div className="space-y-6 min-w-0">
                     {/* Logo */}
                     <Card className="p-6 sm:p-8">
-                        <div className="flex items-center gap-3 mb-6"><ImageIcon size={15} className="text-[#8a7600]" /><Micro>Logo</Micro></div>
-                        <ImageSlot label="Your logo" hint="A PNG with a transparent background is best. It appears on your screens, in the app and on every post the Studio makes." url={profile.logo_url} bg={BG[profile.logo_bg] ?? BG.dark} prefix={prefix} canEdit={canEdit} onChange={(url) => apply('logo', { logo_url: url })} />
+                        <div className="flex items-center gap-3 mb-6"><ImageIcon size={15} className="text-[#8a7600]" /><Micro>{t('venueSettings:fields.logo')}</Micro></div>
+                        <ImageSlot label={t('venueSettings:settings.logo.label')} hint={t('venueSettings:settings.logo.hint')} url={profile.logo_url} bg={BG[profile.logo_bg] ?? BG.dark} prefix={prefix} canEdit={canEdit} onChange={(url) => apply('logo', { logo_url: url })} />
                         <div className="mt-5">
-                            <label className={LABEL}>It looks right</label>
-                            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Logo background">
+                            <label className={LABEL}>{t('venueSettings:settings.logo.looksRight')}</label>
+                            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('venueSettings:logoBg.label')}>
                                 {Object.keys(BG).map((k) => (
                                     <button key={k} type="button" role="radio" aria-checked={profile.logo_bg === k} disabled={!canEdit || busy('logo')} onClick={() => profile.logo_bg !== k && apply('logo', { logo_bg: k })}
                                         className={`h-9 px-4 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border transition-all ${profile.logo_bg === k ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white' : 'bg-white border-[#E6E6E1] text-[#888] hover:text-[#1A1A1A]'}`}>
-                                        {BG_LABEL[k]}
+                                        {t(BG_LABEL[k])}
                                     </button>
                                 ))}
                             </div>
-                            <p className="text-[11px] text-[#AAAAAA] mt-2">Pick the background your logo is made for, so it never sits on the wrong one.</p>
-                            {saved === 'logo' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">Saved.</p>}
+                            <p className="text-[11px] text-[#AAAAAA] mt-2">{t('venueSettings:settings.logo.bgHint')}</p>
+                            {saved === 'logo' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">{t('venueSettings:status.saved')}</p>}
                         </div>
                     </Card>
 
                     {/* Photo */}
                     <div id="photo" className="scroll-mt-6">
                     <Card className="p-6 sm:p-8">
-                        <div className="flex items-center gap-3 mb-6"><ImageIcon size={15} className="text-[#8a7600]" /><Micro>Photo</Micro></div>
-                        <ImageSlot label="Your gym" hint="The big picture on your gym’s page in the app. Landscape, the floor or the front, people in it if you can." url={profile.image_url} prefix={prefix} canEdit={canEdit} onChange={(url) => apply('photo', { image_url: url })} wide />
-                        {saved === 'photo' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">Saved.</p>}
+                        <div className="flex items-center gap-3 mb-6"><ImageIcon size={15} className="text-[#8a7600]" /><Micro>{t('venueSettings:settings.photo.title')}</Micro></div>
+                        <ImageSlot label={t('venueSettings:settings.photo.label')} hint={t('venueSettings:settings.photo.hint')} url={profile.image_url} prefix={prefix} canEdit={canEdit} onChange={(url) => apply('photo', { image_url: url })} wide />
+                        {saved === 'photo' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">{t('venueSettings:status.saved')}</p>}
                     </Card>
                     </div>
 
                     {/* Package */}
                     <Card className="p-6 sm:p-8">
-                        <div className="flex items-center gap-3 mb-4"><Package size={15} className="text-[#8a7600]" /><Micro>Package</Micro></div>
+                        <div className="flex items-center gap-3 mb-4"><Package size={15} className="text-[#8a7600]" /><Micro>{t('venueSettings:settings.package.title')}</Micro></div>
                         <div className="text-2xl font-light tracking-tight text-[#1A1A1A]">{packageLine(pkg)}</div>
-                        <p className="text-[12px] text-[#888] leading-relaxed mt-2">What’s switched on, what each package includes, and how to change it.</p>
-                        <Link to="/venue/package" className={`${BTN_GHOST} mt-5`}>See packages</Link>
+                        <p className="text-[12px] text-[#888] leading-relaxed mt-2">{t('venueSettings:settings.package.body')}</p>
+                        <Link to="/venue/package" className={`${BTN_GHOST} mt-5`}>{t('venueSettings:settings.package.see')}</Link>
                     </Card>
 
                     {/* Email: the Monday recap, each person's own switch */}
                     {profile.recap_email != null && (
                         <div id="recap" className="scroll-mt-6">
                         <Card className="p-6 sm:p-8">
-                            <div className="flex items-center gap-3 mb-4"><Mail size={15} className="text-[#8a7600]" /><Micro>Email</Micro></div>
+                            <div className="flex items-center gap-3 mb-4"><Mail size={15} className="text-[#8a7600]" /><Micro>{t('venueSettings:settings.email.title')}</Micro></div>
                             <label className="flex items-start gap-3 cursor-pointer">
                                 <input type="checkbox" className="accent-[#E8D200] w-4 h-4 mt-0.5 shrink-0" checked={!!profile.recap_email} disabled={busy('recap')} onChange={(e) => setRecap(e.target.checked)} />
                                 <span>
-                                    <span className="block text-[13px] font-bold text-[#1A1A1A]">Your gym’s week, every Monday</span>
-                                    <span className="block text-[12px] text-[#888] leading-relaxed mt-1">Sessions, athletes, new faces, the top of the board and your events, in one email. Each of the team chooses for themselves.</span>
+                                    <span className="block text-[13px] font-bold text-[#1A1A1A]">{t('venueSettings:settings.email.recapTitle')}</span>
+                                    <span className="block text-[12px] text-[#888] leading-relaxed mt-1">{t('venueSettings:settings.email.recapBody')}</span>
                                 </span>
                             </label>
-                            {saved === 'recap' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">Saved.</p>}
+                            {saved === 'recap' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">{t('venueSettings:status.saved')}</p>}
                             {profile.drift_email != null && pkg?.features?.insights && (
                                 <>
                                     <label className="flex items-start gap-3 cursor-pointer mt-5 pt-5 border-t border-[#F0F0EC]">
                                         <input type="checkbox" className="accent-[#E8D200] w-4 h-4 mt-0.5 shrink-0" checked={!!profile.drift_email} disabled={busy('drift')} onChange={(e) => setDrift(e.target.checked)} />
                                         <span>
-                                            <span className="block text-[13px] font-bold text-[#1A1A1A]">When someone starts drifting</span>
-                                            <span className="block text-[12px] text-[#888] leading-relaxed mt-1">A morning email on days when someone goes well past their usual gap between visits{pkg?.features?.people ? ', with who' : ''}. Never more than one a day.</span>
+                                            <span className="block text-[13px] font-bold text-[#1A1A1A]">{t('venueSettings:settings.email.driftTitle')}</span>
+                                            <span className="block text-[12px] text-[#888] leading-relaxed mt-1">{t(pkg?.features?.people ? 'venueSettings:settings.email.driftBodyWho' : 'venueSettings:settings.email.driftBody')}</span>
                                         </span>
                                     </label>
-                                    {saved === 'drift' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">Saved.</p>}
+                                    {saved === 'drift' && <p className="text-[11px] font-bold text-[#0B7A57] mt-2">{t('venueSettings:status.saved')}</p>}
                                 </>
                             )}
                         </Card>
