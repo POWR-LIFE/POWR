@@ -142,6 +142,9 @@ export async function evaluateParticipant(
       challenge_id: challenge.id,
       from_name: name,
       title: challenge.template?.title ?? 'your challenge',
+      // English stand-ins flagged for other languages (pushCopy sentText).
+      from_name_missing: !(prof?.display_name || prof?.username),
+      title_missing: challenge.template?.title == null,
     });
   }
 

@@ -99,6 +99,8 @@ export async function evaluatePooledChallenge(supabase: any, challenge: any): Pr
             pct: milestone,
             remaining,
             unit: rule.unit ?? '',
+            // English stand-ins flagged for other languages (pushCopy sentText).
+            title_missing: challenge.template?.title == null,
           });
         }
       }
@@ -137,6 +139,8 @@ export async function evaluatePooledChallenge(supabase: any, challenge: any): Pr
     await notifyPush(c.user_id, 'challenge_completed', {
       challenge_id: challenge.id, title: challenge.template?.title ?? 'your challenge',
       base: challenge.base_points, bonus, total: challenge.base_points + bonus, co_completers: coContributors,
+      // English stand-ins flagged for other languages (pushCopy sentText).
+      title_missing: challenge.template?.title == null,
     });
   }
   return { completed: true, newlyCompleted: true, poolTotal, target };

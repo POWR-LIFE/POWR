@@ -127,6 +127,8 @@ export async function tryStartForming(
           title,
           accepted_count: accepted,
           total_count: accepted + invitedLeft,
+          // English stand-ins flagged for other languages (pushCopy sentText).
+          title_missing: ch.template?.title == null,
         });
       }
     }
@@ -167,6 +169,8 @@ export async function tryStartForming(
       for (const p of live.filter((p: any) => p.state !== 'invited')) {
         await notifyPush(p.user_id, 'challenge_open_unclaimed', {
           challenge_id: challengeId, title,
+          // English stand-ins flagged for other languages (pushCopy sentText).
+          title_missing: ch.template?.title == null,
         });
       }
       return 'started';
@@ -188,6 +192,8 @@ export async function tryStartForming(
     for (const p of live.filter((p: any) => p.state !== 'invited')) {
       await notifyPush(p.user_id, 'challenge_ended', {
         challenge_id: challengeId, title, outcome: 'cancelled',
+        // English stand-ins flagged for other languages (pushCopy sentText).
+        title_missing: ch.template?.title == null,
       });
     }
   }

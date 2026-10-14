@@ -171,6 +171,17 @@ describe('level names', () => {
   });
 });
 
+describe('activity names', () => {
+  // Pushes name an activity (a synced workout, a vault bonus) with the app's own
+  // words for it, so the lock screen and the app never call it two things.
+  it.each(['en', 'fr', 'es'])('match the app catalog in %s', lang => {
+    const app = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'shared/i18n', lang, 'app/activities.json'), 'utf8')).names;
+    const server = (PUSH_CATALOGS as any)[lang].activityNames;
+    expect(Object.keys(server).sort()).toEqual(Object.keys(app).sort());
+    for (const key of Object.keys(app)) expect({ key, name: server[key] }).toEqual({ key, name: app[key] });
+  });
+});
+
 describe('server source', () => {
   // Every literal key passed to tPush / tEmail anywhere in supabase/functions
   // must exist in English, or a phone would show the raw key.

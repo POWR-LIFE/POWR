@@ -68,6 +68,21 @@ const push: Catalog = {
     unlocksOn: "on {{date}}",
     unlocksLater: "once it vests",
   },
+  // Activity names by POWR activity type, exactly as the app shows them
+  // (shared/i18n/<lang>/app/activities.json, names.*). __tests__/serverI18n.test.ts
+  // fails if they drift. Used where a caller sends `activity_type`.
+  activityNames: {
+    walking: "Walking",
+    running: "Running",
+    cycling: "Cycling",
+    swimming: "Swimming",
+    gym: "Gym",
+    hiit: "HIIT / Classes",
+    sports: "Sports",
+    yoga: "Yoga / Pilates",
+    dance: "Dance",
+    sleep: "Sleep",
+  },
   dailyReminder: {
     title: "Time to move 💪",
     body: "Every step earns POWR. Log your activity and keep the streak alive.",
@@ -154,6 +169,9 @@ const push: Catalog = {
     title: "Workout synced ⌚",
     synced: "Workout synced",
     syncedLabel: "{{label}} synced",
+    // Other languages only: {{activity}} is activityNames.<activity_type>.
+    // English always names the workout as the caller sent it (syncedLabel).
+    syncedActivity: "{{activity}} synced",
     syncedMany_one: "{{number}} workouts synced",
     syncedMany_other: "{{number}} workouts synced",
     body: "{{what}}. No phone needed, it just counted.",
@@ -263,6 +281,15 @@ const push: Catalog = {
     title: "Banked in your Vault 🏦",
     body: "+{{points}} POWR went past today's cap, so it's banked. It already counts toward your level, and unlocks {{when}}.",
     bodyReason: "+{{points}} POWR from your {{reason}} went past today's cap, so it's banked. It already counts toward your level, and unlocks {{when}}.",
+    // Other languages only, one per reason_kind claim-points / upgrade-gym-tier
+    // send beside `reason`. English always uses bodyReason with the caller's own
+    // `reason` text; these are that same sentence, written out per reason, so a
+    // translator has whole sentences to work with. {{activity}} is
+    // activityNames.<activity_type>.
+    bodyStreak_one: "+{{points}} POWR from your {{days}}-day streak bonus went past today's cap, so it's banked. It already counts toward your level, and unlocks {{when}}.",
+    bodyStreak_other: "+{{points}} POWR from your {{days}}-day streak bonus went past today's cap, so it's banked. It already counts toward your level, and unlocks {{when}}.",
+    bodySession: "+{{points}} POWR from your {{activity}} session went past today's cap, so it's banked. It already counts toward your level, and unlocks {{when}}.",
+    bodyUpgrade: "+{{points}} POWR from your {{minutes}}-min bonus went past today's cap, so it's banked. It already counts toward your level, and unlocks {{when}}.",
   },
   vaultGranted: {
     titleReady: "A POWR drop landed ⚡",
