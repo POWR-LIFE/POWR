@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { ACCENT, ACCENT_SOFT, DIM } from './potTokens';
 
@@ -30,6 +31,7 @@ export function VaultPortholeCountdown({
   /** ISO instant the doors open. */
   target: string;
 }) {
+  const { t } = useTranslation();
   const u = (f: number) => Math.round(diameter * f);
   const [now, setNow] = useState(() => Date.now());
 
@@ -47,12 +49,12 @@ export function VaultPortholeCountdown({
 
   return (
     <View style={[styles.stack, { width: diameter * 0.8 }]}>
-      <Text style={[styles.label, { fontSize: u(0.072) }]}>COMING SOON</Text>
+      <Text style={[styles.label, { fontSize: u(0.072) }]}>{t('rewards:vault.readout.comingSoon')}</Text>
       {days > 0 ? (
         <>
           <Text style={[styles.figure, { fontSize: u(0.26) }]}>
             {days}
-            <Text style={[styles.unit, { fontSize: u(0.15) }]}>d</Text>
+            <Text style={[styles.unit, { fontSize: u(0.15) }]}>{t('rewards:vault.timer.dayUnit')}</Text>
           </Text>
           <Text style={[styles.clock, { fontSize: u(0.1) }]}>{clock}</Text>
         </>

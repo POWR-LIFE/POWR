@@ -6,6 +6,7 @@ import {
   DEFAULT_SELECTIONS,
   countObservedTypes,
   observedLabelList,
+  observedPickCount,
   preselectFromObserved,
 } from '@/lib/onboarding/activities';
 import { routeAfterActivities } from '@/lib/onboarding/flow';
@@ -136,9 +137,8 @@ export default function OnboardingActivitiesScreen() {
         <Text style={styles.headline}>{t('onboarding:activities.headline')}</Text>
         <Text style={styles.subhead}>
           {observedLabels
-            // count only picks "it" (one activity) or "them" (a list); the list
-            // itself still comes from observedLabelList in English.
-            ? t('onboarding:activities.subhead.observed', { labels: observedLabels, count: observedLabels.includes(' and ') ? 2 : 1, max: MAX_PICKS })
+            // count only picks "it" (one activity) or "them" (a list).
+            ? t('onboarding:activities.subhead.observed', { labels: observedLabels, count: observedPickCount(selections, observed), max: MAX_PICKS })
             : t('onboarding:activities.subhead.default', { max: MAX_PICKS })}
         </Text>
       </Animated.View>

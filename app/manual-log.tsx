@@ -14,13 +14,16 @@ import {
     TextInput,
     View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ACTIVITIES, ACTIVITY_ORDER, type ActivityType } from '@/constants/activities';
+import { selectionLabel } from '@/constants/activityCatalog';
 import { getGymDwellMinutes, getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
 import { useAuth } from '@/context/AuthContext';
 import { tracked } from '@/lib/analytics';
 import { logManualSession } from '@/lib/api/activity';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { useHealthData, type VerifyResult } from '@/hooks/useHealthData';
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
@@ -126,17 +129,18 @@ function calcManualPoints(type: ActivityType, durationMins: number, steps: numbe
 }
 
 function getMinimumNote(type: ActivityType): string {
+    const minutes = (min: number) => i18n.t('points:manualLog.minimum.minutes', { minutes: min });
     switch (type) {
-        case 'walking':  return 'Minimum 4,000 steps to earn points';
-        case 'running':  return 'Minimum 15 min to qualify';
-        case 'cycling':  return 'Minimum 20 min to qualify';
-        case 'swimming': return 'Minimum 15 min to qualify';
-        case 'gym':      return `Minimum ${getGymDwellMinutes()} min to qualify`;
-        case 'hiit':     return `Minimum ${HIIT_MIN_MINUTES} min to qualify`;
-        case 'sports':   return 'Minimum 30 min to qualify';
-        case 'yoga':     return 'Minimum 20 min to qualify';
-        case 'dance':    return 'Minimum 20 min to qualify';
-        default:         return 'Complete the activity to qualify';
+        case 'walking':  return i18n.t('points:manualLog.minimum.steps', { steps: (4000).toLocaleString(getFormatLocale()) });
+        case 'running':  return minutes(15);
+        case 'cycling':  return minutes(20);
+        case 'swimming': return minutes(15);
+        case 'gym':      return minutes(getGymDwellMinutes());
+        case 'hiit':     return minutes(HIIT_MIN_MINUTES);
+        case 'sports':   return minutes(30);
+        case 'yoga':     return minutes(20);
+        case 'dance':    return minutes(20);
+        default:         return i18n.t('points:manualLog.minimum.other');
     }
 }
 
@@ -146,6 +150,7 @@ export default function ManualLogScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const health = useHealthData();
+    const { t } = useTranslation();
 
     const [step, setStep] = useState<1 | 2>(1);
     const [selectedType, setSelectedType] = useState<ActivityType | null>(null);
@@ -190,19 +195,28 @@ export default function ManualLogScreen() {
     // picker card, the step-2 header and the stored raw_activity_name — so a
     // manual log reads as the thing they actually did, not its scoring bucket.
     const { user } = useAuth();
-    const selectionLabelByBucket = useMemo(() => {
+    const { selectionLabelByBucket, selectionSlugByBucket } = useMemo(() => {
         const map: Partial<Record<ActivityType, string>> = {};
+        const slugs: Partial<Record<ActivityType, string>> = {};
         const sels = user?.user_metadata?.activity_selections;
         if (Array.isArray(sels)) {
             for (const s of sels) {
                 if (s?.bucket && typeof s.label === 'string' && ACTIVITIES[s.bucket as ActivityType]) {
                     map[s.bucket as ActivityType] = s.label;
+                    if (typeof s.slug === 'string') slugs[s.bucket as ActivityType] = s.slug;
                 }
             }
         }
-        return map;
+        return { selectionLabelByBucket: map, selectionSlugByBucket: slugs };
     }, [user]);
-    const labelFor = (type: ActivityType) => selectionLabelByBucket[type] ?? ACTIVITIES[type].label;
+    // The stored label is English and is what raw_activity_name records; the
+    // header and cards show the pick in the language on screen.
+    const labelFor = (type: ActivityType) => {
+        const stored = selectionLabelByBucket[type];
+        return stored !== undefined
+            ? selectionLabel({ slug: selectionSlugByBucket[type] ?? '', label: stored })
+            : ACTIVITIES[type].label;
+    };
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -267,7 +281,7 @@ export default function ManualLogScreen() {
             });
             router.back();
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to log session');
+            setError(e instanceof Error ? e.message : t('points:manualLog.submitFailed'));
         } finally {
             setSubmitting(false);
         }
@@ -297,7 +311,7 @@ export default function ManualLogScreen() {
                     <Ionicons name="chevron-back" size={22} color={TEXT} />
                 </Pressable>
                 <Text style={styles.headerTitle}>
-                    {step === 1 ? 'Log Activity' : selectedType ? labelFor(selectedType) : ''}
+                    {step === 1 ? t('points:manualLog.title') : selectedType ? labelFor(selectedType) : ''}
                 </Text>
                 <View style={styles.headerRight} />
             </View>
@@ -343,13 +357,14 @@ function ActivityPicker({
     onSelect: (type: ActivityType) => void;
     labelFor: (type: ActivityType) => string;
 }) {
+    const { t } = useTranslation();
     return (
         <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={styles.pickerContent}
             showsVerticalScrollIndicator={false}
         >
-            <Text style={styles.pickerLabel}>Pick your activity</Text>
+            <Text style={styles.pickerLabel}>{t('points:manualLog.pickerLabel')}</Text>
             <View style={styles.pickerGrid}>
                 {MANUAL_LOGGABLE.map(type => {
                     const a = ACTIVITIES[type];
@@ -365,14 +380,14 @@ function ActivityPicker({
                             <Text style={styles.activityCardLabel}>{labelFor(type)}</Text>
                             <Text style={styles.activityCardTag}>{a.tag}</Text>
                             <View style={styles.activityCardCap}>
-                                <Text style={styles.activityCardCapText}>up to {a.dailyCap} pts</Text>
+                                <Text style={styles.activityCardCapText}>{t('points:manualLog.dailyCap', { cap: a.dailyCap })}</Text>
                             </View>
                         </Pressable>
                     );
                 })}
             </View>
             <Text style={styles.manualNote}>
-                Manual logs earn 80% of base points · Verify with Health for full points
+                {t('points:manualLog.pickerNote')}
             </Text>
         </ScrollView>
     );
@@ -429,6 +444,7 @@ function DetailsForm({
     verifyResult,
     onVerify,
 }: DetailsFormProps) {
+    const { t } = useTranslation();
     const hasValue = isWalking ? stepsInput.length > 0 : durationInput.length > 0;
     const qualifies = previewPoints > 0;
 
@@ -446,34 +462,34 @@ function DetailsForm({
             </View>
 
             {/* Inputs */}
-            <Text style={styles.sectionLabel}>Session details</Text>
+            <Text style={styles.sectionLabel}>{t('points:manualLog.details.title')}</Text>
 
             {isWalking ? (
                 <LabelledInput
-                    label="Steps"
+                    label={t('points:manualLog.details.steps.label')}
                     value={stepsInput}
                     onChangeText={onStepsChange}
-                    placeholder="e.g. 8000"
-                    unit="steps"
+                    placeholder={t('points:manualLog.details.steps.placeholder')}
+                    unit={t('points:manualLog.details.steps.unit')}
                     keyboardType="number-pad"
                 />
             ) : (
                 <LabelledInput
-                    label="Duration"
+                    label={t('points:manualLog.details.duration.label')}
                     value={durationInput}
                     onChangeText={onDurationChange}
-                    placeholder="e.g. 45"
-                    unit="min"
+                    placeholder={t('points:manualLog.details.duration.placeholder')}
+                    unit={t('points:manualLog.details.duration.unit')}
                     keyboardType="number-pad"
                 />
             )}
 
             {hasDistanceInput && (
                 <LabelledInput
-                    label="Distance"
+                    label={t('points:manualLog.details.distance.label')}
                     value={distanceInput}
                     onChangeText={onDistanceChange}
-                    placeholder="Optional"
+                    placeholder={t('points:manualLog.details.distance.placeholder')}
                     unit={activity.type === 'swimming' ? 'm' : 'km'}
                     keyboardType="decimal-pad"
                     optional
@@ -517,15 +533,15 @@ function DetailsForm({
                     <ActivityIndicator color="#0a0a0a" />
                 ) : (
                     <Text style={styles.submitBtnText}>
-                        {qualifies ? `Log session · ${previewPoints} pts` : 'Log session'}
+                        {qualifies ? t('points:manualLog.submitWithPoints', { points: previewPoints }) : t('points:manualLog.submit')}
                     </Text>
                 )}
             </Pressable>
 
             <Text style={styles.submitNote}>
                 {healthVerified
-                    ? 'Health verified — full points awarded. No streak credit.'
-                    : 'Manual logs earn 80% of base points. Verify with Health for full points.'}
+                    ? t('points:manualLog.submitNote.verified')
+                    : t('points:manualLog.submitNote.manual')}
             </Text>
         </ScrollView>
     );
@@ -550,6 +566,7 @@ function PointsPreview({
     activityColour: string;
     healthVerified: boolean;
 }) {
+    const { t } = useTranslation();
     if (!hasValue) {
         return (
             <View style={styles.previewEmpty}>
@@ -564,7 +581,7 @@ function PointsPreview({
             <View style={[styles.previewCard, styles.previewCardFail]}>
                 <Ionicons name="close-circle-outline" size={18} color="rgba(239,68,68,0.7)" />
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.previewFailText}>Doesn't meet minimum threshold</Text>
+                    <Text style={styles.previewFailText}>{t('points:manualLog.preview.belowMinimum')}</Text>
                     <Text style={styles.previewFailNote}>{minimumNote}</Text>
                 </View>
             </View>
@@ -574,24 +591,24 @@ function PointsPreview({
     return (
         <View style={[styles.previewCard, { borderColor: activityColour + '30' }]}>
             <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Estimated POWR</Text>
+                <Text style={styles.previewLabel}>{t('points:manualLog.preview.estimated')}</Text>
                 <View style={styles.previewPtsRow}>
                     <Text style={[styles.previewPts, { color: activityColour }]}>{previewPoints}</Text>
-                    <Text style={styles.previewPtsUnit}> pts</Text>
+                    <Text style={styles.previewPtsUnit}>{t('points:manualLog.preview.ptsUnit')}</Text>
                 </View>
             </View>
             <View style={styles.previewDivider} />
             <View style={styles.previewPenaltyRow}>
                 <View style={styles.previewPenaltyItem}>
-                    <Text style={styles.previewPenaltyLabel}>Base</Text>
-                    <Text style={styles.previewPenaltyVal}>{basePoints} pts</Text>
+                    <Text style={styles.previewPenaltyLabel}>{t('points:manualLog.preview.base')}</Text>
+                    <Text style={styles.previewPenaltyVal}>{t('points:manualLog.preview.points', { points: basePoints })}</Text>
                 </View>
                 <Ionicons name="arrow-forward" size={12} color={MUTED} />
                 <View style={styles.previewPenaltyItem}>
                     <Text style={styles.previewPenaltyLabel}>
-                        {healthVerified ? 'Health verified (×1.0)' : 'Manual (×0.8)'}
+                        {healthVerified ? t('points:manualLog.preview.verifiedRate') : t('points:manualLog.preview.manualRate')}
                     </Text>
-                    <Text style={[styles.previewPenaltyVal, { color: activityColour }]}>{previewPoints} pts</Text>
+                    <Text style={[styles.previewPenaltyVal, { color: activityColour }]}>{t('points:manualLog.preview.points', { points: previewPoints })}</Text>
                 </View>
             </View>
         </View>
@@ -611,12 +628,13 @@ function HealthVerifyButton({
     verifyResult: VerifyResult | null;
     onPress: () => void;
 }) {
+    const { t } = useTranslation();
     if (verified) {
         return (
             <View style={styles.verifySuccess}>
                 <Ionicons name="checkmark-circle" size={16} color="#4AF2A1" />
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.verifySuccessText}>Health Verified — full points</Text>
+                    <Text style={styles.verifySuccessText}>{t('points:manualLog.verify.success')}</Text>
                     {verifyResult && (
                         <Text style={styles.verifyDetail}>{verifyResult.detail}</Text>
                     )}
@@ -630,7 +648,7 @@ function HealthVerifyButton({
             <View style={styles.verifyFail}>
                 <Ionicons name="close-circle-outline" size={16} color="rgba(239,68,68,0.7)" />
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.verifyFailText}>Couldn't verify with Health</Text>
+                    <Text style={styles.verifyFailText}>{t('points:manualLog.verify.failed')}</Text>
                     <Text style={styles.verifyDetail}>{verifyResult.detail}</Text>
                 </View>
             </View>
@@ -648,7 +666,7 @@ function HealthVerifyButton({
             ) : (
                 <>
                     <Ionicons name="heart-outline" size={15} color={GOLD} />
-                    <Text style={styles.verifyBtnText}>Verify with Health for full points</Text>
+                    <Text style={styles.verifyBtnText}>{t('points:manualLog.verify.cta')}</Text>
                 </>
             )}
         </Pressable>
@@ -674,11 +692,12 @@ function LabelledInput({
     keyboardType?: 'number-pad' | 'decimal-pad';
     optional?: boolean;
 }) {
+    const { t } = useTranslation();
     return (
         <View style={styles.inputWrap}>
             <View style={styles.inputLabelRow}>
                 <Text style={styles.inputLabel}>{label}</Text>
-                {optional && <Text style={styles.inputOptional}>optional</Text>}
+                {optional && <Text style={styles.inputOptional}>{t('points:manualLog.details.optional')}</Text>}
             </View>
             <View style={styles.inputRow}>
                 <TextInput

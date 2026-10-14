@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -35,6 +36,7 @@ export default function ChangeEmailScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
+    const { t } = useTranslation();
 
     const currentEmail = user?.email ?? '';
     // OAuth-provisioned accounts source their email from the provider; mutating
@@ -60,13 +62,13 @@ export default function ChangeEmailScreen() {
         const target = newEmail.trim().toLowerCase();
         const targetConfirm = confirmEmail.trim().toLowerCase();
 
-        if (!target)                            { setError('Please enter a new email address.'); return; }
-        if (!EMAIL_RE.test(target))             { setError("That email doesn't look right."); return; }
-        if (target !== targetConfirm)           { setError("Emails don't match."); return; }
+        if (!target)                            { setError(t('account:changeEmail.error.required')); return; }
+        if (!EMAIL_RE.test(target))             { setError(t('account:changeEmail.error.invalid')); return; }
+        if (target !== targetConfirm)           { setError(t('account:changeEmail.error.mismatch')); return; }
         if (target === currentEmail.toLowerCase()) {
-            setError('That is already your email address.'); return;
+            setError(t('account:changeEmail.error.same')); return;
         }
-        if (!currentPassword)                   { setError('Please enter your current password.'); return; }
+        if (!currentPassword)                   { setError(t('account:shared.currentPasswordRequired')); return; }
 
         setLoading(true);
         try {
@@ -78,7 +80,7 @@ export default function ChangeEmailScreen() {
                 password: currentPassword,
             });
             if (signInError) {
-                setError('Current password is incorrect.');
+                setError(t('account:shared.currentPasswordIncorrect'));
                 return;
             }
 
@@ -141,16 +143,16 @@ export default function ChangeEmailScreen() {
                 </Pressable>
                 <View style={styles.feedbackBox}>
                     <Text style={styles.feedbackIcon}>🔗</Text>
-                    <Text style={styles.feedbackTitle}>{providerName} account</Text>
+                    <Text style={styles.feedbackTitle}>{t('account:changeEmail.oauth.title', { provider: providerName })}</Text>
                     <Text style={styles.feedbackBody}>
-                        Your POWR account is linked to {providerName}. To change your email, update it in your {providerName} account first, then sign in to POWR again.
+                        {t('account:changeEmail.oauth.body', { provider: providerName })}
                     </Text>
                 </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.back()}
                 >
-                    <Text style={styles.primaryLabel}>BACK TO SETTINGS</Text>
+                    <Text style={styles.primaryLabel}>{t('account:shared.backToSettings')}</Text>
                 </Pressable>
             </View>
         );
@@ -164,20 +166,20 @@ export default function ChangeEmailScreen() {
                 <GeometricBackground />
                 <View style={styles.feedbackBox}>
                     <Text style={styles.feedbackIcon}>✉️</Text>
-                    <Text style={styles.feedbackTitle}>Check both inboxes</Text>
+                    <Text style={styles.feedbackTitle}>{t('account:changeEmail.pending.title')}</Text>
                     <Text style={styles.feedbackBody}>
-                        We sent a confirmation link to:
+                        {t('account:changeEmail.pending.sentTo')}
                     </Text>
                     <View style={styles.emailRow}>
-                        <Text style={styles.emailRowLabel}>OLD</Text>
+                        <Text style={styles.emailRowLabel}>{t('account:changeEmail.pending.old')}</Text>
                         <Text style={styles.emailRowValue}>{currentEmail}</Text>
                     </View>
                     <View style={styles.emailRow}>
-                        <Text style={styles.emailRowLabel}>NEW</Text>
+                        <Text style={styles.emailRowLabel}>{t('account:changeEmail.pending.new')}</Text>
                         <Text style={styles.emailRowValue}>{newEmail.trim().toLowerCase()}</Text>
                     </View>
                     <Text style={styles.feedbackHint}>
-                        Click both links to complete the change. Until then, keep signing in with your old email. If you ignore the emails, nothing changes.
+                        {t('account:changeEmail.pending.hint')}
                     </Text>
                 </View>
 
@@ -191,7 +193,7 @@ export default function ChangeEmailScreen() {
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.replace('/settings-screen')}
                 >
-                    <Text style={styles.primaryLabel}>BACK TO SETTINGS</Text>
+                    <Text style={styles.primaryLabel}>{t('account:shared.backToSettings')}</Text>
                 </Pressable>
 
                 <Pressable
@@ -200,8 +202,8 @@ export default function ChangeEmailScreen() {
                     style={({ pressed }) => [{ opacity: pressed || resending ? 0.6 : 1, marginTop: 12 }]}
                 >
                     <Text style={styles.forgotHint}>
-                        {resending ? 'Resending…' : "Didn't get the emails? "}
-                        {!resending && <Text style={styles.forgotLink}>Resend</Text>}
+                        {resending ? t('account:changeEmail.pending.resending') : t('account:changeEmail.pending.noEmails')}
+                        {!resending && <Text style={styles.forgotLink}>{t('account:changeEmail.pending.resend')}</Text>}
                     </Text>
                 </Pressable>
             </View>
@@ -231,30 +233,32 @@ export default function ChangeEmailScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <Text style={styles.headline}>
-                    {'Change\n'}
-                    <Text style={styles.headlineGold}>email.</Text>
+                    <Trans
+                        i18nKey="account:changeEmail.headline"
+                        components={{ gold: <Text style={styles.headlineGold} /> }}
+                    />
                 </Text>
 
                 <Text style={styles.intro}>
-                    For your security we'll email a confirmation link to both your current and new addresses. Both must be clicked to complete the change.
+                    {t('account:changeEmail.intro')}
                 </Text>
 
                 <View style={styles.currentBox}>
-                    <Text style={styles.currentLabel}>CURRENT EMAIL</Text>
+                    <Text style={styles.currentLabel}>{t('account:changeEmail.currentEmail')}</Text>
                     <Text style={styles.currentValue}>{currentEmail || '—'}</Text>
                 </View>
 
                 <View style={styles.form}>
                     {/* New email */}
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>NEW EMAIL</Text>
+                        <Text style={styles.fieldLabel}>{t('account:changeEmail.newEmail')}</Text>
                         <View style={[
                             styles.inputContainer,
                             focusedField === 'new' && styles.inputFocused,
                         ]}>
                             <TextInput
                                 style={styles.input}
-                                placeholder="you@example.com"
+                                placeholder={t('account:changeEmail.emailPlaceholder')}
                                 placeholderTextColor="rgba(255,255,255,0.22)"
                                 value={newEmail}
                                 onChangeText={setNewEmail}
@@ -271,14 +275,14 @@ export default function ChangeEmailScreen() {
 
                     {/* Confirm new email */}
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>CONFIRM NEW EMAIL</Text>
+                        <Text style={styles.fieldLabel}>{t('account:changeEmail.confirmEmail')}</Text>
                         <View style={[
                             styles.inputContainer,
                             focusedField === 'confirm' && styles.inputFocused,
                         ]}>
                             <TextInput
                                 style={styles.input}
-                                placeholder="Re-enter new email"
+                                placeholder={t('account:changeEmail.confirmPlaceholder')}
                                 placeholderTextColor="rgba(255,255,255,0.22)"
                                 value={confirmEmail}
                                 onChangeText={setConfirmEmail}
@@ -295,7 +299,7 @@ export default function ChangeEmailScreen() {
 
                     {/* Current password */}
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>CURRENT PASSWORD</Text>
+                        <Text style={styles.fieldLabel}>{t('account:shared.currentPassword')}</Text>
                         <View style={[
                             styles.inputContainer,
                             focusedField === 'password' && styles.inputFocused,
@@ -339,7 +343,7 @@ export default function ChangeEmailScreen() {
                     >
                         {loading
                             ? <ActivityIndicator color="#0a0a0a" />
-                            : <Text style={styles.primaryLabel}>SEND CONFIRMATION LINKS</Text>
+                            : <Text style={styles.primaryLabel}>{t('account:changeEmail.submit')}</Text>
                         }
                     </Pressable>
                 </View>
@@ -527,7 +531,8 @@ const styles = StyleSheet.create({
         fontSize: 9,
         fontWeight: '600',
         letterSpacing: 1.5,
-        width: 36,
+        // min, not fixed: "ANCIEN" / "ANTIGUO" outgrow the 36 that fits "OLD".
+        minWidth: 36,
     },
     emailRowValue: {
         color: '#F2F2F2',

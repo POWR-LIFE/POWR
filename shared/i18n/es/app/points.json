@@ -1,0 +1,223 @@
+{
+  "ledger": {
+    "title": "Historial de puntos",
+    "loadError": "No se ha podido cargar el historial.",
+    "empty": "Aún no hay movimientos.",
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "summary": {
+      "balance": "Saldo",
+      "totalEarned": "Total ganado",
+      "scopedEntries": "Movimientos: {{label}}"
+    },
+    "typeFallback": {
+      "earn": "Actividad",
+      "bonus": "Bonus",
+      "streak": "Bonus de racha",
+      "adjustment": "Ajuste",
+      "redeem": "Recompensa canjeada",
+      "penalty": "Penalización"
+    },
+    "badge": {
+      "together": "EN EQUIPO",
+      "streak": "RACHA",
+      "vault": "VAULT",
+      "bonus": "BONUS",
+      "minutes": "+{{minutes}} MIN",
+      "adjustment": "AJUSTE",
+      "penalty": "PENALIZACIÓN",
+      "levelUp": "NUEVO NIVEL"
+    },
+    "levelUpRow": "Nivel {{level}} — {{name}}"
+  },
+  "filters": {
+    "all": "Todo",
+    "together": "En equipo",
+    "type": {
+      "bonus": "Bonus",
+      "streak": "Rachas",
+      "redeem": "Recompensas",
+      "penalty": "Penalizaciones",
+      "adjustment": "Ajustes",
+      "earn": "Otros"
+    }
+  },
+  "filterSheet": {
+    "eyebrow": "FILTRAR",
+    "headline": "¿Qué quieres ver?",
+    "activities": "ACTIVIDADES",
+    "otherPoints": "OTROS PUNTOS",
+    "entries_one": "{{n}} movimiento",
+    "entries_other": "{{n}} movimientos",
+    "rowA11y_one": "{{label}}, {{count}} movimiento",
+    "rowA11y_other": "{{label}}, {{count}} movimientos",
+    "close": "Cerrar",
+    "chipA11y": "Filtrar historial",
+    "chipA11yFiltered": "Filtro: {{label}}. Cambiar filtro"
+  },
+  "manualLog": {
+    "title": "Registrar actividad",
+    "pickerLabel": "Elige tu actividad",
+    "dailyCap": "hasta {{cap}} pts",
+    "pickerNote": "Un registro manual da el 80 % de los puntos base · Verifícalo con tus datos de salud para conseguirlos todos",
+    "minimum": {
+      "steps": "Mínimo {{steps}} pasos para ganar puntos",
+      "minutes": "Mínimo {{minutes}} min para que cuente",
+      "other": "Completa la actividad para que cuente"
+    },
+    "details": {
+      "title": "Detalles del entreno",
+      "steps": {
+        "label": "Pasos",
+        "placeholder": "p. ej. 8000",
+        "unit": "pasos"
+      },
+      "duration": {
+        "label": "Duración",
+        "placeholder": "p. ej. 45",
+        "unit": "min"
+      },
+      "distance": {
+        "label": "Distancia",
+        "placeholder": "Opcional"
+      },
+      "optional": "opcional"
+    },
+    "verify": {
+      "cta": "Verifica con tus datos de salud para conseguir todos los puntos",
+      "success": "Verificado con tus datos de salud: todos los puntos",
+      "failed": "No se ha podido verificar con tus datos de salud"
+    },
+    "preview": {
+      "belowMinimum": "No llega al mínimo",
+      "estimated": "POWR estimados",
+      "ptsUnit": " pts",
+      "base": "Base",
+      "points": "{{points}} pts",
+      "verifiedRate": "Datos de salud (×1,0)",
+      "manualRate": "Manual (×0,8)"
+    },
+    "submit": "Registrar entreno",
+    "submitWithPoints": "Registrar entreno · {{points}} pts",
+    "submitNote": {
+      "verified": "Verificado con tus datos de salud: todos los puntos. No suma a tu racha.",
+      "manual": "Un registro manual da el 80 % de los puntos base. Verifícalo con tus datos de salud para conseguirlos todos."
+    },
+    "submitFailed": "No se ha podido registrar el entreno"
+  },
+  "achievementsScreen": {
+    "title": "LOGROS",
+    "summary": {
+      "levels": "niveles",
+      "earned": "conseguidos"
+    },
+    "tabs": {
+      "levels": "NIVELES",
+      "badges": "INSIGNIAS"
+    },
+    "filterAll": "Todo",
+    "filterEarned": "Conseguidos",
+    "allCategories": "Todas las categorías",
+    "loading": "Cargando…",
+    "empty": "Aún no hay logros aquí",
+    "levelNumber": "NIV. {{level}}",
+    "xp": "{{xp}} pts",
+    "unlockAt": "Se desbloquea con {{xp}} pts",
+    "toGo": "Faltan {{xp}} pts",
+    "complete": "COMPLETADO",
+    "progressTo": "{{percent}} % para NIV. {{level}}"
+  },
+  "levels": {
+    "touchingGrass": {
+      "name": "Adiós sofá"
+    },
+    "cardioGoblin": {
+      "name": "Duende del cardio"
+    },
+    "streakFreak": {
+      "name": "Rachamanía"
+    },
+    "motionMagic": {
+      "name": "Magia en movimiento"
+    },
+    "heavyHitter": {
+      "name": "Peso pesado"
+    },
+    "cantSitStill": {
+      "name": "Culo inquieto"
+    },
+    "ironLungs": {
+      "name": "Pulmones de acero"
+    },
+    "pavementPredator": {
+      "name": "Terror del asfalto"
+    },
+    "stepCollector": {
+      "name": "Ciempiés"
+    },
+    "calorieCriminal": {
+      "name": "Atraco calórico"
+    },
+    "mileMuncher": {
+      "name": "Comekilómetros"
+    },
+    "moveMachine": {
+      "name": "Pura máquina"
+    },
+    "needNewShoes": {
+      "name": "Zapas fundidas"
+    },
+    "certifiedWeapon": {
+      "name": "Bestia certificada"
+    },
+    "momentumMonster": {
+      "name": "Monstruo imparable"
+    },
+    "limitBreaker": {
+      "name": "Rompelímites"
+    },
+    "dieselMode": {
+      "name": "Modo diésel"
+    },
+    "peakCondition": {
+      "name": "Estado de gracia"
+    },
+    "longHauler": {
+      "name": "Largo recorrido"
+    },
+    "goggins": {
+      "name": "Goggins"
+    },
+    "tiers": {
+      "recruit": "RECLUTA",
+      "athlete": "ATLETA",
+      "elite": "ÉLITE",
+      "legend": "LEYENDA"
+    },
+    "tierRange": "NIVELES {{from}}–{{to}}"
+  },
+  "achievements": {
+    "reachLevel": "Alcanza el nivel {{level}}: {{name}}",
+    "summit": "La cima. Alcanza el nivel {{level}}: {{name}}",
+    "category": {
+      "habit": "Hábito",
+      "sessions": "Sesiones",
+      "points": "Puntos",
+      "level": "Nivel",
+      "running": "Carrera",
+      "gym": "Gimnasio",
+      "cycling": "Ciclismo",
+      "swimming": "Natación",
+      "hiit": "HIIT",
+      "yoga": "Yoga",
+      "sports": "Deportes",
+      "walking": "Caminata"
+    },
+    "rarity": {
+      "common": "Común",
+      "rare": "Raro",
+      "epic": "Épico",
+      "legendary": "Legendario"
+    }
+  }
+}

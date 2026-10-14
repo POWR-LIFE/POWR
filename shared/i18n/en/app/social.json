@@ -1,0 +1,494 @@
+{
+  "shared": {
+    "close": "Close",
+    "you": "You",
+    "aFriend": "A friend",
+    "loading": "Loading…",
+    "done": "Done",
+    "viewProfile": "View {{name}}'s profile",
+    "viewFriends": "View friends",
+    "scanFriendCode": "Scan a friend's code",
+    "clearSearch": "Clear search",
+    "searchByUsername": "Search by username",
+    "typeMore": "Type at least 2 characters to search.",
+    "searching": "Searching…",
+    "noResults": "No one found for “{{query}}”.",
+    "requested": "Requested",
+    "add": "Add",
+    "addName": "Add {{name}}",
+    "inviteName": "Invite {{name}}",
+    "addFriend": "Add friend",
+    "acceptRequest": "Accept request",
+    "shareLink": "Share link",
+    "couldntJoin": "Couldn’t join",
+    "couldntDecline": "Couldn’t decline",
+    "pts": "pts",
+    "removeFriend": {
+      "title": "Remove {{name}}?",
+      "body": "They'll be taken off your friends list. Any challenges you're both in keep running, and you can add each other again anytime.",
+      "confirm": "Remove"
+    },
+    "tier": {
+      "easy": "Easy",
+      "medium": "Medium",
+      "hard": "Hard"
+    }
+  },
+  "friends": {
+    "title": "FRIENDS",
+    "showMyCode": "Show my code",
+    "searchPlaceholder": "Add by username",
+    "searchResults": "SEARCH RESULTS",
+    "requests": "REQUESTS · {{total}}",
+    "wantsToConnect": "@{{username}} · wants to connect",
+    "acceptName": "Accept {{name}}",
+    "declineName": "Decline {{name}}",
+    "friendsCount": "FRIENDS · {{total}}",
+    "empty": "No friends yet — search by username to add some.",
+    "removeName": "Remove {{name}}",
+    "pending": "PENDING · {{total}}",
+    "sent": "Sent"
+  },
+  "addFriend": {
+    "title": "ADD FRIEND",
+    "fallbackName": "POWR member",
+    "notFound": {
+      "title": "Couldn’t find that person",
+      "body": "This code may be invalid or out of date. Ask them to show you their code again."
+    },
+    "connected": {
+      "title": "You're connected!",
+      "body": "You can now take on challenges together."
+    },
+    "sent": {
+      "title": "Request sent",
+      "body": "We'll let them know — you'll connect once they accept."
+    },
+    "self": {
+      "title": "That's you",
+      "body": "This is your own code — share it for a friend to scan."
+    },
+    "already": {
+      "title": "Already friends",
+      "body": "You're already connected on POWR."
+    },
+    "pending": {
+      "title": "Request pending",
+      "body": "You've already sent them a request — waiting on their reply."
+    }
+  },
+  "scanFriend": {
+    "title": "SCAN A CODE",
+    "notPowr": "That's not a POWR code — try their code again.",
+    "hint": "Point at a friend’s POWR code",
+    "denied": {
+      "title": "Camera access needed",
+      "body": "POWR needs your camera to scan a friend’s code. You can enable it in Settings, or add friends by username instead.",
+      "allow": "Allow camera",
+      "openSettings": "Open settings",
+      "byUsername": "Add by username"
+    }
+  },
+  "myQr": {
+    "title": "MY CODE",
+    "shareMessage": "Add me on POWR 💪\n{{link}}",
+    "loadError": "Couldn’t load your code. Try again in a moment.",
+    "caption": "Have a friend scan this to connect on POWR — then you can take on challenges together.",
+    "shareA11y": "Share your code",
+    "copyA11y": "Copy link",
+    "copy": "Copy",
+    "copied": "Copied",
+    "scanInstead": "Scan a friend’s code instead"
+  },
+  "join": {
+    "missingCode": "This invite link is missing its code.",
+    "failed": "Something went wrong joining this challenge.",
+    "goHome": "Go to Home",
+    "joining": "Joining the challenge…"
+  },
+  "challenges": {
+    "title": "CHALLENGES",
+    "takeFailed": "Couldn’t take that one",
+    "atCap": "You're in {{open}} of {{cap}} challenges — finish or leave one to start another.",
+    "tabs": {
+      "parallel": {
+        "label": "Side by side",
+        "sub": "Each of you does your own part."
+      },
+      "pooled": {
+        "label": "Team total",
+        "sub": "Pool your effort toward one shared goal."
+      }
+    },
+    "bonusLine": "Everyone earns a growing bonus when you all finish.",
+    "board": {
+      "title": "Open challenges",
+      "hint": "First to take it races them"
+    },
+    "emptyParallel": "No side-by-side challenges right now.",
+    "emptyPooled": "No team-total challenges right now."
+  },
+  "openBoard": {
+    "waiting_one": "{{count}} member is waiting for a challenger",
+    "waiting_other": "{{count}} members are waiting for a challenger",
+    "waitingBody": "Take one on and you race them for real. They see your first name and photo — nothing else.",
+    "waitingCta": "Show me",
+    "beFirst": {
+      "title": "Be first on the board",
+      "body": "Post a challenge and any POWR member can take it. The clock starts when someone does, so you both race the same week.",
+      "cta": "Post one"
+    },
+    "pitch": {
+      "title": "No one to challenge yet?",
+      "body": "Post a challenge any POWR member can take, and see theirs. Your first name and photo, nothing else.",
+      "cta": "Turn on the board"
+    }
+  },
+  "openCard": {
+    "takeA11y": "Take {{name}}'s {{title}} challenge",
+    "spotsOpen": "{{slots}} spots open",
+    "waiting": "waiting for someone",
+    "takeIt": "Take it"
+  },
+  "templateCard": {
+    "pitch": "You & {{who}} — finish together for +{{each}} each on top",
+    "a11y": "Challenge friends to {{title}}",
+    "noCrew": "No crew yet? Start solo and race the Pacer — beat the pace, bank the points.",
+    "racePacer": "Race the Pacer",
+    "challengeFriends": "Challenge friends"
+  },
+  "create": {
+    "title": "Challenge friends",
+    "backToInvites": "Back to invites",
+    "addAFriend": "Add a friend",
+    "plate": {
+      "title": "Your plate is full",
+      "body": "You're in {{open}} of {{cap}} challenges. Finish your part — or drop one — to take on another.",
+      "leaveName": "Leave {{title}}",
+      "leave": "Leave",
+      "gotIt": "Got it"
+    },
+    "searchIntro": "Find people by username and send a friend request. They join your invite list once they accept.",
+    "requestSentNote": "Request sent — once they accept, they’ll appear in your invite list.",
+    "challenge": "Challenge",
+    "pickChallenge": "Pick a challenge",
+    "runsNow": "Runs for {{duration}} — clock starts right away",
+    "runsWhenAllIn": "Runs for {{duration}} — clock starts when everyone’s in",
+    "inviteFriends": "Invite friends",
+    "selected": "{{selected}}/{{max}} selected",
+    "noFriends": "No friends yet — search below to add one, or share a link to invite anyone.",
+    "notOnTogether": "{{name}} isn't on Together",
+    "off": "Off",
+    "shareLinkA11y": "Invite by share link",
+    "link": "Link",
+    "addByUsernameA11y": "Add a friend by username",
+    "board": {
+      "title": "Post to the open board",
+      "body": "Any POWR member can take it — the first one to does races you. They see your first name and photo."
+    },
+    "summary": {
+      "friends_one": "{{count}} friend · group of {{size}}",
+      "friends_other": "{{count}} friends · group of {{size}}",
+      "waiting": "Waiting on a taker — you’ll both start when they take it",
+      "solo": "Going solo — invite friends anytime for a bonus",
+      "needsFriend": "A team total needs at least one friend"
+    },
+    "bonusEach": "+{{bonus}} each if all finish",
+    "bonusEachMax": "+{{bonus}} each if all finish (max)",
+    "send": {
+      "posting": "Posting…",
+      "starting": "Starting…",
+      "sending": "Sending…",
+      "post": "Post to the board",
+      "solo": "Start solo",
+      "invites": "Send invites"
+    },
+    "timing": {
+      "board": "Starts when someone takes it, so you both race the same clock.",
+      "solo": "Starts the moment you tap — you’ll be racing the Pacer.",
+      "group": "Starts as soon as one friend joins — everything from now counts."
+    },
+    "shareMessage": "Join me on POWR: \"{{title}}\" — {{goal}}. {{url}}",
+    "shareMessageDuration": "Join me on POWR: \"{{title}}\" — {{goal}} in {{duration}}. {{url}}"
+  },
+  "invite": {
+    "title": "Invite people",
+    "inviteAFriend": "INVITE A FRIEND",
+    "noFriends": "You have no friends to invite yet — search for someone new below.",
+    "allIn": "Everyone you can invite is already in. Add someone new below.",
+    "inviting": "Inviting…",
+    "invite": "Invite",
+    "sent_one": "Invite sent.",
+    "sent_other": "{{count}} invites sent.",
+    "willNotify": "They’ll get a notification to join.",
+    "notFriendsYet": "NOT FRIENDS YET?",
+    "searchIntro": "Find someone new by username. They’ll need to accept your friend request before you can invite them.",
+    "requestSent": "Request sent. Once they accept, you can invite them into this challenge."
+  },
+  "countdown": {
+    "ended": "Ended",
+    "left": "{{time}} left",
+    "toAcceptSuffix": " to accept",
+    "daysHours": "{{d}}d {{h}}h",
+    "hoursMinutes": "{{h}}h {{m}}m",
+    "minutesSeconds": "{{m}}m {{s}}s",
+    "seconds": "{{s}}s"
+  },
+  "detail": {
+    "header": "TOGETHER",
+    "headerMissing": "CHALLENGE",
+    "loadError": {
+      "title": "Couldn’t load this challenge",
+      "body": "Check your connection and try again.",
+      "retry": "Try again"
+    },
+    "missing": {
+      "title": "Challenge not available",
+      "body": "It may have ended or been cancelled.",
+      "back": "Go back"
+    },
+    "state": {
+      "done": "Done",
+      "invited": "Invited",
+      "declined": "Declined"
+    },
+    "today": "Today · {{value}}",
+    "poolSteps": "{{total}} / {{target}} steps",
+    "outcome": {
+      "notJoined": "This one finished before you joined.",
+      "cancelledPaid": "Cancelled before the end — you keep what you’d already earned.",
+      "cancelled": "Challenge cancelled before it finished.",
+      "expiredPooled": "Time ran out before the group reached the target.",
+      "expired": "Time ran out — nobody finished this one.",
+      "wonWith_one": "You and {{count}} other finished. +{{points}} earned.",
+      "wonWith_other": "You and {{count}} others finished. +{{points}} earned.",
+      "wonSolo": "You finished. +{{points}} earned.",
+      "lostPooled": "The group hit the target without you this time.",
+      "lost": "Time's up — {{finished}} of {{total}} finished. You didn't make this one.",
+      "lostNobody": "Time's up — nobody finished this one."
+    },
+    "pace": "About {{amount}} a day gets it done.",
+    "pacePooled": "About {{amount}} a day between you gets it done.",
+    "leave": {
+      "titleCreator": "Cancel challenge?",
+      "title": "Leave challenge?",
+      "bodyCreator": "This ends “{{title}}” for everyone. This can’t be undone.",
+      "bodyLast": "You’ll drop out of “{{title}}”. With no one else left, it ends for everyone.",
+      "body": "You’ll drop out of “{{title}}”. The others keep going.",
+      "keep": "Keep challenge",
+      "stay": "Stay in",
+      "cancelChallenge": "Cancel challenge",
+      "leave": "Leave",
+      "leaveChallenge": "Leave challenge",
+      "cancelFailed": "Couldn’t cancel",
+      "leaveFailed": "Couldn’t leave"
+    },
+    "share": {
+      "plain": "Join my POWR challenge \"{{title}}\" — {{goal}}. {{url}}",
+      "plainDuration": "Join my POWR challenge \"{{title}}\" — {{goal}} in {{duration}}. {{url}}",
+      "invite": "Join my POWR challenge \"{{title}}\" — {{goal}}. Tap to join: {{url}}",
+      "inviteDuration": "Join my POWR challenge \"{{title}}\" — {{goal}} in {{duration}}. Tap to join: {{url}}",
+      "resultA11y": "Share challenge result",
+      "inviteA11y": "Share challenge invite",
+      "linkA11y": "Share challenge link",
+      "result": "Share result"
+    },
+    "inCount": "{{total}} in",
+    "ended": "Ended",
+    "cancelled": "Cancelled",
+    "notStarted": "Not started",
+    "remain": {
+      "label": "LEFT TO DO",
+      "done": "Done",
+      "targetHit": "target hit",
+      "goalIn": "your goal is in",
+      "toGo": "to go",
+      "toGoUnit": "{{unit}} to go",
+      "timeLeft": "time left",
+      "startsOnceIn": "starts once enough are in",
+      "selfDone": "You’re done — your bonus still grows as the others finish."
+    },
+    "pool": {
+      "label": "GROUP TOTAL",
+      "hit": "Target hit — everyone who chipped in earns +{{base}}.",
+      "hitBonus": "Target hit — everyone who chipped in earns +{{base}} plus up to +{{max}} bonus.",
+      "cancelled": "Cancelled before the group got there.",
+      "live": "Add to the total to win. Everyone who contributes earns +{{base}}, and the bonus grows with each friend who chips in — up to +{{max}}."
+    },
+    "points": {
+      "label": "YOUR POINTS",
+      "base": "base",
+      "bonus": "bonus",
+      "bankedCancelled": "Banked when you finished your part, before the cancellation.",
+      "final": "Final — banked when the challenge settled.",
+      "friendsDone_one": "{{count}} friend has finished — your bonus grows with each one.",
+      "friendsDone_other": "{{count}} friends have finished — your bonus grows with each one.",
+      "grows": "Your bonus grows each time a friend finishes.",
+      "upTo": "Up to {{points}} if everyone finishes."
+    },
+    "contributors": "CONTRIBUTORS",
+    "participants": "PARTICIPANTS",
+    "doneCount": "<green>{{finished}}</green><plain> of {{total}} done</plain>",
+    "pacer": {
+      "name": "Pacer",
+      "a11yAhead": "Pacer at {{pct}} percent — you are ahead",
+      "a11yBehind": "Pacer at {{pct}} percent — the pacer is ahead",
+      "youAhead": "You're ahead",
+      "pacerAhead": "Ahead of you"
+    },
+    "invitePrompt": "{{name}} invited you. Finish together for <gold>up to +{{max}} bonus</gold>.",
+    "underway": "This one’s already underway — you’d be joining with <time></time> left.",
+    "accept": "Accept challenge",
+    "joining": "Joining…",
+    "declineA11y": "Decline challenge",
+    "declining": "Declining…",
+    "decline": "Decline",
+    "invitePeopleA11y": "Invite people to this challenge",
+    "invitePeople": "Invite people"
+  },
+  "activity": {
+    "title": "ACTIVITY",
+    "ignore": "Ignore",
+    "ignoreA11y": "Ignore: {{title}}",
+    "actionA11y": "{{action}}: {{title}}",
+    "remove": "Remove",
+    "removeA11y": "Remove: {{label}}",
+    "timeAgo": {
+      "now": "now",
+      "minutes": "{{n}}m",
+      "hours": "{{n}}h",
+      "days": "{{n}}d",
+      "weeks": "{{n}}w",
+      "months_one": "{{count}}mo",
+      "months_other": "{{count}}mo"
+    },
+    "empty": {
+      "title": "You’re all caught up",
+      "body": "Friend requests, challenge invites and your recent activity will show up here."
+    },
+    "needsYou": "NEEDS YOU",
+    "friendRequest": "@{{username}} · sent you a friend request",
+    "accept": "Accept",
+    "challengeInvite": "{{name}} invited you · {{goal}}",
+    "join": "Join",
+    "recent": "RECENT"
+  },
+  "profile": {
+    "error": {
+      "title": "Something went wrong",
+      "body": "We couldn't update that just now — please try again."
+    },
+    "thisPerson": "this person",
+    "unknown": "Unknown",
+    "level": "LVL {{level}} · {{name}}",
+    "achievementCount": "{{earned}} / {{total}} achievements",
+    "achievements": "ACHIEVEMENTS",
+    "theirPts": "THEIR PTS",
+    "vsYou": "VS YOU",
+    "yourPts": "YOUR PTS",
+    "activity30d": "ACTIVITY · LAST 30 DAYS",
+    "gallery": "GALLERY",
+    "declineRequest": "Decline request",
+    "friendsTapToRemove": "Friends — tap to remove",
+    "friends": "Friends",
+    "joined": "Joined {{date}}",
+    "monthYear": "{{month}} {{year}}",
+    "months": {
+      "jan": "Jan",
+      "feb": "Feb",
+      "mar": "Mar",
+      "apr": "Apr",
+      "may": "May",
+      "jun": "Jun",
+      "jul": "Jul",
+      "aug": "Aug",
+      "sep": "Sep",
+      "oct": "Oct",
+      "nov": "Nov",
+      "dec": "Dec"
+    },
+    "someone": "Someone",
+    "mutual": "You both know {{names}}",
+    "mutualMore": "You both know {{names}} +{{more}}",
+    "friendCount_one": "{{count}} friend",
+    "friendCount_other": "{{count}} friends",
+    "friendsSince": "Friends since {{date}}",
+    "challengesTogether_one": "{{count}} challenge together",
+    "challengesTogether_other": "{{count}} challenges together",
+    "dayStreak": "DAY STREAK",
+    "best": "{{n}} best",
+    "ptsWeek": "{{points}} PTS / 7D",
+    "sessions30d": "SESSIONS · 30D"
+  },
+  "units": {
+    "qualifyingDays_one": "qualifying day",
+    "qualifyingDays_other": "qualifying days",
+    "steps_one": "step",
+    "steps_other": "steps",
+    "checkIns_one": "check-in",
+    "checkIns_other": "check-ins",
+    "runs_one": "run",
+    "runs_other": "runs",
+    "rides_one": "ride",
+    "rides_other": "rides",
+    "sessions_one": "session",
+    "sessions_other": "sessions",
+    "qualifyingCheckIns_one": "qualifying check-in",
+    "qualifyingCheckIns_other": "qualifying check-ins",
+    "qualifyingRuns_one": "qualifying run",
+    "qualifyingRuns_other": "qualifying runs",
+    "qualifyingRides_one": "qualifying ride",
+    "qualifyingRides_other": "qualifying rides",
+    "qualifyingSessions_one": "qualifying session",
+    "qualifyingSessions_other": "qualifying sessions",
+    "activityTypes_one": "activity type",
+    "activityTypes_other": "activity types",
+    "activityCombos_one": "activity combo",
+    "activityCombos_other": "activity combos"
+  },
+  "milestone": {
+    "anyTime_one": "Hit {{steps}} steps on {{count}} day.",
+    "anyTime_other": "Hit {{steps}} steps on {{count}} days.",
+    "morning_one": "Hit {{steps}} steps before 9am on {{count}} day.",
+    "morning_other": "Hit {{steps}} steps before 9am on {{count}} days.",
+    "midday_one": "Hit {{steps}} steps between 12pm and 2pm on {{count}} day.",
+    "midday_other": "Hit {{steps}} steps between 12pm and 2pm on {{count}} days.",
+    "evening_one": "Hit {{steps}} steps after 6pm on {{count}} day.",
+    "evening_other": "Hit {{steps}} steps after 6pm on {{count}} days."
+  },
+  "share": {
+    "categoryLabel": "Together"
+  },
+  "category": {
+    "all": "All",
+    "fallback": "Activity"
+  },
+  "duration": {
+    "weeks_one": "{{count}} week",
+    "weeks_other": "{{count}} weeks",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "hours": "{{hours}}h"
+  },
+  "remaining": {
+    "notStarted": "Not started",
+    "ended": "Ended",
+    "minutes_one": "{{count}}m left",
+    "minutes_other": "{{count}}m left",
+    "hours_one": "{{count}}h left",
+    "hours_other": "{{count}}h left",
+    "days_one": "{{count}}d left",
+    "days_other": "{{count}}d left"
+  },
+  "errors": {
+    "respond": {
+      "accept": "Couldn’t join this challenge. Check your connection and try again.",
+      "decline": "Couldn’t decline this invite. Check your connection and try again.",
+      "leave": "Couldn’t leave this challenge. Check your connection and try again.",
+      "dismiss": "Couldn’t clear this challenge. Check your connection and try again.",
+      "cancel": "Couldn’t cancel this challenge. Check your connection and try again."
+    },
+    "create": "Couldn’t create that challenge"
+  },
+  "fallbackTitle": "Challenge"
+}

@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
@@ -44,6 +45,7 @@ function PersonRow({
   right?: React.ReactNode;
   onPress?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.row}>
       <Pressable
@@ -51,7 +53,7 @@ function PersonRow({
         onPress={onPress}
         disabled={!onPress}
         accessibilityRole={onPress ? 'button' : undefined}
-        accessibilityLabel={onPress ? `View ${friend.displayName}'s profile` : undefined}
+        accessibilityLabel={onPress ? t('social:shared.viewProfile', { name: friend.displayName }) : undefined}
       >
         <Avatar friend={friend} size={42} />
         <View style={{ flex: 1 }}>
@@ -67,6 +69,7 @@ function PersonRow({
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const {
     friends,
     incoming,
@@ -110,7 +113,7 @@ export default function FriendsScreen() {
     }
     let cancelled = false;
     setSearching(true);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const r = await search(q);
       if (!cancelled) {
         setResults(r);
@@ -119,7 +122,7 @@ export default function FriendsScreen() {
     }, 300);
     return () => {
       cancelled = true;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   }, [query, search]);
 
@@ -145,12 +148,12 @@ export default function FriendsScreen() {
   const confirmRemove = (f: Friend) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
-      `Remove ${f.displayName}?`,
-      "They'll be taken off your friends list. Any challenges you're both in keep running, and you can add each other again anytime.",
+      t('social:shared.removeFriend.title', { name: f.displayName }),
+      t('social:shared.removeFriend.body'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common:actions.cancel'), style: 'cancel' },
         {
-          text: 'Remove',
+          text: t('social:shared.removeFriend.confirm'),
           style: 'destructive',
           onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -166,15 +169,15 @@ export default function FriendsScreen() {
       <GeometricBackground />
 
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Back">
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('common:actions.back')}>
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>FRIENDS</Text>
+        <Text style={styles.headerTitle}>{t('social:friends.title')}</Text>
         <View style={styles.headerActions}>
-          <Pressable onPress={() => router.push('/scan-friend')} hitSlop={10} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Scan a friend's code">
+          <Pressable onPress={() => router.push('/scan-friend')} hitSlop={10} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('social:shared.scanFriendCode')}>
             <Ionicons name="scan-outline" size={20} color={TEXT} />
           </Pressable>
-          <Pressable onPress={() => router.push('/my-qr')} hitSlop={10} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Show my code">
+          <Pressable onPress={() => router.push('/my-qr')} hitSlop={10} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('social:friends.showMyCode')}>
             <Ionicons name="qr-code-outline" size={19} color={TEXT} />
           </Pressable>
         </View>
@@ -186,14 +189,14 @@ export default function FriendsScreen() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Add by username"
+          placeholder={t('social:friends.searchPlaceholder')}
           placeholderTextColor={MUTED}
           autoCapitalize="none"
           autoCorrect={false}
           style={styles.searchInput}
         />
         {query.length > 0 && (
-          <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
+          <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel={t('social:shared.clearSearch')}>
             <Ionicons name="close-circle" size={16} color={MUTED} />
           </Pressable>
         )}
@@ -207,13 +210,13 @@ export default function FriendsScreen() {
         {/* Search results */}
         {query.trim().length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>SEARCH RESULTS</Text>
+            <Text style={styles.sectionLabel}>{t('social:friends.searchResults')}</Text>
             {query.trim().length < 2 ? (
-              <Text style={styles.emptyLine}>Type at least 2 characters to search.</Text>
+              <Text style={styles.emptyLine}>{t('social:shared.typeMore')}</Text>
             ) : searching ? (
-              <Text style={styles.emptyLine}>Searching…</Text>
+              <Text style={styles.emptyLine}>{t('social:shared.searching')}</Text>
             ) : results.length === 0 ? (
-              <Text style={styles.emptyLine}>No one found for “{query.trim()}”.</Text>
+              <Text style={styles.emptyLine}>{t('social:shared.noResults', { query: query.trim() })}</Text>
             ) : (
               <View style={styles.card}>
                 {results.map((f, i) => (
@@ -223,11 +226,11 @@ export default function FriendsScreen() {
                       onPress={() => openProfile(f.id)}
                       right={
                         requested.has(f.id) ? (
-                          <Text style={styles.requestedText}>Requested</Text>
+                          <Text style={styles.requestedText}>{t('social:shared.requested')}</Text>
                         ) : (
                           <Pressable style={styles.addBtn} onPress={() => handleSend(f)}>
                             <Ionicons name="person-add" size={13} color="#0a0a0a" />
-                            <Text style={styles.addBtnText}>Add</Text>
+                            <Text style={styles.addBtnText}>{t('social:shared.add')}</Text>
                           </Pressable>
                         )
                       }
@@ -242,20 +245,20 @@ export default function FriendsScreen() {
         {/* Incoming requests */}
         {incoming.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>REQUESTS · {incoming.length}</Text>
+            <Text style={styles.sectionLabel}>{t('social:friends.requests', { total: incoming.length })}</Text>
             <View style={styles.card}>
               {incoming.map((f, i) => (
                 <View key={f.id} style={[i > 0 && styles.divider]}>
                   <PersonRow
                     friend={f}
-                    subtitle={`@${f.username} · wants to connect`}
+                    subtitle={t('social:friends.wantsToConnect', { username: f.username })}
                     onPress={() => openProfile(f.id, 'pending_incoming')}
                     right={
                       <View style={styles.reqActions}>
-                        <Pressable style={styles.acceptBtn} onPress={() => handleAccept(f.id)} accessibilityRole="button" accessibilityLabel={`Accept ${f.displayName}`}>
+                        <Pressable style={styles.acceptBtn} onPress={() => handleAccept(f.id)} accessibilityRole="button" accessibilityLabel={t('social:friends.acceptName', { name: f.displayName })}>
                           <Ionicons name="checkmark" size={16} color="#0a0a0a" />
                         </Pressable>
-                        <Pressable style={styles.declineBtn} onPress={() => handleDecline(f.id)} accessibilityRole="button" accessibilityLabel={`Decline ${f.displayName}`}>
+                        <Pressable style={styles.declineBtn} onPress={() => handleDecline(f.id)} accessibilityRole="button" accessibilityLabel={t('social:friends.declineName', { name: f.displayName })}>
                           <Ionicons name="close" size={16} color={SECONDARY} />
                         </Pressable>
                       </View>
@@ -269,9 +272,9 @@ export default function FriendsScreen() {
 
         {/* Friends */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>FRIENDS · {friends.length}</Text>
+          <Text style={styles.sectionLabel}>{t('social:friends.friendsCount', { total: friends.length })}</Text>
           {friends.length === 0 ? (
-            <Text style={styles.emptyLine}>No friends yet — search by username to add some.</Text>
+            <Text style={styles.emptyLine}>{t('social:friends.empty')}</Text>
           ) : (
             <View style={styles.card}>
               {friends.map((f, i) => (
@@ -284,7 +287,7 @@ export default function FriendsScreen() {
                         hitSlop={10}
                         onPress={() => confirmRemove(f)}
                         accessibilityRole="button"
-                        accessibilityLabel={`Remove ${f.displayName}`}
+                        accessibilityLabel={t('social:friends.removeName', { name: f.displayName })}
                       >
                         <Ionicons name="ellipsis-horizontal" size={18} color={MUTED} />
                       </Pressable>
@@ -299,11 +302,11 @@ export default function FriendsScreen() {
         {/* Outgoing */}
         {outgoing.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>PENDING · {outgoing.length}</Text>
+            <Text style={styles.sectionLabel}>{t('social:friends.pending', { total: outgoing.length })}</Text>
             <View style={styles.card}>
               {outgoing.map((f, i) => (
                 <View key={f.id} style={[i > 0 && styles.divider]}>
-                  <PersonRow friend={f} subtitle={`@${f.username}`} onPress={() => openProfile(f.id, 'pending_outgoing')} right={<Text style={styles.requestedText}>Sent</Text>} />
+                  <PersonRow friend={f} subtitle={`@${f.username}`} onPress={() => openProfile(f.id, 'pending_outgoing')} right={<Text style={styles.requestedText}>{t('social:friends.sent')}</Text>} />
                 </View>
               ))}
             </View>

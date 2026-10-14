@@ -1,0 +1,223 @@
+{
+  "discount": {
+    "percentOff": "-{{amount}} %",
+    "amountOff": "-{{amount}} £"
+  },
+  "catalogue": {
+    "title": "Recompensas",
+    "category": {
+      "all": "TODO",
+      "eat": "COMER",
+      "move": "MOVERSE",
+      "mind": "MENTE",
+      "sleep": "SUEÑO"
+    },
+    "loadError": "No se han podido cargar las recompensas.",
+    "retry": "Reintentar",
+    "comingSoon": "Pronto llegarán nuevas recompensas.",
+    "keepMoving": "Sigue moviéndote para desbloquear"
+  },
+  "balance": {
+    "label": "Saldo disponible",
+    "unit": "Puntos",
+    "today": "+{{amount}} hoy"
+  },
+  "vaultWidget": {
+    "label": "VAULT",
+    "inDays": "EN {{days}}D",
+    "today": "HOY"
+  },
+  "placement": {
+    "ad": "ANUNCIO",
+    "nearby": "CERCA",
+    "nearbyNow": "CERCA DE TI"
+  },
+  "featured": {
+    "points": "{{points}} <unit>puntos</unit>",
+    "redeem": "Canjear",
+    "lockedPts": "{{points}} pts"
+  },
+  "card": {
+    "ptsUnit": "pts",
+    "about": "Sobre {{brand}}",
+    "inWallet": "En tu cartera · Ver",
+    "redeemFor": "Canjear por {{points}} pts",
+    "redeemAgainFor": "Canjear de nuevo por {{points}} pts",
+    "walletCount": "{{amount}} en tu cartera",
+    "ptsAway": "Te faltan {{points}} pts",
+    "ptsNeeded": "Necesitas {{points}} pts",
+    "visitPartner": "Ir a la web"
+  },
+  "redeem": {
+    "notFound": "Recompensa no encontrada.",
+    "errors": {
+      "insufficientPoints": "No tienes suficientes POWR.",
+      "outOfStock": "Esta recompensa no está disponible temporalmente. Vuelve pronto.",
+      "inactive": "Esta recompensa ya no está disponible.",
+      "limitReached": "Ya has canjeado esta recompensa el número máximo de veces.",
+      "notFound": "Recompensa no encontrada. Vuelve atrás e inténtalo de nuevo.",
+      "partnerMisconfigured": "Esta recompensa aún no está disponible. Inténtalo más tarde.",
+      "withCode": "Algo ha ido mal ({{code}}). Inténtalo de nuevo.",
+      "generic": "Algo ha ido mal. Inténtalo de nuevo."
+    },
+    "yourBalance": "Tu saldo",
+    "cost": "Coste",
+    "afterRedemption": "Tras el canje",
+    "ptsValue": "{{points}} pts",
+    "ptsCost": "− {{points}} pts",
+    "needMore": "Te faltan {{points}} pts para canjear esto",
+    "existingCodes_one": "Ya tienes {{count}} código activo para esto — míralo en tu cartera",
+    "existingCodes_other": "Ya tienes {{count}} códigos activos para esto — míralos en tu cartera",
+    "confirm": "Confirmar canje",
+    "legalAffiliate": "Los puntos POWR no se reembolsan una vez canjeados.",
+    "legalCode": "Los códigos son de un solo uso y válidos durante {{days}} días desde el canje. Los puntos POWR no se reembolsan una vez canjeados.",
+    "showToStaff": "Enséñaselo al personal o introdúcelo al pagar",
+    "validUntilShowToStaff": "Válido hasta el {{date}} · Enséñaselo al personal o introdúcelo al pagar",
+    "alreadyAffiliate": "Tu descuento está incluido en el enlace de abajo.",
+    "alreadyCode": "Ya has canjeado esta recompensa. Tu código está abajo.",
+    "affiliateHint": "Tu descuento se aplica automáticamente al pagar.",
+    "shopAt": "Comprar en {{name}}",
+    "yourCode": "TU CÓDIGO",
+    "copied": "Copiado",
+    "tapToCopy": "Toca para copiar",
+    "useCodeAt": "Usar código en {{name}}",
+    "done": "Hecho"
+  },
+  "wallet": {
+    "title": "Cartera",
+    "tabs": {
+      "active": "Activas",
+      "activeCount": "Activas ({{n}})",
+      "history": "Historial"
+    },
+    "status": {
+      "ready": "Listo",
+      "used": "Usado",
+      "expired": "Caducado"
+    },
+    "expiry": {
+      "used": "Ya usado",
+      "none": "Sin caducidad",
+      "expired": "Caducó el {{date}}",
+      "validUntil": "Válido hasta el {{date}}"
+    },
+    "rewardFallback": "Recompensa",
+    "affiliate": "Descuento aplicado automáticamente al pagar.",
+    "code": "CÓDIGO",
+    "copied": "Copiado",
+    "tapToCopy": "Toca para copiar",
+    "use": "Usar",
+    "useAt": "Usar en {{partner}}",
+    "share": "Compartir",
+    "saved": "Guardada",
+    "saveImage": "Guardar imagen",
+    "loadError": "No se ha podido cargar tu cartera.",
+    "emptyActive": "No tienes recompensas activas.",
+    "browse": "Ver recompensas",
+    "emptyHistory": "Aquí aún no hay nada.",
+    "shareDialogTitle": "Compartir recompensa",
+    "shareMessage": {
+      "label": "{{title}} en {{partner}}",
+      "affiliate": "Aquí tienes una recompensa de POWR: {{label}}",
+      "affiliateWithLink": "Aquí tienes una recompensa de POWR: {{label}}\n{{url}}",
+      "code": "Este es mi código de POWR para {{label}}: {{code}}",
+      "codeWithLink": "Este es mi código de POWR para {{label}}: {{code}}\n{{url}}"
+    }
+  },
+  "shareCard": {
+    "rewardFallback": "Recompensa",
+    "affiliate": "Descuento aplicado automáticamente al pagar",
+    "code": "CÓDIGO",
+    "validUntil": "Válido hasta el {{date}}",
+    "earnedWith": "CONSEGUIDO CON"
+  },
+  "vault": {
+    "title": "Vault",
+    "status": {
+      "readyToUnlock": "Listo para desbloquear",
+      "unlocksToday": "Se desbloquea hoy",
+      "unlocksTomorrow": "Se desbloquea mañana",
+      "unlocksInDays_one": "Se desbloquea en {{count}} día",
+      "unlocksInDays_other": "Se desbloquea en {{count}} días",
+      "maturesToday": "Madura hoy",
+      "maturesTomorrow": "Madura mañana",
+      "maturesInDays_one": "Madura en {{count}} día",
+      "maturesInDays_other": "Madura en {{count}} días",
+      "sealedUntil": "Sellado hasta el nivel {{level}}"
+    },
+    "deposit": {
+      "levelNamed": "Nivel {{level}} — {{name}}",
+      "levelBonus": "Bonus del nivel {{level}}",
+      "powrDrop": "Regalo POWR",
+      "bonusPoints": "Puntos extra",
+      "subLevelUp": "Bonus por subir de nivel",
+      "subGrant": "Regalo de POWR",
+      "subCapOverflow": "Por encima del límite diario"
+    },
+    "errors": {
+      "alreadyMoved": "Esos POWR ya habían pasado a tu saldo.",
+      "lockedAtLevel": "Tu Vault se abre en el nivel {{level}}.",
+      "unlockFailed": "No se ha podido desbloquear ahora — revisa tu conexión e inténtalo de nuevo.",
+      "loadFailed": "No se ha podido cargar tu Vault."
+    },
+    "timer": {
+      "opensIn": "SE ABRE EN",
+      "amountUnlocksIn": "{{amount}} POWR SE DESBLOQUEAN EN",
+      "nextUnlockIn": "PRÓXIMO DESBLOQUEO EN",
+      "unlocksIn": "SE DESBLOQUEA EN",
+      "dayUnit": "d"
+    },
+    "hero": {
+      "emptyTitle": "Aún no hay nada madurando",
+      "emptyHint": "Sube de nivel o supera un límite diario\ny el bonus se guarda aquí.",
+      "autoRelease": "Se desbloquea solo el {{date}}",
+      "maturedWaiting": "<figure>{{amount}} POWR</figure> han madurado y te esperan",
+      "countsTowardLevel": "Todo lo que hay aquí cuenta para tu nivel",
+      "balance": "SALDO",
+      "stillVesting": "{{amount}} POWR siguen madurando en tu Vault.",
+      "vaultDay": "DÍA DEL VAULT",
+      "allUnlocksEarly": "Todos tus {{amount}} POWR se desbloquean antes de tiempo.",
+      "railEarned": "GANADO",
+      "railOpens": "APERTURA",
+      "railUnlocks": "DESBLOQUEO",
+      "pointsReleased": "PUNTOS LIBERADOS"
+    },
+    "comingSoon": {
+      "opens": "Abre el {{date}}",
+      "unlocksAtLevel": "Se desbloquea en el <figure>nivel {{level}}</figure> — estás en el nivel {{current}}",
+      "bankedGated": "<figure>{{amount}} POWR</figure> ya guardados — todo cuenta para tu nivel",
+      "bankedOpen": "<figure>{{amount}} POWR</figure> ya guardados — se desbloquean con la apertura"
+    },
+    "howItWorks": "Cómo funciona el Vault",
+    "inTheVault": "En el Vault",
+    "info": {
+      "title": "Qué se guarda en el Vault",
+      "levelUpTitle": "Bonus por subir de nivel",
+      "levelUpBody": "Cada nivel que alcanzas guarda un bonus — y cuanto más alto el rango, mayor es el premio.",
+      "capTitle": "Puntos por encima del límite diario",
+      "capBody": "Los multiplicadores de racha que superan el límite diario de una actividad se guardan aquí en vez de perderse.",
+      "vestTitle": "Madura como un ahorro",
+      "vestBody": "Los depósitos maduran durante {{days}} días y luego pasan a tu saldo disponible. Cuentan para tu nivel desde el primer momento.",
+      "gateTitle": "Se abre en el nivel {{level}}",
+      "gateBody": "Por debajo del nivel {{level}}, los POWR se guardan y maduran con normalidad, y cuentan para tu nivel todo el tiempo — solo que no puedes sacarlos hasta que llegues. Nada caduca.",
+      "graceTitle": "Nada se pierde",
+      "graceBody_one": "Desbloquéalo tú para disfrutar del momento — o déjalo. Lo que siga ahí {{count}} día después de madurar pasa a tu saldo automáticamente.",
+      "graceBody_other": "Desbloquéalo tú para disfrutar del momento — o déjalo. Lo que siga ahí {{count}} días después de madurar pasa a tu saldo automáticamente.",
+      "gotIt": "Vale"
+    },
+    "unlock": {
+      "a11yLabel": "Desbloquear tu Vault",
+      "a11yHint": "Mantén pulsado hasta que se llene el anillo para liberar tus POWR madurados",
+      "hold": "MANTÉN"
+    },
+    "readout": {
+      "sealed": "SELLADO",
+      "level": "NIVEL {{level}}",
+      "toGo": "FALTAN {{amount}} POWR",
+      "empty": "VACÍO",
+      "matured": "MADURADO",
+      "inTheVault": "EN EL VAULT",
+      "comingSoon": "PRÓXIMAMENTE"
+    }
+  }
+}

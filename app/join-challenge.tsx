@@ -3,9 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { fontFamily } from '@/constants/tokens';
+import i18n from '@/lib/i18n';
 import { PENDING_JOIN_KEY } from '@/lib/social/inviteLinks';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
@@ -24,6 +26,7 @@ const SECONDARY = '#888888';
  */
 export default function JoinChallengeScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { token } = useLocalSearchParams<{ token?: string }>();
   const [error, setError] = useState<string | null>(null);
   const ran = useRef(false);
@@ -32,24 +35,24 @@ export default function JoinChallengeScreen() {
     if (ran.current) return;
     ran.current = true;
     (async () => {
-      const t = typeof token === 'string' ? token : null;
-      if (!t) { setError('This invite link is missing its code.'); return; }
+      const inviteToken = typeof token === 'string' ? token : null;
+      if (!inviteToken) { setError(i18n.t('social:join.missingCode')); return; }
 
       const user = await getSessionUser().catch(() => null);
       if (!user) {
-        await AsyncStorage.setItem(PENDING_JOIN_KEY, t).catch(() => {});
+        await AsyncStorage.setItem(PENDING_JOIN_KEY, inviteToken).catch(() => {});
         router.replace('/');
         return;
       }
 
       const { data, error: fnErr } = await supabase.functions.invoke('respond-shared-challenge', {
-        body: { action: 'join', invite_token: t },
+        body: { action: 'join', invite_token: inviteToken },
       });
       // supabase-js surfaces non-2xx as FunctionsHttpError with the body on
       // `context` — pull the server's message out so caps read as themselves,
       // not as a generic failure.
       if (fnErr || !data?.ok) {
-        let message = 'Something went wrong joining this challenge.';
+        let message = i18n.t('social:join.failed');
         try {
           const body = fnErr && 'context' in (fnErr as any) ? await (fnErr as any).context.json() : data;
           if (body?.error) message = body.error;
@@ -67,16 +70,16 @@ export default function JoinChallengeScreen() {
       {error ? (
         <View style={styles.center}>
           <Ionicons name="alert-circle-outline" size={34} color={SECONDARY} />
-          <Text style={styles.errorTitle}>Couldn’t join</Text>
+          <Text style={styles.errorTitle}>{t('social:shared.couldntJoin')}</Text>
           <Text style={styles.errorBody}>{error}</Text>
           <Pressable style={styles.homeBtn} onPress={() => router.replace('/')}>
-            <Text style={styles.homeBtnText}>Go to Home</Text>
+            <Text style={styles.homeBtnText}>{t('social:join.goHome')}</Text>
           </Pressable>
         </View>
       ) : (
         <View style={styles.center}>
           <ActivityIndicator color={GOLD} />
-          <Text style={styles.loadingText}>Joining the challenge…</Text>
+          <Text style={styles.loadingText}>{t('social:join.joining')}</Text>
         </View>
       )}
     </View>

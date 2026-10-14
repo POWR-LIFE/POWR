@@ -1,0 +1,118 @@
+{
+  "title": "Centre d’aide",
+  "tabs": {
+    "faq": "FAQ",
+    "contact": "Nous contacter",
+    "tickets": "Mes demandes"
+  },
+  "categories": {
+    "pointsRewards": "Points et récompenses",
+    "account": "Compte et profil",
+    "healthSync": "Santé et synchro",
+    "gymCheckin": "Check-in en salle",
+    "challenges": "Défis",
+    "technical": "Problème technique",
+    "feedback": "Avis / Autre"
+  },
+  "faq": {
+    "points": {
+      "label": "Points et récompenses",
+      "earn": {
+        "q": "Comment gagner des points POWR ?",
+        "a": "Les points récompensent une activité physique vérifiée : check-ins dans les salles partenaires, pas enregistrés par ton téléphone ou ta montre connectée, séances saisies et défis hebdomadaires relevés."
+      },
+      "expire": {
+        "q": "Les points expirent-ils ?",
+        "a": "Les points peuvent expirer si ton compte reste inactif 12 mois d’affilée. Tant que tu continues à bouger, tes points ne risquent rien."
+      },
+      "redeem": {
+        "q": "Comment échanger une récompense ?",
+        "a": "Va dans l’onglet Découvrir, trouve la récompense qui te plaît et touche Échanger. Tes points sont déduits et un code unique s’affiche. Présente-le au partenaire."
+      },
+      "transfer": {
+        "q": "Puis-je transférer mes points à quelqu’un ?",
+        "a": "Les points sont liés à ton compte : ils ne peuvent être ni transférés ni vendus. Chacun gagne et échange ses propres points."
+      }
+    },
+    "gym": {
+      "label": "Salle et check-ins",
+      "howItWorks": {
+        "q": "Comment fonctionnent les check-ins en salle ?",
+        "a": "Quand tu arrives dans une salle partenaire, POWR utilise ta position pour détecter ta visite et t’attribue des points automatiquement. Vérifie que l’autorisation de localisation est activée dans Paramètres → Connexions."
+      },
+      "noPoints": {
+        "q": "J’ai fait une séance à la salle mais je n’ai pas eu de points. Pourquoi ?",
+        "a": "Vérifie que le service de localisation est réglé sur « Lorsque l’app est active » pour POWR (Paramètres → Connexions). Vérifie aussi que la salle fait bien partie des partenaires POWR. Si le problème continue, saisis ta séance à la main ou contacte-nous."
+      },
+      "perDay": {
+        "q": "Combien de check-ins en salle rapportent des points par jour ?",
+        "a": "Tu gagnes des points pour un check-in en salle par jour. Les visites suivantes le même jour ne rapportent pas de points en plus."
+      }
+    },
+    "health": {
+      "label": "Santé et synchro",
+      "sources": {
+        "q": "Quelles sources santé sont prises en charge ?",
+        "a": "Sur iOS, on lit les données de l’app Santé. Sur Android, on utilise Santé Connect de Google. Tu peux aussi connecter Fitbit ou WHOOP pour des données plus riches, comme la fréquence cardiaque et le sommeil."
+      },
+      "stepsNotSyncing": {
+        "q": "Mes pas ne se synchronisent pas. Que faire ?",
+        "a": "Vérifie que ta source santé est connectée dans Paramètres → Sur ton téléphone ou Montres connectées. Vérifie aussi que POWR a les bonnes autorisations dans les réglages Confidentialité ou Santé de ton appareil."
+      },
+      "noWearable": {
+        "q": "Puis-je utiliser POWR sans montre connectée ?",
+        "a": "Oui. Ton téléphone enregistre tes pas et tes séances tout seul via l’app Santé ou Santé Connect de Google — pas besoin de montre connectée."
+      },
+      "battery": {
+        "q": "POWR va-t-il vider ma batterie ?",
+        "a": "POWR est conçu pour être économe. Les données santé sont synchronisées par lots, pas en continu. La localisation n’est utilisée que brièvement, au moment d’un check-in en salle."
+      }
+    },
+    "account": {
+      "label": "Compte et confidentialité",
+      "changeEmail": {
+        "q": "Comment changer mon e-mail ou mon mot de passe ?",
+        "a": "Va dans Paramètres → Compte. Touche E-mail pour changer ton adresse, ou Changer de mot de passe pour le modifier directement dans l’app. Si tu as oublié ton mot de passe actuel, touche « Réinitialiser par e-mail » sur l’écran Changer de mot de passe."
+      },
+      "healthShared": {
+        "q": "Mes données de santé sont-elles partagées avec les partenaires ?",
+        "a": "Non. Tes données de santé ne sont jamais partagées avec les partenaires. On ne partage que le strict nécessaire pour te remettre une récompense que tu choisis d’échanger (par exemple un code de retrait)."
+      },
+      "deleteAccount": {
+        "q": "Comment supprimer mon compte ?",
+        "a": "Va dans Paramètres, descends tout en bas et touche Supprimer le compte. Ton profil et toutes les données associées sont définitivement supprimés sous 30 jours."
+      },
+      "leaderboard": {
+        "q": "Comment ne plus apparaître dans le classement ?",
+        "a": "Va dans Paramètres → Confidentialité et désactive « Apparaître dans le classement ». Ton activité restera privée et ton nom disparaîtra de tous les classements."
+      }
+    },
+    "stillStuck": "Encore un souci ? Utilise l’onglet Nous contacter et on te répondra."
+  },
+  "contact": {
+    "whatHelp": "COMMENT POUVONS-NOUS T’AIDER ?",
+    "subject": "OBJET",
+    "subjectPlaceholder": "Résume ton problème en quelques mots",
+    "message": "MESSAGE",
+    "messagePlaceholder": "Décris ce qui s’est passé et ce que tu as déjà essayé…",
+    "send": "Envoyer le message",
+    "responseTime": "On répond en général sous un jour ouvré.",
+    "errorTitle": "Erreur",
+    "errorBody": "Impossible d’envoyer ton message. Réessaie.",
+    "sentTitle": "Message envoyé",
+    "sentBody": "On te répond sous un jour ouvré."
+  },
+  "tickets": {
+    "title": "TES DEMANDES D’ASSISTANCE",
+    "emptyTitle": "Aucune demande pour l’instant",
+    "emptyHint": "Les messages que tu envoies apparaîtront ici.",
+    "status": {
+      "open": "Ouverte",
+      "inProgress": "En cours",
+      "resolved": "Résolue",
+      "closed": "Fermée"
+    },
+    "supportName": "Assistance POWR",
+    "awaiting": "En attente de réponse…"
+  }
+}

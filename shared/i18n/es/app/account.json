@@ -1,0 +1,231 @@
+{
+  "shared": {
+    "backToSettings": "VOLVER A AJUSTES",
+    "currentPasswordRequired": "Introduce tu contraseña actual.",
+    "currentPasswordIncorrect": "La contraseña actual no es correcta.",
+    "currentPassword": "CONTRASEÑA ACTUAL"
+  },
+  "editProfile": {
+    "title": "Editar perfil",
+    "save": "Guardar",
+    "tapToChangePhoto": "Toca para cambiar la foto",
+    "displayName": "Nombre visible",
+    "namePlaceholder": "Tu nombre",
+    "nameHint": "{{length}}/40 · Se muestra en tu perfil y en las clasificaciones",
+    "username": "Nombre de usuario",
+    "usernamePlaceholder": "tuusuario",
+    "usernameHint": "Solo letras, números y guiones bajos · {{length}}/30",
+    "email": "Correo",
+    "bio": "Biografía",
+    "bioPlaceholder": "Cuenta algo sobre ti…",
+    "achievements": "LOGROS ({{current}}/{{max}})",
+    "add": "AÑADIR",
+    "achievementsEmpty": "Añade hasta 4 hitos de tu carrera: marcas personales, podios, títulos…",
+    "coverPhoto": "Foto de portada",
+    "coverHint": "Toca para añadir una foto de portada",
+    "gallery": "Galería ({{current}}/{{max}})",
+    "editor": {
+      "title": "TÍTULO",
+      "titlePlaceholder": "Pro Solo Femenino",
+      "value": "VALOR",
+      "context": "CONTEXTO (OPCIONAL)",
+      "cancel": "CANCELAR",
+      "save": "GUARDAR"
+    },
+    "photo": {
+      "permissionTitle": "Permiso necesario",
+      "cameraBody": "Permite el acceso a la cámara en Ajustes para hacer una foto.",
+      "libraryBody": "Permite el acceso a la fototeca en Ajustes para elegir una foto.",
+      "libraryBodyShort": "Permite el acceso a la fototeca en Ajustes.",
+      "pickFailedTitle": "No se ha podido seleccionar la foto",
+      "pickFailedBody": "Inténtalo de nuevo.",
+      "sourceTitle": "Foto de perfil",
+      "sourceBody": "Elige una opción",
+      "take": "Hacer una foto",
+      "library": "Elegir de la fototeca",
+      "remove": "Quitar foto"
+    },
+    "gallerySheet": {
+      "fullTitle": "Galería llena",
+      "fullBody": "Máximo {{max}} fotos.",
+      "removeTitle": "Quitar foto",
+      "removeBody": "¿Eliminar esta foto de tu galería?"
+    },
+    "achievement": {
+      "missingTitle": "Faltan campos",
+      "missingBody": "El título y el valor son obligatorios.",
+      "addFailed": "No se ha podido añadir el logro",
+      "updateFailed": "No se ha podido actualizar el logro",
+      "tryAgain": "Inténtalo de nuevo",
+      "removeTitle": "¿Quitar el logro?",
+      "removeBody": "¿Eliminar «{{title}}»?",
+      "deleteFailed": "No se ha podido eliminar"
+    },
+    "delete": "Eliminar",
+    "nameRequiredTitle": "Falta el nombre",
+    "nameRequiredBody": "Introduce un nombre visible.",
+    "uploadFailed": "Error al subir",
+    "coverUploadFailed": "Error al subir la portada",
+    "saveFailed": "No se ha podido guardar",
+    "somethingWentWrong": "Algo ha fallado"
+  },
+  "changeEmail": {
+    "error": {
+      "required": "Introduce una nueva dirección de correo.",
+      "invalid": "Ese correo no parece correcto.",
+      "mismatch": "Los correos no coinciden.",
+      "same": "Ya es tu dirección de correo."
+    },
+    "oauth": {
+      "title": "Cuenta de {{provider}}",
+      "body": "Tu cuenta de POWR está vinculada a {{provider}}. Para cambiar tu correo, actualízalo primero en tu cuenta de {{provider}} y vuelve a iniciar sesión en POWR."
+    },
+    "pending": {
+      "title": "Revisa las dos bandejas",
+      "sentTo": "Hemos enviado un enlace de confirmación a:",
+      "old": "ANTIGUO",
+      "new": "NUEVO",
+      "hint": "Pulsa los dos enlaces para completar el cambio. Hasta entonces, sigue iniciando sesión con tu correo antiguo. Si ignoras los correos, no cambia nada.",
+      "resending": "Reenviando…",
+      "noEmails": "¿No te han llegado los correos? ",
+      "resend": "Reenviar"
+    },
+    "headline": "Cambiar\n<gold>correo.</gold>",
+    "intro": "Por tu seguridad, enviaremos un enlace de confirmación a tu dirección actual y a la nueva. Hay que pulsar los dos para completar el cambio.",
+    "currentEmail": "CORREO ACTUAL",
+    "newEmail": "NUEVO CORREO",
+    "emailPlaceholder": "tu@ejemplo.com",
+    "confirmEmail": "CONFIRMAR NUEVO CORREO",
+    "confirmPlaceholder": "Repite el nuevo correo",
+    "submit": "ENVIAR LOS ENLACES"
+  },
+  "changePassword": {
+    "error": {
+      "newRequired": "Introduce una contraseña nueva.",
+      "tooShort": "La nueva contraseña debe tener al menos 6 caracteres.",
+      "mismatch": "Las contraseñas no coinciden.",
+      "same": "La nueva contraseña debe ser distinta de la actual."
+    },
+    "success": {
+      "title": "Contraseña cambiada",
+      "body": "Tu contraseña se ha cambiado correctamente."
+    },
+    "resetSent": {
+      "title": "Revisa tu bandeja de entrada",
+      "body": "Hemos enviado un enlace de restablecimiento a\n<email>{{email}}</email>",
+      "hint": "Pulsa el enlace del correo para crear una contraseña nueva y vuelve a iniciar sesión."
+    },
+    "google": {
+      "title": "Cuenta de Google",
+      "body": "Tu cuenta usa el inicio de sesión con Google. Para cambiar la contraseña, hazlo desde los ajustes de tu cuenta de Google."
+    },
+    "headline": "Cambiar\n<gold>contraseña.</gold>",
+    "newPassword": "NUEVA CONTRASEÑA",
+    "newPlaceholder": "Mín. 6 caracteres",
+    "confirmPassword": "CONFIRMAR NUEVA CONTRASEÑA",
+    "confirmPlaceholder": "Repite la nueva contraseña",
+    "submit": "CAMBIAR CONTRASEÑA",
+    "sending": "Enviando…",
+    "forgot": "¿Has olvidado tu contraseña? ",
+    "sendReset": "Restablecer por correo"
+  },
+  "emailChangeConfirmed": {
+    "loading": "Confirmando…",
+    "partial": {
+      "title": "Un paso más",
+      "body": "Gracias: confirmación recibida.",
+      "hintWithEmail": "También hemos enviado un enlace a <email>{{email}}</email>. Púlsalo también para terminar de cambiar tu cuenta de POWR.",
+      "hintNoEmail": "También hemos enviado un enlace a tu otra bandeja de entrada. Púlsalo también para terminar de cambiar tu cuenta de POWR.",
+      "backToApp": "VOLVER A LA APP"
+    },
+    "done": {
+      "title": "Correo actualizado",
+      "body": "Tu cuenta de POWR ahora usa\n<email>{{email}}</email>",
+      "hint": "Usa esta dirección la próxima vez que inicies sesión.",
+      "continue": "CONTINUAR",
+      "openSettings": "Abrir ajustes",
+      "notYou": "Si no has sido tú, escribe a support@powr.life cuanto antes."
+    }
+  },
+  "profile": {
+    "you": "Tú",
+    "shareMessage": "¡Entrena conmigo en POWR, la app que te recompensa por cada entreno! 💪\n\nUsa mi código de invitación {{code}} al registrarte y los dos ganaremos 20 puntos POWR gratis:\n{{url}}",
+    "friendsLabel": "Ver y añadir amigos",
+    "qrLabel": "Mostrar mi código QR",
+    "levelPill": "NIV. {{level}} · {{name}}",
+    "memberSince": "Miembro desde {{date}}",
+    "totalXp": "XP TOTAL",
+    "xpNext": "{{current}} / {{total}} XP · siguiente: {{name}}",
+    "xpMax": "{{current}} / {{total}} XP · NIVEL MÁXIMO",
+    "statDays": "{{days}} d",
+    "stats": {
+      "streak": "Racha",
+      "bestStreak": "Mejor racha",
+      "sessions": "Sesiones"
+    },
+    "streakUnit_one": "día",
+    "streakUnit_other": "días",
+    "streakPill": {
+      "justStarting": "EMPEZANDO",
+      "showingUp": "CUMPLIENDO",
+      "building": "COGIENDO RITMO",
+      "onARoll": "EN RACHA",
+      "lockedIn": "A TOPE",
+      "relentless": "IMPARABLE",
+      "legendary": "LEYENDA"
+    },
+    "days": {
+      "mon": "L",
+      "tue": "M",
+      "wed": "X",
+      "thu": "J",
+      "fri": "V",
+      "sat": "S",
+      "sun": "D"
+    },
+    "achievements": "Logros",
+    "seeAll": "{{earned}} / {{total}} · Ver todo",
+    "invite": {
+      "title": "Invita a tus amigos",
+      "body": "Comparte tu POWR ID: los dos ganáis 20 POWR",
+      "share": "COMPARTIR",
+      "copied": "Código copiado al portapapeles"
+    },
+    "gallery": "Galería"
+  },
+  "inviteCode": {
+    "error": {
+      "invalidCode": "No reconocemos ese código. Comprueba los 8 caracteres con el mensaje que te enviaron: solo letras y números, sin I ni O.",
+      "selfReferral": "Ese es tu propio POWR ID: compártelo con otra persona.",
+      "alreadyReferred": "Esta cuenta ya tiene un código de invitación aplicado.",
+      "windowClosed": "Los códigos de invitación solo se pueden añadir en tus dos primeras semanas, y ese plazo ya ha terminado.",
+      "notAuthenticated": "Vuelve a iniciar sesión para aplicar tu código.",
+      "network": "No hemos podido conectar con POWR. Comprueba tu conexión e inténtalo de nuevo.",
+      "nothingToPaste": "No hay nada parecido a un código en tu portapapeles.",
+      "wrongLength": "Un código de invitación tiene 8 caracteres."
+    },
+    "yourFriend": "quien te invitó",
+    "applied": {
+      "title": "Código aplicado",
+      "body": "Tú y {{name}} ganaréis 20 POWR cada uno cuando registres tu primer entreno verificado. ¡A moverse!"
+    },
+    "referred": {
+      "title": "Te han invitado",
+      "body": "{{name}} te invitó a POWR. Los dos ganaréis 20 POWR cuando registres tu primer entreno verificado."
+    },
+    "closed": {
+      "title": "El plazo ha terminado",
+      "body": "Los códigos de invitación solo se pueden añadir en tus dos primeras semanas. Tu propio POWR ID sigue sirviendo para invitar a tus amigos: lo tienes en Ajustes › Cuenta."
+    },
+    "headline": "Código de\n<gold>invitación.</gold>",
+    "intro": "¿Te uniste por la invitación de alguien pero no metiste su código? Añádelo aquí y los dos ganaréis 20 POWR tras tu primer entreno verificado.",
+    "field": "SU POWR ID",
+    "pasteLabel": "Pegar el código del portapapeles",
+    "paste": "PEGAR",
+    "daysLeft_one": "Te queda {{count}} día para añadirlo: después no se podrá aplicar ningún código.",
+    "daysLeft_other": "Te quedan {{count}} días para añadirlo: después no se podrá aplicar ningún código.",
+    "lastDay": "Último día para añadirlo: después no se podrá aplicar ningún código.",
+    "submit": "APLICAR CÓDIGO",
+    "footnote": "Un POWR ID tiene 8 caracteres: quien te invita lo encuentra en Ajustes › Cuenta o en cualquier invitación que te envíe."
+  }
+}

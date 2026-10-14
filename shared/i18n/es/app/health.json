@@ -77,5 +77,62 @@
     "step1HealthConnect": "1. Conecta Health Connect",
     "connected": "Conectado",
     "readsFrom": "POWR lee desde ahí tus datos de {{brand}}"
+  },
+  "viaPhoneSteps": {
+    "store": {
+      "appleHealth": "la app Salud",
+      "healthConnect": "Health Connect"
+    },
+    "genericApp": "la app de {{brand}}",
+    "web": {
+      "title": "{{brand}} se sincroniza a través de tu móvil",
+      "body": "Nuestra conexión directa con {{brand}} está en pausa por ahora. Abre POWR en tu móvil para conectar la app Salud o Health Connect. Tus datos de {{brand}} llegan a POWR desde ahí."
+    },
+    "unsupported": {
+      "titleIos": "{{brand}} no puede sincronizarse con el iPhone por ahora",
+      "titleAndroid": "{{brand}} no puede sincronizarse con este móvil por ahora",
+      "body": "Nuestra conexión directa con {{brand}} está en pausa y {{brand}} no comparte datos con {{store}}. Mientras tanto, POWR cuenta los pasos que registra tu móvil: conecta {{store}} para eso."
+    },
+    "title": "{{brand}} se sincroniza a través de {{store}}",
+    "body": "Nuestra conexión directa con {{brand}} está en pausa por ahora. Tus datos de {{brand}} siguen sumando POWR: {{app}} comparte tus entrenos, pasos y sueño con {{store}}, y POWR los lee desde ahí.",
+    "step2Title": "2. Activa el uso compartido en {{app}}",
+    "step2Generic": "En {{app}}, busca el ajuste de {{store}} (suele estar en Ajustes → Aplicaciones conectadas) y permítelo todo",
+    "brands": {
+      "garmin": {
+        "app": "Garmin Connect",
+        "ios": "Garmin Connect → Más → Configuración → Aplicaciones conectadas → Apple Health, y permítelo todo",
+        "android": "Garmin Connect → Configuración → Health Connect, y permítelo todo",
+        "note": "Abre Garmin Connect una vez al día: solo comparte tus datos mientras está abierta."
+      },
+      "whoop": {
+        "app": "la app de WHOOP",
+        "ios": "WHOOP → Más → Ajustes de la app → Integraciones → Apple Health → Conectar, y permítelo todo",
+        "android": "WHOOP → Más → Ajustes de la app → Integraciones → Health Connect, y permítelo todo"
+      },
+      "oura": {
+        "app": "la app de Oura",
+        "ios": "Oura → menú → Ajustes → Apple Health, y activa «Conectar con Salud»",
+        "android": "Oura → menú → Ajustes → Health Connect, y permítelo todo"
+      },
+      "polar": {
+        "app": "Polar Flow",
+        "ios": "Polar Flow → Más → Ajustes generales → Apple Health, y luego Activar todas las categorías",
+        "android": "Polar Flow → Más → Ajustes generales → Health Connect, y permítelo todo"
+      },
+      "strava": {
+        "app": "Strava",
+        "ios": "Strava → Ajustes → Aplicaciones, servicios y dispositivos → Salud → Conectar, y activa Entrenamientos",
+        "android": "Strava → Ajustes → Aplicaciones, servicios y dispositivos → Health Connect"
+      },
+      "zepp": {
+        "app": "la app de Zepp",
+        "ios": "Zepp → Perfil → Añadir cuentas → Apple Health, y permítelo todo",
+        "android": "Zepp → Perfil → Vincular cuentas de terceros → Health Connect, y activa la sincronización"
+      },
+      "fitbit": {
+        "app": "la app de Fitbit",
+        "android": "Fitbit → tu perfil → Ajustes → Health Connect → Sincronizar con Health Connect"
+      }
+    }
   }
 }

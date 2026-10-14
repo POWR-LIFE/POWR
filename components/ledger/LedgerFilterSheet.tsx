@@ -10,6 +10,7 @@ import {
     Text,
     View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { ActivityIcon } from '@/components/ActivityIcon';
 import { ACTIVITIES } from '@/constants/activities';
@@ -85,6 +86,7 @@ export default function LedgerFilterSheet({
     active: LedgerFilterKey;
     onSelect: (key: LedgerFilterKey) => void;
 }) {
+    const { t } = useTranslation();
     // Pull-down-to-dismiss + animated close, shared with PointsBreakdownSheet
     // (which held a byte-identical copy). See hooks/useSheetDragDismiss.
     const { dragY, backdropOpacity, panHandlers, dismiss } = useSheetDragDismiss(onClose, visible);
@@ -113,7 +115,7 @@ export default function LedgerFilterSheet({
                 onPress={() => choose(filter.key)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}
-                accessibilityLabel={`${filter.label}, ${filter.count} entries`}
+                accessibilityLabel={t('points:filterSheet.rowA11y', { label: filter.label, count: filter.count })}
                 style={({ pressed }) => [
                     styles.row,
                     isActive && { backgroundColor: colour + '14', borderColor: colour + '55' },
@@ -128,7 +130,7 @@ export default function LedgerFilterSheet({
                         {filter.label}
                     </Text>
                     <Text style={styles.rowCount}>
-                        {filter.count === 1 ? '1 entry' : `${filter.count.toLocaleString()} entries`}
+                        {t('points:filterSheet.entries', { count: filter.count, n: filter.count.toLocaleString() })}
                     </Text>
                 </View>
                 <Text style={[styles.rowNet, { color: filter.net < 0 ? RED : GREEN }]}>
@@ -156,8 +158,8 @@ export default function LedgerFilterSheet({
                     {/* Header owns the drag gesture; the body below keeps its scroll. */}
                     <View style={styles.dragHeader} {...panHandlers}>
                         <View style={styles.handle} />
-                        <Text style={styles.eyebrow}>FILTER</Text>
-                        <Text style={styles.headline}>What do you want to see?</Text>
+                        <Text style={styles.eyebrow}>{t('points:filterSheet.eyebrow')}</Text>
+                        <Text style={styles.headline}>{t('points:filterSheet.headline')}</Text>
                     </View>
 
                     <ScrollView
@@ -169,14 +171,14 @@ export default function LedgerFilterSheet({
 
                         {activities.length > 0 && (
                             <>
-                                <Text style={styles.sectionLabel}>ACTIVITIES</Text>
+                                <Text style={styles.sectionLabel}>{t('points:filterSheet.activities')}</Text>
                                 {activities.map(renderRow)}
                             </>
                         )}
 
                         {other.length > 0 && (
                             <>
-                                <Text style={styles.sectionLabel}>OTHER POINTS</Text>
+                                <Text style={styles.sectionLabel}>{t('points:filterSheet.otherPoints')}</Text>
                                 {other.map(renderRow)}
                             </>
                         )}
@@ -187,9 +189,9 @@ export default function LedgerFilterSheet({
                         onPress={dismiss}
                         hitSlop={{ top: 8, bottom: 8, left: 24, right: 24 }}
                         accessibilityRole="button"
-                        accessibilityLabel="Close"
+                        accessibilityLabel={t('points:filterSheet.close')}
                     >
-                        <Text style={styles.closeLabel}>Close</Text>
+                        <Text style={styles.closeLabel}>{t('points:filterSheet.close')}</Text>
                     </Pressable>
                 </Animated.View>
             </View>
@@ -209,6 +211,7 @@ export function LedgerFilterChip({
     active: LedgerFilter | null;
     onPress: () => void;
 }) {
+    const { t } = useTranslation();
     const isFiltered = active != null && active.key !== 'all';
     const colour = isFiltered ? filterColour(active) : MUTED;
 
@@ -217,7 +220,7 @@ export function LedgerFilterChip({
             onPress={onPress}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
-            accessibilityLabel={isFiltered ? `Filter: ${active.label}. Change filter` : 'Filter history'}
+            accessibilityLabel={isFiltered ? t('points:filterSheet.chipA11yFiltered', { label: active.label }) : t('points:filterSheet.chipA11y')}
             style={({ pressed }) => [
                 styles.chip,
                 isFiltered && { backgroundColor: colour + '18', borderColor: colour + '55' },

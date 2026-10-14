@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Alert,
   Dimensions,
@@ -92,6 +93,7 @@ export default function WearablesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const providers = useHealthProviders();
+  const { t } = useTranslation();
 
   useFocusEffect(
     useCallback(() => { providers.refresh(); }, [providers.refresh]),
@@ -119,7 +121,9 @@ export default function WearablesScreen() {
       androidCheckAlreadyGranted().then(setAndroidGranted).catch(() => setAndroidGranted(false));
     }
   }
-  const phoneStore = Platform.OS === 'android' ? 'Health Connect' : Platform.OS === 'ios' ? 'Apple Health' : 'your phone';
+  const viaPhoneStore = Platform.OS === 'android'
+    ? t('health:wearables.viaHealthConnect')
+    : Platform.OS === 'ios' ? t('health:wearables.viaAppleHealth') : t('health:wearables.viaPhone');
 
   function connectPhone() {
     if (!nativeId) return;
@@ -131,15 +135,15 @@ export default function WearablesScreen() {
       }
       if (Platform.OS === 'android') {
         Alert.alert(
-          'Health Connect not connected',
-          'Permission was not granted. You can allow it in Health Connect settings.',
+          t('settings:providers.notConnected', { name: 'Health Connect' }),
+          t('settings:providers.permissionNotGrantedAllow'),
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Health Connect', onPress: androidOpenHealthConnectSettings },
+            { text: t('common:actions.cancel'), style: 'cancel' },
+            { text: t('settings:providers.openHealthConnect'), onPress: androidOpenHealthConnectSettings },
           ],
         );
       } else {
-        Alert.alert('Apple Health not connected', 'We could not start the connection. Please try again.');
+        Alert.alert(t('settings:providers.notConnected', { name: 'Apple Health' }), t('settings:providers.couldNotStart'));
       }
     })();
   }
@@ -150,13 +154,13 @@ export default function WearablesScreen() {
         await SecureStore.setItemAsync('oauth.returnTo', 'settings');
         const result = await providers.connect(id);
         if (result === 'failed') {
-          Alert.alert(`${name} not connected`, 'We could not start the connection. Please try again.');
+          Alert.alert(t('settings:providers.notConnected', { name }), t('settings:providers.couldNotStart'));
         }
       } catch (e) {
         if (e instanceof HealthProviderNotImplementedError) {
-          Alert.alert(`${name} coming soon`, 'This integration is not available yet.');
+          Alert.alert(t('settings:providers.comingSoon', { name }), t('settings:providers.notAvailable'));
         } else {
-          Alert.alert('Connection failed', String((e as Error).message ?? e));
+          Alert.alert(t('settings:providers.connectionFailed'), String((e as Error).message ?? e));
         }
       }
     })();
@@ -175,11 +179,11 @@ export default function WearablesScreen() {
     if (connected) {
       // Only action on the connected device is to disconnect
       Alert.alert(
-        `Disconnect ${name}?`,
-        'POWR will stop reading from this device and clear stored credentials.',
+        t('settings:providers.disconnectTitle', { name }),
+        t('settings:providers.disconnectDevice'),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Disconnect', style: 'destructive', onPress: () => { providers.disconnect(id); } },
+          { text: t('common:actions.cancel'), style: 'cancel' },
+          { text: t('settings:providers.disconnect'), style: 'destructive', onPress: () => { providers.disconnect(id); } },
         ],
       );
       return;
@@ -188,11 +192,11 @@ export default function WearablesScreen() {
     // Not connected — if another device is already connected, warn first
     if (connectedWearable) {
       Alert.alert(
-        `Switch to ${name}?`,
-        `You can only connect one device at a time. This will disconnect ${connectedWearable.meta.name}.`,
+        t('settings:providers.switchTitle', { name }),
+        t('settings:providers.switchBody', { current: connectedWearable.meta.name }),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: `Switch to ${name}`, onPress: () => doConnect(id, name) },
+          { text: t('common:actions.cancel'), style: 'cancel' },
+          { text: t('settings:providers.switchConfirm', { name }), onPress: () => doConnect(id, name) },
         ],
       );
       return;
@@ -210,7 +214,7 @@ export default function WearablesScreen() {
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>Wearables</Text>
+        <Text style={styles.headerTitle}>{t('settings:wearables.title')}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -220,7 +224,7 @@ export default function WearablesScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.hint}>
-          Connect one device to verify workouts and earn bonus points. You can switch at any time — only one can be active.
+          {t('settings:wearables.hint')}
         </Text>
 
         <View style={styles.grid}>
@@ -251,7 +255,7 @@ export default function WearablesScreen() {
                 </View>
                 <Text style={styles.cardName} numberOfLines={1}>{row.meta.name}</Text>
                 {paused && (
-                  <Text style={styles.cardVia} numberOfLines={1}>VIA {phoneStore.toUpperCase()}</Text>
+                  <Text style={styles.cardVia} numberOfLines={1}>{viaPhoneStore}</Text>
                 )}
                 {connected && (
                   <View style={styles.checkBadge}>
@@ -264,7 +268,7 @@ export default function WearablesScreen() {
         </View>
 
         <Text style={styles.footerNote}>
-          More devices sync automatically via Apple Health or Health Connect — connect those from the health sources section in Settings.
+          {t('settings:wearables.footer')}
         </Text>
       </ScrollView>
 

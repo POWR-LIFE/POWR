@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import React, { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
@@ -30,11 +31,12 @@ const isIOS = Platform.OS === 'ios';
 
 type Status = 'ok' | 'limited' | 'off' | 'unknown';
 
+// Labels are catalog keys, resolved at render.
 const STATUS_META: Record<Status, { label: string; color: string }> = {
-  ok:      { label: 'Enabled',  color: GREEN },
-  limited: { label: 'Limited',  color: AMBER },
-  off:     { label: 'Off',      color: RED   },
-  unknown: { label: 'Manage',   color: DIM   },
+  ok:      { label: 'settings:permissionsHelp.status.ok',      color: GREEN },
+  limited: { label: 'settings:permissionsHelp.status.limited', color: AMBER },
+  off:     { label: 'settings:permissionsHelp.status.off',     color: RED   },
+  unknown: { label: 'settings:permissionsHelp.status.unknown', color: DIM   },
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -42,8 +44,8 @@ const STATUS_META: Record<Status, { label: string; color: string }> = {
 export default function PermissionsHelpScreen() {
   const insets = useSafeAreaInsets();
   const gymRelevant = useGymRelevance();
-  const venue = gymRelevant ? 'gym' : 'venue';
   const router = useRouter();
+  const { t } = useTranslation();
 
   const [locationStatus, setLocationStatus] = useState<Status>('unknown');
   const [notifStatus, setNotifStatus]       = useState<Status>('unknown');
@@ -76,7 +78,7 @@ export default function PermissionsHelpScreen() {
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>Permissions & Setup</Text>
+        <Text style={styles.headerTitle}>{t('settings:permissionsHelp.title')}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -86,37 +88,36 @@ export default function PermissionsHelpScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.intro}>
-          POWR needs a few permissions to earn for you automatically. Here's what each one does and
-          how to fix it if it's switched off.
+          {t('settings:permissionsHelp.intro')}
         </Text>
 
         {/* ── Location ──────────────────────────────────────── */}
         <PermissionCard
           icon="location-outline"
-          title="Location"
+          title={t('settings:permissionsHelp.location.title')}
           status={locationStatus}
-          why={`Detects when you arrive at a partner ${venue} and earns points at geofenced venues — even while POWR is closed.`}
+          why={gymRelevant ? t('settings:permissionsHelp.location.whyGym') : t('settings:permissionsHelp.location.whyVenue')}
           steps={
             isIOS
               ? [
-                  'Tap Open Settings below to jump to POWR\'s settings',
-                  'Tap Location',
-                  'Choose "Always" (turn on Precise Location too)',
+                  t('settings:permissionsHelp.location.ios.step1'),
+                  t('settings:permissionsHelp.location.ios.step2'),
+                  t('settings:permissionsHelp.location.ios.step3'),
                 ]
               : [
-                  'Tap Open Settings below to open POWR\'s app info',
-                  'Tap Permissions › Location',
-                  'Choose "Allow all the time" and "Precise"',
+                  t('settings:permissionsHelp.location.android.step1'),
+                  t('settings:permissionsHelp.location.android.step2'),
+                  t('settings:permissionsHelp.location.android.step3'),
                 ]
           }
           note={
             locationStatus === 'limited'
               ? isIOS
-                ? `Location is on, but not set to "Always" — POWR can't detect ${venue} arrivals when it's closed. If you don't see "Always" yet, choose "While Using the App" first, then come back.`
-                : `Location is on, but not "Allow all the time" — POWR can't detect ${venue} arrivals when it's closed.`
+                ? (gymRelevant ? t('settings:permissionsHelp.location.noteIosGym') : t('settings:permissionsHelp.location.noteIosVenue'))
+                : (gymRelevant ? t('settings:permissionsHelp.location.noteAndroidGym') : t('settings:permissionsHelp.location.noteAndroidVenue'))
               : undefined
           }
-          buttonLabel="Open Settings"
+          buttonLabel={t('settings:permissionsHelp.openSettings')}
           onPress={openAppLocationSettings}
         />
 
@@ -124,15 +125,15 @@ export default function PermissionsHelpScreen() {
         {Platform.OS === 'android' && (
           <PermissionCard
             icon="battery-charging-outline"
-            title="Background activity"
+            title={t('settings:permissionsHelp.battery.title')}
             status="unknown"
-            why={`Lets POWR keep detecting ${venue} arrivals when the app is fully closed. Without it, Android can sleep the app and miss check-ins.`}
+            why={gymRelevant ? t('settings:permissionsHelp.battery.whyGym') : t('settings:permissionsHelp.battery.whyVenue')}
             steps={[
-              'Tap Open Settings below',
-              'Allow POWR to ignore battery optimisation',
-              'Or set Battery to "Unrestricted" on POWR\'s app page',
+              t('settings:permissionsHelp.battery.step1'),
+              t('settings:permissionsHelp.battery.step2'),
+              t('settings:permissionsHelp.battery.step3'),
             ]}
-            buttonLabel="Open Settings"
+            buttonLabel={t('settings:permissionsHelp.openSettings')}
             onPress={() => { requestBatteryOptimizationExemption(); }}
           />
         )}
@@ -140,23 +141,23 @@ export default function PermissionsHelpScreen() {
         {/* ── Notifications ─────────────────────────────────── */}
         <PermissionCard
           icon="notifications-outline"
-          title="Notifications"
+          title={t('settings:permissionsHelp.notifications.title')}
           status={notifStatus}
-          why={`Confirms ${gymRelevant ? 'gym check-ins' : 'sessions'}, tells you when points land, and alerts you to rewards you can claim.`}
+          why={gymRelevant ? t('settings:permissionsHelp.notifications.whyGym') : t('settings:permissionsHelp.notifications.whyVenue')}
           steps={
             isIOS
               ? [
-                  'Open Settings, then Notifications',
-                  'Find POWR in the list',
-                  'Turn on Allow Notifications',
+                  t('settings:permissionsHelp.notifications.ios.step1'),
+                  t('settings:permissionsHelp.notifications.ios.step2'),
+                  t('settings:permissionsHelp.notifications.ios.step3'),
                 ]
               : [
-                  'Open Settings, then Apps › POWR',
-                  'Tap Notifications',
-                  'Turn notifications on',
+                  t('settings:permissionsHelp.notifications.android.step1'),
+                  t('settings:permissionsHelp.notifications.android.step2'),
+                  t('settings:permissionsHelp.notifications.android.step3'),
                 ]
           }
-          buttonLabel="Open Settings"
+          buttonLabel={t('settings:permissionsHelp.openSettings')}
           onPress={() => Linking.openSettings()}
         />
 
@@ -165,27 +166,26 @@ export default function PermissionsHelpScreen() {
           icon="heart-outline"
           title={isIOS ? 'Apple Health' : 'Health Connect'}
           status="unknown"
-          why="Reads your steps, workouts and sleep so they can be verified and turned into points — no wearable required."
+          why={t('settings:permissionsHelp.health.why')}
           steps={
             isIOS
               ? [
-                  'Open the Health app',
-                  'Tap your profile photo (top-right), then Privacy › Apps',
-                  'Tap POWR and turn on the categories you want to share',
+                  t('settings:permissionsHelp.health.ios.step1'),
+                  t('settings:permissionsHelp.health.ios.step2'),
+                  t('settings:permissionsHelp.health.ios.step3'),
                 ]
               : [
-                  'Tap Open Health Connect below',
-                  'Go to App permissions › POWR',
-                  'Allow read access for Steps, Workouts and Sleep',
+                  t('settings:permissionsHelp.health.android.step1'),
+                  t('settings:permissionsHelp.health.android.step2'),
+                  t('settings:permissionsHelp.health.android.step3'),
                 ]
           }
-          buttonLabel={isIOS ? 'Open Apple Health' : 'Open Health Connect'}
+          buttonLabel={isIOS ? t('settings:permissionsHelp.health.openAppleHealth') : t('settings:permissionsHelp.health.openHealthConnect')}
           onPress={isIOS ? openAppleHealth : () => androidOpenHealthConnectSettings()}
         />
 
         <Text style={styles.footer}>
-          Changed a setting? Return here and the status above will update. Still stuck? Use the Help
-          Centre to contact us.
+          {t('settings:permissionsHelp.footer')}
         </Text>
       </ScrollView>
     </View>
@@ -213,6 +213,7 @@ function PermissionCard({
   buttonLabel: string;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   const meta = STATUS_META[status];
   return (
     <View style={styles.card}>
@@ -220,7 +221,7 @@ function PermissionCard({
         <Ionicons name={icon} size={18} color={DIM} style={styles.cardIcon} />
         <Text style={styles.cardTitle}>{title}</Text>
         <View style={[styles.statusPill, { borderColor: meta.color }]}>
-          <Text style={[styles.statusText, { color: meta.color }]}>{meta.label}</Text>
+          <Text style={[styles.statusText, { color: meta.color }]}>{t(meta.label)}</Text>
         </View>
       </View>
 

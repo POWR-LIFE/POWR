@@ -1,10 +1,12 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { forwardRef, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
 import type { WalletEntry } from '@/lib/api/rewards';
+import { getFormatLocale } from '@/lib/i18n';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 
 const TEXT  = '#F2F2F2';
@@ -26,6 +28,7 @@ interface RewardShareCardProps extends ViewProps {
  */
 export const RewardShareCard = forwardRef<View, RewardShareCardProps>(
   ({ entry, width, onReady, style, ...rest }, ref) => {
+    const { t } = useTranslation();
     const height = (width * 5) / 4;
     // Scale tokens proportionally to width — base sizes designed for ~1080dp.
     const s = width / 1080;
@@ -37,7 +40,7 @@ export const RewardShareCard = forwardRef<View, RewardShareCardProps>(
     // Without a hero shot, fall back to a heavily blurred partner logo.
     const bgUri = heroUri ?? logoUri;
     const isAffiliate = entry.integration_type === 'AFFILIATE';
-    const title = entry.reward_title ?? 'Reward';
+    const title = entry.reward_title ?? t('rewards:shareCard.rewardFallback');
 
     // Signal readiness once every distinct remote image has loaded.
     const remaining = useRef(new Set([bgUri, logoUri].filter((u): u is string => !!u)).size);
@@ -104,11 +107,11 @@ export const RewardShareCard = forwardRef<View, RewardShareCardProps>(
           <View style={[styles.codeBox, { borderRadius: 30 * s, borderWidth: Math.max(1, 2 * s), paddingVertical: 42 * s, paddingHorizontal: 36 * s, marginTop: 56 * s, gap: 16 * s }]}>
             {isAffiliate ? (
               <Text style={[styles.affiliateText, { fontSize: 30 * s, lineHeight: 42 * s }]}>
-                Discount applied automatically at checkout
+                {t('rewards:shareCard.affiliate')}
               </Text>
             ) : (
               <>
-                <Text style={[styles.codeLabel, { fontSize: 22 * s, letterSpacing: 6 * s }]}>CODE</Text>
+                <Text style={[styles.codeLabel, { fontSize: 22 * s, letterSpacing: 6 * s }]}>{t('rewards:shareCard.code')}</Text>
                 <Text
                   style={[styles.codeText, { fontSize: 64 * s, letterSpacing: 9 * s }]}
                   numberOfLines={1}
@@ -123,13 +126,15 @@ export const RewardShareCard = forwardRef<View, RewardShareCardProps>(
           {/* Expiry */}
           {entry.expires_at ? (
             <Text style={[styles.expiry, { fontSize: 26 * s, marginTop: 30 * s }]}>
-              Valid until {new Date(entry.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {t('rewards:shareCard.validUntil', {
+                date: new Date(entry.expires_at).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' }),
+              })}
             </Text>
           ) : null}
 
           {/* Subtle POWR mark */}
           <View style={[styles.footer, { marginTop: 58 * s }]}>
-            <Text style={[styles.footerLabel, { fontSize: 20 * s, letterSpacing: 5 * s }]}>EARNED WITH</Text>
+            <Text style={[styles.footerLabel, { fontSize: 20 * s, letterSpacing: 5 * s }]}>{t('rewards:shareCard.earnedWith')}</Text>
             <Image
               source={require('@/assets/images/powrlogotext.png')}
               style={{ width: 280 * s, height: 84 * s, opacity: 0.85, marginTop: 6 * s }}

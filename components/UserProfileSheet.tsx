@@ -2,6 +2,7 @@ import { memberInitials } from '@/lib/memberName';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
+import type { TFunction } from 'i18next';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -15,6 +16,7 @@ import {
     Text,
     View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Path, Polyline, Stop } from 'react-native-svg';
 
@@ -66,6 +68,7 @@ interface UserProfileSheetProps {
 
 export function UserProfileSheet({ userId, myPoints, userPoints, relationship, onChanged, onClose }: UserProfileSheetProps) {
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
     const [profile, setProfile] = useState<PublicProfile | null>(null);
     const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
@@ -155,7 +158,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
         });
         setActing(false);
         if (error) {
-            Alert.alert('Something went wrong', "We couldn't update that just now — please try again.");
+            Alert.alert(t('social:profile.error.title'), t('social:profile.error.body'));
             return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -164,13 +167,13 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
     };
 
     const confirmRemove = () => {
-        const name = profile?.display_name ?? profile?.username ?? 'this person';
+        const name = profile?.display_name ?? profile?.username ?? t('social:profile.thisPerson');
         Alert.alert(
-            `Remove ${name}?`,
-            "They'll be taken off your friends list. Any challenges you're both in keep running, and you can add each other again anytime.",
+            t('social:shared.removeFriend.title', { name }),
+            t('social:shared.removeFriend.body'),
             [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Remove', style: 'destructive', onPress: () => runFriendAction('remove', 'none') },
+                { text: t('common:actions.cancel'), style: 'cancel' },
+                { text: t('social:shared.removeFriend.confirm'), style: 'destructive', onPress: () => runFriendAction('remove', 'none') },
             ],
         );
     };
@@ -199,7 +202,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                 >
                     {loading && (
                         <View style={s.loadingRow}>
-                            <Text style={s.loadingText}>Loading…</Text>
+                            <Text style={s.loadingText}>{t('social:shared.loading')}</Text>
                         </View>
                     )}
 
@@ -214,7 +217,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                                 />
                                 <View style={s.identity}>
                                     <Text style={s.displayName} numberOfLines={1}>
-                                        {profile.display_name ?? profile.username ?? 'Unknown'}
+                                        {profile.display_name ?? profile.username ?? t('social:profile.unknown')}
                                     </Text>
                                     {profile.username ? (
                                         <Text style={s.userHandle} numberOfLines={1}>@{profile.username}</Text>
@@ -223,7 +226,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                                         {profile.is_pro && <ProBadge size="sm" />}
                                         <TierPill level={computedLevel} />
                                         <View style={s.levelPill}>
-                                            <Text style={s.levelText} numberOfLines={1}>LVL {computedLevel.level} · {computedLevel.name}</Text>
+                                            <Text style={s.levelText} numberOfLines={1}>{t('social:profile.level', { level: computedLevel.level, name: computedLevel.name })}</Text>
                                         </View>
                                     </View>
                                 </View>
@@ -267,7 +270,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                                 <View style={s.badgePillRow}>
                                     <Ionicons name="trophy" size={13} color="#E8D200" />
                                     <Text style={s.badgePillText}>
-                                        {earnedBadgeCount} / {ACHIEVEMENTS.length} achievements
+                                        {t('social:profile.achievementCount', { earned: earnedBadgeCount, total: ACHIEVEMENTS.length })}
                                     </Text>
                                 </View>
                             )}
@@ -275,7 +278,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                             {/* Achievements grid (pro only) */}
                             {achievements.length > 0 && (
                                 <View style={s.achievementsSection}>
-                                    <Text style={s.sectionLabel}>ACHIEVEMENTS</Text>
+                                    <Text style={s.sectionLabel}>{t('social:profile.achievements')}</Text>
                                     <AchievementsGrid achievements={achievements} />
                                 </View>
                             )}
@@ -290,19 +293,19 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                                 <View style={s.compareCard}>
                                     <View style={s.compareStat}>
                                         <Text style={s.compareNum}>{(userPoints ?? 0).toLocaleString()}</Text>
-                                        <Text style={s.compareLabel}>THEIR PTS</Text>
+                                        <Text style={s.compareLabel}>{t('social:profile.theirPts')}</Text>
                                     </View>
                                     <View style={s.compareDivider} />
                                     <View style={s.compareStat}>
                                         <Text style={[s.compareNum, { color: diff > 0 ? RED : GREEN }]}>
                                             {diffSign}{Math.abs(diff).toLocaleString()}
                                         </Text>
-                                        <Text style={s.compareLabel}>VS YOU</Text>
+                                        <Text style={s.compareLabel}>{t('social:profile.vsYou')}</Text>
                                     </View>
                                     <View style={s.compareDivider} />
                                     <View style={s.compareStat}>
                                         <Text style={s.compareNum}>{(myPoints ?? 0).toLocaleString()}</Text>
-                                        <Text style={s.compareLabel}>YOUR PTS</Text>
+                                        <Text style={s.compareLabel}>{t('social:profile.yourPts')}</Text>
                                     </View>
                                 </View>
                             )}
@@ -310,7 +313,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                             {/* Activity breakdown (last 30 days) */}
                             {stats && stats.activityBreakdown.length > 0 && (
                                 <View style={s.breakdownSection}>
-                                    <Text style={s.sectionLabel}>ACTIVITY · LAST 30 DAYS</Text>
+                                    <Text style={s.sectionLabel}>{t('social:profile.activity30d')}</Text>
                                     <ActivityBreakdown breakdown={stats.activityBreakdown} total={stats.sessionCount30d} />
                                 </View>
                             )}
@@ -318,7 +321,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                             {/* Gallery */}
                             {gallery.length > 0 && (
                                 <View style={s.gallerySection}>
-                                    <Text style={s.sectionLabel}>GALLERY</Text>
+                                    <Text style={s.sectionLabel}>{t('social:profile.gallery')}</Text>
                                     <View style={s.galleryGrid}>
                                         {gallery.map(photo => (
                                             <Image
@@ -361,11 +364,12 @@ function FriendActionButton({
     onDecline: () => void;
     onRemove: () => void;
 }) {
+    const { t } = useTranslation();
     if (rel === 'pending_outgoing') {
         return (
             <View style={s.friendPill}>
                 <Ionicons name="paper-plane-outline" size={14} color={DIM} />
-                <Text style={s.friendPillText}>Requested</Text>
+                <Text style={s.friendPillText}>{t('social:shared.requested')}</Text>
             </View>
         );
     }
@@ -381,11 +385,11 @@ function FriendActionButton({
                     {acting ? <ActivityIndicator color="#0a0a0a" /> : (
                         <>
                             <Ionicons name="checkmark" size={16} color="#0a0a0a" />
-                            <Text style={s.friendPrimaryText}>Accept request</Text>
+                            <Text style={s.friendPrimaryText}>{t('social:shared.acceptRequest')}</Text>
                         </>
                     )}
                 </Pressable>
-                <Pressable style={s.friendGhost} onPress={onDecline} disabled={acting} hitSlop={8} accessibilityLabel="Decline request">
+                <Pressable style={s.friendGhost} onPress={onDecline} disabled={acting} hitSlop={8} accessibilityLabel={t('social:profile.declineRequest')}>
                     <Ionicons name="close" size={18} color={DIM} />
                 </Pressable>
             </View>
@@ -395,9 +399,9 @@ function FriendActionButton({
     if (rel === 'accepted') {
         // Tapping a "Friends" chip offers to remove — matches the friends-list affordance.
         return (
-            <Pressable style={s.friendChip} onPress={onRemove} disabled={acting} accessibilityLabel="Friends — tap to remove">
+            <Pressable style={s.friendChip} onPress={onRemove} disabled={acting} accessibilityLabel={t('social:profile.friendsTapToRemove')}>
                 <Ionicons name="checkmark-circle" size={15} color={GREEN} />
-                <Text style={s.friendChipText}>Friends</Text>
+                <Text style={s.friendChipText}>{t('social:profile.friends')}</Text>
             </Pressable>
         );
     }
@@ -408,7 +412,7 @@ function FriendActionButton({
             {acting ? <ActivityIndicator color="#0a0a0a" /> : (
                 <>
                     <Ionicons name="person-add" size={15} color="#0a0a0a" />
-                    <Text style={s.friendPrimaryText}>Add friend</Text>
+                    <Text style={s.friendPrimaryText}>{t('social:shared.addFriend')}</Text>
                 </>
             )}
         </Pressable>
@@ -417,12 +421,18 @@ function FriendActionButton({
 
 // ─── ProfileMetaRow — home gym · member since ────────────────────────────────
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function monthYear(iso: string | null): string | null {
+// Keys rather than Intl: English must keep "Sep" (Intl's en-GB says "Sept").
+const MONTHS = [
+    'social:profile.months.jan', 'social:profile.months.feb', 'social:profile.months.mar',
+    'social:profile.months.apr', 'social:profile.months.may', 'social:profile.months.jun',
+    'social:profile.months.jul', 'social:profile.months.aug', 'social:profile.months.sep',
+    'social:profile.months.oct', 'social:profile.months.nov', 'social:profile.months.dec',
+];
+function monthYear(iso: string | null, t: TFunction): string | null {
     if (!iso) return null;
     const d = new Date(iso);
     if (isNaN(d.getTime())) return null;
-    return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    return t('social:profile.monthYear', { month: t(MONTHS[d.getMonth()]), year: d.getFullYear() });
 }
 
 function ProfileMetaRow({
@@ -432,7 +442,8 @@ function ProfileMetaRow({
     gym: { name: string; address: string | null } | null;
     memberSince: string | null;
 }) {
-    const since = monthYear(memberSince);
+    const { t } = useTranslation();
+    const since = monthYear(memberSince, t);
     if (!gym && !since) return null;
     return (
         <View style={s.metaRow}>
@@ -446,7 +457,7 @@ function ProfileMetaRow({
             {since && (
                 <View style={s.metaItem}>
                     <Ionicons name="calendar-outline" size={12} color={DIM} />
-                    <Text style={s.metaText}>Joined {since}</Text>
+                    <Text style={s.metaText}>{t('social:profile.joined', { date: since })}</Text>
                 </View>
             )}
         </View>
@@ -500,16 +511,18 @@ function MiniAvatar({ url, name, index }: { url: string | null; name: string | n
     );
 }
 
-function mutualLabel(preview: MutualFriend[], total: number): string {
+function mutualLabel(preview: MutualFriend[], total: number, t: TFunction): string {
     const names = preview
-        .map(m => m.display_name ?? (m.username ? `@${m.username}` : 'Someone'))
+        .map(m => m.display_name ?? (m.username ? `@${m.username}` : t('social:profile.someone')))
         .slice(0, 2);
     const remaining = total - names.length;
-    const tail = remaining > 0 ? ` +${remaining}` : '';
-    return `You both know ${names.join(', ')}${tail}`;
+    return remaining > 0
+        ? t('social:profile.mutualMore', { names: names.join(', '), more: remaining })
+        : t('social:profile.mutual', { names: names.join(', ') });
 }
 
 function MutualFriendsRow({ social }: { social: ProfileSocial }) {
+    const { t } = useTranslation();
     const { mutualPreview, mutualCount, friendCount } = social;
     const hasMutuals = mutualCount > 0;
     return (
@@ -525,10 +538,10 @@ function MutualFriendsRow({ social }: { social: ProfileSocial }) {
             )}
             <View style={{ flex: 1 }}>
                 {hasMutuals && (
-                    <Text style={s.socialTitle} numberOfLines={2}>{mutualLabel(mutualPreview, mutualCount)}</Text>
+                    <Text style={s.socialTitle} numberOfLines={2}>{mutualLabel(mutualPreview, mutualCount, t)}</Text>
                 )}
                 <Text style={[s.socialSub, !hasMutuals && { color: TEXT }]}>
-                    {friendCount} {friendCount === 1 ? 'friend' : 'friends'}
+                    {t('social:profile.friendCount', { count: friendCount })}
                 </Text>
             </View>
         </View>
@@ -538,14 +551,15 @@ function MutualFriendsRow({ social }: { social: ProfileSocial }) {
 // ─── RelationshipDepth — friends-only: how connected you two are ──────────────
 
 function RelationshipDepth({ social }: { social: ProfileSocial }) {
-    const since = monthYear(social.friendsSince);
+    const { t } = useTranslation();
+    const since = monthYear(social.friendsSince, t);
     const items: { icon: keyof typeof Ionicons.glyphMap; color: string; text: string }[] = [];
-    if (since) items.push({ icon: 'heart', color: '#f472b6', text: `Friends since ${since}` });
+    if (since) items.push({ icon: 'heart', color: '#f472b6', text: t('social:profile.friendsSince', { date: since }) });
     if (social.challengesTogether > 0) {
         items.push({
             icon: 'trophy',
             color: GOLD,
-            text: `${social.challengesTogether} ${social.challengesTogether === 1 ? 'challenge' : 'challenges'} together`,
+            text: t('social:profile.challengesTogether', { count: social.challengesTogether }),
         });
     }
     if (items.length === 0) return null;
@@ -645,6 +659,7 @@ function AchievementsGrid({ achievements }: { achievements: Achievement[] }) {
 // ─── StatStrip — streak | sparkline | sessions ───────────────────────────────
 
 function StatStrip({ stats }: { stats: ProfileStats }) {
+    const { t } = useTranslation();
     const max = Math.max(1, ...stats.dailyPoints);
     const W = 110;
     const H = 30;
@@ -661,9 +676,9 @@ function StatStrip({ stats }: { stats: ProfileStats }) {
                     <Ionicons name="flame" size={13} color="#fb923c" />
                     <Text style={s.statNum}>{stats.currentStreak}</Text>
                 </View>
-                <Text style={s.statLabel}>DAY STREAK</Text>
+                <Text style={s.statLabel}>{t('social:profile.dayStreak')}</Text>
                 {stats.longestStreak > stats.currentStreak && (
-                    <Text style={s.statSub}>{stats.longestStreak} best</Text>
+                    <Text style={s.statSub}>{t('social:profile.best', { n: stats.longestStreak })}</Text>
                 )}
             </View>
             <View style={s.statDivider} />
@@ -689,12 +704,12 @@ function StatStrip({ stats }: { stats: ProfileStats }) {
                         strokeLinejoin="round"
                     />
                 </Svg>
-                <Text style={s.statLabel}>{weekTotal.toLocaleString()} PTS / 7D</Text>
+                <Text style={s.statLabel}>{t('social:profile.ptsWeek', { points: weekTotal.toLocaleString() })}</Text>
             </View>
             <View style={s.statDivider} />
             <View style={s.statCell}>
                 <Text style={s.statNum}>{stats.sessionCount30d}</Text>
-                <Text style={s.statLabel}>SESSIONS · 30D</Text>
+                <Text style={s.statLabel}>{t('social:profile.sessions30d')}</Text>
             </View>
         </View>
     );
