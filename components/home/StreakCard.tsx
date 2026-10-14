@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -43,18 +44,22 @@ interface StreakCardProps {
   onRescuePress?: () => void;
 }
 
-const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const DAYS = [
+  'home:weekdays.mon', 'home:weekdays.tue', 'home:weekdays.wed', 'home:weekdays.thu',
+  'home:weekdays.fri', 'home:weekdays.sat', 'home:weekdays.sun',
+];
 
+/** `label` is a catalog key, read at render. */
 type PillConfig = { label: string; dotColor: string };
 
 function getStreakPill(streak: number): PillConfig {
-  if (streak === 0)  return { label: 'JUST STARTED',  dotColor: GOLD };
-  if (streak < 3)    return { label: 'SHOWING UP',  dotColor: 'rgba(255,255,255,0.55)' };
-  if (streak < 7)    return { label: 'BUILDING',     dotColor: '#4ade80' };
-  if (streak < 14)   return { label: 'ON A ROLL',    dotColor: '#22c55e' };
-  if (streak < 21)   return { label: 'ON FIRE',      dotColor: ORANGE };
-  if (streak < 30)   return { label: 'UNSTOPPABLE',  dotColor: '#ef4444' };
-  return               { label: 'LEGENDARY',    dotColor: GOLD };
+  if (streak === 0)  return { label: 'home:streak.pill.justStarted',  dotColor: GOLD };
+  if (streak < 3)    return { label: 'home:streak.pill.showingUp',  dotColor: 'rgba(255,255,255,0.55)' };
+  if (streak < 7)    return { label: 'home:streak.pill.building',     dotColor: '#4ade80' };
+  if (streak < 14)   return { label: 'home:streak.pill.onARoll',    dotColor: '#22c55e' };
+  if (streak < 21)   return { label: 'home:streak.pill.onFire',      dotColor: ORANGE };
+  if (streak < 30)   return { label: 'home:streak.pill.unstoppable',  dotColor: '#ef4444' };
+  return               { label: 'home:streak.pill.legendary',    dotColor: GOLD };
 }
 
 export function StreakCard({
@@ -78,6 +83,7 @@ export function StreakCard({
   rescueExpiresAt = null,
   onRescuePress,
 }: StreakCardProps) {
+  const { t } = useTranslation();
   const streakWeeks = Math.floor(streak / 7);
   const weekDates = useMemo(() => {
     const now = new Date();
@@ -152,7 +158,7 @@ export function StreakCard({
       <View style={styles.content}>
         {/* Header row */}
         <View style={styles.header}>
-          <Text style={styles.label}>YOUR STREAK</Text>
+          <Text style={styles.label}>{t('home:streak.title')}</Text>
           <View style={styles.headerRight}>
             <View style={styles.pill}>
               <Animated.View
@@ -162,7 +168,7 @@ export function StreakCard({
                   dotStyle,
                 ]}
               />
-              <Text style={styles.pillText}>{streakPill.label}</Text>
+              <Text style={styles.pillText}>{t(streakPill.label)}</Text>
             </View>
             {onShare && (
               <Pressable
@@ -182,7 +188,7 @@ export function StreakCard({
             <Text style={styles.number} adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.5}>{streakWeeks}</Text>
             <View style={styles.unitCol}>
               <Text style={styles.unit}>
-                {`week${streakWeeks !== 1 ? 's' : ''}`}
+                {t('home:streak.weeks', { count: streakWeeks })}
               </Text>
 
             </View>
@@ -202,7 +208,7 @@ export function StreakCard({
                     isToday && styles.weekDayNameToday,
                     isFuture && styles.weekDayNameFuture,
                     isRescue && styles.weekDayNameRescue,
-                  ]}>{day}</Text>
+                  ]}>{t(day)}</Text>
                   <View style={[
                     styles.weekDateCircle,
                     done && styles.weekDateCircleDone,
@@ -228,7 +234,7 @@ export function StreakCard({
         {/* Countdown to midnight */}
         <View style={styles.countdownRow}>
           <Text style={styles.countdownTime}>{countdown}</Text>
-          <Text style={styles.countdownLabel}>Resets midnight</Text>
+          <Text style={styles.countdownLabel}>{t('home:streak.resets')}</Text>
         </View>
 
         {/* Live rescue readout — one quiet line, the modal already announced it.
@@ -243,10 +249,13 @@ export function StreakCard({
           >
             <Ionicons name="bandage-outline" size={11} color={ORANGE} />
             <Text style={styles.rescueText}>
-              SAVE YOUR STREAK · {Math.min(rescueDone, rescueRequired)}/{rescueRequired}
               {rescueExpiresAt
-                ? ` · ${Math.max(1, Math.floor((new Date(rescueExpiresAt).getTime() - Date.now()) / 3600_000))}H LEFT`
-                : ''}
+                ? t('home:streak.rescueTimed', {
+                    done: Math.min(rescueDone, rescueRequired),
+                    required: rescueRequired,
+                    count: Math.max(1, Math.floor((new Date(rescueExpiresAt).getTime() - Date.now()) / 3600_000)),
+                  })
+                : t('home:streak.rescue', { done: Math.min(rescueDone, rescueRequired), required: rescueRequired })}
             </Text>
             {onRescuePress && (
               <Ionicons name="chevron-forward" size={11} color="rgba(249,115,22,0.6)" />
@@ -268,8 +277,8 @@ export function StreakCard({
               />
               <Text style={[styles.sessionLabel, sessionDwellMet && styles.sessionLabelLocked]}>
                 {sessionDwellMet
-                  ? (sessionMaxTier ? 'MAX TIER' : 'POINTS LOCKED')
-                  : 'SESSION'}
+                  ? (sessionMaxTier ? t('home:streak.session.maxTier') : t('home:streak.session.locked'))
+                  : t('home:streak.session.label')}
               </Text>
               {sessionPartnerName ? (
                 <Text style={styles.sessionPartner} numberOfLines={1}>
@@ -292,8 +301,8 @@ export function StreakCard({
             {sessionDwellMet && (
               <Text style={styles.sessionHint}>
                 {sessionMaxTier
-                  ? `+${sessionProjectedPts} pts · max tier`
-                  : `+${sessionProjectedPts} pts · stay ${sessionUpgradeMinutes}m to unlock +${sessionUpgradeBonus}`}
+                  ? t('home:streak.session.hintMax', { points: sessionProjectedPts })
+                  : t('home:streak.session.hintUpgrade', { points: sessionProjectedPts, minutes: sessionUpgradeMinutes, bonus: sessionUpgradeBonus })}
               </Text>
             )}
           </View>

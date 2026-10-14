@@ -1,8 +1,10 @@
 import { Image as ExpoImage } from 'expo-image';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import type { LiveEventPrize } from '@/lib/api/liveEvents';
+import i18n from '@/lib/i18n';
 import { prizeImageUri } from '@/lib/storageImage';
 
 const GOLD = '#E8D200';
@@ -10,7 +12,13 @@ const DIM = 'rgba(255,255,255,0.5)';
 const HAIRLINE = 'rgba(255,255,255,0.08)';
 
 export function rankLabel(rank: number): string {
-    return rank === 1 ? '1ST' : rank === 2 ? '2ND' : rank === 3 ? '3RD' : `${rank}TH`;
+    return rank === 1
+        ? i18n.t('events:prizes.rank.first')
+        : rank === 2
+            ? i18n.t('events:prizes.rank.second')
+            : rank === 3
+                ? i18n.t('events:prizes.rank.third')
+                : i18n.t('events:prizes.rank.nth', { rank });
 }
 
 /**
@@ -37,6 +45,7 @@ export function EventPrizeList({
     size?: 'card' | 'sheet';
     max?: number;
 }) {
+    const { t } = useTranslation();
     const rows = prizes.slice(0, max);
     if (rows.length === 0) return null;
 
@@ -67,7 +76,7 @@ export function EventPrizeList({
                     <View
                         key={p.rank}
                         style={[styles.row, i > 0 && styles.rowDivider, sheet && styles.rowSheet]}
-                        accessibilityLabel={`${rankLabel(p.rank)} prize: ${p.label}`}
+                        accessibilityLabel={t('events:prizes.a11y', { rank: rankLabel(p.rank), prize: p.label })}
                     >
                         <View style={[styles.tile, { width: tile, height: tile, borderRadius: sheet ? 14 : 11 }]}>
                             {uri ? (

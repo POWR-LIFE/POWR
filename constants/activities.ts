@@ -1,7 +1,14 @@
 /**
  * POWR Activity Type Definitions
  * Mirrors the logic documented in context/POWR_Points_Logic.md
+ *
+ * The member-facing text (label, labelShort, tag) is a getter over the
+ * `activities` catalog, so `ACTIVITIES.gym.label` reads in the language on
+ * screen at the moment it's read. Copy it into module-level state and it
+ * freezes in whatever language was showing then.
  */
+
+import i18n from '@/lib/i18n';
 
 export type ActivityType =
   | 'walking'
@@ -17,16 +24,21 @@ export type ActivityType =
 
 export interface ActivityConfig {
   type: ActivityType;
-  label: string;
+  readonly label: string;
+  /**
+   * The English label whatever the screen shows. Provider-reported workout
+   * names arrive in English, so this is the one to compare them against.
+   */
+  readonly labelEn: string;
   /** Short label for tight UI */
-  labelShort: string;
+  readonly labelShort: string;
   /** Icon name (outline variant for inactive, filled for active) */
   icon: string;
   iconActive: string;
   /** Icon library – defaults to 'ionicons' */
   iconLib?: 'ionicons' | 'material-community';
   /** Marketing tag from points logic doc */
-  tag: string;
+  readonly tag: string;
   dailyCap: number;
   /** Colour used for category tinting */
   colour: string;
@@ -41,11 +53,12 @@ export interface ActivityConfig {
 export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   walking: {
     type: 'walking',
-    label: 'Walking',
-    labelShort: 'Walk',
+    get label() { return i18n.t('activities:names.walking'); },
+    get labelEn() { return i18n.t('activities:names.walking', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.walking'); },
     icon: 'footsteps-outline',
     iconActive: 'footsteps',
-    tag: 'Mass Market',
+    get tag() { return i18n.t('activities:tags.massMarket'); },
     dailyCap: 5,
     colour: '#4AF2A1',
     minDuration: 0,
@@ -53,12 +66,13 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   },
   running: {
     type: 'running',
-    label: 'Running',
-    labelShort: 'Run',
+    get label() { return i18n.t('activities:names.running'); },
+    get labelEn() { return i18n.t('activities:names.running', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.running'); },
     icon: 'run',
     iconActive: 'run-fast',
     iconLib: 'material-community',
-    tag: 'Effort-Based',
+    get tag() { return i18n.t('activities:tags.effortBased'); },
     dailyCap: 10,
     colour: '#FF9944',
     minDuration: 15,
@@ -66,11 +80,12 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   },
   cycling: {
     type: 'cycling',
-    label: 'Cycling',
-    labelShort: 'Cycle',
+    get label() { return i18n.t('activities:names.cycling'); },
+    get labelEn() { return i18n.t('activities:names.cycling', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.cycling'); },
     icon: 'bicycle-outline',
     iconActive: 'bicycle',
-    tag: 'Effort-Based',
+    get tag() { return i18n.t('activities:tags.effortBased'); },
     dailyCap: 10,
     colour: '#0EA5E9',
     minDuration: 20,
@@ -78,11 +93,12 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   },
   swimming: {
     type: 'swimming',
-    label: 'Swimming',
-    labelShort: 'Swim',
+    get label() { return i18n.t('activities:names.swimming'); },
+    get labelEn() { return i18n.t('activities:names.swimming', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.swimming'); },
     icon: 'water-outline',
     iconActive: 'water',
-    tag: 'Verified Sport',
+    get tag() { return i18n.t('activities:tags.verifiedSport'); },
     dailyCap: 10,
     colour: '#38BDF8',
     minDuration: 15,
@@ -90,11 +106,12 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   },
   gym: {
     type: 'gym',
-    label: 'Gym',
-    labelShort: 'Gym',
+    get label() { return i18n.t('activities:names.gym'); },
+    get labelEn() { return i18n.t('activities:names.gym', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.gym'); },
     icon: 'barbell-outline',
     iconActive: 'barbell',
-    tag: 'Premium Lane',
+    get tag() { return i18n.t('activities:tags.premiumLane'); },
     dailyCap: 30,
     colour: '#E8D200',
     minDuration: 30,
@@ -102,11 +119,12 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   },
   hiit: {
     type: 'hiit',
-    label: 'HIIT / Classes',
-    labelShort: 'HIIT',
+    get label() { return i18n.t('activities:names.hiit'); },
+    get labelEn() { return i18n.t('activities:names.hiit', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.hiit'); },
     icon: 'flame-outline',
     iconActive: 'flame',
-    tag: 'High Intensity',
+    get tag() { return i18n.t('activities:tags.highIntensity'); },
     // Strength lane — HIIT/classes score exactly like a gym session (same 15/20
     // tiers, same streak multipliers, same cap). Keep in step with claim-points
     // DAILY_CAPS and enforce_point_award_cap.
@@ -117,11 +135,12 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   },
   sports: {
     type: 'sports',
-    label: 'Sports',
-    labelShort: 'Sport',
+    get label() { return i18n.t('activities:names.sports'); },
+    get labelEn() { return i18n.t('activities:names.sports', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.sports'); },
     icon: 'football-outline',
     iconActive: 'football',
-    tag: 'Social / Casual',
+    get tag() { return i18n.t('activities:tags.socialCasual'); },
     dailyCap: 10,
     colour: '#7C3AED',
     minDuration: 30,
@@ -129,11 +148,12 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   },
   yoga: {
     type: 'yoga',
-    label: 'Yoga / Pilates',
-    labelShort: 'Yoga',
+    get label() { return i18n.t('activities:names.yoga'); },
+    get labelEn() { return i18n.t('activities:names.yoga', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.yoga'); },
     icon: 'leaf-outline',
     iconActive: 'leaf',
-    tag: 'Low Intensity',
+    get tag() { return i18n.t('activities:tags.lowIntensity'); },
     dailyCap: 6,
     colour: '#88CC28',
     minDuration: 20,
@@ -141,11 +161,12 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   },
   dance: {
     type: 'dance',
-    label: 'Dance',
-    labelShort: 'Dance',
+    get label() { return i18n.t('activities:names.dance'); },
+    get labelEn() { return i18n.t('activities:names.dance', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.dance'); },
     icon: 'musical-notes-outline',
     iconActive: 'musical-notes',
-    tag: 'Cardio',
+    get tag() { return i18n.t('activities:tags.cardio'); },
     dailyCap: 8,
     colour: '#EC4899',
     minDuration: 20,
@@ -153,11 +174,12 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
   },
   sleep: {
     type: 'sleep',
-    label: 'Sleep',
-    labelShort: 'Sleep',
+    get label() { return i18n.t('activities:names.sleep'); },
+    get labelEn() { return i18n.t('activities:names.sleep', { lng: 'en' }); },
+    get labelShort() { return i18n.t('activities:short.sleep'); },
     icon: 'moon-outline',
     iconActive: 'moon',
-    tag: 'Recovery',
+    get tag() { return i18n.t('activities:tags.recovery'); },
     dailyCap: 5,
     colour: '#6366F1',
     minDuration: 0,

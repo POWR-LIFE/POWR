@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { colours, components, typography } from '@/constants/tokens';
@@ -29,6 +30,7 @@ function TabIcon({ name, nameActive, label, focused }: TabIconProps) {
 }
 
 export default function TabLayout() {
+  const { t } = useTranslation();
   useHealthSync();
   // Live-event lifecycle pushed from the DB — the reveal turns every phone
   // over by itself. Above the tabs so it holds whichever tab is showing.
@@ -45,7 +47,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('system:tabs.home'),
           tabBarIcon: ({ focused }) => (
             <TabIcon name="home-outline" nameActive="home" label="HOME" focused={focused} />
           ),
@@ -54,7 +56,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="progress"
         options={{
-          title: 'Progress',
+          title: t('system:tabs.progress'),
           tabBarIcon: ({ focused }) => (
             <TabIcon name="bar-chart-outline" nameActive="bar-chart" label="PROGRESS" focused={focused} />
           ),
@@ -63,7 +65,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="league"
         options={{
-          title: 'League',
+          title: t('system:tabs.league'),
           tabBarIcon: ({ focused }) => (
             <TabIcon name="trophy-outline" nameActive="trophy" label="LEAGUE" focused={focused} />
           ),
@@ -72,7 +74,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="rewards"
         options={{
-          title: 'Spend',
+          title: t('system:tabs.spend'),
           tabBarIcon: ({ focused }) => (
             <TabIcon name="bag-outline" nameActive="bag" label="SPEND" focused={focused} />
           ),
@@ -81,7 +83,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="discover"
         options={{
-          title: 'Discover',
+          title: t('system:tabs.discover'),
           tabBarIcon: ({ focused }) => (
             <TabIcon name="compass-outline" nameActive="compass" label="DISCOVER" focused={focused} />
           ),

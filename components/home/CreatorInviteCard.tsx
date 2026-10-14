@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -28,6 +29,7 @@ const APPROVED_SEEN_KEY = 'creator-invite-approved-dismissed';
 export function CreatorInviteCard() {
     const qc = useQueryClient();
     const router = useRouter();
+    const { t } = useTranslation();
     const [approvedDismissed, setApprovedDismissed] = useState<boolean | null>(null);
 
     const { data } = useQuery({
@@ -67,10 +69,10 @@ export function CreatorInviteCard() {
                     <Ionicons name="sparkles" size={16} color={GOLD} />
                 </View>
                 <Text style={styles.eyebrow}>
-                    {state === 'approved' ? 'YOU’RE IN' : state === 'pending' ? 'REQUEST SENT' : 'POWR AFFILIATES'}
+                    {state === 'approved' ? t('home:creatorInvite.eyebrow.approved') : state === 'pending' ? t('home:creatorInvite.eyebrow.pending') : t('home:creatorInvite.eyebrow.eligible')}
                 </Text>
                 {state === 'approved' && (
-                    <Pressable onPress={dismissApproved} hitSlop={12} accessibilityLabel="Dismiss">
+                    <Pressable onPress={dismissApproved} hitSlop={12} accessibilityLabel={t('home:creatorInvite.dismiss')}>
                         <Ionicons name="close" size={16} color={MUTED} />
                     </Pressable>
                 )}
@@ -78,10 +80,9 @@ export function CreatorInviteCard() {
 
             {state === 'eligible' && (
                 <>
-                    <Text style={styles.title}>You’re bringing people in.</Text>
+                    <Text style={styles.title}>{t('home:creatorInvite.eligible.title')}</Text>
                     <Text style={styles.body}>
-                        {converted} {converted === 1 ? 'person' : 'people'} you invited have logged their first verified workout.
-                        Affiliates get their own link, a portal to track it, and real rewards for every signup. Want in?
+                        {t('home:creatorInvite.eligible.body', { count: converted })}
                     </Text>
                     <Pressable
                         onPress={() => ask.mutate()}
@@ -91,30 +92,30 @@ export function CreatorInviteCard() {
                     >
                         {ask.isPending
                             ? <ActivityIndicator color="#080808" />
-                            : <Text style={styles.ctaText}>ASK TO JOIN</Text>}
+                            : <Text style={styles.ctaText}>{t('home:creatorInvite.eligible.cta')}</Text>}
                     </Pressable>
-                    {ask.isError && <Text style={styles.err}>Couldn’t send that — try again in a moment.</Text>}
-                    <Text style={styles.foot}>Invite-only. A real person reads every request.</Text>
+                    {ask.isError && <Text style={styles.err}>{t('home:creatorInvite.eligible.error')}</Text>}
+                    <Text style={styles.foot}>{t('home:creatorInvite.eligible.foot')}</Text>
                 </>
             )}
 
             {state === 'pending' && (
                 <>
-                    <Text style={styles.title}>We’ve got your request.</Text>
+                    <Text style={styles.title}>{t('home:creatorInvite.pending.title')}</Text>
                     <Text style={styles.body}>
-                        Someone on the POWR team will look at it. You’ll get a notification the moment you’re in — keep sharing your code in the meantime.
+                        {t('home:creatorInvite.pending.body')}
                     </Text>
                 </>
             )}
 
             {state === 'approved' && (
                 <>
-                    <Text style={styles.title}>Welcome to POWR Affiliates.</Text>
+                    <Text style={styles.title}>{t('home:creatorInvite.approved.title')}</Text>
                     <Text style={styles.body}>
-                        Your code, link, signups and rewards are ready. Find Affiliate under Settings whenever you need it.
+                        {t('home:creatorInvite.approved.body')}
                     </Text>
                     <Pressable onPress={openPortal} style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-                        <Text style={styles.ctaText}>OPEN AFFILIATE</Text>
+                        <Text style={styles.ctaText}>{t('home:creatorInvite.approved.cta')}</Text>
                         <Ionicons name="arrow-forward" size={14} color="#080808" />
                     </Pressable>
                 </>

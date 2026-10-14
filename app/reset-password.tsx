@@ -14,10 +14,12 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import GeometricBackground from '@/components/GeometricBackground';
+import i18n from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { useEffect, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -44,6 +46,7 @@ type Screen = 'exchanging' | 'form' | 'success' | 'error';
 export default function ResetPasswordScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const { code, auth_error, auth_error_description } = useLocalSearchParams<{
         code?: string;
         auth_error?: string;
@@ -65,18 +68,20 @@ export default function ResetPasswordScreen() {
 
     useEffect(() => {
         (async () => {
+            // i18n.t, not the hook's t: as a dependency, t would re-run this
+            // effect (and the one-time code exchange) on a language change.
             if (auth_error) {
-                const description = auth_error_description ?? 'The link is invalid or has expired.';
+                const description = auth_error_description ?? i18n.t('auth:resetPassword.error.invalidLink');
                 setExchangeError(
                     auth_error === 'otp_expired'
-                        ? 'This password reset link has expired. Please request a new one.'
+                        ? i18n.t('auth:resetPassword.error.expired')
                         : description.replace(/\+/g, ' ')
                 );
                 setScreen('error');
                 return;
             }
             if (!code) {
-                setExchangeError('No recovery code found in the link. Please request a new reset email.');
+                setExchangeError(i18n.t('auth:resetPassword.error.noCode'));
                 setScreen('error');
                 return;
             }
@@ -91,7 +96,7 @@ export default function ResetPasswordScreen() {
                 }
                 setScreen('form');
             } catch (e: unknown) {
-                setExchangeError(e instanceof Error ? e.message : 'Session exchange failed.');
+                setExchangeError(e instanceof Error ? e.message : i18n.t('auth:resetPassword.error.exchangeFailed'));
                 setScreen('error');
             }
         })();
@@ -101,9 +106,9 @@ export default function ResetPasswordScreen() {
 
     const handleSubmit = async () => {
         setFormError(null);
-        if (!newPassword)            { setFormError('Please enter a new password.'); return; }
-        if (newPassword.length < 6)  { setFormError('Password must be at least 6 characters.'); return; }
-        if (newPassword !== confirmPassword) { setFormError("Passwords don't match."); return; }
+        if (!newPassword)            { setFormError(t('auth:resetPassword.error.passwordRequired')); return; }
+        if (newPassword.length < 6)  { setFormError(t('auth:resetPassword.error.passwordTooShort')); return; }
+        if (newPassword !== confirmPassword) { setFormError(t('auth:resetPassword.error.passwordMismatch')); return; }
 
         setLoading(true);
         try {
@@ -122,7 +127,7 @@ export default function ResetPasswordScreen() {
             <View style={[styles.container, styles.centred]}>
                 <GeometricBackground />
                 <ActivityIndicator color={GOLD} size="large" />
-                <Text style={styles.loadingText}>Verifying reset link…</Text>
+                <Text style={styles.loadingText}>{t('auth:resetPassword.loading')}</Text>
             </View>
         );
     }
@@ -135,14 +140,14 @@ export default function ResetPasswordScreen() {
                 <GeometricBackground />
                 <View style={styles.feedbackBox}>
                     <Text style={styles.feedbackIcon}>⚠️</Text>
-                    <Text style={styles.feedbackTitle}>Link expired</Text>
+                    <Text style={styles.feedbackTitle}>{t('auth:resetPassword.errorTitle')}</Text>
                     <Text style={styles.feedbackBody}>{exchangeError}</Text>
                 </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.replace('/(tabs)')}
                 >
-                    <Text style={styles.primaryLabel}>BACK TO APP</Text>
+                    <Text style={styles.primaryLabel}>{t('auth:resetPassword.backToApp')}</Text>
                 </Pressable>
             </View>
         );
@@ -156,14 +161,14 @@ export default function ResetPasswordScreen() {
                 <GeometricBackground />
                 <View style={styles.feedbackBox}>
                     <Text style={styles.feedbackIcon}>🔒</Text>
-                    <Text style={styles.feedbackTitle}>Password updated</Text>
-                    <Text style={styles.feedbackBody}>You're all set. Your new password is active.</Text>
+                    <Text style={styles.feedbackTitle}>{t('auth:resetPassword.successTitle')}</Text>
+                    <Text style={styles.feedbackBody}>{t('auth:resetPassword.successBody')}</Text>
                 </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.replace('/(tabs)')}
                 >
-                    <Text style={styles.primaryLabel}>CONTINUE</Text>
+                    <Text style={styles.primaryLabel}>{t('auth:resetPassword.continue')}</Text>
                 </Pressable>
             </View>
         );
@@ -185,21 +190,20 @@ export default function ResetPasswordScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <Text style={styles.headline}>
-                    {'Set new\n'}
-                    <Text style={styles.headlineGold}>password.</Text>
+                    <Trans i18nKey="auth:resetPassword.headline" components={{ gold: <Text style={styles.headlineGold} /> }} />
                 </Text>
 
                 <View style={styles.form}>
                     {/* New password */}
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>NEW PASSWORD</Text>
+                        <Text style={styles.fieldLabel}>{t('auth:resetPassword.field.newPassword')}</Text>
                         <View style={[
                             styles.inputContainer,
                             focusedField === 'new' && styles.inputFocused,
                         ]}>
                             <TextInput
                                 style={styles.inputBorderless}
-                                placeholder="Min. 6 characters"
+                                placeholder={t('auth:resetPassword.placeholder.newPassword')}
                                 placeholderTextColor="rgba(255,255,255,0.22)"
                                 value={newPassword}
                                 onChangeText={setNewPassword}
@@ -218,14 +222,14 @@ export default function ResetPasswordScreen() {
 
                     {/* Confirm */}
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>CONFIRM NEW PASSWORD</Text>
+                        <Text style={styles.fieldLabel}>{t('auth:resetPassword.field.confirmPassword')}</Text>
                         <View style={[
                             styles.inputContainer,
                             focusedField === 'confirm' && styles.inputFocused,
                         ]}>
                             <TextInput
                                 style={styles.inputBorderless}
-                                placeholder="Re-enter new password"
+                                placeholder={t('auth:resetPassword.placeholder.confirmPassword')}
                                 placeholderTextColor="rgba(255,255,255,0.22)"
                                 value={confirmPassword}
                                 onChangeText={setConfirmPassword}
@@ -260,7 +264,7 @@ export default function ResetPasswordScreen() {
                     >
                         {loading
                             ? <ActivityIndicator color="#0a0a0a" />
-                            : <Text style={styles.primaryLabel}>UPDATE PASSWORD</Text>
+                            : <Text style={styles.primaryLabel}>{t('auth:resetPassword.submit')}</Text>
                         }
                     </Pressable>
                 </View>

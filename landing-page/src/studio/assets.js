@@ -3,11 +3,28 @@
  * product shot. Logos arrive in every state (transparent PNG, logo on a white
  * JPG, huge margins), so each upload is cleaned the same way: a flat
  * background is keyed out, then the image is trimmed to its ink.
+ *
+ * A product is cut out more carefully (`background: 'edges'`): only the
+ * background that reaches the photo's edges goes, so a white tub on white
+ * keeps its white body — and where the product is close to its background
+ * colour anyway, the photo is kept whole unless the editor says cut it out.
  */
 
 const MAX_EDGE = 1600;
 
-export async function loadAsset(file) {
+// Colour distance (|ΔR|+|ΔG|+|ΔB|) below SURE is background; up to SOFT is the
+// anti-aliased fringe between it and the subject.
+const SURE = 24;
+const SOFT = 72;
+
+/**
+ * The file as an image ready for a template. `background`: 'all' keys out
+ * every pixel of a flat background's colour (a logo's counters too); 'edges'
+ * only the background connected to the border (a product). For 'edges' the
+ * result also carries `source` (the photo as uploaded), `cutout` (it cut out)
+ * and `keep` (which one `image` is): `keep` undefined lets the photo decide.
+ */
+export async function loadAsset(file, { background = 'all', keep } = {}) {
     let bmp;
     try {
         bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -23,26 +40,90 @@ export async function loadAsset(file) {
     const ctx = c.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(bmp, 0, 0, w, h);
     bmp.close?.();
-    keyOutFlatBackground(ctx, w, h);
-    return { image: trim(c), name: file.name || 'image' };
+    const name = file.name || 'image';
+    const cut = keyOutFlatBackground(c, background);
+    if (!cut) return { image: trim(c), name };
+    if (background !== 'edges') return { image: trim(cut.canvas), name };
+    const cutout = trim(cut.canvas);
+    const k = keep ?? cut.risky;
+    return { image: k ? c : cutout, name, source: c, cutout, keep: k };
 }
 
-// No transparency but four matching corners (a logo on white, or on black):
-// make that colour transparent, feathered so edges stay smooth.
-function keyOutFlatBackground(ctx, w, h) {
-    const img = ctx.getImageData(0, 0, w, h);
+/** The same asset showing its cut-out (keep false) or the photo as uploaded (keep true). */
+export function withBackground(a, keep) {
+    if (!a?.source || a.keep === keep) return a;
+    return withPreview({ ...a, image: keep ? a.source : a.cutout, keep });
+}
+
+/**
+ * No transparency but four matching corners (a logo on white, or on black):
+ * a copy with that colour made transparent, feathered so edges stay smooth —
+ * or null when there's no flat background to take. With 'edges', `risky`
+ * says the subject itself is mostly near that colour (white on white), where
+ * a cut-out would lose its highlights wherever they touch the outline.
+ */
+function keyOutFlatBackground(src, mode) {
+    const w = src.width;
+    const h = src.height;
+    const img = src.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h);
     const d = img.data;
-    for (let i = 3; i < d.length; i += 4) if (d[i] < 250) return; // already has alpha
+    for (let i = 3; i < d.length; i += 4) if (d[i] < 250) return null; // already has alpha
     const at = (x, y) => { const i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]]; };
     const corners = [at(0, 0), at(w - 1, 0), at(0, h - 1), at(w - 1, h - 1)];
     const bg = corners[0];
     const close = (a, b, t) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) < t;
-    if (!corners.every((c) => close(c, bg, 30))) return;
-    for (let i = 0; i < d.length; i += 4) {
-        const dist = Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]);
-        d[i + 3] = dist < 24 ? 0 : dist < 72 ? Math.round(((dist - 24) / 48) * 255) : 255;
+    if (!corners.every((c) => close(c, bg, 30))) return null;
+    const n = w * h;
+    const dist = new Uint16Array(n);
+    for (let i = 0, p = 0; i < n; i++, p += 4) dist[i] = Math.abs(d[p] - bg[0]) + Math.abs(d[p + 1] - bg[1]) + Math.abs(d[p + 2] - bg[2]);
+    let risky = false;
+    if (mode === 'edges') {
+        // Background = near-bg pixels reachable from the border (flood fill).
+        const out = new Uint8Array(n);
+        const q = new Int32Array(n);
+        let head = 0;
+        let tail = 0;
+        const push = (i) => { if (!out[i] && dist[i] < SURE) { out[i] = 1; q[tail++] = i; } };
+        for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+        for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+        while (head < tail) {
+            const i = q[head++];
+            const x = i % w;
+            if (x > 0) push(i - 1);
+            if (x < w - 1) push(i + 1);
+            if (i >= w) push(i - w);
+            if (i < n - w) push(i + w);
+        }
+        // The fringe: two pixels round the background, faded by colour.
+        let ring = out;
+        const fringe = new Uint8Array(n);
+        for (let step = 0; step < 2; step++) {
+            const next = new Uint8Array(n);
+            for (let i = 0; i < n; i++) {
+                if (out[i] || fringe[i]) continue;
+                const x = i % w;
+                if ((x > 0 && ring[i - 1]) || (x < w - 1 && ring[i + 1]) || (i >= w && ring[i - w]) || (i < n - w && ring[i + w])) next[i] = 1;
+            }
+            for (let i = 0; i < n; i++) if (next[i]) fringe[i] = 1;
+            ring = next;
+        }
+        let subject = 0;
+        let pale = 0;
+        for (let i = 0, p = 3; i < n; i++, p += 4) {
+            if (out[i]) { d[p] = 0; continue; }
+            if (fringe[i] && dist[i] < SOFT) { d[p] = Math.round(((Math.max(dist[i], SURE) - SURE) / (SOFT - SURE)) * 255); continue; }
+            subject++;
+            if (dist[i] < SOFT) pale++;
+        }
+        risky = subject > 0 && pale / subject > 0.3;
+    } else {
+        for (let i = 0, p = 3; i < n; i++, p += 4) d[p] = dist[i] < SURE ? 0 : dist[i] < SOFT ? Math.round(((dist[i] - SURE) / (SOFT - SURE)) * 255) : 255;
     }
-    ctx.putImageData(img, 0, 0);
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    c.getContext('2d').putImageData(img, 0, 0);
+    return { canvas: c, risky };
 }
 
 /** Crop a canvas to its non-transparent pixels. */
@@ -139,9 +220,8 @@ export function inkLuma(img) {
     return l;
 }
 
-/** loadAsset, plus a small preview (data URL) for the field that shows it. */
-export async function assetWithPreview(file) {
-    const a = await loadAsset(file);
+/** The asset with a small preview (data URL) of its image, for the field that shows it. */
+function withPreview(a) {
     const pv = document.createElement('canvas');
     const k = Math.min(1, 160 / Math.max(a.image.width, a.image.height));
     pv.width = Math.max(1, Math.round(a.image.width * k));
@@ -149,4 +229,9 @@ export async function assetWithPreview(file) {
     pv.getContext('2d').drawImage(a.image, 0, 0, pv.width, pv.height);
     a.preview = pv.toDataURL();
     return a;
+}
+
+/** loadAsset, plus a small preview (data URL) for the field that shows it. */
+export async function assetWithPreview(file, opts) {
+    return withPreview(await loadAsset(file, opts));
 }

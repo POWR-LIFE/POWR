@@ -1,0 +1,163 @@
+{
+  "cta": {
+    "requesting": "REQUESTING...",
+    "openSettings": "OPEN SETTINGS"
+  },
+  "location": {
+    "eyebrow": "LOCATION",
+    "headline": "Unlock the\n<gold>map.</gold>",
+    "bodyVenue": "Partner venues and automatic check-ins — it all starts with where you are.",
+    "bodyGym": "Partner gyms and automatic check-ins — it all starts with where you are.",
+    "offVenue": "Location is off for POWR, so sessions at partner venues can’t be verified — and your phone won’t ask again. Turn it back on under <strong>{{path}}</strong>.",
+    "offGym": "Location is off for POWR, so sessions at partner gyms can’t be verified — and your phone won’t ask again. Turn it back on under <strong>{{path}}</strong>.",
+    "cta": {
+      "allowIos": "ALLOW WHILE USING",
+      "allowAndroid": "ALLOW LOCATION"
+    },
+    "bonus": "+20 POWR",
+    "skip": "Continue without location",
+    "preciseAlert": {
+      "title": "Turn on Precise location",
+      "body": "POWR verifies you’re really at a partner venue — approximate location can’t do that. Choose “Precise” so your sessions count.",
+      "fix": "Fix it",
+      "later": "Later"
+    }
+  },
+  "precise": {
+    "eyebrow": "PRECISE LOCATION",
+    "headline": "Close enough\nto <gold>count.</gold>",
+    "bodyGym": "POWR checks you’re really at the gym, down to a few metres. Approximate location can’t do that, so sessions won’t count. Turn on <strong>Precise</strong> under <strong>{{path}}</strong>.",
+    "bodyVenue": "POWR checks you’re really at the partner venue, down to a few metres. Approximate location can’t do that, so sessions won’t count. Turn on <strong>Precise</strong> under <strong>{{path}}</strong>."
+  },
+  "background": {
+    "eyebrow": "PASSIVE TRACKING",
+    "headline": "Earn while\nyou <gold>move.</gold>",
+    "body": "No pressing start. POWR checks you in from your pocket — even when the app is closed. That only works on <strong>{{always}}</strong>.",
+    "offGym": "Location is on, but only while you’re in the app — so every gym trip with POWR closed earns nothing. Set it to <strong>{{always}}</strong> under <strong>{{path}}</strong>.",
+    "offVenue": "Location is on, but only while you’re in the app — so every partner venue trip with POWR closed earns nothing. Set it to <strong>{{always}}</strong> under <strong>{{path}}</strong>.",
+    "alwaysIos": "“Always”",
+    "alwaysAndroid": "“Allow all the time”",
+    "cta": {
+      "allowIos": "SET TO ALWAYS",
+      "allowAndroid": "ALLOW ALL THE TIME"
+    },
+    "skip": "Continue without allowing",
+    "iosAlert": {
+      "title": "Enable \"Always\" for automatic check-ins",
+      "body": "To detect arrivals at partner venues when POWR is closed, set location to \"Always\" in Settings › Privacy & Security › Location Services › POWR.",
+      "later": "Later",
+      "openSettings": "Open Settings"
+    }
+  },
+  "locationOk": {
+    "headline": "You’re all\n<gold>set.</gold>",
+    "bodyGym": "POWR can see where you are and check you in automatically. Turn it off and you stop earning at geofenced venues and partner gyms.",
+    "bodyVenue": "POWR can see where you are and check you in automatically. Turn it off and you stop earning at partner venues."
+  },
+  "battery": {
+    "eyebrow": "BACKGROUND ACTIVITY",
+    "headline": "Don’t let Android\n<gold>sleep on it.</gold>",
+    "bodyGym": "POWR keeps a light watch running so it can spot gym arrivals with the app closed. Battery optimisation kills that watch without telling you.",
+    "bodyVenue": "POWR keeps a light watch running so it can spot partner venue arrivals with the app closed. Battery optimisation kills that watch without telling you.",
+    "cta": "ALLOW UNRESTRICTED"
+  },
+  "notifications": {
+    "eyebrow": "NOTIFICATIONS",
+    "headline": "Know when\nyou <gold>earn.</gold>",
+    "body": "A session lands, a streak’s at risk, a reward drops nearby — you’ll know the second it happens. Every alert is yours to switch off.",
+    "off": "Alerts are off for POWR at the system level, so nothing below can reach you — and your phone won’t ask again. Turn them on under <strong>{{path}}</strong>.",
+    "cta": "ENABLE ALERTS",
+    "skip": "Continue without alerts"
+  },
+  "fix": {
+    "notNow": "Not now",
+    "done": "Done",
+    "paths": {
+      "locationIos": "Settings › POWR › Location",
+      "locationAndroid": "App info › Permissions › Location",
+      "notificationsIos": "Settings › POWR › Notifications",
+      "notificationsAndroid": "App info › Notifications"
+    }
+  },
+  "scene": {
+    "yourGym": "YOUR GYM",
+    "lockDate": "Tuesday 7 July"
+  },
+  "push": {
+    "now": "now",
+    "hoursAgo": "{{hours}}h",
+    "detecting": {
+      "title": "Detecting Partners nearby",
+      "body": "Automatic check-ins enabled."
+    },
+    "arrival": {
+      "title": "You’re in.",
+      "body": "Arrival detected — session started."
+    },
+    "session": {
+      "title": "Session recorded",
+      "body": "48 min at your gym — +50 POWR banked."
+    },
+    "reward": {
+      "title": "Reward drop nearby",
+      "body": "A new reward just unlocked around the corner."
+    },
+    "streak": {
+      "title": "Streak at risk",
+      "body": "One session today keeps your 6-day streak alive."
+    }
+  },
+  "mock": {
+    "ios": {
+      "location": {
+        "title": "Allow “POWR” to use your location?",
+        "message": "POWR uses your location to verify your sessions and surface rewards near you.",
+        "allowOnce": "Allow Once",
+        "allowWhileUsing": "Allow While Using App",
+        "dontAllow": "Don’t Allow",
+        "precise": "Precise: On"
+      },
+      "always": {
+        "title": "Allow “POWR” to also use your location even when you are not using the app?",
+        "message": "Automatic check-ins only work with “Always” access.",
+        "keep": "Keep Only While Using",
+        "change": "Change to Always Allow"
+      },
+      "notifications": {
+        "title": "“POWR” Would Like to Send You Notifications",
+        "message": "Notifications may include alerts, sounds and icon badges.",
+        "allow": "Allow",
+        "dontAllow": "Don’t Allow"
+      }
+    },
+    "android": {
+      "location": {
+        "title": "Allow POWR to access this device’s location?",
+        "whileUsing": "While using the app",
+        "onlyThisTime": "Only this time",
+        "dontAllow": "Don’t allow",
+        "precise": "Precise",
+        "approximate": "Approximate"
+      },
+      "background": {
+        "title": "Location permission",
+        "section": "Location access for this app",
+        "allTheTime": "Allow all the time",
+        "whileUsing": "Allow only while using the app",
+        "askEveryTime": "Ask every time",
+        "dontAllow": "Don’t allow"
+      },
+      "notifications": {
+        "title": "Allow POWR to send you notifications?",
+        "allow": "Allow",
+        "dontAllow": "Don’t allow"
+      },
+      "battery": {
+        "title": "Ignore battery optimisations?",
+        "message": "Let POWR always run in the background? This may use more battery.",
+        "allow": "Allow",
+        "deny": "Deny"
+      }
+    }
+  }
+}

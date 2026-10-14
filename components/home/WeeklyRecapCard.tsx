@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -13,7 +14,10 @@ const SECONDARY = '#888888';
 const MUTED = '#555555';
 const FAINT = '#444444';
 
-const DAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const DAY_INITIALS = [
+    'home:weekdays.mon', 'home:weekdays.tue', 'home:weekdays.wed', 'home:weekdays.thu',
+    'home:weekdays.fri', 'home:weekdays.sat', 'home:weekdays.sun',
+];
 
 /**
  * "Your Week" — the recap doorway that takes the top of the This Week slot for
@@ -31,6 +35,7 @@ export function WeeklyRecapCard({
     onOpen: () => void;
     onDismiss: () => void;
 }) {
+    const { t } = useTranslation();
     const enter = useSharedValue(0);
     useEffect(() => {
         enter.value = withTiming(1, { duration: 350, easing: Easing.out(Easing.cubic) });
@@ -48,10 +53,10 @@ export function WeeklyRecapCard({
         <View>
             <View style={styles.sectionRow}>
                 <View style={styles.sectionTitleRow}>
-                    <Text style={styles.sectionLabel}>YOUR WEEK</Text>
+                    <Text style={styles.sectionLabel}>{t('home:recapCard.title')}</Text>
                     <Text style={styles.sectionCount}>{data.weekLabel}</Text>
                 </View>
-                <Pressable hitSlop={10} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="Dismiss weekly recap">
+                <Pressable hitSlop={10} onPress={onDismiss} accessibilityRole="button" accessibilityLabel={t('home:recapCard.dismissA11y')}>
                     <Ionicons name="close" size={14} color={FAINT} />
                 </Pressable>
             </View>
@@ -60,19 +65,19 @@ export function WeeklyRecapCard({
                 <Pressable
                     onPress={onOpen}
                     accessibilityRole="button"
-                    accessibilityLabel="See your full week"
+                    accessibilityLabel={t('home:recapCard.openA11y')}
                     style={({ pressed }) => [styles.card, pressed && { opacity: 0.92 }]}
                 >
                     <View style={styles.headline}>
                         <View style={styles.ptsWrap}>
                             <Text style={styles.pts}>{data.pointsEarned.toLocaleString()}</Text>
-                            <Text style={styles.ptsUnit}>pts</Text>
+                            <Text style={styles.ptsUnit}>{t('home:shared.pts')}</Text>
                         </View>
-                        <Text style={styles.ptsLabel}>EARNED LAST WEEK</Text>
+                        <Text style={styles.ptsLabel}>{t('home:recapCard.earned')}</Text>
                         {delta != null && delta > 0 && (
                             <View style={styles.deltaRow}>
                                 <Ionicons name="trending-up" size={11} color={GREEN} />
-                                <Text style={styles.deltaText}>up {delta.toLocaleString()} on the week before</Text>
+                                <Text style={styles.deltaText}>{t('home:recapCard.up', { delta: delta.toLocaleString() })}</Text>
                             </View>
                         )}
                     </View>
@@ -83,27 +88,27 @@ export function WeeklyRecapCard({
                                 {data.challengesCompleted}
                                 <Text style={styles.statDenom}>/{challengeTotal}</Text>
                             </Text>
-                            <Text style={styles.statLabel}>CHALLENGES</Text>
+                            <Text style={styles.statLabel}>{t('home:recapCard.challenges')}</Text>
                         </View>
                         <View style={styles.stat}>
                             <Text style={styles.statValue}>
                                 {activeDayCount}
                                 <Text style={styles.statDenom}>/7</Text>
                             </Text>
-                            <Text style={styles.statLabel}>ACTIVE DAYS</Text>
+                            <Text style={styles.statLabel}>{t('home:recapCard.activeDays')}</Text>
                         </View>
                         <View style={styles.dayStrip}>
                             {data.activeDays.map((on, i) => (
                                 <View key={i} style={styles.dayCol}>
                                     <View style={[styles.dayDash, on && styles.dayDashOn]} />
-                                    <Text style={[styles.dayInitial, on && styles.dayInitialOn]}>{DAY_INITIALS[i]}</Text>
+                                    <Text style={[styles.dayInitial, on && styles.dayInitialOn]}>{t(DAY_INITIALS[i])}</Text>
                                 </View>
                             ))}
                         </View>
                     </View>
 
                     <View style={styles.ctaRow}>
-                        <Text style={styles.ctaText}>SEE YOUR FULL WEEK</Text>
+                        <Text style={styles.ctaText}>{t('home:recapCard.cta')}</Text>
                         <Ionicons name="chevron-forward" size={11} color={GOLD} />
                     </View>
                 </Pressable>

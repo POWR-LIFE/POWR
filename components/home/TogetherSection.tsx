@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
@@ -76,6 +77,7 @@ export interface TogetherSectionProps {
  */
 export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherSectionProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const {
     loading,
     error,
@@ -118,13 +120,13 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
   const handleAccept = (id: string) => {
     void acceptInvite(id).then((res) => {
       refreshPendingActions();
-      if (!res.ok) Alert.alert('Couldn’t join', res.error);
+      if (!res.ok) Alert.alert(t('home:together.couldntJoin'), res.error);
     });
   };
   const handleDecline = (id: string) => {
     void declineInvite(id).then((res) => {
       refreshPendingActions();
-      if (!res.ok) Alert.alert('Couldn’t decline', res.error);
+      if (!res.ok) Alert.alert(t('home:together.couldntDecline'), res.error);
     });
   };
 
@@ -151,9 +153,9 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
     // A refusal is almost always "someone beat you to it" — the server keeps
     // every ineligibility behind one message so a taker can't probe who opted
     // in or who blocked them.
-    if (!res.ok && res.error) Alert.alert('Couldn’t take that one', res.error);
+    if (!res.ok && res.error) Alert.alert(t('home:together.couldntTake'), res.error);
     else if (res.ok && res.challengeId) router.push(`/shared-challenge?id=${res.challengeId}`);
-  }, [takeChallenge, router]);
+  }, [takeChallenge, router, t]);
 
   // Default preselection: the crew from your last created challenge, so the
   // usual partners are one Send away. An explicit rematch overrides it.
@@ -248,8 +250,8 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
   // Challenge the pulsing friend in their own discipline when a template fits.
   const pulseTemplateId = useMemo(() => {
     if (!pulse) return null;
-    return templates.find((t) => t.category === pulse.type && t.mode !== 'pooled')?.id
-      ?? templates.find((t) => t.category === pulse.type)?.id
+    return templates.find((tpl) => tpl.category === pulse.type && tpl.mode !== 'pooled')?.id
+      ?? templates.find((tpl) => tpl.category === pulse.type)?.id
       ?? null;
   }, [pulse, templates]);
 
@@ -259,7 +261,7 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
   // and it lets you swap out the one who ghosted. A retired template falls
   // back to the generic picker with the crew kept.
   const handleRematch = useCallback((challenge: SharedChallenge) => {
-    const templateStillLive = templates.some((t) => t.id === challenge.template.id);
+    const templateStillLive = templates.some((tpl) => tpl.id === challenge.template.id);
     openCreate(templateStillLive ? challenge.template.id : null, rematchCrew(challenge));
   }, [templates]);
 
@@ -328,19 +330,19 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
     <View>
       <View style={styles.sectionRow}>
         <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionLabel}>TOGETHER</Text>
+          <Text style={styles.sectionLabel}>{t('home:together.title')}</Text>
           {/* Cap is only worth flagging at the boundary — otherwise it's just noise. */}
           {atCap && (
             <View
               style={styles.fullChip}
-              accessibilityLabel={`Challenge slots full, ${openCount} of ${cap}`}
+              accessibilityLabel={t('home:together.fullA11y', { open: openCount, cap })}
             >
-              <Text style={styles.fullChipText}>Full</Text>
+              <Text style={styles.fullChipText}>{t('home:together.full')}</Text>
             </View>
           )}
           {pendingInvites.length > 0 && (
             <View style={styles.newChip}>
-              <Text style={styles.newChipText}>{pendingInvites.length} new</Text>
+              <Text style={styles.newChipText}>{t('home:together.new', { count: pendingInvites.length })}</Text>
             </View>
           )}
         </View>
@@ -350,13 +352,13 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
             style={styles.friendsBtn}
             onPress={() => router.push('/friends')}
             accessibilityRole="button"
-            accessibilityLabel="View friends"
+            accessibilityLabel={t('home:together.viewFriends')}
           >
             <Ionicons name="people" size={15} color={SECONDARY} />
           </Pressable>
           <Pressable hitSlop={8} style={styles.newBtn} onPress={goToChallenges}>
             <Ionicons name="add" size={14} color={GOLD} />
-            <Text style={styles.newBtnText}>Challenge friends</Text>
+            <Text style={styles.newBtnText}>{t('home:together.challengeFriends')}</Text>
           </Pressable>
         </View>
       </View>
@@ -378,8 +380,8 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
               <Ionicons name="people" size={15} color={GOLD} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.emptySlimTitle}>Take on a challenge together</Text>
-              <Text style={styles.emptySlimBody}>Browse challenges — everyone earns a growing bonus.</Text>
+              <Text style={styles.emptySlimTitle}>{t('home:together.empty.title')}</Text>
+              <Text style={styles.emptySlimBody}>{t('home:together.empty.body')}</Text>
             </View>
             <Ionicons name="arrow-forward" size={16} color={SECONDARY} />
           </Pressable>
@@ -390,8 +392,8 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
           <>
             <Text style={styles.browseIntro}>
               {starter.length > 0
-                ? `Take one on together — +${bonusConfig.perHead} bonus each for every friend who finishes, up to +${bonusConfig.maxBonus}.`
-                : 'Take one on with friends — everyone earns a growing bonus.'}
+                ? t('home:together.intro.crew', { perHead: bonusConfig.perHead, max: bonusConfig.maxBonus })
+                : t('home:together.intro.noCrew')}
             </Text>
             <View onLayout={(e) => setBandWidth(e.nativeEvent.layout.width)}>
               <ScrollView
@@ -443,13 +445,13 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
                     />
                   </View>
                 ))}
-                {templates.map((t, i) => (
+                {templates.map((tpl, i) => (
                   <View
-                    key={t.id}
+                    key={tpl.id}
                     style={{ width: cardWidth, marginRight: i === templates.length - 1 ? 0 : CAROUSEL_GAP }}
                   >
                     <ChallengeTemplateCard
-                      template={t}
+                      template={tpl}
                       index={i}
                       crew={starter}
                       bonusConfig={bonusConfig}

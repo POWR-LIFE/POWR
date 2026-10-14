@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -26,6 +27,7 @@ const BORDER = '#222222';
 export default function EventQrScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const { slug, name } = useLocalSearchParams<{ slug?: string; name?: string }>();
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,7 +48,7 @@ export default function EventQrScreen() {
 
   const eventSlug = typeof slug === 'string' ? slug : null;
   const link = eventSlug ? eventInviteLink(eventSlug, code) : null;
-  const eventName = typeof name === 'string' && name ? name : 'the event';
+  const eventName = typeof name === 'string' && name ? name : t('events:qr.fallbackName');
   const message = link ? eventInviteMessage({ eventName, link, code }) : null;
 
   const handleShare = async () => {
@@ -72,8 +74,8 @@ export default function EventQrScreen() {
     <View style={[styles.screen, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 }]}>
       <View style={styles.header}>
         <View style={styles.headerBtn} />
-        <Text style={styles.headerTitle}>EVENT INVITE</Text>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Close">
+        <Text style={styles.headerTitle}>{t('events:qr.title')}</Text>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('events:qr.closeA11y')}>
           <Ionicons name="close" size={22} color={SECONDARY} />
         </Pressable>
       </View>
@@ -82,11 +84,11 @@ export default function EventQrScreen() {
         {loading ? (
           <ActivityIndicator color={GOLD} />
         ) : !link ? (
-          <Text style={styles.errorLine}>Couldn’t load the event link. Try again in a moment.</Text>
+          <Text style={styles.errorLine}>{t('events:qr.error')}</Text>
         ) : (
           <>
             <View style={styles.identity}>
-              <Text style={styles.eyebrow}>LIVE EVENT</Text>
+              <Text style={styles.eyebrow}>{t('events:qr.eyebrow')}</Text>
               <Text style={styles.name}>{eventName}</Text>
             </View>
 
@@ -95,17 +97,19 @@ export default function EventQrScreen() {
             </View>
 
             <Text style={styles.caption}>
-              Scanning this opens {eventName} in POWR{code ? ` — invites count towards your code ${code}` : ''}.
+              {code
+                ? t('events:qr.captionCode', { event: eventName, code })
+                : t('events:qr.caption', { event: eventName })}
             </Text>
 
             <View style={styles.actions}>
-              <Pressable style={styles.shareBtn} onPress={handleShare} accessibilityRole="button" accessibilityLabel="Share the event link">
+              <Pressable style={styles.shareBtn} onPress={handleShare} accessibilityRole="button" accessibilityLabel={t('events:qr.shareA11y')}>
                 <Ionicons name="share-outline" size={16} color="#0a0a0a" />
-                <Text style={styles.shareBtnText}>Share link</Text>
+                <Text style={styles.shareBtnText}>{t('events:qr.share')}</Text>
               </Pressable>
-              <Pressable style={styles.copyBtn} onPress={handleCopy} accessibilityRole="button" accessibilityLabel="Copy the invite code and link">
+              <Pressable style={styles.copyBtn} onPress={handleCopy} accessibilityRole="button" accessibilityLabel={t('events:qr.copyA11y')}>
                 <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={16} color={copied ? GOLD : SECONDARY} />
-                <Text style={[styles.copyBtnText, copied && { color: GOLD }]}>{copied ? 'Copied' : 'Copy'}</Text>
+                <Text style={[styles.copyBtnText, copied && { color: GOLD }]}>{copied ? t('events:qr.copied') : t('events:qr.copy')}</Text>
               </Pressable>
             </View>
 
@@ -118,10 +122,10 @@ export default function EventQrScreen() {
                 router.push({ pathname: '/share-event', params: { slug: eventSlug } });
               }}
               accessibilityRole="button"
-              accessibilityLabel="Share the event as a card"
+              accessibilityLabel={t('events:invite.cardA11y')}
             >
               <Ionicons name="image-outline" size={15} color={GOLD} />
-              <Text style={styles.cardLinkText}>Share as a card</Text>
+              <Text style={styles.cardLinkText}>{t('events:qr.card')}</Text>
             </Pressable>
           </>
         )}

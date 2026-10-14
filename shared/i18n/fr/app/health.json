@@ -1,0 +1,159 @@
+{
+  "actions": {
+    "continue": "CONTINUER",
+    "done": "TERMINÉ",
+    "gotIt": "COMPRIS",
+    "notNow": "Plus tard",
+    "connecting": "CONNEXION…",
+    "connectAppleHealth": "CONNECTER L’APP SANTÉ",
+    "connectHealthConnect": "CONNECTER SANTÉ CONNECT"
+  },
+  "bonus": "+20 POWR",
+  "devBuild": {
+    "title": "Build de développement requis",
+    "body": "Santé Connect n’est pas disponible dans Expo Go — lance un build de développement pour tester."
+  },
+  "installHealthConnect": {
+    "title": "Installe Santé Connect",
+    "body": "Santé Connect permet à POWR de lire les pas et l’activité enregistrés par ton téléphone. C’est une app Google gratuite : installe-la, puis reviens ici pour la connecter.",
+    "openPlayStore": "OUVRIR LE PLAY STORE"
+  },
+  "onboarding": {
+    "eyebrow": "L’ESSENTIEL",
+    "eyebrowSyncing": "PRESQUE FINI",
+    "headline": "Voilà comment POWR <gold>compte ton activité.</gold>",
+    "headlineSyncing": "On récupère <gold>ton historique.</gold>",
+    "subhead": "Pas, séances et sommeil arrivent depuis ton téléphone : chaque mouvement rapporte, automatiquement.",
+    "subheadWithWearable": "Ta montre compte les séances, ton téléphone compte les pas. Il te faut les deux pour tout gagner.",
+    "syncing": "SYNCHRO DE TES DONNÉES…",
+    "skip": "Continuer sans connecter",
+    "sync": {
+      "reading": "LECTURE DES DONNÉES SANTÉ...",
+      "steps": "{{steps}} pas",
+      "sleep": "{{hours}} h de sommeil",
+      "noActivity": "Aucune activité",
+      "estPoints": "env. +{{points}} POWR",
+      "sessions": "{{sessions}} séances synchronisées",
+      "streak": "série de {{days}} jours"
+    },
+    "picker": {
+      "title": "Choisis ta source principale",
+      "body": "Tu en as connecté plusieurs. Choisis celle que POWR utilise comme référence pour tes points."
+    }
+  },
+  "wearables": {
+    "eyebrow": "UNE MONTRE CONNECTÉE ?",
+    "headline": "Ta montre sait <gold>tout.</gold>",
+    "bonusHint": "si tu en connectes une",
+    "viaHealthConnect": "VIA SANTÉ CONNECT",
+    "viaAppleHealth": "VIA L’APP SANTÉ",
+    "viaPhone": "VIA TON TÉLÉPHONE",
+    "noWearable": "Je n’ai pas de montre connectée"
+  },
+  "samsung": {
+    "title": "Connecte Samsung Health",
+    "body": "Samsung Health partage tes séances, tes pas et ton sommeil via Santé Connect. Deux étapes rapides :",
+    "step1Title": "1. Connecte Santé Connect",
+    "step1Desc": "POWR lit tes données depuis Santé Connect",
+    "step2Title": "2. Active le partage dans Samsung Health",
+    "step2Desc": "Samsung Health → Paramètres → Santé Connect → autoriser",
+    "openApp": "Ouvrir Samsung Health"
+  },
+  "scene": {
+    "stepsToday": "PAS AUJOURD’HUI",
+    "sleepValue": "7 h 20",
+    "sleep": "SOMMEIL",
+    "workoutValue": "Salle · 48 min",
+    "workout": "SÉANCE",
+    "doublePoints": "2× PTS",
+    "stepsCounting": "{{steps}} pas déjà comptés",
+    "connected": "Connecté — tes données arrivent",
+    "sourcesIos": "Apple Watch + toutes les apps qui alimentent Santé",
+    "sourcesAndroid": "Google Fit, Galaxy et Pixel Watch, et plus encore"
+  },
+  "viaPhone": {
+    "close": "Fermer",
+    "step1AppleHealth": "1. Connecte l’app Santé",
+    "step1HealthConnect": "1. Connecte Santé Connect",
+    "connected": "Connecté",
+    "readsFrom": "POWR y lit tes données {{brand}}"
+  },
+  "viaPhoneSteps": {
+    "store": {
+      "appleHealth": "l’app Santé",
+      "healthConnect": "Santé Connect"
+    },
+    "genericApp": "l’app {{brand}}",
+    "web": {
+      "title": "{{brand}} se synchronise via ton téléphone",
+      "body": "Notre connexion directe avec {{brand}} est en pause pour le moment. Ouvre POWR sur ton téléphone pour connecter l’app Santé ou Santé Connect. Tes données {{brand}} arrivent sur POWR par ce biais."
+    },
+    "unsupported": {
+      "titleIos": "{{brand}} ne peut pas se synchroniser avec l’iPhone pour le moment",
+      "titleAndroid": "{{brand}} ne peut pas se synchroniser avec ce téléphone pour le moment",
+      "body": "Notre connexion directe avec {{brand}} est en pause, et {{brand}} ne partage pas ses données avec {{store}}. En attendant, POWR compte les pas enregistrés par ton téléphone — connecte {{store}} pour ça."
+    },
+    "title": "{{brand}} se synchronise via {{store}}",
+    "body": "Notre connexion directe avec {{brand}} est en pause pour le moment. Tes données {{brand}} rapportent toujours des POWR : {{app}} partage tes séances, tes pas et ton sommeil avec {{store}}, et POWR les récupère de là.",
+    "step2Title": "2. Active le partage dans {{app}}",
+    "step2Generic": "Dans {{app}}, trouve le réglage lié à {{store}} (en général dans Paramètres → Applications connectées) et autorise tout",
+    "brands": {
+      "garmin": {
+        "app": "Garmin Connect",
+        "ios": "Garmin Connect → Plus → Paramètres → Applications connectées → Apple Santé, puis autorise tout",
+        "android": "Garmin Connect → Paramètres → Santé Connect, puis autorise tout",
+        "note": "Ouvre Garmin Connect une fois par jour : l’app ne partage tes données que lorsqu’elle est ouverte."
+      },
+      "whoop": {
+        "app": "l’app WHOOP",
+        "ios": "WHOOP → Plus → Réglages de l’app → Intégrations → Apple Santé → Connecter, puis autorise tout",
+        "android": "WHOOP → Plus → Réglages de l’app → Intégrations → Santé Connect, puis autorise tout"
+      },
+      "oura": {
+        "app": "l’app Oura",
+        "ios": "Oura → menu → Paramètres → Apple Santé, puis active « Se connecter à Santé »",
+        "android": "Oura → menu → Paramètres → Santé Connect, puis autorise tout"
+      },
+      "polar": {
+        "app": "Polar Flow",
+        "ios": "Polar Flow → Plus → Paramètres généraux → Apple Santé, puis Activer toutes les catégories",
+        "android": "Polar Flow → Plus → Paramètres généraux → Santé Connect, puis autorise tout"
+      },
+      "strava": {
+        "app": "Strava",
+        "ios": "Strava → Paramètres → Applications, services et appareils → Santé → Connecter, puis active Entraînements",
+        "android": "Strava → Paramètres → Applications, services et appareils → Santé Connect"
+      },
+      "zepp": {
+        "app": "l’app Zepp",
+        "ios": "Zepp → Profil → Ajouter des comptes → Apple Santé, puis autorise tout",
+        "android": "Zepp → Profil → Associer des comptes tiers → Santé Connect, puis active la synchronisation"
+      },
+      "fitbit": {
+        "app": "l’app Fitbit",
+        "android": "Fitbit → ton profil → Paramètres → Santé Connect → Synchroniser avec Santé Connect"
+      }
+    }
+  },
+  "wearableStatus": {
+    "sync": {
+      "noData": "pas encore de données",
+      "justNow": "synchro à l’instant",
+      "hours_one": "synchro il y a {{count}} h",
+      "hours_other": "synchro il y a {{count}} h",
+      "yesterday": "synchro hier",
+      "days_one": "synchro il y a {{count}} j",
+      "days_other": "synchro il y a {{count}} j"
+    },
+    "silent": {
+      "unnamed": "Ta montre connectée",
+      "sinceConnected": "{{name}} n’a envoyé aucune donnée à POWR depuis sa connexion.",
+      "sinceDays_one": "{{name}} n’a envoyé aucune donnée à POWR depuis {{count}} jour.",
+      "sinceDays_other": "{{name}} n’a envoyé aucune donnée à POWR depuis {{count}} jours.",
+      "title": "Vérifie la connexion de {{name}}",
+      "titleUnnamed": "Vérifie ta montre connectée",
+      "body": "{{since}} Si tu as porté ton appareil, le reconnecter règle généralement le problème.",
+      "cta": "Vérifier la connexion"
+    }
+  }
+}

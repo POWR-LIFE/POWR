@@ -1,4 +1,5 @@
 import type { ChallengeShareInput } from '@/lib/api/share';
+import i18n from '@/lib/i18n';
 import { challengeBonusConfig, earnedPoints, type BonusConfig } from '@/lib/social/bonus';
 import { progressUnit } from '@/lib/social/challengeProgress';
 import type { SharedChallenge } from '@/lib/social/types';
@@ -32,7 +33,7 @@ export function buildSharedChallengeShareInput(
     challengeTitle: template.title,
     challengeDescription: template.goal,
     // The card's middle stat label — brands the share as a group win.
-    categoryLabel: 'Together',
+    categoryLabel: i18n.t('social:share.categoryLabel'),
     tier: template.tier,
     points: total,
     displayValue: displayGoal, // complete ⇒ value met the goal

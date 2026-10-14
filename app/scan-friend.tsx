@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontFamily } from '@/constants/tokens';
@@ -19,6 +20,7 @@ const BORDER = '#222222';
 export default function ScanFriendScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const [permission, requestPermission] = useCameraPermissions();
   const [hint, setHint] = useState<string | null>(null);
   // Guards onBarcodeScanned, which otherwise fires continuously per frame.
@@ -42,7 +44,7 @@ export default function ScanFriendScreen() {
     if (!code) {
       // Re-arm after a beat so a stray QR (Wi-Fi, a random URL) doesn't dead-end.
       if (!hint) {
-        setHint("That's not a POWR code — try their code again.");
+        setHint(t('social:scanFriend.notPowr'));
         hintTimer.current = setTimeout(() => setHint(null), 2200);
       }
       return;
@@ -59,8 +61,8 @@ export default function ScanFriendScreen() {
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
-      <Text style={styles.headerTitle}>SCAN A CODE</Text>
-      <Pressable onPress={close} hitSlop={12} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
+      <Text style={styles.headerTitle}>{t('social:scanFriend.title')}</Text>
+      <Pressable onPress={close} hitSlop={12} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel={t('social:shared.close')}>
         <Ionicons name="close" size={24} color={TEXT} />
       </Pressable>
     </View>
@@ -80,21 +82,19 @@ export default function ScanFriendScreen() {
           <View style={styles.deniedIcon}>
             <Ionicons name="camera-outline" size={30} color={MUTED} />
           </View>
-          <Text style={styles.deniedTitle}>Camera access needed</Text>
-          <Text style={styles.deniedSub}>
-            POWR needs your camera to scan a friend’s code. You can enable it in Settings, or add friends by username instead.
-          </Text>
+          <Text style={styles.deniedTitle}>{t('social:scanFriend.denied.title')}</Text>
+          <Text style={styles.deniedSub}>{t('social:scanFriend.denied.body')}</Text>
           {permission.canAskAgain ? (
             <Pressable style={styles.primaryBtn} onPress={requestPermission}>
-              <Text style={styles.primaryBtnText}>Allow camera</Text>
+              <Text style={styles.primaryBtnText}>{t('social:scanFriend.denied.allow')}</Text>
             </Pressable>
           ) : (
             <Pressable style={styles.primaryBtn} onPress={() => Linking.openSettings()}>
-              <Text style={styles.primaryBtnText}>Open settings</Text>
+              <Text style={styles.primaryBtnText}>{t('social:scanFriend.denied.openSettings')}</Text>
             </Pressable>
           )}
           <Pressable style={styles.ghostBtn} onPress={() => router.replace('/friends')}>
-            <Text style={styles.ghostBtnText}>Add by username</Text>
+            <Text style={styles.ghostBtnText}>{t('social:scanFriend.denied.byUsername')}</Text>
           </Pressable>
         </View>
       </View>
@@ -114,7 +114,7 @@ export default function ScanFriendScreen() {
         {header}
         <View style={styles.reticleWrap}>
           <View style={styles.reticle} />
-          <Text style={styles.scanHint}>{hint ?? 'Point at a friend’s POWR code'}</Text>
+          <Text style={styles.scanHint}>{hint ?? t('social:scanFriend.hint')}</Text>
         </View>
         <View style={{ paddingBottom: insets.bottom + 24 }} />
       </View>

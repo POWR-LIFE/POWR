@@ -34,7 +34,7 @@ import {
     HeartPulse,
     SquareKanban,
 } from 'lucide-react';
-import { createContext, lazy, useContext, useEffect, useState } from 'react';
+import { createContext, lazy, Suspense, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
@@ -43,6 +43,9 @@ import PartnerPortalHome from './pages/partner/PartnerHome';
 import { PartnerLayout } from './pages/partner/PartnerLayout';
 import PartnerPortalPromoCodes from './pages/partner/PartnerPromoCodes';
 import PartnerPortalRedemptions from './pages/partner/PartnerRedemptions';
+import PartnerPortalInStore from './pages/partner/PartnerInStore';
+import PartnerStandPrint from './pages/partner/PartnerStandPrint';
+import StandLanding from './pages/StandLanding';
 import PartnerPortalRewards from './pages/partner/PartnerRewards';
 import PartnerPortalFeatured from './pages/partner/PartnerFeatured';
 import PartnerPortalPlacements from './pages/partner/PartnerPlacements';
@@ -58,6 +61,7 @@ import DocsOverview from './pages/docs/DocsOverview';
 import DocsPromoCodes from './pages/docs/DocsPromoCodes';
 import DocsShopify from './pages/docs/DocsShopify';
 import DocsApi from './pages/docs/DocsApi';
+import DocsInStore from './pages/docs/DocsInStore';
 import { GuideGate } from './pages/docs/docsShared';
 import DocsGettingStarted from './pages/docs/DocsGettingStarted';
 import DocsRewards from './pages/docs/DocsRewards';
@@ -150,6 +154,8 @@ import TermsOfService from './pages/TermsOfService';
 // Guides behind a sign-in (gym) or not open yet (Placements) are separate
 // chunks: GuideGate only loads one for a reader who may see it.
 const DocsPlacements = lazy(() => import('./pages/docs/DocsPlacements'));
+// The staff scan page carries the QR decoder (jsqr), so it loads on its own.
+const ScanPage = lazy(() => import('./pages/ScanPage'));
 const GymDocsSettings = lazy(() => import('./pages/docs/gyms/GymDocsSettings'));
 const GymDocsEvents = lazy(() => import('./pages/docs/gyms/GymDocsEvents'));
 const GymDocsDiscounts = lazy(() => import('./pages/docs/gyms/GymDocsDiscounts'));
@@ -159,7 +165,7 @@ const GymDocsStudio = lazy(() => import('./pages/docs/gyms/GymDocsStudio'));
 const GymDocsMembers = lazy(() => import('./pages/docs/gyms/GymDocsMembers'));
 
 // --- Auth Context ---
-export const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, creatorProgramEnabled: false, placementsEnabled: false, deliveryMethod: undefined, loading: true });
+export const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, isCreator: false, creatorData: null, creatorProgramEnabled: false, placementsEnabled: false, inStoreEnabled: false, deliveryMethod: undefined, loading: true });
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
 const ACTING_CREATOR_KEY = 'powr_acting_creator';
@@ -216,6 +222,10 @@ export const AuthProvider = ({ children }) => {
     const [activeGymId, setActiveGymId] = useState(() => localStorage.getItem(ACTIVE_GYM_KEY));
     const [actingGym, setActingGymState] = useState(null);
     const [placementsEnabled, setPlacementsEnabled] = useState(false);
+    // In-store redemption rollout: on for the QA store and admins, off for other
+    // brands until system_config 'partner_in_store_enabled' is flipped.
+    // undefined while the brand's answer loads, so the page can wait for it.
+    const [inStoreEnabled, setInStoreEnabled] = useState(undefined);
     // Master switch from System Config. Admins see the portal regardless.
     const [creatorProgramEnabled, setCreatorProgramEnabled] = useState(false);
     const [rolesFor, setRolesFor] = useState(null);
@@ -461,6 +471,16 @@ export const AuthProvider = ({ children }) => {
         return () => { cancelled = true; };
     }, [effectiveBrandName]);
 
+    useEffect(() => {
+        setInStoreEnabled(undefined);
+        if (!effectiveBrandName) return;
+        let cancelled = false;
+        supabase.rpc('in_store_enabled_for_brand', { p_brand: effectiveBrandName })
+            .then(({ data }) => { if (!cancelled) setInStoreEnabled(data === true); },
+                  () => { if (!cancelled) setInStoreEnabled(false); });
+        return () => { cancelled = true; };
+    }, [effectiveBrandName]);
+
     // The gym the portal is showing: an admin's preview pick first, else the
     // gym the user last opened, else their first gym whose portal is on.
     const liveGyms = gymMemberships.filter(m => m.active);
@@ -488,6 +508,7 @@ export const AuthProvider = ({ children }) => {
             creatorProgramEnabled,
             rolesFor,
             placementsEnabled,
+            inStoreEnabled,
             deliveryMethod,
             updateDeliveryMethod: setDeliveryMethodState,
             loading,
@@ -1680,6 +1701,10 @@ export default function App() {
                     <Route path="/partner/placements" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPlacements /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/studio" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalStudio /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/redemptions" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRedemptions /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/in-store" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalInStore /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/in-store/stand/:siteId" element={<PartnerProtectedRoute><PartnerStandPrint /></PartnerProtectedRoute>} />
+                    <Route path="/scan" element={<Suspense fallback={null}><ScanPage /></Suspense>} />
+                    <Route path="/s/:code" element={<StandLanding />} />
                     <Route path="/partner/settings" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSettings /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/support" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSupport /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/integration" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationHub /></PartnerLayout></PartnerProtectedRoute>} />
@@ -1690,6 +1715,7 @@ export default function App() {
                     <Route path="/docs/promo-codes" element={<DocsPromoCodes />} />
                     <Route path="/docs/shopify" element={<DocsShopify />} />
                     <Route path="/docs/api" element={<DocsApi />} />
+                    <Route path="/docs/in-store" element={<DocsInStore />} />
                     <Route path="/docs/getting-started" element={<DocsGettingStarted />} />
                     <Route path="/docs/rewards" element={<DocsRewards />} />
                     <Route path="/docs/whats-on" element={<DocsWhatsOn />} />

@@ -7,6 +7,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Linking,
@@ -20,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePoints } from '@/hooks/usePoints';
 import { tracked } from '@/lib/analytics';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { redeemReward, RedemptionError, type IntegrationType, type Reward } from '@/lib/api/rewards';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { getSessionUser, supabase } from '@/lib/supabase';
@@ -55,7 +57,9 @@ function formatValue(r: Reward): string {
   if (r.discount_type && r.discount_value != null) {
     const v = Number(r.discount_value);
     const amt = Number.isInteger(v) ? `${v}` : v.toFixed(2).replace(/\.?0+$/, '');
-    return r.discount_type === 'percentage' ? `${amt}% off` : `£${amt} off`;
+    return r.discount_type === 'percentage'
+      ? i18n.t('rewards:discount.percentOff', { amount: amt })
+      : i18n.t('rewards:discount.amountOff', { amount: amt });
   }
   return r.value_label ?? r.description ?? '';
 }
@@ -83,6 +87,7 @@ export default function RedeemModal() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { balance, loading: balanceLoading, refresh } = usePoints();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   const [reward, setReward] = useState<UIReward | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -120,7 +125,8 @@ export default function RedeemModal() {
           .order('redeemed_at', { ascending: false }),
       ]);
 
-      if (rewardRes.error || !rewardRes.data) { setLoadError('Reward not found.'); return; }
+      // i18n.t, not the hook's t: as a dependency, t would re-run this load.
+      if (rewardRes.error || !rewardRes.data) { setLoadError(i18n.t('rewards:redeem.notFound')); return; }
       const full: Reward = { ...(rewardRes.data as any), partner: Array.isArray((rewardRes.data as any).partners) ? (rewardRes.data as any).partners[0] : (rewardRes.data as any).partners };
       setReward(toUIReward(full));
 
@@ -129,7 +135,8 @@ export default function RedeemModal() {
 
       // Affiliate links and configured shared promo codes are reusable receipts.
       // Showing the active receipt avoids charging points again for the same offer.
-      if ((full.integration_type === 'AFFILIATE' || full.promo_code?.trim()) && active[0]?.code) {
+      // An in-store reward is used up at the till, so every claim is fresh.
+      if (full.integration_type !== 'IN_STORE' && (full.integration_type === 'AFFILIATE' || full.promo_code?.trim()) && active[0]?.code) {
         setCode(active[0].code);
         setExpiresAt(active[0].expires_at ?? null);
         setCheckoutUrl(active[0].checkout_url ?? full.url ?? full.partner?.checkout_url_template ?? null);
@@ -175,16 +182,17 @@ export default function RedeemModal() {
     } catch (e) {
       if (e instanceof RedemptionError) {
         setRedeemError(
-          e.code === 'INSUFFICIENT_POINTS' ? "You don't have enough POWR."
-          : e.code === 'OUT_OF_STOCK' ? 'This reward is temporarily unavailable. Check back soon.'
-          : e.code === 'REWARD_INACTIVE' ? 'This reward is no longer available.'
-          : e.code === 'REDEMPTION_LIMIT_REACHED' ? "You've already claimed the maximum number of this reward."
-          : e.code === 'REWARD_NOT_FOUND' ? 'Reward not found. Please go back and try again.'
-          : e.code === 'PARTNER_MISCONFIGURED' ? 'This reward is not yet available. Please try again later.'
-          : `Something went wrong (${e.code}). Please try again.`
+          e.code === 'INSUFFICIENT_POINTS' ? t('rewards:redeem.errors.insufficientPoints')
+          : e.code === 'OUT_OF_STOCK' ? t('rewards:redeem.errors.outOfStock')
+          : e.code === 'REWARD_INACTIVE' ? t('rewards:redeem.errors.inactive')
+          : e.code === 'REDEMPTION_LIMIT_REACHED' ? t('rewards:redeem.errors.limitReached')
+          : e.code === 'REWARD_NOT_FOUND' ? t('rewards:redeem.errors.notFound')
+          : e.code === 'PARTNER_MISCONFIGURED' ? t('rewards:redeem.errors.partnerMisconfigured')
+          : e.code === 'APP_UPDATE_REQUIRED' ? t('rewards:redeem.errors.appUpdateRequired')
+          : t('rewards:redeem.errors.withCode', { code: e.code })
         );
       } else {
-        setRedeemError('Something went wrong. Please try again.');
+        setRedeemError(t('rewards:redeem.errors.generic'));
       }
     } finally {
       setSubmitting(false);
@@ -230,6 +238,7 @@ export default function RedeemModal() {
           alreadyRedeemed={alreadyRedeemed}
           onCopy={handleCopy}
           onOpenCheckout={handleOpenCheckout}
+          onOpenWallet={() => router.replace('/wallet')}
           onDone={() => router.back()}
         />
       )}
@@ -253,6 +262,7 @@ interface ConfirmProps {
 }
 
 function ConfirmView({ reward, balance, canAfford, remaining, submitting, error, existingActiveCount, onConfirm, onCancel, onViewWallet }: ConfirmProps) {
+  const { t } = useTranslation();
   return (
     <View style={styles.sheet}>
       {/* Hero — video-first, still image as poster/fallback */}
@@ -294,12 +304,12 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
 
       {/* Balance breakdown */}
       <View style={styles.balanceBlock}>
-        <BalanceLine label="Your balance" value={`${balance.toLocaleString()} pts`} />
-        <BalanceLine label="Cost" value={`− ${reward.pts.toLocaleString()} pts`} highlight />
+        <BalanceLine label={t('rewards:redeem.yourBalance')} value={t('rewards:redeem.ptsValue', { points: balance.toLocaleString() })} />
+        <BalanceLine label={t('rewards:redeem.cost')} value={t('rewards:redeem.ptsCost', { points: reward.pts.toLocaleString() })} highlight />
         <View style={styles.balanceDividerThin} />
         <BalanceLine
-          label="After redemption"
-          value={`${remaining.toLocaleString()} pts`}
+          label={t('rewards:redeem.afterRedemption')}
+          value={t('rewards:redeem.ptsValue', { points: remaining.toLocaleString() })}
           bold
           dimmed={!canAfford}
         />
@@ -309,7 +319,7 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
         <View style={styles.insufficientBanner}>
           <Ionicons name="alert-circle-outline" size={14} color='#f87171' />
           <Text style={styles.insufficientText}>
-            You need {(reward.pts - balance).toLocaleString()} more pts to redeem this
+            {t('rewards:redeem.needMore', { points: (reward.pts - balance).toLocaleString() })}
           </Text>
         </View>
       )}
@@ -325,7 +335,7 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
         <Pressable style={({ pressed }) => [styles.walletNote, pressed && { opacity: 0.7 }]} onPress={onViewWallet}>
           <Ionicons name="wallet-outline" size={14} color={GOLD} />
           <Text style={styles.walletNoteText}>
-            You already have {existingActiveCount} active {existingActiveCount === 1 ? 'code' : 'codes'} for this — view in your wallet
+            {t('rewards:redeem.existingCodes', { count: existingActiveCount })}
           </Text>
           <Ionicons name="chevron-forward" size={13} color={GOLD} />
         </Pressable>
@@ -345,19 +355,19 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
             <ActivityIndicator color='#0a0a0a' />
           ) : (
             <Text style={[styles.confirmBtnText, !canAfford && styles.confirmBtnTextDisabled]}>
-              Confirm Redemption
+              {t('rewards:redeem.confirm')}
             </Text>
           )}
         </Pressable>
         <Pressable style={({ pressed }) => [styles.cancelBtn, pressed && { opacity: 0.7 }]} onPress={tracked('redeem_cancel', onCancel)}>
-          <Text style={styles.cancelBtnText}>Cancel</Text>
+          <Text style={styles.cancelBtnText}>{t('common:actions.cancel')}</Text>
         </Pressable>
       </View>
 
       <Text style={styles.legalNote}>
         {reward.integrationType === 'AFFILIATE'
-          ? 'POWR points are non-refundable once redeemed.'
-          : `Codes are single-use and valid for ${reward.expiryDays} days from redemption. POWR points are non-refundable once redeemed.`}
+          ? t('rewards:redeem.legalAffiliate')
+          : t('rewards:redeem.legalCode', { days: reward.expiryDays })}
       </Text>
     </View>
   );
@@ -392,16 +402,19 @@ interface SuccessProps {
   alreadyRedeemed: boolean;
   onCopy: () => void;
   onOpenCheckout: () => void;
+  onOpenWallet: () => void;
   onDone: () => void;
 }
 
 function formatExpiry(expiresAt: string | null): string {
-  if (!expiresAt) return 'Show to staff or enter at checkout';
+  if (!expiresAt) return i18n.t('rewards:redeem.showToStaff');
   const d = new Date(expiresAt);
-  return `Valid until ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · Show to staff or enter at checkout`;
+  const date = d.toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
+  return i18n.t('rewards:redeem.validUntilShowToStaff', { date });
 }
 
-function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRedeemed, onCopy, onOpenCheckout, onDone }: SuccessProps) {
+function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRedeemed, onCopy, onOpenCheckout, onOpenWallet, onDone }: SuccessProps) {
+  const { t } = useTranslation();
   const partnerLabel = reward.partner && reward.partner.toUpperCase() !== reward.title.toUpperCase() ? reward.partner : null;
 
   return (
@@ -442,22 +455,38 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
             <Ionicons name="information-circle-outline" size={14} color={GOLD} />
             <Text style={styles.alreadyRedeemedText}>
               {reward.integrationType === 'AFFILIATE'
-                ? 'Your discount is included in the link below.'
-                : "You've already redeemed this reward. Your code is below."}
+                ? t('rewards:redeem.alreadyAffiliate')
+                : t('rewards:redeem.alreadyCode')}
             </Text>
           </View>
         )}
 
-        {reward.integrationType === 'AFFILIATE' ? (
+        {reward.integrationType === 'IN_STORE' ? (
           <>
-            <Text style={styles.affiliateHint}>Your discount is applied automatically at checkout.</Text>
+            <Text style={styles.codeLabel}>{t('rewards:redeem.inStore.label')}</Text>
+            <Text style={styles.affiliateHint}>
+              {partnerLabel
+                ? t('rewards:redeem.inStore.hintAt', { partner: partnerLabel })
+                : t('rewards:redeem.inStore.hint')}
+            </Text>
+            <Pressable
+              style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
+              onPress={tracked('redeem_open_wallet_in_store', onOpenWallet)}
+            >
+              <Ionicons name="wallet-outline" size={16} color="#0a0a0a" />
+              <Text style={styles.confirmBtnText}>{t('rewards:redeem.inStore.goToWallet')}</Text>
+            </Pressable>
+          </>
+        ) : reward.integrationType === 'AFFILIATE' ? (
+          <>
+            <Text style={styles.affiliateHint}>{t('rewards:redeem.affiliateHint')}</Text>
             {checkoutUrl && (
               <Pressable
                 style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
                 onPress={tracked('redeem_checkout_affiliate', onOpenCheckout)}
               >
                 <Ionicons name="open-outline" size={16} color="#0a0a0a" />
-                <Text style={styles.confirmBtnText}>Shop at {partnerLabel || reward.title}</Text>
+                <Text style={styles.confirmBtnText}>{t('rewards:redeem.shopAt', { name: partnerLabel || reward.title })}</Text>
               </Pressable>
             )}
           </>
@@ -467,7 +496,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
               style={({ pressed }) => [styles.codeBlock, pressed && { opacity: 0.8 }]}
               onPress={tracked('redeem_copy_code', onCopy)}
             >
-              <Text style={styles.codeLabel}>YOUR CODE</Text>
+              <Text style={styles.codeLabel}>{t('rewards:redeem.yourCode')}</Text>
               <Text style={styles.codeText}>{code}</Text>
               <View style={styles.copyRow}>
                 <Ionicons
@@ -476,7 +505,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
                   color={copied ? '#4ade80' : MUTED}
                 />
                 <Text style={[styles.copyLabel, copied && { color: '#4ade80' }]}>
-                  {copied ? 'Copied' : 'Tap to copy'}
+                  {copied ? t('rewards:redeem.copied') : t('rewards:redeem.tapToCopy')}
                 </Text>
               </View>
             </Pressable>
@@ -489,7 +518,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
                 onPress={tracked('redeem_checkout_code', onOpenCheckout)}
               >
                 <Ionicons name="open-outline" size={14} color="#0a0a0a" />
-                <Text style={styles.visitBtnText}>Use code at {partnerLabel || reward.title}</Text>
+                <Text style={styles.visitBtnText}>{t('rewards:redeem.useCodeAt', { name: partnerLabel || reward.title })}</Text>
               </Pressable>
             )}
           </>
@@ -498,7 +527,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
           style={({ pressed }) => [styles.doneBtn, pressed && { opacity: 0.85 }]}
           onPress={onDone}
         >
-          <Text style={styles.doneBtnText}>Done</Text>
+          <Text style={styles.doneBtnText}>{t('rewards:redeem.done')}</Text>
         </Pressable>
       </View>
     </ScrollView>

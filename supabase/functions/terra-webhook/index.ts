@@ -576,6 +576,8 @@ async function handleDeauth(supabase, payload): Promise<void> {
  */
 async function notifyWearableReceipt(
   userId: string, count: number, points: number, activityLabel: string | null,
+  /** The POWR type behind activityLabel, so other languages can name it. */
+  activityType: string | null = null,
 ): Promise<void> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
@@ -589,7 +591,12 @@ async function notifyWearableReceipt(
       body: JSON.stringify({
         target_user_id: userId,
         type: 'wearable_session_recorded',
-        payload: { count, points, activity_label: activityLabel ?? undefined },
+        payload: {
+          count, points, activity_label: activityLabel ?? undefined,
+          // activity_label is English (Terra's name, or the type); pushCopy
+          // names activity_type in the reader's language instead.
+          activity_type: activityType ?? undefined,
+        },
       }),
     });
   } catch (err) {
@@ -633,6 +640,7 @@ async function handleActivity(supabase, payload): Promise<void> {
   let awardedCount = 0;
   let awardedPoints = 0;
   let awardedLabel: string | null = null;
+  let awardedType: string | null = null;
 
   for (const a of payload.data ?? []) {
     const meta = a.metadata ?? {};
@@ -721,6 +729,7 @@ async function handleActivity(supabase, payload): Promise<void> {
         awardedCount++;
         awardedPoints += merged.deltaPoints;
         awardedLabel = (meta.name ?? '').trim() || type;
+        awardedType = type;
       }
     };
 
@@ -776,6 +785,7 @@ async function handleActivity(supabase, payload): Promise<void> {
         // Prefer the human name Terra sent ("Spin", "Functional Fitness"),
         // fall back to the mapped POWR type. Only meaningful when count = 1.
         awardedLabel = (meta.name ?? '').trim() || type;
+        awardedType = type;
       }
     } else if ('conflict' in result) {
       // Lost the race to a concurrent delivery of this same activity (identical
@@ -788,6 +798,7 @@ async function handleActivity(supabase, payload): Promise<void> {
   if (awardedCount > 0) {
     await notifyWearableReceipt(
       userId, awardedCount, awardedPoints, awardedCount === 1 ? awardedLabel : null,
+      awardedCount === 1 ? awardedType : null,
     );
   }
 }

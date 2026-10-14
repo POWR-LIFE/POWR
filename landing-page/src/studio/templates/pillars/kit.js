@@ -111,14 +111,14 @@ export function rewardWords(r) {
 // Product templates are built around the brand's product shot: a cut-out
 // (PNG with transparency, or a JPG on a flat background, which loadAsset keys
 // out) is staged on the dark ground under a pool of light; a shot that is
-// still a rectangle (a product on a set) is framed as a photo instead, on
-// purpose. With no upload, a drawn stand-in product carries the brand's name,
+// still a rectangle (a product on a set, or one too close to its background
+// to cut out safely) is framed as a photo instead, whole unless zoomed in. With no upload, a drawn stand-in product carries the brand's name,
 // so the template reads finished in the picker.
 
 /** The product-shot field (append with BRAND_FIELDS). Shared across templates in the editor. */
 export const PRODUCT_FIELD = {
     key: 'product', label: 'Product shot', type: 'image',
-    hint: 'A cut-out PNG looks best. A photo on plain white or black is cut out for you; anything else is framed as a photo.',
+    hint: 'A cut-out PNG looks best. A plain background is taken off for you unless the product is close to its colour; any other photo is shown whole.',
 };
 
 const cutCache = new WeakMap();
@@ -420,12 +420,145 @@ export function mockProduct(e, box, kind = 'tub', { label = '', sub = '', align 
     return { x, y, w, h };
 }
 
+// ── Product zoom ────────────────────────────────────────────────────────
+//
+// The editor's Product zoom (look.productView, set on every template the
+// shot is in) runs −1…1, and 0 — the default — always shows the whole
+// product. A framed shot: below 0 its frame shrinks (−1 is 60%), ZOOM_FILL
+// fills the frame (the sides cropped), 1 is twice as close again. A cut-out:
+// −1 is half size, 1 is 1.4× (it grows past its box; further, it runs over
+// the words).
+
+export const ZOOM_FILL = 0.5;
+
+/** The look's product zoom, −1…1. */
+export const productZoom = (e) => Math.min(1, Math.max(-1, Number(e.look?.productView) || 0));
+
+/** Where a cut-out lands in `box`: contained, standing on the box's foot, zoomed from there. */
+export function cutoutRect(img, box, { align = 'center', zoom = 0 } = {}) {
+    const k = zoom < 0 ? 1 + 0.5 * zoom : 1 + 0.4 * zoom;
+    const s0 = Math.min(box.w / img.width, box.h / img.height);
+    const w0 = img.width * s0;
+    const w = w0 * k;
+    const h = img.height * s0 * k;
+    const x0 = align === 'left' ? box.x : align === 'right' ? box.x + box.w - w0 : box.x + (box.w - w0) / 2;
+    const x = align === 'left' ? x0 : align === 'right' ? x0 + w0 - w : x0 + (w0 - w) / 2;
+    return { x, y: box.y + box.h - h, w, h };
+}
+
+const EDGE = 16;
+const edgeCache = new WeakMap();
+/**
+ * One side of the shot (l · r · t · b) averaged into a soft 16 × 16 tile:
+ * `fill` is that edge's colours run straight on (a wall stays a wall, a floor
+ * a floor); `fade` is the same, going clear toward the middle of the shot.
+ */
+function edgeOf(img, side) {
+    let bySide = edgeCache.get(img);
+    if (!bySide) { bySide = {}; edgeCache.set(img, bySide); }
+    if (bySide[side]) return bySide[side];
+    const across = side === 'l' || side === 'r';
+    // The outer 3% of the shot, squeezed to a 1 px line along that edge.
+    const band = Math.max(1, Math.round((across ? img.width : img.height) * 0.03));
+    const line = document.createElement('canvas');
+    line.width = across ? 1 : EDGE;
+    line.height = across ? EDGE : 1;
+    const lx = line.getContext('2d');
+    lx.imageSmoothingQuality = 'high';
+    const sx = side === 'r' ? img.width - band : 0;
+    const sy = side === 'b' ? img.height - band : 0;
+    lx.drawImage(img, sx, sy, across ? band : img.width, across ? img.height : band, 0, 0, line.width, line.height);
+    const tile = () => {
+        const c = document.createElement('canvas');
+        c.width = EDGE;
+        c.height = EDGE;
+        c.getContext('2d').drawImage(line, 0, 0, EDGE, EDGE);
+        return c;
+    };
+    const fill = tile();
+    const fade = tile();
+    const fx = fade.getContext('2d');
+    const g = side === 'l' ? fx.createLinearGradient(0, 0, EDGE, 0)
+        : side === 'r' ? fx.createLinearGradient(EDGE, 0, 0, 0)
+            : side === 't' ? fx.createLinearGradient(0, 0, 0, EDGE)
+                : fx.createLinearGradient(0, EDGE, 0, 0);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    fx.globalCompositeOperation = 'destination-in';
+    fx.fillStyle = g;
+    fx.fillRect(0, 0, EDGE, EDGE);
+    bySide[side] = { fill, fade };
+    return bySide[side];
+}
+
+/**
+ * The frame a framed shot is drawn in at `zoom`: `r`, or below 0 smaller —
+ * still standing on r's foot (valign 'bottom'), or centred in it.
+ */
+export function framedRect(r, zoom = 0, valign = 'center') {
+    if (zoom >= 0) return r;
+    const k = 1 + 0.4 * Math.max(-1, zoom);
+    const y = valign === 'bottom' ? r.y + r.h * (1 - k) : valign === 'top' ? r.y : r.y + (r.h * (1 - k)) / 2;
+    return { x: r.x + (r.w * (1 - k)) / 2, y, w: r.w * k, h: r.h * k };
+}
+
+/**
+ * A rectangular shot framed in `r` at `zoom` (see Product zoom), clipped to
+ * its frame with corner `radius`. Short of filling the frame (the whole shot),
+ * the room left at two sides is filled with the shot's own edge run on — a
+ * studio backdrop or a table top simply continues — and the shot's edge
+ * fades into it, so no seam shows. Returns the frame and where the whole
+ * shot was drawn.
+ */
+export function drawFramed(ctx, img, box, zoom = 0, radius = 0, valign = 'center') {
+    const r = framedRect(box, zoom, valign);
+    const cover = Math.max(r.w / img.width, r.h / img.height);
+    const contain = Math.min(r.w / img.width, r.h / img.height);
+    const z = Math.min(1, Math.max(0, zoom));
+    // Geometric from whole to filled to closer, so each step looks the same size.
+    const s = z <= ZOOM_FILL ? contain * (cover / contain) ** (z / ZOOM_FILL) : cover * 2 ** ((z - ZOOM_FILL) / (1 - ZOOM_FILL));
+    const w = img.width * s;
+    const h = img.height * s;
+    const x = r.x + (r.w - w) / 2;
+    const y = r.y + (r.h - h) / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(r.x, r.y, r.w, r.h, radius);
+    ctx.clip();
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, x, y, w, h);
+    // Room either side (or above and below): the gap, plus a fade into the
+    // shot as wide as the gap up to 8% of the shot — it grows in from nothing.
+    const gapX = x - r.x;
+    const gapY = y - r.y;
+    if (gapX > 0.5) {
+        const f = Math.min(gapX, w * 0.08);
+        const L = edgeOf(img, 'l');
+        const R = edgeOf(img, 'r');
+        ctx.drawImage(L.fill, r.x, y, gapX + 0.5, h);
+        ctx.drawImage(L.fade, x, y, f, h);
+        ctx.drawImage(R.fill, x + w - 0.5, y, gapX + 0.5, h);
+        ctx.drawImage(R.fade, x + w - f, y, f, h);
+    }
+    if (gapY > 0.5) {
+        const f = Math.min(gapY, h * 0.08);
+        const T = edgeOf(img, 't');
+        const B = edgeOf(img, 'b');
+        ctx.drawImage(T.fill, x, r.y, w, gapY + 0.5);
+        ctx.drawImage(T.fade, x, y, w, f);
+        ctx.drawImage(B.fill, x, y + h - 0.5, w, gapY + 0.5);
+        ctx.drawImage(B.fade, x, y + h - f, w, f);
+    }
+    ctx.restore();
+    return { frame: r, x, y, w, h };
+}
+
 /**
  * The product in `box`: the uploaded shot (a cut-out is staged under a pool
  * of light; a rectangle is framed as a photo) or, with none, a stand-in of
  * `kind` labelled `label`. Returns { rect, cutout, mock } and marks 'product'.
  */
-export function productShot(e, box, { kind = 'tub', label, sub = '', align = 'center', stage = true, radius = 18 } = {}) {
+export function productShot(e, box, { kind = 'tub', label, sub = '', align = 'center', valign = 'center', stage = true, radius = 18 } = {}) {
     const { ctx, u } = e;
     const img = e.asset('product');
     const name = label ?? (String(e.fields.brand ?? '').trim() || 'POWR');
@@ -437,38 +570,24 @@ export function productShot(e, box, { kind = 'tub', label, sub = '', align = 'ce
         return { rect: r, cutout: true, mock: true };
     }
     if (isCutout(img)) {
-        const s = Math.min(box.w / img.width, box.h / img.height);
-        const w = img.width * s;
-        const h = img.height * s;
-        const x = align === 'left' ? box.x : align === 'right' ? box.x + box.w - w : box.x + (box.w - w) / 2;
-        const y = box.y + box.h - h;
-        if (stage) lightPool(e, x + w / 2, y + h, Math.max(w, h * 0.5));
+        const r = cutoutRect(img, box, { align, zoom: productZoom(e) });
+        if (stage) lightPool(e, r.x + r.w / 2, r.y + r.h, Math.max(r.w, r.h * 0.5));
         ctx.save();
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, x, y, w, h);
+        ctx.drawImage(img, r.x, r.y, r.w, r.h);
         ctx.restore();
-        const r = { x, y, w, h };
         e.mark('product', r);
         return { rect: r, cutout: true, mock: false };
     }
-    // A product on a set: cover-crop it into the box, rounded, with a hairline.
-    const s = Math.max(box.w / img.width, box.h / img.height);
-    const sw = box.w / s;
-    const sh = box.h / s;
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(box.x, box.y, box.w, box.h, radius * u);
-    ctx.clip();
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, box.x, box.y, box.w, box.h);
-    ctx.restore();
+    // A product on a set: framed in the box (all of it unless zoomed in), rounded, with a hairline.
+    const { frame } = drawFramed(ctx, img, box, productZoom(e), radius * u, valign);
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.14)';
     ctx.lineWidth = Math.max(1, 1.5 * u);
     ctx.beginPath();
-    ctx.roundRect(box.x, box.y, box.w, box.h, radius * u);
+    ctx.roundRect(frame.x, frame.y, frame.w, frame.h, radius * u);
     ctx.stroke();
     ctx.restore();
-    e.mark('product', box);
-    return { rect: box, cutout: false, mock: false };
+    e.mark('product', frame);
+    return { rect: frame, cutout: false, mock: false };
 }

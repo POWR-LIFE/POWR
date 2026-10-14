@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { Avatar } from '@/components/social/Avatar';
 import { useAuth } from '@/context/AuthContext';
@@ -11,6 +12,7 @@ import type { InviteFriend, InviteProgress, LiveEvent } from '@/lib/api/liveEven
 import { fetchProfile } from '@/lib/api/user';
 import { openEventBooking } from '@/lib/eventBookingLink';
 import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
+import i18n from '@/lib/i18n';
 import { inviteRewardLine, shortDate } from '@/lib/liveEventDisplay';
 import type { Friend } from '@/lib/social/types';
 
@@ -30,7 +32,7 @@ const MAX_ROWS = 3;
 
 /** The Avatar component speaks Friend; invite rows carry no friendship at all. */
 function asFriend(f: InviteFriend, i: number): Friend {
-    const name = f.display_name ?? f.username ?? 'A friend';
+    const name = f.display_name ?? f.username ?? i18n.t('events:ticket.friendFallback');
     return {
         id: f.username ?? name ?? `invite-${i}`,
         username: f.username ?? '',
@@ -41,7 +43,7 @@ function asFriend(f: InviteFriend, i: number): Friend {
 }
 
 function friendName(f: InviteFriend): string {
-    return f.display_name ?? f.username ?? 'A friend';
+    return f.display_name ?? f.username ?? i18n.t('events:ticket.friendFallback');
 }
 
 /**
@@ -61,13 +63,15 @@ function isCounting(f: InviteFriend): boolean {
  */
 function inviteState(f: InviteFriend, countingConversions: boolean): string {
     if (isCounting(f)) {
-        return countingConversions ? 'Counts — first workout done' : 'Counts — signed up with your code';
+        return countingConversions
+            ? i18n.t('events:ticket.state.countsWorkout')
+            : i18n.t('events:ticket.state.countsSignup');
     }
     // Signups-counted events can only exclude a friend on the date: they
     // joined before this event's invites started counting.
-    if (!countingConversions) return 'Joined before this event';
-    if (!f.converted) return 'Needs their first verified workout';
-    return 'Joined before this event';
+    if (!countingConversions) return i18n.t('events:ticket.state.joinedBefore');
+    if (!f.converted) return i18n.t('events:ticket.state.needsWorkout');
+    return i18n.t('events:ticket.state.joinedBefore');
 }
 
 /**
@@ -89,6 +93,7 @@ export function EventTicketCard({
     invites: InviteProgress | null;
 }) {
     const router = useRouter();
+    const { t } = useTranslation();
     const { user } = useAuth();
     const [code, setCode] = useState<string | null>(null);
     const [displayName, setDisplayName] = useState<string | null>(null);
@@ -139,7 +144,9 @@ export function EventTicketCard({
     const bookingUrl = event.booking_url ?? null;
     const booking = event.viewer.booking ?? null;
     const bookingConfirmed = booking?.confirmed ?? false;
-    const venueName = event.venue?.name ?? 'the venue';
+    // null → "the venue", written into each sentence whole so a translation
+    // never has to bend around an inserted article.
+    const venueName = event.venue?.name ?? null;
 
     const handleShare = async () => {
         if (!link || !message) return;
@@ -168,7 +175,7 @@ export function EventTicketCard({
                 EVENT segment has to fit a screen with the hero and the prizes
                 above it, so this card earns its height line by line. */}
             <View style={styles.eyebrowRow}>
-                <Text style={styles.eyebrow}>{gate ? 'YOUR TICKET' : 'INVITE FRIENDS'}</Text>
+                <Text style={styles.eyebrow}>{gate ? t('events:ticket.eyebrow.ticket') : t('events:ticket.eyebrow.invite')}</Text>
                 {!met && (
                     <>
                         <Text style={styles.count}>{Math.min(count, target)}</Text>
@@ -182,16 +189,16 @@ export function EventTicketCard({
                     <Ionicons name="lock-open" size={16} color={GOLD} />
                     <Text style={styles.metText}>
                         {gate
-                            ? keepPlace ? 'Your place in the final standings is secured' : 'You’re on the leaderboard'
-                            : 'Milestone earned'}
+                            ? keepPlace ? t('events:ticket.met.keepPlace') : t('events:ticket.met.onBoard')
+                            : t('events:ticket.met.milestone')}
                     </Text>
                 </View>
             ) : (
                 <>
                     <Text style={styles.countLabel} numberOfLines={2}>
                         {countingConversions
-                            ? 'friends with a verified workout'
-                            : 'friends signed up with your code'}
+                            ? t('events:ticket.countLabel.conversions')
+                            : t('events:ticket.countLabel.signups')}
                     </Text>
                     {target > 0 && (
                         <View style={styles.progressTrack}>
@@ -209,13 +216,13 @@ export function EventTicketCard({
             <Text style={styles.explainer} numberOfLines={2}>
                 {gate && !met
                     ? keepPlace
-                        ? `${gate.required} friends${gateBy ? ` by ${gateBy}` : ''} keeps your place in the final standings · +${event.invite_bonus_points} POWR each`
-                        : `${gate.required} friends puts you on the leaderboard · +${event.invite_bonus_points} POWR each`
-                    : `${inviteRewardLine(event)}${
-                          !gate && milestoneN > 0 && event.invite_milestone_bonus > 0
-                              ? ` +${event.invite_milestone_bonus} more at ${milestoneN} friends.`
-                              : ''
-                      }`}
+                        ? gateBy
+                            ? t('events:ticket.explainer.keepPlaceBy', { required: gate.required, date: gateBy, points: event.invite_bonus_points })
+                            : t('events:ticket.explainer.keepPlace', { required: gate.required, points: event.invite_bonus_points })
+                        : t('events:ticket.explainer.onBoard', { required: gate.required, points: event.invite_bonus_points })
+                    : !gate && milestoneN > 0 && event.invite_milestone_bonus > 0
+                        ? `${inviteRewardLine(event)} ${t('events:ticket.explainer.milestone', { bonus: event.invite_milestone_bonus, n: milestoneN })}`
+                        : inviteRewardLine(event)}
             </Text>
 
             {/* ── Share is the action this card exists for; code + QR ride
@@ -226,16 +233,16 @@ export function EventTicketCard({
                     onPress={handleShare}
                     disabled={!link}
                     accessibilityRole="button"
-                    accessibilityLabel="Share your invite link"
+                    accessibilityLabel={t('events:invite.shareA11y')}
                 >
                     <Ionicons name="share-outline" size={14} color="#0a0a0a" />
-                    <Text style={styles.shareBtnText}>SHARE</Text>
+                    <Text style={styles.shareBtnText}>{t('events:invite.share')}</Text>
                 </Pressable>
                 <Pressable
                     style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
                     onPress={handleCopy}
                     accessibilityRole="button"
-                    accessibilityLabel="Copy your invite code and link"
+                    accessibilityLabel={t('events:invite.copyA11y')}
                 >
                     <Text style={styles.codeText}>{code ?? '········'}</Text>
                     <Ionicons
@@ -250,7 +257,7 @@ export function EventTicketCard({
                         router.push({ pathname: '/event-qr', params: { slug: event.slug, name: event.name } })
                     }
                     accessibilityRole="button"
-                    accessibilityLabel="Show the event QR code"
+                    accessibilityLabel={t('events:ticket.qrA11y')}
                 >
                     <Ionicons name="qr-code-outline" size={16} color={DIM} />
                 </Pressable>
@@ -260,7 +267,7 @@ export function EventTicketCard({
                     style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.7 }]}
                     onPress={() => router.push({ pathname: '/share-event', params: { slug: event.slug } })}
                     accessibilityRole="button"
-                    accessibilityLabel="Share the event as a card"
+                    accessibilityLabel={t('events:invite.cardA11y')}
                 >
                     <Ionicons name="image-outline" size={16} color={DIM} />
                 </Pressable>
@@ -274,7 +281,9 @@ export function EventTicketCard({
             {bookingConfirmed ? (
                 <View style={styles.bookedRow}>
                     <Ionicons name="checkmark-circle" size={16} color={GREEN} />
-                    <Text style={styles.bookedText}>Booked with {venueName}</Text>
+                    <Text style={styles.bookedText}>
+                        {venueName != null ? t('events:booking.bookedWith', { venue: venueName }) : t('events:booking.bookedWithVenue')}
+                    </Text>
                 </View>
             ) : bookingUrl ? (
                 <>
@@ -285,14 +294,20 @@ export function EventTicketCard({
                             openEventBooking(event, { email: user?.email, name: displayName });
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel={`Book your place with ${venueName}`}
+                        accessibilityLabel={
+                            venueName != null
+                                ? t('events:booking.bookA11y', { venue: venueName })
+                                : t('events:booking.bookA11yVenue')
+                        }
                     >
-                        <Text style={styles.bookBtnText}>BOOK YOUR PLACE</Text>
+                        <Text style={styles.bookBtnText}>{t('events:booking.book')}</Text>
                         <Ionicons name="open-outline" size={14} color="#0a0a0a" />
                     </Pressable>
                     {booking?.opened_at ? (
                         <Text style={styles.bookHint}>
-                            Already booked? It’ll show here once {venueName}’s list syncs.
+                            {venueName != null
+                                ? t('events:booking.syncHint', { venue: venueName })
+                                : t('events:booking.syncHintVenue')}
                         </Text>
                     ) : null}
                 </>
@@ -308,8 +323,10 @@ export function EventTicketCard({
             {friends.length > 0 && (
                 <View style={styles.friendBlock}>
                     <Text style={styles.friendHeading}>
-                        {countingFriends} of {friends.length} {friends.length === 1 ? 'friend' : 'friends'}{' '}
-                        {countingFriends === 1 ? 'counts' : 'count'} here
+                        {t('events:ticket.friendsCount', {
+                            count: countingFriends,
+                            total: t('events:ticket.friendsTotal', { count: friends.length }),
+                        })}
                     </Text>
                     {shownFriends.map((f, i) => {
                         const counting = isCounting(f);
@@ -343,7 +360,7 @@ export function EventTicketCard({
                             accessibilityRole="button"
                         >
                             <Text style={styles.moreToggleText}>
-                                {allFriends ? 'SHOW FEWER' : `SHOW ALL ${friends.length}`}
+                                {allFriends ? t('events:ticket.showFewer') : t('events:ticket.showAll', { n: friends.length })}
                             </Text>
                             <Ionicons
                                 name={allFriends ? 'chevron-up' : 'chevron-down'}
@@ -363,9 +380,9 @@ export function EventTicketCard({
                         style={({ pressed }) => [styles.rulesToggle, pressed && { opacity: 0.7 }]}
                         onPress={() => setRulesOpen(open => !open)}
                         accessibilityRole="button"
-                        accessibilityLabel={rulesOpen ? 'Hide the event rules' : 'Show the event rules'}
+                        accessibilityLabel={rulesOpen ? t('events:ticket.rulesHideA11y') : t('events:ticket.rulesShowA11y')}
                     >
-                        <Text style={styles.rulesToggleText}>EVENT RULES</Text>
+                        <Text style={styles.rulesToggleText}>{t('events:ticket.rules')}</Text>
                         <Ionicons
                             name={rulesOpen ? 'chevron-up' : 'chevron-down'}
                             size={13}

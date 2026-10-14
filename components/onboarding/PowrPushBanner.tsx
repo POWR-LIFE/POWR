@@ -1,4 +1,5 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { fontFamily } from '@/constants/tokens';
 
 const GOLD = '#E8D200';
@@ -11,12 +12,14 @@ const GOLD = '#E8D200';
 export default function PowrPushBanner({
     title,
     body,
-    time = 'now',
+    time,
 }: {
     title: string;
     body: string;
+    /** Defaults to "now" in the member's language. */
     time?: string;
 }) {
+    const { t } = useTranslation();
     return (
         <View style={styles.banner}>
             <View style={styles.appIcon}>
@@ -29,7 +32,7 @@ export default function PowrPushBanner({
             <View style={{ flex: 1 }}>
                 <View style={styles.metaRow}>
                     <Text style={styles.appName}>POWR</Text>
-                    <Text style={styles.time}>· {time}</Text>
+                    <Text style={styles.time}>· {time ?? t('permissions:push.now')}</Text>
                 </View>
                 <Text style={styles.title} numberOfLines={1}>{title}</Text>
                 <Text style={styles.body} numberOfLines={1}>{body}</Text>

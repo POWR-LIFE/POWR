@@ -1,0 +1,223 @@
+{
+  "ledger": {
+    "title": "Historique des points",
+    "loadError": "Impossible de charger l’historique.",
+    "empty": "Aucune transaction pour l’instant.",
+    "today": "Aujourd’hui",
+    "yesterday": "Hier",
+    "summary": {
+      "balance": "Solde",
+      "totalEarned": "Total gagné",
+      "scopedEntries": "Entrées : {{label}}"
+    },
+    "typeFallback": {
+      "earn": "Activité",
+      "bonus": "Bonus",
+      "streak": "Bonus de série",
+      "adjustment": "Ajustement",
+      "redeem": "Récompense échangée",
+      "penalty": "Pénalité"
+    },
+    "badge": {
+      "together": "ENSEMBLE",
+      "streak": "SÉRIE",
+      "vault": "VAULT",
+      "bonus": "BONUS",
+      "minutes": "+{{minutes}} MIN",
+      "adjustment": "AJUST.",
+      "penalty": "PÉNALITÉ",
+      "levelUp": "NOUVEAU NIVEAU"
+    },
+    "levelUpRow": "Niveau {{level}} — {{name}}"
+  },
+  "filters": {
+    "all": "Tout",
+    "together": "Ensemble",
+    "type": {
+      "bonus": "Bonus",
+      "streak": "Séries",
+      "redeem": "Récompenses",
+      "penalty": "Pénalités",
+      "adjustment": "Ajustements",
+      "earn": "Autres"
+    }
+  },
+  "filterSheet": {
+    "eyebrow": "FILTRER",
+    "headline": "Tu veux voir quoi ?",
+    "activities": "ACTIVITÉS",
+    "otherPoints": "AUTRES POINTS",
+    "entries_one": "{{n}} entrée",
+    "entries_other": "{{n}} entrées",
+    "rowA11y_one": "{{label}}, {{count}} entrée",
+    "rowA11y_other": "{{label}}, {{count}} entrées",
+    "close": "Fermer",
+    "chipA11y": "Filtrer l’historique",
+    "chipA11yFiltered": "Filtre : {{label}}. Changer de filtre"
+  },
+  "manualLog": {
+    "title": "Saisir une activité",
+    "pickerLabel": "Choisis ton activité",
+    "dailyCap": "jusqu’à {{cap}} pts",
+    "pickerNote": "Une saisie manuelle rapporte 80 % des points de base · Vérifie avec tes données santé pour les avoir tous",
+    "minimum": {
+      "steps": "{{steps}} pas minimum pour gagner des points",
+      "minutes": "{{minutes}} min minimum pour que ça compte",
+      "other": "Termine l’activité pour que ça compte"
+    },
+    "details": {
+      "title": "Détails de la séance",
+      "steps": {
+        "label": "Pas",
+        "placeholder": "ex. 8000",
+        "unit": "pas"
+      },
+      "duration": {
+        "label": "Durée",
+        "placeholder": "ex. 45",
+        "unit": "min"
+      },
+      "distance": {
+        "label": "Distance",
+        "placeholder": "Facultatif"
+      },
+      "optional": "facultatif"
+    },
+    "verify": {
+      "cta": "Vérifie avec tes données santé pour avoir tous les points",
+      "success": "Vérifié avec tes données santé — tous les points",
+      "failed": "Impossible de vérifier avec tes données santé"
+    },
+    "preview": {
+      "belowMinimum": "Seuil minimum non atteint",
+      "estimated": "POWR estimés",
+      "ptsUnit": " pts",
+      "base": "Base",
+      "points": "{{points}} pts",
+      "verifiedRate": "Données santé (×1,0)",
+      "manualRate": "Manuel (×0,8)"
+    },
+    "submit": "Saisir la séance",
+    "submitWithPoints": "Saisir la séance · {{points}} pts",
+    "submitNote": {
+      "verified": "Vérifié avec tes données santé — tous les points sont crédités. Ne compte pas pour ta série.",
+      "manual": "Une saisie manuelle rapporte 80 % des points de base. Vérifie avec tes données santé pour les avoir tous."
+    },
+    "submitFailed": "Impossible d’enregistrer la séance"
+  },
+  "achievementsScreen": {
+    "title": "SUCCÈS",
+    "summary": {
+      "levels": "niveaux",
+      "earned": "obtenus"
+    },
+    "tabs": {
+      "levels": "NIVEAUX",
+      "badges": "BADGES"
+    },
+    "filterAll": "Tout",
+    "filterEarned": "Obtenus",
+    "allCategories": "Toutes catégories",
+    "loading": "Chargement…",
+    "empty": "Aucun succès ici pour l’instant",
+    "levelNumber": "NIV. {{level}}",
+    "xp": "{{xp}} pts",
+    "unlockAt": "Se débloque à {{xp}} pts",
+    "toGo": "Encore {{xp}} pts",
+    "complete": "TERMINÉ",
+    "progressTo": "{{percent}} % vers NIV. {{level}}"
+  },
+  "levels": {
+    "touchingGrass": {
+      "name": "Adieu canapé"
+    },
+    "cardioGoblin": {
+      "name": "Gobelin du cardio"
+    },
+    "streakFreak": {
+      "name": "Série infernale"
+    },
+    "motionMagic": {
+      "name": "Magie du mouvement"
+    },
+    "heavyHitter": {
+      "name": "Poids lourd"
+    },
+    "cantSitStill": {
+      "name": "La bougeotte"
+    },
+    "ironLungs": {
+      "name": "Poumons d’acier"
+    },
+    "pavementPredator": {
+      "name": "Terreur du bitume"
+    },
+    "stepCollector": {
+      "name": "Mille-pattes"
+    },
+    "calorieCriminal": {
+      "name": "Braquage calorique"
+    },
+    "mileMuncher": {
+      "name": "Avale-kilomètres"
+    },
+    "moveMachine": {
+      "name": "Machine à bouger"
+    },
+    "needNewShoes": {
+      "name": "Baskets à bout"
+    },
+    "certifiedWeapon": {
+      "name": "Bête de compét"
+    },
+    "momentumMonster": {
+      "name": "Rouleau compresseur"
+    },
+    "limitBreaker": {
+      "name": "Brise-limites"
+    },
+    "dieselMode": {
+      "name": "Mode diesel"
+    },
+    "peakCondition": {
+      "name": "Forme olympique"
+    },
+    "longHauler": {
+      "name": "Long-courrier"
+    },
+    "goggins": {
+      "name": "Goggins"
+    },
+    "tiers": {
+      "recruit": "RECRUE",
+      "athlete": "ATHLÈTE",
+      "elite": "ÉLITE",
+      "legend": "LÉGENDE"
+    },
+    "tierRange": "NIVEAUX {{from}}–{{to}}"
+  },
+  "achievements": {
+    "reachLevel": "Atteins le niveau {{level}} : {{name}}",
+    "summit": "Le sommet. Atteins le niveau {{level}} : {{name}}",
+    "category": {
+      "habit": "Habitude",
+      "sessions": "Séances",
+      "points": "Points",
+      "level": "Niveau",
+      "running": "Course",
+      "gym": "Salle",
+      "cycling": "Vélo",
+      "swimming": "Natation",
+      "hiit": "HIIT",
+      "yoga": "Yoga",
+      "sports": "Sports",
+      "walking": "Marche"
+    },
+    "rarity": {
+      "common": "Commun",
+      "rare": "Rare",
+      "epic": "Épique",
+      "legendary": "Légendaire"
+    }
+  }
+}

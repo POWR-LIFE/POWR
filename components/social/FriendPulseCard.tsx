@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import { Avatar } from '@/components/social/Avatar';
 import { fontFamily } from '@/constants/tokens';
+import i18n from '@/lib/i18n';
 import type { PulseCandidate } from '@/lib/social/friendPulse';
 
 // ─── Palette (matches SharedChallengeCard / ChallengeTemplateCard) ───────────
@@ -21,7 +23,14 @@ const WATERMARK = '#FFFFFF';
 // Same height as its carousel siblings so the band never jumps between slides.
 const CARD_MIN_HEIGHT = 180;
 
-const PULSE_NOUN: Record<string, string> = { gym: 'a gym session', running: 'a run', cycling: 'a ride' };
+// Whole sentences per activity and recency, not a noun slotted into one
+// sentence: "a run" and "a ride" don't take the same verb in every language.
+const PULSE_KEYS: Record<string, { just: string; recent: string }> = {
+  gym: { just: 'nudges:friendPulse.just.gym', recent: 'nudges:friendPulse.recent.gym' },
+  running: { just: 'nudges:friendPulse.just.running', recent: 'nudges:friendPulse.recent.running' },
+  cycling: { just: 'nudges:friendPulse.just.cycling', recent: 'nudges:friendPulse.recent.cycling' },
+};
+const PULSE_FALLBACK = { just: 'nudges:friendPulse.just.other', recent: 'nudges:friendPulse.recent.other' };
 const PULSE_ICON: Record<string, string> = { gym: 'barbell-outline', running: 'footsteps-outline', cycling: 'bicycle' };
 
 function firstName(p: PulseCandidate): string {
@@ -31,7 +40,8 @@ function firstName(p: PulseCandidate): string {
 /** "Elliot just did a gym session." */
 export function pulseHeadline(p: PulseCandidate): string {
   const ageH = (Date.now() - Date.parse(p.startedAt)) / 3_600_000;
-  return `${firstName(p)} ${ageH <= 3 ? 'just did' : 'recently did'} ${PULSE_NOUN[p.type] ?? 'a workout'}.`;
+  const keys = PULSE_KEYS[p.type] ?? PULSE_FALLBACK;
+  return i18n.t(ageH <= 3 ? keys.just : keys.recent, { name: firstName(p) });
 }
 
 export interface FriendPulseCardProps {
@@ -50,6 +60,7 @@ export interface FriendPulseCardProps {
  * discipline); the (X) hands off to the pacing cool-offs in friendPulse.
  */
 export function FriendPulseCard({ pulse, index = 0, bonusConfig, onPress, onDismiss }: FriendPulseCardProps) {
+  const { t } = useTranslation();
   const enter = useSharedValue(0);
   useEffect(() => {
     enter.value = withDelay(index * 80, withTiming(1, { duration: 350, easing: Easing.out(Easing.cubic) }));
@@ -68,7 +79,7 @@ export function FriendPulseCard({ pulse, index = 0, bonusConfig, onPress, onDism
         onPress={() => { Haptics.selectionAsync(); onPress?.(); }}
         style={({ pressed }) => [styles.card, pressed && { opacity: 0.95 }]}
         accessibilityRole="button"
-        accessibilityLabel={`${pulseHeadline(pulse)} Challenge them`}
+        accessibilityLabel={t('nudges:friendPulse.a11y', { headline: pulseHeadline(pulse) })}
       >
         {/* Ghosted activity icon, same treatment as the template cards. */}
         <View style={styles.watermark} pointerEvents="none">
@@ -81,7 +92,7 @@ export function FriendPulseCard({ pulse, index = 0, bonusConfig, onPress, onDism
             <Avatar friend={pulse.friend} size={30} />
             <View style={styles.liveChip}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveText}>Active today</Text>
+              <Text style={styles.liveText}>{t('nudges:friendPulse.active')}</Text>
             </View>
           </View>
           {!!onDismiss && (
@@ -89,7 +100,7 @@ export function FriendPulseCard({ pulse, index = 0, bonusConfig, onPress, onDism
               hitSlop={10}
               onPress={onDismiss}
               accessibilityRole="button"
-              accessibilityLabel="Dismiss suggestion"
+              accessibilityLabel={t('nudges:friendPulse.dismiss')}
             >
               <Ionicons name="close" size={14} color={MUTED} />
             </Pressable>
@@ -101,15 +112,15 @@ export function FriendPulseCard({ pulse, index = 0, bonusConfig, onPress, onDism
           <Text style={styles.title} numberOfLines={2}>{pulseHeadline(pulse)}</Text>
           <Text style={styles.sub} numberOfLines={2}>
             {bonusEach > 0
-              ? `Take on a challenge together — finish it and you both earn +${bonusEach} on top.`
-              : 'Take on a challenge together.'}
+              ? t('nudges:friendPulse.subBonus', { bonus: bonusEach })
+              : t('nudges:friendPulse.sub')}
           </Text>
         </View>
 
         <View style={styles.footer}>
           <View />
           <View style={styles.cta}>
-            <Text style={styles.ctaText}>Challenge {name}</Text>
+            <Text style={styles.ctaText}>{t('nudges:friendPulse.cta', { name })}</Text>
             <Ionicons name="arrow-forward" size={14} color={GOLD} />
           </View>
         </View>

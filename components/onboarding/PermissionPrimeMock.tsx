@@ -1,6 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import type { TFunction } from 'i18next';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 const GOLD = '#E8D200';
 
@@ -12,6 +14,10 @@ const GOLD = '#E8D200';
  *
  * Deliberately styled like the OS (light card, system font), not like POWR:
  * it has to read as "this is the dialog that's coming", not as app UI.
+ *
+ * The same goes for its words: each language mirrors what the OS itself shows
+ * in that language (Apple's French says "vous", whatever POWR's tone), so the
+ * mock matches the real dialog word for word.
  */
 
 export type PermissionMockKind =
@@ -41,84 +47,83 @@ interface MockSpec {
     options: MockOption[];
 }
 
-function specFor(kind: PermissionMockKind): MockSpec {
+function specFor(kind: PermissionMockKind, t: TFunction): MockSpec {
     const ios = Platform.OS === 'ios';
     switch (kind) {
         case 'location-foreground':
             return ios
                 ? {
-                      title: 'Allow “POWR” to use your location?',
-                      message:
-                          'POWR uses your location to verify your sessions and surface rewards near you.',
+                      title: t('permissions:mock.ios.location.title'),
+                      message: t('permissions:mock.ios.location.message'),
                       layout: 'alert',
                       preciseBadge: true,
                       options: [
-                          { label: 'Allow Once' },
-                          { label: 'Allow While Using App', highlighted: true },
-                          { label: 'Don’t Allow' },
+                          { label: t('permissions:mock.ios.location.allowOnce') },
+                          { label: t('permissions:mock.ios.location.allowWhileUsing'), highlighted: true },
+                          { label: t('permissions:mock.ios.location.dontAllow') },
                       ],
                   }
                 : {
-                      title: 'Allow POWR to access this device’s location?',
+                      title: t('permissions:mock.android.location.title'),
                       layout: 'alert',
                       accuracyChips: true,
                       options: [
-                          { label: 'While using the app', highlighted: true },
-                          { label: 'Only this time' },
-                          { label: 'Don’t allow' },
+                          { label: t('permissions:mock.android.location.whileUsing'), highlighted: true },
+                          { label: t('permissions:mock.android.location.onlyThisTime') },
+                          { label: t('permissions:mock.android.location.dontAllow') },
                       ],
                   };
         case 'location-background':
             return ios
                 ? {
-                      title: 'Allow “POWR” to also use your location even when you are not using the app?',
-                      message: 'Automatic check-ins only work with “Always” access.',
+                      title: t('permissions:mock.ios.always.title'),
+                      message: t('permissions:mock.ios.always.message'),
                       layout: 'alert',
                       options: [
-                          { label: 'Keep Only While Using' },
-                          { label: 'Change to Always Allow', highlighted: true },
+                          { label: t('permissions:mock.ios.always.keep') },
+                          { label: t('permissions:mock.ios.always.change'), highlighted: true },
                       ],
                   }
                 : {
-                      title: 'Location permission',
-                      sectionHeader: 'Location access for this app',
+                      title: t('permissions:mock.android.background.title'),
+                      sectionHeader: t('permissions:mock.android.background.section'),
                       layout: 'radio-list',
                       options: [
-                          { label: 'Allow all the time', highlighted: true, radio: true },
-                          { label: 'Allow only while using the app', radio: true },
-                          { label: 'Ask every time', radio: true },
-                          { label: 'Don’t allow', radio: true },
+                          { label: t('permissions:mock.android.background.allTheTime'), highlighted: true, radio: true },
+                          { label: t('permissions:mock.android.background.whileUsing'), radio: true },
+                          { label: t('permissions:mock.android.background.askEveryTime'), radio: true },
+                          { label: t('permissions:mock.android.background.dontAllow'), radio: true },
                       ],
                   };
         case 'notifications':
             return ios
                 ? {
-                      title: '“POWR” Would Like to Send You Notifications',
-                      message: 'Notifications may include alerts, sounds and icon badges.',
+                      title: t('permissions:mock.ios.notifications.title'),
+                      message: t('permissions:mock.ios.notifications.message'),
                       layout: 'alert',
                       options: [
-                          { label: 'Allow', highlighted: true },
-                          { label: 'Don’t Allow' },
+                          { label: t('permissions:mock.ios.notifications.allow'), highlighted: true },
+                          { label: t('permissions:mock.ios.notifications.dontAllow') },
                       ],
                   }
                 : {
-                      title: 'Allow POWR to send you notifications?',
+                      title: t('permissions:mock.android.notifications.title'),
                       layout: 'alert',
                       options: [
-                          { label: 'Allow', highlighted: true },
-                          { label: 'Don’t allow' },
+                          { label: t('permissions:mock.android.notifications.allow'), highlighted: true },
+                          { label: t('permissions:mock.android.notifications.dontAllow') },
                       ],
                   };
         // Android-only: the REQUEST_IGNORE_BATTERY_OPTIMIZATIONS dialog. iOS has
         // no equivalent, so this kind is never reached there.
         case 'battery':
             return {
-                title: 'Ignore battery optimisations?',
-                message: 'Let POWR always run in the background? This may use more battery.',
+                title: t('permissions:mock.android.battery.title'),
+                message: t('permissions:mock.android.battery.message'),
                 layout: 'alert',
                 options: [
-                    { label: 'Allow', highlighted: true },
-                    { label: 'Deny' },
+                    { label: t('permissions:mock.android.battery.allow'), highlighted: true },
+                    { label: t('permissions:mock.android.battery.deny') },
                 ],
             };
     }
@@ -166,7 +171,8 @@ function Radio({ selected }: { selected: boolean }) {
 }
 
 export default function PermissionPrimeMock({ kind }: { kind: PermissionMockKind }) {
-    const spec = specFor(kind);
+    const { t } = useTranslation();
+    const spec = specFor(kind, t);
     const alert = spec.layout === 'alert';
 
     return (
@@ -180,17 +186,17 @@ export default function PermissionPrimeMock({ kind }: { kind: PermissionMockKind
                 {spec.accuracyChips ? (
                     <View style={styles.chipRow}>
                         <View style={[styles.chip, styles.chipSelected]}>
-                            <Text style={styles.chipLabelSelected}>Precise</Text>
+                            <Text style={styles.chipLabelSelected}>{t('permissions:mock.android.location.precise')}</Text>
                         </View>
                         <View style={styles.chip}>
-                            <Text style={styles.chipLabel}>Approximate</Text>
+                            <Text style={styles.chipLabel}>{t('permissions:mock.android.location.approximate')}</Text>
                         </View>
                     </View>
                 ) : null}
                 {spec.preciseBadge ? (
                     <View style={styles.precisePill}>
                         <MaterialCommunityIcons name="navigation-variant" size={11} color={IOS_BLUE} />
-                        <Text style={styles.precisePillLabel}>Precise: On</Text>
+                        <Text style={styles.precisePillLabel}>{t('permissions:mock.ios.location.precise')}</Text>
                     </View>
                 ) : null}
 

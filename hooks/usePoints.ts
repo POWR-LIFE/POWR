@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { fetchPointsSummary } from '@/lib/api/points';
@@ -17,6 +17,54 @@ type PointsState = {
     refresh: () => void;
 };
 
+// The refresh triggers are app-wide events, so they are subscribed ONCE no
+// matter how many usePoints() consumers are mounted (the four tabs, level-up,
+// achievements, league preview… ~8 once the tabs have been visited). Subscribed
+// per consumer, one trigger fired one invalidate each, and every invalidate
+// cancels the in-flight refetch and starts another: 5–6 identical
+// get_my_points_summary calls within milliseconds (Sentry, 2026-10-14).
+let triggerConsumers = 0;
+let stopTriggers: (() => void) | null = null;
+
+function retainRefreshTriggers(queryClient: QueryClient): () => void {
+    triggerConsumers += 1;
+    if (triggerConsumers === 1) {
+        const invalidate = () => {
+            queryClient.invalidateQueries({ queryKey: ['points'] });
+        };
+
+        // Refresh whenever a foreground geofence session is claimed
+        const offSession = onSessionCompleted(invalidate);
+
+        // Refresh when points may have changed outside the geofence path — a
+        // foreground push (level_up / reward_unlocked / session receipt) or a
+        // foreground health-sync earn. Without this the ['points'] cache only
+        // refreshed on a geofence claim, so a server-driven "You leveled up" push
+        // could arrive while the home readout still showed the cached "X pts to go".
+        const offPoints = onPointsChanged(invalidate);
+
+        // Safety net: refetch on foreground so points that changed while the app was
+        // backgrounded (a background health sync, a push received while away) are
+        // reconciled the moment the user returns, not on the next manual refresh.
+        const appState = AppState.addEventListener('change', (next: AppStateStatus) => {
+            if (next === 'active') invalidate();
+        });
+
+        stopTriggers = () => {
+            offSession();
+            offPoints();
+            appState.remove();
+        };
+    }
+    return () => {
+        triggerConsumers -= 1;
+        if (triggerConsumers === 0) {
+            stopTriggers?.();
+            stopTriggers = null;
+        }
+    };
+}
+
 /**
  * Points aggregates, shared app-wide through the query cache: every consumer
  * reads the same entry, so mounting a new screen renders instantly from cache
@@ -29,37 +77,7 @@ export function usePoints(): PointsState {
         queryFn: fetchPointsSummary,
     });
 
-    // Refresh whenever a foreground geofence session is claimed
-    useEffect(
-        () => onSessionCompleted(() => {
-            queryClient.invalidateQueries({ queryKey: ['points'] });
-        }),
-        [queryClient],
-    );
-
-    // Refresh when points may have changed outside the geofence path — a
-    // foreground push (level_up / reward_unlocked / session receipt) or a
-    // foreground health-sync earn. Without this the ['points'] cache only
-    // refreshed on a geofence claim, so a server-driven "You leveled up" push
-    // could arrive while the home readout still showed the cached "X pts to go".
-    useEffect(
-        () => onPointsChanged(() => {
-            queryClient.invalidateQueries({ queryKey: ['points'] });
-        }),
-        [queryClient],
-    );
-
-    // Safety net: refetch on foreground so points that changed while the app was
-    // backgrounded (a background health sync, a push received while away) are
-    // reconciled the moment the user returns, not on the next manual refresh.
-    useEffect(() => {
-        const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
-            if (next === 'active') {
-                queryClient.invalidateQueries({ queryKey: ['points'] });
-            }
-        });
-        return () => sub.remove();
-    }, [queryClient]);
+    useEffect(() => retainRefreshTriggers(queryClient), [queryClient]);
 
     // Stable identity: callers put this in useFocusEffect / useEffect deps.
     // A fresh closure per render made the Rewards tab re-run its focus effect

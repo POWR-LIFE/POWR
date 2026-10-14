@@ -5,26 +5,37 @@
 //   - edge function (Deno): import { eventPushCopy } from '../_shared/eventPushCopy.ts'
 //   - gym portal (Vite):    import { eventPushCopy } from '<repo>/supabase/functions/_shared/eventPushCopy.ts'
 // The payload is _live_event_template_payload's jsonb (the portal gets the
-// same object from gym_event_push_status). Pure: no imports, no I/O.
+// same object from gym_event_push_status). Pure: no I/O.
+//
+// Every function takes a trailing `lang` (default 'en'): send-push passes the
+// member's language; the portal passes nothing, so its previews stay English.
+// The words live in _shared/i18n/push/<lang>.ts under `event.*`.
+
+import { formatLocale, tPush } from './i18n/index.ts';
 
 export type EventPushType = 'event_announced' | 'event_kickoff' | 'event_doors_open' | 'gym_quiet_nudge' | 'gym_on_powr';
 
-// "Wed 1 Oct" on the UK clock, or '' when missing.
-export function ukDay(iso: unknown): string {
+// "Wed 1 Oct" on the UK clock, or '' when missing. French and Spanish spell
+// it out ("mercredi 1 octobre", "miércoles, 1 de octubre"): their short forms
+// end in a full stop ("mer. 1 oct.") that collides with the sentence's own.
+export function ukDay(iso: unknown, lang = 'en'): string {
   const d = new Date(String(iso ?? ''));
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-GB', {
-    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London',
-  });
+  return d.toLocaleDateString(formatLocale(lang), lang === 'en'
+    ? { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' }
+    : { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/London' });
 }
 
-// "6pm" / "6:30pm" on the UK clock, or '' when missing.
-export function ukTime(iso: unknown): string {
+// "6pm" / "6:30pm" on the UK clock, or '' when missing. Other languages read
+// the 24-hour clock ("18:00", "18:30").
+export function ukTime(iso: unknown, lang = 'en'): string {
   const d = new Date(String(iso ?? ''));
   if (Number.isNaN(d.getTime())) return '';
-  const [h, m] = d.toLocaleTimeString('en-GB', {
+  const clock = d.toLocaleTimeString(lang === 'en' ? 'en-GB' : formatLocale(lang), {
     hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Europe/London',
-  }).split(':').map(Number);
+  });
+  if (lang !== 'en') return clock;
+  const [h, m] = clock.split(':').map(Number);
   const hour = h % 12 === 0 ? 12 : h % 12;
   return `${hour}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
 }
@@ -32,29 +43,43 @@ export function ukTime(iso: unknown): string {
 // What a pick of activities reads as in a push, in the order the gym
 // portal lists them. Walking brings daily steps with it (the event rules
 // say so); a push only has room for "walks".
-const ACTIVITY_NOUNS: [string, string][] = [
-  ['gym', 'gym sessions'], ['running', 'runs'], ['cycling', 'rides'], ['swimming', 'swims'],
-  ['hiit', 'HIIT workouts'], ['yoga', 'yoga sessions'], ['sports', 'sports sessions'],
-  ['dance', 'dance sessions'], ['walking', 'walks'],
-];
+const ACTIVITY_ORDER = ['gym', 'running', 'cycling', 'swimming', 'hiit', 'yoga', 'sports', 'dance', 'walking'];
+
+function activityNoun(lang: string, key: string): string {
+  switch (key) {
+    case 'gym': return tPush(lang, 'event.activities.gym');
+    case 'running': return tPush(lang, 'event.activities.running');
+    case 'cycling': return tPush(lang, 'event.activities.cycling');
+    case 'swimming': return tPush(lang, 'event.activities.swimming');
+    case 'hiit': return tPush(lang, 'event.activities.hiit');
+    case 'yoga': return tPush(lang, 'event.activities.yoga');
+    case 'sports': return tPush(lang, 'event.activities.sports');
+    case 'dance': return tPush(lang, 'event.activities.dance');
+    default: return tPush(lang, 'event.activities.walking');
+  }
+}
 
 // "Every session at X counts" / "Runs and rides count" / "Every verified
 // workout counts", without the full stop. activities is the event's
 // included_activities (null = everything); venue_only comes first, and the
 // gym portal never pairs it with a pick.
-export function countsLine(payload: Record<string, unknown>, gym: string): string {
-  if (payload.venue_only === true && gym) return `Every session at ${gym} counts`;
+export function countsLine(payload: Record<string, unknown>, gym: string, lang = 'en'): string {
+  if (payload.venue_only === true && gym) return tPush(lang, 'event.counts.venue', { gym });
   const picked = Array.isArray(payload.activities) ? (payload.activities as unknown[]).map(String) : [];
-  const words = ACTIVITY_NOUNS.filter(([key]) => picked.includes(key)).map(([, noun]) => noun);
-  if (!words.length) return 'Every verified workout counts';
-  const list = words.length === 1 ? words[0] : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
-  return `${list[0].toUpperCase()}${list.slice(1)} count`;
+  const words = ACTIVITY_ORDER.filter((key) => picked.includes(key)).map((key) => activityNoun(lang, key));
+  if (!words.length) return tPush(lang, 'event.counts.any');
+  const list = words.length === 1
+    ? words[0]
+    : tPush(lang, 'event.counts.list', { head: words.slice(0, -1).join(', '), last: words[words.length - 1] });
+  const line = tPush(lang, 'event.counts.picked', { list });
+  return `${line[0].toUpperCase()}${line.slice(1)}`;
 }
 
 export function eventPushCopy(
   type: EventPushType,
   payload: Record<string, unknown>,
   now: number = Date.now(),
+  lang = 'en',
 ): { title: string; body: string } {
   const eventName = String(payload.event_name ?? '').trim();
   const gym = String(payload.gym_name ?? '').trim();
@@ -63,28 +88,37 @@ export function eventPushCopy(
     case 'event_announced': {
       // Once per event, to the venue's members and recent visitors who
       // haven't joined. The gym picks the event, never the words.
-      const name = eventName || 'A new event';
+      const name = eventName || tPush(lang, 'event.announced.fallbackName');
       const prize = String(payload.prize ?? '').trim();
       const starts = new Date(String(payload.starts_at ?? '')).getTime();
-      const when = Number.isFinite(starts) && starts > now ? `Starts ${ukDay(payload.starts_at)}.` : 'On now.';
-      const counts = `${countsLine(payload, gym)}.`;
+      const when = Number.isFinite(starts) && starts > now
+        ? tPush(lang, 'event.announced.starts', { day: ukDay(payload.starts_at, lang) })
+        : tPush(lang, 'event.announced.onNow');
+      const counts = `${countsLine(payload, gym, lang)}.`;
       const named = gym && !name.toLowerCase().includes(gym.toLowerCase());
       return {
-        title: named ? `New at ${gym}: ${name}` : `New: ${name}`,
-        body: `${when} ${counts}${prize ? ` ${prize} for 1st.` : ''} Tap to join.`,
+        title: named ? tPush(lang, 'event.announced.titleAt', { gym, name }) : tPush(lang, 'event.announced.title', { name }),
+        body: [
+          when,
+          counts,
+          ...(prize ? [tPush(lang, 'event.announced.prize', { prize })] : []),
+          tPush(lang, 'event.announced.tapToJoin'),
+        ].join(' '),
       };
     }
     case 'event_kickoff': {
       // Registrants, the morning scoring starts. ends_at is a midnight
       // boundary (half-open), so the last day that counts is the one before
       // it: minus one minute.
-      const name = eventName || 'The event';
+      const name = eventName || tPush(lang, 'common.theEvent');
       const ends = new Date(String(payload.ends_at ?? '')).getTime();
-      const lastDay = Number.isFinite(ends) ? ukDay(new Date(ends - 60_000).toISOString()) : '';
-      const counts = countsLine(payload, gym);
+      const lastDay = Number.isFinite(ends) ? ukDay(new Date(ends - 60_000).toISOString(), lang) : '';
+      const counts = countsLine(payload, gym, lang);
       return {
-        title: `${name}: it's on 🏁`,
-        body: `${counts}${lastDay ? ` until ${lastDay}` : ''}. The board is open.`,
+        title: tPush(lang, 'event.kickoff.title', { name }),
+        body: lastDay
+          ? tPush(lang, 'event.kickoff.bodyUntil', { counts, day: lastDay })
+          : tPush(lang, 'event.kickoff.body', { counts }),
       };
     }
     case 'gym_quiet_nudge': {
@@ -92,10 +126,12 @@ export function eventPushCopy(
       // visits), on the gym's press from Retention (gym_nudge_quiet). POWR's
       // words, never the gym's. `weeks` is since their last visit there.
       const weeks = Math.max(0, Math.round(Number(payload.weeks ?? 0)));
-      const since = weeks >= 2 ? `It’s been ${weeks} weeks.` : 'It’s been a while.';
+      const since = weeks >= 2
+        ? tPush(lang, 'event.quietNudge.sinceWeeks', { weeks: `${weeks}` })
+        : tPush(lang, 'event.quietNudge.sinceAWhile');
       return {
-        title: gym ? `${gym}: your spot’s still here` : 'Your spot’s still here',
-        body: `${since} One check-in and you’re back on the board.`,
+        title: gym ? tPush(lang, 'event.quietNudge.titleGym', { gym }) : tPush(lang, 'event.quietNudge.title'),
+        body: tPush(lang, 'event.quietNudge.body', { since }),
       };
     }
     case 'gym_on_powr': {
@@ -105,21 +141,23 @@ export function eventPushCopy(
       // says what the gym sees and where the switch is ("Let gyms see my
       // visits", Settings, then Privacy).
       return {
-        title: gym ? `${gym} is on POWR` : 'Your gym is on POWR',
-        body: 'The team there can now see when you check in, so they can look out for you. Rather they didn’t? Settings, then Privacy.',
+        title: gym ? tPush(lang, 'event.onPowr.titleGym', { gym }) : tPush(lang, 'event.onPowr.title'),
+        body: tPush(lang, 'event.onPowr.body'),
       };
     }
     case 'event_doors_open': {
       // Registrants, the morning of the finale night. The attendance reward
       // is paid to members the venue geofence sees during the night, so
       // "check in" is the ask.
-      const name = eventName || 'The event';
-      const time = ukTime(payload.doors_open_at);
+      const name = eventName || tPush(lang, 'common.theEvent');
+      const time = ukTime(payload.doors_open_at, lang);
       const bonus = Math.max(0, Math.round(Number(payload.attendance ?? 0)));
+      const doors = time
+        ? (gym ? tPush(lang, 'event.doorsOpen.timeAtGym', { time, gym }) : tPush(lang, 'event.doorsOpen.time', { time }))
+        : (gym ? tPush(lang, 'event.doorsOpen.tonightAtGym', { gym }) : tPush(lang, 'event.doorsOpen.tonight'));
       return {
-        title: `${name}: finale night is tonight`,
-        body: `Doors open ${time || 'tonight'}${gym ? ` at ${gym}` : ''}.`
-          + (bonus > 0 ? ` Check in with POWR when you arrive for +${bonus} POWR.` : ''),
+        title: tPush(lang, 'event.doorsOpen.title', { name }),
+        body: bonus > 0 ? `${doors} ${tPush(lang, 'event.doorsOpen.bonus', { bonus: `${bonus}` })}` : doors,
       };
     }
   }

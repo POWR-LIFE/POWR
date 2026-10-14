@@ -77,6 +77,8 @@ Deno.serve(async (req) => {
     .eq('id', user.id)
     .maybeSingle();
   const fromName = me?.display_name || me?.username || 'Someone';
+  // English stand-ins flagged for other languages (pushCopy sentText).
+  const fromNameMissing = !(me?.display_name || me?.username);
 
   const touch = { updated_at: new Date().toISOString() };
 
@@ -89,7 +91,7 @@ Deno.serve(async (req) => {
       if (existing?.status === 'pending' && existing.requested_by !== user.id) {
         await supabase.from('friendships').update({ status: 'accepted', ...touch })
           .eq('user_id', low).eq('friend_id', high);
-        await notifyPush(targetId, 'friend_accepted', { from_user_id: user.id, from_name: fromName });
+        await notifyPush(targetId, 'friend_accepted', { from_user_id: user.id, from_name: fromName, from_name_missing: fromNameMissing });
         return json({ ok: true, status: 'accepted' });
       }
       if (existing?.status === 'pending') return json({ ok: true, status: 'pending' }); // already sent
@@ -97,7 +99,7 @@ Deno.serve(async (req) => {
       await supabase.from('friendships').insert({
         user_id: low, friend_id: high, status: 'pending', requested_by: user.id,
       });
-      await notifyPush(targetId, 'friend_request', { from_user_id: user.id, from_name: fromName });
+      await notifyPush(targetId, 'friend_request', { from_user_id: user.id, from_name: fromName, from_name_missing: fromNameMissing });
       return json({ ok: true, status: 'pending' });
     }
 
@@ -107,7 +109,7 @@ Deno.serve(async (req) => {
       }
       await supabase.from('friendships').update({ status: 'accepted', ...touch })
         .eq('user_id', low).eq('friend_id', high);
-      await notifyPush(existing.requested_by, 'friend_accepted', { from_user_id: user.id, from_name: fromName });
+      await notifyPush(existing.requested_by, 'friend_accepted', { from_user_id: user.id, from_name: fromName, from_name_missing: fromNameMissing });
       return json({ ok: true, status: 'accepted' });
     }
 

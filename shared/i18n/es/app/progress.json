@@ -1,0 +1,526 @@
+{
+  "loading": "Cargando…",
+  "days": {
+    "short": {
+      "mon": "lun",
+      "tue": "mar",
+      "wed": "mié",
+      "thu": "jue",
+      "fri": "vie",
+      "sat": "sáb",
+      "sun": "dom"
+    },
+    "initial": {
+      "mon": "L",
+      "tue": "M",
+      "wed": "X",
+      "thu": "J",
+      "fri": "V",
+      "sat": "S",
+      "sun": "D"
+    },
+    "tick": {
+      "mon": "Lu",
+      "tue": "Ma",
+      "wed": "Mi",
+      "thu": "Ju",
+      "fri": "Vi",
+      "sat": "Sá",
+      "sun": "Do"
+    }
+  },
+  "months": {
+    "short": {
+      "jan": "ene",
+      "feb": "feb",
+      "mar": "mar",
+      "apr": "abr",
+      "may": "may",
+      "jun": "jun",
+      "jul": "jul",
+      "aug": "ago",
+      "sep": "sept",
+      "oct": "oct",
+      "nov": "nov",
+      "dec": "dic"
+    },
+    "full": {
+      "jan": "enero",
+      "feb": "febrero",
+      "mar": "marzo",
+      "apr": "abril",
+      "may": "mayo",
+      "jun": "junio",
+      "jul": "julio",
+      "aug": "agosto",
+      "sep": "septiembre",
+      "oct": "octubre",
+      "nov": "noviembre",
+      "dec": "diciembre"
+    }
+  },
+  "dates": {
+    "monthDay": "{{day}} {{month}}"
+  },
+  "period": {
+    "D": "D",
+    "W": "S",
+    "M": "M"
+  },
+  "units": {
+    "h": "{{h}} h",
+    "hm": "{{h}} h {{m}} min",
+    "m": "{{m}} min",
+    "min": "{{m}} min",
+    "pt": "{{points}} pt",
+    "steps": "{{steps}} pasos",
+    "bpm": "{{value}} lpm",
+    "kcal": "{{value}} kcal"
+  },
+  "chart": {
+    "seeEarned": "{{day}}: mira lo que has ganado",
+    "less": "Menos",
+    "more": "Más",
+    "avg": "media {{value}}"
+  },
+  "metric": {
+    "powrEarned": "POWR GANADOS",
+    "today": "hoy",
+    "thisDay": "ese día",
+    "thisWeek": "ESTA SEMANA",
+    "dayByDay": "DÍA A DÍA",
+    "fromThisWeek": "esta semana",
+    "fromThatWeek": "esa semana",
+    "bestDay": "MEJOR DÍA",
+    "previousDays": "DÍAS ANTERIORES"
+  },
+  "screen": {
+    "title": "Progreso",
+    "overview": "RESUMEN DE ACTIVIDAD",
+    "breakdown": "DESGLOSE",
+    "bodyTab": "CUERPO"
+  },
+  "radial": {
+    "steps": "pasos",
+    "thisWeek": "ESTA SEMANA",
+    "activityThisWeek": "{{activity}} · ESTA SEMANA",
+    "activitySessions": "{{activity}} · SESIONES",
+    "avgSleep": "SUEÑO MEDIO",
+    "daysQuiet": "{{days}} d",
+    "sinceLastReading": "SIN DATOS",
+    "readiness": "FORMA",
+    "powrEarned": "POWR\nGANADOS",
+    "howEarned": "Cómo has ganado estos POWR"
+  },
+  "empty": {
+    "title": "Tu progreso empieza aquí",
+    "bodyConnected": "Tu primera visita al gimnasio, caminata o entreno aparecerá aquí como un anillo, con el desglose por día, semana y mes.",
+    "bodyNotConnected": "Conecta la app Salud, Health Connect o un wearable y cada visita al gimnasio, caminata o entreno aparecerá aquí automáticamente.",
+    "logSession": "Registrar una sesión",
+    "connectWearable": "Conectar un wearable",
+    "logManually": "O registra una sesión a mano"
+  },
+  "detail": {
+    "category": {
+      "movement": "Movimiento",
+      "workouts": "Entrenos",
+      "sleep": "Sueño"
+    },
+    "empty": {
+      "movement": "Aún no hay sesiones de movimiento.",
+      "workouts": "Aún no hay entrenos.",
+      "sleep": "Aún no hay noches registradas."
+    },
+    "emptyHint": "Muévete para empezar a ver tu seguimiento aquí.",
+    "thisWeek": "Esta semana",
+    "stats": {
+      "sessions": "Sesiones",
+      "avgDuration": "Duración media",
+      "pointsEarned": "Puntos ganados"
+    },
+    "recent": "Recientes",
+    "points": "+{{points}} pts"
+  },
+  "movement": {
+    "healthRequesting": "Solicitando acceso a Salud…",
+    "healthEnable": "Activa el acceso a Salud para contar tus pasos",
+    "stepsToGoal": "Te faltan {{steps}} pasos para el objetivo de hoy",
+    "startMoving": "Muévete para contar tus pasos de hoy",
+    "todaysSteps": "PASOS DE HOY",
+    "steps": "PASOS",
+    "goalDay": "/ objetivo {{goal}}",
+    "goalSteps": "/ {{goal}} pasos",
+    "goalWeek": "/ objetivo 70k",
+    "goalAvg": "/ objetivo 10k",
+    "howEarned": "Cómo has ganado estos POWR caminando",
+    "nextTier": "Te faltan {{steps}} pasos para el siguiente tramo ({{threshold}})",
+    "past5Days": "ÚLTIMOS 5 DÍAS",
+    "today": "HOY",
+    "weekTotal": "TOTAL SEMANAL",
+    "bestDay": "Mejor día: {{day}} ({{steps}} pasos)",
+    "loadingMonth": "Cargando los pasos del mes…",
+    "noDataThisMonth": "No hay datos de caminata este mes.",
+    "noDataIn": "No hay datos de caminata en {{month}}.",
+    "noDataHint": "Tus pasos aparecerán cuando se sincronicen.",
+    "avgPerDay": "MEDIA DE PASOS / DÍA"
+  },
+  "workouts": {
+    "howEarned": "Cómo has ganado estos POWR ({{activity}})",
+    "day": {
+      "noneToday": "Hoy no hay ninguna sesión de {{activity}}.",
+      "noneOnDay": "Ninguna sesión de {{activity}} ese día.",
+      "noneTodayHint": "Completa una sesión para ver tus estadísticas del día.",
+      "noneOnDayHint": "No se registró nada en esta fecha.",
+      "todays": "{{activity}} DE HOY",
+      "sessions_one": "sesión · {{duration}}",
+      "sessions_other": "sesiones · {{duration}}",
+      "sessionsCounted_one": "{{count}} sesión · {{duration}}",
+      "sessionsCounted_other": "{{count}} sesiones · {{duration}}",
+      "greatToday": "Gran sesión de {{activity}} hoy.",
+      "great": "Gran sesión de {{activity}}.",
+      "loggedToday": "{{activity}}: sesión registrada. Mantén el ritmo.",
+      "logged": "{{activity}}: sesión registrada.",
+      "recentDays": "DÍAS RECIENTES"
+    },
+    "week": {
+      "distance": "{{activity}} · DISTANCIA",
+      "sessions": "{{activity}} · SESIONES",
+      "ofFive": "{{sessions}}/5 sesiones",
+      "goal": "/ objetivo 5",
+      "streak": "¡Racha de {{days}} días, sigue así!",
+      "activeThis_one": "{{count}} día activo esta semana.",
+      "activeThis_other": "{{count}} días activos esta semana.",
+      "activeThat_one": "{{count}} día activo esa semana.",
+      "activeThat_other": "{{count}} días activos esa semana.",
+      "outstanding": "Semana espectacular de {{activity}}.",
+      "solidThis": "Buen esfuerzo. Sigue así para cumplir tu objetivo.",
+      "solidThat": "Buena semana de entreno.",
+      "moreToGo": "Te faltan {{sessions}} sesiones para cumplir tu objetivo.",
+      "thatWeek": "{{sessions}}/5 sesiones esa semana."
+    },
+    "month": {
+      "loading": "Cargando el mes…",
+      "noneThisMonth": "No hay sesiones de {{activity}} este mes.",
+      "noneIn": "No hay sesiones de {{activity}} en {{month}}.",
+      "noneHint": "Las sesiones aparecerán aquí cuando las registres.",
+      "totalDistance": "DISTANCIA TOTAL",
+      "totalSessions": "TOTAL DE SESIONES",
+      "sessionsThisMonth_one": "{{count}} sesión este mes",
+      "sessionsThisMonth_other": "{{count}} sesiones este mes",
+      "sessionsIn_one": "{{count}} sesión en {{month}}",
+      "sessionsIn_other": "{{count}} sesiones en {{month}}",
+      "thisMonth": "este mes",
+      "inMonth": "en {{month}}",
+      "longestVisit": "VISITA MÁS LARGA"
+    }
+  },
+  "sleep": {
+    "expired": "La conexión con tu wearable ha caducado",
+    "expiredHint": "Vuelve a conectar tu wearable en Ajustes para retomar el seguimiento del sueño.",
+    "notTracked": "No hay sueño registrado en los últimos 30 días.",
+    "notTrackedHint": "Duerme con tu dispositivo puesto y tus noches aparecerán aquí.",
+    "noDataLastNight": "No hay datos de sueño de anoche.",
+    "noDataFor": "No hay datos de sueño de {{day}}.",
+    "syncHint": "Tu sueño aparecerá cuando se sincronice desde tu wearable.",
+    "recentNights": "NOCHES RECIENTES",
+    "previousNights": "NOCHES ANTERIORES",
+    "totalSleep": "SUEÑO TOTAL",
+    "goal": "/ objetivo 8 h",
+    "bedtimeWake": "ACOSTARSE / DESPERTAR",
+    "stages": "FASES DEL SUEÑO",
+    "stage": {
+      "deep": "Profundo {{duration}}",
+      "rem": "REM {{duration}}",
+      "light": "Ligero {{duration}}"
+    },
+    "noStages": "Desglose de fases no disponible",
+    "dayGood": "Gran noche de recuperación. Mantén la constancia.",
+    "dayShort": "{{duration}} por debajo del objetivo. Prueba a acostarte antes.",
+    "avgNight": "MEDIA / NOCHE",
+    "avgBedtime": "HORA MEDIA DE DORMIR",
+    "bedtimeGoal": "objetivo: 22:30",
+    "nightly": "SUEÑO POR NOCHE",
+    "bestNight": "Mejor noche: {{day}} ({{duration}})",
+    "weekConnect": "Conecta un wearable para registrar tu sueño automáticamente.",
+    "weekGood": "Buena recuperación. Mantén un horario de sueño regular.",
+    "weekShort": "Estás {{duration}} por debajo del objetivo. Intenta acostarte antes.",
+    "loadingMonth": "Cargando el sueño del mes…",
+    "noDataThisMonth": "No hay datos de sueño este mes.",
+    "noDataIn": "No hay datos de sueño en {{month}}.",
+    "bestNightLabel": "MEJOR NOCHE"
+  },
+  "readiness": {
+    "word": {
+      "primed": "A tope",
+      "easy": "Suave",
+      "rest": "Reposo"
+    },
+    "reason": {
+      "recovery": "recuperación {{score}} %",
+      "heartSaysRest": "tu corazón pide descanso",
+      "hrvLow": "VFC por debajo de lo habitual",
+      "shortNight": "noche corta",
+      "bigDay": "ayer fue un día duro",
+      "goodToPush": "luz verde",
+      "quiet": "sin lecturas desde hace {{days}} días",
+      "needsSignals": "necesita sueño o FC en reposo",
+      "noRecent": "sin lecturas recientes"
+    }
+  },
+  "body": {
+    "failed": "No se han podido cargar tus tendencias.",
+    "failedHint": "Desliza hacia abajo para actualizar e inténtalo de nuevo.",
+    "empty": "Aún no hay datos corporales.",
+    "emptyHint": "La frecuencia cardiaca en reposo, el sueño y la carga de entreno aparecerán aquí a medida que tu dispositivo los sincronice.",
+    "slept": "{{duration}} de sueño",
+    "yourDevice": "Tu dispositivo",
+    "load": {
+      "title": "CARGA DE ENTRENO · ÚLTIMOS {{days}} DÍAS",
+      "ofExercise": "de ejercicio",
+      "none": "sin entrenos registrados esta semana",
+      "levelWithUsual": "igual que tu semana habitual",
+      "vsUsual": "{{delta}} vs tu semana habitual",
+      "kcal": "{{kcal}} kcal quemadas",
+      "hard": "{{duration}} de esfuerzo intenso",
+      "avg": "media {{duration}}"
+    },
+    "effort": {
+      "title": "INTENSIDAD · ESTA SEMANA",
+      "raised": "con la frecuencia cardiaca elevada",
+      "peak": "FC máx. {{bpm}} lpm",
+      "light": "esfuerzo suave",
+      "hard": "intenso",
+      "max": "máximo"
+    },
+    "rhr": {
+      "title": "FC EN REPOSO · {{days}} DÍAS",
+      "unitWhen": "lpm · {{when}}",
+      "tip": "más baja = más en forma"
+    },
+    "hrv": {
+      "title": "RECUPERACIÓN (VFC) · {{days}} DÍAS",
+      "unitWhen": "ms · {{when}}",
+      "tip": "más alta = mejor recuperación",
+      "prompt": {
+        "title": "RECUPERACIÓN (VFC)",
+        "asking": "Preguntando a la app Salud…",
+        "share": "Comparte tu VFC desde la app Salud"
+      }
+    },
+    "sleep": {
+      "title": "SUEÑO · ÚLTIMAS {{nights}} NOCHES",
+      "avgPerNight": "de media por noche esta semana",
+      "noNights": "ninguna noche en los últimos 7 días",
+      "sharpen": "las tendencias se afinan con más noches",
+      "lastRecorded": "última noche registrada: {{when}}",
+      "short": "{{duration}} por debajo de {{goal}} h esta semana",
+      "onGoal": "objetivo de {{goal}} h cumplido esta semana",
+      "deepRem": "{{pct}} % profundo + REM",
+      "efficiency": "{{pct}} % de eficiencia"
+    },
+    "axis": {
+      "daysAgo": "hace {{days}} días",
+      "today": "hoy",
+      "nightsAgo": "hace {{nights}} noches",
+      "lastNight": "anoche"
+    },
+    "legend": {
+      "typicalRange": "tu rango habitual",
+      "average": "media",
+      "goal": "objetivo {{goal}} h",
+      "goalMet": "objetivo cumplido",
+      "shortOfGoal": "por debajo del objetivo",
+      "minutesTrained": "minutos de entreno",
+      "hardEffort": "esfuerzo intenso",
+      "averageDay": "tu día medio"
+    },
+    "quiet": {
+      "label": "{{device}} · {{days}} DÍAS SIN DATOS",
+      "device": "Dispositivo",
+      "title": "Sin lecturas desde {{when}}",
+      "aWhileBack": "hace tiempo",
+      "wearNamedBaselines": "Ponte tu {{device}} esta noche y por la mañana tendrás tu forma de vuelta, comparada con tus valores habituales de abajo.",
+      "wearBaselines": "Ponte tu dispositivo esta noche y por la mañana tendrás tu forma de vuelta, comparada con tus valores habituales de abajo.",
+      "wearNamed": "Ponte tu {{device}} esta noche y tus tendencias volverán a arrancar por la mañana.",
+      "wear": "Ponte tu dispositivo esta noche y tus tendencias volverán a arrancar por la mañana.",
+      "syncNamed": "¿Lo has llevado puesto? Abre la app de {{device}} para sincronizar.",
+      "sync": "¿Lo has llevado puesto? Abre su app para sincronizar."
+    },
+    "baselines": {
+      "title": "TUS VALORES HABITUALES · ANTES DE LA PAUSA",
+      "rhr": "FC EN REPOSO",
+      "hrv": "VFC",
+      "sleep": "SUEÑO",
+      "fromReadings_one": "de {{count}} lectura",
+      "fromReadings_other": "de {{count}} lecturas",
+      "fromNights_one": "de {{count}} noche",
+      "fromNights_other": "de {{count}} noches"
+    },
+    "delta": {
+      "stale": "sin lecturas desde {{when}}, esperando a tu dispositivo",
+      "noBaseline": "{{tip}} (en unos días podrás compararlo con lo habitual)",
+      "vsAverage": "{{delta}} vs tu media ({{tip}})",
+      "level": "estable",
+      "value": "{{sign}}{{value}} {{unit}}"
+    },
+    "signals": {
+      "readiness": "FORMA",
+      "yesterday": "AYER",
+      "lastNight": "ANOCHE",
+      "noData": "Sin datos",
+      "bigDay": "Día duro",
+      "restDay": "Descanso",
+      "trained": "Con entreno",
+      "noTraining": "sin entreno",
+      "exercise": "{{duration}} de ejercicio",
+      "notTracked": "Sin registro",
+      "wearToBed": "duerme con tu dispositivo",
+      "notSynced": "Sin sincronizar",
+      "waiting": "esperando a tu dispositivo",
+      "shortNight": "Noche corta",
+      "aBitShort": "Algo corta",
+      "rested": "Buen descanso",
+      "recovery": "{{pct}} % de recuperación · {{advice}}",
+      "basisOnly": "solo {{basis}} · {{advice}}",
+      "advice": {
+        "push": "luz verde para apretar",
+        "goLight": "hoy, ve suave",
+        "easy": "hoy, tómatelo con calma"
+      },
+      "adviceShort": {
+        "push": "aprieta",
+        "goLight": "ve suave",
+        "easy": "con calma"
+      }
+    },
+    "basis": {
+      "sleep": "sueño",
+      "hrv": "VFC",
+      "rhr": "FC en reposo"
+    },
+    "when": {
+      "today": "hoy",
+      "yesterday": "ayer"
+    },
+    "insight": {
+      "hrv": "VFC",
+      "rhr": "FC en reposo",
+      "vital": "{{label}} {{value}} {{unit}}",
+      "vitalVsUsual": "{{vital}} (lo habitual: {{usual}})",
+      "slept": "{{duration}} de sueño",
+      "advice": {
+        "push": "Luz verde para apretar.",
+        "steady": "Entrena, pero a un ritmo constante.",
+        "rest": "Descansa o haz algo muy suave hoy."
+      },
+      "provider": "{{who}} puntúa tu recuperación de esta mañana con un {{score}} %. {{advice}}",
+      "providerWithEvidence": "{{who}} puntúa tu recuperación de esta mañana con un {{score}} %: {{evidence}}. {{advice}}",
+      "rhrElevated": "Tu FC en reposo está {{delta}} por encima de lo habitual: mejor tomarse hoy con más calma.",
+      "hrvLow": "Tu VFC está en {{value}} ms frente a tu media de {{usual}}: tu cuerpo aún se está recuperando. Hoy, con calma.",
+      "shortNight": "Noche corta ({{duration}}): hoy te sentará mejor una sesión suave que una intensa.",
+      "bigDay": "Ayer fue un día duro ({{duration}} de entreno). La recuperación también es parte del trabajo.",
+      "ordinary": "{{evidence}}: nada fuera de lo normal. Luz verde para apretar.",
+      "night": "{{duration}} de sueño anoche.",
+      "nightWaiting_one": "{{duration}} de sueño anoche. {{basis}}: aún sin sincronizar, así que esta lectura se basa solo en el sueño.",
+      "nightWaiting_other": "{{duration}} de sueño anoche. {{basis}}: aún sin sincronizar, así que esta lectura se basa solo en el sueño.",
+      "rhrBelow": "Tu FC en reposo está {{bpm}} lpm por debajo de tu media: luz verde para apretar.",
+      "rhrAbove": "Tu FC en reposo está {{bpm}} lpm por encima de tu media: luz verde para apretar.",
+      "rhrOnAverage": "Tu FC en reposo está justo en tu media: luz verde para apretar.",
+      "rhrFirst": "FC en reposo: {{bpm}} lpm ({{when}}). En unos días podrás compararla con lo habitual.",
+      "hrvVsUsual": "VFC de {{value}} ms frente a tu media de {{usual}}: luz verde para apretar.",
+      "hrvFirst": "VFC: {{value}} ms ({{when}}). En unas noches podrás compararla con lo habitual.",
+      "trained": "Días con entreno: {{active}} de los últimos {{days}} ({{duration}}).",
+      "needsSignals": "Para valorar tu forma hacen falta datos de sueño, VFC o FC en reposo de tu dispositivo.",
+      "noRecent": "No hay lecturas recientes de sueño, VFC o frecuencia cardiaca para valorar tu recuperación.",
+      "lastRhr": "Tu última FC en reposo fue hace {{days}} días.",
+      "default": "Tus tendencias irán tomando forma aquí a medida que tu dispositivo se sincronice. Cuantos más días, más nítida la imagen."
+    }
+  },
+  "sheet": {
+    "eyebrow": "DE DÓNDE SALE",
+    "failed": "No se ha podido cargar el desglose. Desliza hacia abajo para actualizar e inténtalo de nuevo.",
+    "earnedNothing": "SIN POWR",
+    "unpaidNote": "Una sesión no suma nada si no llega al mínimo, si ya has alcanzado el límite diario o si ese mismo tiempo ya lo cuenta un check-in o tu dispositivo.",
+    "vitalsPrompt": "La frecuencia cardiaca y las calorías aparecen aquí cuando un wearable registra la sesión.",
+    "close": "Cerrar",
+    "today": "Hoy",
+    "previousDay": "Día anterior, {{date}}",
+    "nextDay": "Día siguiente, {{date}}",
+    "noEarlierDay": "No hay días anteriores en este gráfico",
+    "noLaterDay": "No hay días posteriores en este gráfico",
+    "tile": {
+      "speed": "VELOCIDAD",
+      "pace": "RITMO",
+      "time": "TIEMPO",
+      "steps": "PASOS",
+      "distance": "DISTANCIA",
+      "avgHr": "FC MEDIA",
+      "maxHr": "FC MÁX.",
+      "active": "ACTIVAS",
+      "climb": "DESNIVEL",
+      "power": "POTENCIA",
+      "laps": "LARGOS",
+      "hard": "INTENSO",
+      "hrv": "VFC",
+      "deep": "PROFUNDO",
+      "rem": "REM",
+      "light": "LIGERO"
+    },
+    "noun": {
+      "checkIn": "check-in",
+      "checkInFor": "check-in de {{duration}}",
+      "tracked": "sesión registrada",
+      "trackedFor": "sesión registrada de {{duration}}",
+      "synced": "sesión sincronizada",
+      "syncedFor": "sesión sincronizada de {{duration}}",
+      "manual": "registro manual",
+      "manualFor": "registro manual de {{duration}}",
+      "session": "sesión",
+      "sessionFor": "sesión de {{duration}}"
+    },
+    "summary": {
+      "nothingToday": "Nada ganado por {{activity}} hoy.",
+      "nothingThatDay": "Nada ganado por {{activity}} ese día.",
+      "nothingThisWeek": "Nada ganado por {{activity}} esta semana.",
+      "nothingPeriod": "Nada ganado por {{activity}} en este periodo.",
+      "walking": "Ganado con pasos, cada vez que tu total del día superó un tramo.",
+      "sleep": "Ganado con tu sueño, según lo reparador que fue.",
+      "allFrom": "Todo viene del {{day}}: {{session}}.",
+      "across": "En {{sessions}} sesiones, la mayor parte del {{day}}: {{session}}.",
+      "streak": "Incluye un bonus de racha."
+    },
+    "source": {
+      "checkIn": "Check-in en gimnasio",
+      "checkInWith": "Check-in en gimnasio · {{provider}}",
+      "wearable": "Wearable",
+      "health": "Salud del móvil",
+      "manual": "Registro manual",
+      "tracked": "Registrado"
+    },
+    "rules": {
+      "cap": "Hasta {{cap}} POWR al día por {{activity}}.",
+      "gymDwell": "Quédate {{dwell}} minutos para conseguir un check-in, {{upgrade}} para llegar al tramo superior.",
+      "streak": "Los días activos seguidos multiplican lo que paga un check-in.",
+      "hiit": "Una clase suma lo mismo que una sesión de gimnasio: {{minimum}} minutos para contar, {{upgrade}} para el tramo superior.",
+      "minimum": "Las sesiones de menos de {{minimum}} minutos no suman.",
+      "walkingTiers": "Los puntos suben cuando tu total del día supera {{tiers}} pasos.",
+      "manual": "Los registros manuales suman el 80 % de una sesión registrada, uno al día."
+    }
+  },
+  "verify": {
+    "unavailable": "No disponible",
+    "stepsFound": "{{steps}} pasos encontrados hoy",
+    "stepsShort": "Solo se han encontrado {{steps}} pasos",
+    "workoutFound": "Entreno de {{minutes}} min encontrado hoy",
+    "workoutMissing": "No se ha encontrado ningún entreno que coincida (buscando unos {{minutes}} min)"
+  },
+  "lookback": {
+    "thisMonth": "Este mes",
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "thisWeek": "Esta semana",
+    "shortDate": "{{day}} {{month}}{{year}}",
+    "sameMonthRange": "{{startDay}} – {{endDay}} {{month}}{{year}}",
+    "monthYear": "{{month}}{{year}}"
+  }
+}

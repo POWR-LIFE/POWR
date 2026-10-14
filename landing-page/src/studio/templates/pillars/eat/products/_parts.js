@@ -7,7 +7,7 @@
 import { TYPE } from '../../../../fonts';
 import { fitBlock, drawBlock, drawText, splitLines, blockBox, wrapLines, capHeight, textWidth } from '../../../../text';
 import { rule } from '../../../../shapes';
-import { productShot, isCutout, textOn, mockRect } from '../../kit';
+import { productShot, isCutout, textOn, mockRect, cutoutRect, framedRect, productZoom } from '../../kit';
 import { INK, SOFT, GREY, DIM, HAIR, lift, mix, alpha, luminance, rows, num, fitPx } from '../_parts';
 
 export { INK, SOFT, GREY, DIM, HAIR, lift, mix, alpha, luminance, rows, num, fitPx, textOn };
@@ -64,12 +64,8 @@ export function fitAspect(box, ar, { align = 'center', valign = 'bottom' } = {})
 export function productRect(e, box, { kind = 'tub', align = 'center', valign = 'bottom', frame = 0.8 } = {}) {
     const img = e.asset('product');
     if (!img) return mockRect(box, kind, align);
-    if (!isCutout(img)) return fitAspect(box, frame, { align, valign });
-    const s = Math.min(box.w / img.width, box.h / img.height);
-    const w = img.width * s;
-    const h = img.height * s;
-    const x = align === 'left' ? box.x : align === 'right' ? box.x + box.w - w : box.x + (box.w - w) / 2;
-    return { x, y: box.y + box.h - h, w, h };
+    if (!isCutout(img)) return framedRect(fitAspect(box, frame, { align, valign }), productZoom(e), valign);
+    return cutoutRect(img, box, { align, zoom: productZoom(e) });
 }
 
 /**
@@ -117,7 +113,7 @@ export function slot(e, box, { kind = 'tub', label, sub = '', align = 'center', 
         const r = productRect(e, box, { kind, align });
         pool(e, r.x + r.w / 2, r.y + r.h, Math.max(r.w, r.h * 0.55), stage);
     }
-    return productShot(e, b, { kind, label, sub, align, stage: false, radius });
+    return productShot(e, b, { kind, label, sub, align, valign, stage: false, radius });
 }
 
 /**

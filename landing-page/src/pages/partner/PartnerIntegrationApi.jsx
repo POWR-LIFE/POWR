@@ -501,7 +501,7 @@ export default function PartnerIntegrationApi() {
         {
             id: 'webhook',
             title: 'Add a webhook endpoint',
-            detail: 'We POST signed events to your system the moment they happen — a code is assigned, a code is used, a pool runs low.',
+            detail: 'We POST signed events to your system the moment they happen — a code is assigned, a code is used, a pool runs low, a voucher is confirmed or swiped in store.',
             summary: activeEps.length > 0
                 ? `${activeEps.length} active endpoint${activeEps.length === 1 ? '' : 's'}${lastDelivered ? ` · last delivery ${timeAgo(lastDelivered.delivered_at)}` : ''}`
                 : undefined,

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     NativeScrollEvent,
     NativeSyntheticEvent,
@@ -35,6 +36,7 @@ import { deriveBodySignals, fetchBodyTrends, isEmptyTrends, readinessOf, type Bo
 import { isPausedProvider } from '@/lib/health/providers';
 import { fetchProfile } from '@/lib/api/user';
 import { orderedProgressActivities, weeklyDistanceLabel, WEEKLY_STEPS_TARGET } from '@/lib/weeklyActivities';
+import { useDistancePreference } from '@/lib/units';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -47,7 +49,11 @@ const TEAL   = '#2DD4BF';
 const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.25)';
 
-const DAY_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+/** Two-letter weekday ticks around each radial, Monday first. */
+const DAY_TICK_KEYS = [
+  'progress:days.tick.mon', 'progress:days.tick.tue', 'progress:days.tick.wed', 'progress:days.tick.thu',
+  'progress:days.tick.fri', 'progress:days.tick.sat', 'progress:days.tick.sun',
+] as const;
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 /** Local 'YYYY-MM-DD' of day i (Mon = 0) of the current week. */
 function weekDate(i: number): string {
@@ -67,11 +73,15 @@ const NO_HISTORY: ReadonlySet<ActivityType> = new Set();
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProgressScreen() {
+  const { t } = useTranslation();
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const router = useRouter();
   const { weekActiveDays, weeklyMetrics, refresh: refreshActivity } = useActivity();
+  // Settings › Distance units sits on top of this tab, which stays mounted:
+  // subscribing re-renders the radials, workouts and breakdown in the new unit.
+  useDistancePreference();
   // Which activities have EVER had a session — the gate that decides whether a
   // preference gets a radial at all. Lives under the ['activity'] key so the
   // revision bump in useActivity refetches it when a new session lands.
@@ -245,14 +255,14 @@ export default function ProgressScreen() {
         // totalSteps is the Mon–Sun sum, so it is labelled and measured as a week.
         pct: Math.min(weeklyMetrics.totalSteps / WEEKLY_STEPS_TARGET, 1),
         value: stepsF,
-        maxLabel: ' steps',
-        subLabel: 'THIS WEEK',
+        maxLabel: ` ${t('progress:radial.steps')}`,
+        subLabel: t('progress:radial.thisWeek'),
         gradientColors: [GREEN, '#10b981'],
         iconName: config.iconActive,
         iconLib: config.iconLib,
         pointsValue: weeklyMetrics.pointsPerType['walking'] ?? 0,
-        ticks: DAY_LABELS.map((label, i) => ({
-          label: label.slice(0, 2),
+        ticks: DAY_TICK_KEYS.map((key, i) => ({
+          label: t(key),
           active: weekActiveDays[i],
           isToday: i === TODAY_INDEX,
         })),
@@ -268,14 +278,14 @@ export default function ProgressScreen() {
       value: distance?.value ?? String(count),
       maxLabel: distance ? ` ${distance.unit}` : '/ 5',
       subLabel: distance
-        ? `${config.labelShort.toUpperCase()} THIS WEEK`
-        : `${config.labelShort.toUpperCase()} SESSIONS`,
+        ? t('progress:radial.activityThisWeek', { activity: config.labelShort.toUpperCase() })
+        : t('progress:radial.activitySessions', { activity: config.labelShort.toUpperCase() }),
       gradientColors: [config.colour, ORANGE],
       iconName: config.iconActive,
       iconLib: config.iconLib,
       pointsValue: weeklyMetrics.pointsPerType[type] ?? 0,
-      ticks: DAY_LABELS.map((label, i) => ({
-        label: label.slice(0, 2),
+      ticks: DAY_TICK_KEYS.map((key, i) => ({
+        label: t(key),
         active: typeDays[i] ?? false,
         isToday: i === TODAY_INDEX,
       })),
@@ -293,13 +303,13 @@ export default function ProgressScreen() {
       pct: Math.min(avgSleep / 8, 1),
       value: avgSleep.toFixed(1),
       maxLabel: 'h',
-      subLabel: 'AVG SLEEP',
+      subLabel: t('progress:radial.avgSleep'),
       gradientColors: [INDIGO, '#6366f1'],
       iconName: 'moon',
       iconLib: 'ionicons',
       pointsValue: weeklyMetrics.pointsPerType['sleep'] ?? 0,
-      ticks: DAY_LABELS.map((label, i) => ({
-        label: label.slice(0, 2),
+      ticks: DAY_TICK_KEYS.map((key, i) => ({
+        label: t(key),
         active: sleepHrs[i] > 0,
         isToday: i === TODAY_INDEX,
       })),
@@ -333,9 +343,9 @@ export default function ProgressScreen() {
   if (showBody) radialData.unshift({
     id: 'body',
     pct: bodyQuietDays != null ? 0 : bodyState?.readiness.ring ?? 0,
-    value: bodyQuietDays != null ? `${bodyQuietDays}d` : bodyState?.readiness.word ?? '—',
+    value: bodyQuietDays != null ? t('progress:radial.daysQuiet', { days: bodyQuietDays }) : bodyState?.readiness.word ?? '—',
     maxLabel: '',
-    subLabel: bodyQuietDays != null ? 'SINCE LAST READING' : 'READINESS',
+    subLabel: bodyQuietDays != null ? t('progress:radial.sinceLastReading') : t('progress:radial.readiness'),
     gradientColors: [TEAL, GREEN],
     iconName: 'pulse',
     iconLib: 'ionicons',
@@ -343,8 +353,8 @@ export default function ProgressScreen() {
     // Ticks mark days with ANY body data behind the read — a night, a resting
     // HR reading, or a session. Sleep alone left someone who doesn't wear
     // their device to bed looking at seven dark ticks under a live ring.
-    ticks: DAY_LABELS.map((label, i) => ({
-      label: label.slice(0, 2),
+    ticks: DAY_TICK_KEYS.map((key, i) => ({
+      label: t(key),
       active: sleepHrs[i] > 0 || bodyDays.has(weekDate(i)),
       isToday: i === TODAY_INDEX,
     })),
@@ -379,7 +389,7 @@ export default function ProgressScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <GeometricBackground />
       <View style={styles.header}>
-        <Text style={styles.title}>Progress</Text>
+        <Text style={styles.title}>{t('progress:screen.title')}</Text>
         <HeaderActions />
       </View>
 
@@ -407,7 +417,7 @@ export default function ProgressScreen() {
 
         {radialData.length > 0 && (<>
         {/* ── Activity Radials ───────────────────────────── */}
-        <Text style={showActivityEmpty ? styles.sectionLabel : styles.sectionLabelFirst}>ACTIVITY OVERVIEW</Text>
+        <Text style={showActivityEmpty ? styles.sectionLabel : styles.sectionLabelFirst}>{t('progress:screen.overview')}</Text>
         <RadialCarousel
           data={radialData}
           activeIndex={radialIndex}
@@ -416,7 +426,7 @@ export default function ProgressScreen() {
         />
 
         {/* ── Breakdown Tabs ─────────────────────────────── */}
-        <Text style={styles.sectionLabel}>BREAKDOWN</Text>
+        <Text style={styles.sectionLabel}>{t('progress:screen.breakdown')}</Text>
         <BreakdownSection
           activeTab={activeTab}
           activeIndex={activeIndex >= 0 ? activeIndex : 0}
@@ -425,7 +435,7 @@ export default function ProgressScreen() {
           onPeriodChange={handlePeriodChange}
           lookback={lookback}
           onLookbackChange={setLookback}
-          tabs={tabs.map(key => ({ key, label: key === 'body' ? 'BODY' : ACTIVITIES[key as ActivityType]?.labelShort.toUpperCase() || key.toUpperCase() }))}
+          tabs={tabs.map(key => ({ key, label: key === 'body' ? t('progress:screen.bodyTab') : ACTIVITIES[key as ActivityType]?.labelShort.toUpperCase() || key.toUpperCase() }))}
           walking={walking}
           weeklyMetrics={weeklyMetrics}
           stepsF={stepsF}
@@ -465,27 +475,28 @@ function ActivityEmptyCard({ hasProviderConnected, onConnect, onLog }: {
   onConnect: () => void;
   onLog: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.emptyCard}>
       <View style={styles.emptyIconRing}>
         <Ionicons name="pulse" size={22} color={GOLD} />
       </View>
-      <Text style={styles.emptyTitle}>Your progress starts here</Text>
+      <Text style={styles.emptyTitle}>{t('progress:empty.title')}</Text>
       <Text style={styles.emptyBody}>
         {hasProviderConnected
-          ? 'Your first gym visit, walk or workout lands here as a radial, with a full day, week and month breakdown behind it.'
-          : 'Connect Apple Health, Health Connect or a wearable and every gym visit, walk and workout shows up here automatically.'}
+          ? t('progress:empty.bodyConnected')
+          : t('progress:empty.bodyNotConnected')}
       </Text>
       <Pressable
         style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.85 }]}
         onPress={hasProviderConnected ? onLog : onConnect}
         accessibilityRole="button"
       >
-        <Text style={styles.emptyCtaText}>{hasProviderConnected ? 'Log a session' : 'Connect a wearable'}</Text>
+        <Text style={styles.emptyCtaText}>{hasProviderConnected ? t('progress:empty.logSession') : t('progress:empty.connectWearable')}</Text>
       </Pressable>
       {!hasProviderConnected && (
         <Pressable onPress={onLog} hitSlop={8} accessibilityRole="button">
-          <Text style={styles.emptyLink}>Or log a session manually</Text>
+          <Text style={styles.emptyLink}>{t('progress:empty.logManually')}</Text>
         </Pressable>
       )}
     </View>

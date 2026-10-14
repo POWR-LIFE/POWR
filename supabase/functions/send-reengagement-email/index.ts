@@ -21,6 +21,7 @@ import { reEngagementEmail, type ReEngagementData } from "../_shared/emails/re-e
 import type { WeeklyRewardTile } from "../_shared/emails/weekly-summary.ts";
 import { loadRewardCatalogue, rewardsReadyFor } from "../_shared/reward-catalogue.ts";
 import { wearableLabel } from "../_shared/wearable-label.ts";
+import { languagesFor } from "../_shared/i18n/index.ts";
 
 const CONCURRENCY = 5;
 
@@ -113,6 +114,14 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  // One profiles read per 200 candidates (the RPC's columns stay as they are).
+  // (The cast spares deno check matching the whole client type against
+  // languagesFor's profiles-only shape, which it gives up on: TS2589.)
+  const languages = await languagesFor(
+    admin as unknown as Parameters<typeof languagesFor>[0],
+    candidates.map((c) => c.user_id),
+  );
+
   let sent = 0;
   let failed = 0;
   let skipped = 0;
@@ -144,7 +153,7 @@ Deno.serve(async (req: Request) => {
         closestReward: closestFor(c.balance),
         locationGranted: c.location_granted,
         wearable: wearableLabel(c.wearable),
-      });
+      }, languages.get(c.user_id) ?? "en");
       try {
         await sendEmail({ to: c.email, subject: email.subject, html: email.html, text: email.text, tag: `reengagement-${c.variant}-${c.stage}` });
         sent++;

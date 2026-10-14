@@ -41,6 +41,7 @@ import {
 } from '../_shared/challenges.ts';
 import { shouldSendRegressionNotice, REGRESSION_GRACE_MS } from '../_shared/locationRegression.ts';
 import { isGymRelevant, observedActivityTypes, relevantActivities, RELEVANCE_WINDOW_MS } from '../_shared/activityRelevance.ts';
+import { quotedTitleMarkers } from '../_shared/pushCopy.ts';
 
 // Targets per send-push-notification call. That function rejects > 200; 100
 // keeps one call comfortably inside its per-request CPU / idle-timeout budget.
@@ -49,30 +50,37 @@ const MAX_SEND_ATTEMPTS = 3;
 
 type PushTarget = { target_user_id: string; type: string; payload: Record<string, unknown> };
 type PushStatus = 'sent' | 'skipped' | 'failed';
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
-/** Human progress readout per rule shape — mirrors the client card's units. */
-function progressText(rule: any, category: string, progress: number, target: number): string {
+/** Progress per rule shape, in the unit the client card shows. The push
+ *  quotes it as English text (progressText) and also carries these parts, so
+ *  send-push can say it in another language. */
+function progressParts(rule: any, category: string, progress: number, target: number): { unit: string; progress: number; target: number } {
   switch (rule.kind) {
     case 'weekly_sum':
     case 'weekend_sum':
-      if (rule.metric === 'steps') return `${progress.toLocaleString()}/${target.toLocaleString()} steps`;
-      return `${Math.round(progress / 1000)}/${Math.round(target / 1000)} km`;
+      if (rule.metric === 'steps') return { unit: 'steps', progress, target };
+      return { unit: 'km', progress: Math.round(progress / 1000), target: Math.round(target / 1000) };
     case 'daily_metric_days':
     case 'distinct_days':
     case 'spaced_days':
     case 'step_window':
-      return `${progress}/${target} days`;
+      return { unit: 'days', progress, target };
     case 'distinct_categories':
-      return `${progress}/${target} categories`;
+      return { unit: 'categories', progress, target };
     default: {
-      const noun = category === 'gym' ? 'check-ins'
+      const unit = category === 'gym' ? 'check-ins'
         : category === 'running' ? 'runs'
         : category === 'cycling' ? 'rides'
         : 'sessions';
-      return `${progress}/${target} ${noun}`;
+      return { unit, progress, target };
     }
   }
+}
+
+/** Human progress readout (English) — mirrors the client card's units. */
+function progressText(parts: { unit: string; progress: number; target: number }): string {
+  if (parts.unit === 'steps') return `${parts.progress.toLocaleString()}/${parts.target.toLocaleString()} steps`;
+  return `${parts.progress}/${parts.target} ${parts.unit}`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -250,18 +258,27 @@ Deno.serve(async (req: Request) => {
         // Once per challenge per week: the nudge budget only knows days, so a
         // 70%-stuck challenge would otherwise re-nudge every evening. The body
         // template quotes the title, which makes the send log the dedup index.
+        //
+        // The quote marks depend on the language the push went out in ("…",
+        // « … », «…»), so this matches the quoted title as EVERY push language
+        // writes it (quotedTitleMarkers) — a body sent in French still counts
+        // after the member switches to English. push_send_log carries nothing
+        // structured to match on instead (no challenge id; `payload` is only
+        // written on the FCM-direct path). The week's rows for one user and
+        // one type are a handful, so they are matched here rather than in SQL.
         if (c.kind === 'challenge_within_reach') {
-          const titlePattern = `%"${escapeLike(best.ch.title)}"%`;
+          const markers = quotedTitleMarkers(best.ch.title);
           const { data: prior } = await admin.from('push_send_log')
-            .select('id')
+            .select('body')
             .eq('user_id', c.user_id)
             .eq('type', 'challenge_within_reach')
             .neq('status', 'skipped')
-            .gte('created_at', weekStart)
-            .like('body', titlePattern)
-            .limit(1);
-          if ((prior ?? []).length > 0) { stats.wk_skipped++; continue; }
+            .gte('created_at', weekStart);
+          const seen = (prior ?? []).some((r) => markers.some((m) => String(r.body ?? '').includes(m)));
+          if (seen) { stats.wk_skipped++; continue; }
         }
+
+        const parts = progressParts(best.ch.rule, best.ch.category, best.progress, best.target);
 
         wkTargets.push({
           target_user_id: c.user_id,
@@ -269,7 +286,11 @@ Deno.serve(async (req: Request) => {
           payload: {
             challenge_id: best.ch.id,
             challenge_name: best.ch.title,
-            progress_text: progressText(best.ch.rule, best.ch.category, best.progress, best.target),
+            progress_text: progressText(parts),
+            // The same readout in parts, for pushes in other languages.
+            progress_unit: parts.unit,
+            progress_value: parts.progress,
+            progress_target: parts.target,
             points: best.ch.points,
           },
         });

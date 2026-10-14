@@ -3,7 +3,15 @@
  *
  * Single source of truth for the 20-level progression system.
  * Four tiers: Recruit (1-5), Athlete (6-10), Elite (11-15), Legend (16-20).
+ *
+ * Level names and tier labels are getters that read the points catalog at the
+ * moment they're used, so every screen shows them in the language on screen
+ * without changing how it reads them. Names are display text only: logic keys
+ * off `level` and `tier`, and the one place a name leaves the device (a share
+ * card's link-preview title, lib/api/share.ts) is display text for people too.
  */
+
+import i18n from '@/lib/i18n';
 
 export type LevelTier = 'recruit' | 'athlete' | 'elite' | 'legend';
 
@@ -23,10 +31,26 @@ export interface LevelDef {
 }
 
 export const TIER_META: Record<LevelTier, { label: string; color: string; range: string }> = {
-  recruit: { label: 'RECRUIT', color: 'rgba(255,255,255,0.55)', range: 'LEVELS 1–5' },
-  athlete: { label: 'ATHLETE', color: '#fb923c',                range: 'LEVELS 6–10' },
-  elite:   { label: 'ELITE',   color: '#E8D200',                range: 'LEVELS 11–15' },
-  legend:  { label: 'LEGEND',  color: '#E8D200',                range: 'LEVELS 16–20' },
+  recruit: {
+    get label() { return i18n.t('points:levels.tiers.recruit'); },
+    color: 'rgba(255,255,255,0.55)',
+    get range() { return i18n.t('points:levels.tierRange', { from: 1, to: 5 }); },
+  },
+  athlete: {
+    get label() { return i18n.t('points:levels.tiers.athlete'); },
+    color: '#fb923c',
+    get range() { return i18n.t('points:levels.tierRange', { from: 6, to: 10 }); },
+  },
+  elite: {
+    get label() { return i18n.t('points:levels.tiers.elite'); },
+    color: '#E8D200',
+    get range() { return i18n.t('points:levels.tierRange', { from: 11, to: 15 }); },
+  },
+  legend: {
+    get label() { return i18n.t('points:levels.tiers.legend'); },
+    color: '#E8D200',
+    get range() { return i18n.t('points:levels.tierRange', { from: 16, to: 20 }); },
+  },
 };
 
 const R_PILL = { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.18)', text: 'rgba(255,255,255,0.65)' };
@@ -35,26 +59,26 @@ const E_PILL = { bg: 'rgba(232,210,0,0.14)',   border: 'rgba(232,210,0,0.40)',  
 const L_PILL = { bg: 'rgba(232,210,0,0.22)',   border: 'rgba(232,210,0,0.60)',   text: '#E8D200' };
 
 export const LEVELS: LevelDef[] = [
-  { level: 1,  name: 'Touching Grass',    tier: 'recruit', xpMin: 0,      xpMax: 499,    textColor: '#FFFFFF', pill: R_PILL },
-  { level: 2,  name: 'Cardio Goblin',     tier: 'recruit', xpMin: 500,    xpMax: 1199,   textColor: '#4A9EFF', pill: R_PILL },
-  { level: 3,  name: 'Streak Freak',      tier: 'recruit', xpMin: 1200,   xpMax: 2499,   textColor: '#3BE0D0', pill: R_PILL },
-  { level: 4,  name: 'Motion Magic',      tier: 'recruit', xpMin: 2500,   xpMax: 4499,   textColor: '#FFFFFF', pill: R_PILL },
-  { level: 5,  name: 'Heavy Hitter',      tier: 'recruit', xpMin: 4500,   xpMax: 6999,   textColor: '#FF6A2C', pill: R_PILL },
-  { level: 6,  name: 'Can\'t Sit Still',  tier: 'athlete', xpMin: 7000,   xpMax: 9999,   textColor: '#F2C230', pill: A_PILL },
-  { level: 7,  name: 'Iron Lungs',        tier: 'athlete', xpMin: 10000,  xpMax: 13999,  textColor: '#FFFFFF', pill: A_PILL },
-  { level: 8,  name: 'Pavement Predator', tier: 'athlete', xpMin: 14000,  xpMax: 18999,  textColor: '#22C7E0', pill: A_PILL },
-  { level: 9,  name: 'Step Collector',    tier: 'athlete', xpMin: 19000,  xpMax: 24999,  textColor: '#E85CD8', pill: A_PILL },
-  { level: 10, name: 'Calorie Criminal',  tier: 'athlete', xpMin: 25000,  xpMax: 32499,  textColor: '#FF6A2C', pill: A_PILL },
-  { level: 11, name: 'Mile Muncher',      tier: 'elite',   xpMin: 32500,  xpMax: 40999,  textColor: '#4A9EFF', pill: E_PILL },
-  { level: 12, name: 'Move Machine',      tier: 'elite',   xpMin: 41000,  xpMax: 50999,  textColor: '#FFFFFF', pill: E_PILL },
-  { level: 13, name: 'Need New Shoes',    tier: 'elite',   xpMin: 51000,  xpMax: 62999,  textColor: '#B06AF5', pill: E_PILL },
-  { level: 14, name: 'Certified Weapon',  tier: 'elite',   xpMin: 63000,  xpMax: 76999,  textColor: '#FFFFFF', pill: E_PILL },
-  { level: 15, name: 'Momentum Monster',  tier: 'elite',   xpMin: 77000,  xpMax: 92999,  textColor: '#4A9EFF', pill: E_PILL },
-  { level: 16, name: 'Limit Breaker',     tier: 'legend',  xpMin: 93000,  xpMax: 110999, textColor: '#FFFFFF', pill: L_PILL },
-  { level: 17, name: 'Diesel Mode',       tier: 'legend',  xpMin: 111000, xpMax: 131999, textColor: '#F5334F', pill: L_PILL },
-  { level: 18, name: 'Peak Condition',    tier: 'legend',  xpMin: 132000, xpMax: 155999, textColor: '#B06AF5', pill: L_PILL },
-  { level: 19, name: 'Long Hauler',       tier: 'legend',  xpMin: 156000, xpMax: 181999, textColor: '#2BC4B0', pill: L_PILL },
-  { level: 20, name: 'Goggins',           tier: 'legend',  xpMin: 182000, xpMax: Infinity, textColor: '#F2C230', pill: L_PILL },
+  { level: 1,  get name() { return i18n.t('points:levels.touchingGrass.name'); },    tier: 'recruit', xpMin: 0,      xpMax: 499,    textColor: '#FFFFFF', pill: R_PILL },
+  { level: 2,  get name() { return i18n.t('points:levels.cardioGoblin.name'); },     tier: 'recruit', xpMin: 500,    xpMax: 1199,   textColor: '#4A9EFF', pill: R_PILL },
+  { level: 3,  get name() { return i18n.t('points:levels.streakFreak.name'); },      tier: 'recruit', xpMin: 1200,   xpMax: 2499,   textColor: '#3BE0D0', pill: R_PILL },
+  { level: 4,  get name() { return i18n.t('points:levels.motionMagic.name'); },      tier: 'recruit', xpMin: 2500,   xpMax: 4499,   textColor: '#FFFFFF', pill: R_PILL },
+  { level: 5,  get name() { return i18n.t('points:levels.heavyHitter.name'); },      tier: 'recruit', xpMin: 4500,   xpMax: 6999,   textColor: '#FF6A2C', pill: R_PILL },
+  { level: 6,  get name() { return i18n.t('points:levels.cantSitStill.name'); },     tier: 'athlete', xpMin: 7000,   xpMax: 9999,   textColor: '#F2C230', pill: A_PILL },
+  { level: 7,  get name() { return i18n.t('points:levels.ironLungs.name'); },        tier: 'athlete', xpMin: 10000,  xpMax: 13999,  textColor: '#FFFFFF', pill: A_PILL },
+  { level: 8,  get name() { return i18n.t('points:levels.pavementPredator.name'); }, tier: 'athlete', xpMin: 14000,  xpMax: 18999,  textColor: '#22C7E0', pill: A_PILL },
+  { level: 9,  get name() { return i18n.t('points:levels.stepCollector.name'); },    tier: 'athlete', xpMin: 19000,  xpMax: 24999,  textColor: '#E85CD8', pill: A_PILL },
+  { level: 10, get name() { return i18n.t('points:levels.calorieCriminal.name'); },  tier: 'athlete', xpMin: 25000,  xpMax: 32499,  textColor: '#FF6A2C', pill: A_PILL },
+  { level: 11, get name() { return i18n.t('points:levels.mileMuncher.name'); },      tier: 'elite',   xpMin: 32500,  xpMax: 40999,  textColor: '#4A9EFF', pill: E_PILL },
+  { level: 12, get name() { return i18n.t('points:levels.moveMachine.name'); },      tier: 'elite',   xpMin: 41000,  xpMax: 50999,  textColor: '#FFFFFF', pill: E_PILL },
+  { level: 13, get name() { return i18n.t('points:levels.needNewShoes.name'); },     tier: 'elite',   xpMin: 51000,  xpMax: 62999,  textColor: '#B06AF5', pill: E_PILL },
+  { level: 14, get name() { return i18n.t('points:levels.certifiedWeapon.name'); },  tier: 'elite',   xpMin: 63000,  xpMax: 76999,  textColor: '#FFFFFF', pill: E_PILL },
+  { level: 15, get name() { return i18n.t('points:levels.momentumMonster.name'); },  tier: 'elite',   xpMin: 77000,  xpMax: 92999,  textColor: '#4A9EFF', pill: E_PILL },
+  { level: 16, get name() { return i18n.t('points:levels.limitBreaker.name'); },     tier: 'legend',  xpMin: 93000,  xpMax: 110999, textColor: '#FFFFFF', pill: L_PILL },
+  { level: 17, get name() { return i18n.t('points:levels.dieselMode.name'); },       tier: 'legend',  xpMin: 111000, xpMax: 131999, textColor: '#F5334F', pill: L_PILL },
+  { level: 18, get name() { return i18n.t('points:levels.peakCondition.name'); },    tier: 'legend',  xpMin: 132000, xpMax: 155999, textColor: '#B06AF5', pill: L_PILL },
+  { level: 19, get name() { return i18n.t('points:levels.longHauler.name'); },       tier: 'legend',  xpMin: 156000, xpMax: 181999, textColor: '#2BC4B0', pill: L_PILL },
+  { level: 20, get name() { return i18n.t('points:levels.goggins.name'); },          tier: 'legend',  xpMin: 182000, xpMax: Infinity, textColor: '#F2C230', pill: L_PILL },
 ];
 
 /**

@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useWearableStatus } from '@/hooks/useWearableStatus';
@@ -48,6 +49,7 @@ const WHITE = '#FFFFFF';
  */
 export function WearableChip() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { providerName, freshness, syncLabel } = useWearableStatus();
 
   if (freshness === 'none') return null;
@@ -62,7 +64,7 @@ export function WearableChip() {
       accessibilityRole="button"
       // The visual is a glyph and a colour; without this the state is invisible
       // to anyone using a screen reader, which is the whole point of the chip.
-      accessibilityLabel={`${providerName ?? 'Wearable'}, ${syncLabel}. Open wearables.`}
+      accessibilityLabel={t('nudges:wearableChip.a11y', { name: providerName ?? t('nudges:wearableChip.fallbackName'), sync: syncLabel })}
     >
       <MaterialCommunityIcons
         name="watch-variant"

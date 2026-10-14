@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontFamily } from '@/constants/tokens';
@@ -36,6 +37,11 @@ const CARD_BG = '#1A1A1A';
 const BORDER = '#262626';
 
 const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: ORANGE };
+const TIER_LABEL: Record<string, string> = {
+  easy: 'social:shared.tier.easy',
+  medium: 'social:shared.tier.medium',
+  hard: 'social:shared.tier.hard',
+};
 
 /** v1 group cap (scope §0: small groups 3–6). Architecture scales to ~20 later. */
 const MAX_GROUP = 6;
@@ -104,6 +110,7 @@ export function CreateChallengeSheet({
   onLeave,
 }: CreateChallengeSheetProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const kbHeight = useKeyboardHeight();
   const [templateId, setTemplateId] = useState<string | null>(initialTemplateId ?? templates[0]?.id ?? null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -145,15 +152,15 @@ export function CreateChallengeSheet({
     if (q.length < 2) { setResults([]); setSearching(false); return; }
     let cancelled = false;
     setSearching(true);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const r = await search(q);
       if (!cancelled) { setResults(r); setSearching(false); }
     }, 300);
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [query, search]);
 
   const template = useMemo(
-    () => templates.find((t) => t.id === templateId) ?? templates[0],
+    () => templates.find((tpl) => tpl.id === templateId) ?? templates[0],
     [templateId, templates],
   );
 
@@ -259,7 +266,9 @@ export function CreateChallengeSheet({
     const url = `https://powr.life/app?challenge=${template.id}`;
     try {
       await Share.share({
-        message: `Join me on POWR: "${template.title}" — ${template.goal}${template.durationHours ? ` in ${durationLabel(template.durationHours)}` : ''}. ${url}`,
+        message: template.durationHours
+          ? t('social:create.shareMessageDuration', { title: template.title, goal: template.goal, duration: durationLabel(template.durationHours), url })
+          : t('social:create.shareMessage', { title: template.title, goal: template.goal, url }),
         url,
       });
     } catch {
@@ -297,18 +306,18 @@ export function CreateChallengeSheet({
 
           {searchMode ? (
             <View style={styles.titleRow}>
-              <Pressable hitSlop={10} onPress={exitSearch} accessibilityRole="button" accessibilityLabel="Back to invites" style={styles.backBtn}>
+              <Pressable hitSlop={10} onPress={exitSearch} accessibilityRole="button" accessibilityLabel={t('social:create.backToInvites')} style={styles.backBtn}>
                 <Ionicons name="chevron-back" size={22} color={TEXT} />
-                <Text style={styles.backText}>Add a friend</Text>
+                <Text style={styles.backText}>{t('social:create.addAFriend')}</Text>
               </Pressable>
-              <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel="Close">
+              <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel={t('social:shared.close')}>
                 <Ionicons name="close" size={22} color={MUTED} />
               </Pressable>
             </View>
           ) : (
             <View style={styles.titleRow}>
-              <Text style={styles.sheetTitle}>Challenge friends</Text>
-              <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel="Close">
+              <Text style={styles.sheetTitle}>{t('social:create.title')}</Text>
+              <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel={t('social:shared.close')}>
                 <Ionicons name="close" size={22} color={MUTED} />
               </Pressable>
             </View>
@@ -320,9 +329,9 @@ export function CreateChallengeSheet({
                 <View style={styles.plateIcon}>
                   <Ionicons name="layers-outline" size={26} color={GOLD} />
                 </View>
-                <Text style={styles.plateTitle}>Your plate is full</Text>
+                <Text style={styles.plateTitle}>{t('social:create.plate.title')}</Text>
                 <Text style={styles.plateBody}>
-                  You're in {openCount} of {cap} challenges. Finish your part — or drop one — to take on another.
+                  {t('social:create.plate.body', { open: openCount, cap })}
                 </Text>
               </View>
 
@@ -338,9 +347,9 @@ export function CreateChallengeSheet({
                       style={styles.leaveBtn}
                       onPress={() => { Haptics.selectionAsync(); onLeave?.(c.id); }}
                       accessibilityRole="button"
-                      accessibilityLabel={`Leave ${c.template.title}`}
+                      accessibilityLabel={t('social:create.plate.leaveName', { title: c.template.title })}
                     >
-                      <Text style={styles.leaveText}>Leave</Text>
+                      <Text style={styles.leaveText}>{t('social:create.plate.leave')}</Text>
                     </Pressable>
                   </View>
                 ))}
@@ -348,7 +357,7 @@ export function CreateChallengeSheet({
 
               <View style={styles.footer}>
                 <Pressable onPress={handleClose} style={styles.plateDoneBtn}>
-                  <Text style={styles.plateDoneText}>Got it</Text>
+                  <Text style={styles.plateDoneText}>{t('social:create.plate.gotIt')}</Text>
                 </Pressable>
               </View>
             </>
@@ -360,7 +369,7 @@ export function CreateChallengeSheet({
                   autoFocus
                   value={query}
                   onChangeText={setQuery}
-                  placeholder="Search by username"
+                  placeholder={t('social:shared.searchByUsername')}
                   placeholderTextColor={MUTED}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -368,7 +377,7 @@ export function CreateChallengeSheet({
                   style={styles.searchInput}
                 />
                 {query.length > 0 && (
-                  <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
+                  <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel={t('social:shared.clearSearch')}>
                     <Ionicons name="close-circle" size={16} color={MUTED} />
                   </Pressable>
                 )}
@@ -382,14 +391,14 @@ export function CreateChallengeSheet({
               >
                 {query.trim().length === 0 ? (
                   <Text style={styles.searchNote}>
-                    Find people by username and send a friend request. They join your invite list once they accept.
+                    {t('social:create.searchIntro')}
                   </Text>
                 ) : query.trim().length < 2 ? (
-                  <Text style={styles.searchNote}>Type at least 2 characters to search.</Text>
+                  <Text style={styles.searchNote}>{t('social:shared.typeMore')}</Text>
                 ) : searching ? (
-                  <Text style={styles.searchNote}>Searching…</Text>
+                  <Text style={styles.searchNote}>{t('social:shared.searching')}</Text>
                 ) : results.length === 0 ? (
-                  <Text style={styles.searchNote}>No one found for “{query.trim()}”.</Text>
+                  <Text style={styles.searchNote}>{t('social:shared.noResults', { query: query.trim() })}</Text>
                 ) : (
                   <View style={styles.resultsCard}>
                     {results.map((f, i) => (
@@ -401,16 +410,16 @@ export function CreateChallengeSheet({
                             <Text style={styles.resultHandle} numberOfLines={1}>@{f.username}</Text>
                           </View>
                           {requested.has(f.id) ? (
-                            <Text style={styles.requestedText}>Requested</Text>
+                            <Text style={styles.requestedText}>{t('social:shared.requested')}</Text>
                           ) : (
                             <Pressable
                               style={styles.addFriendBtn}
                               onPress={() => handleAddFriend(f)}
                               accessibilityRole="button"
-                              accessibilityLabel={`Add ${f.displayName}`}
+                              accessibilityLabel={t('social:shared.addName', { name: f.displayName })}
                             >
                               <Ionicons name="person-add" size={13} color="#0a0a0a" />
-                              <Text style={styles.addFriendBtnText}>Add</Text>
+                              <Text style={styles.addFriendBtnText}>{t('social:shared.add')}</Text>
                             </Pressable>
                           )}
                         </View>
@@ -421,7 +430,7 @@ export function CreateChallengeSheet({
 
                 {requested.size > 0 && (
                   <Text style={styles.requestedNote}>
-                    Request sent — once they accept, they’ll appear in your invite list.
+                    {t('social:create.requestSentNote')}
                   </Text>
                 )}
               </ScrollView>
@@ -433,7 +442,7 @@ export function CreateChallengeSheet({
             {initialTemplateId && template ? (
               /* Came from a browse card: confirm the pick, don't re-ask — straight to inviting. */
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>Challenge</Text>
+                <Text style={styles.sectionLabel}>{t('social:create.challenge')}</Text>
                 <View style={styles.selectedCard}>
                   <View style={styles.selectedIcon}>
                     <CatIcon spec={template.icon} size={22} color={GOLD} />
@@ -447,37 +456,38 @@ export function CreateChallengeSheet({
                   </View>
                   <View style={styles.selectedPts}>
                     <Text style={styles.selectedPtsValue}>+{template.basePoints}</Text>
-                    <Text style={styles.selectedPtsLabel}>pts</Text>
+                    <Text style={styles.selectedPtsLabel}>{t('social:shared.pts')}</Text>
                   </View>
                 </View>
               </View>
             ) : (
               /* Generic entry (header button): let them pick. */
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>Pick a challenge</Text>
+                <Text style={styles.sectionLabel}>{t('social:create.pickChallenge')}</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.chipScroll}
                 >
-                  {templates.map((t) => {
-                    const active = t.id === templateId;
+                  {templates.map((tpl) => {
+                    const active = tpl.id === templateId;
                     return (
                       <Pressable
-                        key={t.id}
-                        onPress={() => { Haptics.selectionAsync(); setTemplateId(t.id); }}
+                        key={tpl.id}
+                        onPress={() => { Haptics.selectionAsync(); setTemplateId(tpl.id); }}
                         style={[styles.chip, active && styles.chipActive]}
                       >
-                        <CatIcon spec={t.icon} size={22} color={active ? '#0a0a0a' : GOLD} />
-                        <Text style={[styles.chipTitle, active && styles.chipTitleActive]}>{t.title}</Text>
+                        <CatIcon spec={tpl.icon} size={22} color={active ? '#0a0a0a' : GOLD} />
+                        <Text style={[styles.chipTitle, active && styles.chipTitleActive]}>{tpl.title}</Text>
                         <Text style={[styles.chipGoal, active && styles.chipGoalActive]}>
-                          {t.goal}
-                          {t.durationHours ? ` · ${durationLabel(t.durationHours)}` : ''}
+                          {tpl.goal}
+                          {tpl.durationHours ? ` · ${durationLabel(tpl.durationHours)}` : ''}
                         </Text>
                         <View style={styles.chipFooter}>
-                          <Text style={[styles.chipPts, active && { color: '#0a0a0a' }]}>+{t.basePoints}</Text>
-                          <Text style={[styles.chipTier, { color: TIER_COLOR[t.tier] }, active && { color: '#0a0a0a' }]}>
-                            {t.tier}
+                          <Text style={[styles.chipPts, active && { color: '#0a0a0a' }]}>+{tpl.basePoints}</Text>
+                          <Text style={[styles.chipTier, { color: TIER_COLOR[tpl.tier] }, active && { color: '#0a0a0a' }]}>
+                            {/* Shown uppercase by the style; lower-cased so the text matches the raw tier it replaced. */}
+                            {TIER_LABEL[tpl.tier] ? t(TIER_LABEL[tpl.tier]).toLowerCase() : tpl.tier}
                           </Text>
                         </View>
                       </Pressable>
@@ -493,7 +503,9 @@ export function CreateChallengeSheet({
               <View style={styles.durationLine}>
                 <Ionicons name="time-outline" size={13} color={SECONDARY} />
                 <Text style={styles.durationLineText}>
-                  Runs for {durationLabel(template.durationHours)} — clock starts {soloStart && canSend ? 'right away' : 'when everyone’s in'}
+                  {soloStart && canSend
+                    ? t('social:create.runsNow', { duration: durationLabel(template.durationHours) })
+                    : t('social:create.runsWhenAllIn', { duration: durationLabel(template.durationHours) })}
                 </Text>
               </View>
             ) : null}
@@ -501,15 +513,15 @@ export function CreateChallengeSheet({
             {/* ── Invite friends ── */}
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionLabel}>Invite friends</Text>
+                <Text style={styles.sectionLabel}>{t('social:create.inviteFriends')}</Text>
                 <Text style={styles.capHint}>
-                  {selected.size}/{MAX_GROUP - 1} selected
+                  {t('social:create.selected', { selected: selected.size, max: MAX_GROUP - 1 })}
                 </Text>
               </View>
 
               {friends.length === 0 && (
                 <Text style={styles.noFriendsHint}>
-                  No friends yet — search below to add one, or share a link to invite anyone.
+                  {t('social:create.noFriends')}
                 </Text>
               )}
 
@@ -529,12 +541,12 @@ export function CreateChallengeSheet({
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: isSel, disabled }}
                       accessibilityLabel={
-                        optedOut ? `${f.displayName} isn't on Together` : `Invite ${f.displayName}`
+                        optedOut ? t('social:create.notOnTogether', { name: f.displayName }) : t('social:shared.inviteName', { name: f.displayName })
                       }
                     >
                       <Avatar friend={f} size={52} selected={isSel} />
                       <Text style={styles.friendName} numberOfLines={1}>
-                        {optedOut ? 'Off' : f.displayName.split(' ')[0]}
+                        {optedOut ? t('social:create.off') : f.displayName.split(' ')[0]}
                       </Text>
                     </Pressable>
                   );
@@ -545,12 +557,12 @@ export function CreateChallengeSheet({
                   style={styles.friendCell}
                   onPress={handleShareLink}
                   accessibilityRole="button"
-                  accessibilityLabel="Invite by share link"
+                  accessibilityLabel={t('social:create.shareLinkA11y')}
                 >
                   <View style={styles.linkBubble}>
                     <Ionicons name="link" size={22} color={GOLD} />
                   </View>
-                  <Text style={[styles.friendName, { color: GOLD }]}>Link</Text>
+                  <Text style={[styles.friendName, { color: GOLD }]}>{t('social:create.link')}</Text>
                 </Pressable>
               </View>
 
@@ -560,12 +572,12 @@ export function CreateChallengeSheet({
                 style={styles.addBlock}
                 onPress={() => setSearchMode(true)}
                 accessibilityRole="button"
-                accessibilityLabel="Add a friend by username"
+                accessibilityLabel={t('social:create.addByUsernameA11y')}
               >
-                <Text style={styles.addBlockLabel}>Add a friend</Text>
+                <Text style={styles.addBlockLabel}>{t('social:create.addAFriend')}</Text>
                 <View style={styles.searchWrap} pointerEvents="none">
                   <Ionicons name="search" size={16} color={MUTED} />
-                  <Text style={styles.searchFieldPlaceholder}>Search by username</Text>
+                  <Text style={styles.searchFieldPlaceholder}>{t('social:shared.searchByUsername')}</Text>
                   <Ionicons name="chevron-forward" size={16} color={MUTED} />
                 </View>
               </Pressable>
@@ -591,10 +603,9 @@ export function CreateChallengeSheet({
                   color={boardPost ? GOLD : MUTED}
                 />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.boardRowTitle}>Post to the open board</Text>
+                  <Text style={styles.boardRowTitle}>{t('social:create.board.title')}</Text>
                   <Text style={styles.boardRowBody}>
-                    Any POWR member can take it — the first one to does races you. They
-                    see your first name and photo.
+                    {t('social:create.board.body')}
                   </Text>
                 </View>
               </Pressable>
@@ -603,18 +614,20 @@ export function CreateChallengeSheet({
             <View style={styles.summaryRow}>
               <Text style={styles.summaryText}>
                 {!soloStart
-                  ? `${selected.size} ${selected.size === 1 ? 'friend' : 'friends'} · group of ${groupSize}`
+                  ? t('social:create.summary.friends', { count: selected.size, size: groupSize })
                   : boardPost
-                    ? 'Waiting on a taker — you’ll both start when they take it'
+                    ? t('social:create.summary.waiting')
                     : canSend
-                      ? 'Going solo — invite friends anytime for a bonus'
-                      : 'A team total needs at least one friend'}
+                      ? t('social:create.summary.solo')
+                      : t('social:create.summary.needsFriend')}
               </Text>
               {projectedBonus > 0 && (
                 <View style={styles.bonusPill}>
                   <Ionicons name="flash" size={12} color={GOLD} />
                   <Text style={styles.bonusPillText}>
-                    +{projectedBonus} each if all finish{atGroupCap ? ' (max)' : ''}
+                    {atGroupCap
+                      ? t('social:create.bonusEachMax', { bonus: projectedBonus })
+                      : t('social:create.bonusEach', { bonus: projectedBonus })}
                   </Text>
                 </View>
               )}
@@ -627,8 +640,8 @@ export function CreateChallengeSheet({
             >
               <Text style={[styles.sendText, (!canSend || submitting) && styles.sendTextDisabled]}>
                 {submitting
-                  ? (boardPost ? 'Posting…' : soloStart ? 'Starting…' : 'Sending…')
-                  : boardPost ? 'Post to the board' : soloStart ? 'Start solo' : 'Send invites'}
+                  ? (boardPost ? t('social:create.send.posting') : soloStart ? t('social:create.send.starting') : t('social:create.send.sending'))
+                  : boardPost ? t('social:create.send.post') : soloStart ? t('social:create.send.solo') : t('social:create.send.invites')}
               </Text>
               {canSend && !submitting && <Ionicons name="arrow-forward" size={16} color="#0a0a0a" />}
             </Pressable>
@@ -639,10 +652,10 @@ export function CreateChallengeSheet({
               {boardPost
                 /* An open post's clock starts on the TAKE, not on the post — the
                    creator must not bank days while it sits on the shelf. */
-                ? 'Starts when someone takes it, so you both race the same clock.'
+                ? t('social:create.timing.board')
                 : soloStart && canSend
-                  ? 'Starts the moment you tap — you’ll be racing the Pacer.'
-                  : 'Starts as soon as one friend joins — everything from now counts.'}
+                  ? t('social:create.timing.solo')
+                  : t('social:create.timing.group')}
             </Text>
           </View>
             </>

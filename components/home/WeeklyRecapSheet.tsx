@@ -1,10 +1,13 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontFamily } from '@/constants/tokens';
 import type { RecapChallenge, RecapData } from '@/hooks/useWeeklyRecap';
+import i18n from '@/lib/i18n';
+import { CATEGORY_LABEL } from '@/lib/social/categories';
 import { formatDistance } from '@/lib/units';
 
 // ─── Palette — Home's inks + the BODY tab's domain hues ──────────────────────
@@ -21,7 +24,10 @@ const SECONDARY = '#888888';
 const MUTED = '#555555';
 const FAINT = '#444444';
 
-const DAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const DAY_INITIALS = [
+    'home:weekdays.mon', 'home:weekdays.tue', 'home:weekdays.wed', 'home:weekdays.thu',
+    'home:weekdays.fri', 'home:weekdays.sat', 'home:weekdays.sun',
+];
 const BAR_H = 64;
 
 function CatIcon({ spec, size, color }: { spec: { lib: 'ion' | 'mc'; name: string }; size: number; color: string }) {
@@ -36,14 +42,17 @@ function fmtNum(n: number): string {
 }
 
 function fmtDuration(min: number): string {
-    if (min < 60) return `${min}m`;
+    if (min < 60) return i18n.t('home:recap.duration.minutes', { minutes: min });
     const h = Math.floor(min / 60);
     const m = min % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    return m > 0
+        ? i18n.t('home:recap.duration.hoursMinutes', { hours: h, minutes: m })
+        : i18n.t('home:recap.duration.hours', { hours: h });
 }
 
 /** Points per day as gold columns — the week's shape at a glance. */
 function PointsBars({ points }: { points: { date: string; value: number }[] }) {
+    const { t } = useTranslation();
     const max = Math.max(...points.map((p) => p.value), 1);
     const bestIdx = points.findIndex((p) => p.value === max);
     return (
@@ -63,7 +72,7 @@ function PointsBars({ points }: { points: { date: string; value: number }[] }) {
                                     ]}
                                 />
                             </View>
-                            <Text style={[styles.barDay, best && styles.barDayBest]}>{DAY_INITIALS[i]}</Text>
+                            <Text style={[styles.barDay, best && styles.barDayBest]}>{t(DAY_INITIALS[i])}</Text>
                         </View>
                     );
                 })}
@@ -85,6 +94,7 @@ function SectionLabel({ label, meta }: { label: string; meta?: string }) {
 }
 
 function ChallengeRecapRow({ c, last }: { c: RecapChallenge; last: boolean }) {
+    const { t } = useTranslation();
     return (
         <View style={[styles.row, !last && styles.rowDivider]}>
             <View style={[styles.rowIcon, c.completed && styles.rowIconDone]}>
@@ -93,7 +103,9 @@ function ChallengeRecapRow({ c, last }: { c: RecapChallenge; last: boolean }) {
             <View style={styles.rowBody}>
                 <Text style={styles.rowTitle} numberOfLines={1}>{c.title}</Text>
                 <Text style={styles.rowSub}>
-                    {c.completed ? 'Completed' : `${fmtNum(c.displayValue)} of ${fmtNum(c.displayGoal)} ${c.unit}`}
+                    {c.completed
+                        ? t('home:recap.completed')
+                        : t('home:recap.progress', { value: fmtNum(c.displayValue), goal: fmtNum(c.displayGoal), unit: c.unit })}
                 </Text>
             </View>
             {c.completed ? (
@@ -143,6 +155,7 @@ export function WeeklyRecapSheet({
     onStartWeek: () => void;
 }) {
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     if (!data) return null;
 
     const delta = data.pointsWeekBefore != null ? data.pointsEarned - data.pointsWeekBefore : null;
@@ -159,10 +172,10 @@ export function WeeklyRecapSheet({
                     <View style={styles.handle} />
                     <View style={styles.headerRow}>
                         <View>
-                            <Text style={styles.title}>Your week</Text>
+                            <Text style={styles.title}>{t('home:recap.title')}</Text>
                             <Text style={styles.subtitle}>{data.weekLabel}</Text>
                         </View>
-                        <Pressable hitSlop={10} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
+                        <Pressable hitSlop={10} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('home:recap.close')}>
                             <Ionicons name="close" size={18} color={MUTED} />
                         </Pressable>
                     </View>
@@ -172,9 +185,9 @@ export function WeeklyRecapSheet({
                         <View style={styles.hero}>
                             <View style={styles.heroPtsWrap}>
                                 <Text style={styles.heroPts}>{data.pointsEarned.toLocaleString()}</Text>
-                                <Text style={styles.heroPtsUnit}>pts</Text>
+                                <Text style={styles.heroPtsUnit}>{t('home:shared.pts')}</Text>
                             </View>
-                            <Text style={styles.heroLabel}>POWR EARNED</Text>
+                            <Text style={styles.heroLabel}>{t('home:recap.earned')}</Text>
                             {delta != null && delta !== 0 && (
                                 <View style={styles.deltaRow}>
                                     <Ionicons
@@ -183,7 +196,9 @@ export function WeeklyRecapSheet({
                                         color={delta > 0 ? GREEN : SECONDARY}
                                     />
                                     <Text style={[styles.deltaText, delta > 0 && { color: GREEN }]}>
-                                        {delta > 0 ? `${delta.toLocaleString()} more` : `${Math.abs(delta).toLocaleString()} fewer`} than the week before
+                                        {delta > 0
+                                            ? t('home:recap.more', { delta: delta.toLocaleString() })
+                                            : t('home:recap.fewer', { delta: Math.abs(delta).toLocaleString() })}
                                     </Text>
                                 </View>
                             )}
@@ -194,8 +209,11 @@ export function WeeklyRecapSheet({
                                 <PointsBars points={data.pointsByDay} />
                                 {data.bestDay && (
                                     <Text style={styles.bestDayLine}>
-                                        Biggest day <Text style={styles.bestDayStrong}>{data.bestDay.label}</Text>
-                                        {' · '}{activeDayCount} of 7 days active
+                                        <Trans
+                                            i18nKey="home:recap.bestDay"
+                                            values={{ day: data.bestDay.label, active: activeDayCount }}
+                                            components={{ strong: <Text style={styles.bestDayStrong} /> }}
+                                        />
                                     </Text>
                                 )}
                             </>
@@ -205,8 +223,8 @@ export function WeeklyRecapSheet({
                         {data.challenges.length > 0 && (
                             <>
                                 <SectionLabel
-                                    label="CHALLENGES"
-                                    meta={`${data.challengesCompleted} of ${data.challenges.length} completed`}
+                                    label={t('home:recap.challenges')}
+                                    meta={t('home:recap.challengesMeta', { done: data.challengesCompleted, total: data.challenges.length })}
                                 />
                                 {data.challenges.map((c, i) => (
                                     <ChallengeRecapRow key={c.id} c={c} last={i === data.challenges.length - 1} />
@@ -217,22 +235,22 @@ export function WeeklyRecapSheet({
                         {/* What the week cost — and gave back */}
                         {hasEffort && (
                             <>
-                                <SectionLabel label="YOUR BODY" meta="from your device" />
+                                <SectionLabel label={t('home:recap.body')} meta={t('home:recap.bodyMeta')} />
                                 <View style={styles.tileRow}>
                                     {body.activeMin > 0 && (
-                                        <BodyTile value={fmtDuration(body.activeMin)} label="TIME TRAINING" tint={ORANGE} />
+                                        <BodyTile value={fmtDuration(body.activeMin)} label={t('home:recap.timeTraining')} tint={ORANGE} />
                                     )}
                                     {body.hardMin > 0 && (
-                                        <BodyTile value={fmtDuration(body.hardMin)} label="HIGH INTENSITY" tint={ORANGE} />
+                                        <BodyTile value={fmtDuration(body.hardMin)} label={t('home:recap.highIntensity')} tint={ORANGE} />
                                     )}
                                     {body.kcal > 0 && (
-                                        <BodyTile value={body.kcal.toLocaleString()} unit="kcal" label="ACTIVE BURN" tint={ROSE} />
+                                        <BodyTile value={body.kcal.toLocaleString()} unit="kcal" label={t('home:recap.activeBurn')} tint={ROSE} />
                                     )}
                                     {body.peakHr != null && (
-                                        <BodyTile value={String(Math.round(body.peakHr))} unit="bpm" label="PEAK HEART RATE" tint={ROSE} />
+                                        <BodyTile value={String(Math.round(body.peakHr))} unit={t('home:recap.bpm')} label={t('home:recap.peakHr')} tint={ROSE} />
                                     )}
                                     {body.sleepAvgH != null && (
-                                        <BodyTile value={body.sleepAvgH.toFixed(1)} unit="h" label="SLEEP / NIGHT" tint={INDIGO} />
+                                        <BodyTile value={body.sleepAvgH.toFixed(1)} unit="h" label={t('home:recap.sleep')} tint={INDIGO} />
                                     )}
                                 </View>
                             </>
@@ -242,8 +260,8 @@ export function WeeklyRecapSheet({
                         {data.perCategory.length > 0 && (
                             <>
                                 <SectionLabel
-                                    label="ACTIVITY"
-                                    meta={`${data.totalSessions} session${data.totalSessions === 1 ? '' : 's'}`}
+                                    label={t('home:recap.activity')}
+                                    meta={t('home:recap.sessions', { count: data.totalSessions })}
                                 />
                                 {data.perCategory.map((cat, i) => (
                                     <View
@@ -254,15 +272,15 @@ export function WeeklyRecapSheet({
                                             <CatIcon spec={cat.icon} size={14} color={SECONDARY} />
                                         </View>
                                         <View style={styles.rowBody}>
-                                            <Text style={styles.rowTitle}>{cat.label}</Text>
+                                            <Text style={styles.rowTitle}>{CATEGORY_LABEL[cat.category] ?? cat.label}</Text>
                                             <Text style={styles.rowSub}>
                                                 {cat.category === 'walking' && data.steps > 0
-                                                    ? `${data.steps.toLocaleString()} steps`
+                                                    ? t('home:recap.steps', { count: data.steps, steps: data.steps.toLocaleString() })
                                                     : cat.distanceKm != null && cat.distanceKm > 0
                                                         ? formatDistance(cat.distanceKm * 1000, cat.category)
                                                         : cat.totalMin != null && cat.totalMin > 0
-                                                            ? `${fmtDuration(cat.totalMin)} total`
-                                                            : cat.category === 'gym' ? 'check-ins' : 'sessions'}
+                                                            ? t('home:recap.total', { duration: fmtDuration(cat.totalMin) })
+                                                            : cat.category === 'gym' ? t('home:recap.checkIns') : t('home:recap.sessionsFallback')}
                                             </Text>
                                         </View>
                                         <Text style={styles.activityCount}>{cat.sessions}×</Text>
@@ -277,7 +295,7 @@ export function WeeklyRecapSheet({
                         onPress={onStartWeek}
                         accessibilityRole="button"
                     >
-                        <Text style={styles.startBtnText}>START THIS WEEK</Text>
+                        <Text style={styles.startBtnText}>{t('home:recap.start')}</Text>
                         <Ionicons name="arrow-forward" size={14} color="#0a0a0a" />
                     </Pressable>
                 </View>

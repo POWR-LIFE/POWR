@@ -4,6 +4,7 @@ import { PENDING_JOIN_KEY } from '@/lib/social/inviteLinks';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Animated, Easing, LayoutChangeEvent, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import ReAnimated, {
     Extrapolate,
@@ -44,6 +45,7 @@ import LocationPrimeSheet from '@/components/LocationPrimeSheet';
 import HealthPrimeSheet from '@/components/HealthPrimeSheet';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
+import i18n from '@/lib/i18n';
 import { useGeofenceContext } from '@/context/GeofenceContext';
 import { getGymDwellMs, getGymUpgradeMinutes, getGymUpgradeMs } from '@/lib/gymDwellConfig';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
@@ -76,9 +78,9 @@ function formatElapsed(entryTimestamp: number): string {
     if (mins >= 60) {
         const hrs = Math.floor(mins / 60);
         const rem = mins % 60;
-        return `${hrs}h ${rem}m`;
+        return i18n.t('home:elapsed.hoursMinutes', { hours: hrs, minutes: rem });
     }
-    return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+    return i18n.t('home:elapsed.minutesSeconds', { minutes: mins, seconds: secs.toString().padStart(2, '0') });
 }
 
 const connectorStyles = StyleSheet.create({
@@ -125,6 +127,7 @@ export default function HomeScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
+    const { t } = useTranslation();
 
     // A challenge invite link tapped before sign-in parked its token
     // (join-challenge stashes it and routes to auth); now that a session
@@ -133,10 +136,10 @@ export default function HomeScreen() {
     useEffect(() => {
         if (!user) return;
         (async () => {
-            const t = await AsyncStorage.getItem(PENDING_JOIN_KEY).catch(() => null);
-            if (!t) return;
+            const token = await AsyncStorage.getItem(PENDING_JOIN_KEY).catch(() => null);
+            if (!token) return;
             await AsyncStorage.removeItem(PENDING_JOIN_KEY).catch(() => {});
-            router.push({ pathname: '/join-challenge', params: { token: t } });
+            router.push({ pathname: '/join-challenge', params: { token } });
         })();
     }, [user, router]);
 
@@ -241,7 +244,7 @@ export default function HomeScreen() {
     // Together celebration defers to it rather than racing it to the same
     // 700ms mark and losing one of the two <Modal>s on iOS.
     const [rescueVisible, setRescueVisible] = useState(false);
-    const [elapsedStr, setElapsedStr] = useState('0m 00s');
+    const [elapsedStr, setElapsedStr] = useState(() => i18n.t('home:elapsed.minutesSeconds', { minutes: 0, seconds: '00' }));
     const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
     const [profileName, setProfileName] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
@@ -351,7 +354,7 @@ export default function HomeScreen() {
     // Live elapsed counter
     useEffect(() => {
         if (!activeGeofence) {
-            setElapsedStr('0m 00s');
+            setElapsedStr(i18n.t('home:elapsed.minutesSeconds', { minutes: 0, seconds: '00' }));
             return;
         }
         setElapsedStr(formatElapsed(activeGeofence.entryTimestamp));
@@ -458,9 +461,9 @@ export default function HomeScreen() {
     // Shared with the progress screen so both surfaces show the same activities.
     const { types: ringTypes, bonusType } = applyDetectedActivitySwap(activePrefs, weeklyMetrics);
     const displayRings: WeeklyRingData[] = sortForHero(
-        ringTypes.map(t => t === bonusType
-            ? { ...buildWeeklyRing(t), isBonus: true }
-            : buildWeeklyRing(t)),
+        ringTypes.map(type => type === bonusType
+            ? { ...buildWeeklyRing(type), isBonus: true }
+            : buildWeeklyRing(type)),
     );
 
     // ── Scroll-based sticky indicators ──
@@ -539,7 +542,7 @@ export default function HomeScreen() {
             <View style={styles.header}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                     <Text style={styles.greeting}>{balance.toLocaleString()}</Text>
-                    <Text style={styles.pointsLabel}>pts</Text>
+                    <Text style={styles.pointsLabel}>{t('home:shared.pts')}</Text>
                 </View>
                 <View style={styles.headerRight}>
                     {/* Renders null unless the viewer has a live wearable. Sits
@@ -754,7 +757,7 @@ export default function HomeScreen() {
                                         <Ionicons name="lock-open" size={10} color={GOLD} style={connectorStyles.pillIcon} />
                                     )}
                                     <Text style={[connectorStyles.pillText, rewardUnlocked && connectorStyles.pillTextUnlocked]}>
-                                        {rewardUnlocked ? 'Ready to redeem' : `${ptsToUnlock} pts to unlock`}
+                                        {rewardUnlocked ? t('home:rewardConnector.ready') : t('home:rewardConnector.toUnlock', { count: ptsToUnlock })}
                                     </Text>
                                 </View>
                                 <View style={connectorStyles.line} />
@@ -763,7 +766,7 @@ export default function HomeScreen() {
                                 onPress={() => router.push('/(tabs)/rewards')}
                                 style={({ pressed }) => [pressed && { opacity: 0.92 }]}
                             >
-                                <RewardCard reward={featuredReward} balance={balance} challengeTitle={weeklyChallenges[0]?.title ?? 'this week’s challenge'} />
+                                <RewardCard reward={featuredReward} balance={balance} challengeTitle={weeklyChallenges[0]?.title ?? t('home:rewardConnector.challengeFallback')} />
                             </Pressable>
                         </>
                     );
@@ -816,7 +819,7 @@ export default function HomeScreen() {
 
                         <View style={styles.modalHeaderRow}>
                             <View style={styles.modalActiveDot} />
-                            <Text style={styles.modalTitle}>Auto-tracking active</Text>
+                            <Text style={styles.modalTitle}>{t('home:sessionModal.title')}</Text>
                         </View>
 
                         {activeGeofence && (
@@ -826,7 +829,7 @@ export default function HomeScreen() {
                                 </Text>
                                 <View style={styles.modalSessionCard}>
                                     <View style={styles.modalSessionRow}>
-                                        <Text style={styles.modalSessionKey}>Time in session</Text>
+                                        <Text style={styles.modalSessionKey}>{t('home:sessionModal.timeInSession')}</Text>
                                         <Text style={styles.modalSessionVal}>{elapsedStr}</Text>
                                     </View>
                                     <View style={styles.modalDwellTrack}>
@@ -836,8 +839,8 @@ export default function HomeScreen() {
                                     </View>
                                     <Text style={styles.modalDwellHint}>
                                         {dwellProgress >= 1
-                                            ? `${projectedPoints} POWR will be awarded automatically`
-                                            : `${minsRemaining} min until points qualify`
+                                            ? t('home:sessionModal.awarded', { points: projectedPoints })
+                                            : t('home:sessionModal.minutesLeft', { minutes: minsRemaining })
                                         }
                                     </Text>
                                 </View>
@@ -853,9 +856,9 @@ export default function HomeScreen() {
                         >
                             <Ionicons name="create-outline" size={18} color={GOLD} />
                             <View style={styles.modalActionText}>
-                                <Text style={styles.modalActionLabel}>Manual log</Text>
+                                <Text style={styles.modalActionLabel}>{t('home:sessionModal.manualLog')}</Text>
                                 <Text style={styles.modalActionNote}>
-                                    Earns 80% of base points — manual log policy
+                                    {t('home:sessionModal.manualLogNote')}
                                 </Text>
                             </View>
                             <Ionicons name="chevron-forward" size={16} color={TEXT_MUTED} />
@@ -865,7 +868,7 @@ export default function HomeScreen() {
                             style={({ pressed }) => [styles.modalDismiss, pressed && { opacity: 0.8 }]}
                             onPress={() => setSessionModalVisible(false)}
                         >
-                            <Text style={styles.modalDismissText}>Dismiss</Text>
+                            <Text style={styles.modalDismissText}>{t('home:sessionModal.dismiss')}</Text>
                         </Pressable>
                     </View>
                 </View>

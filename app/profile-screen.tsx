@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dimensions,
   Pressable,
@@ -28,6 +29,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
 import { fetchProfile, type Profile } from '@/lib/api/user';
+import { getFormatLocale } from '@/lib/i18n';
 import { formatMemberId } from '@/shared/memberId';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -56,16 +58,25 @@ function dashOff(r: number, pct: number) { return circ(r) - pct * circ(r); }
 
 // ─── Streak pill helper (from StreakCard) ─────────────────────────────────────
 
-const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+// Day initials and pill labels are catalog keys, resolved at render.
+const DAYS = [
+  'account:profile.days.mon',
+  'account:profile.days.tue',
+  'account:profile.days.wed',
+  'account:profile.days.thu',
+  'account:profile.days.fri',
+  'account:profile.days.sat',
+  'account:profile.days.sun',
+];
 
 function getStreakPill(streak: number) {
-  if (streak === 0)  return { label: 'JUST STARTING',  dotColor: GOLD };
-  if (streak < 3)    return { label: 'SHOWING UP',   dotColor: 'rgba(255,255,255,0.55)' };
-  if (streak < 7)    return { label: 'BUILDING',     dotColor: '#4ade80' };
-  if (streak < 14)   return { label: 'ON A ROLL',    dotColor: '#22c55e' };
-  if (streak < 21)   return { label: 'LOCKED IN',    dotColor: ORANGE };
-  if (streak < 30)   return { label: 'RELENTLESS',   dotColor: '#ef4444' };
-  return               { label: 'LEGENDARY',    dotColor: GOLD };
+  if (streak === 0)  return { label: 'account:profile.streakPill.justStarting', dotColor: GOLD };
+  if (streak < 3)    return { label: 'account:profile.streakPill.showingUp',    dotColor: 'rgba(255,255,255,0.55)' };
+  if (streak < 7)    return { label: 'account:profile.streakPill.building',     dotColor: '#4ade80' };
+  if (streak < 14)   return { label: 'account:profile.streakPill.onARoll',      dotColor: '#22c55e' };
+  if (streak < 21)   return { label: 'account:profile.streakPill.lockedIn',     dotColor: ORANGE };
+  if (streak < 30)   return { label: 'account:profile.streakPill.relentless',   dotColor: '#ef4444' };
+  return               { label: 'account:profile.streakPill.legendary',    dotColor: GOLD };
 }
 
 const TILE_GAP = 10;
@@ -83,6 +94,7 @@ const MEDALLION_INNER = 54;
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
 
   const { user } = useAuth();
   const { totalEarned, refresh: refreshPoints } = usePoints();
@@ -109,12 +121,12 @@ export default function ProfileScreen() {
   const displayName = profile?.display_name
     ?? user?.user_metadata?.full_name
     ?? user?.email?.split('@')[0]
-    ?? 'You';
+    ?? t('account:profile.you');
   const handle = profile?.username ? `@${profile.username}` : user?.email ?? '';
   const initials = displayName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
 
   const memberSince = user?.created_at
-    ? new Date(user.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    ? new Date(user.created_at).toLocaleDateString(getFormatLocale(), { month: 'long', year: 'numeric' })
     : '';
 
   const { current: levelInfo, next: nextLevel, xpIntoLevel, xpForLevel } = getLevelInfo(totalEarned);
@@ -124,7 +136,7 @@ export default function ProfileScreen() {
     const code = profile?.referral_code;
     if (!code) return;
     const url = `https://powr.life/?ref=${code}`;
-    const message = `Join me on POWR – the app that rewards you for every workout! 💪\n\nUse my invite code ${code} when you sign up and we both earn 20 POWR points free:\n${url}`;
+    const message = t('account:profile.shareMessage', { code, url });
     try {
       await Share.share({ message, url });
     } catch (_) {
@@ -245,7 +257,7 @@ export default function ProfileScreen() {
                 onPress={() => router.push('/friends')}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="View and add friends"
+                accessibilityLabel={t('account:profile.friendsLabel')}
               >
                 <Ionicons name="people" size={20} color="#FFFFFF" />
                 {incoming.length > 0 && (
@@ -261,7 +273,7 @@ export default function ProfileScreen() {
                 onPress={() => router.push('/my-qr')}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Show my QR code"
+                accessibilityLabel={t('account:profile.qrLabel')}
               >
                 <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
               </Pressable>
@@ -288,13 +300,13 @@ export default function ProfileScreen() {
             <View style={s.levelPill}>
               <View style={[s.levelPillInner, { backgroundColor: pill.bg, borderColor: pill.border }]}>
                 <Text style={[s.levelPillText, { color: pill.text }]}>
-                  LVL {levelInfo.level} · {levelInfo.name}
+                  {t('account:profile.levelPill', { level: levelInfo.level, name: levelInfo.name })}
                 </Text>
               </View>
             </View>
 
             {memberSince ? (
-              <Text style={s.since}>Member since {memberSince}</Text>
+              <Text style={s.since}>{t('account:profile.memberSince', { date: memberSince })}</Text>
             ) : null}
 
             {profile?.bio ? (
@@ -307,7 +319,7 @@ export default function ProfileScreen() {
 
           <View style={s.heroStatBlock}>
             <Text style={s.heroStatNumber}>{totalEarned.toLocaleString()}</Text>
-            <Text style={s.heroStatLabel}>TOTAL XP</Text>
+            <Text style={s.heroStatLabel}>{t('account:profile.totalXp')}</Text>
           </View>
 
           {/* XP bar */}
@@ -316,17 +328,18 @@ export default function ProfileScreen() {
               <View style={[s.xpFill, { width: `${Math.round(xpPct * 100)}%` as any }]} />
             </View>
             <Text style={s.xpText}>
-              {xpIntoLevel.toLocaleString()} / {xpForLevel.toLocaleString()} XP
-              {nextLevel ? ` · ${nextLevel.name} next` : ' · MAX LEVEL'}
+              {nextLevel
+                ? t('account:profile.xpNext', { current: xpIntoLevel.toLocaleString(), total: xpForLevel.toLocaleString(), name: nextLevel.name })
+                : t('account:profile.xpMax', { current: xpIntoLevel.toLocaleString(), total: xpForLevel.toLocaleString() })}
             </Text>
           </View>
         </View>
 
         {/* ── Stats Strip ───────────────────────────────────── */}
         <View style={s.statsRow}>
-          <StatCard value={`${currentStreak}d`}   label="Streak"      icon="flame"           color={currentStreak >= 7 ? ORANGE : TEXT} />
-          <StatCard value={`${longestStreak}d`}   label="Best streak" icon="trophy-outline"   color={GOLD} />
-          <StatCard value={String(totalSessions)} label="Sessions"    icon="barbell-outline"  color={TEXT} />
+          <StatCard value={t('account:profile.statDays', { days: currentStreak })} label={t('account:profile.stats.streak')}     icon="flame"          color={currentStreak >= 7 ? ORANGE : TEXT} />
+          <StatCard value={t('account:profile.statDays', { days: longestStreak })} label={t('account:profile.stats.bestStreak')} icon="trophy-outline"  color={GOLD} />
+          <StatCard value={String(totalSessions)}                                  label={t('account:profile.stats.sessions')}   icon="barbell-outline" color={TEXT} />
         </View>
 
         {/* ── Streak Week ───────────────────────────────────── */}
@@ -336,7 +349,7 @@ export default function ProfileScreen() {
               <Ionicons name="flame" size={22} color={currentStreak >= 7 ? ORANGE : DIM} />
               <Text style={s.streakNumber}>{currentStreak}</Text>
               <View style={s.streakUnitCol}>
-                <Text style={s.streakUnit}>day{currentStreak !== 1 ? 's' : ''}</Text>
+                <Text style={s.streakUnit}>{t('account:profile.streakUnit', { count: currentStreak })}</Text>
                 {multiplier && multiplier > 1 && (
                   <Text style={s.streakMultiplier}>{multiplier}x</Text>
                 )}
@@ -344,7 +357,7 @@ export default function ProfileScreen() {
             </View>
             <View style={s.streakPillBadge}>
               <View style={[s.streakPillDot, { backgroundColor: streakPill.dotColor }]} />
-              <Text style={s.streakPillText}>{streakPill.label}</Text>
+              <Text style={s.streakPillText}>{t(streakPill.label)}</Text>
             </View>
           </View>
 
@@ -363,7 +376,7 @@ export default function ProfileScreen() {
                   {done && !isFuture && (
                     <Text style={s.dayDotCheck}>✓</Text>
                   )}
-                  <Text style={[s.dayDotLabel, done && s.dayDotLabelDone]}>{day}</Text>
+                  <Text style={[s.dayDotLabel, done && s.dayDotLabelDone]}>{t(day)}</Text>
                 </View>
               );
             })}
@@ -373,9 +386,9 @@ export default function ProfileScreen() {
         {/* ── Achievements ───────────────────────────────────── */}
         <View style={s.section}>
           <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>Achievements</Text>
+            <Text style={s.sectionTitle}>{t('account:profile.achievements')}</Text>
             <Pressable onPress={() => router.push('/achievements')}>
-              <Text style={s.seeAll}>{earnedCount} / {totalCount} · See all</Text>
+              <Text style={s.seeAll}>{t('account:profile.seeAll', { earned: earnedCount, total: totalCount })}</Text>
             </Pressable>
           </View>
 
@@ -438,8 +451,8 @@ export default function ProfileScreen() {
             <View style={s.inviteHeader}>
               <Ionicons name="gift-outline" size={20} color={GOLD} />
               <View style={s.inviteText}>
-                <Text style={s.inviteTitle}>Invite a friend</Text>
-                <Text style={s.inviteSub}>Share your POWR ID — you both earn 20 POWR</Text>
+                <Text style={s.inviteTitle}>{t('account:profile.invite.title')}</Text>
+                <Text style={s.inviteSub}>{t('account:profile.invite.body')}</Text>
               </View>
             </View>
             <View style={s.inviteCodeRow}>
@@ -458,11 +471,11 @@ export default function ProfileScreen() {
                 onPress={handleInvite}
                 style={({ pressed }) => [s.inviteBtn, pressed && { opacity: 0.86 }]}
               >
-                <Text style={s.inviteBtnText}>SHARE</Text>
+                <Text style={s.inviteBtnText}>{t('account:profile.invite.share')}</Text>
               </Pressable>
             </View>
             <Text style={[s.copiedHint, !codeCopied && { opacity: 0 }]}>
-              Code copied to clipboard
+              {t('account:profile.invite.copied')}
             </Text>
           </View>
         )}
@@ -470,7 +483,7 @@ export default function ProfileScreen() {
         {/* ── Gallery (Pro only) ─────────────────────────────── */}
         {profile?.is_pro && gallery.length > 0 && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Gallery</Text>
+            <Text style={s.sectionTitle}>{t('account:profile.gallery')}</Text>
             <View style={s.galleryGrid}>
               {gallery.map((photo) => (
                 <Image

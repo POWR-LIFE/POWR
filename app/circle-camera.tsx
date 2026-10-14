@@ -3,6 +3,7 @@ import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,6 +31,7 @@ const CIRCLE_CENTRE_Y = 0.42;
 export default function CircleCameraScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('front');
   const [ready, setReady] = useState(false);
@@ -88,10 +90,10 @@ export default function CircleCameraScreen() {
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
-      <Pressable onPress={close} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Close">
+      <Pressable onPress={close} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('system:circleCamera.close')}>
         <Ionicons name="close" size={26} color={TEXT} />
       </Pressable>
-      <Text style={styles.headerTitle}>MY PHOTO</Text>
+      <Text style={styles.headerTitle}>{t('system:circleCamera.title')}</Text>
       <View style={styles.headerBtn} />
     </View>
   );
@@ -108,21 +110,21 @@ export default function CircleCameraScreen() {
           <View style={styles.deniedIcon}>
             <Ionicons name="camera-outline" size={30} color={MUTED} />
           </View>
-          <Text style={styles.deniedTitle}>Camera access needed</Text>
+          <Text style={styles.deniedTitle}>{t('system:circleCamera.deniedTitle')}</Text>
           <Text style={styles.deniedSub}>
-            POWR needs your camera to take a photo for your card. You can enable it in Settings, or pick one from your library instead.
+            {t('system:circleCamera.deniedBody')}
           </Text>
           {permission.canAskAgain ? (
             <Pressable style={styles.primaryBtn} onPress={requestPermission}>
-              <Text style={styles.primaryBtnText}>Allow camera</Text>
+              <Text style={styles.primaryBtnText}>{t('system:circleCamera.allow')}</Text>
             </Pressable>
           ) : (
             <Pressable style={styles.primaryBtn} onPress={() => Linking.openSettings()}>
-              <Text style={styles.primaryBtnText}>Open settings</Text>
+              <Text style={styles.primaryBtnText}>{t('system:circleCamera.openSettings')}</Text>
             </Pressable>
           )}
           <Pressable style={styles.ghostBtn} onPress={close}>
-            <Text style={styles.ghostBtnText}>Back</Text>
+            <Text style={styles.ghostBtnText}>{t('common:actions.back')}</Text>
           </Pressable>
         </View>
       </View>
@@ -172,7 +174,7 @@ export default function CircleCameraScreen() {
               }}
             />
             <Text style={[styles.hint, { top: view.height * CIRCLE_CENTRE_Y + diameter / 2 + 20 }]}>
-              What’s inside the circle goes on your card
+              {t('system:circleCamera.hint')}
             </Text>
           </View>
         )}
@@ -186,7 +188,7 @@ export default function CircleCameraScreen() {
             onPress={capture}
             disabled={busy || !ready}
             accessibilityRole="button"
-            accessibilityLabel="Take photo"
+            accessibilityLabel={t('system:circleCamera.takePhoto')}
             style={({ pressed }) => [styles.shutter, (pressed || busy) && { opacity: 0.6 }]}
           >
             <View style={styles.shutterInner}>
@@ -198,7 +200,7 @@ export default function CircleCameraScreen() {
             disabled={busy}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Flip camera"
+            accessibilityLabel={t('system:circleCamera.flip')}
             style={({ pressed }) => [styles.sideBtn, styles.flipBtn, pressed && { opacity: 0.7 }]}
           >
             <Ionicons name="camera-reverse-outline" size={24} color={TEXT} />

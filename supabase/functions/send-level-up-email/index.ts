@@ -19,6 +19,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/mailgun.ts";
 import { levelUpEmail } from "../_shared/emails/level-up.ts";
+import { tierLabel } from "../_shared/emails/member-copy.ts";
+import { levelName, serverLanguage } from "../_shared/i18n/index.ts";
 import { levelDef, levelImageUrl, LEVELS, TIER_COLOR, TIER_LABEL } from "../_shared/levels.ts";
 
 Deno.serve(async (req: Request) => {
@@ -109,9 +111,10 @@ Deno.serve(async (req: Request) => {
 
   const { data: profile } = await admin
     .from("profiles")
-    .select("display_name")
+    .select("display_name, language")
     .eq("id", userId)
     .maybeSingle();
+  const lang = serverLanguage(profile?.language);
 
   // profiles carries no email — auth is the source of truth for addresses.
   const { data: authUser } = await admin.auth.admin.getUserById(userId);
@@ -128,8 +131,8 @@ Deno.serve(async (req: Request) => {
   const rendered = levelUpEmail({
     name: profile?.display_name ?? null,
     level: def.level,
-    levelName: def.name,
-    tierLabel: TIER_LABEL[def.tier],
+    levelName: levelName(lang, def.level),
+    tierLabel: tierLabel(lang, def.tier),
     tierColor: TIER_COLOR[def.tier],
     // The trigger sends the exact level basis; fall back to the threshold floor.
     totalEarned: totalEarned ?? def.xpMin,
@@ -137,9 +140,9 @@ Deno.serve(async (req: Request) => {
     // they have no Vault to open. The bonus still banks; it just isn't named here.
     vaultBonus: vaultVisible ? bonus : null,
     levelImageUrl: levelImageUrl(def.level),
-    nextLevelName: next?.name ?? null,
+    nextLevelName: next ? levelName(lang, next.level) : null,
     nextLevelAt: next?.xpMin ?? null,
-  });
+  }, lang);
 
   try {
     await sendEmail({ to: email, subject: rendered.subject, html: rendered.html, text: rendered.text, tag: "level-up" });

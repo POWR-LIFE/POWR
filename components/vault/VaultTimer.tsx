@@ -1,5 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { ACCENT, DIM, MUTED } from './potTokens';
@@ -50,9 +51,10 @@ export interface VaultTimerProps {
 export function VaultTimer({
   vestsAt,
   startAt = null,
-  label = 'UNLOCKS IN',
+  label,
   style,
 }: VaultTimerProps) {
+  const { t } = useTranslation();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -74,13 +76,13 @@ export function VaultTimer({
 
   return (
     <View style={[styles.stack, style]}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>{label ?? t('rewards:vault.timer.unlocksIn')}</Text>
       {/* On the last day the clock IS the countdown, so it takes the figure
           size and the accent rather than trailing a "0d" that never moves. */}
       {days > 0 ? (
         <Text style={styles.line}>
           <Text style={styles.days}>{days}</Text>
-          <Text style={styles.unit}>d</Text>
+          <Text style={styles.unit}>{t('rewards:vault.timer.dayUnit')}</Text>
           <Text style={styles.clock}>  {clock}</Text>
         </Text>
       ) : (

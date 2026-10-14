@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import type { HealthProviderId } from '@/lib/health/providers/types';
+import { Trans, useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as SecureStore from 'expo-secure-store';
@@ -30,11 +31,15 @@ import { androidOpenHealthConnectSettings, useHealthData } from '@/hooks/useHeal
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { selectionLabel } from '@/constants/activityCatalog';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
 import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
+import { setTranslationPreview, useLanguageSettings } from '@/lib/i18n';
+import { useDistancePreference } from '@/lib/units';
+import { LANGUAGE_NAMES } from '@/shared/i18n';
 import { formatMemberId } from '@/shared/memberId';
 import { getGymSharing, setGymSharing, setGymVisitSharing, type GymSharing } from '@/lib/api/gymSharing';
 import { fetchProfile, updateLeaderboardVisibility } from '@/lib/api/user';
@@ -66,6 +71,20 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { signOut, user, updateUserMetadata } = useAuth();
   const gymRelevant = useGymRelevance();
+  const { t } = useTranslation();
+  const languages = useLanguageSettings();
+  const distancePreference = useDistancePreference();
+
+  const toggleTranslationPreview = useCallback(() => {
+    const on = !languages.preview;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setTranslationPreview(on);
+    Alert.alert(
+      t(on ? 'settings:language.previewOn.title' : 'settings:language.previewOff.title'),
+      t(on ? 'settings:language.previewOn.body' : 'settings:language.previewOff.body'),
+      [{ text: t('common:actions.ok') }],
+    );
+  }, [languages.preview, t]);
 
   const [isAdmin, setIsAdmin] = React.useState(false);
   // Granted a creator profile (admin links their app account in creator_users).
@@ -193,17 +212,18 @@ export default function SettingsScreen() {
 
   // Activity preferences (saved in user_metadata, edited on dedicated screen).
   // Prefer the concrete catalog picks ("Padel, Boxing"); legacy bucket-only
-  // users fall back to bucket short labels.
+  // users fall back to bucket short labels. Stored labels are English, so
+  // each pick is named through the catalog in the language on screen.
   const savedPrefs: ActivityType[] = user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
   const savedSelections = user?.user_metadata?.activity_selections;
   const selectionLabels = Array.isArray(savedSelections)
     ? savedSelections
-        .map((s: any) => s?.label)
-        .filter((l: any): l is string => typeof l === 'string' && l.length > 0)
+        .filter((s: any) => typeof s?.label === 'string' && s.label.length > 0)
+        .map((s: any) => selectionLabel(s))
     : [];
   const activityFocusValue = selectionLabels.length > 0
     ? selectionLabels.join(', ')
-    : savedPrefs.map(t => ACTIVITIES[t]?.labelShort ?? t).join(', ');
+    : savedPrefs.map(type => ACTIVITIES[type]?.labelShort ?? type).join(', ');
 
   // Notification & privacy prefs — initialise from saved user_metadata
   const meta = user?.user_metadata ?? {};
@@ -236,7 +256,7 @@ export default function SettingsScreen() {
       setGymSharingState(await setGymSharing(on));
     } catch (e: any) {
       setGymSharingState(before);
-      Alert.alert('Couldn’t change that', e?.message ?? 'Try again in a moment.');
+      Alert.alert(t('settings:main.changeFailed.title'), e?.message ?? t('settings:main.changeFailed.body'));
     }
   };
   const showGymSharing = !!(gymSharing?.portal && gymSharing.gym_name);
@@ -250,7 +270,7 @@ export default function SettingsScreen() {
       setGymSharingState(await setGymVisitSharing(on));
     } catch (e: any) {
       setGymSharingState(before);
-      Alert.alert('Couldn’t change that', e?.message ?? 'Try again in a moment.');
+      Alert.alert(t('settings:main.changeFailed.title'), e?.message ?? t('settings:main.changeFailed.body'));
     }
   };
   // "Show me on gym boards": profiles.show_on_leaderboard. Every gym board
@@ -270,7 +290,7 @@ export default function SettingsScreen() {
     const { error } = await updateLeaderboardVisibility(on);
     if (error) {
       setShowOnBoards(before);
-      Alert.alert('Couldn’t change that', error);
+      Alert.alert(t('settings:main.changeFailed.title'), error);
     }
   };
   const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
@@ -312,12 +332,12 @@ export default function SettingsScreen() {
   // Delete account — confirmation then deletes via edge function or signs out
   const handleDeleteAccount = () => {
     Alert.alert(
-      'Delete Account',
-      'This will permanently delete your account and all associated data. This cannot be undone.',
+      t('settings:main.deleteAlert.title'),
+      t('settings:main.deleteAlert.body'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common:actions.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('settings:main.deleteAlert.confirm'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -326,8 +346,8 @@ export default function SettingsScreen() {
               if (error) {
                 // If no RPC exists yet, just sign out and inform the user
                 Alert.alert(
-                  'Contact Support',
-                  'Please email support to complete account deletion. You will now be signed out.',
+                  t('settings:main.deleteAlert.supportTitle'),
+                  t('settings:main.deleteAlert.supportBody'),
                 );
                 await signOut();
                 return;
@@ -335,8 +355,8 @@ export default function SettingsScreen() {
               await signOut();
             } catch {
               Alert.alert(
-                'Contact Support',
-                'Please email support to complete account deletion. You will now be signed out.',
+                t('settings:main.deleteAlert.supportTitle'),
+                t('settings:main.deleteAlert.supportBody'),
               );
               await signOut();
             }
@@ -358,7 +378,7 @@ export default function SettingsScreen() {
         >
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>Settings</Text>
+        <Text style={styles.headerTitle}>{t('settings:main.title')}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -368,22 +388,22 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ── Account ──────────────────────────────────────── */}
-        <SectionLabel label="Account" />
+        <SectionLabel label={t('settings:main.section.account')} />
         <View style={styles.card}>
           <RowLink
             icon="person-outline"
-            label="Edit Profile"
+            label={t('settings:main.account.editProfile')}
             onPress={() => router.push('/edit-profile')}
           />
           <RowLink
             icon="mail-outline"
-            label="Email"
+            label={t('settings:main.account.email')}
             value={user?.email}
             onPress={() => router.push('/change-email')}
           />
           <RowLink
             icon="lock-closed-outline"
-            label="Change Password"
+            label={t('settings:main.account.changePassword')}
             onPress={() => router.push('/change-password')}
             isLast={!memberId}
           />
@@ -391,8 +411,8 @@ export default function SettingsScreen() {
             <RowLink
               icon="id-card-outline"
               label="POWR ID"
-              sublabel="Quote it if we ever need to find you · also your invite code"
-              value={memberIdCopied ? 'Copied' : formatMemberId(memberId)}
+              sublabel={t('settings:main.account.powrIdHint')}
+              value={memberIdCopied ? t('settings:main.account.copied') : formatMemberId(memberId)}
               valueColor={memberIdCopied ? GREEN : undefined}
               trailingIcon={memberIdCopied ? 'checkmark' : 'copy-outline'}
               onPress={copyMemberId}
@@ -402,8 +422,8 @@ export default function SettingsScreen() {
           {referralState?.referred ? (
             <RowLink
               icon="gift-outline"
-              label="Invited by"
-              sublabel="You both earn 20 POWR after your first verified workout"
+              label={t('settings:main.account.invitedBy')}
+              sublabel={t('settings:main.account.invitedByHint')}
               value={referralState.referrer_name}
               trailingIcon="checkmark"
               onPress={() => router.push('/invite-code')}
@@ -412,11 +432,11 @@ export default function SettingsScreen() {
           ) : referralState?.eligible ? (
             <RowLink
               icon="gift-outline"
-              label="Have an invite code?"
+              label={t('settings:main.account.haveInviteCode')}
               sublabel={
                 referralState.days_left && referralState.days_left > 1
-                  ? `Add a friend's code in your first days — ${referralState.days_left} left`
-                  : "Last day to add a friend's code"
+                  ? t('settings:main.account.inviteDaysLeft', { days: referralState.days_left })
+                  : t('settings:main.account.inviteLastDay')
               }
               onPress={() => router.push('/invite-code')}
               isLast
@@ -424,15 +444,51 @@ export default function SettingsScreen() {
           ) : null}
         </View>
 
+        {/* ── Language ─────────────────────────────────────── */}
+        {/* Only once there's a choice to make: while English is the only
+            finished language, the row appears just for translators. */}
+        {languages.available.length > 1 && (
+          <>
+            <SectionLabel label={t('settings:language.section')} />
+            <View style={styles.card}>
+              <RowLink
+                icon="language-outline"
+                label={t('settings:language.title')}
+                value={LANGUAGE_NAMES[languages.language] ?? languages.language}
+                onPress={() => router.push('/language')}
+                isLast
+              />
+            </View>
+          </>
+        )}
+
+        {/* ── Units ────────────────────────────────────────── */}
+        <SectionLabel label={t('settings:units.section')} />
+        <View style={styles.card}>
+          <RowLink
+            icon="speedometer-outline"
+            label={t('settings:units.title')}
+            value={
+              distancePreference === 'mi'
+                ? t('settings:units.miles')
+                : distancePreference === 'km'
+                  ? t('settings:units.kilometres')
+                  : t('settings:units.auto')
+            }
+            onPress={() => router.push('/distance-units')}
+            isLast
+          />
+        </View>
+
         {/* ── Creator ──────────────────────────────────────── */}
         {isCreator && (
           <>
-            <SectionLabel label="Affiliate" />
+            <SectionLabel label={t('settings:main.section.affiliate')} />
             <View style={styles.card}>
               <RowLink
                 icon="sparkles-outline"
-                label="Affiliate"
-                sublabel="Your code, link, signups and rewards"
+                label={t('settings:main.affiliate.row')}
+                sublabel={t('settings:main.affiliate.hint')}
                 onPress={openAffiliate}
                 isLast
               />
@@ -441,27 +497,27 @@ export default function SettingsScreen() {
         )}
 
         {/* ── Points ───────────────────────────────────────── */}
-        <SectionLabel label="Points" />
+        <SectionLabel label={t('settings:main.section.points')} />
         <View style={styles.card}>
           <RowLink
             icon="add-circle-outline"
-            label="Log Activity Manually"
+            label={t('settings:main.points.logManually')}
             onPress={() => router.push('/manual-log')}
           />
           <RowLink
             icon="receipt-outline"
-            label="Points History"
+            label={t('settings:main.points.history')}
             onPress={() => router.push('/points-ledger')}
             isLast
           />
         </View>
 
         {/* ── Activity Focus ─────────────────────────────────── */}
-        <SectionLabel label="Activity Focus" />
+        <SectionLabel label={t('settings:main.section.activityFocus')} />
         <View style={styles.card}>
           <RowLink
             icon="fitness-outline"
-            label="Activity Focus"
+            label={t('settings:main.activityFocus')}
             value={activityFocusValue}
             onPress={() => router.push('/activity-preferences')}
             isLast
@@ -469,23 +525,23 @@ export default function SettingsScreen() {
         </View>
 
         {/* ── Health data sources ───────────────────────────── */}
-        <SectionLabel label="On your phone" />
-        <Text style={styles.sectionHint}>Steps and workouts your phone tracks. Garmin and Samsung devices sync automatically.</Text>
+        <SectionLabel label={t('settings:main.section.onYourPhone')} />
+        <Text style={styles.sectionHint}>{t('settings:main.health.phoneHint')}</Text>
         <HealthSourceCard
           rows={providers.rows.filter(r => r.meta.native)}
           providers={providers}
         />
 
-        <SectionLabel label="Wearables" />
-        <Text style={styles.sectionHint}>Richer data — sleep, heart rate, verified workouts.</Text>
+        <SectionLabel label={t('settings:main.section.wearables')} />
+        <Text style={styles.sectionHint}>{t('settings:main.health.wearablesHint')}</Text>
         <View style={styles.card}>
           {(() => {
             const active = providers.rows.find(r => !r.meta.native && !!r.connection);
             return (
               <RowLink
                 icon="watch-outline"
-                label="Connected Device"
-                value={active ? active.meta.name : 'None connected'}
+                label={t('settings:main.health.connectedDevice')}
+                value={active ? active.meta.name : t('settings:main.health.noneConnected')}
                 valueColor={active ? '#4ade80' : undefined}
                 onPress={() => router.push('/wearables')}
                 isLast
@@ -581,7 +637,7 @@ export default function SettingsScreen() {
         )}
 
         {/* ── Other connections ─────────────────────────────── */}
-        <SectionLabel label="Connections" />
+        <SectionLabel label={t('settings:main.section.connections')} />
         <View style={styles.card}>
           {/* Location is TWO separate grants and the app needs both: the
               foreground one verifies you're at the gym, the background one is
@@ -590,14 +646,14 @@ export default function SettingsScreen() {
               now gets its own row and its own status. */}
           <RowLink
             icon="location-outline"
-            label="Location"
-            sublabel={gymRelevant ? 'Verify sessions at partner gyms' : 'Verify sessions at partner venues'}
+            label={t('settings:main.connections.location')}
+            sublabel={gymRelevant ? t('settings:main.connections.locationHintGyms') : t('settings:main.connections.locationHintVenues')}
             value={
               locationStatus !== 'granted'
-                ? (locationStatus === 'denied' ? 'Denied' : 'Not set up')
+                ? (locationStatus === 'denied' ? t('settings:main.connections.status.denied') : t('settings:main.connections.status.notSetUp'))
                 : preciseGranted === false
-                  ? 'Approximate'
-                  : 'Enabled'
+                  ? t('settings:main.connections.status.approximate')
+                  : t('settings:main.connections.status.enabled')
             }
             valueColor={
               locationStatus !== 'granted'
@@ -620,14 +676,14 @@ export default function SettingsScreen() {
           />
           <RowLink
             icon="navigate-outline"
-            label="Background location"
-            sublabel="Check you in while POWR is closed"
+            label={t('settings:main.connections.background')}
+            sublabel={t('settings:main.connections.backgroundHint')}
             value={
               bgLocationGranted
-                ? (Platform.OS === 'ios' ? 'Always' : 'All the time')
+                ? (Platform.OS === 'ios' ? t('settings:main.connections.status.always') : t('settings:main.connections.status.allTheTime'))
                 : locationStatus === 'granted'
-                  ? 'While using'
-                  : 'Off'
+                  ? t('settings:main.connections.status.whileUsing')
+                  : t('settings:main.connections.status.off')
             }
             valueColor={bgLocationGranted ? GREEN : locationStatus === 'granted' ? AMBER : RED}
             // The OS won't grant background before foreground, so an ungranted
@@ -638,8 +694,8 @@ export default function SettingsScreen() {
           {Platform.OS === 'android' && (
             <RowLink
               icon="battery-charging-outline"
-              label="Background activity"
-              sublabel="Stop Android sleeping the check-in watch"
+              label={t('settings:main.connections.battery')}
+              sublabel={t('settings:main.connections.batteryHint')}
               onPress={() => setPermissionFix('battery')}
               isLast
             />
@@ -647,21 +703,21 @@ export default function SettingsScreen() {
         </View>
         {!providers.activeId && (
           <Text style={styles.sectionHint}>
-            Connect a health source to verify workouts and earn points from walking &amp; sleep.
+            {t('settings:main.health.connectHint')}
           </Text>
         )}
         {locationStatus !== 'granted' ? (
           <Text style={styles.sectionHint}>
-            Location is required to earn points at {gymRelevant ? 'geofenced venues and partner gyms' : 'partner venues'}.
+            {gymRelevant ? t('settings:main.connections.locationRequiredGyms') : t('settings:main.connections.locationRequiredVenues')}
           </Text>
         ) : bgLocationGranted === false ? (
           <Text style={styles.sectionHint}>
-            Without background location POWR can only check you in while the app is open.
+            {t('settings:main.connections.backgroundMissing')}
           </Text>
         ) : null}
 
         {/* ── Notifications ─────────────────────────────────── */}
-        <SectionLabel label="Notifications" />
+        <SectionLabel label={t('settings:main.section.notifications')} />
         {notifGranted === false && (
           <Pressable onPress={() => setPermissionFix('notifications')} style={styles.notifWarnBanner}>
             <Ionicons name="notifications-off-outline" size={18} color={GOLD} style={{ marginTop: 1 }} />
@@ -669,12 +725,13 @@ export default function SettingsScreen() {
               {/* Only the headline and the action carry the accent — an all-red
                   block reads as one undifferentiated wall and hides the ask. */}
               <Text style={styles.notifWarnText}>
-                <Text style={styles.notifWarnStrong}>Notifications are off.</Text> Gym check-ins and
-                reward alerts won’t reach you, and the switches below do nothing until you turn
-                them on.
+                <Trans
+                  i18nKey="settings:main.notifications.offBanner"
+                  components={{ strong: <Text style={styles.notifWarnStrong} /> }}
+                />
               </Text>
               <Text style={styles.notifWarnCta}>
-                {notifStatus === 'undetermined' ? 'Turn on notifications' : 'Show me how'} ›
+                {notifStatus === 'undetermined' ? t('settings:main.notifications.turnOn') : t('settings:main.notifications.showMeHow')} ›
               </Text>
             </View>
           </Pressable>
@@ -682,7 +739,7 @@ export default function SettingsScreen() {
         <View style={[styles.card, notifGranted === false && styles.cardDisabled]} pointerEvents={notifGranted === false ? 'none' : 'auto'}>
           <RowToggle
             icon="barbell-outline"
-            label="Gym check-in alerts"
+            label={t('settings:main.notifications.gymCheckIn')}
             value={notifWorkouts}
             onValueChange={(v) => {
               setNotifWorkouts(v);
@@ -691,7 +748,7 @@ export default function SettingsScreen() {
           />
           <RowToggle
             icon="gift-outline"
-            label="Reward alerts"
+            label={t('settings:main.notifications.rewards')}
             value={notifRewards}
             onValueChange={(v) => {
               setNotifRewards(v);
@@ -700,8 +757,8 @@ export default function SettingsScreen() {
           />
           <RowToggle
             icon="watch-outline"
-            label="Workout sync"
-            sublabel="When a wearable workout lands and earns POWR"
+            label={t('settings:main.notifications.workoutSync')}
+            sublabel={t('settings:main.notifications.workoutSyncHint')}
             value={notifWearable}
             onValueChange={(v) => {
               setNotifWearable(v);
@@ -710,8 +767,8 @@ export default function SettingsScreen() {
           />
           <RowToggle
             icon="flame-outline"
-            label="Streak alerts"
-            sublabel="Evening warning when your streak's at risk, and rescue offers"
+            label={t('settings:main.notifications.streak')}
+            sublabel={t('settings:main.notifications.streakHint')}
             value={notifStreak}
             onValueChange={(v) => {
               setNotifStreak(v);
@@ -720,7 +777,7 @@ export default function SettingsScreen() {
           />
           <RowToggle
             icon="trophy-outline"
-            label="Level ups"
+            label={t('settings:main.notifications.levelUp')}
             value={notifLevelUp}
             onValueChange={(v) => {
               setNotifLevelUp(v);
@@ -729,8 +786,8 @@ export default function SettingsScreen() {
           />
           <RowToggle
             icon="walk-outline"
-            label="Daily nudges"
-            sublabel="Step-goal reminders and the odd get-moving prompt — never more than one a day"
+            label={t('settings:main.notifications.dailyNudges')}
+            sublabel={t('settings:main.notifications.dailyNudgesHint')}
             value={notifDailyNudge}
             onValueChange={(v) => {
               setNotifDailyNudge(v);
@@ -741,8 +798,8 @@ export default function SettingsScreen() {
           />
           <RowToggle
             icon="location-outline"
-            label="Nearby rewards"
-            sublabel="A nudge when a reward is boosted where you are"
+            label={t('settings:main.notifications.nearby')}
+            sublabel={t('settings:main.notifications.nearbyHint')}
             value={notifNearby}
             onValueChange={(v) => {
               setNotifNearby(v);
@@ -752,8 +809,8 @@ export default function SettingsScreen() {
           />
           <RowToggle
             icon="people-outline"
-            label="Friend activity"
-            sublabel="Friend requests and shared-challenge updates"
+            label={t('settings:main.notifications.friends')}
+            sublabel={t('settings:main.notifications.friendsHint')}
             value={notifFriends}
             onValueChange={(v) => {
               setNotifFriends(v);
@@ -766,8 +823,8 @@ export default function SettingsScreen() {
           />
           <RowToggle
             icon="megaphone-outline"
-            label="Product news"
-            sublabel="Occasional announcements about new features and rewards"
+            label={t('settings:main.notifications.news')}
+            sublabel={t('settings:main.notifications.newsHint')}
             value={notifNews}
             onValueChange={(v) => {
               setNotifNews(v);
@@ -778,12 +835,12 @@ export default function SettingsScreen() {
         </View>
 
         {/* ── Email ─────────────────────────────────────────── */}
-        <SectionLabel label="Email" />
+        <SectionLabel label={t('settings:main.section.email')} />
         <View style={styles.card}>
           <RowToggle
             icon="mail-outline"
-            label="Weekly summary"
-            sublabel="Your week's points, workouts and rank, every Monday"
+            label={t('settings:main.email.weekly')}
+            sublabel={t('settings:main.email.weeklyHint')}
             value={emailWeekly}
             onValueChange={(v) => {
               setEmailWeekly(v);
@@ -794,12 +851,12 @@ export default function SettingsScreen() {
         </View>
 
         {/* ── Social ────────────────────────────────────────── */}
-        <SectionLabel label="Social" />
+        <SectionLabel label={t('settings:main.section.social')} />
         <View style={styles.card}>
           <RowToggle
             icon="people-outline"
-            label="Together challenges"
-            sublabel="Take on challenges with friends from your home screen"
+            label={t('settings:main.social.together')}
+            sublabel={t('settings:main.social.togetherHint')}
             value={togetherEnabled}
             onValueChange={(v) => { setTogetherEnabled(v); persistMeta('together_enabled', v); }}
           />
@@ -809,8 +866,8 @@ export default function SettingsScreen() {
               you are placed in front of strangers, and whether you see them. */}
           <RowToggle
             icon="megaphone-outline"
-            label="Open challenge board"
-            sublabel="Post challenges any POWR member can take, and see theirs. They see your first name and photo."
+            label={t('settings:main.social.openBoard')}
+            sublabel={t('settings:main.social.openBoardHint')}
             value={openToStrangers}
             onValueChange={setOpenToStrangers}
             isLast={!openToStrangers}
@@ -821,8 +878,8 @@ export default function SettingsScreen() {
           {openToStrangers && (
             <RowToggle
               icon="notifications-outline"
-              label="Board alerts"
-              sublabel="Tell me when someone posts a challenge I could take"
+              label={t('settings:main.social.boardAlerts')}
+              sublabel={t('settings:main.social.boardAlertsHint')}
               value={notifBoardPosts}
               onValueChange={(v) => {
                 setNotifBoardPosts(v);
@@ -837,12 +894,12 @@ export default function SettingsScreen() {
         </View>
 
         {/* ── Privacy ───────────────────────────────────────── */}
-        <SectionLabel label="Privacy" />
+        <SectionLabel label={t('settings:main.section.privacy')} />
         <View style={styles.card}>
           <RowToggle
             icon="eye-outline"
-            label="Share activity"
-            sublabel="Friends can see your workouts"
+            label={t('settings:main.privacy.shareActivity')}
+            sublabel={t('settings:main.privacy.shareActivityHint')}
             value={shareActivity}
             onValueChange={(v) => { setShareActivity(v); persistMeta('share_activity', v); }}
             isLast={showOnBoards === null && !showVisitSharing && !showGymSharing}
@@ -850,8 +907,8 @@ export default function SettingsScreen() {
           {showOnBoards !== null && (
             <RowToggle
               icon="tv-outline"
-              label="Show me on gym boards"
-              sublabel="Your name and points on the leaderboard at gyms you train at: the app, their screens and Gym Clash. Off, you still earn."
+              label={t('settings:main.privacy.gymBoards')}
+              sublabel={t('settings:main.privacy.gymBoardsHint')}
               value={showOnBoards}
               onValueChange={toggleShowOnBoards}
               isLast={!showVisitSharing && !showGymSharing}
@@ -860,8 +917,8 @@ export default function SettingsScreen() {
           {showVisitSharing && (
             <RowToggle
               icon="walk-outline"
-              label="Let gyms see my visits"
-              sublabel="Gyms you train at see when you were in, so they can notice if you stop coming. Never your other training, health data or where you are."
+              label={t('settings:main.privacy.gymVisits')}
+              sublabel={t('settings:main.privacy.gymVisitsHint')}
               value={gymSharing!.visits!}
               onValueChange={toggleVisitSharing}
               isLast={!showGymSharing}
@@ -870,8 +927,8 @@ export default function SettingsScreen() {
           {showGymSharing && (
             <RowToggle
               icon="business-outline"
-              label={`Share with ${gymSharing!.gym_name}`}
-              sublabel="Your gym also sees the rest of your training: runs, rides, home workouts, how often and when. Never your sleep, heart rate or where you are."
+              label={t('settings:main.privacy.shareWithGym', { gym: gymSharing!.gym_name })}
+              sublabel={t('settings:main.privacy.shareWithGymHint')}
               value={gymSharing!.sharing}
               onValueChange={toggleGymSharing}
               isLast
@@ -882,21 +939,21 @@ export default function SettingsScreen() {
         {/* ── Admin ─────────────────────────────────────────── */}
         {isAdmin && (
           <>
-            <SectionLabel label="Admin" />
+            <SectionLabel label={t('settings:main.section.admin')} />
             <View style={styles.card}>
               <RowLink
                 icon="storefront-outline"
-                label="Manage Partners"
+                label={t('settings:main.admin.partners')}
                 onPress={() => router.push('/admin-partners')}
               />
               <RowLink
                 icon="person-add-outline"
-                label="Athlete Applications"
+                label={t('settings:main.admin.athletes')}
                 onPress={() => router.push('/admin-athletes')}
               />
               <RowLink
                 icon="flag-outline"
-                label="Manage Challenges"
+                label={t('settings:main.admin.challenges')}
                 onPress={() => router.push('/admin-challenges')}
                 isLast
               />
@@ -905,33 +962,33 @@ export default function SettingsScreen() {
         )}
 
         {/* ── Support ───────────────────────────────────────── */}
-        <SectionLabel label="Support" />
+        <SectionLabel label={t('settings:main.section.support')} />
         <View style={styles.card}>
           <RowLink
             icon="options-outline"
-            label="Permissions & Setup"
-            sublabel="Fix location, notifications & health access"
+            label={t('settings:main.support.permissions')}
+            sublabel={t('settings:main.support.permissionsHint')}
             onPress={() => router.push('/permissions-help')}
           />
           <RowLink
             icon="arrow-up-circle-outline"
-            label="Check for updates"
-            sublabel={`You're on v${runningVersion() ?? '?'}`}
+            label={t('settings:main.support.updates')}
+            sublabel={t('settings:main.support.updatesHint', { version: runningVersion() ?? '?' })}
             onPress={() => openStorePage()}
           />
           <RowLink
             icon="help-circle-outline"
-            label="Help Centre"
+            label={t('settings:main.support.helpCentre')}
             onPress={() => router.push('/help-centre')}
           />
           <RowLink
             icon="document-text-outline"
-            label="Terms of Service"
+            label={t('settings:main.support.terms')}
             onPress={() => router.push('/terms-of-service')}
           />
           <RowLink
             icon="shield-outline"
-            label="Privacy Policy"
+            label={t('settings:main.support.privacy')}
             onPress={() => router.push('/privacy-policy')}
             isLast
           />
@@ -939,7 +996,12 @@ export default function SettingsScreen() {
 
         {/* ── App info ──────────────────────────────────────── */}
         <View style={styles.appInfo}>
-          <Text style={styles.appVersion}>{appVersionLabel}</Text>
+          {/* Long-press = translation preview, for whoever is reviewing a
+              draft language on a real phone. Harmless for anyone who finds
+              it: it only adds unfinished languages to Settings › Language. */}
+          <Pressable onLongPress={toggleTranslationPreview} delayLongPress={800}>
+            <Text style={styles.appVersion}>{appVersionLabel}</Text>
+          </Pressable>
         </View>
 
         {/* ── Danger zone ───────────────────────────────────── */}
@@ -949,7 +1011,7 @@ export default function SettingsScreen() {
             onPress={signOut}
           >
             <Ionicons name="log-out-outline" size={18} color={RED} />
-            <Text style={styles.dangerLabel}>Sign out</Text>
+            <Text style={styles.dangerLabel}>{t('settings:main.signOut')}</Text>
           </Pressable>
           <View style={styles.rowDivider} />
           <Pressable
@@ -958,7 +1020,7 @@ export default function SettingsScreen() {
           >
             <Ionicons name="trash-outline" size={18} color={RED} />
             <Text style={[styles.dangerLabel, styles.dangerLabelDim]}>
-              Delete account
+              {t('settings:main.deleteAccount')}
             </Text>
           </Pressable>
         </View>
@@ -1191,6 +1253,7 @@ function HealthSourceCard({
   rows: ReturnType<typeof useHealthProviders>['rows'];
   providers: ReturnType<typeof useHealthProviders>;
 }) {
+  const { t } = useTranslation();
   if (rows.length === 0) return null;
   return (
     <View style={styles.card}>
@@ -1201,17 +1264,17 @@ function HealthSourceCard({
         const value = busy
           ? '…'
           : row.isActive
-            ? 'Primary'
+            ? t('settings:providers.status.primary')
             : connected
-              ? 'Connected'
-              : 'Not connected';
+              ? t('settings:providers.status.connected')
+              : t('settings:providers.status.notConnected');
         const valueColor = row.isActive ? GOLD : connected ? '#4ade80' : undefined;
         return (
           <RowLink
             key={row.meta.id}
             logoElement={<ProviderLogo id={row.meta.id} size={22} />}
             label={row.meta.name}
-            sublabel={row.meta.id === 'health-connect' ? 'Pixel Watch, Galaxy Watch & more' : undefined}
+            sublabel={row.meta.id === 'health-connect' ? t('settings:providers.healthConnectHint') : undefined}
             value={value}
             valueColor={valueColor}
             isLast={isLast}
@@ -1225,12 +1288,12 @@ function HealthSourceCard({
                     const result = await providers.connect(row.meta.id);
                     if (result === 'failed' && row.meta.native) {
                       Alert.alert(
-                        `${row.meta.name} not connected`,
-                        'Permission was not granted. You can enable it in Health Connect settings.',
+                        t('settings:providers.notConnected', { name: row.meta.name }),
+                        t('settings:providers.permissionNotGranted'),
                         [
-                          { text: 'Cancel', style: 'cancel' },
+                          { text: t('common:actions.cancel'), style: 'cancel' },
                           {
-                            text: 'Open Health Connect',
+                            text: t('settings:providers.openHealthConnect'),
                             onPress: () => Platform.OS === 'android'
                               ? androidOpenHealthConnectSettings()
                               : Linking.openSettings(),
@@ -1239,17 +1302,17 @@ function HealthSourceCard({
                       );
                     } else if (result === 'failed') {
                       Alert.alert(
-                        `${row.meta.name} not connected`,
-                        'We could not start the connection. Please try again.',
+                        t('settings:providers.notConnected', { name: row.meta.name }),
+                        t('settings:providers.couldNotStart'),
                       );
                     }
                     // 'pending' → OAuth handoff; the /<provider>-callback route
                     // writes the profile. Focus-refresh picks it up on return.
                   } catch (e) {
                     if (e instanceof HealthProviderNotImplementedError) {
-                      Alert.alert(`${row.meta.name} coming soon`, 'This integration is not available yet.');
+                      Alert.alert(t('settings:providers.comingSoon', { name: row.meta.name }), t('settings:providers.notAvailable'));
                     } else {
-                      Alert.alert('Connection failed', String((e as Error).message ?? e));
+                      Alert.alert(t('settings:providers.connectionFailed'), String((e as Error).message ?? e));
                     }
                   }
                 })();
@@ -1258,28 +1321,28 @@ function HealthSourceCard({
               const actions: { text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }[] = [];
               if (!row.isActive) {
                 actions.push({
-                  text: 'Set as primary source',
+                  text: t('settings:providers.setPrimary'),
                   onPress: () => { providers.setActive(row.meta.id); },
                 });
               }
               actions.push({
-                text: 'Disconnect',
+                text: t('settings:providers.disconnect'),
                 style: 'destructive',
                 onPress: () => {
                   Alert.alert(
-                    `Disconnect ${row.meta.name}?`,
+                    t('settings:providers.disconnectTitle', { name: row.meta.name }),
                     row.meta.native
-                      ? 'POWR will stop reading from this source. To fully revoke access, also turn off permission in your phone settings.'
-                      : 'POWR will stop reading from this source and clear stored credentials.',
+                      ? t('settings:providers.disconnectNative')
+                      : t('settings:providers.disconnectCloud'),
                     [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Disconnect', style: 'destructive', onPress: () => { providers.disconnect(row.meta.id); } },
+                      { text: t('common:actions.cancel'), style: 'cancel' },
+                      { text: t('settings:providers.disconnect'), style: 'destructive', onPress: () => { providers.disconnect(row.meta.id); } },
                     ],
                   );
                 },
               });
-              actions.push({ text: 'Cancel', style: 'cancel' });
-              Alert.alert(row.meta.name, row.isActive ? 'This is your primary source.' : undefined, actions);
+              actions.push({ text: t('common:actions.cancel'), style: 'cancel' });
+              Alert.alert(row.meta.name, row.isActive ? t('settings:providers.isPrimary') : undefined, actions);
             }}
           />
         );

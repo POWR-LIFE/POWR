@@ -15,6 +15,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/mailgun.ts";
 import { redemptionReceiptEmail } from "../_shared/emails/redemption-receipt.ts";
 import { discountLabel } from "../_shared/reward-catalogue.ts";
+import { serverLanguage, tEmail } from "../_shared/i18n/index.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -96,7 +97,7 @@ Deno.serve(async (req: Request) => {
     admin.from("rewards")
       .select("title, brand_name, value_label, discount_type, discount_value, terms, image_url, hero_image_url")
       .eq("id", claimed.reward_id).maybeSingle(),
-    admin.from("profiles").select("display_name").eq("id", claimed.user_id).maybeSingle(),
+    admin.from("profiles").select("display_name, language").eq("id", claimed.user_id).maybeSingle(),
     admin.auth.admin.getUserById(claimed.user_id),
     admin.from("point_transactions").select("amount").eq("user_id", claimed.user_id),
   ]);
@@ -105,21 +106,22 @@ Deno.serve(async (req: Request) => {
   if (!email) return json({ ok: true, skipped: "no_email" });
 
   const balanceAfter = (ledger ?? []).reduce((sum: number, t: { amount: number | null }) => sum + (t.amount ?? 0), 0);
+  const lang = serverLanguage(profile?.language);
   const rendered = redemptionReceiptEmail({
     name: profile?.display_name ?? null,
-    rewardTitle: claimed.reward_title ?? reward?.title ?? "Your reward",
+    rewardTitle: claimed.reward_title ?? reward?.title ?? tEmail(lang, "receipt.fallbackTitle"),
     brand: reward?.brand_name ?? claimed.partner_name ?? null,
     valueLabel: reward ? discountLabel(reward) || null : null,
     integrationType: claimed.integration_type,
-    // AFFILIATE rows store a receipt id in `code` — it is not something to type in.
-    code: claimed.integration_type === "AFFILIATE" ? null : claimed.code,
+    // AFFILIATE and IN_STORE rows store a receipt id in `code` — it is not something to type in.
+    code: claimed.integration_type === "AFFILIATE" || claimed.integration_type === "IN_STORE" ? null : claimed.code,
     checkoutUrl: claimed.checkout_url,
     expiresAt: claimed.expires_at,
     powrSpent: claimed.powr_spent ?? 0,
     balanceAfter,
     terms: reward?.terms ?? null,
     imageUrl: reward?.image_url ?? claimed.reward_image_url ?? reward?.hero_image_url ?? null,
-  });
+  }, lang);
 
   try {
     await sendEmail({ to: email, subject: rendered.subject, html: rendered.html, text: rendered.text, tag: "redemption-receipt" });

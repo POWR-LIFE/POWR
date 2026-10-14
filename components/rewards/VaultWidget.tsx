@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { VaultDoor } from '@/components/vault/VaultDoor';
@@ -29,6 +30,7 @@ export function VaultWidget({
   /** Set = coming-soon: dims the door and prints this under the wordmark. */
   sublabel?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && { opacity: 0.7 }]}
@@ -36,7 +38,7 @@ export function VaultWidget({
       hitSlop={8}
     >
       <VaultDoor size={54} color={sublabel ? 'rgba(242,242,242,0.5)' : '#F2F2F2'} />
-      <Text style={styles.label}>VAULT</Text>
+      <Text style={styles.label}>{t('rewards:vaultWidget.label')}</Text>
       {sublabel ? <Text style={styles.sub}>{sublabel}</Text> : null}
     </Pressable>
   );

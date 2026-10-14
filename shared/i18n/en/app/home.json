@@ -1,0 +1,285 @@
+{
+  "shared": {
+    "pts": "pts"
+  },
+  "weekdays": {
+    "mon": "M",
+    "tue": "T",
+    "wed": "W",
+    "thu": "T",
+    "fri": "F",
+    "sat": "S",
+    "sun": "S"
+  },
+  "elapsed": {
+    "hoursMinutes": "{{hours}}h {{minutes}}m",
+    "minutesSeconds": "{{minutes}}m {{seconds}}s"
+  },
+  "rewardConnector": {
+    "ready": "Ready to redeem",
+    "toUnlock_one": "{{count}} pts to unlock",
+    "toUnlock_other": "{{count}} pts to unlock",
+    "challengeFallback": "this week’s challenge"
+  },
+  "sessionModal": {
+    "title": "Auto-tracking active",
+    "timeInSession": "Time in session",
+    "awarded": "{{points}} POWR will be awarded automatically",
+    "minutesLeft": "{{minutes}} min until points qualify",
+    "manualLog": "Manual log",
+    "manualLogNote": "Earns 80% of base points — manual log policy",
+    "dismiss": "Dismiss"
+  },
+  "streak": {
+    "title": "YOUR STREAK",
+    "pill": {
+      "justStarted": "JUST STARTED",
+      "showingUp": "SHOWING UP",
+      "building": "BUILDING",
+      "onARoll": "ON A ROLL",
+      "onFire": "ON FIRE",
+      "unstoppable": "UNSTOPPABLE",
+      "legendary": "LEGENDARY"
+    },
+    "weeks_one": "week",
+    "weeks_other": "weeks",
+    "resets": "Resets midnight",
+    "rescue": "SAVE YOUR STREAK · {{done}}/{{required}}",
+    "rescueTimed_one": "SAVE YOUR STREAK · {{done}}/{{required}} · {{count}}H LEFT",
+    "rescueTimed_other": "SAVE YOUR STREAK · {{done}}/{{required}} · {{count}}H LEFT",
+    "session": {
+      "label": "SESSION",
+      "locked": "POINTS LOCKED",
+      "maxTier": "MAX TIER",
+      "hintMax": "+{{points}} pts · max tier",
+      "hintUpgrade": "+{{points}} pts · stay {{minutes}}m to unlock +{{bonus}}"
+    }
+  },
+  "rescue": {
+    "units": {
+      "sessions_one": "{{n}} session",
+      "sessions_other": "{{n}} sessions",
+      "gymSessions_one": "{{n}} gym session",
+      "gymSessions_other": "{{n}} gym sessions",
+      "activeDays_one": "{{n}} active day",
+      "activeDays_other": "{{n}} active days",
+      "steps_one": "{{n}} step",
+      "steps_other": "{{n}} steps"
+    },
+    "kicker": {
+      "saved": "RESCUE COMPLETE",
+      "partway": "RESCUE IN PROGRESS",
+      "offer": "STREAK RESCUE"
+    },
+    "title": {
+      "saved": "Streak saved",
+      "offer": "Save your streak"
+    },
+    "body": {
+      "saved_one": "You did the work — your {{count}}-day streak is back and counting. Protect it tonight.",
+      "saved_other": "You did the work — your {{count}}-day streak is back and counting. Protect it tonight.",
+      "partway_one": "Just {{phrase}} left in the next {{hours}}h and your {{count}}-day streak comes all the way back.",
+      "partway_other": "Just {{phrase}} left in the next {{hours}}h and your {{count}}-day streak comes all the way back.",
+      "offer_one": "Your {{count}}-day streak isn't gone yet. {{phrase}} in the next {{hours}}h brings the whole thing back.",
+      "offer_other": "Your {{count}}-day streak isn't gone yet. {{phrase}} in the next {{hours}}h brings the whole thing back."
+    },
+    "progress": "{{done}} of {{phrase}} done",
+    "hint": "Every verified workout counts automatically — just train.",
+    "cta": {
+      "saved": "KEEP IT ROLLING",
+      "partway": "FINISH IT",
+      "offer": "LET'S GO"
+    }
+  },
+  "level": {
+    "toNext": "<num>{{points}}</num> pts to next level",
+    "toNamed": "<num>{{points}}</num> pts to {{level}} — almost there",
+    "top": "You've reached the top"
+  },
+  "together": {
+    "title": "TOGETHER",
+    "full": "Full",
+    "fullA11y": "Challenge slots full, {{open}} of {{cap}}",
+    "new_one": "{{count}} new",
+    "new_other": "{{count}} new",
+    "viewFriends": "View friends",
+    "challengeFriends": "Challenge friends",
+    "empty": {
+      "title": "Take on a challenge together",
+      "body": "Browse challenges — everyone earns a growing bonus."
+    },
+    "intro": {
+      "crew": "Take one on together — +{{perHead}} bonus each for every friend who finishes, up to +{{max}}.",
+      "noCrew": "Take one on with friends — everyone earns a growing bonus."
+    },
+    "couldntJoin": "Couldn’t join",
+    "couldntDecline": "Couldn’t decline",
+    "couldntTake": "Couldn’t take that one"
+  },
+  "liveEvent": {
+    "eyebrow": "LIVE EVENT",
+    "preview": "PREVIEW · {{status}}",
+    "register": "REGISTER",
+    "pill": {
+      "rank": "RANK {{rank}}",
+      "points": "{{points}} POWR",
+      "friends_one": "{{joined}} OF {{count}} FRIENDS",
+      "friends_other": "{{joined}} OF {{count}} FRIENDS",
+      "locked": "SCORES LOCKED",
+      "in": "YOU’RE IN",
+      "book": "BOOK YOUR SPOT",
+      "see": "SEE EVENT"
+    },
+    "a11y": {
+      "ranked": "You're ranked {{rank}}.",
+      "gatedPoints_one": "You've earned {{points}} POWR this week — the leaderboard unlocks at {{count}} friends.",
+      "gatedPoints_other": "You've earned {{points}} POWR this week — the leaderboard unlocks at {{count}} friends.",
+      "friends_one": "{{joined}} of {{count}} friends in — the leaderboard unlocks at {{count}}.",
+      "friends_other": "{{joined}} of {{count}} friends in — the leaderboard unlocks at {{count}}.",
+      "locked": "Scores are locked for the reveal.",
+      "startLine": "You’re in — one verified workout puts you on the board.",
+      "earned": "You've earned {{points}} POWR.",
+      "book": "You're registered — book your place with {{venue}} from the League tab.",
+      "venueFallback": "the venue",
+      "registered": "You’re registered.",
+      "see": "{{line}}. Tap to see the event.",
+      "card": {
+        "comingSoon": "Coming soon: {{name}}. {{status}}",
+        "register": "Live event: {{name}}. Tap to register.",
+        "preview": "Live event: {{name}}. Registered — tap to reset the preview.",
+        "registered": "Live event: {{name}}. {{status}} Tap to open the League tab."
+      }
+    }
+  },
+  "creatorInvite": {
+    "eyebrow": {
+      "eligible": "POWR AFFILIATES",
+      "pending": "REQUEST SENT",
+      "approved": "YOU’RE IN"
+    },
+    "dismiss": "Dismiss",
+    "eligible": {
+      "title": "You’re bringing people in.",
+      "body_one": "{{count}} person you invited have logged their first verified workout. Affiliates get their own link, a portal to track it, and real rewards for every signup. Want in?",
+      "body_other": "{{count}} people you invited have logged their first verified workout. Affiliates get their own link, a portal to track it, and real rewards for every signup. Want in?",
+      "cta": "ASK TO JOIN",
+      "error": "Couldn’t send that — try again in a moment.",
+      "foot": "Invite-only. A real person reads every request."
+    },
+    "pending": {
+      "title": "We’ve got your request.",
+      "body": "Someone on the POWR team will look at it. You’ll get a notification the moment you’re in — keep sharing your code in the meantime."
+    },
+    "approved": {
+      "title": "Welcome to POWR Affiliates.",
+      "body": "Your code, link, signups and rewards are ready. Find Affiliate under Settings whenever you need it.",
+      "cta": "OPEN AFFILIATE"
+    }
+  },
+  "rings": {
+    "getReady": "GET READY",
+    "opensThisDay": "Opens this day",
+    "detected": "DETECTED"
+  },
+  "challenges": {
+    "title": "THIS WEEK",
+    "moreUnlock_one": "{{count}} more unlocks as you clear these",
+    "moreUnlock_other": "{{count}} more unlock as you clear these",
+    "weekCleared": "Week cleared · {{points}} pts banked",
+    "shareA11y": "Share {{title}}",
+    "complete": "{{title}} complete.",
+    "pointsEarned": "POWR points earned",
+    "totalBalance": "Total balance <num>{{total}} pts</num>",
+    "done": "Done",
+    "together": "Run it together",
+    "share": "Share"
+  },
+  "weekly": {
+    "units": {
+      "steps_one": "steps",
+      "steps_other": "steps",
+      "days_one": "days",
+      "days_other": "days",
+      "categories_one": "categories",
+      "categories_other": "categories",
+      "checkIns_one": "check-ins",
+      "checkIns_other": "check-ins",
+      "runs_one": "runs",
+      "runs_other": "runs",
+      "rides_one": "rides",
+      "rides_other": "rides",
+      "sessions_one": "sessions",
+      "sessions_other": "sessions"
+    },
+    "expired": "Expired",
+    "left": {
+      "daysHours": "{{days}}d {{hours}}h left",
+      "hoursMinutes": "{{hours}}h {{minutes}}m left"
+    }
+  },
+  "reward": {
+    "cost_one": "{{count}} <label>points</label>",
+    "cost_other": "{{count}} <label>points</label>",
+    "percent": "{{value}}%",
+    "pounds": "£{{value}}",
+    "off": "OFF"
+  },
+  "update": {
+    "title": "Update available",
+    "body": "POWR v{{version}} is out — get the latest fixes and features.",
+    "cta": "Update"
+  },
+  "recapCard": {
+    "title": "YOUR WEEK",
+    "dismissA11y": "Dismiss weekly recap",
+    "openA11y": "See your full week",
+    "earned": "EARNED LAST WEEK",
+    "up": "up {{delta}} on the week before",
+    "challenges": "CHALLENGES",
+    "activeDays": "ACTIVE DAYS",
+    "cta": "SEE YOUR FULL WEEK"
+  },
+  "recap": {
+    "title": "Your week",
+    "close": "Close",
+    "earned": "POWR EARNED",
+    "more": "{{delta}} more than the week before",
+    "fewer": "{{delta}} fewer than the week before",
+    "bestDay": "Biggest day <strong>{{day}}</strong> · {{active}} of 7 days active",
+    "challenges": "CHALLENGES",
+    "challengesMeta": "{{done}} of {{total}} completed",
+    "completed": "Completed",
+    "progress": "{{value}} of {{goal}} {{unit}}",
+    "body": "YOUR BODY",
+    "bodyMeta": "from your device",
+    "timeTraining": "TIME TRAINING",
+    "highIntensity": "HIGH INTENSITY",
+    "activeBurn": "ACTIVE BURN",
+    "peakHr": "PEAK HEART RATE",
+    "sleep": "SLEEP / NIGHT",
+    "bpm": "bpm",
+    "activity": "ACTIVITY",
+    "sessions_one": "{{count}} session",
+    "sessions_other": "{{count}} sessions",
+    "steps_one": "{{steps}} steps",
+    "steps_other": "{{steps}} steps",
+    "total": "{{duration}} total",
+    "checkIns": "check-ins",
+    "sessionsFallback": "sessions",
+    "duration": {
+      "minutes": "{{minutes}}m",
+      "hoursMinutes": "{{hours}}h {{minutes}}m",
+      "hours": "{{hours}}h"
+    },
+    "start": "START THIS WEEK"
+  },
+  "bell": {
+    "a11y": "Activity",
+    "a11yCount_one": "Activity, {{count}} new item",
+    "a11yCount_other": "Activity, {{count}} new items"
+  },
+  "recapRange": {
+    "sameMonth": "{{month}} {{start}} – {{end}}",
+    "crossMonth": "{{startMonth}} {{start}} – {{endMonth}} {{end}}"
+  }
+}

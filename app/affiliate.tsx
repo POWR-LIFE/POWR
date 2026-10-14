@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import type { TFunction } from 'i18next';
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     Animated,
@@ -24,18 +26,20 @@ import {
     affiliateLink,
     affiliateShareText,
     fetchAffiliateOverview,
-    FULFILMENT_LABEL,
     isAffiliateReady,
     ladderPosition,
     markAffiliateShared,
     openAffiliatePortal,
     readinessSteps,
     stepName,
+    type AffiliateMilestone,
     type AffiliateOverview,
+    type AffiliateProfile,
     type AffiliateStep,
     type LadderPosition,
     type ReadinessStep,
 } from '@/lib/api/affiliate';
+import { getFormatLocale } from '@/lib/i18n';
 import { rewardLogoUri } from '@/lib/storageImage';
 
 const GOLD = '#E8D200';
@@ -47,6 +51,23 @@ const FAINT = 'rgba(255,255,255,0.12)';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER = 'rgba(255,255,255,0.08)';
 const QUERY_KEY = ['affiliate', 'overview', 'v2', 30] as const;
+
+/** Translation keys, resolved at render. */
+const STATUS_LABEL: Record<AffiliateProfile['status'], string> = {
+    active: 'affiliate:home.status.active',
+    paused: 'affiliate:home.status.paused',
+    terminated: 'affiliate:home.status.terminated',
+};
+
+/** What a reached rung's parcel is doing, as translation keys (null = no parcel). */
+const PARCEL_LABEL: Record<AffiliateMilestone['fulfilment_status'], string | null> = {
+    owed: 'affiliate:rung.parcel.owed',
+    approved: 'affiliate:rung.parcel.approved',
+    shipped: 'affiliate:rung.parcel.shipped',
+    delivered: 'affiliate:rung.parcel.delivered',
+    cancelled: 'affiliate:rung.parcel.cancelled',
+    not_applicable: null,
+};
 
 /**
  * The in-app affiliate home (Jamie, 2026-08-26: "app AND web"). The phone
@@ -62,6 +83,7 @@ export default function AffiliateScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const qc = useQueryClient();
+    const { t } = useTranslation();
     const [copied, setCopied] = useState(false);
     const [opening, setOpening] = useState(false);
 
@@ -102,17 +124,20 @@ export default function AffiliateScreen() {
     };
 
     const pos = data ? ladderPosition(data) : null;
+    // Same test ladderPosition uses to pick its basis word.
+    const countsSignups = data?.program?.step_counting === 'signups';
+    const statusKey = data ? STATUS_LABEL[data.profile.status] : undefined;
 
     return (
         <View style={[styles.screen, { paddingTop: insets.top }]}>
             <GeometricBackground />
             <View style={styles.header}>
-                <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8} accessibilityLabel="Back">
+                <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8} accessibilityLabel={t('common:actions.back')}>
                     <Ionicons name="chevron-back" size={22} color={DIM} />
                 </Pressable>
-                <Text style={styles.headerTitle}>Affiliate</Text>
+                <Text style={styles.headerTitle}>{t('affiliate:home.title')}</Text>
                 <View style={styles.headerAction}>
-                    <Pressable onPress={() => openPortal()} hitSlop={8} accessibilityLabel="Open the full portal" disabled={opening || !data}>
+                    <Pressable onPress={() => openPortal()} hitSlop={8} accessibilityLabel={t('affiliate:home.openPortal')} disabled={opening || !data}>
                         {opening ? <ActivityIndicator color={GOLD} size="small" /> : <Ionicons name="open-outline" size={20} color={DIM} />}
                     </Pressable>
                 </View>
@@ -122,14 +147,14 @@ export default function AffiliateScreen() {
                 <View style={styles.center}><ActivityIndicator color={GOLD} /></View>
             ) : isError ? (
                 <View style={styles.center}>
-                    <Text style={styles.body}>Couldn’t load your affiliate numbers.</Text>
-                    <Pressable onPress={() => refetch()} style={styles.ghostBtn}><Text style={styles.ghostBtnText}>TRY AGAIN</Text></Pressable>
+                    <Text style={styles.body}>{t('affiliate:home.loadError')}</Text>
+                    <Pressable onPress={() => refetch()} style={styles.ghostBtn}><Text style={styles.ghostBtnText}>{t('affiliate:home.retry')}</Text></Pressable>
                 </View>
             ) : !data || !pos ? (
                 <View style={styles.center}>
                     <Ionicons name="sparkles-outline" size={28} color={GOLD} style={{ marginBottom: 12 }} />
-                    <Text style={styles.title}>Not on the programme yet</Text>
-                    <Text style={styles.body}>The affiliate programme is invite-only. If you’ve been told you’re in, make sure you’re signed in with the same account.</Text>
+                    <Text style={styles.title}>{t('affiliate:home.notInTitle')}</Text>
+                    <Text style={styles.body}>{t('affiliate:home.notInBody')}</Text>
                 </View>
             ) : (
                 <ScrollView
@@ -141,8 +166,8 @@ export default function AffiliateScreen() {
 
                     {data.profile.status !== 'active' && (
                         <View style={styles.pausedNote}>
-                            <Text style={styles.pausedLabel}>{data.profile.status.toUpperCase()}</Text>
-                            <Text style={styles.pausedBody}>Your link still works, but new signups aren’t earning right now. Get in touch and we’ll sort it.</Text>
+                            <Text style={styles.pausedLabel}>{statusKey ? t(statusKey) : data.profile.status.toUpperCase()}</Text>
+                            <Text style={styles.pausedBody}>{t('affiliate:home.pausedBody')}</Text>
                         </View>
                     )}
 
@@ -150,31 +175,31 @@ export default function AffiliateScreen() {
 
                     <CodeHero data={data} ready={ready} copied={copied} onCopy={copyCode} onShare={share} onTerms={() => router.push('/affiliate-terms?accept=1')} />
 
-                    {data.steps.length > 0 && <NextUp pos={pos} />}
+                    {data.steps.length > 0 && <NextUp pos={pos} countsSignups={countsSignups} />}
 
-                    <Text style={styles.sectionLabel}>LAST 30 DAYS</Text>
+                    <Text style={styles.sectionLabel}>{t('affiliate:stats.eyebrow')}</Text>
                     <View style={styles.grid}>
-                        <Stat icon="finger-print-outline" label="LINK TAPS" value={data.funnel?.clicks ?? 0} />
-                        <Stat icon="person-add-outline" label="SIGNUPS" value={data.funnel?.signups ?? 0} />
-                        <Stat icon="checkmark-circle-outline" label="CONVERTED" value={data.funnel?.converted ?? 0} accent />
-                        <Stat icon="diamond-outline" label="POINTS" value={data.funnel?.points_earned ?? 0} accent hint="all time" />
+                        <Stat icon="finger-print-outline" label={t('affiliate:stats.linkTaps')} value={data.funnel?.clicks ?? 0} />
+                        <Stat icon="person-add-outline" label={t('affiliate:stats.signups')} value={data.funnel?.signups ?? 0} />
+                        <Stat icon="checkmark-circle-outline" label={t('affiliate:stats.converted')} value={data.funnel?.converted ?? 0} accent />
+                        <Stat icon="diamond-outline" label={t('affiliate:stats.points')} value={data.funnel?.points_earned ?? 0} accent hint={t('affiliate:stats.allTime')} />
                     </View>
 
                     {data.steps.length > 0 && (
                         <>
                             <View style={styles.sectionRow}>
-                                <Text style={styles.sectionLabel}>THE LADDER</Text>
-                                <Text style={styles.sectionMeta}>{pos.basis} {pos.basisWord.toUpperCase()}</Text>
+                                <Text style={styles.sectionLabel}>{t('affiliate:ladder.eyebrow')}</Text>
+                                <Text style={styles.sectionMeta}>{countsSignups ? t('affiliate:ladder.signupsCaps', { count: pos.basis }) : t('affiliate:ladder.convertedCaps', { count: pos.basis })}</Text>
                             </View>
-                            <Ladder data={data} pos={pos} onAddress={() => openPortal('/settings')} />
+                            <Ladder data={data} pos={pos} countsSignups={countsSignups} onAddress={() => openPortal('/settings')} />
                         </>
                     )}
 
                     {data.earnings.length > 0 && (
                         <>
                             <View style={styles.sectionRow}>
-                                <Text style={styles.sectionLabel}>RECENT EARNINGS</Text>
-                                <Text style={styles.sectionMeta}>{(data.funnel?.points_earned ?? 0).toLocaleString()} PTS ALL TIME</Text>
+                                <Text style={styles.sectionLabel}>{t('affiliate:earnings.eyebrow')}</Text>
+                                <Text style={styles.sectionMeta}>{t('affiliate:earnings.allTime', { points: (data.funnel?.points_earned ?? 0).toLocaleString() })}</Text>
                             </View>
                             {/* A preview, not the ledger — this list only grows. Three rows,
                                 then the full ledger lives on the portal's Rewards page. */}
@@ -192,7 +217,7 @@ export default function AffiliateScreen() {
                                     </View>
                                 ))}
                                 <Pressable onPress={() => openPortal('/rewards')} style={({ pressed }) => [styles.earnMore, pressed && { opacity: 0.7 }]} accessibilityRole="button">
-                                    <Text style={styles.earnMoreText}>FULL LEDGER IN THE PORTAL</Text>
+                                    <Text style={styles.earnMoreText}>{t('affiliate:earnings.fullLedger')}</Text>
                                     <Ionicons name="arrow-forward" size={12} color={DIM} />
                                 </Pressable>
                             </View>
@@ -202,8 +227,8 @@ export default function AffiliateScreen() {
                     <Pressable onPress={() => openPortal()} disabled={opening} style={({ pressed }) => [styles.card, styles.portalCard, pressed && { opacity: 0.85 }]} accessibilityRole="button">
                         <View style={styles.portalIcon}><Ionicons name="desktop-outline" size={18} color={GOLD} /></View>
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.portalTitle}>Open the full portal</Text>
-                            <Text style={styles.portalSub}>Daily taps, every signup, your QR code, the rewards ledger and your delivery address — and you’re already signed in.</Text>
+                            <Text style={styles.portalTitle}>{t('affiliate:home.openPortal')}</Text>
+                            <Text style={styles.portalSub}>{t('affiliate:home.portalBody')}</Text>
                         </View>
                         {opening ? <ActivityIndicator color={GOLD} /> : <Ionicons name="arrow-forward" size={18} color={GOLD} />}
                     </Pressable>
@@ -231,13 +256,15 @@ function Identity({ data }: { data: AffiliateOverview }) {
     );
 }
 
+/** `title` and `sub` are translation keys, resolved at render. */
 const READY_COPY: Record<ReadinessStep['key'], { title: string; sub: string; icon: React.ComponentProps<typeof Ionicons>['name'] }> = {
-    terms: { title: 'Accept the affiliate terms', sub: 'Fair play and how to label your posts. Two minutes.', icon: 'document-text-outline' },
-    profile: { title: 'Add a photo and a line about you', sub: 'It’s what people see when they tap your link.', icon: 'person-circle-outline' },
-    share: { title: 'Share your link once', sub: 'Story, bio, group chat — anywhere counts.', icon: 'share-social-outline' },
+    terms: { title: 'affiliate:ready.terms.title', sub: 'affiliate:ready.terms.sub', icon: 'document-text-outline' },
+    profile: { title: 'affiliate:ready.profile.title', sub: 'affiliate:ready.profile.sub', icon: 'person-circle-outline' },
+    share: { title: 'affiliate:ready.share.title', sub: 'affiliate:ready.share.sub', icon: 'share-social-outline' },
 };
 
 function Readiness({ steps, onTerms, onProfile, onShare }: { steps: ReadinessStep[]; onTerms: () => void; onProfile: () => void; onShare: () => void }) {
+    const { t } = useTranslation();
     const remaining = steps.filter((s) => !s.done);
     if (remaining.length === 0) return null;
     const termsDone = steps.find((s) => s.key === 'terms')?.done;
@@ -245,7 +272,7 @@ function Readiness({ steps, onTerms, onProfile, onShare }: { steps: ReadinessSte
     return (
         <View style={[styles.card, styles.readyCard]}>
             <View style={styles.readyHead}>
-                <Text style={styles.eyebrowGold}>GET AFFILIATE-READY</Text>
+                <Text style={styles.eyebrowGold}>{t('affiliate:ready.eyebrow')}</Text>
                 <Text style={styles.readyCount}>{done}/{steps.length}</Text>
             </View>
             {steps.map((s) => {
@@ -258,8 +285,8 @@ function Readiness({ steps, onTerms, onProfile, onShare }: { steps: ReadinessSte
                             {s.done ? <Ionicons name="checkmark" size={13} color="#080808" /> : <Ionicons name={c.icon} size={14} color={locked ? MUTED : GOLD} />}
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={[styles.readyTitle, s.done && styles.readyTitleDone, locked && { color: MUTED }]}>{c.title}{s.required && !s.done ? ' · required' : ''}</Text>
-                            {!s.done && <Text style={styles.readySub}>{locked ? 'Accept the terms first.' : c.sub}</Text>}
+                            <Text style={[styles.readyTitle, s.done && styles.readyTitleDone, locked && { color: MUTED }]}>{s.required && !s.done ? t('affiliate:ready.withRequired', { title: t(c.title) }) : t(c.title)}</Text>
+                            {!s.done && <Text style={styles.readySub}>{locked ? t('affiliate:ready.termsFirst') : t(c.sub)}</Text>}
                         </View>
                         {!s.done && !locked && <Ionicons name="chevron-forward" size={16} color={MUTED} />}
                     </Pressable>
@@ -270,40 +297,42 @@ function Readiness({ steps, onTerms, onProfile, onShare }: { steps: ReadinessSte
 }
 
 function CodeHero({ data, ready, copied, onCopy, onShare, onTerms }: { data: AffiliateOverview; ready: boolean; copied: boolean; onCopy: () => void; onShare: () => void; onTerms: () => void }) {
+    const { t } = useTranslation();
     return (
         <View style={[styles.card, styles.codeCard]}>
             <LinearGradient colors={['#1a1a1a', '#0e0e0e']} style={StyleSheet.absoluteFill} pointerEvents="none" />
             <View style={styles.codeGlow} pointerEvents="none" />
-            <Text style={styles.eyebrowGold}>YOUR CODE</Text>
-            <Pressable onPress={onCopy} accessibilityRole="button" accessibilityLabel="Copy your code">
+            <Text style={styles.eyebrowGold}>{t('affiliate:code.eyebrow')}</Text>
+            <Pressable onPress={onCopy} accessibilityRole="button" accessibilityLabel={t('affiliate:code.copyYourCode')}>
                 <Text style={styles.code}>{data.profile.code}</Text>
                 <View style={styles.copyRow}>
                     <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={13} color={copied ? GOLD : MUTED} />
-                    <Text style={[styles.copyText, copied && { color: GOLD }]}>{copied ? 'COPIED' : 'TAP TO COPY'}</Text>
+                    <Text style={[styles.copyText, copied && { color: GOLD }]}>{copied ? t('affiliate:code.copied') : t('affiliate:code.tapToCopy')}</Text>
                 </View>
             </Pressable>
             {ready ? (
                 <View style={styles.ctaRow}>
                     <Pressable onPress={onShare} style={({ pressed }) => [styles.cta, { flex: 1 }, pressed && { opacity: 0.85 }]} accessibilityRole="button">
                         <Ionicons name="share-outline" size={16} color="#080808" />
-                        <Text style={styles.ctaText}>SHARE YOUR LINK</Text>
+                        <Text style={styles.ctaText}>{t('affiliate:code.share')}</Text>
                     </Pressable>
-                    <Pressable onPress={onCopy} style={({ pressed }) => [styles.ctaGhost, pressed && { opacity: 0.85 }]} accessibilityRole="button" accessibilityLabel="Copy code">
+                    <Pressable onPress={onCopy} style={({ pressed }) => [styles.ctaGhost, pressed && { opacity: 0.85 }]} accessibilityRole="button" accessibilityLabel={t('affiliate:code.copyCode')}>
                         <Ionicons name="copy-outline" size={16} color={GOLD} />
                     </Pressable>
                 </View>
             ) : (
                 <Pressable onPress={onTerms} style={({ pressed }) => [styles.lockedCta, pressed && { opacity: 0.85 }]} accessibilityRole="button">
                     <Ionicons name="lock-closed" size={14} color={GOLD} />
-                    <Text style={styles.lockedCtaText}>ACCEPT THE TERMS TO START SHARING</Text>
+                    <Text style={styles.lockedCtaText}>{t('affiliate:code.locked')}</Text>
                 </Pressable>
             )}
-            <Text style={styles.foot}>Say the code out loud in videos — on iPhone the App Store can’t carry it through an install.</Text>
+            <Text style={styles.foot}>{t('affiliate:code.foot')}</Text>
         </View>
     );
 }
 
-function NextUp({ pos }: { pos: LadderPosition }) {
+function NextUp({ pos, countsSignups }: { pos: LadderPosition; countsSignups: boolean }) {
+    const { t } = useTranslation();
     const next = pos.next;
     const img = next?.creator_rewards?.image_url ? rewardLogoUri(next.creator_rewards.image_url) : null;
     const width = useRef(new Animated.Value(0)).current;
@@ -321,15 +350,15 @@ function NextUp({ pos }: { pos: LadderPosition }) {
                     )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.eyebrowGold}>{next ? 'NEXT UP' : 'EVERY STEP REACHED'}</Text>
-                    <Text style={styles.nextTitle} numberOfLines={2}>{next ? stepName(next) : 'You’ve cleared the ladder.'}</Text>
+                    <Text style={styles.eyebrowGold}>{next ? t('affiliate:next.eyebrow') : t('affiliate:next.allReached')}</Text>
+                    <Text style={styles.nextTitle} numberOfLines={2}>{next ? stepName(next) : t('affiliate:next.cleared')}</Text>
                     {next ? (
                         <View style={styles.nextCountRow}>
                             <Text style={styles.nextCount}>{pos.remaining}</Text>
-                            <Text style={styles.nextCountLabel}>more {pos.remaining === 1 ? pos.basisWord.replace(/s$/, '') : pos.basisWord}{next.creator_rewards?.value_label ? ` · worth ${next.creator_rewards.value_label.replace(/^worth\s+/i, '')}` : ''}</Text>
+                            <Text style={styles.nextCountLabel}>{moreLabel(t, pos.remaining, countsSignups, next.creator_rewards?.value_label)}</Text>
                         </View>
                     ) : (
-                        <Text style={styles.nextSub}>Every conversion still earns points. Keep going.</Text>
+                        <Text style={styles.nextSub}>{t('affiliate:next.keepGoing')}</Text>
                     )}
                 </View>
             </View>
@@ -339,14 +368,23 @@ function NextUp({ pos }: { pos: LadderPosition }) {
                 </Animated.View>
             </View>
             <View style={styles.barLabels}>
-                <Text style={styles.barLabel}>{pos.basis} {pos.basisWord}</Text>
-                {next && <Text style={[styles.barLabel, { color: GOLD }]}>{next.n}{next.points > 0 ? ` · +${next.points.toLocaleString()} pts` : ''}</Text>}
+                <Text style={styles.barLabel}>{countsSignups ? t('affiliate:ladder.signups', { count: pos.basis }) : t('affiliate:ladder.converted', { count: pos.basis })}</Text>
+                {next && <Text style={[styles.barLabel, { color: GOLD }]}>{next.points > 0 ? t('affiliate:next.goalPoints', { goal: next.n, points: next.points.toLocaleString() }) : next.n}</Text>}
             </View>
         </View>
     );
 }
 
-function Ladder({ data, pos, onAddress }: { data: AffiliateOverview; pos: LadderPosition; onAddress: () => void }) {
+/** "3 more signups · worth £50". The count itself is drawn separately, in gold. */
+function moreLabel(t: TFunction, remaining: number, countsSignups: boolean, valueLabel: string | null | undefined): string {
+    const more = countsSignups
+        ? t('affiliate:next.moreSignups', { count: remaining })
+        : t('affiliate:next.moreConverted', { count: remaining });
+    return valueLabel ? t('affiliate:next.withWorth', { more, value: valueLabel.replace(/^worth\s+/i, '') }) : more;
+}
+
+function Ladder({ data, pos, countsSignups, onAddress }: { data: AffiliateOverview; pos: LadderPosition; countsSignups: boolean; onAddress: () => void }) {
+    const { t } = useTranslation();
     return (
         <View style={styles.ladder}>
             {data.steps.map((s, i) => {
@@ -356,6 +394,7 @@ function Ladder({ data, pos, onAddress }: { data: AffiliateOverview; pos: Ladder
                 const last = i === data.steps.length - 1;
                 // The rail: gold up to the current rung, the current segment
                 // fills with progress, everything below is faint.
+                const parcelKey = milestone ? PARCEL_LABEL[milestone.fulfilment_status] : null;
                 const railAbove = i === 0 ? 'none' : hit || isNext ? 'gold' : 'faint';
                 const railBelow = last ? 'none' : hit ? 'gold' : isNext ? 'partial' : 'faint';
                 return (
@@ -369,8 +408,8 @@ function Ladder({ data, pos, onAddress }: { data: AffiliateOverview; pos: Ladder
                         railBelow={railBelow}
                         pct={isNext ? pos.pct : hit ? 100 : 0}
                         basis={pos.basis}
-                        basisWord={pos.basisWord}
-                        parcel={milestone ? FULFILMENT_LABEL[milestone.fulfilment_status] : null}
+                        countsSignups={countsSignups}
+                        parcel={parcelKey ? t(parcelKey) : null}
                         tracking={milestone?.tracking_number ? `${milestone.carrier ? `${milestone.carrier} ` : ''}${milestone.tracking_number}` : null}
                         needsAddress={milestone?.fulfilment_status === 'owed' && !data.profile.shipping_address}
                         onAddress={onAddress}
@@ -383,10 +422,11 @@ function Ladder({ data, pos, onAddress }: { data: AffiliateOverview; pos: Ladder
 
 type Rail = 'none' | 'gold' | 'partial' | 'faint';
 
-function Rung({ step, hit, isNext, locked, railAbove, railBelow, pct, basis, basisWord, parcel, tracking, needsAddress, onAddress }: {
+function Rung({ step, hit, isNext, locked, railAbove, railBelow, pct, basis, countsSignups, parcel, tracking, needsAddress, onAddress }: {
     step: AffiliateStep; hit: boolean; isNext: boolean; locked: boolean; railAbove: Rail; railBelow: Rail; pct: number;
-    basis: number; basisWord: string; parcel: string | null; tracking: string | null; needsAddress: boolean; onAddress: () => void;
+    basis: number; countsSignups: boolean; parcel: string | null; tracking: string | null; needsAddress: boolean; onAddress: () => void;
 }) {
+    const { t } = useTranslation();
     const img = step.creator_rewards?.image_url ? rewardLogoUri(step.creator_rewards.image_url) : null;
     const pulse = useRef(new Animated.Value(0)).current;
     useEffect(() => {
@@ -430,16 +470,16 @@ function Rung({ step, hit, isNext, locked, railAbove, railBelow, pct, basis, bas
                     <View style={{ flex: 1, minWidth: 0 }}>
                         <View style={styles.rungTitleRow}>
                             <Text style={[styles.rungName, locked && { color: DIM }]} numberOfLines={1}>{stepName(step)}</Text>
-                            {hit && <View style={styles.chipGold}><Text style={styles.chipGoldText}>REACHED</Text></View>}
-                            {isNext && <View style={styles.chipOutline}><Text style={styles.chipOutlineText}>YOU’RE HERE</Text></View>}
+                            {hit && <View style={styles.chipGold}><Text style={styles.chipGoldText}>{t('affiliate:rung.reached')}</Text></View>}
+                            {isNext && <View style={styles.chipOutline}><Text style={styles.chipOutlineText}>{t('affiliate:rung.here')}</Text></View>}
                         </View>
-                        <Text style={styles.rungMeta}>{step.n} {basisWord.toUpperCase()}{step.creator_rewards?.value_label ? ` · ${step.creator_rewards.value_label.toUpperCase()}` : ''}</Text>
+                        <Text style={styles.rungMeta}>{countsSignups ? t('affiliate:ladder.signupsCaps', { count: step.n }) : t('affiliate:ladder.convertedCaps', { count: step.n })}{step.creator_rewards?.value_label ? ` · ${step.creator_rewards.value_label.toUpperCase()}` : ''}</Text>
                         {step.creator_rewards?.description && !locked ? <Text style={styles.rungDesc} numberOfLines={2}>{step.creator_rewards.description}</Text> : null}
                     </View>
                     {step.points > 0 && (
                         <View style={[styles.ptsPill, locked && styles.ptsPillLocked]}>
                             <Text style={[styles.ptsPillText, locked && { color: MUTED }]}>+{step.points.toLocaleString()}</Text>
-                            <Text style={[styles.ptsPillUnit, locked && { color: MUTED }]}>PTS</Text>
+                            <Text style={[styles.ptsPillUnit, locked && { color: MUTED }]}>{t('affiliate:rung.pts')}</Text>
                         </View>
                     )}
                 </View>
@@ -447,7 +487,7 @@ function Rung({ step, hit, isNext, locked, railAbove, railBelow, pct, basis, bas
                 {isNext && (
                     <View style={styles.rungProgress}>
                         <View style={styles.miniTrack}><LinearGradient colors={[GOLD_DEEP, GOLD]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.miniFill, { width: `${Math.max(2, pct)}%` }]} /></View>
-                        <Text style={styles.miniLabel}>{basis} of {step.n} · {step.n - basis} to go</Text>
+                        <Text style={styles.miniLabel}>{t('affiliate:rung.progress', { basis, goal: step.n, count: step.n - basis })}</Text>
                     </View>
                 )}
                 {parcel && (
@@ -460,7 +500,7 @@ function Rung({ step, hit, isNext, locked, railAbove, railBelow, pct, basis, bas
                 {needsAddress && (
                     <Pressable onPress={onAddress} hitSlop={6} style={styles.addressRow} accessibilityRole="button">
                         <Ionicons name="location-outline" size={12} color="#fbbf24" />
-                        <Text style={styles.addressText}>Add your address so we can send this</Text>
+                        <Text style={styles.addressText}>{t('affiliate:rung.addAddress')}</Text>
                         <Ionicons name="open-outline" size={11} color="#fbbf24" />
                     </Pressable>
                 )}
@@ -483,7 +523,7 @@ function Stat({ icon, label, value, accent, hint }: { icon: React.ComponentProps
 }
 
 function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return new Date(iso).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short' });
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────

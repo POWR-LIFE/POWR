@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
@@ -189,6 +190,7 @@ export function smoothPath(input: { x: number; y: number }[]): string {
 function RangeAnnotations({ points, scale, width, height, dir }: {
     points: TrendPoint[]; scale: Scale; width: number; height: number; dir?: GoodDirection;
 }) {
+    const { t } = useTranslation();
     if (scale.max === scale.min) return null;
     const hi = points.find(p => p.value === scale.max)!;
     const lo = points.find(p => p.value === scale.min)!;
@@ -214,7 +216,7 @@ function RangeAnnotations({ points, scale, width, height, dir }: {
                 x={width - PAD} y={scale.y(scale.avg) - 4}
                 fontSize={7} fill={LABEL} textAnchor="end"
             >
-                {`avg ${Math.round(scale.avg)}`}
+                {t('progress:chart.avg', { value: Math.round(scale.avg) })}
             </SvgText>
         </>
     );

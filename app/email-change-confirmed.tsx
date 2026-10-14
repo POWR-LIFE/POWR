@@ -19,6 +19,7 @@ import GeometricBackground from '@/components/GeometricBackground';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     Pressable,
@@ -35,6 +36,7 @@ type State = 'loading' | 'completed' | 'partial';
 
 export default function EmailChangeConfirmedScreen() {
     const router = useRouter();
+    const { t } = useTranslation();
     const [state, setState]       = useState<State>('loading');
     const [newEmail, setNewEmail] = useState<string>('');
 
@@ -69,7 +71,7 @@ export default function EmailChangeConfirmedScreen() {
             <View style={[styles.container, styles.centred]}>
                 <GeometricBackground />
                 <ActivityIndicator color={GOLD} size="large" />
-                <Text style={styles.loadingText}>Confirming…</Text>
+                <Text style={styles.loadingText}>{t('account:emailChangeConfirmed.loading')}</Text>
             </View>
         );
     }
@@ -80,19 +82,25 @@ export default function EmailChangeConfirmedScreen() {
                 <GeometricBackground />
                 <View style={styles.feedbackBox}>
                     <Text style={styles.feedbackIcon}>✅</Text>
-                    <Text style={styles.feedbackTitle}>One more step</Text>
+                    <Text style={styles.feedbackTitle}>{t('account:emailChangeConfirmed.partial.title')}</Text>
                     <Text style={styles.feedbackBody}>
-                        Thanks — that confirmation worked.
+                        {t('account:emailChangeConfirmed.partial.body')}
                     </Text>
                     <Text style={styles.feedbackHint}>
-                        We also sent a link to {newEmail ? <Text style={styles.feedbackHighlight}>{newEmail}</Text> : 'your other inbox'}. Click that one too to finish moving your POWR account.
+                        {newEmail ? (
+                            <Trans
+                                i18nKey="account:emailChangeConfirmed.partial.hintWithEmail"
+                                values={{ email: newEmail }}
+                                components={{ email: <Text style={styles.feedbackHighlight} /> }}
+                            />
+                        ) : t('account:emailChangeConfirmed.partial.hintNoEmail')}
                     </Text>
                 </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.replace('/(tabs)')}
                 >
-                    <Text style={styles.primaryLabel}>BACK TO APP</Text>
+                    <Text style={styles.primaryLabel}>{t('account:emailChangeConfirmed.partial.backToApp')}</Text>
                 </Pressable>
             </View>
         );
@@ -103,31 +111,34 @@ export default function EmailChangeConfirmedScreen() {
             <GeometricBackground />
             <View style={styles.feedbackBox}>
                 <Text style={styles.feedbackIcon}>📬</Text>
-                <Text style={styles.feedbackTitle}>Email updated</Text>
+                <Text style={styles.feedbackTitle}>{t('account:emailChangeConfirmed.done.title')}</Text>
                 <Text style={styles.feedbackBody}>
-                    Your POWR account is now signed in as{'\n'}
-                    <Text style={styles.feedbackHighlight}>{newEmail}</Text>
+                    <Trans
+                        i18nKey="account:emailChangeConfirmed.done.body"
+                        values={{ email: newEmail }}
+                        components={{ email: <Text style={styles.feedbackHighlight} /> }}
+                    />
                 </Text>
                 <Text style={styles.feedbackHint}>
-                    Use this address next time you sign in.
+                    {t('account:emailChangeConfirmed.done.hint')}
                 </Text>
             </View>
             <Pressable
                 style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                 onPress={() => router.replace('/(tabs)')}
             >
-                <Text style={styles.primaryLabel}>CONTINUE</Text>
+                <Text style={styles.primaryLabel}>{t('account:emailChangeConfirmed.done.continue')}</Text>
             </Pressable>
             <Pressable
                 onPress={() => router.replace('/settings-screen')}
                 style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1, marginTop: 14 }]}
                 hitSlop={8}
             >
-                <Text style={styles.secondaryLink}>Open settings</Text>
+                <Text style={styles.secondaryLink}>{t('account:emailChangeConfirmed.done.openSettings')}</Text>
             </Pressable>
             <View style={styles.iconRow}>
                 <Ionicons name="shield-checkmark-outline" size={14} color={DIM} />
-                <Text style={styles.shieldHint}>If this wasn't you, contact support@powr.life right away.</Text>
+                <Text style={styles.shieldHint}>{t('account:emailChangeConfirmed.done.notYou')}</Text>
             </View>
         </View>
     );

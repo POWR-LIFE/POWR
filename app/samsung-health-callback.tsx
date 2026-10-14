@@ -1,14 +1,17 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as SecureStore from 'expo-secure-store';
 
 import { completeSamsungHealthAuth } from '@/lib/health/providers/samsungHealthProvider';
+import i18n from '@/lib/i18n';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 export default function SamsungHealthCallback() {
     const router = useRouter();
+    const { t } = useTranslation();
     const { code, state, error } = useLocalSearchParams<{
         code?: string;
         state?: string;
@@ -22,26 +25,26 @@ export default function SamsungHealthCallback() {
             try { WebBrowser.dismissBrowser?.(); } catch {}
             if (error) {
                 console.warn('[samsung-health-callback] OAuth error param:', error);
-                setFailReason(`Samsung Health returned: ${error}`);
+                setFailReason(i18n.t('system:healthCallback.samsungReturned', { error }));
                 setStatus('failed');
                 return;
             }
             if (!code || !state) {
                 console.warn('[samsung-health-callback] missing code/state', { code: !!code, state: !!state });
-                setFailReason('Missing authorization code');
+                setFailReason(i18n.t('system:healthCallback.missingCode'));
                 setStatus('failed');
                 return;
             }
             try {
                 const ok = await completeSamsungHealthAuth(code, state);
                 if (!ok) {
-                    setFailReason('State mismatch or empty token response');
+                    setFailReason(i18n.t('system:healthCallback.stateMismatch'));
                     setStatus('failed');
                     return;
                 }
             } catch (e: any) {
                 console.warn('[samsung-health-callback] completeSamsungHealthAuth threw:', e);
-                setFailReason(e?.message ?? 'Token exchange failed');
+                setFailReason(e?.message ?? i18n.t('system:healthCallback.exchangeFailed'));
                 setStatus('failed');
                 return;
             }
@@ -85,9 +88,9 @@ export default function SamsungHealthCallback() {
         <View style={{ flex: 1, backgroundColor: '#0d0d0d', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
             <ActivityIndicator size="large" color="#facc15" />
             <Text style={{ color: '#F2F2F2', marginTop: 16, fontSize: 14, textAlign: 'center' }}>
-                {status === 'exchanging' && 'Connecting Samsung Health…'}
-                {status === 'success' && 'Connected!'}
-                {status === 'failed' && 'Connection failed — tap back to retry.'}
+                {status === 'exchanging' && t('system:healthCallback.connectingSamsung')}
+                {status === 'success' && t('system:healthCallback.connected')}
+                {status === 'failed' && t('system:healthCallback.failed')}
             </Text>
             {status === 'failed' && failReason && (
                 <Text style={{ color: 'rgba(255,255,255,0.4)', marginTop: 8, fontSize: 11, textAlign: 'center', paddingHorizontal: 16 }}>

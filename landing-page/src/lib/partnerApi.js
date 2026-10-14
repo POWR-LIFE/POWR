@@ -33,6 +33,16 @@ export const WEBHOOK_EVENTS = [
         label: 'Pool running low',
         description: 'A reward’s available code stock dipped below your threshold.',
     },
+    {
+        id: 'voucher.confirmed',
+        label: 'Voucher confirmed in store',
+        description: 'Your staff scanned a member’s in-store voucher at the till.',
+    },
+    {
+        id: 'voucher.swiped',
+        label: 'Voucher swiped in store',
+        description: 'Your staff swiped a member’s in-store voucher on their phone (shown, not scanned).',
+    },
 ];
 
 export const callPartnerApi = (action, brandName, params = {}) =>

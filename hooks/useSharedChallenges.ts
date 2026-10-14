@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
+import i18n from '@/lib/i18n';
 import { useActivityRelevance } from '@/hooks/useGymRelevance';
 import { filterTemplatesByRelevance } from '@/lib/social/templateRelevance';
 import { supabase } from '@/lib/supabase';
@@ -54,12 +55,12 @@ const OPTIMISTIC_SELF_STATE: Partial<Record<RespondAction, ParticipantState>> = 
   leave: 'left',
 };
 
-const RESPOND_FALLBACK_ERROR: Record<RespondAction, string> = {
-  accept: 'Couldn’t join this challenge. Check your connection and try again.',
-  decline: 'Couldn’t decline this invite. Check your connection and try again.',
-  leave: 'Couldn’t leave this challenge. Check your connection and try again.',
-  dismiss: 'Couldn’t clear this challenge. Check your connection and try again.',
-  cancel: 'Couldn’t cancel this challenge. Check your connection and try again.',
+const RESPOND_FALLBACK_ERROR_KEY: Record<RespondAction, string> = {
+  accept: 'social:errors.respond.accept',
+  decline: 'social:errors.respond.decline',
+  leave: 'social:errors.respond.leave',
+  dismiss: 'social:errors.respond.dismiss',
+  cancel: 'social:errors.respond.cancel',
 };
 
 /**
@@ -79,27 +80,27 @@ export async function edgeErrorMessage(fnErr: unknown, data: any, fallback: stri
 }
 
 export function durationLabel(h: number): string {
-  if (h % 168 === 0) return `${h / 168} week${h / 168 === 1 ? '' : 's'}`;
-  if (h % 24 === 0) return `${h / 24} day${h / 24 === 1 ? '' : 's'}`;
-  return `${h}h`;
+  if (h % 168 === 0) return i18n.t('social:duration.weeks', { count: h / 168 });
+  if (h % 24 === 0) return i18n.t('social:duration.days', { count: h / 24 });
+  return i18n.t('social:duration.hours', { hours: h });
 }
 
 function humanizeRemaining(endsAt?: string | null): string {
-  if (!endsAt) return 'Not started';
+  if (!endsAt) return i18n.t('social:remaining.notStarted');
   const ms = Date.parse(endsAt) - Date.now();
-  if (ms <= 0) return 'Ended';
+  if (ms <= 0) return i18n.t('social:remaining.ended');
   const mins = Math.round(ms / 60000);
-  if (mins < 60) return `${mins}m left`;
+  if (mins < 60) return i18n.t('social:remaining.minutes', { count: mins });
   const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h left`;
-  return `${Math.round(hrs / 24)}d left`;
+  if (hrs < 24) return i18n.t('social:remaining.hours', { count: hrs });
+  return i18n.t('social:remaining.days', { count: Math.round(hrs / 24) });
 }
 
 function mapTemplateRow(row: any): ChallengeTemplate {
   return {
     id: row.id,
     category: row.category,
-    categoryLabel: CATEGORY_LABEL[row.category] ?? 'Activity',
+    categoryLabel: CATEGORY_LABEL[row.category] ?? i18n.t('social:category.fallback'),
     icon: CATEGORY_ICON[row.category] ?? CATEGORY_ICON.multi,
     tier: row.tier,
     title: row.title,
@@ -165,10 +166,10 @@ function mapChallengeRow(row: any): SharedChallenge {
     template: {
       id: tmpl.id ?? row.id,
       category: row.category,
-      categoryLabel: CATEGORY_LABEL[row.category] ?? 'Activity',
+      categoryLabel: CATEGORY_LABEL[row.category] ?? i18n.t('social:category.fallback'),
       icon: CATEGORY_ICON[row.category] ?? CATEGORY_ICON.multi,
       tier: tmpl.tier ?? 'easy',
-      title: tmpl.title ?? 'Challenge',
+      title: tmpl.title ?? i18n.t('social:fallbackTitle'),
       goal: tmpl.goal ?? '',
       basePoints: tmpl.base_points ?? row.base_points ?? 0,
       mode: row.kind === 'pooled' ? 'pooled' : 'solo',
@@ -396,7 +397,7 @@ export function useSharedChallenges(): UseSharedChallenges {
     // turned the board on, or they already have one up — so the outcome is
     // returned rather than swallowed into a console.warn the way it used to be.
     if (error || (data as any)?.error) {
-      const message = await edgeErrorMessage(error, data, 'Couldn’t create that challenge');
+      const message = await edgeErrorMessage(error, data, i18n.t('social:errors.create'));
       console.warn('[useSharedChallenges] create failed:', message);
       await load();
       return { ok: false, error: message };
@@ -460,7 +461,7 @@ export function useSharedChallenges(): UseSharedChallenges {
         body: { challenge_id: challengeId, action },
       });
       if (error || data?.ok === false) {
-        const message = await edgeErrorMessage(error, data, RESPOND_FALLBACK_ERROR[action]);
+        const message = await edgeErrorMessage(error, data, i18n.t(RESPOND_FALLBACK_ERROR_KEY[action]));
         console.warn(`[useSharedChallenges] ${action} failed:`, message);
         patchSelf(priorSelfState, priorDismissedAt);
         await load(); // server truth, where it's reachable

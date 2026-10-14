@@ -1,5 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -36,6 +37,7 @@ interface Props {
 }
 
 export function LevelProgressRow({ totalEarned, onPress, onLongPress }: Props) {
+  const { t } = useTranslation();
   const { current, next, xpIntoLevel, xpForLevel } = getLevelInfo(totalEarned);
   const pct = xpForLevel > 0 ? Math.min(xpIntoLevel / xpForLevel, 1) : 1;
   const ptsToNext = xpForLevel - xpIntoLevel;
@@ -121,11 +123,14 @@ export function LevelProgressRow({ totalEarned, onPress, onLongPress }: Props) {
         </View>
         {next ? (
           <Text style={styles.ptsText} numberOfLines={1}>
-            <Text style={styles.ptsNum}>{ptsToNext.toLocaleString()}</Text>
-            {nearLevel ? ` pts to ${next.name} — almost there` : ' pts to next level'}
+            <Trans
+              i18nKey={nearLevel ? 'home:level.toNamed' : 'home:level.toNext'}
+              values={{ points: ptsToNext.toLocaleString(), level: next.name }}
+              components={{ num: <Text style={styles.ptsNum} /> }}
+            />
           </Text>
         ) : (
-          <Text style={styles.ptsText}>You&apos;ve reached the top</Text>
+          <Text style={styles.ptsText}>{t('home:level.top')}</Text>
         )}
       </View>
 

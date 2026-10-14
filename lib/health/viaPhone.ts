@@ -9,8 +9,14 @@
  * between app versions, so re-check on a device when a brand redesigns. A
  * brand without a known path gets a generic one rather than a wrong one.
  *
+ * The text lives in the health catalog (health:viaPhoneSteps) and is resolved
+ * when the sheet asks for it, so it follows the language on screen. A path's
+ * French or Spanish should mirror what the brand's app shows in that language.
+ *
  * Pure — tested in __tests__/viaPhone.test.ts.
  */
+
+import i18n from '@/lib/i18n';
 
 export type ViaPhonePlatform = 'ios' | 'android' | 'web';
 
@@ -23,6 +29,7 @@ export type ViaPhoneCopy = {
     note: string | null;
 };
 
+/** Catalog keys, not text. */
 type BrandPaths = {
     /** How the brand's app is named in a sentence ("Garmin Connect", "the WHOOP app"). */
     app?: string;
@@ -33,53 +40,55 @@ type BrandPaths = {
 
 const BRANDS: Record<string, BrandPaths> = {
     garmin: {
-        app: 'Garmin Connect',
-        ios: 'Garmin Connect → More → Settings → Connected Apps → Apple Health, then allow everything',
-        android: 'Garmin Connect → Settings → Health Connect, then allow everything',
-        note: 'Open Garmin Connect once a day — it only shares while it’s open.',
+        app: 'health:viaPhoneSteps.brands.garmin.app',
+        ios: 'health:viaPhoneSteps.brands.garmin.ios',
+        android: 'health:viaPhoneSteps.brands.garmin.android',
+        note: 'health:viaPhoneSteps.brands.garmin.note',
     },
     whoop: {
-        app: 'the WHOOP app',
-        ios: 'WHOOP → More → App Settings → Integrations → Apple Health → Connect, then allow everything',
-        android: 'WHOOP → More → App Settings → Integrations → Health Connect, then allow everything',
+        app: 'health:viaPhoneSteps.brands.whoop.app',
+        ios: 'health:viaPhoneSteps.brands.whoop.ios',
+        android: 'health:viaPhoneSteps.brands.whoop.android',
     },
     oura: {
-        app: 'the Oura app',
-        ios: 'Oura → menu → Settings → Apple Health, then turn on Connect to Health',
-        android: 'Oura → menu → Settings → Health Connect, then allow everything',
+        app: 'health:viaPhoneSteps.brands.oura.app',
+        ios: 'health:viaPhoneSteps.brands.oura.ios',
+        android: 'health:viaPhoneSteps.brands.oura.android',
     },
     polar: {
-        app: 'Polar Flow',
-        ios: 'Polar Flow → More → General settings → Apple Health, then Turn All Categories On',
-        android: 'Polar Flow → More → General settings → Health Connect, then allow everything',
+        app: 'health:viaPhoneSteps.brands.polar.app',
+        ios: 'health:viaPhoneSteps.brands.polar.ios',
+        android: 'health:viaPhoneSteps.brands.polar.android',
     },
     strava: {
-        app: 'Strava',
-        ios: 'Strava → Settings → Applications, Services, and Devices → Health → Connect, and turn on Workouts',
-        android: 'Strava → Settings → Applications, Services, and Devices → Health Connect',
+        app: 'health:viaPhoneSteps.brands.strava.app',
+        ios: 'health:viaPhoneSteps.brands.strava.ios',
+        android: 'health:viaPhoneSteps.brands.strava.android',
     },
     zepp: {
-        app: 'the Zepp app',
-        ios: 'Zepp → Profile → Add accounts → Apple Health, then allow everything',
-        android: 'Zepp → Profile → Link third-party accounts → Health Connect, then turn on sync',
+        app: 'health:viaPhoneSteps.brands.zepp.app',
+        ios: 'health:viaPhoneSteps.brands.zepp.ios',
+        android: 'health:viaPhoneSteps.brands.zepp.android',
     },
     fitbit: {
-        app: 'the Fitbit app',
+        app: 'health:viaPhoneSteps.brands.fitbit.app',
         // Fitbit has never written to Apple Health.
         ios: null,
-        android: 'Fitbit → your profile → Settings → Health Connect → Sync with Health Connect',
+        android: 'health:viaPhoneSteps.brands.fitbit.android',
     },
 };
 
 export function viaPhoneCopy(providerId: string, brand: string, platform: ViaPhonePlatform): ViaPhoneCopy {
     const paths = BRANDS[providerId] ?? {};
-    const app = paths.app ?? `the ${brand} app`;
-    const store = platform === 'android' ? 'Health Connect' : 'Apple Health';
+    const app = paths.app ? i18n.t(paths.app) : i18n.t('health:viaPhoneSteps.genericApp', { brand });
+    const store = platform === 'android'
+        ? i18n.t('health:viaPhoneSteps.store.healthConnect')
+        : i18n.t('health:viaPhoneSteps.store.appleHealth');
 
     if (platform === 'web') {
         return {
-            title: `${brand} syncs through your phone`,
-            body: `Our direct ${brand} link is paused for now. Open POWR on your phone to connect Apple Health or Health Connect. Your ${brand} data reaches POWR from there.`,
+            title: i18n.t('health:viaPhoneSteps.web.title', { brand }),
+            body: i18n.t('health:viaPhoneSteps.web.body', { brand }),
             step2: null,
             note: null,
         };
@@ -90,20 +99,22 @@ export function viaPhoneCopy(providerId: string, brand: string, platform: ViaPho
         // The brand can't share into this store — say so, and still offer the
         // phone's own steps rather than a dead end.
         return {
-            title: `${brand} can’t sync to ${platform === 'ios' ? 'iPhone' : 'this phone'} right now`,
-            body: `Our direct ${brand} link is paused, and ${brand} doesn’t share with ${store}. Until it’s back, POWR counts the steps your phone records — connect ${store} for those.`,
+            title: platform === 'ios'
+                ? i18n.t('health:viaPhoneSteps.unsupported.titleIos', { brand })
+                : i18n.t('health:viaPhoneSteps.unsupported.titleAndroid', { brand }),
+            body: i18n.t('health:viaPhoneSteps.unsupported.body', { brand, store }),
             step2: null,
             note: null,
         };
     }
 
     return {
-        title: `${brand} syncs through ${store}`,
-        body: `Our direct ${brand} link is paused for now. Your ${brand} still earns POWR: ${app} shares your workouts, steps and sleep with ${store}, and POWR reads them from there.`,
+        title: i18n.t('health:viaPhoneSteps.title', { brand, store }),
+        body: i18n.t('health:viaPhoneSteps.body', { brand, app, store }),
         step2: {
-            title: `2. Turn on sharing in ${app}`,
-            desc: path ?? `In ${app}, find its ${store} setting (usually under Settings → Connected apps) and allow everything`,
+            title: i18n.t('health:viaPhoneSteps.step2Title', { app }),
+            desc: path ? i18n.t(path) : i18n.t('health:viaPhoneSteps.step2Generic', { app, store }),
         },
-        note: paths.note ?? null,
+        note: paths.note ? i18n.t(paths.note) : null,
     };
 }

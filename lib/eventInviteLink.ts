@@ -1,3 +1,5 @@
+import i18n from '@/lib/i18n';
+
 /**
  * The link an event invite (share sheet + in-app QR) encodes. Mirrors the
  * admin/promo registration QR contract in
@@ -35,7 +37,7 @@ export function eventInviteMessage(opts: {
     bonusPoints?: number | null;
 }): string {
     const { eventName, link, code, bonusPoints } = opts;
-    const lines = [`Join me for ${eventName} on POWR 💪`];
+    const lines = [i18n.t('events:invite.message', { event: eventName })];
     if (code) lines.push(inviteCodeLine(code, bonusPoints));
     lines.push(link);
     return lines.join('\n');
@@ -47,6 +49,6 @@ export function eventInviteMessage(opts: {
  */
 export function inviteCodeLine(code: string, bonusPoints?: number | null): string {
     return bonusPoints && bonusPoints > 0
-        ? `Sign up with my code ${code} — we both earn +${bonusPoints} POWR after your first workout.`
-        : `Sign up with my code ${code}.`;
+        ? i18n.t('events:invite.codeWithBonus', { code, points: bonusPoints })
+        : i18n.t('events:invite.code', { code });
 }

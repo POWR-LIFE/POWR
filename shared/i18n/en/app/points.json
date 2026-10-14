@@ -1,0 +1,223 @@
+{
+  "ledger": {
+    "title": "Points History",
+    "loadError": "Could not load history.",
+    "empty": "No transactions yet.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "summary": {
+      "balance": "Balance",
+      "totalEarned": "Total Earned",
+      "scopedEntries": "{{label}} Entries"
+    },
+    "typeFallback": {
+      "earn": "Activity",
+      "bonus": "Bonus",
+      "streak": "Streak Bonus",
+      "adjustment": "Adjustment",
+      "redeem": "Reward Redeemed",
+      "penalty": "Penalty"
+    },
+    "badge": {
+      "together": "TOGETHER",
+      "streak": "STREAK",
+      "vault": "VAULT",
+      "bonus": "BONUS",
+      "minutes": "+{{minutes}} MIN",
+      "adjustment": "ADJ",
+      "penalty": "PENALTY",
+      "levelUp": "LEVEL UP"
+    },
+    "levelUpRow": "Level {{level}} — {{name}}"
+  },
+  "filters": {
+    "all": "All",
+    "together": "Together",
+    "type": {
+      "bonus": "Bonuses",
+      "streak": "Streaks",
+      "redeem": "Rewards",
+      "penalty": "Penalties",
+      "adjustment": "Adjustments",
+      "earn": "Other"
+    }
+  },
+  "filterSheet": {
+    "eyebrow": "FILTER",
+    "headline": "What do you want to see?",
+    "activities": "ACTIVITIES",
+    "otherPoints": "OTHER POINTS",
+    "entries_one": "{{n}} entry",
+    "entries_other": "{{n}} entries",
+    "rowA11y_one": "{{label}}, {{count}} entries",
+    "rowA11y_other": "{{label}}, {{count}} entries",
+    "close": "Close",
+    "chipA11y": "Filter history",
+    "chipA11yFiltered": "Filter: {{label}}. Change filter"
+  },
+  "manualLog": {
+    "title": "Log Activity",
+    "pickerLabel": "Pick your activity",
+    "dailyCap": "up to {{cap}} pts",
+    "pickerNote": "Manual logs earn 80% of base points · Verify with Health for full points",
+    "minimum": {
+      "steps": "Minimum {{steps}} steps to earn points",
+      "minutes": "Minimum {{minutes}} min to qualify",
+      "other": "Complete the activity to qualify"
+    },
+    "details": {
+      "title": "Session details",
+      "steps": {
+        "label": "Steps",
+        "placeholder": "e.g. 8000",
+        "unit": "steps"
+      },
+      "duration": {
+        "label": "Duration",
+        "placeholder": "e.g. 45",
+        "unit": "min"
+      },
+      "distance": {
+        "label": "Distance",
+        "placeholder": "Optional"
+      },
+      "optional": "optional"
+    },
+    "verify": {
+      "cta": "Verify with Health for full points",
+      "success": "Health Verified — full points",
+      "failed": "Couldn't verify with Health"
+    },
+    "preview": {
+      "belowMinimum": "Doesn't meet minimum threshold",
+      "estimated": "Estimated POWR",
+      "ptsUnit": " pts",
+      "base": "Base",
+      "points": "{{points}} pts",
+      "verifiedRate": "Health verified (×1.0)",
+      "manualRate": "Manual (×0.8)"
+    },
+    "submit": "Log session",
+    "submitWithPoints": "Log session · {{points}} pts",
+    "submitNote": {
+      "verified": "Health verified — full points awarded. No streak credit.",
+      "manual": "Manual logs earn 80% of base points. Verify with Health for full points."
+    },
+    "submitFailed": "Failed to log session"
+  },
+  "achievementsScreen": {
+    "title": "ACHIEVEMENTS",
+    "summary": {
+      "levels": "levels",
+      "earned": "earned"
+    },
+    "tabs": {
+      "levels": "LEVELS",
+      "badges": "BADGES"
+    },
+    "filterAll": "All",
+    "filterEarned": "Earned",
+    "allCategories": "All categories",
+    "loading": "Loading…",
+    "empty": "No achievements here yet",
+    "levelNumber": "LVL {{level}}",
+    "xp": "{{xp}} pts",
+    "unlockAt": "Unlock at {{xp}} pts",
+    "toGo": "{{xp}} pts to go",
+    "complete": "COMPLETE",
+    "progressTo": "{{percent}}% to LV{{level}}"
+  },
+  "levels": {
+    "touchingGrass": {
+      "name": "Touching Grass"
+    },
+    "cardioGoblin": {
+      "name": "Cardio Goblin"
+    },
+    "streakFreak": {
+      "name": "Streak Freak"
+    },
+    "motionMagic": {
+      "name": "Motion Magic"
+    },
+    "heavyHitter": {
+      "name": "Heavy Hitter"
+    },
+    "cantSitStill": {
+      "name": "Can't Sit Still"
+    },
+    "ironLungs": {
+      "name": "Iron Lungs"
+    },
+    "pavementPredator": {
+      "name": "Pavement Predator"
+    },
+    "stepCollector": {
+      "name": "Step Collector"
+    },
+    "calorieCriminal": {
+      "name": "Calorie Criminal"
+    },
+    "mileMuncher": {
+      "name": "Mile Muncher"
+    },
+    "moveMachine": {
+      "name": "Move Machine"
+    },
+    "needNewShoes": {
+      "name": "Need New Shoes"
+    },
+    "certifiedWeapon": {
+      "name": "Certified Weapon"
+    },
+    "momentumMonster": {
+      "name": "Momentum Monster"
+    },
+    "limitBreaker": {
+      "name": "Limit Breaker"
+    },
+    "dieselMode": {
+      "name": "Diesel Mode"
+    },
+    "peakCondition": {
+      "name": "Peak Condition"
+    },
+    "longHauler": {
+      "name": "Long Hauler"
+    },
+    "goggins": {
+      "name": "Goggins"
+    },
+    "tiers": {
+      "recruit": "RECRUIT",
+      "athlete": "ATHLETE",
+      "elite": "ELITE",
+      "legend": "LEGEND"
+    },
+    "tierRange": "LEVELS {{from}}–{{to}}"
+  },
+  "achievements": {
+    "reachLevel": "Reach Level {{level}}: {{name}}",
+    "summit": "The summit. Reach Level {{level}}: {{name}}",
+    "category": {
+      "habit": "Habit",
+      "sessions": "Sessions",
+      "points": "Points",
+      "level": "Level",
+      "running": "Running",
+      "gym": "Gym",
+      "cycling": "Cycling",
+      "swimming": "Swimming",
+      "hiit": "HIIT",
+      "yoga": "Yoga",
+      "sports": "Sports",
+      "walking": "Walking"
+    },
+    "rarity": {
+      "common": "Common",
+      "rare": "Rare",
+      "epic": "Epic",
+      "legendary": "Legendary"
+    }
+  }
+}

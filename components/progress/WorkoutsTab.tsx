@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { addDays, dayFromKey, useDaySelection } from '@/components/progress/daySelection';
@@ -21,6 +22,7 @@ import {
     type TodayActivityDetail,
     type WeekActivityData,
 } from '@/lib/api/activity';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { dayAnchor, monthLabel, weekAnchorMonday } from '@/lib/progressLookback';
 import { formatDistance } from '@/lib/units';
 import { isDistanceLed } from '@/lib/weeklyActivities';
@@ -32,15 +34,29 @@ const TEXT   = '#F2F2F2';
 const MUTED  = 'rgba(255,255,255,0.25)';
 const DIM    = 'rgba(255,255,255,0.5)';
 
-const DAY_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_KEYS = [
+  'progress:days.short.mon', 'progress:days.short.tue', 'progress:days.short.wed', 'progress:days.short.thu',
+  'progress:days.short.fri', 'progress:days.short.sat', 'progress:days.short.sun',
+] as const;
+const DAY_INITIAL_KEYS = [
+  'progress:days.initial.mon', 'progress:days.initial.tue', 'progress:days.initial.wed', 'progress:days.initial.thu',
+  'progress:days.initial.fri', 'progress:days.initial.sat', 'progress:days.initial.sun',
+] as const;
+const MONTH_KEYS = [
+  'progress:months.short.jan', 'progress:months.short.feb', 'progress:months.short.mar', 'progress:months.short.apr',
+  'progress:months.short.may', 'progress:months.short.jun', 'progress:months.short.jul', 'progress:months.short.aug',
+  'progress:months.short.sep', 'progress:months.short.oct', 'progress:months.short.nov', 'progress:months.short.dec',
+] as const;
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 
 // ─── Pill Toggle ─────────────────────────────────────────────────────────────
 
 type Period = 'D' | 'W' | 'M';
 const PERIODS: Period[] = ['D', 'W', 'M'];
+const PERIOD_KEYS: Record<Period, string> = { D: 'progress:period.D', W: 'progress:period.W', M: 'progress:period.M' };
 
 function PillToggle({ value, onChange, colour }: { value: Period; onChange: (p: Period) => void; colour: string }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.pillRow}>
       {PERIODS.map(p => {
@@ -51,7 +67,7 @@ function PillToggle({ value, onChange, colour }: { value: Period; onChange: (p: 
             style={[styles.pill, active && { backgroundColor: colour }]}
             onPress={() => onChange(p)}
           >
-            <Text style={[styles.pillText, active && styles.pillTextActive]}>{p}</Text>
+            <Text style={[styles.pillText, active && styles.pillTextActive]}>{t(PERIOD_KEYS[p])}</Text>
           </Pressable>
         );
       })}
@@ -63,22 +79,22 @@ function PillToggle({ value, onChange, colour }: { value: Period; onChange: (p: 
 
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
+  return i18n.t('progress:dates.monthDay', { month: i18n.t(MONTH_KEYS[d.getMonth()]), day: d.getDate() });
 }
 
 function formatDuration(mins: number): string {
   if (mins >= 60) {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    return m > 0 ? i18n.t('progress:units.hm', { h, m }) : i18n.t('progress:units.h', { h });
   }
-  return `${mins}m`;
+  return i18n.t('progress:units.m', { m: mins });
 }
 
 // ─── Day View ────────────────────────────────────────────────────────────────
 
 function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; data: TodayActivityDetail | null; offset: number; onInfo: () => void }) {
+  const { t } = useTranslation();
   const config = ACTIVITIES[type];
   const isToday = offset === 0;
   const [history, setHistory] = useState<DailyWorkoutHistory[]>([]);
@@ -97,21 +113,31 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
       {!hasToday ? (
         <View style={styles.emptyState}>
           <Ionicons name={config.icon as any} size={28} color={MUTED} />
-          <Text style={styles.emptyText}>No {config.label.toLowerCase()} session {isToday ? 'today' : 'on this day'}.</Text>
+          <Text style={styles.emptyText}>
+            {isToday
+              ? t('progress:workouts.day.noneToday', { activity: config.label.toLowerCase() })
+              : t('progress:workouts.day.noneOnDay', { activity: config.label.toLowerCase() })}
+          </Text>
           <Text style={styles.emptySubtext}>
-            {isToday ? 'Complete a session to see your daily stats.' : 'Nothing was logged on this date.'}
+            {isToday ? t('progress:workouts.day.noneTodayHint') : t('progress:workouts.day.noneOnDayHint')}
           </Text>
         </View>
       ) : (
         <>
           <View style={styles.bigMetricRow}>
             <View style={styles.bigMetric}>
-              <Text style={styles.bigMetricSup}>{isToday ? "TODAY'S " : ''}{config.labelShort.toUpperCase()}</Text>
+              <Text style={styles.bigMetricSup}>
+                {isToday
+                  ? t('progress:workouts.day.todays', { activity: config.labelShort.toUpperCase() })
+                  : config.labelShort.toUpperCase()}
+              </Text>
               <Text style={[styles.bigMetricVal, { color: config.colour }, dayDistance > 0 && { fontSize: 30, lineHeight: 32 }]}>
                 {dayDistance > 0 ? formatDistance(dayDistance, type) : data!.sessionCount}
               </Text>
               <Text style={styles.bigMetricMax}>
-                {dayDistance > 0 ? `${data!.sessionCount} ` : ''}{data!.sessionCount === 1 ? 'session' : 'sessions'} · {formatDuration(data!.totalDurationMin)}
+                {dayDistance > 0
+                  ? t('progress:workouts.day.sessionsCounted', { count: data!.sessionCount, duration: formatDuration(data!.totalDurationMin) })
+                  : t('progress:workouts.day.sessions', { count: data!.sessionCount, duration: formatDuration(data!.totalDurationMin) })}
               </Text>
               <View style={styles.metricBar}>
                 <View style={[styles.metricBarFill, { width: `${Math.round(Math.min(data!.sessionCount / 1, 1) * 100)}%` as any, backgroundColor: config.colour }]} />
@@ -120,13 +146,13 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
             <View style={styles.bigMetricDivider} />
             <View style={styles.bigMetric}>
               <View style={styles.bigMetricSupRow}>
-                <Text style={styles.bigMetricSup}>POWR EARNED</Text>
-                <PointsInfoDot onPress={onInfo} label={`How you earned this ${config.label} POWR`} />
+                <Text style={styles.bigMetricSup}>{t('progress:metric.powrEarned')}</Text>
+                <PointsInfoDot onPress={onInfo} label={t('progress:workouts.howEarned', { activity: config.label })} />
               </View>
               <Text style={[styles.bigMetricVal, { color: GOLD }]}>
                 {data!.totalPoints > 0 ? data!.totalPoints : '—'}
               </Text>
-              <Text style={styles.bigMetricMax}>{isToday ? 'today' : 'this day'}</Text>
+              <Text style={styles.bigMetricMax}>{isToday ? t('progress:metric.today') : t('progress:metric.thisDay')}</Text>
             </View>
           </View>
 
@@ -134,10 +160,12 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
             <Ionicons name={config.iconActive as any} size={12} color={config.colour} />
             <Text style={[styles.insightText, { color: DIM }]}>
               {data!.totalDurationMin >= 45
-                ? `Great ${config.label.toLowerCase()} session${isToday ? ' today' : ''}.`
+                ? isToday
+                  ? t('progress:workouts.day.greatToday', { activity: config.label.toLowerCase() })
+                  : t('progress:workouts.day.great', { activity: config.label.toLowerCase() })
                 : isToday
-                ? `${config.label} session logged — keep the momentum going.`
-                : `${config.label} session logged.`}
+                ? t('progress:workouts.day.loggedToday', { activity: config.label })
+                : t('progress:workouts.day.logged', { activity: config.label })}
             </Text>
           </View>
         </>
@@ -146,10 +174,10 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
       {hasHistory && (
         <>
           <View style={styles.tabSep} />
-          <Text style={styles.tabSubLabel}>{isToday ? 'RECENT DAYS' : 'PREVIOUS DAYS'}</Text>
+          <Text style={styles.tabSubLabel}>{isToday ? t('progress:workouts.day.recentDays') : t('progress:metric.previousDays')}</Text>
           {history.map((day) => {
             const d = new Date(day.date + 'T00:00:00');
-            const dayName = d.toLocaleDateString('en-GB', { weekday: 'short' });
+            const dayName = d.toLocaleDateString(getFormatLocale(), { weekday: 'short' });
             const dayNum  = d.getDate();
             const hasData = day.sessions > 0;
             return (
@@ -166,11 +194,11 @@ function WorkoutDayView({ type, data, offset, onInfo }: { type: ActivityType; da
                       // "45m" beside "5.0 mi" and "830 m" reads as metres — in a
                       // column that mixes the two, spell the minutes out.
                       : isDistanceLed(type) && day.totalDurationMin < 60
-                        ? `${day.totalDurationMin} min`
+                        ? t('progress:units.min', { m: day.totalDurationMin })
                         : formatDuration(day.totalDurationMin)}
                 </Text>
                 <Text style={[styles.historyPoints, !hasData && { color: MUTED }]}>
-                  {hasData && day.points > 0 ? `${day.points}pt` : '—'}
+                  {hasData && day.points > 0 ? t('progress:units.pt', { points: day.points }) : '—'}
                 </Text>
               </View>
             );
@@ -201,6 +229,7 @@ function WorkoutWeekView({
   /** A tapped day, plus every tappable day this week for the sheet to step through. */
   onSelectDay: (day: Date, days: Date[]) => void;
 }) {
+  const { t } = useTranslation();
   const config = ACTIVITIES[type];
   const sessionPct = Math.min(count / 5, 1);
   const capPct = config.dailyCap > 0 ? Math.min(weeklyEarned / (config.dailyCap * 5), 1) : sessionPct;
@@ -225,12 +254,16 @@ function WorkoutWeekView({
     <View style={styles.tabPanel}>
       <View style={styles.bigMetricRow}>
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>{config.labelShort.toUpperCase()} {byDistance ? 'DISTANCE' : 'SESSIONS'}</Text>
+          <Text style={styles.bigMetricSup}>
+            {byDistance
+              ? t('progress:workouts.week.distance', { activity: config.labelShort.toUpperCase() })
+              : t('progress:workouts.week.sessions', { activity: config.labelShort.toUpperCase() })}
+          </Text>
           <Text style={[styles.bigMetricVal, { color: config.colour }, byDistance && { fontSize: 30, lineHeight: 32 }]}>
             {byDistance ? formatDistance(weekDistance, type) : count}
           </Text>
           <Text style={styles.bigMetricMax}>
-            {byDistance ? `${count} of 5 sessions` : '/ 5 goal'}
+            {byDistance ? t('progress:workouts.week.ofFive', { sessions: count }) : t('progress:workouts.week.goal')}
           </Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(sessionPct * 100)}%` as any, backgroundColor: config.colour }]} />
@@ -239,11 +272,11 @@ function WorkoutWeekView({
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
           <View style={styles.bigMetricSupRow}>
-            <Text style={styles.bigMetricSup}>POWR EARNED</Text>
-            <PointsInfoDot onPress={onInfo} label={`How you earned this ${config.label} POWR`} />
+            <Text style={styles.bigMetricSup}>{t('progress:metric.powrEarned')}</Text>
+            <PointsInfoDot onPress={onInfo} label={t('progress:workouts.howEarned', { activity: config.label })} />
           </View>
           <Text style={[styles.bigMetricVal, { color: GOLD }]}>{weeklyEarned > 0 ? weeklyEarned : '—'}</Text>
-          <Text style={styles.bigMetricMax}>from {isCurrentWeek ? 'this' : 'that'} week</Text>
+          <Text style={styles.bigMetricMax}>{isCurrentWeek ? t('progress:metric.fromThisWeek') : t('progress:metric.fromThatWeek')}</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(capPct * 100)}%` as any, backgroundColor: GOLD }]} />
           </View>
@@ -252,9 +285,9 @@ function WorkoutWeekView({
 
       <View style={styles.tabSep} />
 
-      <Text style={styles.tabSubLabel}>{isCurrentWeek ? 'THIS WEEK' : 'DAY BY DAY'}</Text>
+      <Text style={styles.tabSubLabel}>{isCurrentWeek ? t('progress:metric.thisWeek') : t('progress:metric.dayByDay')}</Text>
       <View style={styles.weekBarChart}>
-        {DAY_LABELS.map((day, i) => {
+        {DAY_INITIAL_KEYS.map((dayKey, i) => {
           const active   = weekActiveDays[i];
           const isToday  = isCurrentWeek && i === TODAY_INDEX;
           const isFuture = isCurrentWeek && i > TODAY_INDEX;
@@ -276,7 +309,7 @@ function WorkoutWeekView({
                 ),
                 hitSlop: 8,
                 accessibilityRole: 'button',
-                accessibilityLabel: `${DAY_LABELS[i]} — see what you earned`,
+                accessibilityLabel: t('progress:chart.seeEarned', { day: t(DAY_KEYS[i]) }),
               } : {})}
             >
               <View style={styles.weekBarTrack}>
@@ -296,7 +329,7 @@ function WorkoutWeekView({
                 isToday && { color: TEXT, fontWeight: '600' },
                 selected && { color: GOLD, fontWeight: '600' },
               ]}>
-                {day.charAt(0)}
+                {t(dayKey)}
               </Text>
             </Col>
           );
@@ -306,14 +339,18 @@ function WorkoutWeekView({
       {streak >= 2 && (
         <View style={styles.insightRow}>
           <Ionicons name="flash" size={12} color={GOLD} />
-          <Text style={styles.insightText}>{streak} day streak — keep it going!</Text>
+          <Text style={styles.insightText}>{t('progress:workouts.week.streak', { days: streak })}</Text>
         </View>
       )}
 
       {activeDays > 0 && streak < 2 && (
         <View style={styles.insightRow}>
           <Ionicons name={config.iconActive as any} size={12} color={config.colour} />
-          <Text style={styles.insightText}>{activeDays} day{activeDays !== 1 ? 's' : ''} active {isCurrentWeek ? 'this' : 'that'} week.</Text>
+          <Text style={styles.insightText}>
+            {isCurrentWeek
+              ? t('progress:workouts.week.activeThis', { count: activeDays })
+              : t('progress:workouts.week.activeThat', { count: activeDays })}
+          </Text>
         </View>
       )}
 
@@ -325,12 +362,12 @@ function WorkoutWeekView({
         />
         <Text style={[styles.insightText, count >= 3 && { color: DIM }]}>
           {count >= 4
-            ? `Outstanding ${config.label.toLowerCase()} week.`
+            ? t('progress:workouts.week.outstanding', { activity: config.label.toLowerCase() })
             : count >= 3
-            ? isCurrentWeek ? 'Solid effort — keep going to hit your goal.' : 'Solid week of training.'
+            ? isCurrentWeek ? t('progress:workouts.week.solidThis') : t('progress:workouts.week.solidThat')
             : isCurrentWeek
-            ? `${5 - count} more sessions to hit your target.`
-            : `${count} of 5 sessions that week.`}
+            ? t('progress:workouts.week.moreToGo', { sessions: 5 - count })
+            : t('progress:workouts.week.thatWeek', { sessions: count })}
         </Text>
       </View>
     </View>
@@ -353,6 +390,7 @@ function WorkoutMonthView({
   markedKey: string | null;
   onSelectDay: (day: Date, days: Date[]) => void;
 }) {
+  const { t } = useTranslation();
   // "This Month" / "June" — the window is a calendar month, so every label the
   // panel shows has to name it rather than say "30 days".
   const label = monthLabel(offset);
@@ -362,7 +400,7 @@ function WorkoutMonthView({
     return (
       <View style={styles.emptyState}>
         <Ionicons name={config.icon as any} size={28} color={MUTED} />
-        <Text style={styles.emptyText}>Loading monthly data...</Text>
+        <Text style={styles.emptyText}>{t('progress:workouts.month.loading')}</Text>
       </View>
     );
   }
@@ -374,9 +412,11 @@ function WorkoutMonthView({
       <View style={styles.emptyState}>
         <Ionicons name={config.icon as any} size={28} color={MUTED} />
         <Text style={styles.emptyText}>
-          No {config.label.toLowerCase()} sessions {offset === 0 ? 'this month' : `in ${label}`}.
+          {offset === 0
+            ? t('progress:workouts.month.noneThisMonth', { activity: config.label.toLowerCase() })
+            : t('progress:workouts.month.noneIn', { activity: config.label.toLowerCase(), month: label })}
         </Text>
-        <Text style={styles.emptySubtext}>Sessions will appear here once logged.</Text>
+        <Text style={styles.emptySubtext}>{t('progress:workouts.month.noneHint')}</Text>
       </View>
     );
   }
@@ -420,14 +460,16 @@ function WorkoutMonthView({
         {/* Distance-led sports lead with how far, and keep the session count as
             the caption — "2 rides" still matters, it just isn't the headline. */}
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>{byDistance ? 'TOTAL DISTANCE' : 'TOTAL SESSIONS'}</Text>
+          <Text style={styles.bigMetricSup}>{byDistance ? t('progress:workouts.month.totalDistance') : t('progress:workouts.month.totalSessions')}</Text>
           <Text style={[styles.bigMetricVal, { color: config.colour, fontSize: 30, lineHeight: 32 }]}>
             {byDistance ? formatDistance(data.totalDistanceM, type) : data.totalSessions}
           </Text>
           <Text style={styles.bigMetricMax}>
             {byDistance
-              ? `${data.totalSessions} ${data.totalSessions === 1 ? 'session' : 'sessions'} ${offset === 0 ? 'this month' : `in ${label}`}`
-              : offset === 0 ? 'this month' : `in ${label}`}
+              ? offset === 0
+                ? t('progress:workouts.month.sessionsThisMonth', { count: data.totalSessions })
+                : t('progress:workouts.month.sessionsIn', { count: data.totalSessions, month: label })
+              : offset === 0 ? t('progress:workouts.month.thisMonth') : t('progress:workouts.month.inMonth', { month: label })}
           </Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(Math.min(data.totalSessions / 20, 1) * 100)}%` as any, backgroundColor: config.colour }]} />
@@ -439,7 +481,7 @@ function WorkoutMonthView({
             The metric comes from the data layer so the two can't disagree. */}
         <View style={styles.bigMetric}>
           <Text style={styles.bigMetricSup}>
-            {data.bestDayMetric === 'longestSession' ? 'LONGEST VISIT' : 'BEST DAY'}
+            {data.bestDayMetric === 'longestSession' ? t('progress:workouts.month.longestVisit') : t('progress:metric.bestDay')}
           </Text>
           <Text style={[styles.bigMetricVal, { color: config.colour, fontSize: 30, lineHeight: 32 }]}>
             {data.bestDay

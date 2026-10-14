@@ -3,11 +3,13 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { Avatar } from '@/components/social/Avatar';
 import { fontFamily } from '@/constants/tokens';
+import i18n from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 import type { Friend } from '@/lib/social/types';
 
@@ -30,6 +32,7 @@ type Outcome = 'pending' | 'accepted';
 export default function AddFriendScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ ref?: string | string[] }>();
   const code = (Array.isArray(params.ref) ? params.ref[0] : params.ref)?.trim() ?? '';
 
@@ -58,7 +61,7 @@ export default function AddFriendScreen() {
           friend: {
             id: row.id,
             username: row.username ?? '',
-            displayName: row.display_name ?? row.username ?? 'POWR member',
+            displayName: row.display_name ?? row.username ?? i18n.t('social:addFriend.fallbackName'),
             avatarUrl: row.avatar_url,
             status: 'accepted',
           },
@@ -100,8 +103,8 @@ export default function AddFriendScreen() {
 
       <View style={styles.header}>
         <View style={styles.headerBtn} />
-        <Text style={styles.headerTitle}>ADD FRIEND</Text>
-        <Pressable onPress={close} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Close">
+        <Text style={styles.headerTitle}>{t('social:addFriend.title')}</Text>
+        <Pressable onPress={close} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('social:shared.close')}>
           <Ionicons name="close" size={22} color={SECONDARY} />
         </Pressable>
       </View>
@@ -135,15 +138,16 @@ export default function AddFriendScreen() {
 }
 
 function NotFound({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.stateBlock}>
       <View style={styles.stateIcon}>
         <Ionicons name="help-outline" size={28} color={MUTED} />
       </View>
-      <Text style={styles.stateTitle}>Couldn’t find that person</Text>
-      <Text style={styles.stateSub}>This code may be invalid or out of date. Ask them to show you their code again.</Text>
+      <Text style={styles.stateTitle}>{t('social:addFriend.notFound.title')}</Text>
+      <Text style={styles.stateSub}>{t('social:addFriend.notFound.body')}</Text>
       <Pressable style={styles.ghostBtn} onPress={onDone}>
-        <Text style={styles.ghostBtnText}>Done</Text>
+        <Text style={styles.ghostBtnText}>{t('social:shared.done')}</Text>
       </Pressable>
     </View>
   );
@@ -164,28 +168,29 @@ function Outcomes({
   onDone: () => void;
   onViewFriends: () => void;
 }) {
+  const { t } = useTranslation();
   // Post-action confirmation takes over.
   if (outcome === 'accepted') {
-    return <Confirmation tint={GREEN} icon="checkmark-circle" title="You're connected!" sub="You can now take on challenges together." cta="View friends" onCta={onViewFriends} />;
+    return <Confirmation tint={GREEN} icon="checkmark-circle" title={t('social:addFriend.connected.title')} sub={t('social:addFriend.connected.body')} cta={t('social:shared.viewFriends')} onCta={onViewFriends} />;
   }
   if (outcome === 'pending') {
-    return <Confirmation tint={GOLD} icon="paper-plane" title="Request sent" sub="We'll let them know — you'll connect once they accept." cta="Done" onCta={onDone} />;
+    return <Confirmation tint={GOLD} icon="paper-plane" title={t('social:addFriend.sent.title')} sub={t('social:addFriend.sent.body')} cta={t('social:shared.done')} onCta={onDone} />;
   }
 
   switch (relationship) {
     case 'self':
-      return <Confirmation tint={SECONDARY} icon="person" title="That's you" sub="This is your own code — share it for a friend to scan." cta="Done" onCta={onDone} />;
+      return <Confirmation tint={SECONDARY} icon="person" title={t('social:addFriend.self.title')} sub={t('social:addFriend.self.body')} cta={t('social:shared.done')} onCta={onDone} />;
     case 'accepted':
-      return <Confirmation tint={GREEN} icon="checkmark-circle" title="Already friends" sub="You're already connected on POWR." cta="View friends" onCta={onViewFriends} />;
+      return <Confirmation tint={GREEN} icon="checkmark-circle" title={t('social:addFriend.already.title')} sub={t('social:addFriend.already.body')} cta={t('social:shared.viewFriends')} onCta={onViewFriends} />;
     case 'pending_outgoing':
-      return <Confirmation tint={GOLD} icon="paper-plane-outline" title="Request pending" sub="You've already sent them a request — waiting on their reply." cta="Done" onCta={onDone} />;
+      return <Confirmation tint={GOLD} icon="paper-plane-outline" title={t('social:addFriend.pending.title')} sub={t('social:addFriend.pending.body')} cta={t('social:shared.done')} onCta={onDone} />;
     case 'pending_incoming':
       return (
         <Pressable style={[styles.primaryBtn, acting && styles.btnDisabled]} onPress={onAct} disabled={acting}>
           {acting ? <ActivityIndicator color="#0a0a0a" /> : (
             <>
               <Ionicons name="checkmark" size={18} color="#0a0a0a" />
-              <Text style={styles.primaryBtnText}>Accept request</Text>
+              <Text style={styles.primaryBtnText}>{t('social:shared.acceptRequest')}</Text>
             </>
           )}
         </Pressable>
@@ -196,7 +201,7 @@ function Outcomes({
           {acting ? <ActivityIndicator color="#0a0a0a" /> : (
             <>
               <Ionicons name="person-add" size={17} color="#0a0a0a" />
-              <Text style={styles.primaryBtnText}>Add friend</Text>
+              <Text style={styles.primaryBtnText}>{t('social:shared.addFriend')}</Text>
             </>
           )}
         </Pressable>

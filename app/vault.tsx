@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Animated,
@@ -39,6 +40,7 @@ import { useAuth } from '@/context/AuthContext';
 import { usePoints } from '@/hooks/usePoints';
 import { useRollingNumber } from '@/hooks/useRollingNumber';
 import { useVaultAccess, useVaultLaunch } from '@/hooks/useVaultAccess';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import {
   claimVaultDeposits,
   fetchVaultContents,
@@ -67,12 +69,12 @@ function daysUntil(iso: string): number {
 }
 
 function unlockCopy(iso: string): string {
-  if (new Date(iso).getTime() <= Date.now()) return 'Ready to unlock';
+  if (new Date(iso).getTime() <= Date.now()) return i18n.t('rewards:vault.status.readyToUnlock');
   const days = daysUntil(iso);
   // Flooring means 0 covers "some hours left", which is not the same as ready.
-  if (days === 0) return 'Unlocks today';
-  if (days === 1) return 'Unlocks tomorrow';
-  return `Unlocks in ${days} days`;
+  if (days === 0) return i18n.t('rewards:vault.status.unlocksToday');
+  if (days === 1) return i18n.t('rewards:vault.status.unlocksTomorrow');
+  return i18n.t('rewards:vault.status.unlocksInDays', { count: days });
 }
 
 /**
@@ -83,18 +85,18 @@ function unlockCopy(iso: string): string {
  */
 function matureCopy(iso: string): string {
   const days = daysUntil(iso);
-  if (days === 0) return 'Matures today';
-  if (days === 1) return 'Matures tomorrow';
-  return `Matures in ${days} days`;
+  if (days === 0) return i18n.t('rewards:vault.status.maturesToday');
+  if (days === 1) return i18n.t('rewards:vault.status.maturesTomorrow');
+  return i18n.t('rewards:vault.status.maturesInDays', { count: days });
 }
 
 function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return new Date(iso).toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short' });
 }
 
 /** "Friday 24 Jul" — a scheduled unlock reads as an occasion, not a timestamp. */
 function occasionDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
+  return new Date(iso).toLocaleDateString(getFormatLocale(), {
     weekday: 'long', day: 'numeric', month: 'short',
   });
 }
@@ -102,15 +104,19 @@ function occasionDate(iso: string): string {
 function depositLabel(d: VaultDeposit): string {
   if (d.source === 'level_up' && d.level) {
     const def = LEVELS.find((l) => l.level === d.level);
-    return def ? `Level ${d.level} — ${def.name}` : `Level ${d.level} bonus`;
+    return def
+      ? i18n.t('rewards:vault.deposit.levelNamed', { level: d.level, name: def.name })
+      : i18n.t('rewards:vault.deposit.levelBonus', { level: d.level });
   }
-  return d.description ?? (d.source === 'admin_grant' ? 'POWR drop' : 'Bonus points');
+  return d.description ?? (d.source === 'admin_grant'
+    ? i18n.t('rewards:vault.deposit.powrDrop')
+    : i18n.t('rewards:vault.deposit.bonusPoints'));
 }
 
 function depositSub(d: VaultDeposit): string {
-  if (d.source === 'level_up') return 'Level-up bonus';
-  if (d.source === 'admin_grant') return 'Bonus drop from POWR';
-  return 'Earned over the daily cap';
+  if (d.source === 'level_up') return i18n.t('rewards:vault.deposit.subLevelUp');
+  if (d.source === 'admin_grant') return i18n.t('rewards:vault.deposit.subGrant');
+  return i18n.t('rewards:vault.deposit.subCapOverflow');
 }
 
 // ─── Aggregate pot hero ──────────────────────────────────────────────────────
@@ -160,6 +166,7 @@ function VaultPotHero({
   onClaim: () => Promise<number>;
 }) {
   const { width } = useWindowDimensions();
+  const { t } = useTranslation();
   // The 3D door renders into a square GL viewport.
   const doorSize = Math.min(width - 32, 420);
   const [unlockedPoints, setUnlockedPoints] = useState<number | null>(null);
@@ -225,7 +232,7 @@ function VaultPotHero({
       // redraw whatever is now true.
       if (points <= 0) {
         unwind();
-        setClaimError('That POWR had already moved into your balance.');
+        setClaimError(t('rewards:vault.errors.alreadyMoved'));
       } else {
         // Celebrate only once there is something to celebrate — the success
         // haptic used to fire BEFORE the claim, so a failed unlock still
@@ -248,12 +255,12 @@ function VaultPotHero({
       const lockedAtLevel = message.match(/VAULT_LOCKED_LEVEL_(\d+)/)?.[1];
       setClaimError(
         lockedAtLevel
-          ? `Your Vault opens at Level ${lockedAtLevel}.`
-          : 'Could not unlock just now — check your connection and try again.',
+          ? t('rewards:vault.errors.lockedAtLevel', { level: lockedAtLevel })
+          : t('rewards:vault.errors.unlockFailed'),
       );
     }
     setClaiming(false);
-  }, [holdAnim, onClaim]);
+  }, [holdAnim, onClaim, t]);
 
   const startHold = useCallback(() => {
     if (!ready || claiming) return;
@@ -302,14 +309,14 @@ function VaultPotHero({
   const nextBoundaryAt = pending
     .map((d) => new Date(d.vests_at).getTime())
     .concat(outlook?.nextUnlockAt ? [new Date(outlook.nextUnlockAt).getTime()] : [])
-    .filter((t) => t > Date.now())
+    .filter((at) => at > Date.now())
     .sort((a, b) => a - b)[0];
   useEffect(() => {
     if (!nextBoundaryAt) return;
     const delay = nextBoundaryAt - Date.now();
     if (delay > 26 * 3600 * 1000) return;
     const id = setTimeout(() => {
-      setMaturityTick((t) => t + 1);
+      setMaturityTick((tick) => tick + 1);
       heroQueryClient.invalidateQueries({ queryKey: ['vault'] });
     }, delay + 500);
     return () => clearTimeout(id);
@@ -342,12 +349,12 @@ function VaultPotHero({
   // countdown; the moment the user crosses the floor it returns with its
   // meaning intact. (Jamie's catch, pre-launch.)
   const timerLabel = vaultDayAt
-    ? 'OPENS IN'
+    ? t('rewards:vault.timer.opensIn')
     : ready
-      ? `${remainingVesting.toLocaleString()} POWR UNLOCKS IN`
+      ? t('rewards:vault.timer.amountUnlocksIn', { amount: remainingVesting.toLocaleString() })
       : opened
-        ? 'NEXT UNLOCK IN'
-        : 'UNLOCKS IN';
+        ? t('rewards:vault.timer.nextUnlockIn')
+        : t('rewards:vault.timer.unlocksIn');
 
   // The rail is the soonest pot's whole window, which only reads as the story
   // of the screen while that pot IS the story. Once something has matured, or
@@ -435,10 +442,8 @@ function VaultPotHero({
           null
         ) : empty ? (
           <>
-            <Text style={styles.emptyTitle}>Nothing vesting yet</Text>
-            <Text style={styles.emptyHint}>
-              Level up or push past a daily cap{'\n'}and the bonus banks here.
-            </Text>
+            <Text style={styles.emptyTitle}>{t('rewards:vault.hero.emptyTitle')}</Text>
+            <Text style={styles.emptyHint}>{t('rewards:vault.hero.emptyHint')}</Text>
           </>
         ) : ready ? (
           /* The backstop, stated — and in this state it is the ONLY thing said
@@ -454,7 +459,7 @@ function VaultPotHero({
              one line; the full "you can't miss it" framing is in the sheet. */
           outlook?.autoReleaseAt ? (
             <Text style={styles.metaLine}>
-              Unlocks on its own {shortDate(outlook.autoReleaseAt)}
+              {t('rewards:vault.hero.autoRelease', { date: shortDate(outlook.autoReleaseAt) })}
             </Text>
           ) : null
         ) : gateGap ? (
@@ -467,22 +472,25 @@ function VaultPotHero({
              door — real value on screen, sealed, with no explanation. */
           dueTotal > 0 ? (
             <Text style={[styles.metaLine, styles.metaIndent]}>
-              <Text style={styles.metaFigure}>{dueTotal.toLocaleString()} POWR</Text>
-              {' '}has matured and is waiting
+              <Trans
+                i18nKey="rewards:vault.hero.maturedWaiting"
+                values={{ amount: dueTotal.toLocaleString() }}
+                components={{ figure: <Text style={styles.metaFigure} /> }}
+              />
             </Text>
           ) : (
             /* The reason the gate is not a punishment: vaulted POWR counts
                toward the level that frees it, so the vault is helping the
                user out of the gate rather than holding them behind it. */
-            <Text style={styles.metaLine}>Everything in here counts toward your level</Text>
+            <Text style={styles.metaLine}>{t('rewards:vault.hero.countsTowardLevel')}</Text>
           )
         ) : opened ? (
           <View style={styles.card}>
-            <Text style={styles.cardLabel}>BALANCE</Text>
+            <Text style={styles.cardLabel}>{t('rewards:vault.hero.balance')}</Text>
             <Text style={styles.cardHeadline}>{displayBalance.toLocaleString()}</Text>
             {remainingVesting > 0 && (
               <Text style={styles.cardBody}>
-                {remainingVesting.toLocaleString()} POWR is still vesting in your Vault.
+                {t('rewards:vault.hero.stillVesting', { amount: remainingVesting.toLocaleString() })}
               </Text>
             )}
           </View>
@@ -495,11 +503,11 @@ function VaultPotHero({
              below — so plain vesting gets no card at all. */
           <View style={[styles.card, styles.cardEvent]}>
             <Text style={styles.cardLabel}>
-              {(outlook?.nextUnlockNote || 'VAULT DAY').toUpperCase()}
+              {(outlook?.nextUnlockNote || t('rewards:vault.hero.vaultDay')).toUpperCase()}
             </Text>
             <Text style={styles.cardHeadline}>{occasionDate(vaultDayAt)}</Text>
             <Text style={styles.cardBody}>
-              All {totalPending.toLocaleString()} POWR unlocks early.
+              {t('rewards:vault.hero.allUnlocksEarly', { amount: totalPending.toLocaleString() })}
             </Text>
           </View>
         ) : null}
@@ -529,11 +537,13 @@ function VaultPotHero({
           <View style={styles.railBlock}>
             <View style={styles.railLabels}>
               <View style={styles.railEnd}>
-                <Text style={styles.railCap}>EARNED</Text>
+                <Text style={styles.railCap}>{t('rewards:vault.hero.railEarned')}</Text>
                 <Text style={styles.railDate}>{shortDate(soonest.created_at)}</Text>
               </View>
               <View style={[styles.railEnd, { alignItems: 'flex-end' }]}>
-                <Text style={styles.railCap}>{vaultDayAt ? 'OPENS' : 'UNLOCKS'}</Text>
+                <Text style={styles.railCap}>
+                  {vaultDayAt ? t('rewards:vault.hero.railOpens') : t('rewards:vault.hero.railUnlocks')}
+                </Text>
                 <Text style={styles.railDate}>{shortDate(effectiveUnlockAt)}</Text>
               </View>
             </View>
@@ -575,7 +585,7 @@ function DepositRow({
   const status =
     sealedMinLevel != null
       ? matured
-        ? `Sealed until Level ${sealedMinLevel}`
+        ? i18n.t('rewards:vault.status.sealedUntil', { level: sealedMinLevel })
         : matureCopy(effectiveAt)
       : unlockCopy(effectiveAt);
 
@@ -645,6 +655,7 @@ function VaultComingSoon({
   const { width } = useWindowDimensions();
   const doorSize = Math.min(width - 32, 420);
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   // The moment the countdown lands, ask the server again — vault_has_access
   // flips true as the timestamp passes, so this swaps the screen to the real
@@ -683,13 +694,15 @@ function VaultComingSoon({
         <VaultPotDoor size={doorSize} countdownTo={launchAt} level={level} />
 
         <View style={styles.below}>
-          <Text style={styles.metaLine}>Opens {occasionDate(launchAt)}</Text>
+          <Text style={styles.metaLine}>{t('rewards:vault.comingSoon.opens', { date: occasionDate(launchAt) })}</Text>
           {/* Only while the floor applies to this reader — see the docstring. */}
           {isVaultGated(outlook) && (
             <Text style={[styles.metaLine, styles.metaSpaced]}>
-              Unlocks at{' '}
-              <Text style={styles.metaFigure}>Level {outlook!.minLevel}</Text>
-              {' '}— you&apos;re Level {outlook!.currentLevel}
+              <Trans
+                i18nKey="rewards:vault.comingSoon.unlocksAtLevel"
+                values={{ level: outlook!.minLevel, current: outlook!.currentLevel }}
+                components={{ figure: <Text style={styles.metaFigure} /> }}
+              />
             </Text>
           )}
           {/* Banked, not "empty": the economy has been running for this user
@@ -701,11 +714,13 @@ function VaultComingSoon({
               is itself the ladder to the level that frees it. */}
           {!loading && banked > 0 && (
             <Text style={[styles.metaLine, styles.metaSpaced]}>
-              <Text style={styles.metaFigure}>{banked.toLocaleString()} POWR</Text>
-              {' '}already banked
-              {isVaultGated(outlook)
-                ? ' — it all counts toward your level'
-                : ' — it unlocks with the doors'}
+              <Trans
+                i18nKey={isVaultGated(outlook)
+                  ? 'rewards:vault.comingSoon.bankedGated'
+                  : 'rewards:vault.comingSoon.bankedOpen'}
+                values={{ amount: banked.toLocaleString() }}
+                components={{ figure: <Text style={styles.metaFigure} /> }}
+              />
             </Text>
           )}
         </View>
@@ -715,7 +730,7 @@ function VaultComingSoon({
         style={({ pressed }) => [styles.termsRow, pressed && { opacity: 0.6 }]}
         onPress={onInfo}
       >
-        <Text style={styles.termsText}>How the Vault works</Text>
+        <Text style={styles.termsText}>{t('rewards:vault.howItWorks')}</Text>
         <Ionicons name="chevron-forward" size={14} color={MUTED} />
       </Pressable>
     </ScrollView>
@@ -736,6 +751,7 @@ export default function VaultScreen() {
   const { user } = useAuth();
   const [infoOpen, setInfoOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   // Dev-only unlock replay: dev_rearm_vault() reverses the released deposits
   // (and their payout rows) back to READY; the key bump remounts the hero so
@@ -844,7 +860,7 @@ export default function VaultScreen() {
   // The list is a tally of what is IN the vault — released deposits have left
   // and are in the spendable balance, so listing them here double-counted the
   // vault's contents by eye. The unlock history lives in the points ledger.
-  const sections = pending.length > 0 ? [{ title: 'In the vault', data: pending }] : [];
+  const sections = pending.length > 0 ? [{ title: t('rewards:vault.inTheVault'), data: pending }] : [];
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -854,7 +870,7 @@ export default function VaultScreen() {
         <Pressable style={styles.headerBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={TEXT} />
         </Pressable>
-        <Text style={styles.headerTitle}>Vault</Text>
+        <Text style={styles.headerTitle}>{t('rewards:vault.title')}</Text>
         <Pressable style={styles.headerBtn} onPress={() => setInfoOpen(true)} hitSlop={8}>
           <Ionicons name="information-circle-outline" size={20} color={DIM} />
         </Pressable>
@@ -891,7 +907,7 @@ export default function VaultScreen() {
           <ActivityIndicator color={ACCENT} />
         </View>
       ) : isError ? (
-        <View style={styles.centered}><Text style={styles.statusText}>Could not load your Vault.</Text></View>
+        <View style={styles.centered}><Text style={styles.statusText}>{t('rewards:vault.errors.loadFailed')}</Text></View>
       ) : (
         <SectionList
           sections={sections}
@@ -934,7 +950,7 @@ export default function VaultScreen() {
                 style={({ pressed }) => [styles.termsRow, pressed && { opacity: 0.6 }]}
                 onPress={() => setInfoOpen(true)}
               >
-                <Text style={styles.termsText}>How the Vault works</Text>
+                <Text style={styles.termsText}>{t('rewards:vault.howItWorks')}</Text>
                 <Ionicons name="chevron-forward" size={14} color={MUTED} />
               </Pressable>
 
@@ -959,7 +975,7 @@ export default function VaultScreen() {
       <Modal visible={infoOpen} transparent animationType="fade" onRequestClose={() => setInfoOpen(false)}>
         <Pressable style={styles.infoBackdrop} onPress={() => setInfoOpen(false)}>
           <Pressable style={styles.infoCard} onPress={() => {}}>
-            <Text style={styles.infoTitle}>What banks in the Vault</Text>
+            <Text style={styles.infoTitle}>{t('rewards:vault.info.title')}</Text>
 
             {(vaultConfig?.levelUpEnabled ?? true) && (
               <View style={styles.infoRow}>
@@ -967,10 +983,8 @@ export default function VaultScreen() {
                   <Ionicons name="trophy" size={15} color={ACCENT} />
                 </View>
                 <View style={styles.infoRowBody}>
-                  <Text style={styles.infoRowTitle}>Level-up bonuses</Text>
-                  <Text style={styles.infoRowText}>
-                    Every level you reach banks a bonus — and the higher the tier, the bigger the drop.
-                  </Text>
+                  <Text style={styles.infoRowTitle}>{t('rewards:vault.info.levelUpTitle')}</Text>
+                  <Text style={styles.infoRowText}>{t('rewards:vault.info.levelUpBody')}</Text>
                   <View style={styles.tierPillRow}>
                     {(Object.keys(bonuses) as LevelTier[]).map((tier) => (
                       <View key={tier} style={styles.tierPill}>
@@ -991,10 +1005,8 @@ export default function VaultScreen() {
                   <Ionicons name="flash" size={15} color={ACCENT} />
                 </View>
                 <View style={styles.infoRowBody}>
-                  <Text style={styles.infoRowTitle}>Points over the daily cap</Text>
-                  <Text style={styles.infoRowText}>
-                    Streak multipliers past an activity&apos;s daily cap bank here instead of being lost.
-                  </Text>
+                  <Text style={styles.infoRowTitle}>{t('rewards:vault.info.capTitle')}</Text>
+                  <Text style={styles.infoRowText}>{t('rewards:vault.info.capBody')}</Text>
                 </View>
               </View>
             )}
@@ -1004,10 +1016,9 @@ export default function VaultScreen() {
                 <Ionicons name="time" size={15} color={ACCENT} />
               </View>
               <View style={styles.infoRowBody}>
-                <Text style={styles.infoRowTitle}>Vests like savings</Text>
+                <Text style={styles.infoRowTitle}>{t('rewards:vault.info.vestTitle')}</Text>
                 <Text style={styles.infoRowText}>
-                  Deposits vest for {vaultConfig?.vestDays ?? DEFAULT_VEST_DAYS} days, then unlock
-                  into your spendable balance. They count towards your level straight away.
+                  {t('rewards:vault.info.vestBody', { days: vaultConfig?.vestDays ?? DEFAULT_VEST_DAYS })}
                 </Text>
               </View>
             </View>
@@ -1022,12 +1033,8 @@ export default function VaultScreen() {
                   <Ionicons name="lock-closed" size={15} color={ACCENT} />
                 </View>
                 <View style={styles.infoRowBody}>
-                  <Text style={styles.infoRowTitle}>Opens at Level {outlook!.minLevel}</Text>
-                  <Text style={styles.infoRowText}>
-                    POWR banks and vests as normal below Level {outlook!.minLevel}, and counts
-                    toward your level the whole time — it just can&apos;t be taken out until
-                    you get there. Nothing expires.
-                  </Text>
+                  <Text style={styles.infoRowTitle}>{t('rewards:vault.info.gateTitle', { level: outlook!.minLevel })}</Text>
+                  <Text style={styles.infoRowText}>{t('rewards:vault.info.gateBody', { level: outlook!.minLevel })}</Text>
                 </View>
               </View>
             )}
@@ -1043,11 +1050,9 @@ export default function VaultScreen() {
                   <Ionicons name="shield-checkmark" size={15} color={ACCENT} />
                 </View>
                 <View style={styles.infoRowBody}>
-                  <Text style={styles.infoRowTitle}>You can&apos;t miss it</Text>
+                  <Text style={styles.infoRowTitle}>{t('rewards:vault.info.graceTitle')}</Text>
                   <Text style={styles.infoRowText}>
-                    Unlock it yourself for the moment — or leave it. Anything still sitting
-                    there {outlook!.graceDays} {outlook!.graceDays === 1 ? 'day' : 'days'} after
-                    it matures moves into your balance automatically.
+                    {t('rewards:vault.info.graceBody', { count: outlook!.graceDays })}
                   </Text>
                 </View>
               </View>
@@ -1057,7 +1062,7 @@ export default function VaultScreen() {
               style={({ pressed }) => [styles.infoBtn, pressed && { opacity: 0.85 }]}
               onPress={() => setInfoOpen(false)}
             >
-              <Text style={styles.infoBtnText}>Got it</Text>
+              <Text style={styles.infoBtnText}>{t('rewards:vault.info.gotIt')}</Text>
             </Pressable>
           </Pressable>
         </Pressable>

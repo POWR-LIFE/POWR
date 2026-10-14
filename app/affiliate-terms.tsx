@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,6 +21,7 @@ export default function AffiliateTermsScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const qc = useQueryClient();
+    const { t } = useTranslation();
     const { accept } = useLocalSearchParams<{ accept?: string }>();
     const canAccept = accept === '1';
 
@@ -35,14 +37,17 @@ export default function AffiliateTermsScreen() {
         <View style={[styles.screen, { paddingTop: insets.top }]}>
             <GeometricBackground />
             <View style={styles.header}>
-                <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8} accessibilityLabel="Back">
+                <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8} accessibilityLabel={t('common:actions.back')}>
                     <Ionicons name="chevron-back" size={22} color={DIM} />
                 </Pressable>
-                <Text style={styles.headerTitle}>Affiliate terms</Text>
+                <Text style={styles.headerTitle}>{t('affiliate:terms.title')}</Text>
                 <View style={styles.backBtn} />
             </View>
             <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + (canAccept ? 120 : 40) }]} showsVerticalScrollIndicator={false}>
-                <Text style={styles.eyebrow}>POWR AFFILIATE PROGRAMME · {AFFILIATE_TERMS_VERSION.toUpperCase()}</Text>
+                <Text style={styles.eyebrow}>{t('affiliate:terms.eyebrow', { version: AFFILIATE_TERMS_VERSION.toUpperCase() })}</Text>
+                {/* The lede, the terms and the consent line below stay in English:
+                    they're the legal text, which gets a proper legal translation
+                    rather than an in-app draft. Only the chrome is on keys. */}
                 <Text style={styles.lede}>Eight short sections. The two that matter most: play fair, and tell people it’s an affiliate link.</Text>
                 {AFFILIATE_TERMS.map((s, i) => (
                     <View key={s.title} style={styles.section}>
@@ -56,9 +61,9 @@ export default function AffiliateTermsScreen() {
             </ScrollView>
             {canAccept && (
                 <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-                    {accepting.isError && <Text style={styles.err}>Couldn’t save that — try again.</Text>}
+                    {accepting.isError && <Text style={styles.err}>{t('affiliate:terms.saveError')}</Text>}
                     <Pressable onPress={() => accepting.mutate()} disabled={accepting.isPending} style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-                        {accepting.isPending ? <ActivityIndicator color="#080808" /> : <Text style={styles.ctaText}>I’VE READ THESE — I AGREE</Text>}
+                        {accepting.isPending ? <ActivityIndicator color="#080808" /> : <Text style={styles.ctaText}>{t('affiliate:terms.agree')}</Text>}
                     </Pressable>
                     <Text style={styles.foot}>You’re confirming you’re 18 or over and will label your posts as affiliate links.</Text>
                 </View>

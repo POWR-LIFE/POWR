@@ -14,6 +14,7 @@ import {
     View,
     useWindowDimensions,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { rankLabel } from '@/components/events/EventPrizeList';
@@ -69,6 +70,7 @@ export function EventPrizeViewer({
 }) {
     const { width, height } = useWindowDimensions();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const [index, setIndex] = useState(initialIndex);
     const listRef = useRef<FlatList<LiveEventPrize>>(null);
     // Real aspect ratio (w/h) of each artwork once expo-image reports it, so
@@ -163,7 +165,7 @@ export function EventPrizeViewer({
         <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={() => dismiss()}>
             <View style={styles.container}>
                 <Animated.View style={[styles.scrim, { opacity: scrimOpacity }]} />
-                <Pressable style={StyleSheet.absoluteFill} onPress={() => dismiss()} accessibilityLabel="Close" />
+                <Pressable style={StyleSheet.absoluteFill} onPress={() => dismiss()} accessibilityLabel={t('events:prizes.closeA11y')} />
 
                 <Animated.View
                     style={[styles.content, { opacity: scrim, transform: [{ scale }, { translateY: dragY }] }]}
@@ -220,10 +222,10 @@ export function EventPrizeViewer({
                                             hitSlop={8}
                                             style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.75 }]}
                                             accessibilityRole="button"
-                                            accessibilityLabel={`Share ${rankLabel(item.rank)} prize`}
+                                            accessibilityLabel={t('events:prizes.shareA11y', { rank: rankLabel(item.rank) })}
                                         >
                                             <Ionicons name="paper-plane" size={14} color="#0a0a0a" />
-                                            <Text style={styles.shareText}>SHARE</Text>
+                                            <Text style={styles.shareText}>{t('events:prizes.share')}</Text>
                                         </Pressable>
                                     )}
                                 </View>
@@ -246,7 +248,7 @@ export function EventPrizeViewer({
                         hitSlop={12}
                         style={({ pressed }) => [styles.close, pressed && { opacity: 0.7 }]}
                         accessibilityRole="button"
-                        accessibilityLabel="Close"
+                        accessibilityLabel={t('events:prizes.closeA11y')}
                     >
                         <Ionicons name="close" size={18} color={TEXT} />
                     </Pressable>

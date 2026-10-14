@@ -16,6 +16,9 @@ import { useEffect } from 'react';
 import { Dimensions, View } from 'react-native';
 import 'react-native-reanimated';
 import '../global.css';
+// Before any screen: initialises i18next so the first render is already in the
+// member's language (see lib/i18n).
+import '@/lib/i18n';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/context/AuthContext';
 import { GeofenceProvider } from '@/context/GeofenceContext';
@@ -184,6 +187,8 @@ function RootLayoutNav() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="profile-screen" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="settings-screen" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="language" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="distance-units" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="affiliate" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="affiliate-terms" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="affiliate-profile" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
@@ -222,6 +227,7 @@ function RootLayoutNav() {
           <Stack.Screen name="share-event" options={{ presentation: 'modal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="scan-friend" options={{ presentation: 'modal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="circle-camera" options={{ presentation: 'fullScreenModal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
+          <Stack.Screen name="in-store" options={{ presentation: 'fullScreenModal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>

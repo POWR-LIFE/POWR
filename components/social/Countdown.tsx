@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import type { TFunction } from 'i18next';
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleProp, StyleSheet, Text, TextStyle, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 const ORANGE = '#FF5C00';
 
@@ -15,7 +17,7 @@ export function Countdown({
   endsAt,
   style,
   urgentBelowMs = 3_600_000,
-  suffix = ' left',
+  suffix,
   iconName,
   iconColor,
   iconSize = 11,
@@ -24,13 +26,14 @@ export function Countdown({
   style?: StyleProp<TextStyle>;
   /** Below this many ms remaining, text (and icon) go orange. Default 1h. */
   urgentBelowMs?: number;
-  /** Trailing word, e.g. " left". Pass "" for a bare timer. */
+  /** Trailing words, e.g. " to accept". Pass "" for a bare timer; omit for "… left". */
   suffix?: string;
   /** Optional inline icon that recolours with the text on urgency. */
   iconName?: keyof typeof Ionicons.glyphMap;
   iconColor?: string;
   iconSize?: number;
 }) {
+  const { t } = useTranslation();
   const target = useMemo(() => new Date(endsAt).getTime(), [endsAt]);
   const [now, setNow] = useState(() => Date.now());
 
@@ -45,7 +48,7 @@ export function Countdown({
   const remaining = target - now;
   const urgent = remaining > 0 && remaining < urgentBelowMs;
   const text = (
-    <Text style={[style, urgent && styles.urgent]}>{format(remaining, suffix)}</Text>
+    <Text style={[style, urgent && styles.urgent]}>{format(remaining, suffix, t)}</Text>
   );
 
   if (!iconName) return text;
@@ -57,17 +60,19 @@ export function Countdown({
   );
 }
 
-function format(ms: number, suffix: string): string {
-  if (ms <= 0) return 'Ended';
+function format(ms: number, suffix: string | undefined, t: TFunction): string {
+  if (ms <= 0) return t('social:countdown.ended');
   const total = Math.floor(ms / 1000);
   const d = Math.floor(total / 86400);
   const h = Math.floor((total % 86400) / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  if (d > 0) return `${d}d ${h}h${suffix}`;
-  if (h > 0) return `${h}h ${m}m${suffix}`;
-  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s${suffix}`;
-  return `${s}s${suffix}`;
+  const time =
+    d > 0 ? t('social:countdown.daysHours', { d, h })
+    : h > 0 ? t('social:countdown.hoursMinutes', { h, m })
+    : m > 0 ? t('social:countdown.minutesSeconds', { m, s: String(s).padStart(2, '0') })
+    : t('social:countdown.seconds', { s });
+  return suffix === undefined ? t('social:countdown.left', { time }) : `${time}${suffix}`;
 }
 
 const styles = StyleSheet.create({
