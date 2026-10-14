@@ -58,7 +58,8 @@
       "notFound": "Recompensa no encontrada. Vuelve atrás e inténtalo de nuevo.",
       "partnerMisconfigured": "Esta recompensa aún no está disponible. Inténtalo más tarde.",
       "withCode": "Algo ha ido mal ({{code}}). Inténtalo de nuevo.",
-      "generic": "Algo ha ido mal. Inténtalo de nuevo."
+      "generic": "Algo ha ido mal. Inténtalo de nuevo.",
+      "appUpdateRequired": "Actualiza POWR para usar esta recompensa en tienda."
     },
     "yourBalance": "Tu saldo",
     "cost": "Coste",
@@ -121,7 +122,8 @@
       "affiliate": "Aquí tienes una recompensa de POWR: {{label}}",
       "affiliateWithLink": "Aquí tienes una recompensa de POWR: {{label}}\n{{url}}",
       "code": "Este es mi código de POWR para {{label}}: {{code}}",
-      "codeWithLink": "Este es mi código de POWR para {{label}}: {{code}}\n{{url}}"
+      "codeWithLink": "Este es mi código de POWR para {{label}}: {{code}}\n{{url}}",
+      "inStore": "He ganado esta recompensa con POWR: {{label}}. Se usa en tienda."
     }
   },
   "shareCard": {
@@ -129,7 +131,8 @@
     "affiliate": "Descuento aplicado automáticamente al pagar",
     "code": "CÓDIGO",
     "validUntil": "Válido hasta el {{date}}",
-    "earnedWith": "CONSEGUIDO CON"
+    "earnedWith": "CONSEGUIDO CON",
+    "inStore": "Úsala en tienda con la app POWR"
   },
   "vault": {
     "title": "Vault",

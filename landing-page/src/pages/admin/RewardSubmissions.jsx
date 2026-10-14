@@ -141,7 +141,12 @@ export default function RewardSubmissions() {
     const { data: { user } } = await supabase.auth.getUser();
 
     const deliveryMethod = selected.delivery_method ?? (selected.reward_kind === 'physical' ? 'manual_fulfilment' : 'code_pool');
-    const integrationType = deliveryMethod === 'affiliate' ? 'AFFILIATE' : deliveryMethod === 'code_pool' ? 'POOL' : 'API_VALIDATED';
+    // 'in_store' lands as IN_STORE; a trigger on rewards gives it default
+    // in-store settings (staff scan) that the brand tunes on its In Store page.
+    const integrationType = deliveryMethod === 'affiliate' ? 'AFFILIATE'
+        : deliveryMethod === 'code_pool' ? 'POOL'
+        : deliveryMethod === 'in_store' ? 'IN_STORE'
+        : 'API_VALIDATED';
     let rewardId;
     if (isEdit) {
       const updatePayload = {
@@ -522,7 +527,7 @@ export default function RewardSubmissions() {
                     <Detail label="Brand">{selected.partners?.name || selected.brand_name || '—'}</Detail>
                     <Detail label="Contact">{[selected.contact_name, selected.contact_email].filter(Boolean).join(' · ') || '—'}</Detail>
                     <Detail label="Description">{selected.description || '—'}</Detail>
-                    <Detail label="Delivery">{selected.delivery_method === 'affiliate' ? 'Shared affiliate link' : selected.delivery_method === 'manual_fulfilment' ? 'Manual fulfilment' : `Unique code · POWR-${(selected.code_prefix || 'BRAND').toUpperCase()}-XXXXXX`}</Detail>
+                    <Detail label="Delivery">{selected.delivery_method === 'in_store' ? 'In store · live voucher at the till' : selected.delivery_method === 'affiliate' ? 'Shared affiliate link' : selected.delivery_method === 'manual_fulfilment' ? 'Manual fulfilment' : `Unique code · POWR-${(selected.code_prefix || 'BRAND').toUpperCase()}-XXXXXX`}</Detail>
                     {selected.fulfilment_notes && <Detail label="Fulfilment plan">{selected.fulfilment_notes}</Detail>}
                     {selected.stock != null && <Detail label="Inventory">{selected.stock} units</Detail>}
                     {selected.offer && <Detail label="Offer detail">{selected.offer}</Detail>}

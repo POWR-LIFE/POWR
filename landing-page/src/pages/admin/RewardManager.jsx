@@ -330,6 +330,7 @@ export default function RewardManager() {
 
     const describeSupply = (reward) => {
         if (reward.integration_type === 'AFFILIATE') return { kind: 'unlimited', label: 'Unlimited · affiliate link' };
+        if (reward.integration_type === 'IN_STORE') return { kind: 'unlimited', label: 'Unlimited · in-store voucher' };
         if (reward.promo_code?.trim()) return { kind: 'unlimited', label: 'Unlimited · shared code' };
         if (drawsFromCodePool(reward)) {
             if (!codeSupply) return { kind: 'unknown', label: 'Checking supply' };
@@ -1329,9 +1330,9 @@ export default function RewardManager() {
 
                             <div className="mb-8">
                                 <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-1">Code Source</label>
-                                <p className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mb-3">Pool = one code per claim · Auto = generated per member · Affiliate = shared link, no code</p>
+                                <p className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mb-3">Pool = one code per claim · Auto = generated per member · Affiliate = shared link, no code · In store = live voucher at the till</p>
                                 <div className="flex bg-white border border-[#E6E6E1] rounded-3xl p-2 gap-2">
-                                    {[['POOL', 'Pool'], ['API_VALIDATED', 'Auto'], ['AFFILIATE', 'Affiliate']].map(([val, label]) => {
+                                    {[['POOL', 'Pool'], ['API_VALIDATED', 'Auto'], ['AFFILIATE', 'Affiliate'], ['IN_STORE', 'In store']].map(([val, label]) => {
                                         const active = formData.integration_type === val;
                                         return (
                                             <button key={val} type="button" onClick={() => setFormData({ ...formData, integration_type: val })} className={`flex-1 h-12 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${active ? 'bg-[#E8D200] text-[#080808]' : 'text-[#BBB] hover:text-[#8a7600]'}`}>{label}</button>

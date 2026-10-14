@@ -58,7 +58,8 @@
       "notFound": "Récompense introuvable. Reviens en arrière et réessaie.",
       "partnerMisconfigured": "Cette récompense n’est pas encore disponible. Réessaie plus tard.",
       "withCode": "Un problème est survenu ({{code}}). Réessaie.",
-      "generic": "Un problème est survenu. Réessaie."
+      "generic": "Un problème est survenu. Réessaie.",
+      "appUpdateRequired": "Mets à jour POWR pour utiliser cette récompense en magasin."
     },
     "yourBalance": "Ton solde",
     "cost": "Coût",
@@ -121,7 +122,8 @@
       "affiliate": "Voici une récompense POWR : {{label}}",
       "affiliateWithLink": "Voici une récompense POWR : {{label}}\n{{url}}",
       "code": "Voici mon code POWR pour {{label}} : {{code}}",
-      "codeWithLink": "Voici mon code POWR pour {{label}} : {{code}}\n{{url}}"
+      "codeWithLink": "Voici mon code POWR pour {{label}} : {{code}}\n{{url}}",
+      "inStore": "J’ai gagné cette récompense avec POWR : {{label}}. Elle s’utilise en magasin."
     }
   },
   "shareCard": {
@@ -129,7 +131,8 @@
     "affiliate": "Réduction appliquée automatiquement au paiement",
     "code": "CODE",
     "validUntil": "Valable jusqu’au {{date}}",
-    "earnedWith": "GAGNÉ AVEC"
+    "earnedWith": "GAGNÉ AVEC",
+    "inStore": "À utiliser en magasin avec l’app POWR"
   },
   "vault": {
     "title": "Vault",

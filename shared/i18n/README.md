@@ -78,6 +78,11 @@ Terms that stay in English are product names. Use them exactly as written, with 
 | streak | série | racha | "7-day streak" → "série de 7 jours" / "racha de 7 días" |
 | reward | récompense | recompensa | |
 | redeem | échanger | canjear | |
+| in store (redeem in a shop) | en magasin | en tienda | The wallet button "Use in store" = "Utiliser en magasin" / "Usar en tienda" everywhere (app, email) |
+| till | caisse | caja | "at the till" = "en caisse" / "en caja" |
+| voucher (in-store) | bon | vale | |
+| staff (shop staff) | personnel / l’équipe | personal | |
+| scan | scanner | escanear | |
 | wallet | portefeuille | cartera | |
 | challenge | défi | reto | |
 | leaderboard | classement | clasificación | |

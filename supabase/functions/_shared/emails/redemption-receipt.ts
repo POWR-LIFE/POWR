@@ -32,7 +32,9 @@ function formatDate(iso: string, lang: string): string {
 export function redemptionReceiptEmail(data: RedemptionReceiptData, lang = "en"): { subject: string; html: string; text: string } {
   const plainName = firstNameOf(data.name, lang);
   const brand = data.brand?.trim() || null;
-  const isLink = data.integrationType === "AFFILIATE" || !data.code;
+  // In store: nothing to copy. The member opens a live voucher at the till.
+  const isInStore = data.integrationType === "IN_STORE";
+  const isLink = !isInStore && (data.integrationType === "AFFILIATE" || !data.code);
   const storedValue = data.valueLabel?.trim() ?? "";
   const offer = [brand, rewardValueLabel(storedValue, lang)].filter(Boolean).join(" · ") || data.rewardTitle;
   const expires = data.expiresAt ? formatDate(data.expiresAt, lang) : null;
@@ -45,10 +47,12 @@ export function redemptionReceiptEmail(data: RedemptionReceiptData, lang = "en")
   // Only a checkout link built around the code actually applies it.
   const linkApplies = !!(data.checkoutUrl && data.code && data.checkoutUrl.includes(data.code));
 
-  const subject = isLink
+  const subject = isLink || isInStore
     ? tEmail(lang, "receipt.subjectLink", { brand: brand ?? "POWR" })
     : tEmail(lang, "receipt.subjectCode", { brand: brand ?? "POWR", code: data.code });
-  const preheader = isLink
+  const preheader = isInStore
+    ? expires ? tEmail(lang, "receipt.preheaderInStoreBy", { offer, date: expires }) : tEmail(lang, "receipt.preheaderInStore", { offer })
+    : isLink
     ? expires ? tEmail(lang, "receipt.preheaderLinkUntil", { offer, date: expires }) : tEmail(lang, "receipt.preheaderLink", { offer })
     : expires ? tEmail(lang, "receipt.preheaderCodeBy", { offer, date: expires }) : tEmail(lang, "receipt.preheaderCode", { offer });
   const shopLabel = brand ? tEmail(lang, "receipt.shopBrand", { brand: esc(brand) }) : tEmail(lang, "receipt.shopNow");
@@ -71,7 +75,10 @@ export function redemptionReceiptEmail(data: RedemptionReceiptData, lang = "en")
           </td>
         </tr>`;
 
-  const codeBlock = isLink
+  const codeBlock = isInStore
+    ? `
+            <p style="margin:0;font-size:14px;font-weight:300;color:#aaaaaa;line-height:1.6;font-family:${FONT};">${tEmail(lang, brand ? "receipt.inStoreBodyAtHtml" : "receipt.inStoreBodyHtml", { brand: brand ? esc(brand) : "", strong: '<strong style="font-weight:600;color:#dddddd;">', end: "</strong>" })}</p>`
+    : isLink
     ? `
             <p style="margin:0 0 20px;font-size:14px;font-weight:300;color:#aaaaaa;line-height:1.6;font-family:${FONT};">${tEmail(lang, "receipt.linkBodyHtml")}</p>
             ${data.checkoutUrl ? ctaButton(shopLabel, data.checkoutUrl) : ""}`
@@ -93,7 +100,7 @@ export function redemptionReceiptEmail(data: RedemptionReceiptData, lang = "en")
   const codeCard = `
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:32px 40px;text-align:center;border-bottom:1px solid #161616;">
-            ${sectionLabel(isLink ? tEmail(lang, "receipt.yourLink") : tEmail(lang, "receipt.yourCode"))}
+            ${sectionLabel(isInStore ? tEmail(lang, "receipt.useInStore") : isLink ? tEmail(lang, "receipt.yourLink") : tEmail(lang, "receipt.yourCode"))}
             <div style="margin-top:16px;">${codeBlock}</div>
             ${expires ? `<p style="margin:18px 0 0;font-size:12px;font-weight:500;color:#999999;font-family:${FONT};">${tEmail(lang, "receipt.validUntil", { date: expires })}</p>` : ""}
           </td>
@@ -136,7 +143,7 @@ export function redemptionReceiptEmail(data: RedemptionReceiptData, lang = "en")
 
 ${offer}${showTitle ? `\n${data.rewardTitle}` : ""}
 
-${isLink ? tEmail(lang, "receipt.text.yourLink", { link: data.checkoutUrl ?? tEmail(lang, "receipt.text.openWallet") }) : codeText}${expires ? `\n${tEmail(lang, "receipt.validUntil", { date: expires })}` : ""}
+${isInStore ? tEmail(lang, "receipt.text.inStore") : isLink ? tEmail(lang, "receipt.text.yourLink", { link: data.checkoutUrl ?? tEmail(lang, "receipt.text.openWallet") }) : codeText}${expires ? `\n${tEmail(lang, "receipt.validUntil", { date: expires })}` : ""}
 
 ${tEmail(lang, "receipt.text.powrSpent", { amount: fmtNum(data.powrSpent, lang) })}${data.balanceAfter != null ? `\n${tEmail(lang, "receipt.text.balanceNow", { amount: fmtNum(Math.max(0, data.balanceAfter), lang) })}` : ""}
 

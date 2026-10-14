@@ -113,8 +113,8 @@ Deno.serve(async (req: Request) => {
     brand: reward?.brand_name ?? claimed.partner_name ?? null,
     valueLabel: reward ? discountLabel(reward) || null : null,
     integrationType: claimed.integration_type,
-    // AFFILIATE rows store a receipt id in `code` — it is not something to type in.
-    code: claimed.integration_type === "AFFILIATE" ? null : claimed.code,
+    // AFFILIATE and IN_STORE rows store a receipt id in `code` — it is not something to type in.
+    code: claimed.integration_type === "AFFILIATE" || claimed.integration_type === "IN_STORE" ? null : claimed.code,
     checkoutUrl: claimed.checkout_url,
     expiresAt: claimed.expires_at,
     powrSpent: claimed.powr_spent ?? 0,

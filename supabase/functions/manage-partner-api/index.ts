@@ -27,7 +27,8 @@ import { sendEmail } from '../_shared/mailgun.ts';
 
 const MAX_KEYS = 5;
 const MAX_ENDPOINTS = 5;
-const ALLOWED_EVENTS = ['code.assigned', 'code.used', 'pool.low'];
+// voucher.* are in-store outcomes (migration 20261013150000).
+const ALLOWED_EVENTS = ['code.assigned', 'code.used', 'pool.low', 'voucher.confirmed', 'voucher.swiped'];
 const DELIVERY_METHODS = ['api', 'shopify', 'manual'];
 
 const corsHeaders = {

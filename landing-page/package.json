@@ -24,6 +24,7 @@
         "framer-motion": "^12.36.0",
         "hls.js": "^1.6.16",
         "html-to-image": "^1.11.13",
+        "jsqr": "^1.4.0",
         "leaflet": "^1.9.4",
         "lucide-react": "^0.577.0",
         "maplibre-gl": "^5.24.0",

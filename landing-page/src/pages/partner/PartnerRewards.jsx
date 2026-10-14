@@ -140,7 +140,7 @@ const previewFromSubmission = (s, partnerName) => ({
 
 export default function PartnerRewards() {
     const toast = useToast();
-    const { partnerData, user } = useAuth();
+    const { partnerData, user, isAdmin, inStoreEnabled } = useAuth();
     const [rewards, setRewards] = useState([]);
     const [submissions, setSubmissions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -320,7 +320,7 @@ export default function PartnerRewards() {
             terms: r.terms ?? '',
             url: r.url ?? '',
             code_prefix: prefixFromPromo(r.promo_code, r.brand_name || partnerData?.name),
-            delivery_method: r.reward_kind === 'physical' ? 'manual_fulfilment' : r.integration_type === 'AFFILIATE' ? 'affiliate' : 'code_pool',
+            delivery_method: r.reward_kind === 'physical' ? 'manual_fulfilment' : r.integration_type === 'AFFILIATE' ? 'affiliate' : r.integration_type === 'IN_STORE' ? 'in_store' : 'code_pool',
             fulfilment_notes: '',
             stock: r.stock ?? '',
             max_redemptions_per_user: r.max_redemptions_per_user ?? '',
@@ -633,10 +633,11 @@ export default function PartnerRewards() {
                                 <>
                                     <div>
                                         <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Member redemption *</label>
-                                        <div className="grid grid-cols-2 gap-3">
+                                        <div className={`grid grid-cols-1 gap-3 ${isAdmin || inStoreEnabled ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
                                             {[
                                                 ['code_pool', 'Unique code', 'POWR issues one of your codes per claim'],
                                                 ['affiliate', 'Shared link', 'Members redeem through your destination'],
+                                                ...(isAdmin || inStoreEnabled ? [['in_store', 'In store', 'Members show a live voucher at your till. No codes needed']] : []),
                                             ].map(([value, label, detail]) => (
                                                 <button key={value} type="button" onClick={() => setForm(p => ({ ...p, delivery_method: value }))} className={`text-left p-4 rounded-2xl border transition-all ${form.delivery_method === value ? 'border-[#E8D200] bg-[#E8D200]/10' : 'border-[#E6E6E1] bg-white hover:border-[#DDD]'}`}>
                                                     <span className={`block text-[10px] font-black uppercase tracking-[0.2em] ${form.delivery_method === value ? 'text-[#8a7600]' : 'text-[#666]'}`}>{label}</span>
@@ -655,7 +656,12 @@ export default function PartnerRewards() {
                                             <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">Members receive</p>
                                             <div className="font-mono text-lg tracking-[0.12em] text-[#1A1A1A]">POWR-<span className="text-[#8a7600]">{form.code_prefix || 'BRAND'}</span>-<span className="text-[#AAA]">A1B2C3</span></div>
                                         </div>
-                                    </> : (
+                                    </> : form.delivery_method === 'in_store' ? (
+                                        <div className="p-5 rounded-2xl border border-[#E8D200]/40 bg-[#E8D200]/5">
+                                            <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">At your till</p>
+                                            <p className="text-sm text-[#1A1A1A] font-light leading-relaxed">Members open a live voucher in the POWR app and your staff scan it. Once it's approved, set up your shops and staff scan links on the In Store page.</p>
+                                        </div>
+                                    ) : (
                                         <div>
                                             <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Affiliate destination URL *</label>
                                             <input type="url" value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder="https://yourbrand.com/powr" className={`${INPUT} ${err('url') ? 'border-red-400' : ''}`} />
@@ -757,7 +763,7 @@ export default function PartnerRewards() {
                                     ['About brand', form.partner_blurb],
                                     ['Terms', form.terms],
                                     ['Website', form.url || '—'],
-                                    ['Delivery', form.delivery_method === 'code_pool' ? `Unique code · POWR-${cleanPrefix(form.code_prefix) || 'BRAND'}-A1B2C3` : form.delivery_method === 'affiliate' ? 'Shared affiliate link' : 'Manual fulfilment'],
+                                    ['Delivery', form.delivery_method === 'code_pool' ? `Unique code · POWR-${cleanPrefix(form.code_prefix) || 'BRAND'}-A1B2C3` : form.delivery_method === 'affiliate' ? 'Shared affiliate link' : form.delivery_method === 'in_store' ? 'In store · live voucher at your till' : 'Manual fulfilment'],
                                     ...(form.fulfilment_notes ? [['Fulfilment', form.fulfilment_notes]] : []),
                                     ['Imagery', [form.logo_url && 'Logo', form.hero_image_url && 'Hero', form.hero_video_url && 'Video'].filter(Boolean).join(' · ') || '—'],
                                 ].map(([k, v]) => (
