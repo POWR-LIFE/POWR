@@ -1,0 +1,116 @@
+{
+  "close": "Cerrar",
+  "loading": "Abriendo tu vale…",
+  "rewardFallback": "Recompensa",
+  "yourReward": "Tu recompensa",
+  "done": "Hecho",
+  "errors": {
+    "alreadyUsed": {
+      "title": "Ya usada",
+      "body": "Esta recompensa ya se ha usado. La tienes en el historial de tu cartera."
+    },
+    "expired": {
+      "title": "Recompensa caducada",
+      "body": "Esta recompensa ha pasado su fecha límite de uso."
+    },
+    "notActive": {
+      "title": "No disponible",
+      "body": "Esta recompensa ya no está en tu cartera."
+    },
+    "notFound": {
+      "title": "No encontrada",
+      "body": "No hemos encontrado esta recompensa en tu cartera."
+    },
+    "notInStore": {
+      "title": "No es una recompensa en tienda",
+      "body": "Esta ya no se puede usar en tienda. Úsala desde tu cartera."
+    },
+    "notSignedIn": {
+      "title": "Sesión cerrada",
+      "body": "Vuelve a iniciar sesión para usar tu recompensa."
+    },
+    "standRequired": {
+      "title": "Escanea el expositor",
+      "body": "Escanea el expositor de POWR del mostrador."
+    },
+    "standOtherShop": {
+      "title": "Otra tienda",
+      "body": "Ese expositor es de otra tienda."
+    },
+    "standInvalid": {
+      "title": "Expositor no reconocido",
+      "body": "Ese expositor se ha sustituido. Pide el nuevo al personal."
+    },
+    "closed": {
+      "title": "Vale cerrado",
+      "body": "Vuelve a abrirlo cuando estés en caja."
+    },
+    "unknown": {
+      "title": "No se ha podido abrir el vale",
+      "body": "Comprueba tu conexión e inténtalo de nuevo."
+    },
+    "tryAgain": "Reintentar",
+    "backToWallet": "Volver a la cartera"
+  },
+  "closed": {
+    "title": "Vale cerrado",
+    "body": "Tu recompensa sigue en tu cartera. Vuelve a abrir el vale cuando estés en caja.",
+    "openAgain": "Abrir de nuevo",
+    "notNow": "Ahora no"
+  },
+  "voucher": {
+    "marquee": "VALE EN DIRECTO · POWR · ",
+    "memberSince": "EN POWR DESDE {{since}}",
+    "memberFallback": "Miembro de POWR",
+    "codeA11y": "Código del vale {{code}}",
+    "newCodeIn_one": "CAMBIA EN {{count}} S",
+    "newCodeIn_other": "CAMBIA EN {{count}} S",
+    "timeNow": "HORA ACTUAL",
+    "closesIn": "SE CIERRA EN",
+    "liveTime": "HORA EN DIRECTO · COMPRUEBA QUE AVANZA",
+    "swipeNoteQr": "¿No hay escáner en la caja? El personal puede deslizar en su lugar.",
+    "swipeNoteLook": "Personal: comprueba que la hora avanza y desliza.",
+    "swipe": "PERSONAL: DESLIZA PARA CANJEAR",
+    "swipeA11y": "Personal: desliza para canjear",
+    "swipeA11yHint": "Toca dos veces para canjear esta recompensa ahora"
+  },
+  "stand": {
+    "step": "PASO {{step}} DE {{total}}",
+    "title": "<light>Escanea el expositor </light><gold>en caja</gold>",
+    "body": "La tienda lo pide para que tu vale solo se abra en la tienda.",
+    "bodyBrand": "{{brand}} lo pide para que tu vale solo se abra en la tienda.",
+    "cameraOff": "El acceso a la cámara está desactivado para POWR.",
+    "openSettings": "Abrir Ajustes",
+    "point": "Apunta al código QR del mostrador.",
+    "noStand": "¿No hay expositor en el mostrador? Pregunta al personal.",
+    "notAStand": "Eso no es un expositor de POWR. Busca el código QR de POWR en el mostrador.",
+    "otherShopNamed": "Ese expositor es de {{standShop}}. Esta recompensa es de {{rewardShop}}.",
+    "notRewardShop": "Ese expositor no es de {{shop}}. Busca el expositor de POWR en su mostrador."
+  },
+  "outcome": {
+    "recorded": "REGISTRADO",
+    "confirmed": "CONFIRMADO",
+    "swipedAt": "El personal ha validado tu vale a las {{time}}. ¡Disfrútalo!",
+    "swipedAtTill": "El personal ha validado tu vale en caja. ¡Disfrútalo!",
+    "scanned": "{{shop}} ha escaneado tu vale.",
+    "scannedNoName": "La tienda ha escaneado tu vale.",
+    "shop": "TIENDA",
+    "time": "HORA",
+    "checkedBy": "VALIDACIÓN",
+    "staffSwipe": "Deslizado por el personal",
+    "staffScan": "Escaneo del personal",
+    "managerScan": "Escaneo del encargado",
+    "inHistory": "Ya está en el historial de tu cartera."
+  },
+  "barcode": {
+    "showAtTill": "ENSÉÑALO EN CAJA",
+    "staffAt": "En {{shop}} lo escanean como cualquier otro cupón.",
+    "brightness": "Sube el brillo de la pantalla si la caja no consigue leerlo.",
+    "uses": "USOS",
+    "one": "Uno",
+    "useBy": "VÁLIDO HASTA",
+    "noExpiry": "Sin caducidad",
+    "qrA11y": "Código QR {{code}}",
+    "barcodeA11y": "Código de barras {{code}}"
+  }
+}

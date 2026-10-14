@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { forwardRef, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, type ViewProps } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { rankLabel } from '@/components/events/EventPrizeList';
 import { fontFamily } from '@/constants/tokens';
@@ -58,6 +59,7 @@ interface PrizeShareCardProps extends ViewProps {
  */
 export const PrizeShareCard = forwardRef<View, PrizeShareCardProps>(
   ({ event, prize, referralCode, width, onReady, style, ...rest }, ref) => {
+    const { t } = useTranslation();
     const height = (width * 16) / 9;
     // Scale tokens proportionally to width — base sizes designed for 1080dp.
     const s = width / 1080;
@@ -168,7 +170,7 @@ export const PrizeShareCard = forwardRef<View, PrizeShareCardProps>(
           <View style={[styles.markRow, { marginBottom: 30 * s }]}>
             <View style={[styles.rankPill, { paddingHorizontal: 26 * s, paddingVertical: 14 * s, borderRadius: 100 * s }]}>
               <Text style={[styles.rankPillText, { fontSize: 24 * s, letterSpacing: 4 * s }]}>
-                {`${rankLabel(prize.rank)} PRIZE`}
+                {t('events:shareCard.prize', { rank: rankLabel(prize.rank) })}
               </Text>
             </View>
             <View style={{ flex: 1 }} />
@@ -191,7 +193,7 @@ export const PrizeShareCard = forwardRef<View, PrizeShareCardProps>(
           {referralCode ? (
             <View style={styles.codeRow}>
               <Text style={[styles.codeLabel, { fontSize: 22 * s, letterSpacing: 4 * s }]}>
-                JOIN ME WITH CODE
+                {t('events:shareCard.joinWithCode')}
               </Text>
               <Text style={[styles.code, { fontSize: 44 * s, letterSpacing: 6 * s, marginLeft: 28 * s }]}>
                 {referralCode}
@@ -199,7 +201,7 @@ export const PrizeShareCard = forwardRef<View, PrizeShareCardProps>(
             </View>
           ) : (
             <Text style={[styles.codeLabel, { fontSize: 22 * s, letterSpacing: 4 * s }]}>
-              JOIN ME ON POWR
+              {t('events:shareCard.joinOnPowr')}
             </Text>
           )}
 

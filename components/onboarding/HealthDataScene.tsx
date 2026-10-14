@@ -1,6 +1,8 @@
 import { fontFamily } from '@/constants/tokens';
+import { getFormatLocale } from '@/lib/i18n';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { useTranslation } from 'react-i18next';
 import { Image as RNImage, StyleSheet, Text, View } from 'react-native';
 
 const GOLD = '#E8D200';
@@ -24,6 +26,7 @@ export default function HealthDataScene({
     stepsToday: number | null;
     connected: boolean;
 }) {
+    const { t } = useTranslation();
     const isApple = platform === 'apple-health';
     return (
         <View style={styles.scene}>
@@ -34,9 +37,9 @@ export default function HealthDataScene({
                 </View>
                 <View>
                     <Text style={styles.chipValue}>
-                        {stepsToday != null ? stepsToday.toLocaleString() : '7,842'}
+                        {stepsToday != null ? stepsToday.toLocaleString() : (7842).toLocaleString(getFormatLocale())}
                     </Text>
-                    <Text style={styles.chipLabel}>STEPS TODAY</Text>
+                    <Text style={styles.chipLabel}>{t('health:scene.stepsToday')}</Text>
                 </View>
             </View>
 
@@ -45,8 +48,8 @@ export default function HealthDataScene({
                     <Ionicons name="moon" size={12} color="#9BB8FF" />
                 </View>
                 <View>
-                    <Text style={styles.chipValue}>7h 20m</Text>
-                    <Text style={styles.chipLabel}>SLEEP</Text>
+                    <Text style={styles.chipValue}>{t('health:scene.sleepValue')}</Text>
+                    <Text style={styles.chipLabel}>{t('health:scene.sleep')}</Text>
                 </View>
             </View>
 
@@ -55,11 +58,11 @@ export default function HealthDataScene({
                     <MaterialCommunityIcons name="dumbbell" size={13} color={GOLD} />
                 </View>
                 <View>
-                    <Text style={styles.chipValue}>Gym · 48 min</Text>
-                    <Text style={styles.chipLabel}>WORKOUT</Text>
+                    <Text style={styles.chipValue}>{t('health:scene.workoutValue')}</Text>
+                    <Text style={styles.chipLabel}>{t('health:scene.workout')}</Text>
                 </View>
                 <View style={styles.verifiedTag}>
-                    <Text style={styles.verifiedTagText}>2× PTS</Text>
+                    <Text style={styles.verifiedTagText}>{t('health:scene.doublePoints')}</Text>
                 </View>
             </View>
 
@@ -104,11 +107,11 @@ export default function HealthDataScene({
             <Text style={styles.caption}>
                 {connected
                     ? stepsToday != null
-                        ? `${stepsToday.toLocaleString()} steps already counting`
-                        : 'Connected — your data is flowing'
+                        ? t('health:scene.stepsCounting', { steps: stepsToday.toLocaleString() })
+                        : t('health:scene.connected')
                     : isApple
-                      ? 'Apple Watch + anything that writes to Apple Health'
-                      : 'Google Fit, Galaxy & Pixel Watch & more'}
+                      ? t('health:scene.sourcesIos')
+                      : t('health:scene.sourcesAndroid')}
             </Text>
         </View>
     );

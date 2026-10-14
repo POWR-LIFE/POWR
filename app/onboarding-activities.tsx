@@ -6,6 +6,7 @@ import {
   DEFAULT_SELECTIONS,
   countObservedTypes,
   observedLabelList,
+  observedPickCount,
   preselectFromObserved,
 } from '@/lib/onboarding/activities';
 import { routeAfterActivities } from '@/lib/onboarding/flow';
@@ -14,6 +15,7 @@ import ActivityCatalogPicker from '@/components/ActivityCatalogPicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
@@ -40,6 +42,7 @@ const OBSERVED_LOOKBACK_DAYS = 30;
 export default function OnboardingActivitiesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const providers = useHealthProviders();
   const { user } = useAuth();
   const [selections, setSelections] = useState<ActivitySelection[]>(DEFAULT_SELECTIONS);
@@ -130,12 +133,13 @@ export default function OnboardingActivitiesScreen() {
         </Pressable>
 
       <Animated.View style={[styles.header, { paddingTop: insets.top + 56, opacity: headerFade }]}>
-        <Text style={styles.eyebrow}>NEARLY THERE</Text>
-        <Text style={styles.headline}>Pick your movements</Text>
+        <Text style={styles.eyebrow}>{t('onboarding:activities.eyebrow')}</Text>
+        <Text style={styles.headline}>{t('onboarding:activities.headline')}</Text>
         <Text style={styles.subhead}>
           {observedLabels
-            ? `Your device already shows ${observedLabels} — we’ve ticked ${observedLabels.includes(' and ') ? 'them' : 'it'}. Adjust if you like, up to ${MAX_PICKS}.`
-            : `Pick up to ${MAX_PICKS} ways you actually move. Gym is ticked to start — tap it off if that’s not you.`}
+            // count only picks "it" (one activity) or "them" (a list).
+            ? t('onboarding:activities.subhead.observed', { labels: observedLabels, count: observedPickCount(selections, observed), max: MAX_PICKS })
+            : t('onboarding:activities.subhead.default', { max: MAX_PICKS })}
         </Text>
       </Animated.View>
 
@@ -157,10 +161,10 @@ export default function OnboardingActivitiesScreen() {
 
       <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 24, opacity: buttonFade }]}>
         {selections.length < MIN_PICKS ? (
-          <Text style={styles.hint}>Pick at least one activity</Text>
+          <Text style={styles.hint}>{t('onboarding:activities.hint.pickOne')}</Text>
         ) : remaining > 0 ? (
           <Text style={styles.hint}>
-            Room for {remaining} more {remaining === 1 ? 'activity' : 'activities'} — or continue
+            {t('onboarding:activities.hint.roomLeft', { count: remaining })}
           </Text>
         ) : null}
         <Pressable
@@ -169,7 +173,7 @@ export default function OnboardingActivitiesScreen() {
           disabled={!canContinue}
         >
           <Text style={[styles.primaryLabel, !canContinue && styles.primaryLabelDisabled]}>
-            CONTINUE
+            {t('onboarding:activities.continue')}
           </Text>
         </Pressable>
       </Animated.View>

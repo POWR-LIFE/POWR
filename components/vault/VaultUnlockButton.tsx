@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -49,6 +50,7 @@ export interface VaultUnlockButtonProps {
 }
 
 export function VaultUnlockButton({ progress, claiming, onPressIn, onPressOut }: VaultUnlockButtonProps) {
+  const { t } = useTranslation();
   return (
     <View style={styles.wrap}>
       <Pressable
@@ -62,8 +64,8 @@ export function VaultUnlockButton({ progress, claiming, onPressIn, onPressOut }:
         // The gesture is invisible to a screen reader without this — the hint
         // has to carry the "keep holding" part, which nothing visual does.
         accessibilityRole="button"
-        accessibilityLabel="Unlock your Vault"
-        accessibilityHint="Press and hold until the ring fills to release your matured POWR"
+        accessibilityLabel={t('rewards:vault.unlock.a11yLabel')}
+        accessibilityHint={t('rewards:vault.unlock.a11yHint')}
         accessibilityState={{ disabled: claiming, busy: claiming }}
         style={({ pressed }) => [styles.button, pressed && styles.buttonHeld]}
       >
@@ -93,7 +95,7 @@ export function VaultUnlockButton({ progress, claiming, onPressIn, onPressOut }:
         )}
       </Pressable>
 
-      <Text style={styles.label}>HOLD</Text>
+      <Text style={styles.label}>{t('rewards:vault.unlock.hold')}</Text>
     </View>
   );
 }

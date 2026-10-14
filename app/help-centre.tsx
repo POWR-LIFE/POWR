@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { useAuth } from '@/context/AuthContext';
+import { getFormatLocale } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 
 const GOLD    = '#E8D200';
@@ -31,99 +33,56 @@ const RED     = '#ef4444';
 
 type Tab = 'faq' | 'contact' | 'tickets';
 
+// Labels, questions and answers are catalog keys, resolved at render. The
+// category id is what's stored on the ticket, never the label.
 interface Category { id: string; label: string; icon: keyof typeof Ionicons.glyphMap; }
 
 const CATEGORIES: Category[] = [
-  { id: 'points_rewards', label: 'Points & Rewards',  icon: 'trophy-outline'      },
-  { id: 'account',        label: 'Account & Profile', icon: 'person-outline'      },
-  { id: 'health_sync',    label: 'Health & Sync',     icon: 'heart-outline'       },
-  { id: 'gym_checkin',    label: 'Gym Check-in',      icon: 'location-outline'    },
-  { id: 'challenges',     label: 'Challenges',        icon: 'flag-outline'        },
-  { id: 'technical',      label: 'Technical Issue',   icon: 'build-outline'       },
-  { id: 'feedback',       label: 'Feedback / Other',  icon: 'chatbubble-outline'  },
+  { id: 'points_rewards', label: 'help:categories.pointsRewards', icon: 'trophy-outline'      },
+  { id: 'account',        label: 'help:categories.account',       icon: 'person-outline'      },
+  { id: 'health_sync',    label: 'help:categories.healthSync',    icon: 'heart-outline'       },
+  { id: 'gym_checkin',    label: 'help:categories.gymCheckin',    icon: 'location-outline'    },
+  { id: 'challenges',     label: 'help:categories.challenges',    icon: 'flag-outline'        },
+  { id: 'technical',      label: 'help:categories.technical',     icon: 'build-outline'       },
+  { id: 'feedback',       label: 'help:categories.feedback',      icon: 'chatbubble-outline'  },
 ];
 
 interface FaqSection { label: string; items: { q: string; a: string }[]; }
 
 const FAQ_SECTIONS: FaqSection[] = [
   {
-    label: 'Points & Rewards',
+    label: 'help:faq.points.label',
     items: [
-      {
-        q: 'How do I earn POWR Points?',
-        a: 'Points are awarded for verified physical activity — gym check-ins at partner venues, walking steps tracked by your phone or wearable, logged workouts, and completing weekly challenges.',
-      },
-      {
-        q: 'Do points expire?',
-        a: 'Points may expire if your account is inactive for 12 consecutive months. As long as you stay active, your points are safe.',
-      },
-      {
-        q: 'How do I redeem a reward?',
-        a: 'Go to the Discover tab, find a reward you want, and tap Redeem. Your points will be deducted and a unique code will be shown. Present this to the partner business.',
-      },
-      {
-        q: 'Can I transfer points to someone else?',
-        a: 'Points are tied to your account and cannot be transferred or sold. Each user earns and redeems their own points.',
-      },
+      { q: 'help:faq.points.earn.q',     a: 'help:faq.points.earn.a' },
+      { q: 'help:faq.points.expire.q',   a: 'help:faq.points.expire.a' },
+      { q: 'help:faq.points.redeem.q',   a: 'help:faq.points.redeem.a' },
+      { q: 'help:faq.points.transfer.q', a: 'help:faq.points.transfer.a' },
     ],
   },
   {
-    label: 'Gym & Check-ins',
+    label: 'help:faq.gym.label',
     items: [
-      {
-        q: 'How do gym check-ins work?',
-        a: 'When you arrive at a partner gym, POWR uses your location to detect the visit and automatically awards points. Make sure Location permission is enabled in Settings → Connections.',
-      },
-      {
-        q: 'I visited the gym but didn\'t get points — why?',
-        a: 'Check that Location Services is set to "While Using" for POWR (Settings → Connections). Also make sure the gym is a listed POWR partner. If the issue persists, log a manual session or contact us.',
-      },
-      {
-        q: 'How many gym check-in points can I earn per day?',
-        a: 'You can earn points for one gym check-in per day. Additional visits on the same day won\'t award duplicate points.',
-      },
+      { q: 'help:faq.gym.howItWorks.q', a: 'help:faq.gym.howItWorks.a' },
+      { q: 'help:faq.gym.noPoints.q',   a: 'help:faq.gym.noPoints.a' },
+      { q: 'help:faq.gym.perDay.q',     a: 'help:faq.gym.perDay.a' },
     ],
   },
   {
-    label: 'Health & Sync',
+    label: 'help:faq.health.label',
     items: [
-      {
-        q: 'Which health sources are supported?',
-        a: 'On iOS we read from Apple Health. On Android we use Google Health Connect. You can also connect Fitbit or WHOOP for richer data such as heart rate and sleep.',
-      },
-      {
-        q: 'My steps are not syncing — what should I do?',
-        a: "Check that your health source is connected under Settings → On your phone or Wearables. Also ensure POWR has the correct permissions in your device's Privacy or Health settings.",
-      },
-      {
-        q: 'Can I use POWR without a wearable?',
-        a: 'Yes. Your phone tracks steps and workouts natively via Apple Health or Google Health Connect — no wearable required.',
-      },
-      {
-        q: 'Will POWR drain my battery?',
-        a: 'POWR is designed to be efficient. Health data is synced in batches rather than continuously. Location is only used briefly during a gym check-in.',
-      },
+      { q: 'help:faq.health.sources.q',         a: 'help:faq.health.sources.a' },
+      { q: 'help:faq.health.stepsNotSyncing.q', a: 'help:faq.health.stepsNotSyncing.a' },
+      { q: 'help:faq.health.noWearable.q',      a: 'help:faq.health.noWearable.a' },
+      { q: 'help:faq.health.battery.q',         a: 'help:faq.health.battery.a' },
     ],
   },
   {
-    label: 'Account & Privacy',
+    label: 'help:faq.account.label',
     items: [
-      {
-        q: 'How do I change my email or password?',
-        a: 'Go to Settings → Account. Tap Email to update your address, or Change Password to update it directly in the app. If you\'ve forgotten your current password, tap "Send reset email" on the Change Password screen.',
-      },
-      {
-        q: 'Is my health data shared with partners?',
-        a: 'No. Your health data is never shared with partner businesses. We only share the minimum information required to fulfil a reward you choose to redeem (e.g. a redemption code).',
-      },
-      {
-        q: 'How do I delete my account?',
-        a: 'Go to Settings, scroll to the bottom, and tap Delete account. This permanently removes your profile and all associated data within 30 days.',
-      },
-      {
-        q: 'How do I opt out of the leaderboard?',
-        a: 'Go to Settings → Privacy and toggle off "Show on leaderboard". Your activity will remain private and you\'ll be removed from all rankings.',
-      },
+      { q: 'help:faq.account.changeEmail.q',   a: 'help:faq.account.changeEmail.a' },
+      { q: 'help:faq.account.healthShared.q',  a: 'help:faq.account.healthShared.a' },
+      { q: 'help:faq.account.deleteAccount.q', a: 'help:faq.account.deleteAccount.a' },
+      { q: 'help:faq.account.leaderboard.q',   a: 'help:faq.account.leaderboard.a' },
     ],
   },
 ];
@@ -135,10 +94,10 @@ const STATUS_COLOR: Record<string, string> = {
   closed:      DIM,
 };
 const STATUS_LABEL: Record<string, string> = {
-  open:        'Open',
-  in_progress: 'In Progress',
-  resolved:    'Resolved',
-  closed:      'Closed',
+  open:        'help:tickets.status.open',
+  in_progress: 'help:tickets.status.inProgress',
+  resolved:    'help:tickets.status.resolved',
+  closed:      'help:tickets.status.closed',
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -147,6 +106,7 @@ export default function HelpCentreScreen() {
   const insets = useSafeAreaInsets();
   const router  = useRouter();
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   const [tab, setTab] = useState<Tab>('faq');
 
@@ -159,16 +119,16 @@ export default function HelpCentreScreen() {
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={MUTED} />
         </Pressable>
-        <Text style={styles.headerTitle}>Help Centre</Text>
+        <Text style={styles.headerTitle}>{t('help:title')}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       {/* Tab bar */}
       <View style={styles.tabBar}>
-        {(['faq', 'contact', 'tickets'] as Tab[]).map(t => (
-          <Pressable key={t} style={[styles.tabBtn, tab === t && styles.tabBtnActive]} onPress={() => setTab(t)}>
-            <Text style={[styles.tabLabel, tab === t && styles.tabLabelActive]}>
-              {t === 'faq' ? 'FAQ' : t === 'contact' ? 'Contact Us' : 'My Tickets'}
+        {(['faq', 'contact', 'tickets'] as Tab[]).map(id => (
+          <Pressable key={id} style={[styles.tabBtn, tab === id && styles.tabBtnActive]} onPress={() => setTab(id)}>
+            <Text style={[styles.tabLabel, tab === id && styles.tabLabelActive]}>
+              {id === 'faq' ? t('help:tabs.faq') : id === 'contact' ? t('help:tabs.contact') : t('help:tabs.tickets')}
             </Text>
           </Pressable>
         ))}
@@ -185,6 +145,7 @@ export default function HelpCentreScreen() {
 
 function FAQTab({ insets }: { insets: ReturnType<typeof useSafeAreaInsets> }) {
   const [open, setOpen] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   return (
     <ScrollView
@@ -194,7 +155,7 @@ function FAQTab({ insets }: { insets: ReturnType<typeof useSafeAreaInsets> }) {
     >
       {FAQ_SECTIONS.map((section) => (
         <View key={section.label}>
-          <Text style={styles.sectionLabel}>{section.label.toUpperCase()}</Text>
+          <Text style={styles.sectionLabel}>{t(section.label).toUpperCase()}</Text>
           <View style={styles.card}>
             {section.items.map((item, idx) => {
               const key = `${section.label}-${idx}`;
@@ -206,7 +167,7 @@ function FAQTab({ insets }: { insets: ReturnType<typeof useSafeAreaInsets> }) {
                     style={({ pressed }) => [styles.faqRow, pressed && { opacity: 0.7 }]}
                     onPress={() => setOpen(isOpen ? null : key)}
                   >
-                    <Text style={styles.faqQ}>{item.q}</Text>
+                    <Text style={styles.faqQ}>{t(item.q)}</Text>
                     <Ionicons
                       name={isOpen ? 'chevron-up' : 'chevron-down'}
                       size={15}
@@ -215,7 +176,7 @@ function FAQTab({ insets }: { insets: ReturnType<typeof useSafeAreaInsets> }) {
                   </Pressable>
                   {isOpen && (
                     <View style={styles.faqAnswer}>
-                      <Text style={styles.faqA}>{item.a}</Text>
+                      <Text style={styles.faqA}>{t(item.a)}</Text>
                     </View>
                   )}
                 </View>
@@ -225,7 +186,7 @@ function FAQTab({ insets }: { insets: ReturnType<typeof useSafeAreaInsets> }) {
         </View>
       ))}
 
-      <Text style={styles.hint}>Still stuck? Use the Contact Us tab and we'll get back to you.</Text>
+      <Text style={styles.hint}>{t('help:faq.stillStuck')}</Text>
     </ScrollView>
   );
 }
@@ -245,6 +206,7 @@ function ContactTab({
   const [subject,  setSubject]  = useState('');
   const [message,  setMessage]  = useState('');
   const [sending,  setSending]  = useState(false);
+  const { t } = useTranslation();
 
   const canSubmit = category.length > 0 && subject.trim().length > 0 && message.trim().length > 10;
 
@@ -260,10 +222,10 @@ function ContactTab({
     });
     setSending(false);
     if (error) {
-      Alert.alert('Error', 'Could not send your message. Please try again.');
+      Alert.alert(t('help:contact.errorTitle'), t('help:contact.errorBody'));
     } else {
-      Alert.alert('Message sent', "We'll get back to you within one business day.", [
-        { text: 'OK', onPress: onSent },
+      Alert.alert(t('help:contact.sentTitle'), t('help:contact.sentBody'), [
+        { text: t('common:actions.ok'), onPress: onSent },
       ]);
     }
   };
@@ -281,7 +243,7 @@ function ContactTab({
         keyboardShouldPersistTaps="handled"
       >
         {/* Category */}
-        <Text style={styles.sectionLabel}>WHAT CAN WE HELP WITH?</Text>
+        <Text style={styles.sectionLabel}>{t('help:contact.whatHelp')}</Text>
         <View style={styles.categoryGrid}>
           {CATEGORIES.map(cat => (
             <Pressable
@@ -295,18 +257,18 @@ function ContactTab({
                 color={category === cat.id ? '#0d0d0d' : MUTED}
               />
               <Text style={[styles.catLabel, category === cat.id && styles.catLabelActive]}>
-                {cat.label}
+                {t(cat.label)}
               </Text>
             </Pressable>
           ))}
         </View>
 
         {/* Subject */}
-        <Text style={styles.sectionLabel}>SUBJECT</Text>
+        <Text style={styles.sectionLabel}>{t('help:contact.subject')}</Text>
         <View style={styles.inputWrap}>
           <TextInput
             style={styles.input}
-            placeholder="Brief summary of your issue"
+            placeholder={t('help:contact.subjectPlaceholder')}
             placeholderTextColor={DIM}
             value={subject}
             onChangeText={setSubject}
@@ -316,11 +278,11 @@ function ContactTab({
         </View>
 
         {/* Message */}
-        <Text style={styles.sectionLabel}>MESSAGE</Text>
+        <Text style={styles.sectionLabel}>{t('help:contact.message')}</Text>
         <View style={[styles.inputWrap, styles.textAreaWrap]}>
           <TextInput
             style={[styles.input, styles.textArea]}
-            placeholder="Describe what happened and any steps you've already tried…"
+            placeholder={t('help:contact.messagePlaceholder')}
             placeholderTextColor={DIM}
             value={message}
             onChangeText={setMessage}
@@ -344,10 +306,10 @@ function ContactTab({
         >
           {sending
             ? <ActivityIndicator color="#0d0d0d" size="small" />
-            : <Text style={styles.submitLabel}>Send Message</Text>}
+            : <Text style={styles.submitLabel}>{t('help:contact.send')}</Text>}
         </Pressable>
 
-        <Text style={styles.hint}>We typically respond within one business day.</Text>
+        <Text style={styles.hint}>{t('help:contact.responseTime')}</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -365,6 +327,7 @@ function TicketsTab({
   const [tickets, setTickets]   = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -380,12 +343,14 @@ function TicketsTab({
 
   useEffect(() => { load(); }, [load]);
 
-  const categoryLabel = (id: string) =>
-    CATEGORIES.find(c => c.id === id)?.label ?? id;
+  const categoryLabel = (id: string) => {
+    const label = CATEGORIES.find(c => c.id === id)?.label;
+    return label ? t(label) : id;
+  };
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
   return (
@@ -394,7 +359,7 @@ function TicketsTab({
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.sectionLabel}>YOUR SUPPORT TICKETS</Text>
+      <Text style={styles.sectionLabel}>{t('help:tickets.title')}</Text>
 
       {loading && (
         <View style={styles.emptyState}>
@@ -405,48 +370,48 @@ function TicketsTab({
       {!loading && tickets.length === 0 && (
         <View style={styles.emptyState}>
           <Ionicons name="chatbubble-ellipses-outline" size={40} color={DIM} />
-          <Text style={styles.emptyText}>No tickets yet</Text>
-          <Text style={styles.emptyHint}>Messages you send will appear here.</Text>
+          <Text style={styles.emptyText}>{t('help:tickets.emptyTitle')}</Text>
+          <Text style={styles.emptyHint}>{t('help:tickets.emptyHint')}</Text>
         </View>
       )}
 
       {!loading && tickets.length > 0 && (
         <View style={styles.card}>
-          {tickets.map((t, idx) => (
-            <View key={t.id}>
+          {tickets.map((ticket, idx) => (
+            <View key={ticket.id}>
               {idx > 0 && <View style={styles.divider} />}
               <Pressable
                 style={({ pressed }) => [styles.ticketRow, pressed && { opacity: 0.7 }]}
-                onPress={() => setExpanded(expanded === t.id ? null : t.id)}
+                onPress={() => setExpanded(expanded === ticket.id ? null : ticket.id)}
               >
                 <View style={styles.ticketMain}>
                   <View style={styles.ticketTopRow}>
-                    <Text style={styles.ticketSubject} numberOfLines={1}>{t.subject}</Text>
-                    <View style={[styles.statusBadge, { borderColor: STATUS_COLOR[t.status] ?? DIM }]}>
-                      <Text style={[styles.statusText, { color: STATUS_COLOR[t.status] ?? DIM }]}>
-                        {STATUS_LABEL[t.status] ?? t.status}
+                    <Text style={styles.ticketSubject} numberOfLines={1}>{ticket.subject}</Text>
+                    <View style={[styles.statusBadge, { borderColor: STATUS_COLOR[ticket.status] ?? DIM }]}>
+                      <Text style={[styles.statusText, { color: STATUS_COLOR[ticket.status] ?? DIM }]}>
+                        {STATUS_LABEL[ticket.status] ? t(STATUS_LABEL[ticket.status]) : ticket.status}
                       </Text>
                     </View>
                   </View>
-                  <Text style={styles.ticketMeta}>{categoryLabel(t.category)} · {formatDate(t.created_at)}</Text>
+                  <Text style={styles.ticketMeta}>{categoryLabel(ticket.category)} · {formatDate(ticket.created_at)}</Text>
                 </View>
                 <Ionicons
-                  name={expanded === t.id ? 'chevron-up' : 'chevron-down'}
+                  name={expanded === ticket.id ? 'chevron-up' : 'chevron-down'}
                   size={14}
                   color={DIM}
                 />
               </Pressable>
 
-              {expanded === t.id && (
+              {expanded === ticket.id && (
                 <View style={styles.ticketDetail}>
-                  <Text style={styles.ticketMessage}>{t.message}</Text>
-                  {t.admin_reply ? (
+                  <Text style={styles.ticketMessage}>{ticket.message}</Text>
+                  {ticket.admin_reply ? (
                     <View style={styles.replyBubble}>
-                      <Text style={styles.replyLabel}>POWR Support</Text>
-                      <Text style={styles.replyText}>{t.admin_reply}</Text>
+                      <Text style={styles.replyLabel}>{t('help:tickets.supportName')}</Text>
+                      <Text style={styles.replyText}>{ticket.admin_reply}</Text>
                     </View>
                   ) : (
-                    <Text style={styles.awaitingText}>Awaiting response…</Text>
+                    <Text style={styles.awaitingText}>{t('help:tickets.awaiting')}</Text>
                   )}
                 </View>
               )}

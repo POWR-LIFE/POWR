@@ -5,7 +5,16 @@
  * that `computeEarnedIds()` evaluates against real user stats.
  *
  * Category: level
+ *
+ * Names, descriptions and the category and rarity labels are getters that read
+ * the points catalog when they're used, so they follow the language on screen.
+ * A level milestone's name IS the level's name (points:levels.*), so the badge
+ * and the level always agree. Display only: logic keys off `id`, `category` and
+ * `unlock`. (Spreading an achievement — sortedAchievements — copies the text in
+ * the language of that moment.)
  */
+
+import i18n from '@/lib/i18n';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,18 +78,18 @@ export const CATEGORY_META: Record<
   AchievementCategory,
   { label: string; colour: string; icon: string }
 > = {
-  habit:    { label: 'Habit',     colour: '#f97316', icon: 'flame-outline' },
-  sessions: { label: 'Sessions',  colour: '#4ade80', icon: 'checkmark-done-outline' },
-  points:   { label: 'Points',    colour: '#E8D200', icon: 'star-outline' },
-  level:    { label: 'Level',     colour: '#E8D200', icon: 'ribbon-outline' },
-  running:  { label: 'Running',   colour: '#38bdf8', icon: 'speedometer-outline' },
-  gym:      { label: 'Gym',       colour: '#E8D200', icon: 'barbell-outline' },
-  cycling:  { label: 'Cycling',   colour: '#a855f7', icon: 'bicycle-outline' },
-  swimming: { label: 'Swimming',  colour: '#06b6d4', icon: 'water-outline' },
-  hiit:     { label: 'HIIT',      colour: '#ef4444', icon: 'flash-outline' },
-  yoga:     { label: 'Yoga',      colour: '#c084fc', icon: 'leaf-outline' },
-  sports:   { label: 'Sports',    colour: '#4ade80', icon: 'football-outline' },
-  walking:  { label: 'Walking',   colour: '#6ee7b7', icon: 'footsteps-outline' },
+  habit:    { get label() { return i18n.t('points:achievements.category.habit'); }, colour: '#f97316', icon: 'flame-outline' },
+  sessions: { get label() { return i18n.t('points:achievements.category.sessions'); }, colour: '#4ade80', icon: 'checkmark-done-outline' },
+  points:   { get label() { return i18n.t('points:achievements.category.points'); }, colour: '#E8D200', icon: 'star-outline' },
+  level:    { get label() { return i18n.t('points:achievements.category.level'); }, colour: '#E8D200', icon: 'ribbon-outline' },
+  running:  { get label() { return i18n.t('points:achievements.category.running'); }, colour: '#38bdf8', icon: 'speedometer-outline' },
+  gym:      { get label() { return i18n.t('points:achievements.category.gym'); }, colour: '#E8D200', icon: 'barbell-outline' },
+  cycling:  { get label() { return i18n.t('points:achievements.category.cycling'); }, colour: '#a855f7', icon: 'bicycle-outline' },
+  swimming: { get label() { return i18n.t('points:achievements.category.swimming'); }, colour: '#06b6d4', icon: 'water-outline' },
+  hiit:     { get label() { return i18n.t('points:achievements.category.hiit'); }, colour: '#ef4444', icon: 'flash-outline' },
+  yoga:     { get label() { return i18n.t('points:achievements.category.yoga'); }, colour: '#c084fc', icon: 'leaf-outline' },
+  sports:   { get label() { return i18n.t('points:achievements.category.sports'); }, colour: '#4ade80', icon: 'football-outline' },
+  walking:  { get label() { return i18n.t('points:achievements.category.walking'); }, colour: '#6ee7b7', icon: 'footsteps-outline' },
 };
 
 // ─── Achievement Library ──────────────────────────────────────────────────────
@@ -91,8 +100,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-1',
     code: 'LV1',
-    name: 'Touching Grass',
-    description: 'Reach Level 1: Touching Grass',
+    get name() { return i18n.t('points:levels.touchingGrass.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 1, name: i18n.t('points:levels.touchingGrass.name') }); },
     category: 'level',
     colour: '#4ade80',
     icon: 'ribbon',
@@ -102,8 +111,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-2',
     code: 'LV2',
-    name: 'Cardio Goblin',
-    description: 'Reach Level 2: Cardio Goblin',
+    get name() { return i18n.t('points:levels.cardioGoblin.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 2, name: i18n.t('points:levels.cardioGoblin.name') }); },
     category: 'level',
     colour: '#4ade80',
     icon: 'ribbon',
@@ -113,8 +122,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-3',
     code: 'LV3',
-    name: 'Streak Freak',
-    description: 'Reach Level 3: Streak Freak',
+    get name() { return i18n.t('points:levels.streakFreak.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 3, name: i18n.t('points:levels.streakFreak.name') }); },
     category: 'level',
     colour: '#38bdf8',
     icon: 'ribbon',
@@ -124,8 +133,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-4',
     code: 'LV4',
-    name: 'Motion Magic',
-    description: 'Reach Level 4: Motion Magic',
+    get name() { return i18n.t('points:levels.motionMagic.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 4, name: i18n.t('points:levels.motionMagic.name') }); },
     category: 'level',
     colour: '#a855f7',
     icon: 'ribbon',
@@ -135,8 +144,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-5',
     code: 'LV5',
-    name: 'Heavy Hitter',
-    description: 'Reach Level 5: Heavy Hitter',
+    get name() { return i18n.t('points:levels.heavyHitter.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 5, name: i18n.t('points:levels.heavyHitter.name') }); },
     category: 'level',
     colour: '#E8D200',
     icon: 'trophy',
@@ -146,8 +155,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-6',
     code: 'LV6',
-    name: 'Can\'t Sit Still',
-    description: 'Reach Level 6: Can\'t Sit Still',
+    get name() { return i18n.t('points:levels.cantSitStill.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 6, name: i18n.t('points:levels.cantSitStill.name') }); },
     category: 'level',
     colour: '#f97316',
     icon: 'trophy',
@@ -157,8 +166,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-7',
     code: 'LV7',
-    name: 'Iron Lungs',
-    description: 'Reach Level 7: Iron Lungs',
+    get name() { return i18n.t('points:levels.ironLungs.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 7, name: i18n.t('points:levels.ironLungs.name') }); },
     category: 'level',
     colour: '#ef4444',
     icon: 'trophy',
@@ -168,8 +177,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-8',
     code: 'LV8',
-    name: 'Pavement Predator',
-    description: 'Reach Level 8: Pavement Predator',
+    get name() { return i18n.t('points:levels.pavementPredator.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 8, name: i18n.t('points:levels.pavementPredator.name') }); },
     category: 'level',
     colour: '#E8D200',
     icon: 'ribbon',
@@ -179,8 +188,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-9',
     code: 'LV9',
-    name: 'Step Collector',
-    description: 'Reach Level 9: Step Collector',
+    get name() { return i18n.t('points:levels.stepCollector.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 9, name: i18n.t('points:levels.stepCollector.name') }); },
     category: 'level',
     colour: '#22c55e',
     icon: 'ribbon',
@@ -190,8 +199,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-10',
     code: 'LV10',
-    name: 'Calorie Criminal',
-    description: 'Reach Level 10: Calorie Criminal',
+    get name() { return i18n.t('points:levels.calorieCriminal.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 10, name: i18n.t('points:levels.calorieCriminal.name') }); },
     category: 'level',
     colour: '#0ea5e9',
     icon: 'trophy',
@@ -201,8 +210,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-11',
     code: 'LV11',
-    name: 'Mile Muncher',
-    description: 'Reach Level 11: Mile Muncher',
+    get name() { return i18n.t('points:levels.mileMuncher.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 11, name: i18n.t('points:levels.mileMuncher.name') }); },
     category: 'level',
     colour: '#06b6d4',
     icon: 'trophy',
@@ -212,8 +221,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-12',
     code: 'LV12',
-    name: 'Move Machine',
-    description: 'Reach Level 12: Move Machine',
+    get name() { return i18n.t('points:levels.moveMachine.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 12, name: i18n.t('points:levels.moveMachine.name') }); },
     category: 'level',
     colour: '#a855f7',
     icon: 'trophy',
@@ -223,8 +232,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-13',
     code: 'LV13',
-    name: 'Need New Shoes',
-    description: 'Reach Level 13: Need New Shoes',
+    get name() { return i18n.t('points:levels.needNewShoes.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 13, name: i18n.t('points:levels.needNewShoes.name') }); },
     category: 'level',
     colour: '#ef4444',
     icon: 'trophy',
@@ -234,8 +243,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-14',
     code: 'LV14',
-    name: 'Certified Weapon',
-    description: 'Reach Level 14: Certified Weapon',
+    get name() { return i18n.t('points:levels.certifiedWeapon.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 14, name: i18n.t('points:levels.certifiedWeapon.name') }); },
     category: 'level',
     colour: '#f59e0b',
     icon: 'medal',
@@ -245,8 +254,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-15',
     code: 'LV15',
-    name: 'Momentum Monster',
-    description: 'Reach Level 15: Momentum Monster',
+    get name() { return i18n.t('points:levels.momentumMonster.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 15, name: i18n.t('points:levels.momentumMonster.name') }); },
     category: 'level',
     colour: '#f97316',
     icon: 'shield-checkmark',
@@ -256,8 +265,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-16',
     code: 'LV16',
-    name: 'Limit Breaker',
-    description: 'Reach Level 16: Limit Breaker',
+    get name() { return i18n.t('points:levels.limitBreaker.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 16, name: i18n.t('points:levels.limitBreaker.name') }); },
     category: 'level',
     colour: '#f43f5e',
     icon: 'medal',
@@ -267,8 +276,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-17',
     code: 'LV17',
-    name: 'Diesel Mode',
-    description: 'Reach Level 17: Diesel Mode',
+    get name() { return i18n.t('points:levels.dieselMode.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 17, name: i18n.t('points:levels.dieselMode.name') }); },
     category: 'level',
     colour: '#E8D200',
     icon: 'medal',
@@ -278,8 +287,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-18',
     code: 'LV18',
-    name: 'Peak Condition',
-    description: 'Reach Level 18: Peak Condition',
+    get name() { return i18n.t('points:levels.peakCondition.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 18, name: i18n.t('points:levels.peakCondition.name') }); },
     category: 'level',
     colour: '#22d3ee',
     icon: 'diamond',
@@ -289,8 +298,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-19',
     code: 'LV19',
-    name: 'Long Hauler',
-    description: 'Reach Level 19: Long Hauler',
+    get name() { return i18n.t('points:levels.longHauler.name'); },
+    get description() { return i18n.t('points:achievements.reachLevel', { level: 19, name: i18n.t('points:levels.longHauler.name') }); },
     category: 'level',
     colour: '#d946ef',
     icon: 'diamond',
@@ -300,8 +309,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-20',
     code: 'LV20',
-    name: 'Goggins',
-    description: 'The summit. Reach Level 20: Goggins',
+    get name() { return i18n.t('points:levels.goggins.name'); },
+    get description() { return i18n.t('points:achievements.summit', { level: 20, name: i18n.t('points:levels.goggins.name') }); },
     category: 'level',
     colour: '#E8D200',
     icon: 'medal',
@@ -316,10 +325,10 @@ export const RARITY_META: Record<
   AchievementRarity,
   { label: string; border: string; glow: string }
 > = {
-  common:    { label: 'Common',    border: 'rgba(255,255,255,0.15)', glow: 'transparent' },
-  rare:      { label: 'Rare',      border: 'rgba(56,189,248,0.5)',   glow: 'rgba(56,189,248,0.12)' },
-  epic:      { label: 'Epic',      border: 'rgba(168,85,247,0.6)',   glow: 'rgba(168,85,247,0.15)' },
-  legendary: { label: 'Legendary', border: 'rgba(232,210,0,0.7)',    glow: 'rgba(232,210,0,0.18)' },
+  common:    { get label() { return i18n.t('points:achievements.rarity.common'); },    border: 'rgba(255,255,255,0.15)', glow: 'transparent' },
+  rare:      { get label() { return i18n.t('points:achievements.rarity.rare'); },      border: 'rgba(56,189,248,0.5)',   glow: 'rgba(56,189,248,0.12)' },
+  epic:      { get label() { return i18n.t('points:achievements.rarity.epic'); },      border: 'rgba(168,85,247,0.6)',   glow: 'rgba(168,85,247,0.15)' },
+  legendary: { get label() { return i18n.t('points:achievements.rarity.legendary'); }, border: 'rgba(232,210,0,0.7)',    glow: 'rgba(232,210,0,0.18)' },
 };
 
 // ─── Evaluation ───────────────────────────────────────────────────────────────

@@ -1,10 +1,12 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
+import type { TFunction } from 'i18next';
 import React, { useCallback, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
@@ -52,6 +54,7 @@ function ActionCard({
   /** Tap the person/identity area (e.g. to view their profile). */
   onPress?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.card}>
       <Pressable
@@ -59,7 +62,7 @@ function ActionCard({
         onPress={onPress}
         disabled={!onPress}
         accessibilityRole={onPress ? 'button' : undefined}
-        accessibilityLabel={onPress ? `View ${title}'s profile` : undefined}
+        accessibilityLabel={onPress ? t('social:shared.viewProfile', { name: title }) : undefined}
       >
         {leading}
         <View style={{ flex: 1 }}>
@@ -68,10 +71,10 @@ function ActionCard({
         </View>
       </Pressable>
       <View style={styles.actions}>
-        <Pressable style={styles.ignoreBtn} onPress={onDecline} accessibilityRole="button" accessibilityLabel={`Ignore: ${title}`}>
-          <Text style={styles.ignoreText}>Ignore</Text>
+        <Pressable style={styles.ignoreBtn} onPress={onDecline} accessibilityRole="button" accessibilityLabel={t('social:activity.ignoreA11y', { title })}>
+          <Text style={styles.ignoreText}>{t('social:activity.ignore')}</Text>
         </Pressable>
-        <Pressable style={styles.acceptBtn} onPress={onAccept} accessibilityRole="button" accessibilityLabel={`${primaryLabel}: ${title}`}>
+        <Pressable style={styles.acceptBtn} onPress={onAccept} accessibilityRole="button" accessibilityLabel={t('social:activity.actionA11y', { action: primaryLabel, title })}>
           <Text style={styles.acceptText}>{primaryLabel}</Text>
         </Pressable>
       </View>
@@ -112,36 +115,38 @@ function iconForActivity(item: ActivityItem): IconSpec {
 }
 
 /** Compact relative time, e.g. "now", "12m", "3h", "2d", "5w", "4mo". */
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: TFunction): string {
   const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (secs < 60) return 'now';
+  if (secs < 60) return t('social:activity.timeAgo.now');
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m`;
+  if (mins < 60) return t('social:activity.timeAgo.minutes', { n: mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
+  if (hrs < 24) return t('social:activity.timeAgo.hours', { n: hrs });
   const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d`;
+  if (days < 7) return t('social:activity.timeAgo.days', { n: days });
   const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w`;
-  return `${Math.floor(days / 30)}mo`;
+  if (weeks < 5) return t('social:activity.timeAgo.weeks', { n: weeks });
+  return t('social:activity.timeAgo.months', { count: Math.floor(days / 30) });
 }
 
 /** Swipe left on a feed row to reveal this — tap to permanently remove it. */
 function RemoveAction({ label, onRemove }: { label: string; onRemove: () => void }) {
+  const { t } = useTranslation();
   return (
     <Pressable
       style={({ pressed }) => [styles.removeAction, pressed && { opacity: 0.85 }]}
       onPress={onRemove}
       accessibilityRole="button"
-      accessibilityLabel={`Remove: ${label}`}
+      accessibilityLabel={t('social:activity.removeA11y', { label })}
     >
       <Ionicons name="trash-outline" size={18} color="#fff" />
-      <Text style={styles.removeActionText}>Remove</Text>
+      <Text style={styles.removeActionText}>{t('social:activity.remove')}</Text>
     </Pressable>
   );
 }
 
 function FeedItem({ item, onPress, onRemove }: { item: ActivityItem; onPress: () => void; onRemove: () => void }) {
+  const { t } = useTranslation();
   const unread = item.readAt === null;
   const icon = iconForActivity(item);
   const tappable = !!item.route;
@@ -184,7 +189,7 @@ function FeedItem({ item, onPress, onRemove }: { item: ActivityItem; onPress: ()
           <Text style={styles.feedBody} numberOfLines={2}>{item.body}</Text>
         </View>
         <View style={styles.feedMeta}>
-          <Text style={styles.feedTime}>{timeAgo(item.createdAt)}</Text>
+          <Text style={styles.feedTime}>{timeAgo(item.createdAt, t)}</Text>
           {unread && <View style={styles.unreadDot} />}
         </View>
       </Pressable>
@@ -195,6 +200,7 @@ function FeedItem({ item, onPress, onRemove }: { item: ActivityItem; onPress: ()
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
 
   const { incoming, acceptRequest, declineRequest, refresh: refreshFriends } = useFriends();
   const { pendingInvites, acceptInvite, declineInvite, refresh: refreshChallenges } = useSharedChallenges();
@@ -262,14 +268,14 @@ export default function NotificationsScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     void acceptInvite(c.id).then((res) => {
       refreshPendingActions();
-      if (!res.ok) Alert.alert('Couldn’t join', res.error);
+      if (!res.ok) Alert.alert(t('social:shared.couldntJoin'), res.error);
     });
   };
   const declineChallenge = (c: SharedChallenge) => {
     Haptics.selectionAsync();
     void declineInvite(c.id).then((res) => {
       refreshPendingActions();
-      if (!res.ok) Alert.alert('Couldn’t decline', res.error);
+      if (!res.ok) Alert.alert(t('social:shared.couldntDecline'), res.error);
     });
   };
 
@@ -282,10 +288,10 @@ export default function NotificationsScreen() {
       <GeometricBackground />
 
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Back">
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('common:actions.back')}>
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>ACTIVITY</Text>
+        <Text style={styles.headerTitle}>{t('social:activity.title')}</Text>
         <View style={styles.headerBtn} />
       </View>
 
@@ -298,21 +304,21 @@ export default function NotificationsScreen() {
             <View style={styles.emptyIcon}>
               <Ionicons name="checkmark-done" size={26} color={GOLD} />
             </View>
-            <Text style={styles.emptyTitle}>You’re all caught up</Text>
-            <Text style={styles.emptyBody}>Friend requests, challenge invites and your recent activity will show up here.</Text>
+            <Text style={styles.emptyTitle}>{t('social:activity.empty.title')}</Text>
+            <Text style={styles.emptyBody}>{t('social:activity.empty.body')}</Text>
           </View>
         ) : (
           <>
             {hasNeedsYou && (
               <>
-                <Text style={styles.sectionLabel}>NEEDS YOU</Text>
+                <Text style={styles.sectionLabel}>{t('social:activity.needsYou')}</Text>
                 {incoming.map((f) => (
                   <ActionCard
                     key={`friend-${f.id}`}
                     leading={<Avatar friend={f} size={44} />}
                     title={f.displayName}
-                    subtitle={`@${f.username} · sent you a friend request`}
-                    primaryLabel="Accept"
+                    subtitle={t('social:activity.friendRequest', { username: f.username })}
+                    primaryLabel={t('social:activity.accept')}
                     onAccept={() => acceptFriend(f)}
                     onDecline={() => declineFriend(f)}
                     onPress={() => openProfile(f.id, 'pending_incoming')}
@@ -328,8 +334,8 @@ export default function NotificationsScreen() {
                       </View>
                     }
                     title={c.template.title}
-                    subtitle={`${c.pendingInviteFromName ?? 'A friend'} invited you · ${c.template.goal}`}
-                    primaryLabel="Join"
+                    subtitle={t('social:activity.challengeInvite', { name: c.pendingInviteFromName ?? t('social:shared.aFriend'), goal: c.template.goal })}
+                    primaryLabel={t('social:activity.join')}
                     onAccept={() => acceptChallenge(c)}
                     onDecline={() => declineChallenge(c)}
                   />
@@ -339,7 +345,7 @@ export default function NotificationsScreen() {
 
             {hasRecent && (
               <>
-                <Text style={[styles.sectionLabel, hasNeedsYou && { marginTop: 12 }]}>RECENT</Text>
+                <Text style={[styles.sectionLabel, hasNeedsYou && { marginTop: 12 }]}>{t('social:activity.recent')}</Text>
                 <View style={styles.feedCard}>
                   {feed.map((item, i) => (
                     <View key={item.id}>

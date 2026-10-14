@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { PASSWORD_RESET_REDIRECT, supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -31,6 +32,7 @@ export default function ChangePasswordScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
+    const { t } = useTranslation();
 
     const [currentPassword, setCurrentPassword]     = useState('');
     const [newPassword, setNewPassword]             = useState('');
@@ -52,11 +54,11 @@ export default function ChangePasswordScreen() {
     const handleSubmit = async () => {
         setError(null);
 
-        if (!currentPassword) { setError('Please enter your current password.'); return; }
-        if (!newPassword)      { setError('Please enter a new password.'); return; }
-        if (newPassword.length < 6) { setError('New password must be at least 6 characters.'); return; }
-        if (newPassword !== confirmPassword) { setError("Passwords don't match."); return; }
-        if (newPassword === currentPassword) { setError('New password must be different from your current one.'); return; }
+        if (!currentPassword) { setError(t('account:shared.currentPasswordRequired')); return; }
+        if (!newPassword)      { setError(t('account:changePassword.error.newRequired')); return; }
+        if (newPassword.length < 6) { setError(t('account:changePassword.error.tooShort')); return; }
+        if (newPassword !== confirmPassword) { setError(t('account:changePassword.error.mismatch')); return; }
+        if (newPassword === currentPassword) { setError(t('account:changePassword.error.same')); return; }
 
         setLoading(true);
         try {
@@ -66,7 +68,7 @@ export default function ChangePasswordScreen() {
                 password: currentPassword,
             });
             if (signInError) {
-                setError('Current password is incorrect.');
+                setError(t('account:shared.currentPasswordIncorrect'));
                 return;
             }
 
@@ -112,14 +114,14 @@ export default function ChangePasswordScreen() {
                 <GeometricBackground />
                 <View style={styles.feedbackBox}>
                     <Text style={styles.feedbackIcon}>🔒</Text>
-                    <Text style={styles.feedbackTitle}>Password updated</Text>
-                    <Text style={styles.feedbackBody}>Your password has been changed successfully.</Text>
+                    <Text style={styles.feedbackTitle}>{t('account:changePassword.success.title')}</Text>
+                    <Text style={styles.feedbackBody}>{t('account:changePassword.success.body')}</Text>
                 </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.back()}
                 >
-                    <Text style={styles.primaryLabel}>BACK TO SETTINGS</Text>
+                    <Text style={styles.primaryLabel}>{t('account:shared.backToSettings')}</Text>
                 </Pressable>
             </View>
         );
@@ -133,20 +135,23 @@ export default function ChangePasswordScreen() {
                 <GeometricBackground />
                 <View style={styles.feedbackBox}>
                     <Text style={styles.feedbackIcon}>✉️</Text>
-                    <Text style={styles.feedbackTitle}>Check your inbox</Text>
+                    <Text style={styles.feedbackTitle}>{t('account:changePassword.resetSent.title')}</Text>
                     <Text style={styles.feedbackBody}>
-                        We sent a reset link to{'\n'}
-                        <Text style={styles.feedbackHighlight}>{email}</Text>
+                        <Trans
+                            i18nKey="account:changePassword.resetSent.body"
+                            values={{ email }}
+                            components={{ email: <Text style={styles.feedbackHighlight} /> }}
+                        />
                     </Text>
                     <Text style={styles.feedbackHint}>
-                        Click the link in the email to set a new password, then log back in.
+                        {t('account:changePassword.resetSent.hint')}
                     </Text>
                 </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.back()}
                 >
-                    <Text style={styles.primaryLabel}>BACK TO SETTINGS</Text>
+                    <Text style={styles.primaryLabel}>{t('account:shared.backToSettings')}</Text>
                 </Pressable>
             </View>
         );
@@ -167,16 +172,16 @@ export default function ChangePasswordScreen() {
                 </Pressable>
                 <View style={styles.feedbackBox}>
                     <Text style={styles.feedbackIcon}>🔗</Text>
-                    <Text style={styles.feedbackTitle}>Google account</Text>
+                    <Text style={styles.feedbackTitle}>{t('account:changePassword.google.title')}</Text>
                     <Text style={styles.feedbackBody}>
-                        Your account uses Google Sign-In. To change your password, manage it through your Google account settings.
+                        {t('account:changePassword.google.body')}
                     </Text>
                 </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={() => router.back()}
                 >
-                    <Text style={styles.primaryLabel}>BACK TO SETTINGS</Text>
+                    <Text style={styles.primaryLabel}>{t('account:shared.backToSettings')}</Text>
                 </Pressable>
             </View>
         );
@@ -207,15 +212,17 @@ export default function ChangePasswordScreen() {
             >
                 {/* Header */}
                 <Text style={styles.headline}>
-                    {'Change\n'}
-                    <Text style={styles.headlineGold}>password.</Text>
+                    <Trans
+                        i18nKey="account:changePassword.headline"
+                        components={{ gold: <Text style={styles.headlineGold} /> }}
+                    />
                 </Text>
 
                 {/* Form */}
                 <View style={styles.form}>
                     {/* Current password */}
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>CURRENT PASSWORD</Text>
+                        <Text style={styles.fieldLabel}>{t('account:shared.currentPassword')}</Text>
                         <View style={[
                             styles.inputContainer,
                             focusedField === 'current' && styles.inputFocused,
@@ -244,14 +251,14 @@ export default function ChangePasswordScreen() {
 
                     {/* New password */}
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>NEW PASSWORD</Text>
+                        <Text style={styles.fieldLabel}>{t('account:changePassword.newPassword')}</Text>
                         <View style={[
                             styles.inputContainer,
                             focusedField === 'new' && styles.inputFocused,
                         ]}>
                             <TextInput
                                 style={styles.inputBorderless}
-                                placeholder="Min. 6 characters"
+                                placeholder={t('account:changePassword.newPlaceholder')}
                                 placeholderTextColor="rgba(255,255,255,0.22)"
                                 value={newPassword}
                                 onChangeText={setNewPassword}
@@ -273,14 +280,14 @@ export default function ChangePasswordScreen() {
 
                     {/* Confirm new password */}
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>CONFIRM NEW PASSWORD</Text>
+                        <Text style={styles.fieldLabel}>{t('account:changePassword.confirmPassword')}</Text>
                         <View style={[
                             styles.inputContainer,
                             focusedField === 'confirm' && styles.inputFocused,
                         ]}>
                             <TextInput
                                 style={styles.inputBorderless}
-                                placeholder="Re-enter new password"
+                                placeholder={t('account:changePassword.confirmPlaceholder')}
                                 placeholderTextColor="rgba(255,255,255,0.22)"
                                 value={confirmPassword}
                                 onChangeText={setConfirmPassword}
@@ -319,7 +326,7 @@ export default function ChangePasswordScreen() {
                     >
                         {loading
                             ? <ActivityIndicator color="#0a0a0a" />
-                            : <Text style={styles.primaryLabel}>UPDATE PASSWORD</Text>
+                            : <Text style={styles.primaryLabel}>{t('account:changePassword.submit')}</Text>
                         }
                     </Pressable>
 
@@ -330,8 +337,8 @@ export default function ChangePasswordScreen() {
                         style={({ pressed }) => [{ opacity: pressed || resetLoading ? 0.6 : 1 }]}
                     >
                         <Text style={styles.forgotHint}>
-                            {resetLoading ? 'Sending…' : "Forgot your password? "}
-                            {!resetLoading && <Text style={styles.forgotLink}>Send reset email</Text>}
+                            {resetLoading ? t('account:changePassword.sending') : t('account:changePassword.forgot')}
+                            {!resetLoading && <Text style={styles.forgotLink}>{t('account:changePassword.sendReset')}</Text>}
                         </Text>
                     </Pressable>
                 </View>

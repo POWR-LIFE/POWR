@@ -1,0 +1,35 @@
+{
+  "tabs": {
+    "home": "Accueil",
+    "progress": "Progrès",
+    "league": "Ligue",
+    "spend": "Échanger",
+    "discover": "Découvrir"
+  },
+  "healthCallback": {
+    "connecting": "Connexion…",
+    "connectingSamsung": "Connexion à Samsung Health…",
+    "connected": "C’est connecté !",
+    "failed": "Échec de la connexion — reviens en arrière pour réessayer.",
+    "noUserId": "user_id absent de la redirection",
+    "samsungReturned": "Réponse de Samsung Health : {{error}}",
+    "missingCode": "Code d’autorisation manquant",
+    "stateMismatch": "État non concordant ou réponse de jeton vide",
+    "exchangeFailed": "Échec de l’échange de jeton"
+  },
+  "circleCamera": {
+    "close": "Fermer",
+    "title": "MA PHOTO",
+    "deniedTitle": "Accès à l’appareil photo requis",
+    "deniedBody": "POWR a besoin de ton appareil photo pour prendre une photo pour ta carte. Tu peux l’activer dans les réglages, ou en choisir une dans ta photothèque.",
+    "allow": "Autoriser l’appareil photo",
+    "openSettings": "Ouvrir les réglages",
+    "hint": "Ce qui est dans le cercle apparaît sur ta carte",
+    "takePhoto": "Prendre une photo",
+    "flip": "Changer de caméra"
+  },
+  "modal": {
+    "title": "Ceci est une fenêtre modale",
+    "home": "Retour à l’accueil"
+  }
+}

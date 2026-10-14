@@ -1,0 +1,116 @@
+{
+  "close": "Close",
+  "loading": "Opening your voucher…",
+  "rewardFallback": "Reward",
+  "yourReward": "Your reward",
+  "done": "Done",
+  "errors": {
+    "alreadyUsed": {
+      "title": "Already used",
+      "body": "This reward has been used. It’s in your wallet history."
+    },
+    "expired": {
+      "title": "Reward expired",
+      "body": "This reward passed its use-by date."
+    },
+    "notActive": {
+      "title": "Not available",
+      "body": "This reward is no longer in your wallet."
+    },
+    "notFound": {
+      "title": "Not found",
+      "body": "We couldn’t find this reward in your wallet."
+    },
+    "notInStore": {
+      "title": "Not an in-store reward",
+      "body": "This one isn’t set up for use in store any more. Use it from your wallet."
+    },
+    "notSignedIn": {
+      "title": "Signed out",
+      "body": "Sign in again to use your reward."
+    },
+    "standRequired": {
+      "title": "Scan the stand",
+      "body": "Scan the POWR stand on the counter."
+    },
+    "standOtherShop": {
+      "title": "Different shop",
+      "body": "That stand belongs to a different shop."
+    },
+    "standInvalid": {
+      "title": "Stand not recognised",
+      "body": "That stand has been replaced. Ask staff for the new one."
+    },
+    "closed": {
+      "title": "Voucher closed",
+      "body": "Open it again when you’re at the till."
+    },
+    "unknown": {
+      "title": "Couldn’t open the voucher",
+      "body": "Check your connection and try again."
+    },
+    "tryAgain": "Try again",
+    "backToWallet": "Back to wallet"
+  },
+  "closed": {
+    "title": "Voucher closed",
+    "body": "Your reward is still in your wallet. Open it again when you’re at the till.",
+    "openAgain": "Open again",
+    "notNow": "Not now"
+  },
+  "voucher": {
+    "marquee": "LIVE VOUCHER · POWR · ",
+    "memberSince": "POWR MEMBER SINCE {{since}}",
+    "memberFallback": "POWR member",
+    "codeA11y": "Voucher code {{code}}",
+    "newCodeIn_one": "NEW CODE IN {{count}}S",
+    "newCodeIn_other": "NEW CODE IN {{count}}S",
+    "timeNow": "TIME NOW",
+    "closesIn": "CLOSES IN",
+    "liveTime": "LIVE TIME · CHECK IT MOVES",
+    "swipeNoteQr": "No scanner at the till? Staff can swipe instead.",
+    "swipeNoteLook": "Staff: check the time is moving, then swipe.",
+    "swipe": "STAFF: SWIPE TO REDEEM",
+    "swipeA11y": "Staff: swipe to redeem",
+    "swipeA11yHint": "Double-tap to redeem this reward now"
+  },
+  "stand": {
+    "step": "STEP {{step}} OF {{total}}",
+    "title": "<light>Scan the stand </light><gold>at the till</gold>",
+    "body": "The shop asks for this, so your voucher only opens inside the shop.",
+    "bodyBrand": "{{brand}} asks for this, so your voucher only opens inside the shop.",
+    "cameraOff": "Camera access is off for POWR.",
+    "openSettings": "Open settings",
+    "point": "Point at the QR on the counter.",
+    "noStand": "No stand on the counter? Ask a member of staff.",
+    "notAStand": "That’s not a POWR stand. Look for the POWR QR on the counter.",
+    "otherShopNamed": "That stand is for {{standShop}}. This reward is for {{rewardShop}}.",
+    "notRewardShop": "That stand isn’t one of {{shop}}’s. Look for the POWR stand on their counter."
+  },
+  "outcome": {
+    "recorded": "RECORDED",
+    "confirmed": "CONFIRMED",
+    "swipedAt": "Staff swiped it at {{time}}. Enjoy it.",
+    "swipedAtTill": "Staff swiped it at the till. Enjoy it.",
+    "scanned": "{{shop}} scanned your voucher.",
+    "scannedNoName": "The shop scanned your voucher.",
+    "shop": "SHOP",
+    "time": "TIME",
+    "checkedBy": "CHECKED BY",
+    "staffSwipe": "Staff swipe",
+    "staffScan": "Staff scan",
+    "managerScan": "Manager scan",
+    "inHistory": "It’s in your wallet history now."
+  },
+  "barcode": {
+    "showAtTill": "SHOW AT THE TILL",
+    "staffAt": "Staff at {{shop}} scan it like any other coupon.",
+    "brightness": "Turn your screen brightness up if the till can’t read it.",
+    "uses": "USES",
+    "one": "One",
+    "useBy": "USE BY",
+    "noExpiry": "No expiry",
+    "qrA11y": "QR code {{code}}",
+    "barcodeA11y": "Barcode {{code}}"
+  }
+}

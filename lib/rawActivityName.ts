@@ -25,8 +25,12 @@ export function formatRawActivityName(
     if (UNINFORMATIVE.has(lower)) return null;
     if (/^exercise \d+$/.test(lower)) return null;
 
-    const bucketLabel = (ACTIVITIES[bucketType as ActivityType]?.label ?? bucketType).toLowerCase();
-    if (lower === bucketType.toLowerCase() || lower === bucketLabel) return null;
+    // Providers (and stored manual picks) name workouts in English, so the
+    // English label is the one that repeats the bucket; the label on screen is
+    // checked as well.
+    const bucket = ACTIVITIES[bucketType as ActivityType];
+    const bucketLabels = bucket ? [bucket.labelEn, bucket.label] : [bucketType];
+    if (lower === bucketType.toLowerCase() || bucketLabels.some(l => l.toLowerCase() === lower)) return null;
 
     // Terra names arrive pre-formatted ("Padel Tennis") — title-casing is a
     // no-op there; it exists for snake_case Health Connect values ("boot camp").

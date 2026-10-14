@@ -10,6 +10,8 @@
  * Pure so it can be unit-tested; the beacon supplies the row.
  */
 
+import { formatLocale, tPush } from './i18n/index.ts';
+
 export interface ExitPushSwitchRow {
   enabled?: boolean | null;
   enabled_changed_at?: string | null;
@@ -43,12 +45,37 @@ export function exitPushEndedWhileOff(row: ExitPushSwitchRow | null, endedAt: st
   return Date.parse(endedAt) < changedAt;
 }
 
+/** The banner's own words: "Session complete 💪" / "{gym} · N min · +X pts
+ *  today", in the member's language. `gymName` null/undefined = the visit's
+ *  partner had no name. */
+export function exitPushDefaultCopy(
+  lang: string,
+  gymName: string | null | undefined,
+  mins: number,
+  totalPts: number,
+): { title: string; body: string } {
+  const gym = gymName ?? tPush(lang, 'gymSessionComplete.yourGym');
+  const points = lang === 'en' ? `${totalPts}` : totalPts.toLocaleString(formatLocale(lang));
+  return {
+    title: tPush(lang, 'gymSessionComplete.title'),
+    body: totalPts > 0
+      ? tPush(lang, 'gymSessionComplete.bodyPoints', { gym, minutes: `${mins}`, points })
+      : tPush(lang, 'gymSessionComplete.body', { gym, minutes: `${mins}` }),
+  };
+}
+
 /** Copy overrides, applied the way send-push applies them: a set override
- *  replaces the whole title or body with static text. */
+ *  replaces the whole title or body with static text.
+ *
+ *  ENGLISH ONLY: an override is one line an admin typed in English, with no
+ *  translation behind it, so a member reading another language keeps the
+ *  translated default rather than a lone English sentence. */
 export function exitPushCopy(
   row: ExitPushSwitchRow | null,
   copy: { title: string; body: string },
+  lang = 'en',
 ): { title: string; body: string } {
+  if (lang !== 'en') return copy;
   return {
     title: row?.title_override?.trim() || copy.title,
     body: row?.body_override?.trim() || copy.body,

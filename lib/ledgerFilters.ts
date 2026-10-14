@@ -1,5 +1,6 @@
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import type { PointTransaction } from '@/lib/api/points';
+import i18n from '@/lib/i18n';
 
 /**
  * The ledger's filter axis. A member's history is one long undifferentiated
@@ -54,16 +55,17 @@ export function matchesLedgerFilter(tx: PointTransaction, key: LedgerFilterKey):
 }
 
 /**
- * Plural labels for the non-activity buckets. 'earn' is the leftovers drawer:
- * a credit with no session behind it to name an activity with.
+ * Plural labels for the non-activity buckets (translation keys, resolved when
+ * the list is built). 'earn' is the leftovers drawer: a credit with no session
+ * behind it to name an activity with.
  */
 const TYPE_LABELS: Record<PointTransaction['type'], string> = {
-  bonus: 'Bonuses',
-  streak: 'Streaks',
-  redeem: 'Rewards',
-  penalty: 'Penalties',
-  adjustment: 'Adjustments',
-  earn: 'Other',
+  bonus: 'points:filters.type.bonus',
+  streak: 'points:filters.type.streak',
+  redeem: 'points:filters.type.redeem',
+  penalty: 'points:filters.type.penalty',
+  adjustment: 'points:filters.type.adjustment',
+  earn: 'points:filters.type.earn',
 };
 
 /** Credits first, then spends, then the corrections nobody goes looking for. */
@@ -105,8 +107,8 @@ export function buildLedgerFilters(transactions: PointTransaction[]): LedgerFilt
   const all: LedgerFilter = {
     key: 'all',
     kind: 'all',
-    label: 'All',
-    shortLabel: 'All',
+    label: i18n.t('points:filters.all'),
+    shortLabel: i18n.t('points:filters.all'),
     group: 'all',
     activity: null,
     type: null,
@@ -146,8 +148,8 @@ export function buildLedgerFilters(transactions: PointTransaction[]): LedgerFilt
       filter: {
         key: 'together',
         kind: 'together',
-        label: 'Together',
-        shortLabel: 'Together',
+        label: i18n.t('points:filters.together'),
+        shortLabel: i18n.t('points:filters.together'),
         group: 'other',
         activity: null,
         type: null,
@@ -164,8 +166,8 @@ export function buildLedgerFilters(transactions: PointTransaction[]): LedgerFilt
       filter: {
         key: `type:${type}`,
         kind: 'type',
-        label: TYPE_LABELS[type],
-        shortLabel: TYPE_LABELS[type],
+        label: i18n.t(TYPE_LABELS[type]),
+        shortLabel: i18n.t(TYPE_LABELS[type]),
         group: 'other',
         activity: null,
         type,

@@ -1,0 +1,249 @@
+{
+  "discount": {
+    "percentOff": "{{amount}}% off",
+    "amountOff": "£{{amount}} off"
+  },
+  "catalogue": {
+    "title": "Rewards",
+    "category": {
+      "all": "ALL",
+      "eat": "EAT",
+      "move": "MOVE",
+      "mind": "MIND",
+      "sleep": "SLEEP"
+    },
+    "loadError": "Couldn't load rewards.",
+    "retry": "Try again",
+    "comingSoon": "New rewards coming soon.",
+    "keepMoving": "Keep moving to unlock"
+  },
+  "balance": {
+    "label": "Available balance",
+    "unit": "Points",
+    "today": "+{{amount}} today"
+  },
+  "vaultWidget": {
+    "label": "VAULT",
+    "inDays": "IN {{days}}D",
+    "today": "TODAY"
+  },
+  "placement": {
+    "ad": "AD",
+    "nearby": "NEARBY",
+    "nearbyNow": "NEARBY NOW"
+  },
+  "featured": {
+    "points": "{{points}} <unit>points</unit>",
+    "redeem": "Redeem",
+    "lockedPts": "{{points}} pts"
+  },
+  "card": {
+    "ptsUnit": "pts",
+    "about": "About {{brand}}",
+    "inWallet": "In your wallet · View",
+    "redeemFor": "Redeem for {{points}} pts",
+    "redeemAgainFor": "Redeem again for {{points}} pts",
+    "walletCount": "{{amount}} in your wallet",
+    "ptsAway": "{{points}} pts away",
+    "ptsNeeded": "{{points}} pts needed",
+    "visitPartner": "Visit partner"
+  },
+  "redeem": {
+    "notFound": "Reward not found.",
+    "errors": {
+      "insufficientPoints": "You don't have enough POWR.",
+      "outOfStock": "This reward is temporarily unavailable. Check back soon.",
+      "inactive": "This reward is no longer available.",
+      "limitReached": "You've already claimed the maximum number of this reward.",
+      "notFound": "Reward not found. Please go back and try again.",
+      "partnerMisconfigured": "This reward is not yet available. Please try again later.",
+      "withCode": "Something went wrong ({{code}}). Please try again.",
+      "generic": "Something went wrong. Please try again.",
+      "appUpdateRequired": "Update POWR to use this in-store reward."
+    },
+    "yourBalance": "Your balance",
+    "cost": "Cost",
+    "afterRedemption": "After redemption",
+    "ptsValue": "{{points}} pts",
+    "ptsCost": "− {{points}} pts",
+    "needMore": "You need {{points}} more pts to redeem this",
+    "existingCodes_one": "You already have {{count}} active code for this — view in your wallet",
+    "existingCodes_other": "You already have {{count}} active codes for this — view in your wallet",
+    "confirm": "Confirm Redemption",
+    "legalAffiliate": "POWR points are non-refundable once redeemed.",
+    "legalCode": "Codes are single-use and valid for {{days}} days from redemption. POWR points are non-refundable once redeemed.",
+    "showToStaff": "Show to staff or enter at checkout",
+    "validUntilShowToStaff": "Valid until {{date}} · Show to staff or enter at checkout",
+    "alreadyAffiliate": "Your discount is included in the link below.",
+    "alreadyCode": "You've already redeemed this reward. Your code is below.",
+    "affiliateHint": "Your discount is applied automatically at checkout.",
+    "shopAt": "Shop at {{name}}",
+    "yourCode": "YOUR CODE",
+    "copied": "Copied",
+    "tapToCopy": "Tap to copy",
+    "useCodeAt": "Use code at {{name}}",
+    "done": "Done",
+    "inStore": {
+      "label": "USE IT IN STORE",
+      "hint": "It’s in your wallet. When you’re at the till, tap Use in store and staff scan it.",
+      "hintAt": "It’s in your wallet. When you’re at the till at {{partner}}, tap Use in store and staff scan it.",
+      "goToWallet": "Go to wallet"
+    }
+  },
+  "wallet": {
+    "title": "Wallet",
+    "tabs": {
+      "active": "Active",
+      "activeCount": "Active ({{n}})",
+      "history": "History"
+    },
+    "status": {
+      "ready": "Ready",
+      "used": "Used",
+      "expired": "Expired"
+    },
+    "expiry": {
+      "used": "Already used",
+      "none": "No expiry",
+      "expired": "Expired {{date}}",
+      "validUntil": "Valid until {{date}}"
+    },
+    "rewardFallback": "Reward",
+    "affiliate": "Discount applied automatically at checkout.",
+    "code": "CODE",
+    "copied": "Copied",
+    "tapToCopy": "Tap to copy",
+    "use": "Use",
+    "useAt": "Use at {{partner}}",
+    "share": "Share",
+    "saved": "Saved",
+    "saveImage": "Save image",
+    "loadError": "Could not load your wallet.",
+    "emptyActive": "No active rewards.",
+    "browse": "Browse rewards",
+    "emptyHistory": "Nothing here yet.",
+    "shareDialogTitle": "Share reward",
+    "shareMessage": {
+      "label": "{{title}} at {{partner}}",
+      "affiliate": "Here's a {{label}} reward from POWR",
+      "affiliateWithLink": "Here's a {{label}} reward from POWR: {{url}}",
+      "code": "Here's my {{label}} code from POWR: {{code}}",
+      "codeWithLink": "Here's my {{label}} code from POWR: {{code}}\n{{url}}",
+      "inStore": "Here's a {{label}} reward I earned with POWR. You use it in store."
+    },
+    "inStore": {
+      "label": "IN STORE",
+      "orInStore": "OR USE IT IN STORE",
+      "used": "Used in store.",
+      "expired": "This reward has expired.",
+      "barcodeHint": "Show the barcode at the till and staff scan it like any coupon.",
+      "voucherHint_one": "Tap Use in store when you're at the till. The voucher stays open for {{count}} minute.",
+      "voucherHint_other": "Tap Use in store when you're at the till. The voucher stays open for {{count}} minutes.",
+      "siteHere": "{{site}} · you're here",
+      "siteDistance": "{{site}} · {{distance}}",
+      "barcodeA11y": "Show the barcode full screen",
+      "use": "Use in store",
+      "showAtTill": "Show at till",
+      "online": "Online",
+      "useOnline": "Use online",
+      "useOnlineAt": "Use online at {{partner}}"
+    }
+  },
+  "shareCard": {
+    "rewardFallback": "Reward",
+    "affiliate": "Discount applied automatically at checkout",
+    "code": "CODE",
+    "validUntil": "Valid until {{date}}",
+    "earnedWith": "EARNED WITH",
+    "inStore": "Use it in store with the POWR app"
+  },
+  "vault": {
+    "title": "Vault",
+    "status": {
+      "readyToUnlock": "Ready to unlock",
+      "unlocksToday": "Unlocks today",
+      "unlocksTomorrow": "Unlocks tomorrow",
+      "unlocksInDays_one": "Unlocks in {{count}} day",
+      "unlocksInDays_other": "Unlocks in {{count}} days",
+      "maturesToday": "Matures today",
+      "maturesTomorrow": "Matures tomorrow",
+      "maturesInDays_one": "Matures in {{count}} day",
+      "maturesInDays_other": "Matures in {{count}} days",
+      "sealedUntil": "Sealed until Level {{level}}"
+    },
+    "deposit": {
+      "levelNamed": "Level {{level}} — {{name}}",
+      "levelBonus": "Level {{level}} bonus",
+      "powrDrop": "POWR drop",
+      "bonusPoints": "Bonus points",
+      "subLevelUp": "Level-up bonus",
+      "subGrant": "Bonus drop from POWR",
+      "subCapOverflow": "Earned over the daily cap"
+    },
+    "errors": {
+      "alreadyMoved": "That POWR had already moved into your balance.",
+      "lockedAtLevel": "Your Vault opens at Level {{level}}.",
+      "unlockFailed": "Could not unlock just now — check your connection and try again.",
+      "loadFailed": "Could not load your Vault."
+    },
+    "timer": {
+      "opensIn": "OPENS IN",
+      "amountUnlocksIn": "{{amount}} POWR UNLOCKS IN",
+      "nextUnlockIn": "NEXT UNLOCK IN",
+      "unlocksIn": "UNLOCKS IN",
+      "dayUnit": "d"
+    },
+    "hero": {
+      "emptyTitle": "Nothing vesting yet",
+      "emptyHint": "Level up or push past a daily cap\nand the bonus banks here.",
+      "autoRelease": "Unlocks on its own {{date}}",
+      "maturedWaiting": "<figure>{{amount}} POWR</figure> has matured and is waiting",
+      "countsTowardLevel": "Everything in here counts toward your level",
+      "balance": "BALANCE",
+      "stillVesting": "{{amount}} POWR is still vesting in your Vault.",
+      "vaultDay": "VAULT DAY",
+      "allUnlocksEarly": "All {{amount}} POWR unlocks early.",
+      "railEarned": "EARNED",
+      "railOpens": "OPENS",
+      "railUnlocks": "UNLOCKS",
+      "pointsReleased": "POINTS RELEASED"
+    },
+    "comingSoon": {
+      "opens": "Opens {{date}}",
+      "unlocksAtLevel": "Unlocks at <figure>Level {{level}}</figure> — you're Level {{current}}",
+      "bankedGated": "<figure>{{amount}} POWR</figure> already banked — it all counts toward your level",
+      "bankedOpen": "<figure>{{amount}} POWR</figure> already banked — it unlocks with the doors"
+    },
+    "howItWorks": "How the Vault works",
+    "inTheVault": "In the vault",
+    "info": {
+      "title": "What banks in the Vault",
+      "levelUpTitle": "Level-up bonuses",
+      "levelUpBody": "Every level you reach banks a bonus — and the higher the tier, the bigger the drop.",
+      "capTitle": "Points over the daily cap",
+      "capBody": "Streak multipliers past an activity's daily cap bank here instead of being lost.",
+      "vestTitle": "Vests like savings",
+      "vestBody": "Deposits vest for {{days}} days, then unlock into your spendable balance. They count towards your level straight away.",
+      "gateTitle": "Opens at Level {{level}}",
+      "gateBody": "POWR banks and vests as normal below Level {{level}}, and counts toward your level the whole time — it just can't be taken out until you get there. Nothing expires.",
+      "graceTitle": "You can't miss it",
+      "graceBody_one": "Unlock it yourself for the moment — or leave it. Anything still sitting there {{count}} day after it matures moves into your balance automatically.",
+      "graceBody_other": "Unlock it yourself for the moment — or leave it. Anything still sitting there {{count}} days after it matures moves into your balance automatically.",
+      "gotIt": "Got it"
+    },
+    "unlock": {
+      "a11yLabel": "Unlock your Vault",
+      "a11yHint": "Press and hold until the ring fills to release your matured POWR",
+      "hold": "HOLD"
+    },
+    "readout": {
+      "sealed": "SEALED",
+      "level": "LEVEL {{level}}",
+      "toGo": "{{amount}} POWR TO GO",
+      "empty": "EMPTY",
+      "matured": "MATURED",
+      "inTheVault": "IN THE VAULT",
+      "comingSoon": "COMING SOON"
+    }
+  }
+}

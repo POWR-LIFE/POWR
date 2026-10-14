@@ -9,6 +9,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Alert, Animated, Dimensions, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -127,6 +128,7 @@ export default function OnboardingWearablesScreen() {
 
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const health = useHealthData();
     const providers = useHealthProviders();
     // Re-read provider state when this screen regains focus — the
@@ -157,7 +159,9 @@ export default function OnboardingWearablesScreen() {
     const [showHealthConnectInstall, setShowHealthConnectInstall] = useState(false);
     const [showSamsungSheet, setShowSamsungSheet] = useState(false);
     const [viaPhone, setViaPhone] = useState<{ id: string; name: string } | null>(null);
-    const phoneStore = Platform.OS === 'android' ? 'Health Connect' : Platform.OS === 'ios' ? 'Apple Health' : 'your phone';
+    const viaPhoneStore = Platform.OS === 'android'
+        ? t('health:wearables.viaHealthConnect')
+        : Platform.OS === 'ios' ? t('health:wearables.viaAppleHealth') : t('health:wearables.viaPhone');
     // Live grant, not the profile record — a permission revoked in system
     // settings must bring the connect button back.
     const phoneConnected = health.isAuthorized;
@@ -169,8 +173,8 @@ export default function OnboardingWearablesScreen() {
         // Connect wouldn't help, so say what's actually wrong (dev-only).
         if (status === 'module_missing') {
             Alert.alert(
-                'Development build needed',
-                'Health Connect isn’t available in Expo Go — run a development build to test this.',
+                t('health:devBuild.title'),
+                t('health:devBuild.body'),
             );
             return;
         }
@@ -250,15 +254,15 @@ export default function OnboardingWearablesScreen() {
 
             {/* Header */}
             <Animated.View style={[styles.header, { paddingTop: insets.top + 72, opacity: headerFade }]}>
-                <Text style={styles.eyebrow}>GOT A WEARABLE?</Text>
+                <Text style={styles.eyebrow}>{t('health:wearables.eyebrow')}</Text>
                 <Text style={styles.headline}>
-                    Your watch knows <Text style={styles.headlineGold}>everything.</Text>
+                    <Trans i18nKey="health:wearables.headline" components={{ gold: <Text style={styles.headlineGold} /> }} />
                 </Text>
                 <View style={styles.bonusRow}>
                     <View style={styles.bonusPill}>
-                        <Text style={styles.bonusPillText}>+20 POWR</Text>
+                        <Text style={styles.bonusPillText}>{t('health:bonus')}</Text>
                     </View>
-                    <Text style={styles.bonusHint}>when you connect one</Text>
+                    <Text style={styles.bonusHint}>{t('health:wearables.bonusHint')}</Text>
                 </View>
             </Animated.View>
 
@@ -298,7 +302,7 @@ export default function OnboardingWearablesScreen() {
                                     </View>
                                     <Text style={styles.cardName} numberOfLines={1}>{source.name}</Text>
                                     {isPausedProvider(source.id) && (
-                                        <Text style={styles.cardVia} numberOfLines={1}>VIA {phoneStore.toUpperCase()}</Text>
+                                        <Text style={styles.cardVia} numberOfLines={1}>{viaPhoneStore}</Text>
                                     )}
                                     {isConnected && (
                                         <View style={styles.cardCheckBadge}>
@@ -320,7 +324,7 @@ export default function OnboardingWearablesScreen() {
                     style={styles.primaryButton}
                     onPress={() => router.push('/onboarding-activities')}
                 >
-                    <Text style={styles.primaryLabel}>CONTINUE</Text>
+                    <Text style={styles.primaryLabel}>{t('health:actions.continue')}</Text>
                 </Pressable>
 
                 {!anyWearableConnected && (
@@ -328,7 +332,7 @@ export default function OnboardingWearablesScreen() {
                         style={styles.skipButton}
                         onPress={() => router.push('/onboarding-activities')}
                     >
-                        <Text style={styles.skipLabel}>I don&apos;t have a wearable</Text>
+                        <Text style={styles.skipLabel}>{t('health:wearables.noWearable')}</Text>
                     </Pressable>
                 )}
             </Animated.View>
@@ -348,9 +352,9 @@ export default function OnboardingWearablesScreen() {
                                 <MaterialCommunityIcons name="download" size={24} color={GOLD} />
                             </View>
                         </View>
-                        <Text style={sheetStyles.title}>Install Health Connect</Text>
+                        <Text style={sheetStyles.title}>{t('health:installHealthConnect.title')}</Text>
                         <Text style={sheetStyles.reassurance}>
-                            Health Connect lets POWR read your phone&apos;s step &amp; activity data. It&apos;s a free Google app — install it and come back here to connect.
+                            {t('health:installHealthConnect.body')}
                         </Text>
                         <Pressable
                             style={({ pressed }) => [sheetStyles.connectBtn, pressed && { opacity: 0.8 }]}
@@ -360,10 +364,10 @@ export default function OnboardingWearablesScreen() {
                                 setShowHealthConnectInstall(false);
                             }}
                         >
-                            <Text style={sheetStyles.connectBtnText}>OPEN PLAY STORE</Text>
+                            <Text style={sheetStyles.connectBtnText}>{t('health:installHealthConnect.openPlayStore')}</Text>
                         </Pressable>
                         <Pressable style={sheetStyles.skipBtn} onPress={() => setShowHealthConnectInstall(false)}>
-                            <Text style={sheetStyles.skipBtnText}>Not now</Text>
+                            <Text style={sheetStyles.skipBtnText}>{t('health:actions.notNow')}</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -392,23 +396,23 @@ export default function OnboardingWearablesScreen() {
                                 <MaterialCommunityIcons name="heart-pulse" size={24} color={GOLD} />
                             </View>
                         </View>
-                        <Text style={sheetStyles.title}>Connect Samsung Health</Text>
+                        <Text style={sheetStyles.title}>{t('health:samsung.title')}</Text>
                         <Text style={sheetStyles.reassurance}>
-                            Samsung Health shares your workouts, steps &amp; sleep through Health Connect. Two quick steps:
+                            {t('health:samsung.body')}
                         </Text>
                         <View style={sheetStyles.benefits}>
                             <View style={sheetStyles.benefitRow}>
                                 <Ionicons name="link" size={16} color={GOLD} />
                                 <View style={sheetStyles.benefitInfo}>
-                                    <Text style={sheetStyles.benefitTitle}>1. Connect Health Connect</Text>
-                                    <Text style={sheetStyles.benefitDesc}>POWR reads your data from Health Connect</Text>
+                                    <Text style={sheetStyles.benefitTitle}>{t('health:samsung.step1Title')}</Text>
+                                    <Text style={sheetStyles.benefitDesc}>{t('health:samsung.step1Desc')}</Text>
                                 </View>
                             </View>
                             <View style={sheetStyles.benefitRow}>
                                 <Ionicons name="toggle" size={16} color={GOLD} />
                                 <View style={sheetStyles.benefitInfo}>
-                                    <Text style={sheetStyles.benefitTitle}>2. Turn on sharing in Samsung Health</Text>
-                                    <Text style={sheetStyles.benefitDesc}>Samsung Health → Settings → Health Connect → allow</Text>
+                                    <Text style={sheetStyles.benefitTitle}>{t('health:samsung.step2Title')}</Text>
+                                    <Text style={sheetStyles.benefitDesc}>{t('health:samsung.step2Desc')}</Text>
                                 </View>
                             </View>
                         </View>
@@ -419,7 +423,7 @@ export default function OnboardingWearablesScreen() {
                                 connectHealthConnect();
                             }}
                         >
-                            <Text style={sheetStyles.connectBtnText}>CONNECT HEALTH CONNECT</Text>
+                            <Text style={sheetStyles.connectBtnText}>{t('health:actions.connectHealthConnect')}</Text>
                         </Pressable>
                         <Pressable
                             style={sheetStyles.skipBtn}
@@ -428,7 +432,7 @@ export default function OnboardingWearablesScreen() {
                                     .catch(() => Linking.openURL('https://play.google.com/store/apps/details?id=com.sec.android.app.shealth'));
                             }}
                         >
-                            <Text style={sheetStyles.skipBtnText}>Open Samsung Health</Text>
+                            <Text style={sheetStyles.skipBtnText}>{t('health:samsung.openApp')}</Text>
                         </Pressable>
                     </View>
                 </View>

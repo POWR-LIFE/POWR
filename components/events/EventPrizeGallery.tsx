@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { EventPrizeList, rankLabel } from '@/components/events/EventPrizeList';
 import { EventPrizeViewer } from '@/components/events/EventPrizeViewer';
@@ -49,6 +50,7 @@ const CARD_MAX = 272;
 export function EventPrizeGallery({ event }: { event: Pick<LiveEvent, 'slug' | 'prizes'> }) {
     const { width } = useWindowDimensions();
     const router = useRouter();
+    const { t } = useTranslation();
     const [open, setOpen] = useState<number | null>(null);
     const prizes = event.prizes;
 
@@ -77,7 +79,7 @@ export function EventPrizeGallery({ event }: { event: Pick<LiveEvent, 'slug' | '
         return (
             <View style={styles.rowsCard}>
                 <View style={styles.rowsHead}>
-                    <Text style={styles.eyebrow}>THE PRIZES</Text>
+                    <Text style={styles.eyebrow}>{t('events:prizes.eyebrow')}</Text>
                     <Pressable
                         onPress={() => {
                             Haptics.selectionAsync();
@@ -86,10 +88,10 @@ export function EventPrizeGallery({ event }: { event: Pick<LiveEvent, 'slug' | '
                         hitSlop={10}
                         style={({ pressed }) => [styles.rowsShare, pressed && { opacity: 0.7 }]}
                         accessibilityRole="button"
-                        accessibilityLabel="Share the prizes"
+                        accessibilityLabel={t('events:prizes.shareAllA11y')}
                     >
                         <Ionicons name="paper-plane-outline" size={13} color={GOLD} />
-                        <Text style={styles.rowsShareText}>SHARE</Text>
+                        <Text style={styles.rowsShareText}>{t('events:prizes.share')}</Text>
                     </Pressable>
                 </View>
                 <EventPrizeList prizes={prizes} max={prizes.length} />
@@ -103,7 +105,7 @@ export function EventPrizeGallery({ event }: { event: Pick<LiveEvent, 'slug' | '
 
     return (
         <View style={styles.section}>
-            <Text style={[styles.eyebrow, styles.eyebrowInset]}>THE PRIZES</Text>
+            <Text style={[styles.eyebrow, styles.eyebrowInset]}>{t('events:prizes.eyebrow')}</Text>
             <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -130,7 +132,7 @@ export function EventPrizeGallery({ event }: { event: Pick<LiveEvent, 'slug' | '
                                 pressed && { transform: [{ scale: 0.985 }], opacity: 0.94 },
                             ]}
                             accessibilityRole="imagebutton"
-                            accessibilityLabel={`${rankLabel(p.rank)} prize: ${p.label}. Opens larger.`}
+                            accessibilityLabel={t('events:prizes.openA11y', { rank: rankLabel(p.rank), prize: p.label })}
                         >
                             {uri ? (
                                 <ExpoImage

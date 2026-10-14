@@ -11,7 +11,7 @@ import { AppState } from 'react-native';
 
 import { getDeviceLocale } from '@/lib/locale';
 import { APP_DRAFT_LANGUAGES, APP_LANGUAGES, formatLocaleFor, resolveLanguage } from '@/shared/i18n';
-import { APP_NAMESPACES, APP_RESOURCES } from '@/shared/i18n/app';
+import { APP_I18N_OPTIONS } from '@/shared/i18n/app';
 
 /**
  * The app's language — which catalog is on screen, and why.
@@ -76,18 +76,14 @@ function commit(next: LanguageState): void {
   if (changed) listeners.forEach(listener => listener());
 }
 
-i18n.use(initReactI18next).init({
-  resources: APP_RESOURCES,
-  lng: state.language,
-  fallbackLng: 'en',
-  ns: [...APP_NAMESPACES],
-  defaultNS: 'common',
-  interpolation: { escapeValue: false }, // React Native renders text, not HTML
-  // A draft's untranslated "" reads as English, never as a blank label.
-  returnEmptyString: false,
-  initAsync: false, // resources are bundled, so the first render already has them
-  react: { useSuspense: false },
-});
+// This module sits in the static import graph of the headless geofence tasks
+// (via AuthContext), so loading it must never throw: a failure here would stop
+// those tasks being defined. Worst case is untranslated keys, never a crash.
+try {
+  i18n.use(initReactI18next).init({ ...APP_I18N_OPTIONS, lng: state.language });
+} catch (e) {
+  console.warn('[i18n] init failed', e);
+}
 
 async function readSaved(): Promise<void> {
   try {
@@ -103,9 +99,13 @@ export const languageReady: Promise<void> = readSaved();
 
 // Android keeps the app alive across a system language change (iOS restarts
 // it), so the phone's language is re-read whenever the app comes back.
-AppState.addEventListener('change', status => {
-  if (status === 'active') commit(compute(state.preference, state.preview));
-});
+try {
+  AppState.addEventListener('change', status => {
+    if (status === 'active') commit(compute(state.preference, state.preview));
+  });
+} catch {
+  // No AppState (an unusual headless runtime): the phone's language is read at launch only.
+}
 
 export function getLanguageState(): LanguageState {
   return state;

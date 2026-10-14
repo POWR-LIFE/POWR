@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Linking, Platform } from 'react-native';
 
 import { androidRequestPermissions, androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
+import i18n from '@/lib/i18n';
 import { wearableSilentCopy, type WearableFreshness } from '@/lib/health/wearableStatus';
 
 export type HealthGapKind =
@@ -98,24 +99,24 @@ export type HealthGapContext = {
 export function gapCopy(kind: HealthGapKind, ctx: HealthGapContext = {}): HealthGapCopy | null {
     switch (kind) {
         case 'wearable_silent':
-            return wearableSilentCopy(ctx.providerName ?? 'Your wearable', ctx.hoursSinceSync ?? null);
+            return wearableSilentCopy(ctx.providerName ?? null, ctx.hoursSinceSync ?? null);
         case 'android_exercise_permission':
             return {
-                title: 'Turn on workout tracking',
-                body: 'POWR can see your steps but not your workouts. Allow workout access to earn points for runs, rides and more.',
-                cta: 'Allow access',
+                title: i18n.t('nudges:healthGap.exercisePermission.title'),
+                body: i18n.t('nudges:healthGap.exercisePermission.body'),
+                cta: i18n.t('nudges:healthGap.exercisePermission.cta'),
             };
         case 'workouts_missing':
             return Platform.OS === 'android'
                 ? {
-                    title: 'Missing your workouts?',
-                    body: 'Your wearable is logging activity, but workouts aren’t coming through. In Garmin Connect → Settings → Health Connect, turn on Activities.',
-                    cta: 'Open Health Connect',
+                    title: i18n.t('nudges:healthGap.workoutsMissing.title'),
+                    body: i18n.t('nudges:healthGap.workoutsMissing.bodyAndroid'),
+                    cta: i18n.t('nudges:healthGap.workoutsMissing.ctaAndroid'),
                 }
                 : {
-                    title: 'Missing your workouts?',
-                    body: 'Your wearable is logging activity, but POWR can’t see your workouts. Enable Workouts for POWR in Apple Health.',
-                    cta: 'Open Health settings',
+                    title: i18n.t('nudges:healthGap.workoutsMissing.title'),
+                    body: i18n.t('nudges:healthGap.workoutsMissing.bodyIos'),
+                    cta: i18n.t('nudges:healthGap.workoutsMissing.ctaIos'),
                 };
         default:
             return null;

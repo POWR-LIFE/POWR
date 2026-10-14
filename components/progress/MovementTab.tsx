@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { addDays, dayFromKey, useDaySelection } from '@/components/progress/daySelection';
@@ -22,6 +23,7 @@ import {
     type TodayActivityDetail,
     type WeekActivityData,
 } from '@/lib/api/activity';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { dayAnchor, monthLabel, weekAnchorMonday } from '@/lib/progressLookback';
 
 // ─── Design tokens (match progress.tsx) ──────────────────────────────────────
@@ -32,15 +34,29 @@ const MUTED  = 'rgba(255,255,255,0.25)';
 const DIM    = 'rgba(255,255,255,0.5)';
 const GOLD   = '#E8D200';
 
-const DAY_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_KEYS = [
+  'progress:days.short.mon', 'progress:days.short.tue', 'progress:days.short.wed', 'progress:days.short.thu',
+  'progress:days.short.fri', 'progress:days.short.sat', 'progress:days.short.sun',
+] as const;
+const DAY_INITIAL_KEYS = [
+  'progress:days.initial.mon', 'progress:days.initial.tue', 'progress:days.initial.wed', 'progress:days.initial.thu',
+  'progress:days.initial.fri', 'progress:days.initial.sat', 'progress:days.initial.sun',
+] as const;
+const MONTH_KEYS = [
+  'progress:months.short.jan', 'progress:months.short.feb', 'progress:months.short.mar', 'progress:months.short.apr',
+  'progress:months.short.may', 'progress:months.short.jun', 'progress:months.short.jul', 'progress:months.short.aug',
+  'progress:months.short.sep', 'progress:months.short.oct', 'progress:months.short.nov', 'progress:months.short.dec',
+] as const;
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 
 // ─── Pill Toggle ─────────────────────────────────────────────────────────────
 
 type Period = 'D' | 'W' | 'M';
 const PERIODS: Period[] = ['D', 'W', 'M'];
+const PERIOD_KEYS: Record<Period, string> = { D: 'progress:period.D', W: 'progress:period.W', M: 'progress:period.M' };
 
 function PillToggle({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.pillRow}>
       {PERIODS.map(p => {
@@ -51,7 +67,7 @@ function PillToggle({ value, onChange }: { value: Period; onChange: (p: Period) 
             style={[styles.pill, active && styles.pillActive]}
             onPress={() => onChange(p)}
           >
-            <Text style={[styles.pillText, active && styles.pillTextActive]}>{p}</Text>
+            <Text style={[styles.pillText, active && styles.pillTextActive]}>{t(PERIOD_KEYS[p])}</Text>
           </Pressable>
         );
       })}
@@ -63,8 +79,7 @@ function PillToggle({ value, onChange }: { value: Period; onChange: (p: Period) 
 
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
+  return i18n.t('progress:dates.monthDay', { month: i18n.t(MONTH_KEYS[d.getMonth()]), day: d.getDate() });
 }
 
 function formatSteps(steps: number): string {
@@ -84,6 +99,7 @@ function HealthAccessHint({
   steps: number;
   remaining: number;
 }) {
+  const { t } = useTranslation();
   // isAvailable first, mirroring WalkingProgressCard: with no health platform
   // present (Expo Go, web, Health Connect not installed) requestPermissions()
   // can only return false, so the prompt would be a dead-end tap.
@@ -96,7 +112,7 @@ function HealthAccessHint({
       >
         <Ionicons name="alert-circle" size={12} color={GOLD} />
         <Text style={[styles.insightText, styles.insightAction]}>
-          {walking.requesting ? 'Requesting Health access…' : 'Enable Health access to track steps'}
+          {walking.requesting ? t('progress:movement.healthRequesting') : t('progress:movement.healthEnable')}
         </Text>
       </Pressable>
     );
@@ -106,8 +122,8 @@ function HealthAccessHint({
       <Ionicons name={steps > 5000 ? 'trending-up' : 'footsteps'} size={12} color={GREEN} />
       <Text style={styles.insightText}>
         {steps > 0
-          ? `${remaining.toLocaleString()} steps to today's goal`
-          : "Start moving to track today's steps"}
+          ? t('progress:movement.stepsToGoal', { steps: remaining.toLocaleString() })
+          : t('progress:movement.startMoving')}
       </Text>
     </View>
   );
@@ -116,6 +132,7 @@ function HealthAccessHint({
 // ─── Day View ────────────────────────────────────────────────────────────────
 
 function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<typeof useWalkingProgress>; offset: number; onInfo: () => void }) {
+  const { t } = useTranslation();
   const isToday = offset === 0;
   const [pastDay, setPastDay] = useState<TodayActivityDetail | null>(null);
   // Today's figures come from the walking hook, which already reloads on
@@ -150,11 +167,11 @@ function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<type
     <View style={styles.tabPanel}>
       <View style={styles.bigMetricRow}>
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>{isToday ? "TODAY'S STEPS" : 'STEPS'}</Text>
+          <Text style={styles.bigMetricSup}>{isToday ? t('progress:movement.todaysSteps') : t('progress:movement.steps')}</Text>
           <Text style={[styles.bigMetricVal, { color: GREEN }]}>
             {daySteps > 0 ? daySteps.toLocaleString() : '—'}
           </Text>
-          <Text style={styles.bigMetricMax}>/ 10,000 goal</Text>
+          <Text style={styles.bigMetricMax}>{t('progress:movement.goalDay', { goal: (10000).toLocaleString(getFormatLocale()) })}</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(dayPct * 100)}%` as any, backgroundColor: GREEN }]} />
           </View>
@@ -162,13 +179,13 @@ function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<type
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
           <View style={styles.bigMetricSupRow}>
-            <Text style={styles.bigMetricSup}>POWR EARNED</Text>
-            <PointsInfoDot onPress={onInfo} label="How you earned this walking POWR" />
+            <Text style={styles.bigMetricSup}>{t('progress:metric.powrEarned')}</Text>
+            <PointsInfoDot onPress={onInfo} label={t('progress:movement.howEarned')} />
           </View>
           <Text style={[styles.bigMetricVal, { color: GOLD }]}>
             {dayPoints > 0 ? dayPoints : '—'}
           </Text>
-          <Text style={styles.bigMetricMax}>{isToday ? 'today' : 'this day'}</Text>
+          <Text style={styles.bigMetricMax}>{isToday ? t('progress:metric.today') : t('progress:metric.thisDay')}</Text>
         </View>
       </View>
 
@@ -178,7 +195,7 @@ function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<type
           <View style={styles.nextTierRow}>
             <Ionicons name="trending-up" size={12} color={GREEN} />
             <Text style={styles.nextTierText}>
-              {walking.stepsToNext.toLocaleString()} steps to next tier ({walking.nextThreshold.toLocaleString()})
+              {t('progress:movement.nextTier', { steps: walking.stepsToNext.toLocaleString(), threshold: walking.nextThreshold.toLocaleString() })}
             </Text>
           </View>
         </>
@@ -191,10 +208,10 @@ function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<type
       {history.length > 0 && (
         <>
           <View style={styles.tabSep} />
-          <Text style={styles.tabSubLabel}>{isToday ? 'PAST 5 DAYS' : 'PREVIOUS DAYS'}</Text>
+          <Text style={styles.tabSubLabel}>{isToday ? t('progress:movement.past5Days') : t('progress:metric.previousDays')}</Text>
           {history.map((day) => {
             const d = new Date(day.date + 'T00:00:00');
-            const dayName = d.toLocaleDateString('en-GB', { weekday: 'short' });
+            const dayName = d.toLocaleDateString(getFormatLocale(), { weekday: 'short' });
             const dayNum = d.getDate();
             const pct = Math.min(day.steps / 10000, 1);
             const hasData = day.steps > 0;
@@ -210,7 +227,7 @@ function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<type
                     {hasData ? formatSteps(day.steps) : '—'}
                 </Text>
                   <Text style={[styles.historyPoints, !hasData && { color: MUTED }]} numberOfLines={1}>
-                    {hasData && day.points > 0 ? `${day.points}pt` : '—'}
+                    {hasData && day.points > 0 ? t('progress:units.pt', { points: day.points }) : '—'}
                 </Text>
               </View>
             );
@@ -237,6 +254,7 @@ function MovementWeekView({
   /** A tapped day, plus every tappable day this week for the sheet to step through. */
   onSelectDay: (day: Date, days: Date[]) => void;
 }) {
+  const { t } = useTranslation();
   const isCurrent  = offset === 0;
   const weekStart  = weekAnchorMonday(offset);
   const todaySteps = walking.stepsToday ?? 0;
@@ -289,11 +307,11 @@ function MovementWeekView({
       <View style={styles.bigMetricRow}>
         {isCurrent ? (
           <View style={styles.bigMetric}>
-            <Text style={styles.bigMetricSup}>TODAY</Text>
+            <Text style={styles.bigMetricSup}>{t('progress:movement.today')}</Text>
             <Text style={[styles.bigMetricVal, { color: GREEN }]}>
               {todaySteps > 0 ? todaySteps.toLocaleString() : '—'}
             </Text>
-            <Text style={styles.bigMetricMax}>/ 10,000 steps</Text>
+            <Text style={styles.bigMetricMax}>{t('progress:movement.goalSteps', { goal: (10000).toLocaleString(getFormatLocale()) })}</Text>
             <View style={styles.metricBar}>
               <View style={[styles.metricBarFill, { width: `${Math.round(todayPct * 100)}%` as any, backgroundColor: GREEN }]} />
             </View>
@@ -301,22 +319,22 @@ function MovementWeekView({
         ) : (
           <View style={styles.bigMetric}>
             <View style={styles.bigMetricSupRow}>
-              <Text style={styles.bigMetricSup}>POWR EARNED</Text>
-              <PointsInfoDot onPress={onInfo} label="How you earned this walking POWR" />
+              <Text style={styles.bigMetricSup}>{t('progress:metric.powrEarned')}</Text>
+              <PointsInfoDot onPress={onInfo} label={t('progress:movement.howEarned')} />
             </View>
             <Text style={[styles.bigMetricVal, { color: GOLD }]}>
               {(pastWeek?.points ?? 0) > 0 ? pastWeek!.points : '—'}
             </Text>
-            <Text style={styles.bigMetricMax}>from that week</Text>
+            <Text style={styles.bigMetricMax}>{t('progress:metric.fromThatWeek')}</Text>
           </View>
         )}
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>{isCurrent ? 'THIS WEEK' : 'WEEK TOTAL'}</Text>
+          <Text style={styles.bigMetricSup}>{isCurrent ? t('progress:metric.thisWeek') : t('progress:movement.weekTotal')}</Text>
           <Text style={[styles.bigMetricVal, { color: GREEN }]}>
             {isCurrent ? stepsF : weekTotal > 0 ? formatSteps(weekTotal) : '—'}
           </Text>
-          <Text style={styles.bigMetricMax}>/ 70k goal</Text>
+          <Text style={styles.bigMetricMax}>{t('progress:movement.goalWeek')}</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(weeklyPct * 100)}%` as any, backgroundColor: GREEN }]} />
           </View>
@@ -325,9 +343,9 @@ function MovementWeekView({
 
       <View style={styles.tabSep} />
 
-      <Text style={styles.tabSubLabel}>{isCurrent ? 'THIS WEEK' : 'DAY BY DAY'}</Text>
+      <Text style={styles.tabSubLabel}>{isCurrent ? t('progress:metric.thisWeek') : t('progress:metric.dayByDay')}</Text>
       <View style={styles.weekBarChart}>
-        {DAY_LABELS.map((day, i) => {
+        {DAY_INITIAL_KEYS.map((dayKey, i) => {
           const steps   = displaySteps[i];
           const selected = markedKey === localDateStr(addDays(weekStart, i));
           const isToday = isCurrent && i === TODAY_INDEX;
@@ -350,7 +368,7 @@ function MovementWeekView({
                 ),
                 hitSlop: 8,
                 accessibilityRole: 'button',
-                accessibilityLabel: `${DAY_LABELS[i]} — see what you earned`,
+                accessibilityLabel: t('progress:chart.seeEarned', { day: t(DAY_KEYS[i]) }),
               } : {})}
             >
               <View style={styles.weekBarTrack}>
@@ -366,7 +384,7 @@ function MovementWeekView({
                 isToday && { color: TEXT, fontWeight: '600' },
                 selected && { color: GOLD, fontWeight: '600' },
               ]}>
-                {day.charAt(0)}
+                {t(dayKey)}
               </Text>
               {steps > 0 && !isFuture && (
                 <Text style={[styles.weekBarSteps, isBest && { color: GOLD }]}>
@@ -382,7 +400,7 @@ function MovementWeekView({
         <View style={styles.insightRow}>
           <Ionicons name="trophy-outline" size={12} color={GOLD} />
           <Text style={styles.insightText}>
-            Best day: {DAY_LABELS[bestIdx]} — {displaySteps[bestIdx].toLocaleString()} steps
+            {t('progress:movement.bestDay', { day: t(DAY_KEYS[bestIdx]), steps: displaySteps[bestIdx].toLocaleString() })}
           </Text>
         </View>
       )}
@@ -423,6 +441,7 @@ function MovementMonthView({
   markedKey: string | null;
   onSelectDay: (day: Date, days: Date[]) => void;
 }) {
+  const { t } = useTranslation();
   // "This Month" / "June" — see WorkoutMonthView.
   const label = monthLabel(offset);
 
@@ -430,7 +449,7 @@ function MovementMonthView({
     return (
       <View style={styles.emptyState}>
         <Ionicons name="footsteps-outline" size={28} color={MUTED} />
-        <Text style={styles.emptyText}>Loading monthly walking data...</Text>
+        <Text style={styles.emptyText}>{t('progress:movement.loadingMonth')}</Text>
       </View>
     );
   }
@@ -442,9 +461,9 @@ function MovementMonthView({
       <View style={styles.emptyState}>
         <Ionicons name="footsteps-outline" size={28} color={MUTED} />
         <Text style={styles.emptyText}>
-          No walking data {offset === 0 ? 'this month' : `in ${label}`}.
+          {offset === 0 ? t('progress:movement.noDataThisMonth') : t('progress:movement.noDataIn', { month: label })}
         </Text>
-        <Text style={styles.emptySubtext}>Steps will appear once synced from Health.</Text>
+        <Text style={styles.emptySubtext}>{t('progress:movement.noDataHint')}</Text>
       </View>
     );
   }
@@ -482,18 +501,18 @@ function MovementMonthView({
     <View style={[styles.tabPanel, { gap: 10 }]}>
       <View style={styles.bigMetricRow}>
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>AVG STEPS / DAY</Text>
+          <Text style={styles.bigMetricSup}>{t('progress:movement.avgPerDay')}</Text>
           <Text style={[styles.bigMetricVal, { color: GREEN, fontSize: 30, lineHeight: 32 }]}>
             {data.avgPerDay > 0 ? formatSteps(data.avgPerDay) : '—'}
           </Text>
-          <Text style={styles.bigMetricMax}>/ 10k goal</Text>
+          <Text style={styles.bigMetricMax}>{t('progress:movement.goalAvg')}</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(Math.min(data.avgPerDay / 10000, 1) * 100)}%` as any, backgroundColor: GREEN }]} />
           </View>
         </View>
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>BEST DAY</Text>
+          <Text style={styles.bigMetricSup}>{t('progress:metric.bestDay')}</Text>
           <Text style={[styles.bigMetricVal, { color: GREEN, fontSize: 30, lineHeight: 32 }]}>
             {data.bestDay ? formatSteps(data.bestDay.steps ?? 0) : '—'}
           </Text>

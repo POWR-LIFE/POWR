@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
@@ -32,6 +33,7 @@ type ChallengesTab = 'parallel' | 'pooled';
 export default function ChallengesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const {
     loading,
     templates,
@@ -61,9 +63,9 @@ export default function ChallengesScreen() {
   const { board, taking, takeChallenge, optedIn, teaserCount, setOptedIn } = useOpenChallengeBoard();
   const takeOpen = useCallback(async (id: string) => {
     const res = await takeChallenge(id);
-    if (!res.ok && res.error) Alert.alert('Couldn’t take that one', res.error);
+    if (!res.ok && res.error) Alert.alert(t('social:challenges.takeFailed'), res.error);
     else if (res.ok && res.challengeId) router.push(`/shared-challenge?id=${res.challengeId}`);
-  }, [takeChallenge, router]);
+  }, [takeChallenge, router, t]);
 
   const [sheetVisible, setSheetVisible] = useState(false);
   const [presetPostOpen, setPresetPostOpen] = useState(false);
@@ -90,11 +92,11 @@ export default function ChallengesScreen() {
   useEffect(() => {
     if (autoOpened.current || params.create !== '1' || templates.length === 0) return;
     autoOpened.current = true;
-    const byId = typeof params.template === 'string' && templates.some((t) => t.id === params.template)
+    const byId = typeof params.template === 'string' && templates.some((tpl) => tpl.id === params.template)
       ? params.template : null;
     const byCategory = !byId && typeof params.category === 'string'
-      ? (templates.find((t) => t.category === params.category && t.mode !== 'pooled')?.id
-          ?? templates.find((t) => t.category === params.category)?.id ?? null)
+      ? (templates.find((tpl) => tpl.category === params.category && tpl.mode !== 'pooled')?.id
+          ?? templates.find((tpl) => tpl.category === params.category)?.id ?? null)
       : null;
     setPresetTemplateId(byId ?? byCategory);
     setSheetVisible(true);
@@ -108,15 +110,15 @@ export default function ChallengesScreen() {
   // scroll. "Solo" is reserved for genuinely-alone starts, so the parallel mode
   // is labelled by its shape instead: side by side = each does their own part;
   // team total = effort pools to one number.
-  const parallel = useMemo(() => templates.filter((t) => t.mode !== 'pooled'), [templates]);
-  const pooled = useMemo(() => templates.filter((t) => t.mode === 'pooled'), [templates]);
+  const parallel = useMemo(() => templates.filter((tpl) => tpl.mode !== 'pooled'), [templates]);
+  const pooled = useMemo(() => templates.filter((tpl) => tpl.mode === 'pooled'), [templates]);
   const activeList = tab === 'parallel' ? parallel : pooled;
 
   const TABS: { key: ChallengesTab; label: string; sub: string }[] = [
-    { key: 'parallel', label: 'Side by side', sub: 'Each of you does your own part.' },
-    { key: 'pooled', label: 'Team total', sub: 'Pool your effort toward one shared goal.' },
+    { key: 'parallel', label: t('social:challenges.tabs.parallel.label'), sub: t('social:challenges.tabs.parallel.sub') },
+    { key: 'pooled', label: t('social:challenges.tabs.pooled.label'), sub: t('social:challenges.tabs.pooled.sub') },
   ];
-  const activeSub = TABS.find((t) => t.key === tab)?.sub ?? '';
+  const activeSub = TABS.find((item) => item.key === tab)?.sub ?? '';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -128,17 +130,17 @@ export default function ChallengesScreen() {
           hitSlop={12}
           style={styles.headerBtn}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('common:actions.back')}
         >
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>CHALLENGES</Text>
+        <Text style={styles.headerTitle}>{t('social:challenges.title')}</Text>
         <Pressable
           onPress={() => router.push('/friends')}
           hitSlop={12}
           style={styles.headerBtn}
           accessibilityRole="button"
-          accessibilityLabel="View friends"
+          accessibilityLabel={t('social:shared.viewFriends')}
         >
           <Ionicons name="people" size={18} color={DIM} />
         </Pressable>
@@ -149,25 +151,25 @@ export default function ChallengesScreen() {
         <View style={styles.capBanner}>
           <Ionicons name="layers-outline" size={15} color={GOLD} />
           <Text style={styles.capBannerText}>
-            You're in {openCount} of {cap} challenges — finish or leave one to start another.
+            {t('social:challenges.atCap', { open: openCount, cap })}
           </Text>
         </View>
       )}
 
       {/* Side by side / Team total tabs — each list scrolls on its own. */}
       <View style={styles.tabBar}>
-        {TABS.map((t) => {
-          const isActive = t.key === tab;
+        {TABS.map((item) => {
+          const isActive = item.key === tab;
           return (
             <Pressable
-              key={t.key}
+              key={item.key}
               style={[styles.tabBtn, isActive && styles.tabBtnActive]}
-              onPress={() => setTab(t.key)}
+              onPress={() => setTab(item.key)}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
             >
               <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                {t.label}
+                {item.label}
               </Text>
             </Pressable>
           );
@@ -178,7 +180,7 @@ export default function ChallengesScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 32, gap: 12 }}
       >
-        <Text style={styles.intro}>{activeSub} Everyone earns a growing bonus when you all finish.</Text>
+        <Text style={styles.intro}>{activeSub} {t('social:challenges.bonusLine')}</Text>
 
         {/* Open board — real people already waiting. It leads the page because a
             posted challenge is a live opponent and a template is only an idea.
@@ -200,8 +202,8 @@ export default function ChallengesScreen() {
         {board.length > 0 && (
           <View style={styles.boardBlock}>
             <View style={styles.boardHeader}>
-              <Text style={styles.boardTitle}>Open challenges</Text>
-              <Text style={styles.boardHint}>First to take it races them</Text>
+              <Text style={styles.boardTitle}>{t('social:challenges.board.title')}</Text>
+              <Text style={styles.boardHint}>{t('social:challenges.board.hint')}</Text>
             </View>
             {board.map((c) => (
               <OpenChallengeCard
@@ -215,16 +217,16 @@ export default function ChallengesScreen() {
         )}
 
         {loading && templates.length === 0 ? (
-          <Text style={styles.muted}>Loading…</Text>
+          <Text style={styles.muted}>{t('social:shared.loading')}</Text>
         ) : activeList.length === 0 ? (
           <Text style={styles.muted}>
-            {tab === 'parallel' ? 'No side-by-side challenges right now.' : 'No team-total challenges right now.'}
+            {tab === 'parallel' ? t('social:challenges.emptyParallel') : t('social:challenges.emptyPooled')}
           </Text>
         ) : (
-          activeList.map((t, i) => (
+          activeList.map((tpl, i) => (
             <ChallengeTemplateCard
-              key={t.id}
-              template={t}
+              key={tpl.id}
+              template={tpl}
               index={i}
               crew={starter}
               bonusConfig={bonusConfig}

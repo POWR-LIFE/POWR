@@ -1,0 +1,121 @@
+{
+  "home": {
+    "title": "Afiliados",
+    "openPortal": "Abrir el portal completo",
+    "loadError": "No se han podido cargar tus datos de afiliado.",
+    "retry": "REINTENTAR",
+    "notInTitle": "Aún no estás en el programa",
+    "notInBody": "El programa de afiliados es solo por invitación. Si te han dicho que estás dentro, asegúrate de haber iniciado sesión con la misma cuenta.",
+    "status": {
+      "active": "ACTIVO",
+      "paused": "EN PAUSA",
+      "terminated": "DADO DE BAJA"
+    },
+    "pausedBody": "Tu enlace sigue funcionando, pero los nuevos registros no suman por ahora. Escríbenos y lo arreglamos.",
+    "portalBody": "Clics diarios, cada registro, tu código QR, el historial de recompensas y tu dirección de envío, y ya con la sesión iniciada."
+  },
+  "stats": {
+    "eyebrow": "ÚLTIMOS 30 DÍAS",
+    "linkTaps": "CLICS",
+    "signups": "REGISTROS",
+    "converted": "CONVERTIDOS",
+    "points": "PUNTOS",
+    "allTime": "desde el principio"
+  },
+  "ladder": {
+    "eyebrow": "LOS ESCALONES",
+    "signupsCaps_one": "{{count}} REGISTRO",
+    "signupsCaps_other": "{{count}} REGISTROS",
+    "convertedCaps_one": "{{count}} REGISTRO CONVERTIDO",
+    "convertedCaps_other": "{{count}} REGISTROS CONVERTIDOS",
+    "signups_one": "{{count}} registro",
+    "signups_other": "{{count}} registros",
+    "converted_one": "{{count}} registro convertido",
+    "converted_other": "{{count}} registros convertidos"
+  },
+  "earnings": {
+    "eyebrow": "GANANCIAS RECIENTES",
+    "allTime": "{{points}} PTS EN TOTAL",
+    "fullLedger": "HISTORIAL COMPLETO EN EL PORTAL"
+  },
+  "ready": {
+    "eyebrow": "PREPARA TU AFILIACIÓN",
+    "withRequired": "{{title}} · obligatorio",
+    "termsFirst": "Acepta primero las condiciones.",
+    "terms": {
+      "title": "Acepta las condiciones de afiliado",
+      "sub": "Juego limpio y cómo etiquetar tus publicaciones. Dos minutos."
+    },
+    "profile": {
+      "title": "Añade una foto y una frase sobre ti",
+      "sub": "Es lo que ve la gente al tocar tu enlace."
+    },
+    "share": {
+      "title": "Comparte tu enlace una vez",
+      "sub": "Story, bio, chat de grupo: cualquier sitio vale."
+    }
+  },
+  "code": {
+    "eyebrow": "TU CÓDIGO",
+    "copyYourCode": "Copiar tu código",
+    "copied": "COPIADO",
+    "tapToCopy": "TOCA PARA COPIAR",
+    "share": "COMPARTE TU ENLACE",
+    "copyCode": "Copiar código",
+    "locked": "ACEPTA LAS CONDICIONES",
+    "foot": "Di tu código en voz alta en los vídeos: en iPhone, la App Store no puede conservarlo durante la instalación."
+  },
+  "next": {
+    "eyebrow": "PRÓXIMO ESCALÓN",
+    "allReached": "TODOS LOS ESCALONES ALCANZADOS",
+    "cleared": "Has completado todos los escalones.",
+    "moreSignups_one": "registro más",
+    "moreSignups_other": "registros más",
+    "moreConverted_one": "registro convertido más",
+    "moreConverted_other": "registros convertidos más",
+    "withWorth": "{{more}} · valor {{value}}",
+    "keepGoing": "Cada conversión sigue sumando puntos. Sigue así.",
+    "goalPoints": "{{goal}} · +{{points}} pts"
+  },
+  "rung": {
+    "reached": "ALCANZADO",
+    "here": "ESTÁS AQUÍ",
+    "pts": "PTS",
+    "progress_one": "{{basis}} de {{goal}} · falta {{count}}",
+    "progress_other": "{{basis}} de {{goal}} · faltan {{count}}",
+    "addAddress": "Añade tu dirección para que podamos enviártelo",
+    "parcel": {
+      "owed": "En preparación",
+      "approved": "Aprobado: preparando el envío",
+      "shipped": "Enviado",
+      "delivered": "Entregado",
+      "cancelled": "Cancelado"
+    }
+  },
+  "profile": {
+    "title": "Tu página de enlace",
+    "ledeWithLink": "Esto es lo que ve la gente al tocar tu enlace ({{url}}). Una cara y una frase convierten un código en una persona.",
+    "lede": "Esto es lo que ve la gente al tocar tu enlace. Una cara y una frase convierten un código en una persona.",
+    "namePlaceholder": "Tu nombre",
+    "bioPlaceholder": "Una frase sobre ti",
+    "join": "ÚNETE A POWR CON {{code}}",
+    "yourCode": "TU CÓDIGO",
+    "photo": "FOTO",
+    "useMyPhoto": "USAR MI FOTO DE POWR",
+    "remove": "QUITAR",
+    "photoHint": "Añade primero una foto a tu perfil de POWR (Ajustes › Editar perfil) y aparecerá aquí.",
+    "displayName": "NOMBRE VISIBLE",
+    "bio": "UNA FRASE SOBRE TI",
+    "bioExample": "Coach en Iron Works, fan del maratón, aquí para ponerte en marcha",
+    "saveError": "No se ha podido guardar. Inténtalo de nuevo.",
+    "save": "GUARDAR"
+  },
+  "terms": {
+    "title": "Condiciones de afiliado",
+    "eyebrow": "PROGRAMA DE AFILIADOS DE POWR · {{version}}",
+    "saveError": "No se ha podido guardar. Inténtalo de nuevo.",
+    "agree": "LAS HE LEÍDO Y ACEPTO"
+  },
+  "shareText": "Entrenar ahora tiene premio. Descarga POWR y usa mi código {{code}}: {{link}}",
+  "nextRewardFallback": "Próxima recompensa"
+}

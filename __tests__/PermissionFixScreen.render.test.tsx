@@ -11,7 +11,7 @@
  *
  * These assert the iOS labels, which is what jest-expo runs as by default.
  * Android variants are deliberately not covered here: PermissionFixScreen
- * derives isIOS / ALWAYS / APP_SETTINGS_PATH at module load, so a Platform.OS
+ * derives isIOS at module load, so a Platform.OS
  * stub applied in beforeAll lands too late to reach them. (Harmless in the
  * app, where Platform.OS is fixed at startup.) The Android dialog mocks
  * themselves read Platform.OS per render and are covered in

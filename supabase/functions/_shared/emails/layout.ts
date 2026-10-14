@@ -4,6 +4,8 @@
 // width, the mobile breakpoint, the font stack and a footer people can read.
 // Templates supply only their body rows (<tr>…</tr>, each cell class="sec").
 
+import { tEmail } from "../i18n/index.ts";
+
 export const GOLD = "#E8D200";
 export const TEXT = "#F2F2F2";
 export const TEXT_DIM = "#999999";
@@ -79,17 +81,20 @@ export interface EmailShellOptions {
   rows: string;
   /** Include the Mailgun unsubscribe link (marketing/lifecycle mail). Default true. */
   unsubscribe?: boolean;
+  /** Language of the footer and <html lang>. Default "en" (the gym, partner and team mails pass nothing). */
+  lang?: string;
 }
 
 export function emailShell(opts: EmailShellOptions): string {
   const unsubscribe = opts.unsubscribe ?? true;
+  const lang = opts.lang ?? "en";
   const footerLinks = [
-    unsubscribe ? `<a href="%unsubscribe_url%" style="color:#8a8a8a;text-decoration:underline;">Unsubscribe</a>` : "",
-    `<a href="https://powr.life/privacy" style="color:#8a8a8a;text-decoration:underline;">Privacy Policy</a>`,
+    unsubscribe ? `<a href="%unsubscribe_url%" style="color:#8a8a8a;text-decoration:underline;">${tEmail(lang, "layout.unsubscribe")}</a>` : "",
+    `<a href="https://powr.life/privacy" style="color:#8a8a8a;text-decoration:underline;">${tEmail(lang, "layout.privacy")}</a>`,
   ].filter(Boolean).join(" &nbsp;&middot;&nbsp; ");
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${esc(lang)}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -130,7 +135,7 @@ ${opts.rows}
         <!-- FOOTER -->
         <tr>
           <td class="sec" bgcolor="#050505" style="background-color:#050505;padding:30px 40px;text-align:center;">
-            <p style="margin:0 0 10px;font-size:12px;font-weight:400;color:#8a8a8a;line-height:1.6;font-family:${FONT};">Every move counts. &nbsp;&middot;&nbsp; <a href="https://powr.life" style="color:#8a8a8a;text-decoration:none;">powr.life</a></p>
+            <p style="margin:0 0 10px;font-size:12px;font-weight:400;color:#8a8a8a;line-height:1.6;font-family:${FONT};">${tEmail(lang, "common.everyMoveCounts")} &nbsp;&middot;&nbsp; <a href="https://powr.life" style="color:#8a8a8a;text-decoration:none;">powr.life</a></p>
             <p style="margin:0;font-size:12px;font-weight:400;color:#8a8a8a;line-height:1.6;font-family:${FONT};">${footerLinks}</p>
           </td>
         </tr>

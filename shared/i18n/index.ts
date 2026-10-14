@@ -15,14 +15,14 @@
 import { FALLBACK_LANGUAGE } from '../locale';
 
 /** Languages members see in the app. */
-export const APP_LANGUAGES: readonly string[] = ['en'];
+export const APP_LANGUAGES: readonly string[] = ['en', 'fr', 'es'];
 
 /**
  * Languages with a catalog that only translators see — via the translation
  * preview (long-press the version line at the bottom of Settings) — until
  * they're complete and move up to APP_LANGUAGES.
  */
-export const APP_DRAFT_LANGUAGES: readonly string[] = ['fr', 'es'];
+export const APP_DRAFT_LANGUAGES: readonly string[] = [];
 
 /**
  * Each language in its own words. A picker always lists a language the way its

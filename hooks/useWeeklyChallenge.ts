@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
+import i18n from '@/lib/i18n';
+import { CATEGORY_LABEL } from '@/lib/social/categories';
 import { supabase } from '@/lib/supabase';
 // challengeRules.js is CommonJS — import the namespace for interop.
 import { buildContext, categoryOf, evaluateChallenge } from '@/shared/challengeRules';
@@ -13,7 +15,6 @@ import {
   getPersonalizedChallengesForWeek,
   nextSundayMidnight,
   parseChallengeCatalog,
-  computeExpiresIn,
 } from '@/shared/weeklyChallenges';
 
 export interface ChallengeCardData {
@@ -50,10 +51,32 @@ export interface ChallengeCardData {
 /** Remembers the last ISO week the previous-week grace sweep ran for. */
 const PREV_WEEK_SWEEP_KEY = 'weeklyChallengeSweptWeek';
 
-/** Per-category noun for count-based goals. */
+/** Per-category noun for count-based goals (catalog keys, read with the goal as the count). */
 const COUNT_NOUN: Record<string, string> = {
-  gym: 'check-ins', running: 'runs', cycling: 'rides', walking: 'sessions', multi: 'sessions',
+  gym: 'home:weekly.units.checkIns', running: 'home:weekly.units.runs', cycling: 'home:weekly.units.rides', walking: 'home:weekly.units.sessions', multi: 'home:weekly.units.sessions',
 };
+
+/** shared/weeklyChallenges' computeExpiresIn ("2d 6h left"), in the language on screen. */
+function computeExpiresIn(expiresAt: string | null | undefined): string {
+  if (!expiresAt) return '';
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return i18n.t('home:weekly.expired');
+  const totalMinutes = Math.floor(diff / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) {
+    return hours > 0
+      ? i18n.t('home:weekly.left.daysHours', { days, hours })
+      : i18n.t('social:remaining.days', { count: days });
+  }
+  if (hours > 0) {
+    return minutes > 0
+      ? i18n.t('home:weekly.left.hoursMinutes', { hours, minutes })
+      : i18n.t('social:remaining.hours', { count: hours });
+  }
+  return i18n.t('social:remaining.minutes', { count: minutes });
+}
 
 /** Derive display value/goal/unit + dot visibility from a rule + raw progress.
  *  Exported for useWeeklyRecap, which renders LAST week's board with the same
@@ -67,20 +90,20 @@ export function formatProgress(rule: any, category: string, progress: number, ta
     case 'weekly_sum':
     case 'weekend_sum':
       if (rule.metric === 'steps') {
-        return { fraction, displayValue: progress, displayGoal: target, unit: 'steps', showDots: false };
+        return { fraction, displayValue: progress, displayGoal: target, unit: i18n.t('home:weekly.units.steps', { count: target }), showDots: false };
       }
       return { fraction, displayValue: Math.round(progress / 1000), displayGoal: Math.round(target / 1000), unit: 'km', showDots: false };
     case 'daily_metric_days':
     case 'distinct_days':
     case 'spaced_days':
     case 'step_window':
-      return { fraction, displayValue: progress, displayGoal: target, unit: 'days', showDots: target <= 7, segments };
+      return { fraction, displayValue: progress, displayGoal: target, unit: i18n.t('home:weekly.units.days', { count: target }), showDots: target <= 7, segments };
     case 'distinct_categories':
-      return { fraction, displayValue: progress, displayGoal: target, unit: 'categories', showDots: true, segments };
+      return { fraction, displayValue: progress, displayGoal: target, unit: i18n.t('home:weekly.units.categories', { count: target }), showDots: true, segments };
     case 'same_day_combo':
-      return { fraction, displayValue: progress, displayGoal: target, unit: 'days', showDots: true, segments };
+      return { fraction, displayValue: progress, displayGoal: target, unit: i18n.t('home:weekly.units.days', { count: target }), showDots: true, segments };
     default:
-      return { fraction, displayValue: progress, displayGoal: target, unit: COUNT_NOUN[category] ?? 'sessions', showDots: target <= 7, segments };
+      return { fraction, displayValue: progress, displayGoal: target, unit: i18n.t(COUNT_NOUN[category] ?? 'home:weekly.units.sessions', { count: target }), showDots: target <= 7, segments };
   }
 }
 
@@ -288,7 +311,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
       cards.push({
         id: c.id,
         category: c.category,
-        categoryLabel: meta.label,
+        categoryLabel: CATEGORY_LABEL[c.category] ?? meta.label,
         icon: meta.icon,
         tier: c.tier as ChallengeCardData['tier'],
         title: c.title,

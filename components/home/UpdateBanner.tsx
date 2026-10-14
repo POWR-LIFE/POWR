@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
@@ -20,6 +21,7 @@ const CARD_BG = '#111111';
 // up to date, so Home just mounts it unconditionally. Dismissal sticks per
 // target version — it returns only when the NEXT release goes out.
 export function UpdateBanner() {
+  const { t } = useTranslation();
   const [latest, setLatest] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
 
@@ -49,11 +51,11 @@ export function UpdateBanner() {
         <Ionicons name="arrow-up-circle" size={20} color={GOLD} />
       </View>
       <View style={styles.textBlock}>
-        <Text style={styles.title}>Update available</Text>
-        <Text style={styles.body}>POWR v{latest} is out — get the latest fixes and features.</Text>
+        <Text style={styles.title}>{t('home:update.title')}</Text>
+        <Text style={styles.body}>{t('home:update.body', { version: latest })}</Text>
       </View>
       <Pressable style={styles.cta} onPress={openStorePage} testID="update-banner-cta">
-        <Text style={styles.ctaText}>Update</Text>
+        <Text style={styles.ctaText}>{t('home:update.cta')}</Text>
       </Pressable>
       <Pressable style={styles.close} onPress={dismiss} hitSlop={8} testID="update-banner-dismiss">
         <Ionicons name="close" size={16} color={SECONDARY} />

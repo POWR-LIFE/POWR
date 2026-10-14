@@ -3,6 +3,11 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 
+// The i18next instance app/_layout initialises (via lib/i18n). This helper only
+// runs from on-screen buttons, so the instance is always ready; importing it
+// directly keeps lib/i18n's native dependencies out of this module.
+import i18n from 'i18next';
+
 /**
  * "Keep the image" for every social card — share-stats, the wallet reward
  * card, the event prize card.
@@ -64,9 +69,9 @@ export async function saveCardImage(uri: string, filename: string): Promise<Save
 /** The notice a screen shows for each outcome; null = say nothing. */
 export function saveCardNotice(result: SaveCardResult): string | null {
   switch (result) {
-    case 'saved': return 'Saved to your Photos.';
-    case 'sheet': return 'Tap “Save Image” in the sheet to keep it.';
+    case 'saved': return i18n.t('share:saveNotice.saved');
+    case 'sheet': return i18n.t('share:saveNotice.sheet');
     case 'cancelled': return null;
-    case 'unavailable': return 'Saving isn’t available on this device.';
+    case 'unavailable': return i18n.t('share:saveNotice.unavailable');
   }
 }

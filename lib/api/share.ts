@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import type { ActivityType } from '@/constants/activities';
 import { getLevelInfo } from '@/constants/levels';
+import i18n from '@/lib/i18n';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 export interface ShareVenue {
@@ -437,43 +438,49 @@ function shortDate(d: Date): string {
   });
 }
 
-/** The sentence a member sends with the link. */
+/**
+ * The sentence a member sends with the link. Written in the sharer's language:
+ * it's their caption, and it's also stored as the card's og:description.
+ */
 export function buildShareHeadline(summary: ShareSummary): string {
   if (summary.mode === 'check-in') {
-    const where = summary.venue ? ` at ${summary.venue.name}` : '';
     const detail = [
       summary.historical ? shortDate(new Date(summary.startedAt)) : null,
-      summary.durationMin > 0 ? `${summary.durationMin} min` : null,
-      summary.sessionPoints > 0 ? `+${summary.sessionPoints} pts` : null,
+      summary.durationMin > 0 ? i18n.t('share:headline.minutes', { minutes: summary.durationMin }) : null,
+      summary.sessionPoints > 0 ? i18n.t('share:headline.points', { points: summary.sessionPoints }) : null,
     ].filter(Boolean).join(', ');
-    let line = `Checked in${where} on POWR${detail ? ` — ${detail}` : ''}.`;
-    if (summary.currentStreak > 1) line += ` Day ${summary.currentStreak} of my streak.`;
+    const venue = summary.venue?.name;
+    let line = summary.venue
+      ? (detail ? i18n.t('share:headline.checkInAtDetail', { venue, detail }) : i18n.t('share:headline.checkInAt', { venue }))
+      : (detail ? i18n.t('share:headline.checkInDetail', { detail }) : i18n.t('share:headline.checkIn'));
+    if (summary.currentStreak > 1) line += ` ${i18n.t('share:headline.streakDay', { day: summary.currentStreak })}`;
     return line;
   }
   if (summary.mode === 'challenge') {
-    return `Challenge complete on POWR: ${summary.challengeTitle} (+${summary.points} pts).`;
+    return i18n.t('share:headline.challenge', { title: summary.challengeTitle, points: summary.points });
   }
   if (summary.mode === 'level-up') {
     const { current } = getLevelInfo(summary.totalEarned);
     return summary.historical
-      ? `Hit Level ${current.level} — ${current.name} — on POWR.`
-      : `Just hit Level ${current.level} — ${current.name} — on POWR.`;
+      ? i18n.t('share:headline.levelUpPast', { level: current.level, name: current.name })
+      : i18n.t('share:headline.levelUp', { level: current.level, name: current.name });
   }
+  const sessions = i18n.t('share:headline.sessionsThisMonth', { count: summary.monthCount });
   return summary.currentStreak > 0
-    ? `${summary.currentStreak}-day streak on POWR — ${summary.monthCount} sessions this month.`
-    : `${summary.monthCount} sessions this month on POWR.`;
+    ? i18n.t('share:headline.streakMonth', { streak: i18n.t('share:headline.streakDays', { count: summary.currentStreak }), sessions })
+    : i18n.t('share:headline.month', { sessions });
 }
 
 /** Bold line of the link preview — the member's level, which the card shows. */
 export function buildShareTitle(summary: ShareSummary): string {
   const { current } = getLevelInfo(summary.totalEarned);
-  const who = summary.profile.displayName ?? summary.profile.username ?? 'A POWR member';
-  return `${who} — Level ${current.level}, ${current.name}`;
+  const who = summary.profile.displayName ?? summary.profile.username ?? i18n.t('share:link.member');
+  return i18n.t('share:link.title', { who, level: current.level, name: current.name });
 }
 
 /** Grey line beneath it. */
 export function buildShareSubtitle(summary: ShareSummary): string {
-  return `${buildShareHeadline(summary)} Tap to get POWR and earn rewards for every workout.`;
+  return i18n.t('share:link.subtitle', { headline: buildShareHeadline(summary) });
 }
 
 /**

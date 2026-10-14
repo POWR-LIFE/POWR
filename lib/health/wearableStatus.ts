@@ -18,6 +18,8 @@
  * Pure module — no I/O, no React. Fetching lives in hooks/useWearableStatus.ts.
  */
 
+import i18n from '@/lib/i18n';
+
 /** Past this, the chip goes amber. Sized to clear a normal off-wrist night. */
 export const WEARABLE_STALE_HOURS = 24;
 
@@ -105,12 +107,13 @@ export function wearableFreshness(input: WearableStatusInput): WearableFreshness
  * conveying "recent / not recent", not a precise clock.
  */
 export function formatSyncAge(hours: number | null): string {
-    if (hours === null) return 'no data yet';
-    if (hours < 1) return 'synced just now';
-    if (hours < 2) return 'synced 1h ago';
-    if (hours < 24) return `synced ${Math.floor(hours)}h ago`;
+    if (hours === null) return i18n.t('health:wearableStatus.sync.noData');
+    if (hours < 1) return i18n.t('health:wearableStatus.sync.justNow');
+    if (hours < 24) return i18n.t('health:wearableStatus.sync.hours', { count: Math.floor(hours) });
     const days = Math.floor(hours / 24);
-    return days === 1 ? 'synced yesterday' : `synced ${days}d ago`;
+    return days === 1
+        ? i18n.t('health:wearableStatus.sync.yesterday')
+        : i18n.t('health:wearableStatus.sync.days', { count: days });
 }
 
 /**
@@ -122,15 +125,20 @@ export function formatSyncAge(hours: number | null): string {
  * claim we'd be wrong about every time someone takes a rest day.
  */
 export function wearableSilentCopy(
-    providerName: string,
+    providerName: string | null,
     hours: number | null,
 ): { title: string; body: string; cta: string } {
+    // No provider name: a dedicated title, so it never reads "Check your Your
+    // wearable connection".
+    const name = providerName ?? i18n.t('health:wearableStatus.silent.unnamed');
     const since = hours === null
-        ? `${providerName} hasn’t sent POWR any data since you connected it.`
-        : `${providerName} hasn’t sent POWR any data in ${Math.floor(hours / 24)} days.`;
+        ? i18n.t('health:wearableStatus.silent.sinceConnected', { name })
+        : i18n.t('health:wearableStatus.silent.sinceDays', { name, count: Math.floor(hours / 24) });
     return {
-        title: `Check your ${providerName} connection`,
-        body: `${since} If you’ve been wearing it, reconnecting usually fixes this.`,
-        cta: 'Check connection',
+        title: providerName
+            ? i18n.t('health:wearableStatus.silent.title', { name: providerName })
+            : i18n.t('health:wearableStatus.silent.titleUnnamed'),
+        body: i18n.t('health:wearableStatus.silent.body', { since }),
+        cta: i18n.t('health:wearableStatus.silent.cta'),
     };
 }

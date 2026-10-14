@@ -1,4 +1,7 @@
+import { formatLocale, levelName, tEmail } from "../i18n/index.ts";
+import { levelImageUrl, LEVELS, TIER_COLOR } from "../levels.ts";
 import { ctaButton, emailShell, esc, FONT, GOLD, optimizeImage, sectionLabel } from "./layout.ts";
+import { BR_DESKTOP, firstNameOf, fmtNum, rewardValueLabel, tierLabel } from "./member-copy.ts";
 
 export interface WeeklySummaryTopActivity {
   /** Activity type key, e.g. "gym", "running". */
@@ -52,7 +55,9 @@ export interface WeeklyDay {
 
 export interface WeeklyLevel {
   level: number;
+  /** Level name in the email's language (levelFor() fills it). */
   name: string;
+  /** Tier label in the email's language. */
   tierLabel: string;
   /** Email-safe hex. */
   tierColor: string;
@@ -60,6 +65,7 @@ export interface WeeklyLevel {
   totalEarned: number;
   /** Lifetime POWR at which this level started. */
   levelAt: number;
+  /** Next level's name, in the email's language. */
   nextName?: string | null;
   nextAt?: number | null;
   imageUrl?: string | null;
@@ -67,7 +73,7 @@ export interface WeeklyLevel {
 
 export interface WeeklySummaryData {
   name: string | null;
-  /** Human label for the week being summarised, e.g. "9–15 Jun". */
+  /** Human label for the week being summarised, e.g. "9–15 Jun" (formatWeekLabel, in the email's language). */
   weekLabel: string;
   pointsThisWeek: number;
   /** Previous week's points, for the week-over-week delta. */
@@ -135,24 +141,6 @@ const POINTS_PER_SESSION = 10;
 function sessionsAway(cost: number, balance: number): number {
   return Math.max(0, Math.ceil((cost - balance) / POINTS_PER_SESSION));
 }
-function sessionsLabel(n: number): string {
-  return `${n} ${n === 1 ? "workout" : "workouts"}`;
-}
-
-// type → display label. Mirrors constants/activities.ts (kept inline so the
-// edge runtime has no app imports).
-const ACTIVITY_LABELS: Record<string, string> = {
-  walking: "Walking",
-  running: "Running",
-  cycling: "Cycling",
-  swimming: "Swimming",
-  gym: "Gym",
-  hiit: "HIIT / Classes",
-  sports: "Sports",
-  yoga: "Yoga / Pilates",
-  dance: "Dance",
-  sleep: "Sleep",
-};
 
 // Premium monoline activity icons (Phosphor "light", off-white). Hosted as PNGs
 // — email clients (Gmail/Outlook) don't render SVG — alongside the logo in the
@@ -169,17 +157,44 @@ function activityIconUrl(type: string): string {
   return `${ICON_BASE}${ICON_TYPES.has(type) ? type : "fallback"}.png`;
 }
 
-function activityLabel(type: string): string {
-  return ACTIVITY_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
+// type → display label. Mirrors the app's activities:names (the edge runtime
+// has no app imports); an unknown type shows as its own key, capitalised.
+function activityLabel(type: string, lang: string): string {
+  switch (type) {
+    case "walking":
+      return tEmail(lang, "weekly.activities.walking");
+    case "running":
+      return tEmail(lang, "weekly.activities.running");
+    case "cycling":
+      return tEmail(lang, "weekly.activities.cycling");
+    case "swimming":
+      return tEmail(lang, "weekly.activities.swimming");
+    case "gym":
+      return tEmail(lang, "weekly.activities.gym");
+    case "hiit":
+      return tEmail(lang, "weekly.activities.hiit");
+    case "sports":
+      return tEmail(lang, "weekly.activities.sports");
+    case "yoga":
+      return tEmail(lang, "weekly.activities.yoga");
+    case "dance":
+      return tEmail(lang, "weekly.activities.dance");
+    case "sleep":
+      return tEmail(lang, "weekly.activities.sleep");
+    case "workout": // send-weekly-summary's stand-in when a longest session has no type
+      return tEmail(lang, "weekly.activities.workout");
+    default:
+      return type.charAt(0).toUpperCase() + type.slice(1);
+  }
 }
 
 /** Up/down chip vs the previous week. `abs` shows the count delta (▲2), `pct`
  *  the percentage delta (▲12%); new-this-week shows a gold NEW tag. */
-function deltaChip(curr: number, prev: number | null | undefined, mode: "abs" | "pct"): string {
+function deltaChip(curr: number, prev: number | null | undefined, mode: "abs" | "pct", lang: string): string {
   const base = `font-family:${FONT};white-space:nowrap;`;
   if (prev == null || prev <= 0) {
     return mode === "abs" && curr > 0
-      ? `<span style="font-size:9px;font-weight:700;letter-spacing:1px;color:${GOLD};${base}">NEW</span>`
+      ? `<span style="font-size:9px;font-weight:700;letter-spacing:1px;color:${GOLD};${base}">${tEmail(lang, "weekly.newChip")}</span>`
       : "";
   }
   if (curr === prev) {
@@ -187,28 +202,28 @@ function deltaChip(curr: number, prev: number | null | undefined, mode: "abs" | 
   }
   const up = curr > prev;
   const mag = mode === "pct"
-    ? `${Math.round(Math.abs((curr - prev) / prev) * 100)}%`
+    ? tEmail(lang, "common.percent", { value: Math.round(Math.abs((curr - prev) / prev) * 100) })
     : `${Math.abs(curr - prev)}`;
   return `<span style="font-size:12px;font-weight:700;color:${up ? GOLD : "#888888"};${base}">${up ? "&#9650;" : "&#9660;"}&nbsp;${mag}</span>`;
 }
 
 /** Plain-text counterpart of deltaChip, e.g. " (+2)" / " (-12%)" / " (new)". */
-function deltaTextPart(curr: number, prev: number | null | undefined, mode: "abs" | "pct"): string {
-  if (prev == null || prev <= 0) return mode === "abs" && curr > 0 ? " (new)" : "";
+function deltaTextPart(curr: number, prev: number | null | undefined, mode: "abs" | "pct", lang: string): string {
+  if (prev == null || prev <= 0) return mode === "abs" && curr > 0 ? ` (${tEmail(lang, "weekly.newText")})` : "";
   if (curr === prev) return "";
   const sign = curr > prev ? "+" : "-";
   const mag = mode === "pct"
-    ? `${Math.round(Math.abs((curr - prev) / prev) * 100)}%`
+    ? tEmail(lang, "common.percent", { value: Math.round(Math.abs((curr - prev) / prev) * 100) })
     : `${Math.abs(curr - prev)}`;
   return ` (${sign}${mag})`;
 }
 
-function formatDuration(sec: number): string {
+function formatDuration(sec: number, lang: string): string {
   const mins = Math.max(1, Math.round(sec / 60));
-  if (mins < 60) return `${mins}m`;
+  if (mins < 60) return tEmail(lang, "weekly.duration.minutes", { minutes: mins });
   const h = Math.floor(mins / 60);
   const rem = mins % 60;
-  return rem ? `${h}h ${rem}m` : `${h}h`;
+  return rem ? tEmail(lang, "weekly.duration.hoursMinutes", { hours: h, minutes: rem }) : tEmail(lang, "weekly.duration.hours", { hours: h });
 }
 
 // A "longest session" over these bounds is a tracking artefact (a gym visit whose
@@ -221,11 +236,64 @@ function plausibleLongest(ls: WeeklyLongestSession | null | undefined): WeeklyLo
   return ls.durationSec <= max ? ls : null;
 }
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-/** Weekday name of a "YYYY-MM-DD" calendar date (no timezone maths — it's already local). */
-function weekdayOf(date: string): string {
+/** Day of the week (0 = Sunday) of a "YYYY-MM-DD" calendar date (no timezone maths — it's already local). */
+function weekdayIndex(date: string): number {
   const [y, m, d] = date.split("-").map(Number);
-  return WEEKDAYS[new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1)).getUTCDay()];
+  return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1)).getUTCDay();
+}
+/** Weekday name of a calendar date, as it reads mid-sentence ("Monday", "lundi"). */
+function weekdayOf(date: string, lang: string): string {
+  return [
+    tEmail(lang, "weekly.weekdays.sun"),
+    tEmail(lang, "weekly.weekdays.mon"),
+    tEmail(lang, "weekly.weekdays.tue"),
+    tEmail(lang, "weekly.weekdays.wed"),
+    tEmail(lang, "weekly.weekdays.thu"),
+    tEmail(lang, "weekly.weekdays.fri"),
+    tEmail(lang, "weekly.weekdays.sat"),
+  ][weekdayIndex(date)];
+}
+/** The day strip's one-letter weekday. */
+function weekdayLetter(date: string, lang: string): string {
+  return [
+    tEmail(lang, "weekly.weekdayLetters.sun"),
+    tEmail(lang, "weekly.weekdayLetters.mon"),
+    tEmail(lang, "weekly.weekdayLetters.tue"),
+    tEmail(lang, "weekly.weekdayLetters.wed"),
+    tEmail(lang, "weekly.weekdayLetters.thu"),
+    tEmail(lang, "weekly.weekdayLetters.fri"),
+    tEmail(lang, "weekly.weekdayLetters.sat"),
+  ][weekdayIndex(date)];
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** "9–15 Jun" or "30 Jun – 6 Jul" for the [since, untilExclusive) window (UTC days). */
+export function formatWeekLabel(since: Date, untilExclusive: Date, lang = "en"): string {
+  const end = new Date(untilExclusive.getTime() - DAY_MS);
+  const mon = (dt: Date) => dt.toLocaleString(formatLocale(lang), { month: "short", timeZone: "UTC" });
+  const ds = since.getUTCDate();
+  const de = end.getUTCDate();
+  return mon(since) === mon(end)
+    ? `${ds}–${de} ${mon(end)}`
+    : `${ds} ${mon(since)} – ${de} ${mon(end)}`;
+}
+
+/** Level card from the canonical lifetime total (same basis as the app + level-up email), named in `lang`. */
+export function levelFor(totalEarned: number, lang = "en"): WeeklyLevel {
+  const def = [...LEVELS].reverse().find((l) => totalEarned >= l.xpMin) ?? LEVELS[0];
+  const next = LEVELS.find((l) => l.level === def.level + 1) ?? null;
+  return {
+    level: def.level,
+    name: levelName(lang, def.level),
+    tierLabel: tierLabel(lang, def.tier),
+    tierColor: TIER_COLOR[def.tier],
+    totalEarned,
+    levelAt: def.xpMin,
+    nextName: next ? levelName(lang, next.level) : null,
+    nextAt: next?.xpMin ?? null,
+    imageUrl: levelImageUrl(def.level),
+  };
 }
 
 function statCell(value: string, label: string): string {
@@ -242,8 +310,9 @@ function statCell(value: string, label: string): string {
                 </td>`;
 }
 
-export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; html: string; text: string } {
-  const firstName = esc(data.name?.trim().split(" ")[0] || "there");
+export function weeklySummaryEmail(data: WeeklySummaryData, lang = "en"): { subject: string; html: string; text: string } {
+  const plainName = firstNameOf(data.name, lang);
+  const firstName = esc(plainName);
   const points = data.pointsThisWeek;
   const lastWeek = data.pointsLastWeek ?? null;
 
@@ -259,38 +328,44 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
   // the comparison as a quiet second clause — never a grey "▼ 30%" headline.
   let deltaHtml = "";
   let deltaText = "";
+  // Set only for an up week: the subject line mentions it.
+  let upPct: number | null = null;
   if (lastWeek !== null && lastWeek > 0) {
     const pct = Math.round(((points - lastWeek) / lastWeek) * 100);
     if (pct > 0) {
-      deltaHtml = `<span style="color:${GOLD};">&#9650; ${pct}%</span> vs last week`;
-      deltaText = `Up ${pct}% vs last week.`;
+      upPct = pct;
+      deltaHtml = tEmail(lang, "weekly.delta.upHtml", { chip: `<span style="color:${GOLD};">&#9650; ${tEmail(lang, "common.percent", { value: pct })}</span>` });
+      deltaText = tEmail(lang, "weekly.delta.up", { pct });
     } else if (pct < 0) {
       const held = data.currentStreak >= 3
-        ? `${data.currentStreak}-day streak, still standing.`
+        ? tEmail(lang, "weekly.delta.heldStreak", { count: data.currentStreak })
         : data.activeDays >= 4
-        ? `Active ${data.activeDays} of 7 days.`
+        ? tEmail(lang, "weekly.delta.heldActive", { count: data.activeDays })
         : bestDay
-        ? `${weekdayOf(bestDay.date)} was your best day.`
+        ? tEmail(lang, "weekly.delta.heldBestDay", { day: weekdayOf(bestDay.date, lang) })
         : "";
-      deltaHtml = `${held ? `<span style="color:#e8e8e8;">${held}</span> ` : ""}A lighter week than last (${lastWeek.toLocaleString()}).`;
-      deltaText = `${held ? held + " " : ""}A lighter week than last (${lastWeek.toLocaleString()}).`;
+      const lighter = tEmail(lang, "weekly.delta.lighter", { points: fmtNum(lastWeek, lang) });
+      deltaHtml = `${held ? `<span style="color:#e8e8e8;">${held}</span> ` : ""}${lighter}`;
+      deltaText = `${held ? held + " " : ""}${lighter}`;
     } else {
-      deltaHtml = `Level with last week`;
-      deltaText = `Level with last week.`;
+      deltaHtml = tEmail(lang, "weekly.delta.levelHtml");
+      deltaText = tEmail(lang, "weekly.delta.level");
     }
   } else if (points > 0 && data.isFirstWeek) {
-    deltaHtml = `<span style="color:${GOLD};">Your first week.</span> It starts here.`;
-    deltaText = `Your first week. It starts here.`;
+    const first = tEmail(lang, "weekly.delta.firstWeek");
+    const startsHere = tEmail(lang, "weekly.delta.startsHere");
+    deltaHtml = `<span style="color:${GOLD};">${first}</span> ${startsHere}`;
+    deltaText = `${first} ${startsHere}`;
   } else if (points > 0 && lastWeek === 0) {
-    deltaHtml = `<span style="color:${GOLD};">Back in action</span>`;
-    deltaText = `Back in action this week.`;
+    deltaHtml = `<span style="color:${GOLD};">${tEmail(lang, "weekly.delta.backHtml")}</span>`;
+    deltaText = tEmail(lang, "weekly.delta.back");
   }
 
   // ── The week at a glance: M T W T F S S, gold = active that day ──
   const dayStripHtml = days.length === 7
     ? (() => {
         const cells = days.map((d) => {
-          const letter = weekdayOf(d.date).charAt(0);
+          const letter = weekdayLetter(d.date, lang);
           const isBest = bestDay?.date === d.date;
           const dot = d.active || d.points > 0
             ? `background-color:${GOLD};border:1px solid ${GOLD};color:#080808;font-weight:700;`
@@ -300,11 +375,11 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
                     <tr><td width="34" height="34" align="center" valign="middle" style="width:34px;height:34px;border-radius:17px;font-size:12px;line-height:34px;text-align:center;font-family:${FONT};${dot}">${letter}</td></tr>
                   </table>
-                  <span style="display:block;margin-top:7px;font-size:10px;font-weight:${isBest ? 700 : 400};color:${isBest ? GOLD : "#666666"};font-family:${FONT};">${d.points > 0 ? d.points.toLocaleString() : "&ndash;"}</span>
+                  <span style="display:block;margin-top:7px;font-size:10px;font-weight:${isBest ? 700 : 400};color:${isBest ? GOLD : "#666666"};font-family:${FONT};">${d.points > 0 ? fmtNum(d.points, lang) : "&ndash;"}</span>
                 </td>`;
         }).join("");
         const bestLine = bestDay
-          ? `<p style="margin:16px 0 0;font-size:13px;font-weight:300;color:#999999;text-align:center;font-family:${FONT};">Best day: <span style="color:#e8e8e8;font-weight:500;">${weekdayOf(bestDay.date)}</span> &middot; <span style="color:${GOLD};font-weight:600;">${bestDay.points.toLocaleString()} POWR</span></p>`
+          ? `<p style="margin:16px 0 0;font-size:13px;font-weight:300;color:#999999;text-align:center;font-family:${FONT};">${tEmail(lang, "weekly.bestDayHtml", { day: `<span style="color:#e8e8e8;font-weight:500;">${weekdayOf(bestDay.date, lang)}</span>` })} &middot; <span style="color:${GOLD};font-weight:600;">${fmtNum(bestDay.points, lang)} POWR</span></p>`
           : "";
         return `
         <tr>
@@ -340,35 +415,35 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
         const rows = activities.map((a) =>
           row(
             activityIconUrl(a.type),
-            activityLabel(a.type),
+            activityLabel(a.type, lang),
             String(a.count),
-            a.count === 1 ? "session" : "sessions",
-            deltaChip(a.count, a.prevCount, "abs"),
+            tEmail(lang, "weekly.sessionUnit", { count: a.count }),
+            deltaChip(a.count, a.prevCount, "abs", lang),
           )
         );
         if (hasSteps) {
           rows.push(
             row(
               activityIconUrl("walking"),
-              "Steps",
-              data.steps!.toLocaleString(),
-              "steps",
-              deltaChip(data.steps!, data.prevSteps, "pct"),
+              tEmail(lang, "weekly.steps"),
+              fmtNum(data.steps!, lang),
+              tEmail(lang, "weekly.stepsUnit"),
+              deltaChip(data.steps!, data.prevSteps, "pct", lang),
             ),
           );
         }
         if (hasDistance) {
-          rows.push(row(activityIconUrl("running"), "Distance", data.distanceKm!.toLocaleString(), "km", ""));
+          rows.push(row(activityIconUrl("running"), tEmail(lang, "weekly.distance"), fmtNum(data.distanceKm!, lang), "km", ""));
         }
         // Where the numbers came from — or, with nothing connected, the one nudge
         // that makes every later email richer.
         const sourceLine = data.wearable
-          ? `<p style="margin:14px 0 0;font-size:12px;font-weight:300;color:#777777;font-family:${FONT};"><span style="color:${GOLD};">&#9679;</span>&nbsp; Synced from ${esc(data.wearable)}</p>`
-          : `<p style="margin:14px 0 0;font-size:12px;font-weight:300;color:#999999;font-family:${FONT};">No wearable connected yet. <a href="https://powr.life/app?to=wearables" style="color:${GOLD};text-decoration:underline;">Connect one</a> and every workout counts automatically.</p>`;
+          ? `<p style="margin:14px 0 0;font-size:12px;font-weight:300;color:#777777;font-family:${FONT};"><span style="color:${GOLD};">&#9679;</span>&nbsp; ${tEmail(lang, "weekly.syncedFrom", { wearable: esc(data.wearable) })}</p>`
+          : `<p style="margin:14px 0 0;font-size:12px;font-weight:300;color:#999999;font-family:${FONT};">${tEmail(lang, "weekly.noWearableHtml", { link: `<a href="https://powr.life/app?to=wearables" style="color:${GOLD};text-decoration:underline;">`, end: "</a>" })}</p>`;
         return `
         <tr>
           <td class="sec" style="background-color:#080808;padding:26px 40px 28px;border-bottom:1px solid #111111;">
-            ${sectionLabel("How you moved")}
+            ${sectionLabel(tEmail(lang, "weekly.howYouMoved"))}
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:6px;">
               ${rows.join("")}
             </table>
@@ -385,16 +460,16 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
         const ls = longest;
         const iconUrl = activityIconUrl(ls.type);
         const sub = ls.partner
-          ? `${activityLabel(ls.type)} &middot; ${esc(ls.partner)}`
-          : activityLabel(ls.type);
+          ? `${activityLabel(ls.type, lang)} &middot; ${esc(ls.partner)}`
+          : activityLabel(ls.type, lang);
         return `
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:30px 40px;border-bottom:1px solid #161616;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
               <tr>
                 <td style="vertical-align:middle;">
-                  ${sectionLabel("Longest session")}
-                  <span style="display:block;margin-top:10px;font-size:40px;font-weight:200;color:#F2F2F2;letter-spacing:-1.5px;line-height:1;font-family:${FONT};">${formatDuration(ls.durationSec)}</span>
+                  ${sectionLabel(tEmail(lang, "weekly.longest"))}
+                  <span style="display:block;margin-top:10px;font-size:40px;font-weight:200;color:#F2F2F2;letter-spacing:-1.5px;line-height:1;font-family:${FONT};">${formatDuration(ls.durationSec, lang)}</span>
                   <span style="display:block;margin-top:8px;font-size:14px;font-weight:300;color:#999999;font-family:${FONT};">${sub}</span>
                 </td>
                 <td width="52" style="vertical-align:middle;text-align:right;"><img src="${iconUrl}" width="40" height="40" alt="" style="display:block;width:40px;height:40px;margin-left:auto;"></td>
@@ -415,14 +490,14 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
                     <td style="padding:11px 0;border-bottom:1px solid #161616;font-size:15px;font-weight:400;color:#e8e8e8;font-family:${FONT};">
                       <span style="color:${GOLD};">&#9679;</span>&nbsp;&nbsp;${esc(g.name)}
                     </td>
-                    <td align="right" style="padding:11px 0;border-bottom:1px solid #161616;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#777777;font-family:${FONT};white-space:nowrap;">${g.count}&nbsp;${g.count === 1 ? "visit" : "visits"}</td>
+                    <td align="right" style="padding:11px 0;border-bottom:1px solid #161616;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#777777;font-family:${FONT};white-space:nowrap;">${tEmail(lang, "weekly.visitsHtml", { count: g.count })}</td>
                   </tr>`,
           )
           .join("");
         return `
         <tr>
           <td class="sec" style="background-color:#080808;padding:30px 40px;border-bottom:1px solid #111111;">
-            ${sectionLabel("Where you trained")}
+            ${sectionLabel(tEmail(lang, "weekly.whereYouTrained"))}
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:8px;">
               ${rows}
             </table>
@@ -445,13 +520,13 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
           )
           .join("");
         const more = extra > 0
-          ? `<span style="display:inline-block;margin:4px 6px 4px 0;padding:7px 14px;font-size:12px;font-weight:600;color:#777777;font-family:${FONT};">+${extra} more</span>`
+          ? `<span style="display:inline-block;margin:4px 6px 4px 0;padding:7px 14px;font-size:12px;font-weight:600;color:#777777;font-family:${FONT};">${tEmail(lang, "weekly.moreChallenges", { count: extra })}</span>`
           : "";
         return `
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:30px 40px;border-bottom:1px solid #161616;">
-            ${sectionLabel("Challenges completed")}
-            <span style="display:block;margin-top:10px;font-size:30px;font-weight:200;color:#F2F2F2;letter-spacing:-1px;line-height:1;font-family:${FONT};">${challengeCount} ${challengeCount === 1 ? "challenge" : "challenges"} <span style="color:#666666;">completed</span></span>
+            ${sectionLabel(tEmail(lang, "weekly.challengesCompleted"))}
+            <span style="display:block;margin-top:10px;font-size:30px;font-weight:200;color:#F2F2F2;letter-spacing:-1px;line-height:1;font-family:${FONT};">${tEmail(lang, "weekly.challengesCountHtml", { count: challengeCount, dim: '<span style="color:#666666;">', end: "</span>" })}</span>
             ${chips ? `<div style="margin-top:14px;">${chips}${more}</div>` : ""}
           </td>
         </tr>`;
@@ -481,10 +556,12 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
 
   const rewardLogo = (r: WeeklyRewardTile): string | null => r.image ?? r.hero ?? null;
   const rewardInitial = (r: WeeklyRewardTile): string => esc((r.brand ?? "?").trim().charAt(0).toUpperCase());
+  const valueOf = (r: WeeklyRewardTile): string => rewardValueLabel((r.valueLabel ?? "").trim(), lang);
   const brandValue = (r: WeeklyRewardTile): string => {
-    const v = (r.valueLabel ?? "").trim();
+    const v = valueOf(r);
     return v ? `${esc(r.brand)}${r.brand ? " &middot; " : ""}${esc(v)}` : esc(r.brand);
   };
+  const rewardWord = tEmail(lang, "common.reward");
 
   const rewardHtml = (topRewards.length || featuredReward || readyMode)
     ? (() => {
@@ -492,11 +569,11 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
         const tiles = topRewards.slice(0, 3).map((r) => {
           const logo = rewardLogo(r);
           const inner = logo
-            ? `<img src="${optimizeImage(logo, { width: 200, height: 200, resize: "contain" })}" alt="${esc(r.brand ?? "Reward")}" style="display:block;max-width:58px;max-height:58px;width:auto;height:auto;margin:0 auto;">`
+            ? `<img src="${optimizeImage(logo, { width: 200, height: 200, resize: "contain" })}" alt="${esc(r.brand ?? rewardWord)}" style="display:block;max-width:58px;max-height:58px;width:auto;height:auto;margin:0 auto;">`
             : `<span style="display:block;font-size:24px;font-weight:700;color:#444444;font-family:${FONT};">${rewardInitial(r)}</span>`;
           const reach = balance >= r.cost
-            ? `<span style="display:block;margin-top:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;color:${GOLD};font-family:${FONT};">&#10003; Ready</span>`
-            : `<span style="display:block;margin-top:4px;font-size:10px;font-weight:400;color:#777777;font-family:${FONT};">${sessionsLabel(sessionsAway(r.cost, balance))} away</span>`;
+            ? `<span style="display:block;margin-top:4px;font-size:10px;font-weight:700;letter-spacing:0.5px;color:${GOLD};font-family:${FONT};">&#10003; ${tEmail(lang, "weekly.ready")}</span>`
+            : `<span style="display:block;margin-top:4px;font-size:10px;font-weight:400;color:#777777;font-family:${FONT};">${tEmail(lang, "weekly.workoutsAway", { count: sessionsAway(r.cost, balance) })}</span>`;
           return `
                 <td width="33.33%" align="center" valign="top" style="padding:0 6px;">
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;background-color:#141414;border:1px solid #242424;border-radius:14px;">
@@ -507,7 +584,7 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
                     </tr>
                   </table>
                   <span style="display:block;margin-top:9px;font-size:11px;font-weight:600;color:#dddddd;line-height:1.3;font-family:${FONT};">${esc(r.brand)}</span>
-                  <span style="display:block;margin-top:2px;font-size:11px;font-weight:700;color:${GOLD};font-family:${FONT};">${r.cost.toLocaleString()} POWR</span>
+                  <span style="display:block;margin-top:2px;font-size:11px;font-weight:700;color:${GOLD};font-family:${FONT};">${fmtNum(r.cost, lang)} POWR</span>
                   ${reach}
                 </td>`;
         }).join("");
@@ -522,15 +599,15 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
           const toGo = Math.max(0, r.cost - balance);
           const pct = Math.max(3, Math.min(100, Math.round((balance / r.cost) * 100)));
           const cover = (r.hero ?? r.image)
-            ? `<img src="${optimizeImage((r.hero ?? r.image)!, { width: 1040, height: 380, resize: "cover" })}" alt="${esc(r.brand ?? "Reward")}" width="520" style="display:block;width:100%;height:auto;border-radius:14px 14px 0 0;">`
+            ? `<img src="${optimizeImage((r.hero ?? r.image)!, { width: 1040, height: 380, resize: "cover" })}" alt="${esc(r.brand ?? rewardWord)}" width="520" style="display:block;width:100%;height:auto;border-radius:14px 14px 0 0;">`
             : "";
           const logoSrc = rewardLogo(r);
           const logo = logoSrc
-            ? `<img src="${optimizeImage(logoSrc, { width: 120, height: 120, resize: "contain" })}" alt="${esc(r.brand ?? "Reward")}" style="display:block;max-width:36px;max-height:36px;width:auto;height:auto;margin:0 auto;">`
+            ? `<img src="${optimizeImage(logoSrc, { width: 120, height: 120, resize: "contain" })}" alt="${esc(r.brand ?? rewardWord)}" style="display:block;max-width:36px;max-height:36px;width:auto;height:auto;margin:0 auto;">`
             : `<span style="display:block;font-size:18px;font-weight:700;color:#666666;font-family:${FONT};">${rewardInitial(r)}</span>`;
           const status = affordable
-            ? `<span style="display:block;margin-top:11px;font-size:12px;font-weight:700;color:${GOLD};font-family:${FONT};">&#10003; You can unlock this now</span>`
-            : `<span style="display:block;margin-top:11px;font-size:12px;font-weight:300;color:#999999;font-family:${FONT};"><span style="color:${GOLD};font-weight:600;">${toGo.toLocaleString()} POWR</span> &middot; about ${sessionsLabel(sessionsAway(r.cost, balance))} away</span>`;
+            ? `<span style="display:block;margin-top:11px;font-size:12px;font-weight:700;color:${GOLD};font-family:${FONT};">&#10003; ${tEmail(lang, "weekly.canUnlockNow")}</span>`
+            : `<span style="display:block;margin-top:11px;font-size:12px;font-weight:300;color:#999999;font-family:${FONT};"><span style="color:${GOLD};font-weight:600;">${fmtNum(toGo, lang)} POWR</span> &middot; ${tEmail(lang, "weekly.aboutWorkoutsAway", { count: sessionsAway(r.cost, balance) })}</span>`;
           return `
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:18px;background-color:#0f0f0a;border:1px solid #2a2814;border-radius:14px;">
               <tr><td style="padding:0;font-size:0;line-height:0;">${cover}</td></tr>
@@ -544,11 +621,11 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
                         </table>
                       </td>
                       <td valign="middle" style="padding-left:12px;">
-                        <span style="display:block;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${GOLD};font-family:${FONT};">${affordable ? (readyMode ? "Best value in reach" : "Ready to unlock") : "Closest reward"}</span>
+                        <span style="display:block;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${GOLD};font-family:${FONT};">${affordable ? (readyMode ? tEmail(lang, "weekly.bestValue") : tEmail(lang, "weekly.readyToUnlock")) : tEmail(lang, "weekly.closestReward")}</span>
                         <span style="display:block;margin-top:4px;font-size:15px;font-weight:500;color:#F2F2F2;font-family:${FONT};">${brandValue(r)}</span>
                       </td>
                       <td align="right" valign="middle" style="white-space:nowrap;">
-                        <span style="font-size:18px;font-weight:300;color:${GOLD};letter-spacing:-0.5px;font-family:${FONT};">${r.cost.toLocaleString()}</span><span style="font-size:9px;font-weight:700;letter-spacing:1px;color:#A89900;font-family:${FONT};"> POWR</span>
+                        <span style="font-size:18px;font-weight:300;color:${GOLD};letter-spacing:-0.5px;font-family:${FONT};">${fmtNum(r.cost, lang)}</span><span style="font-size:9px;font-weight:700;letter-spacing:1px;color:#A89900;font-family:${FONT};"> POWR</span>
                       </td>
                     </tr>
                   </table>
@@ -568,7 +645,7 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
         const compactRow = (r: WeeklyRewardTile): string => {
           const logoSrc = rewardLogo(r);
           const logo = logoSrc
-            ? `<img src="${optimizeImage(logoSrc, { width: 100, height: 100, resize: "contain" })}" alt="${esc(r.brand ?? "Reward")}" style="display:block;max-width:28px;max-height:28px;width:auto;height:auto;margin:0 auto;">`
+            ? `<img src="${optimizeImage(logoSrc, { width: 100, height: 100, resize: "contain" })}" alt="${esc(r.brand ?? rewardWord)}" style="display:block;max-width:28px;max-height:28px;width:auto;height:auto;margin:0 auto;">`
             : `<span style="display:block;font-size:14px;font-weight:700;color:#666666;font-family:${FONT};">${rewardInitial(r)}</span>`;
           return `
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:10px;background-color:#0c0c0c;border:1px solid #1c1c1c;border-radius:12px;">
@@ -580,10 +657,10 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
                 </td>
                 <td valign="middle" style="padding:10px 12px;">
                   <span style="display:block;font-size:13px;font-weight:500;color:#e8e8e8;font-family:${FONT};">${brandValue(r)}</span>
-                  <span style="display:block;margin-top:2px;font-size:11px;font-weight:${balance >= r.cost ? 700 : 300};color:${balance >= r.cost ? GOLD : "#888888"};font-family:${FONT};">${balance >= r.cost ? "&#10003; Ready" : `${sessionsLabel(sessionsAway(r.cost, balance))} away`}</span>
+                  <span style="display:block;margin-top:2px;font-size:11px;font-weight:${balance >= r.cost ? 700 : 300};color:${balance >= r.cost ? GOLD : "#888888"};font-family:${FONT};">${balance >= r.cost ? `&#10003; ${tEmail(lang, "weekly.ready")}` : tEmail(lang, "weekly.workoutsAway", { count: sessionsAway(r.cost, balance) })}</span>
                 </td>
                 <td align="right" valign="middle" style="padding:10px 14px 10px 0;white-space:nowrap;">
-                  <span style="font-size:13px;font-weight:700;color:${GOLD};font-family:${FONT};">${r.cost.toLocaleString()} POWR</span>
+                  <span style="font-size:13px;font-weight:700;color:${GOLD};font-family:${FONT};">${fmtNum(r.cost, lang)} POWR</span>
                 </td>
               </tr>
             </table>`;
@@ -594,17 +671,17 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
 
         if (readyMode) {
           const nextHtml = nextUp
-            ? `<p style="margin:16px 0 0;font-size:12px;font-weight:300;color:#999999;text-align:center;font-family:${FONT};">Next up: <span style="color:#e8e8e8;font-weight:500;">${brandValue(nextUp)}</span> &middot; about ${sessionsLabel(sessionsAway(nextUp.cost, balance))} away</p>`
+            ? `<p style="margin:16px 0 0;font-size:12px;font-weight:300;color:#999999;text-align:center;font-family:${FONT};">${tEmail(lang, "weekly.nextUpHtml", { reward: `<span style="color:#e8e8e8;font-weight:500;">${brandValue(nextUp)}</span>` })} &middot; ${tEmail(lang, "weekly.aboutWorkoutsAway", { count: sessionsAway(nextUp.cost, balance) })}</p>`
             : "";
           return `
         <tr>
           <td class="sec" bgcolor="#080808" style="background-color:#080808;padding:30px 40px;border-bottom:1px solid #111111;">
-            ${sectionLabel("Ready to redeem")}
-            <span style="display:block;margin-top:10px;font-size:30px;font-weight:200;color:#F2F2F2;letter-spacing:-1px;line-height:1.15;font-family:${FONT};"><span style="color:${GOLD};">${balance.toLocaleString()} POWR</span> in your balance</span>
-            <span style="display:block;margin-top:8px;font-size:14px;font-weight:300;color:#999999;line-height:1.5;font-family:${FONT};">Enough for ${affordableCount === 1 ? "a reward" : `${affordableCount} rewards`} right now. Earned, not given &mdash; spend it.</span>
+            ${sectionLabel(tEmail(lang, "common.readyToRedeem"))}
+            <span style="display:block;margin-top:10px;font-size:30px;font-weight:200;color:#F2F2F2;letter-spacing:-1px;line-height:1.15;font-family:${FONT};">${tEmail(lang, "common.inYourBalanceHtml", { amount: `<span style="color:${GOLD};">${fmtNum(balance, lang)} POWR</span>` })}</span>
+            <span style="display:block;margin-top:8px;font-size:14px;font-weight:300;color:#999999;line-height:1.5;font-family:${FONT};">${tEmail(lang, "common.enoughHtml", { count: affordableCount })}</span>
             ${featuredHtml}
             ${ladderHtml}
-            <div style="margin-top:22px;">${ctaButton("Redeem a reward", "https://powr.life/app?to=rewards", "ghost")}</div>
+            <div style="margin-top:22px;">${ctaButton(tEmail(lang, "common.redeemReward"), "https://powr.life/app?to=rewards", "ghost")}</div>
             ${nextHtml}
           </td>
         </tr>`;
@@ -613,7 +690,7 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
         return `
         <tr>
           <td class="sec" bgcolor="#080808" style="background-color:#080808;padding:30px 40px;border-bottom:1px solid #111111;">
-            ${sectionLabel("Rewards in reach")}
+            ${sectionLabel(tEmail(lang, "weekly.rewardsInReach"))}
             ${tilesHtml}
             ${featuredHtml}
             ${ladderHtml}
@@ -636,10 +713,10 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
           ? `<td width="76" valign="middle"><img src="${lvl.imageUrl}" width="64" alt="" style="display:block;width:64px;height:auto;"></td>`
           : "";
         const nextLine = lvl.nextName && lvl.nextAt != null
-          ? `<span style="color:${GOLD};font-weight:600;">${toGo.toLocaleString()} POWR</span> to ${esc(lvl.nextName)}`
-          : `Top of the ladder.`;
+          ? tEmail(lang, "weekly.toNext", { amount: `<span style="color:${GOLD};font-weight:600;">${fmtNum(toGo, lang)} POWR</span>`, name: esc(lvl.nextName) })
+          : tEmail(lang, "weekly.topOfLadder");
         const vaultLine = vaultBanked > 0
-          ? `<p style="margin:14px 0 0;font-size:12px;font-weight:300;color:#999999;font-family:${FONT};"><span style="color:${GOLD};font-weight:600;">${vaultBanked.toLocaleString()} POWR</span> banked in your <a href="https://powr.life/app?to=vault" style="color:#cccccc;text-decoration:underline;">Vault</a> &mdash; already counting toward your level.</p>`
+          ? `<p style="margin:14px 0 0;font-size:12px;font-weight:300;color:#999999;font-family:${FONT};">${tEmail(lang, "weekly.vaultHtml", { amount: `<span style="color:${GOLD};font-weight:600;">${fmtNum(vaultBanked, lang)} POWR</span>`, link: '<a href="https://powr.life/app?to=vault" style="color:#cccccc;text-decoration:underline;">', end: "</a>" })}</p>`
           : "";
         return `
         <tr>
@@ -648,11 +725,11 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
               <tr>
                 ${art}
                 <td valign="middle">
-                  ${sectionLabel(`Level ${lvl.level} &middot; ${esc(lvl.tierLabel)}`, lvl.tierColor === GOLD ? undefined : lvl.tierColor)}
+                  ${sectionLabel(`${tEmail(lang, "weekly.levelN", { level: lvl.level })} &middot; ${esc(lvl.tierLabel)}`, lvl.tierColor === GOLD ? undefined : lvl.tierColor)}
                   <span style="display:block;margin-top:6px;font-size:22px;font-weight:300;color:#F2F2F2;letter-spacing:-0.3px;line-height:1.2;font-family:${FONT};">${esc(lvl.name)}</span>
                 </td>
                 <td align="right" valign="middle" style="white-space:nowrap;">
-                  <span style="font-size:18px;font-weight:300;color:#F2F2F2;letter-spacing:-0.5px;font-family:${FONT};">${lvl.totalEarned.toLocaleString()}</span><span style="font-size:9px;font-weight:700;letter-spacing:1px;color:#777777;font-family:${FONT};"> ALL&nbsp;TIME</span>
+                  <span style="font-size:18px;font-weight:300;color:#F2F2F2;letter-spacing:-0.5px;font-family:${FONT};">${fmtNum(lvl.totalEarned, lang)}</span><span style="font-size:9px;font-weight:700;letter-spacing:1px;color:#777777;font-family:${FONT};"> ${tEmail(lang, "weekly.allTimeHtml")}</span>
                 </td>
               </tr>
             </table>
@@ -673,17 +750,19 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
     ? `
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:28px 40px;border-bottom:1px solid #161616;text-align:center;">
-            <span style="display:block;font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#555555;font-family:${FONT};">League finish</span>
+            <span style="display:block;font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#555555;font-family:${FONT};">${tEmail(lang, "weekly.league.title")}</span>
             <span style="display:block;margin-top:8px;font-size:34px;font-weight:200;color:#F2F2F2;letter-spacing:-1px;font-family:${FONT};">#${data.weeklyRank}</span>
-            <span style="display:block;margin-top:6px;font-size:13px;font-weight:300;color:#888888;font-family:${FONT};">where you ranked this week</span>
+            <span style="display:block;margin-top:6px;font-size:13px;font-weight:300;color:#888888;font-family:${FONT};">${tEmail(lang, "weekly.league.sub")}</span>
           </td>
         </tr>`
     : "";
 
   const preheader =
     points > 0
-      ? `You earned ${points.toLocaleString()} POWR this week${deltaText ? " — " + deltaText : "."}`
-      : `Your POWR week in review.`;
+      ? deltaText
+        ? tEmail(lang, "weekly.preheaderDelta", { points: fmtNum(points, lang), delta: deltaText })
+        : tEmail(lang, "weekly.preheader", { points: fmtNum(points, lang) })
+      : tEmail(lang, "weekly.preheaderEmpty");
 
   const referralUrl = data.referralCode ? `https://powr.life/?ref=${encodeURIComponent(data.referralCode)}` : "https://powr.life";
 
@@ -691,16 +770,16 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
         <!-- HERO -->
         <tr>
           <td class="sec" style="background-color:#080808;padding:40px 40px 32px;text-align:center;border-bottom:1px solid #111111;">
-            <span style="display:block;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#8F8203;font-family:${FONT};">Your week &middot; ${data.weekLabel}</span>
-            <h1 class="hero-h1" style="margin:14px 0 0;font-size:34px;font-weight:200;letter-spacing:-0.5px;line-height:1.2;color:#F2F2F2;font-family:${FONT};">Here&#8217;s your week,<br>${firstName}.</h1>
+            <span style="display:block;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#8F8203;font-family:${FONT};">${tEmail(lang, "weekly.yourWeek")} &middot; ${data.weekLabel}</span>
+            <h1 class="hero-h1" style="margin:14px 0 0;font-size:34px;font-weight:200;letter-spacing:-0.5px;line-height:1.2;color:#F2F2F2;font-family:${FONT};">${tEmail(lang, "weekly.heroHtml", { newline: "<br>", name: firstName })}</h1>
           </td>
         </tr>
 
         <!-- POINTS -->
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:34px 40px;border-bottom:1px solid #161616;text-align:center;">
-            <span class="points-num" style="display:block;font-size:72px;font-weight:200;color:${GOLD};letter-spacing:-3px;line-height:1;font-family:${FONT};">${points.toLocaleString()}</span>
-            <span style="display:block;margin-top:6px;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#8F8203;font-family:${FONT};">POWR earned this week</span>
+            <span class="points-num" style="display:block;font-size:72px;font-weight:200;color:${GOLD};letter-spacing:-3px;line-height:1;font-family:${FONT};">${fmtNum(points, lang)}</span>
+            <span style="display:block;margin-top:6px;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#8F8203;font-family:${FONT};">${tEmail(lang, "weekly.pointsLabel")}</span>
             ${deltaHtml ? `<p style="margin:14px 0 0;font-size:13px;font-weight:400;color:#999999;font-family:${FONT};">${deltaHtml}</p>` : ""}
           </td>
         </tr>
@@ -711,9 +790,9 @@ ${dayStripHtml}
           <td class="sec" style="background-color:#080808;padding:28px 34px;border-bottom:1px solid #111111;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="table-layout:fixed;">
               <tr>
-                ${statCell(String(data.workouts), "Workouts")}
-                ${statCell(`${data.activeDays}/7`, "Active days")}
-                ${statCell(String(data.currentStreak), "Day streak")}
+                ${statCell(String(data.workouts), tEmail(lang, "weekly.stats.workouts"))}
+                ${statCell(`${data.activeDays}/7`, tEmail(lang, "weekly.stats.activeDays"))}
+                ${statCell(String(data.currentStreak), tEmail(lang, "weekly.stats.streak"))}
               </tr>
             </table>
           </td>
@@ -722,119 +801,120 @@ ${activityBreakdownHtml}${longestHtml}${gymsHtml}${challengesHtml}${levelHtml}${
         <!-- CTA -->
         <tr>
           <td class="sec" style="background-color:#080808;padding:34px 40px;text-align:center;border-bottom:1px solid #161616;">
-            <p style="margin:0 0 20px;font-size:14px;font-weight:300;color:#999999;line-height:1.6;font-family:${FONT};">New week, clean slate.<br class="br-d"> Every move from here counts.</p>
+            <p style="margin:0 0 20px;font-size:14px;font-weight:300;color:#999999;line-height:1.6;font-family:${FONT};">${tEmail(lang, "weekly.closingHtml", { br: BR_DESKTOP })}</p>
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
               <tr>
                 <td style="border-radius:24px;background-color:${GOLD};">
-                  <a href="https://powr.life/app" style="display:inline-block;padding:14px 32px;font-size:13px;font-weight:700;color:#080808;font-family:${FONT};text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;">Start this week</a>
+                  <a href="https://powr.life/app" style="display:inline-block;padding:14px 32px;font-size:13px;font-weight:700;color:#080808;font-family:${FONT};text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;">${tEmail(lang, "weekly.cta")}</a>
                 </td>
               </tr>
             </table>
-            <p style="margin:20px 0 0;font-size:12px;font-weight:300;color:#888888;line-height:1.6;font-family:${FONT};">Bring a friend with <a href="${referralUrl}" style="color:#999999;text-decoration:underline;">your code${data.referralCode ? ` ${esc(data.referralCode)}` : ""}</a> — you both earn +20 POWR.</p>
+            <p style="margin:20px 0 0;font-size:12px;font-weight:300;color:#888888;line-height:1.6;font-family:${FONT};">${tEmail(lang, "weekly.referralHtml", { link: `<a href="${referralUrl}" style="color:#999999;text-decoration:underline;">${tEmail(lang, "weekly.yourCode")}${data.referralCode ? ` ${esc(data.referralCode)}` : ""}</a>` })}</p>
           </td>
         </tr>`;
 
-  const html = emailShell({ title: "Your week in POWR", preheader, rows });
+  const html = emailShell({ title: tEmail(lang, "weekly.title"), preheader, rows, lang });
 
-  const plainName = data.name?.trim().split(" ")[0] || "there";
   const lines: string[] = [
-    `Here's your week, ${plainName}. (${data.weekLabel})`,
+    tEmail(lang, "weekly.text.hero", { name: plainName, week: data.weekLabel }),
     ``,
-    `${points.toLocaleString()} POWR earned this week.${deltaText ? " " + deltaText : ""}`,
+    `${tEmail(lang, "weekly.text.points", { points: fmtNum(points, lang) })}${deltaText ? " " + deltaText : ""}`,
     ``,
-    `Workouts: ${data.workouts}`,
-    `Active days: ${data.activeDays}/7`,
-    `Day streak: ${data.currentStreak}`,
+    tEmail(lang, "weekly.text.workouts", { value: data.workouts }),
+    tEmail(lang, "weekly.text.activeDays", { value: data.activeDays }),
+    tEmail(lang, "weekly.text.streak", { value: data.currentStreak }),
   ];
   if (bestDay) {
-    lines.push(`Best day: ${weekdayOf(bestDay.date)} (${bestDay.points.toLocaleString()} POWR)`);
+    lines.push(tEmail(lang, "weekly.text.bestDay", { day: weekdayOf(bestDay.date, lang), points: fmtNum(bestDay.points, lang) }));
   }
   if (activities.length || hasSteps || hasDistance) {
-    lines.push("", "How you moved:");
+    lines.push("", tEmail(lang, "weekly.text.howYouMoved"));
     for (const a of activities) {
-      lines.push(`  - ${activityLabel(a.type)}: ${a.count} ${a.count === 1 ? "session" : "sessions"}${deltaTextPart(a.count, a.prevCount, "abs")}`);
+      lines.push(`  - ${tEmail(lang, "weekly.text.activity", { activity: activityLabel(a.type, lang), count: a.count })}${deltaTextPart(a.count, a.prevCount, "abs", lang)}`);
     }
     if (hasSteps) {
-      lines.push(`  - Steps: ${data.steps!.toLocaleString()}${deltaTextPart(data.steps!, data.prevSteps, "pct")}`);
+      lines.push(`  - ${tEmail(lang, "weekly.text.steps", { steps: fmtNum(data.steps!, lang) })}${deltaTextPart(data.steps!, data.prevSteps, "pct", lang)}`);
     }
-    if (hasDistance) lines.push(`  - Distance: ${data.distanceKm!.toLocaleString()} km`);
-    if (data.wearable) lines.push(`  Synced from ${data.wearable}`);
+    if (hasDistance) lines.push(`  - ${tEmail(lang, "weekly.text.distance", { km: fmtNum(data.distanceKm!, lang) })}`);
+    if (data.wearable) lines.push(`  ${tEmail(lang, "weekly.syncedFrom", { wearable: data.wearable })}`);
   }
   if (longest) {
     const ls = longest;
-    const sub = ls.partner ? `${activityLabel(ls.type)} · ${ls.partner}` : activityLabel(ls.type);
-    lines.push("", `Longest session: ${formatDuration(ls.durationSec)} (${sub})`);
+    const sub = ls.partner ? `${activityLabel(ls.type, lang)} · ${ls.partner}` : activityLabel(ls.type, lang);
+    lines.push("", tEmail(lang, "weekly.text.longest", { duration: formatDuration(ls.durationSec, lang), detail: sub }));
   }
   if (data.gyms && data.gyms.length) {
-    lines.push("", "Where you trained:");
-    for (const g of data.gyms) lines.push(`  - ${g.name}: ${g.count} ${g.count === 1 ? "visit" : "visits"}`);
+    lines.push("", tEmail(lang, "weekly.text.whereYouTrained"));
+    for (const g of data.gyms) lines.push(`  - ${tEmail(lang, "weekly.text.gym", { gym: g.name, count: g.count })}`);
   }
   if (challengeCount > 0) {
     const titles = data.challengeTitles ?? [];
-    lines.push("", `Challenges completed: ${challengeCount}${titles.length ? ` (${titles.join(", ")})` : ""}`);
+    lines.push("", `${tEmail(lang, "weekly.text.challenges", { value: challengeCount })}${titles.length ? ` (${titles.join(", ")})` : ""}`);
   }
   if (lvl) {
     lines.push(
       "",
-      `Level ${lvl.level}: ${lvl.name} (${lvl.totalEarned.toLocaleString()} POWR all time)${
+      `${tEmail(lang, "weekly.text.level", { level: lvl.level, name: lvl.name, points: fmtNum(lvl.totalEarned, lang) })}${
         lvl.nextName && lvl.nextAt != null
-          ? ` — ${Math.max(0, lvl.nextAt - lvl.totalEarned).toLocaleString()} POWR to ${lvl.nextName}`
+          ? ` — ${tEmail(lang, "weekly.toNext", { amount: `${fmtNum(Math.max(0, lvl.nextAt - lvl.totalEarned), lang)} POWR`, name: lvl.nextName })}`
           : ""
       }`,
     );
-    if (vaultBanked > 0) lines.push(`Banked in your Vault: ${vaultBanked.toLocaleString()} POWR`);
+    if (vaultBanked > 0) lines.push(tEmail(lang, "weekly.text.vault", { amount: fmtNum(vaultBanked, lang) }));
   }
   if (readyMode) {
     lines.push(
       "",
-      `Ready to redeem: ${balance.toLocaleString()} POWR in your balance — enough for ${affordableCount === 1 ? "a reward" : `${affordableCount} rewards`} right now.`,
+      tEmail(lang, "weekly.text.ready", { amount: fmtNum(balance, lang), count: affordableCount }),
     );
     for (const r of rewardsReady.slice(0, 3)) {
-      const v = (r.valueLabel ?? "").trim();
-      lines.push(`  - ${r.brand ?? "Reward"}${v ? ` · ${v}` : ""} — ${r.cost.toLocaleString()} POWR`);
+      const v = valueOf(r);
+      lines.push(`  - ${r.brand ?? rewardWord}${v ? ` · ${v}` : ""} — ${fmtNum(r.cost, lang)} POWR`);
     }
-    lines.push("Redeem: https://powr.life/app?to=rewards");
+    lines.push(tEmail(lang, "weekly.text.redeem", { url: "https://powr.life/app?to=rewards" }));
   }
   if (!readyMode && topRewards.length) {
-    lines.push("", "Rewards in reach:");
+    lines.push("", tEmail(lang, "weekly.text.rewardsInReach"));
     for (const r of topRewards.slice(0, 3)) {
-      const reach = balance >= r.cost ? "ready" : `${sessionsLabel(sessionsAway(r.cost, balance))} away`;
-      lines.push(`  - ${r.brand ?? "Reward"} — ${r.cost.toLocaleString()} POWR (${reach})`);
+      const reach = balance >= r.cost ? tEmail(lang, "weekly.text.readyWord") : tEmail(lang, "weekly.workoutsAway", { count: sessionsAway(r.cost, balance) });
+      lines.push(`  - ${r.brand ?? rewardWord} — ${fmtNum(r.cost, lang)} POWR (${reach})`);
     }
   }
   if (!readyMode && featuredReward) {
     const r = featuredReward;
-    const v = (r.valueLabel ?? "").trim();
+    const v = valueOf(r);
     const label = `${r.brand ?? ""}${v ? ` · ${v}` : ""}`;
     if (balance >= r.cost) {
-      lines.push("", `Closest reward: ${label} (${r.cost.toLocaleString()} POWR) — ready to unlock.`);
+      lines.push("", tEmail(lang, "weekly.text.closestReady", { label, cost: fmtNum(r.cost, lang) }));
     } else {
-      lines.push("", `Closest reward: ${label} (${r.cost.toLocaleString()} POWR) — ${Math.max(0, r.cost - balance).toLocaleString()} to go, about ${sessionsLabel(sessionsAway(r.cost, balance))} away.`);
+      lines.push("", tEmail(lang, "weekly.text.closestToGo", { label, cost: fmtNum(r.cost, lang), toGo: fmtNum(Math.max(0, r.cost - balance), lang), count: sessionsAway(r.cost, balance) }));
     }
     for (const u of ladderRest) {
-      const uv = (u.valueLabel ?? "").trim();
-      lines.push(`  Then: ${u.brand ?? ""}${uv ? ` · ${uv}` : ""} (${u.cost.toLocaleString()} POWR, ${sessionsLabel(sessionsAway(u.cost, balance))} away)`);
+      const uv = valueOf(u);
+      lines.push(`  ${tEmail(lang, "weekly.text.then", { label: `${u.brand ?? ""}${uv ? ` · ${uv}` : ""}`, cost: fmtNum(u.cost, lang), count: sessionsAway(u.cost, balance) })}`);
     }
   }
   if (SHOW_LEAGUE_FINISH && data.weeklyRank) {
-    lines.push("", `League finish: #${data.weeklyRank} this week.`);
+    lines.push("", tEmail(lang, "weekly.text.league", { rank: data.weeklyRank }));
   }
   lines.push(
     "",
-    "New week, clean slate. Start this week: https://powr.life/app",
+    tEmail(lang, "weekly.text.closing", { url: "https://powr.life/app" }),
     "",
-    `Bring a friend with your code${data.referralCode ? ` ${data.referralCode}` : ""} — you both earn +20 POWR.`,
+    tEmail(lang, "weekly.text.referral", { code: `${tEmail(lang, "weekly.yourCode")}${data.referralCode ? ` ${data.referralCode}` : ""}` }),
     `${referralUrl}`,
     "",
-    "Every move counts.",
+    tEmail(lang, "common.everyMoveCounts"),
     "— POWR",
     "https://powr.life",
   );
 
   const subject =
     points > 0
-      ? `Your POWR week: ${points.toLocaleString()} points${deltaText && deltaText.startsWith("Up") ? ", " + deltaText.toLowerCase().replace(".", "") : ""}`
-      : `Your POWR week in review`;
+      ? upPct !== null
+        ? tEmail(lang, "weekly.subjectUp", { count: points, points: fmtNum(points, lang), pct: upPct })
+        : tEmail(lang, "weekly.subject", { count: points, points: fmtNum(points, lang) })
+      : tEmail(lang, "weekly.subjectEmpty");
 
   return { subject, html, text: lines.join("\n") };
 }

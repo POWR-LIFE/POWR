@@ -1,8 +1,10 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import type { TFunction } from 'i18next';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Trans, useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
@@ -11,6 +13,7 @@ import { Countdown } from '@/components/social/Countdown';
 import { InvitePeopleSheet } from '@/components/social/InvitePeopleSheet';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { fontFamily } from '@/constants/tokens';
+import { getFormatLocale } from '@/lib/i18n';
 import { durationLabel, useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { challengeBonusConfig, earnedPoints, maxBonusForGroup } from '@/lib/social/bonus';
 import { dailyMilestoneHint, progressUnit } from '@/lib/social/challengeProgress';
@@ -33,6 +36,11 @@ const CARD_BG = '#141414';
 const BORDER = '#222222';
 
 const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: ORANGE };
+const TIER_LABEL: Record<string, string> = {
+  easy: 'social:shared.tier.easy',
+  medium: 'social:shared.tier.medium',
+  hard: 'social:shared.tier.hard',
+};
 
 function CatIcon({ spec, size, color }: { spec: IconSpec; size: number; color: string }) {
   if (spec.lib === 'mc') return <MaterialCommunityIcons name={spec.name as any} size={size} color={color} />;
@@ -47,8 +55,10 @@ function fmtPoolValue(v: number, unit: string): string {
   if (unit === 'steps') return v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${Math.round(v)}`;
   return `${Math.round(v)}`;
 }
-function poolHeadline(pool: Pool): string {
-  return `${fmtPoolValue(pool.total, pool.unit)} / ${fmtPoolValue(pool.target, pool.unit)}${pool.unit === 'steps' ? ' steps' : ''}`;
+function poolHeadline(pool: Pool, t: TFunction): string {
+  const total = fmtPoolValue(pool.total, pool.unit);
+  const target = fmtPoolValue(pool.target, pool.unit);
+  return pool.unit === 'steps' ? t('social:detail.poolSteps', { total, target }) : `${total} / ${target}`;
 }
 
 /** "1 / 3" readout for parallel goals — the raw count from fraction × target,
@@ -63,7 +73,7 @@ function countText(progress: number, target: number): string {
  *  day in progress (current > 0, not yet at the bar). */
 function momentumText(m: { current: number; target: number; unit: string }): string {
   if (m.unit === 'distance_m') return `${(m.current / 1000).toFixed(1)} / ${(m.target / 1000).toFixed(1)} km`;
-  const sep = (n: number) => Math.round(n).toLocaleString('en-US');
+  const sep = (n: number) => Math.round(n).toLocaleString(getFormatLocale());
   return `${sep(m.current)} / ${sep(m.target)}`;
 }
 
@@ -72,13 +82,14 @@ function momentumText(m: { current: number; target: number; unit: string }): str
 function fmtBig(v: number, unit?: string): { num: string; unitLabel: string } {
   if (unit === 'distance_m' || unit === 'km') return { num: (v / 1000).toFixed(1), unitLabel: 'km' };
   if (unit === 'mi') return { num: (v / 1609.34).toFixed(1), unitLabel: 'mi' };
-  return { num: Math.round(v).toLocaleString('en-US'), unitLabel: unit ?? '' };
+  return { num: Math.round(v).toLocaleString(getFormatLocale()), unitLabel: unit ?? '' };
 }
 
 function StatePill({ p, target }: { p: Participant; target?: number }) {
-  if (p.completed) return <Text style={[styles.statePill, { color: GREEN }]}>Done</Text>;
-  if (p.state === 'invited') return <Text style={[styles.statePill, { color: MUTED }]}>Invited</Text>;
-  if (p.state === 'declined') return <Text style={[styles.statePill, { color: ORANGE }]}>Declined</Text>;
+  const { t } = useTranslation();
+  if (p.completed) return <Text style={[styles.statePill, { color: GREEN }]}>{t('social:detail.state.done')}</Text>;
+  if (p.state === 'invited') return <Text style={[styles.statePill, { color: MUTED }]}>{t('social:detail.state.invited')}</Text>;
+  if (p.state === 'declined') return <Text style={[styles.statePill, { color: ORANGE }]}>{t('social:detail.state.declined')}</Text>;
   return (
     <Text style={[styles.statePill, { color: GOLD }]}>
       {target ? countText(p.progress, target) : `${Math.round(p.progress * 100)}%`}
@@ -87,23 +98,24 @@ function StatePill({ p, target }: { p: Participant; target?: number }) {
 }
 
 function ParticipantRow({ p, pool, goalTarget, onPress }: { p: Participant; pool?: Pool; goalTarget?: number; onPress?: () => void }) {
+  const { t } = useTranslation();
   return (
     <Pressable
       style={styles.pRow}
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
-      accessibilityLabel={onPress ? `View ${p.friend.displayName}'s profile` : undefined}
+      accessibilityLabel={onPress ? t('social:shared.viewProfile', { name: p.friend.displayName }) : undefined}
     >
       <Avatar friend={p.friend} size={32} completed={p.completed} pending={p.state === 'invited'} />
       <View style={{ flex: 1, gap: 5 }}>
         <View style={styles.pNameRow}>
           <Text style={styles.pName}>
-            {p.isSelf ? 'You' : p.friend.displayName}
+            {p.isSelf ? t('social:shared.you') : p.friend.displayName}
           </Text>
           {pool ? (
             <Text style={[styles.statePill, { color: (p.contribution ?? 0) > 0 ? GOLD : MUTED }]}>
-              {p.state === 'invited' ? 'Invited' : fmtPoolValue(p.contribution ?? 0, pool.unit)}
+              {p.state === 'invited' ? t('social:detail.state.invited') : fmtPoolValue(p.contribution ?? 0, pool.unit)}
             </Text>
           ) : (
             <StatePill p={p} target={goalTarget} />
@@ -121,7 +133,7 @@ function ParticipantRow({ p, pool, goalTarget, onPress }: { p: Participant; pool
         )}
         {!pool && !p.completed && p.momentum && p.momentum.current > 0 && p.momentum.current < p.momentum.target && (
           <Text style={styles.pMomentum} numberOfLines={1}>
-            Today · {momentumText(p.momentum)}
+            {t('social:detail.today', { value: momentumText(p.momentum) })}
           </Text>
         )}
       </View>
@@ -132,6 +144,7 @@ function ParticipantRow({ p, pool, goalTarget, onPress }: { p: Participant; pool
 export default function SharedChallengeDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ challenge?: string; id?: string }>();
   const { acceptInvite, declineInvite, leaveChallenge, cancelChallenge, inviteToChallenge, fetchById, getById, bonusConfig, loading, error, refresh, friends, search, sendRequest } = useSharedChallenges();
   const [showInvite, setShowInvite] = useState(false);
@@ -200,33 +213,33 @@ export default function SharedChallengeDetail() {
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <GeometricBackground />
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Back">
+          <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('common:actions.back')}>
             <Ionicons name="chevron-back" size={20} color={DIM} />
           </Pressable>
-          <Text style={styles.headerTitle}>CHALLENGE</Text>
+          <Text style={styles.headerTitle}>{t('social:detail.headerMissing')}</Text>
           <View style={styles.headerBtn} />
         </View>
         <View style={styles.emptyWrap}>
           {isLoading ? (
-            <Text style={styles.emptyText}>Loading…</Text>
+            <Text style={styles.emptyText}>{t('social:shared.loading')}</Text>
           ) : isError ? (
             <>
               <Ionicons name="cloud-offline-outline" size={28} color={MUTED} style={styles.emptyIcon} />
-              <Text style={styles.emptyTitle}>Couldn’t load this challenge</Text>
-              <Text style={styles.emptyText}>Check your connection and try again.</Text>
-              <Pressable style={styles.emptyBtn} onPress={handleRetry} accessibilityRole="button" accessibilityLabel="Try again">
+              <Text style={styles.emptyTitle}>{t('social:detail.loadError.title')}</Text>
+              <Text style={styles.emptyText}>{t('social:detail.loadError.body')}</Text>
+              <Pressable style={styles.emptyBtn} onPress={handleRetry} accessibilityRole="button" accessibilityLabel={t('social:detail.loadError.retry')}>
                 <Ionicons name="refresh" size={15} color={GOLD} />
-                <Text style={styles.emptyBtnText}>Try again</Text>
+                <Text style={styles.emptyBtnText}>{t('social:detail.loadError.retry')}</Text>
               </Pressable>
             </>
           ) : (
             <>
               <Ionicons name="people-outline" size={28} color={MUTED} style={styles.emptyIcon} />
-              <Text style={styles.emptyTitle}>Challenge not available</Text>
-              <Text style={styles.emptyText}>It may have ended or been cancelled.</Text>
-              <Pressable style={styles.emptyBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
+              <Text style={styles.emptyTitle}>{t('social:detail.missing.title')}</Text>
+              <Text style={styles.emptyText}>{t('social:detail.missing.body')}</Text>
+              <Pressable style={styles.emptyBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={t('social:detail.missing.back')}>
                 <Ionicons name="chevron-back" size={15} color={GOLD} />
-                <Text style={styles.emptyBtnText}>Go back</Text>
+                <Text style={styles.emptyBtnText}>{t('social:detail.missing.back')}</Text>
               </Pressable>
             </>
           )}
@@ -295,12 +308,12 @@ export default function SharedChallengeDetail() {
   const outcome = !challengeOver
     ? null
     : neverJoined
-      ? { line: 'This one finished before you joined.', tone: MUTED }
+      ? { line: t('social:detail.outcome.notJoined'), tone: MUTED }
       : challenge.status === 'cancelled'
         ? {
             line: selfPaid
-              ? 'Cancelled before the end — you keep what you’d already earned.'
-              : 'Challenge cancelled before it finished.',
+              ? t('social:detail.outcome.cancelledPaid')
+              : t('social:detail.outcome.cancelled'),
             tone: MUTED,
           }
         : challenge.status === 'expired'
@@ -308,15 +321,15 @@ export default function SharedChallengeDetail() {
               /* Server semantics: parallel expires only when zero people
                  finished; pooled expires when the shared total fell short. */
               line: pooled
-                ? 'Time ran out before the group reached the target.'
-                : 'Time ran out — nobody finished this one.',
+                ? t('social:detail.outcome.expiredPooled')
+                : t('social:detail.outcome.expired'),
               tone: MUTED,
             }
           : won
             ? {
                 line: coCompleters > 0
-                  ? `You and ${coCompleters} ${coCompleters === 1 ? 'other' : 'others'} finished. +${current.total} earned.`
-                  : `You finished. +${current.total} earned.`,
+                  ? t('social:detail.outcome.wonWith', { count: coCompleters, points: current.total })
+                  : t('social:detail.outcome.wonSolo', { points: current.total }),
                 tone: GREEN,
               }
             : {
@@ -324,10 +337,10 @@ export default function SharedChallengeDetail() {
                    instant the group hits target — often with time still on the
                    clock — so "time's up" would be plainly wrong there. */
                 line: pooled
-                  ? 'The group hit the target without you this time.'
+                  ? t('social:detail.outcome.lostPooled')
                   : finished.length > 0
-                    ? `Time's up — ${finished.length} of ${accepted.length} finished. You didn't make this one.`
-                    : "Time's up — nobody finished this one.",
+                    ? t('social:detail.outcome.lost', { finished: finished.length, total: accepted.length })
+                    : t('social:detail.outcome.lostNobody'),
                 tone: MUTED,
               };
   // Read "has it started?" off the CLOCK, not the roster: a challenge can go
@@ -368,8 +381,14 @@ export default function SharedChallengeDetail() {
       const perDayRaw = remaining / daysLeft;
       // Steps read better rounded up to the nearest hundred; small counts stay exact.
       const perDay = fmtBig(perDayRaw >= 1000 ? Math.ceil(perDayRaw / 100) * 100 : Math.ceil(perDayRaw), remainingUnit);
-      const unitWord = perDay.num === '1' && perDay.unitLabel.endsWith('s') ? perDay.unitLabel.slice(0, -1) : perDay.unitLabel;
-      paceHint = `About ${perDay.num}${unitWord ? ` ${unitWord}` : ''} a day${pooled ? ' between you' : ''} gets it done.`;
+      // "1 check-in", not "1 check-ins": the goal's own unit knows its singular
+      // in every language; pool and momentum units only ever arrive in English.
+      const unitOne = pooled ? undefined : progressUnit(challenge.goalRule, 1);
+      const unitWord = perDay.num !== '1'
+        ? perDay.unitLabel
+        : unitOne ?? (perDay.unitLabel.endsWith('s') ? perDay.unitLabel.slice(0, -1) : perDay.unitLabel);
+      const amount = unitWord ? `${perDay.num} ${unitWord}` : perDay.num;
+      paceHint = pooled ? t('social:detail.pacePooled', { amount }) : t('social:detail.pace', { amount });
     }
   }
 
@@ -388,7 +407,7 @@ export default function SharedChallengeDetail() {
     if (!res.ok) {
       setAnswering(null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(action === 'accept' ? 'Couldn’t join' : 'Couldn’t decline', res.error);
+      Alert.alert(action === 'accept' ? t('social:shared.couldntJoin') : t('social:shared.couldntDecline'), res.error);
       return;
     }
     router.back();
@@ -405,16 +424,16 @@ export default function SharedChallengeDetail() {
   const willCancelForAll = isCreator || participants.length <= 2;
   const confirmLeave = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    const title = isCreator ? 'Cancel challenge?' : 'Leave challenge?';
+    const title = isCreator ? t('social:detail.leave.titleCreator') : t('social:detail.leave.title');
     const message = isCreator
-      ? `This ends “${template.title}” for everyone. This can’t be undone.`
+      ? t('social:detail.leave.bodyCreator', { title: template.title })
       : willCancelForAll
-        ? `You’ll drop out of “${template.title}”. With no one else left, it ends for everyone.`
-        : `You’ll drop out of “${template.title}”. The others keep going.`;
+        ? t('social:detail.leave.bodyLast', { title: template.title })
+        : t('social:detail.leave.body', { title: template.title });
     Alert.alert(title, message, [
-      { text: isCreator ? 'Keep challenge' : 'Stay in', style: 'cancel' },
+      { text: isCreator ? t('social:detail.leave.keep') : t('social:detail.leave.stay'), style: 'cancel' },
       {
-        text: isCreator ? 'Cancel challenge' : 'Leave',
+        text: isCreator ? t('social:detail.leave.cancelChallenge') : t('social:detail.leave.leave'),
         style: 'destructive',
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -425,7 +444,7 @@ export default function SharedChallengeDetail() {
             : await leaveChallenge(challenge.id);
           if (!res.ok) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            Alert.alert(isCreator ? 'Couldn’t cancel' : 'Couldn’t leave', res.error);
+            Alert.alert(isCreator ? t('social:detail.leave.cancelFailed') : t('social:detail.leave.leaveFailed'), res.error);
             return;
           }
           router.back();
@@ -442,9 +461,12 @@ export default function SharedChallengeDetail() {
     const inviteUrl = isCreator ? await fetchChallengeInviteUrl(challenge.id) : null;
     const url = inviteUrl ?? 'https://powr.life/app';
     try {
-      const runLength = challenge.durationHours ? ` in ${durationLabel(challenge.durationHours)}` : '';
+      const values = { title: template.title, goal: template.goal, url };
+      const message = challenge.durationHours
+        ? t(inviteUrl ? 'social:detail.share.inviteDuration' : 'social:detail.share.plainDuration', { ...values, duration: durationLabel(challenge.durationHours) })
+        : t(inviteUrl ? 'social:detail.share.invite' : 'social:detail.share.plain', values);
       await Share.share({
-        message: `Join my POWR challenge "${template.title}" — ${template.goal}${runLength}. ${inviteUrl ? 'Tap to join: ' : ''}${url}`,
+        message,
         url,
       });
     } catch {
@@ -470,10 +492,10 @@ export default function SharedChallengeDetail() {
       <GeometricBackground />
 
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Back">
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel={t('common:actions.back')}>
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>TOGETHER</Text>
+        <Text style={styles.headerTitle}>{t('social:detail.header')}</Text>
         {/* Live: the "join me" invite. Won: the result card. Lost or cancelled:
             nothing worth sharing, so the slot just holds the layout. */}
         {challengeOver && !won ? (
@@ -484,7 +506,7 @@ export default function SharedChallengeDetail() {
             hitSlop={12}
             style={styles.headerBtn}
             accessibilityRole="button"
-            accessibilityLabel={won ? 'Share challenge result' : 'Share challenge invite'}
+            accessibilityLabel={won ? t('social:detail.share.resultA11y') : t('social:detail.share.inviteA11y')}
           >
             <Ionicons name="share-outline" size={18} color={DIM} />
           </Pressable>
@@ -503,10 +525,12 @@ export default function SharedChallengeDetail() {
           <View style={styles.heroTags}>
             <View style={styles.tag}>
               <Ionicons name="people" size={11} color={SECONDARY} />
-              <Text style={styles.tagText}>{accepted.length} in</Text>
+              <Text style={styles.tagText}>{t('social:detail.inCount', { total: accepted.length })}</Text>
             </View>
             <View style={styles.tag}>
-              <Text style={[styles.tagText, { color: TIER_COLOR[template.tier] }]}>{template.tier.toUpperCase()}</Text>
+              <Text style={[styles.tagText, { color: TIER_COLOR[template.tier] }]}>
+                {(TIER_LABEL[template.tier] ? t(TIER_LABEL[template.tier]) : template.tier).toUpperCase()}
+              </Text>
             </View>
             {/* While forming, the accept countdown says nothing about how long the
                 game will run — surface the chosen run length until the clock starts. */}
@@ -528,14 +552,14 @@ export default function SharedChallengeDetail() {
                   through to the live/forming wording. */}
               {challengeOver ? (
                 <Text style={styles.tagText}>
-                  {challenge.status === 'cancelled' ? 'Cancelled' : 'Ended'}
+                  {challenge.status === 'cancelled' ? t('social:detail.cancelled') : t('social:detail.ended')}
                 </Text>
               ) : challenge.endsAt ? (
                 <Countdown endsAt={challenge.endsAt} style={[styles.tagText, { textTransform: 'none' }]} />
               ) : challenge.acceptBy ? (
-                <Countdown endsAt={challenge.acceptBy} suffix=" to accept" style={[styles.tagText, { textTransform: 'none' }]} />
+                <Countdown endsAt={challenge.acceptBy} suffix={t('social:countdown.toAcceptSuffix')} style={[styles.tagText, { textTransform: 'none' }]} />
               ) : (
-                <Text style={styles.tagText}>Not started</Text>
+                <Text style={styles.tagText}>{t('social:detail.notStarted')}</Text>
               )}
             </View>
           </View>
@@ -543,18 +567,18 @@ export default function SharedChallengeDetail() {
 
         {!challengeOver && (
           <View style={styles.remainCard}>
-            <Text style={[styles.sectionLabel, { textAlign: 'center' }]}>LEFT TO DO</Text>
+            <Text style={[styles.sectionLabel, { textAlign: 'center' }]}>{t('social:detail.remain.label')}</Text>
             <View style={styles.remainRow}>
               <View style={styles.remainCol}>
                 {remainingDone ? (
-                  <Text style={[styles.remainNum, { color: GREEN }]}>Done</Text>
+                  <Text style={[styles.remainNum, { color: GREEN }]}>{t('social:detail.remain.done')}</Text>
                 ) : (
                   <Text style={styles.remainNum}>{remainParts.num}</Text>
                 )}
                 <Text style={styles.remainColLabel}>
                   {remainingDone
-                    ? pooled ? 'target hit' : 'your goal is in'
-                    : `${remainParts.unitLabel ? `${remainParts.unitLabel} ` : ''}to go`}
+                    ? pooled ? t('social:detail.remain.targetHit') : t('social:detail.remain.goalIn')
+                    : remainParts.unitLabel ? t('social:detail.remain.toGoUnit', { unit: remainParts.unitLabel }) : t('social:detail.remain.toGo')}
                 </Text>
               </View>
               <View style={styles.remainDivider} />
@@ -565,7 +589,7 @@ export default function SharedChallengeDetail() {
                   <Text style={[styles.remainTime, { color: MUTED }]}>—</Text>
                 )}
                 <Text style={styles.remainColLabel}>
-                  {!forming && challenge.endsAt ? 'time left' : 'starts once enough are in'}
+                  {!forming && challenge.endsAt ? t('social:detail.remain.timeLeft') : t('social:detail.remain.startsOnceIn')}
                 </Text>
               </View>
             </View>
@@ -574,7 +598,7 @@ export default function SharedChallengeDetail() {
             ) : paceHint ? (
               <Text style={styles.bonusHint}>{paceHint}</Text>
             ) : remainingDone && !pooled ? (
-              <Text style={styles.bonusHint}>You’re done — your bonus still grows as the others finish.</Text>
+              <Text style={styles.bonusHint}>{t('social:detail.remain.selfDone')}</Text>
             ) : null}
           </View>
         )}
@@ -583,25 +607,27 @@ export default function SharedChallengeDetail() {
         {pooled && pool && (
           <View style={[styles.bonusCard, styles.compactCard]}>
             <View style={styles.pNameRow}>
-              <Text style={styles.sectionLabel}>GROUP TOTAL</Text>
+              <Text style={styles.sectionLabel}>{t('social:detail.pool.label')}</Text>
               <Text style={[styles.poolPctText, poolPct >= 1 && { color: GREEN }]}>{Math.round(poolPct * 100)}%</Text>
             </View>
-            <Text style={styles.poolHeadline}>{poolHeadline(pool)}</Text>
+            <Text style={styles.poolHeadline}>{poolHeadline(pool, t)}</Text>
             <View style={styles.track}>
               <View style={[styles.fill, { width: `${Math.round(poolPct * 100)}%` }, poolPct >= 1 && { backgroundColor: GREEN }]} />
             </View>
             <Text style={styles.bonusHint}>
               {poolPct >= 1
-                ? `Target hit — everyone who chipped in earns +${template.basePoints}${maxBonusForGroup(accepted.length, cfg) > 0 ? ` plus up to +${maxBonusForGroup(accepted.length, cfg)} bonus` : ''}.`
+                ? maxBonusForGroup(accepted.length, cfg) > 0
+                  ? t('social:detail.pool.hitBonus', { base: template.basePoints, max: maxBonusForGroup(accepted.length, cfg) })
+                  : t('social:detail.pool.hit', { base: template.basePoints })
                 /* The clock's stopped — inviting more contributions would be
                    asking for something that can't happen. Cancelled and expired
                    are different endings, and saying "fell short before time ran
                    out" on a cancellation contradicts the verdict below. */
                 : challenge.status === 'cancelled'
-                  ? 'Cancelled before the group got there.'
+                  ? t('social:detail.pool.cancelled')
                   : challengeOver
-                    ? 'Time ran out before the group reached the target.'
-                    : `Add to the total to win. Everyone who contributes earns +${template.basePoints}, and the bonus grows with each friend who chips in — up to +${maxBonusForGroup(accepted.length, cfg)}.`}
+                    ? t('social:detail.outcome.expiredPooled')
+                    : t('social:detail.pool.live', { base: template.basePoints, max: maxBonusForGroup(accepted.length, cfg) })}
             </Text>
           </View>
         )}
@@ -614,13 +640,13 @@ export default function SharedChallengeDetail() {
         {!pooled && !(challengeOver && !selfPaid) && (
         <View style={[styles.bonusCard, styles.compactCard]}>
           <View style={styles.pNameRow}>
-            <Text style={styles.sectionLabel}>YOUR POINTS</Text>
+            <Text style={styles.sectionLabel}>{t('social:detail.points.label')}</Text>
             <Text style={styles.bonusInline}>
               {current.base}
-              <Text style={styles.bonusInlineLabel}> base</Text>
+              <Text style={styles.bonusInlineLabel}>{` ${t('social:detail.points.base')}`}</Text>
               <Text style={styles.bonusInlineOp}>{'  +  '}</Text>
               <Text style={current.bonus > 0 ? { color: GOLD } : { color: MUTED }}>{current.bonus}</Text>
-              <Text style={styles.bonusInlineLabel}> bonus</Text>
+              <Text style={styles.bonusInlineLabel}>{` ${t('social:detail.points.bonus')}`}</Text>
               <Text style={styles.bonusInlineOp}>{'  =  '}</Text>
               <Text style={{ color: GOLD }}>{current.total}</Text>
             </Text>
@@ -631,13 +657,13 @@ export default function SharedChallengeDetail() {
                  A cancellation still pays out whatever you'd already finished,
                  so it gets its own line rather than the settled one. */
               ? challenge.status === 'cancelled'
-                ? 'Banked when you finished your part, before the cancellation.'
-                : 'Final — banked when the challenge settled.'
+                ? t('social:detail.points.bankedCancelled')
+                : t('social:detail.points.final')
               : <>
                   {coCompleters > 0
-                    ? `${coCompleters} ${coCompleters === 1 ? 'friend has' : 'friends have'} finished — your bonus grows with each one.`
-                    : 'Your bonus grows each time a friend finishes.'}
-                  {potential > current.total ? ` Up to ${potential} if everyone finishes.` : ''}
+                    ? t('social:detail.points.friendsDone', { count: coCompleters })
+                    : t('social:detail.points.grows')}
+                  {potential > current.total ? ` ${t('social:detail.points.upTo', { points: potential })}` : ''}
                 </>}
           </Text>
         </View>
@@ -646,15 +672,16 @@ export default function SharedChallengeDetail() {
         {/* Participants */}
         <View style={[styles.listCard, styles.compactCard]}>
           <View style={styles.listHeader}>
-            <Text style={styles.sectionLabel}>{pooled ? 'CONTRIBUTORS' : 'PARTICIPANTS'}</Text>
+            <Text style={styles.sectionLabel}>{pooled ? t('social:detail.contributors') : t('social:detail.participants')}</Text>
             <Text style={styles.listCount}>
               {pooled ? (
-                <Text>{accepted.length} in</Text>
+                <Text>{t('social:detail.inCount', { total: accepted.length })}</Text>
               ) : (
-                <>
-                  <Text style={{ color: GREEN, fontFamily: fontFamily.semiBold }}>{finished.length}</Text>
-                  <Text> of {accepted.length} done</Text>
-                </>
+                <Trans
+                  i18nKey="social:detail.doneCount"
+                  values={{ finished: finished.length, total: accepted.length }}
+                  components={{ green: <Text style={{ color: GREEN, fontFamily: fontFamily.semiBold }} />, plain: <Text /> }}
+                />
               )}
             </Text>
           </View>
@@ -669,15 +696,15 @@ export default function SharedChallengeDetail() {
               />
             ))}
             {pacer && (
-              <View style={styles.pacerRow} accessibilityLabel={`Pacer at ${pacer.pct} percent — ${pacer.ahead ? 'you are ahead' : 'the pacer is ahead'}`}>
+              <View style={styles.pacerRow} accessibilityLabel={pacer.ahead ? t('social:detail.pacer.a11yAhead', { pct: pacer.pct }) : t('social:detail.pacer.a11yBehind', { pct: pacer.pct })}>
                 <View style={styles.pacerBadge}>
                   <Ionicons name="flash" size={13} color={SECONDARY} />
                 </View>
                 <View style={{ flex: 1, gap: 5 }}>
                   <View style={styles.pacerMeta}>
-                    <Text style={styles.pacerName}>Pacer</Text>
+                    <Text style={styles.pacerName}>{t('social:detail.pacer.name')}</Text>
                     <Text style={[styles.pacerStatus, pacer.ahead ? { color: GOLD } : { color: SECONDARY }]}>
-                      {pacer.ahead ? "You're ahead" : 'Ahead of you'}
+                      {pacer.ahead ? t('social:detail.pacer.youAhead') : t('social:detail.pacer.pacerAhead')}
                     </Text>
                   </View>
                   <View style={styles.pacerTrack}>
@@ -693,18 +720,20 @@ export default function SharedChallengeDetail() {
           /* Pending-invite — Accept / Decline */
           <>
             <Text style={styles.invitePrompt}>
-              {challenge.pendingInviteFromName ?? 'A friend'} invited you. Finish together for{' '}
-              <Text style={{ color: GOLD, fontFamily: fontFamily.semiBold }}>
-                up to +{maxBonusForGroup(accepted.length, cfg)} bonus
-              </Text>
-              .
+              <Trans
+                i18nKey="social:detail.invitePrompt"
+                values={{ name: challenge.pendingInviteFromName ?? t('social:shared.aFriend'), max: maxBonusForGroup(accepted.length, cfg) }}
+                components={{ gold: <Text style={{ color: GOLD, fontFamily: fontFamily.semiBold }} /> }}
+              />
             </Text>
             {/* Joining an already-running challenge: be honest about the clock —
                 they inherit the time that's left, not a fresh run. */}
             {!forming && challenge.endsAt ? (
               <Text style={styles.inviteSub}>
-                This one’s already underway — you’d be joining with{' '}
-                <Countdown endsAt={challenge.endsAt} suffix="" style={styles.inviteSubStrong} /> left.
+                <Trans
+                  i18nKey="social:detail.underway"
+                  components={{ time: <Countdown endsAt={challenge.endsAt} suffix="" style={styles.inviteSubStrong} /> }}
+                />
               </Text>
             ) : null}
             <Pressable
@@ -713,10 +742,10 @@ export default function SharedChallengeDetail() {
               onPress={() => { void answerInvite('accept'); }}
               accessibilityRole="button"
               accessibilityState={{ disabled: !!answering, busy: answering === 'accept' }}
-              accessibilityLabel="Accept challenge"
+              accessibilityLabel={t('social:detail.accept')}
             >
               <Text style={styles.acceptText}>
-                {answering === 'accept' ? 'Joining…' : 'Accept challenge'}
+                {answering === 'accept' ? t('social:detail.joining') : t('social:detail.accept')}
               </Text>
             </Pressable>
             <Pressable
@@ -725,9 +754,9 @@ export default function SharedChallengeDetail() {
               onPress={() => { void answerInvite('decline'); }}
               accessibilityRole="button"
               accessibilityState={{ disabled: !!answering, busy: answering === 'decline' }}
-              accessibilityLabel="Decline challenge"
+              accessibilityLabel={t('social:detail.declineA11y')}
             >
-              <Text style={styles.leaveText}>{answering === 'decline' ? 'Declining…' : 'Decline'}</Text>
+              <Text style={styles.leaveText}>{answering === 'decline' ? t('social:detail.declining') : t('social:detail.decline')}</Text>
             </Pressable>
           </>
         ) : challengeOver ? (
@@ -745,10 +774,10 @@ export default function SharedChallengeDetail() {
                   style={[styles.actionBtn, styles.actionGhost]}
                   onPress={shareResultCard}
                   accessibilityRole="button"
-                  accessibilityLabel="Share challenge result"
+                  accessibilityLabel={t('social:detail.share.resultA11y')}
                 >
                   <Ionicons name="share-outline" size={15} color={SECONDARY} />
-                  <Text style={styles.actionGhostText}>Share result</Text>
+                  <Text style={styles.actionGhostText}>{t('social:detail.share.result')}</Text>
                 </Pressable>
               </View>
             )}
@@ -763,20 +792,20 @@ export default function SharedChallengeDetail() {
                   style={[styles.actionBtn, styles.actionPrimary]}
                   onPress={() => { Haptics.selectionAsync(); setShowInvite(true); }}
                   accessibilityRole="button"
-                  accessibilityLabel="Invite people to this challenge"
+                  accessibilityLabel={t('social:detail.invitePeopleA11y')}
                 >
                   <Ionicons name="person-add-outline" size={16} color={GOLD} />
-                  <Text style={styles.actionPrimaryText}>Invite people</Text>
+                  <Text style={styles.actionPrimaryText}>{t('social:detail.invitePeople')}</Text>
                 </Pressable>
               )}
               <Pressable
                 style={[styles.actionBtn, styles.actionGhost]}
                 onPress={handleShare}
                 accessibilityRole="button"
-                accessibilityLabel="Share challenge link"
+                accessibilityLabel={t('social:detail.share.linkA11y')}
               >
                 <Ionicons name="share-outline" size={15} color={SECONDARY} />
-                <Text style={styles.actionGhostText}>Share link</Text>
+                <Text style={styles.actionGhostText}>{t('social:shared.shareLink')}</Text>
               </Pressable>
             </View>
 
@@ -785,9 +814,9 @@ export default function SharedChallengeDetail() {
               style={styles.leave}
               onPress={confirmLeave}
               accessibilityRole="button"
-              accessibilityLabel={isCreator ? 'Cancel challenge' : 'Leave challenge'}
+              accessibilityLabel={isCreator ? t('social:detail.leave.cancelChallenge') : t('social:detail.leave.leaveChallenge')}
             >
-              <Text style={styles.leaveText}>{isCreator ? 'Cancel challenge' : 'Leave challenge'}</Text>
+              <Text style={styles.leaveText}>{isCreator ? t('social:detail.leave.cancelChallenge') : t('social:detail.leave.leaveChallenge')}</Text>
             </Pressable>
           </>
         )}

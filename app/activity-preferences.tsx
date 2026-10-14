@@ -13,6 +13,7 @@ import ActivityCatalogPicker from '@/components/ActivityCatalogPicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
@@ -65,6 +66,7 @@ export default function ActivityPreferencesScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const providers = useHealthProviders();
+  const { t } = useTranslation();
 
   const connectedIds = useMemo<HealthProviderId[]>(
     () => providers.rows.filter(r => !!r.connection).map(r => r.meta.id),
@@ -103,20 +105,22 @@ export default function ActivityPreferencesScreen() {
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>Activity Focus</Text>
+        <Text style={styles.headerTitle}>{t('settings:activityPreferences.title')}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       {/* Intro */}
       <View style={styles.intro}>
         <Text style={styles.headline}>
-          What's your{'\n'}
-          <Text style={styles.headlineGold}>focus?</Text>
+          <Trans
+            i18nKey="settings:activityPreferences.headline"
+            components={{ gold: <Text style={styles.headlineGold} /> }}
+          />
         </Text>
         <Text style={styles.body}>
           {connectedIds.length > 0
-            ? `Pick up to ${MAX_PICKS}. We\'ll auto-track what your devices support.`
-            : `Pick up to ${MAX_PICKS}. Most need manual logging without a wearable.`}
+            ? t('settings:activityPreferences.bodyWithDevices', { max: MAX_PICKS })
+            : t('settings:activityPreferences.bodyNoDevices', { max: MAX_PICKS })}
         </Text>
       </View>
 
@@ -140,10 +144,10 @@ export default function ActivityPreferencesScreen() {
       {/* Bottom */}
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 24 }]}>
         {selections.length < MIN_PICKS ? (
-          <Text style={styles.hint}>Pick at least one activity</Text>
+          <Text style={styles.hint}>{t('settings:activityPreferences.pickOne')}</Text>
         ) : remaining > 0 ? (
           <Text style={styles.hint}>
-            Room for {remaining} more {remaining === 1 ? 'activity' : 'activities'}
+            {t('settings:activityPreferences.roomFor', { count: remaining })}
           </Text>
         ) : null}
         <Pressable
@@ -152,7 +156,7 @@ export default function ActivityPreferencesScreen() {
           disabled={!canSave || saving}
         >
           <Text style={[styles.saveLabel, !canSave && styles.saveLabelDisabled]}>
-            {saving ? 'SAVING...' : 'SAVE'}
+            {saving ? t('settings:activityPreferences.saving') : t('settings:activityPreferences.save')}
           </Text>
         </Pressable>
       </View>

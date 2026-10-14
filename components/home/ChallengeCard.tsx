@@ -1,5 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   Pressable,
   StyleSheet,
@@ -85,6 +86,7 @@ function ChallengeRow({
   last: boolean;
   onShare?: (challenge: ChallengeCardData) => void;
 }) {
+  const { t } = useTranslation();
   const complete = challenge.completed || challenge.fraction >= 1;
   const tierColor = TIER_COLOR[challenge.tier] ?? GOLD;
 
@@ -116,7 +118,7 @@ function ChallengeRow({
                     hitSlop={10}
                     onPress={() => onShare(challenge)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Share ${challenge.title}`}
+                    accessibilityLabel={t('home:challenges.shareA11y', { title: challenge.title })}
                   >
                     <Ionicons name="share-outline" size={14} color={MUTED} />
                   </Pressable>
@@ -228,6 +230,7 @@ function Celebration({
   const ptsA = useSharedValue(0);
   const actionsA = useSharedValue(0);
   const [count, setCount] = useState(0);
+  const { t } = useTranslation();
 
   useEffect(() => {
     emblemScale.value = withDelay(150, withSequence(
@@ -278,36 +281,40 @@ function Celebration({
         <Animated.View style={[styles.celHalo, haloStyle]} />
         <Ionicons name="trophy" size={36} color={GOLD} />
       </Animated.View>
-      <Animated.Text style={[styles.celTitle, titleStyle]}>{challenge.title} complete.</Animated.Text>
+      <Animated.Text style={[styles.celTitle, titleStyle]}>{t('home:challenges.complete', { title: challenge.title })}</Animated.Text>
       <Animated.Text style={[styles.celSub, subStyle]}>{challenge.completeSubtitle}</Animated.Text>
 
       <Animated.View style={[styles.celPtsSection, ptsStyle]}>
         <View style={styles.celPtsAccent} />
         <View style={styles.celPtsWrap}>
           <Text style={styles.celPts}>{count.toLocaleString()}</Text>
-          <Text style={styles.celPtsUnit}>pts</Text>
+          <Text style={styles.celPtsUnit}>{t('home:shared.pts')}</Text>
         </View>
-        <Text style={styles.celPtsLabel}>POWR points earned</Text>
+        <Text style={styles.celPtsLabel}>{t('home:challenges.pointsEarned')}</Text>
       </Animated.View>
 
       <Animated.View style={[styles.celDivider, actionsStyle]} />
       <Animated.Text style={[styles.celTotal, actionsStyle]}>
-        Total balance <Text style={styles.celTotalNum}>{(totalBalance + challenge.points).toLocaleString()} pts</Text>
+        <Trans
+          i18nKey="home:challenges.totalBalance"
+          values={{ total: (totalBalance + challenge.points).toLocaleString() }}
+          components={{ num: <Text style={styles.celTotalNum} /> }}
+        />
       </Animated.Text>
 
       <Animated.View style={[styles.celActions, actionsStyle]}>
         <Pressable style={styles.celBtnDone} onPress={onDone}>
-          <Text style={styles.celBtnDoneText}>Done</Text>
+          <Text style={styles.celBtnDoneText}>{t('home:challenges.done')}</Text>
         </Pressable>
         {!!onTogether && (
           <Pressable style={styles.celBtnShare} onPress={onTogether}>
             <Ionicons name="people-outline" size={13} color={GOLD} />
-            <Text style={[styles.celBtnShareText, { color: GOLD }]}>Run it together</Text>
+            <Text style={[styles.celBtnShareText, { color: GOLD }]}>{t('home:challenges.together')}</Text>
           </Pressable>
         )}
         <Pressable style={styles.celBtnShare} onPress={onShare}>
           <Ionicons name="share-outline" size={13} color={SECONDARY} />
-          <Text style={styles.celBtnShareText}>Share</Text>
+          <Text style={styles.celBtnShareText}>{t('home:challenges.share')}</Text>
         </Pressable>
       </Animated.View>
     </View>
@@ -345,6 +352,7 @@ const ORDER_KEY = '@powr/weekly_category_order';
  * the celebration in-flow, so the card grows to fit it.
  */
 export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrateId, onTogether }: ChallengeCardProps) {
+  const { t } = useTranslation();
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
   const dismissed = useRef<Set<string>>(new Set());
 
@@ -407,7 +415,7 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
           (every row resets at the same moment, so it's said once up here). */}
       <View style={styles.sectionRow}>
         <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionLabel}>THIS WEEK</Text>
+          <Text style={styles.sectionLabel}>{t('home:challenges.title')}</Text>
           {board.done.length > 0 && (
             <Text style={styles.sectionCount}>{board.done.length}/{challenges.length}</Text>
           )}
@@ -435,10 +443,10 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
             ))}
             {board.hiddenCount > 0 ? (
               <Text style={styles.queueHint}>
-                {board.hiddenCount} more unlock{board.hiddenCount === 1 ? 's' : ''} as you clear these
+                {t('home:challenges.moreUnlock', { count: board.hiddenCount })}
               </Text>
             ) : allClear ? (
-              <Text style={styles.clearedLine}>Week cleared · {weekPts} pts banked</Text>
+              <Text style={styles.clearedLine}>{t('home:challenges.weekCleared', { points: weekPts })}</Text>
             ) : null}
           </>
         )}

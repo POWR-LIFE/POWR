@@ -1,0 +1,159 @@
+{
+  "actions": {
+    "continue": "CONTINUE",
+    "done": "DONE",
+    "gotIt": "GOT IT",
+    "notNow": "Not now",
+    "connecting": "CONNECTING…",
+    "connectAppleHealth": "CONNECT APPLE HEALTH",
+    "connectHealthConnect": "CONNECT HEALTH CONNECT"
+  },
+  "bonus": "+20 POWR",
+  "devBuild": {
+    "title": "Development build needed",
+    "body": "Health Connect isn’t available in Expo Go — run a development build to test this."
+  },
+  "installHealthConnect": {
+    "title": "Install Health Connect",
+    "body": "Health Connect lets POWR read your phone's step & activity data. It's a free Google app — install it and come back here to connect.",
+    "openPlayStore": "OPEN PLAY STORE"
+  },
+  "onboarding": {
+    "eyebrow": "YOUR BASELINE",
+    "eyebrowSyncing": "ALMOST THERE",
+    "headline": "This is how POWR <gold>counts your movement.</gold>",
+    "headlineSyncing": "Pulling in <gold>your history.</gold>",
+    "subhead": "Steps, workouts and sleep flow in from your phone, so every move earns automatically.",
+    "subheadWithWearable": "Your watch covers workouts — your phone covers steps. You need both to earn everything.",
+    "syncing": "SYNCING YOUR DATA…",
+    "skip": "Continue without connecting",
+    "sync": {
+      "reading": "READING HEALTH DATA...",
+      "steps": "{{steps}} steps",
+      "sleep": "{{hours}}h sleep",
+      "noActivity": "No activity",
+      "estPoints": "est. +{{points}} POWR",
+      "sessions": "{{sessions}} sessions synced",
+      "streak": "{{days}}-day streak"
+    },
+    "picker": {
+      "title": "Pick your primary source",
+      "body": "You've connected more than one. Choose which POWR should use as the source of truth for points."
+    }
+  },
+  "wearables": {
+    "eyebrow": "GOT A WEARABLE?",
+    "headline": "Your watch knows <gold>everything.</gold>",
+    "bonusHint": "when you connect one",
+    "viaHealthConnect": "VIA HEALTH CONNECT",
+    "viaAppleHealth": "VIA APPLE HEALTH",
+    "viaPhone": "VIA YOUR PHONE",
+    "noWearable": "I don't have a wearable"
+  },
+  "samsung": {
+    "title": "Connect Samsung Health",
+    "body": "Samsung Health shares your workouts, steps & sleep through Health Connect. Two quick steps:",
+    "step1Title": "1. Connect Health Connect",
+    "step1Desc": "POWR reads your data from Health Connect",
+    "step2Title": "2. Turn on sharing in Samsung Health",
+    "step2Desc": "Samsung Health → Settings → Health Connect → allow",
+    "openApp": "Open Samsung Health"
+  },
+  "scene": {
+    "stepsToday": "STEPS TODAY",
+    "sleepValue": "7h 20m",
+    "sleep": "SLEEP",
+    "workoutValue": "Gym · 48 min",
+    "workout": "WORKOUT",
+    "doublePoints": "2× PTS",
+    "stepsCounting": "{{steps}} steps already counting",
+    "connected": "Connected — your data is flowing",
+    "sourcesIos": "Apple Watch + anything that writes to Apple Health",
+    "sourcesAndroid": "Google Fit, Galaxy & Pixel Watch & more"
+  },
+  "viaPhone": {
+    "close": "Close",
+    "step1AppleHealth": "1. Connect Apple Health",
+    "step1HealthConnect": "1. Connect Health Connect",
+    "connected": "Connected",
+    "readsFrom": "POWR reads your {{brand}} data from it"
+  },
+  "viaPhoneSteps": {
+    "store": {
+      "appleHealth": "Apple Health",
+      "healthConnect": "Health Connect"
+    },
+    "genericApp": "the {{brand}} app",
+    "web": {
+      "title": "{{brand}} syncs through your phone",
+      "body": "Our direct {{brand}} link is paused for now. Open POWR on your phone to connect Apple Health or Health Connect. Your {{brand}} data reaches POWR from there."
+    },
+    "unsupported": {
+      "titleIos": "{{brand}} can’t sync to iPhone right now",
+      "titleAndroid": "{{brand}} can’t sync to this phone right now",
+      "body": "Our direct {{brand}} link is paused, and {{brand}} doesn’t share with {{store}}. Until it’s back, POWR counts the steps your phone records — connect {{store}} for those."
+    },
+    "title": "{{brand}} syncs through {{store}}",
+    "body": "Our direct {{brand}} link is paused for now. Your {{brand}} still earns POWR: {{app}} shares your workouts, steps and sleep with {{store}}, and POWR reads them from there.",
+    "step2Title": "2. Turn on sharing in {{app}}",
+    "step2Generic": "In {{app}}, find its {{store}} setting (usually under Settings → Connected apps) and allow everything",
+    "brands": {
+      "garmin": {
+        "app": "Garmin Connect",
+        "ios": "Garmin Connect → More → Settings → Connected Apps → Apple Health, then allow everything",
+        "android": "Garmin Connect → Settings → Health Connect, then allow everything",
+        "note": "Open Garmin Connect once a day — it only shares while it’s open."
+      },
+      "whoop": {
+        "app": "the WHOOP app",
+        "ios": "WHOOP → More → App Settings → Integrations → Apple Health → Connect, then allow everything",
+        "android": "WHOOP → More → App Settings → Integrations → Health Connect, then allow everything"
+      },
+      "oura": {
+        "app": "the Oura app",
+        "ios": "Oura → menu → Settings → Apple Health, then turn on Connect to Health",
+        "android": "Oura → menu → Settings → Health Connect, then allow everything"
+      },
+      "polar": {
+        "app": "Polar Flow",
+        "ios": "Polar Flow → More → General settings → Apple Health, then Turn All Categories On",
+        "android": "Polar Flow → More → General settings → Health Connect, then allow everything"
+      },
+      "strava": {
+        "app": "Strava",
+        "ios": "Strava → Settings → Applications, Services, and Devices → Health → Connect, and turn on Workouts",
+        "android": "Strava → Settings → Applications, Services, and Devices → Health Connect"
+      },
+      "zepp": {
+        "app": "the Zepp app",
+        "ios": "Zepp → Profile → Add accounts → Apple Health, then allow everything",
+        "android": "Zepp → Profile → Link third-party accounts → Health Connect, then turn on sync"
+      },
+      "fitbit": {
+        "app": "the Fitbit app",
+        "android": "Fitbit → your profile → Settings → Health Connect → Sync with Health Connect"
+      }
+    }
+  },
+  "wearableStatus": {
+    "sync": {
+      "noData": "no data yet",
+      "justNow": "synced just now",
+      "hours_one": "synced {{count}}h ago",
+      "hours_other": "synced {{count}}h ago",
+      "yesterday": "synced yesterday",
+      "days_one": "synced {{count}}d ago",
+      "days_other": "synced {{count}}d ago"
+    },
+    "silent": {
+      "unnamed": "Your wearable",
+      "sinceConnected": "{{name}} hasn’t sent POWR any data since you connected it.",
+      "sinceDays_one": "{{name}} hasn’t sent POWR any data in {{count}} days.",
+      "sinceDays_other": "{{name}} hasn’t sent POWR any data in {{count}} days.",
+      "title": "Check your {{name}} connection",
+      "titleUnnamed": "Check your wearable connection",
+      "body": "{{since}} If you’ve been wearing it, reconnecting usually fixes this.",
+      "cta": "Check connection"
+    }
+  }
+}

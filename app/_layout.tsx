@@ -188,6 +188,7 @@ function RootLayoutNav() {
           <Stack.Screen name="profile-screen" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="settings-screen" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="language" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="distance-units" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="affiliate" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="affiliate-terms" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="affiliate-profile" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />

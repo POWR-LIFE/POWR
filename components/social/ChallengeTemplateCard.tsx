@@ -1,7 +1,9 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import type { TFunction } from 'i18next';
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import { Avatar } from '@/components/social/Avatar';
@@ -20,7 +22,11 @@ const CARD_BG = '#111111';
 const BORDER = '#222222';
 
 const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: ORANGE };
-const TIER_LABEL: Record<string, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+const TIER_LABEL: Record<string, string> = {
+  easy: 'social:shared.tier.easy',
+  medium: 'social:shared.tier.medium',
+  hard: 'social:shared.tier.hard',
+};
 // Soft grey-white for the oversized corner watermark — keeps the card a premium
 // dark surface instead of a tier-coloured block. Alpha lives in styles.watermark.
 const WATERMARK = '#FFFFFF';
@@ -51,12 +57,12 @@ export interface ChallengeTemplateCardProps {
 }
 
 /** "You, Elliot & Sorine — finish together for +15 each on top" */
-function crewPitch(crew: Friend[], bonus: { perHead: number; maxBonus: number }): string {
+function crewPitch(crew: Friend[], bonus: { perHead: number; maxBonus: number }, t: TFunction): string {
   const names = crew.slice(0, 2).map((f) => f.displayName.split(' ')[0] || f.username);
   const extra = crew.length - names.length;
   const who = extra > 0 ? `${names.join(', ')} +${extra}` : names.join(' & ');
   const each = Math.min(bonus.maxBonus, bonus.perHead * crew.length);
-  return `You & ${who} — finish together for +${each} each on top`;
+  return t('social:templateCard.pitch', { who, each });
 }
 
 /**
@@ -66,6 +72,7 @@ function crewPitch(crew: Friend[], bonus: { perHead: number; maxBonus: number })
  * so an empty plate and an active one feel like the same surface.
  */
 export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonusConfig, namePitch }: ChallengeTemplateCardProps) {
+  const { t } = useTranslation();
   const showPitch = namePitch ?? index === 0;
   const enter = useSharedValue(0);
   useEffect(() => {
@@ -84,7 +91,7 @@ export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonu
         onPress={() => { Haptics.selectionAsync(); onPress?.(template); }}
         style={({ pressed }) => [styles.card, pressed && { opacity: 0.95 }]}
         accessibilityRole="button"
-        accessibilityLabel={`Challenge friends to ${template.title}`}
+        accessibilityLabel={t('social:templateCard.a11y', { title: template.title })}
       >
         {/* Backdrop: an oversized, ghosted activity icon bleeding off the
             bottom-right in a soft grey-white — adds depth without colour so the
@@ -99,7 +106,7 @@ export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonu
           <CatIcon spec={template.icon} size={26} color={TEXT} />
           <View style={styles.points}>
             <Text style={styles.pointsValue}>+{template.basePoints}</Text>
-            <Text style={styles.pointsLabel}>pts</Text>
+            <Text style={styles.pointsLabel}>{t('social:shared.pts')}</Text>
           </View>
         </View>
 
@@ -124,14 +131,14 @@ export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonu
               ))}
             </View>
             {bonusConfig && showPitch && (
-              <Text style={styles.crewText} numberOfLines={2}>{crewPitch(crew, bonusConfig)}</Text>
+              <Text style={styles.crewText} numberOfLines={2}>{crewPitch(crew, bonusConfig, t)}</Text>
             )}
           </View>
         ) : crew ? (
           <View style={styles.crewRow}>
             <Ionicons name="flash" size={14} color={SECONDARY} />
             <Text style={styles.crewText} numberOfLines={2}>
-              No crew yet? Start solo and race the Pacer — beat the pace, bank the points.
+              {t('social:templateCard.noCrew')}
             </Text>
           </View>
         ) : null}
@@ -140,7 +147,7 @@ export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonu
         <View style={styles.footer}>
           <View style={styles.metaRow}>
             <View style={[styles.tierChip, { borderColor: tierColor }]}>
-              <Text style={[styles.tierText, { color: tierColor }]}>{TIER_LABEL[template.tier] ?? template.tier}</Text>
+              <Text style={[styles.tierText, { color: tierColor }]}>{TIER_LABEL[template.tier] ? t(TIER_LABEL[template.tier]) : template.tier}</Text>
             </View>
             {template.durationHours ? (
               <View style={styles.durationChip}>
@@ -150,7 +157,7 @@ export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonu
             ) : null}
           </View>
           <View style={styles.cta}>
-            <Text style={styles.ctaText}>{crew && crew.length === 0 ? 'Race the Pacer' : 'Challenge friends'}</Text>
+            <Text style={styles.ctaText}>{crew && crew.length === 0 ? t('social:templateCard.racePacer') : t('social:templateCard.challengeFriends')}</Text>
             <Ionicons name="arrow-forward" size={14} color={GOLD} />
           </View>
         </View>

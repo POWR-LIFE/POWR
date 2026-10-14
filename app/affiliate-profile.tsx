@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -23,6 +24,7 @@ export default function AffiliateProfileScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const qc = useQueryClient();
+    const { t } = useTranslation();
 
     const { data } = useQuery({ queryKey: ['affiliate', 'overview', 'v2', 30], queryFn: () => fetchAffiliateOverview(30), staleTime: 60_000 });
     const { data: memberAvatar } = useQuery({ queryKey: ['affiliate', 'memberAvatar'], queryFn: fetchMemberAvatar });
@@ -54,47 +56,47 @@ export default function AffiliateProfileScreen() {
         <View style={[styles.screen, { paddingTop: insets.top }]}>
             <GeometricBackground />
             <View style={styles.header}>
-                <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8} accessibilityLabel="Back">
+                <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8} accessibilityLabel={t('common:actions.back')}>
                     <Ionicons name="chevron-back" size={22} color={DIM} />
                 </Pressable>
-                <Text style={styles.headerTitle}>Your link page</Text>
+                <Text style={styles.headerTitle}>{t('affiliate:profile.title')}</Text>
                 <View style={styles.backBtn} />
             </View>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
                 <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                    <Text style={styles.lede}>This is what someone sees when they tap your link{handle ? ` — powr.life/join/${handle}` : ''}. A face and a line turn a code into a person.</Text>
+                    <Text style={styles.lede}>{handle ? t('affiliate:profile.ledeWithLink', { url: `powr.life/join/${handle}` }) : t('affiliate:profile.lede')}</Text>
 
                     {/* Preview */}
                     <View style={styles.preview}>
                         {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} /> : (
                             <View style={[styles.avatar, styles.avatarEmpty]}><Ionicons name="person" size={26} color={MUTED} /></View>
                         )}
-                        <Text style={styles.previewName}>{name.trim() || 'Your name'}</Text>
-                        <Text style={styles.previewBio}>{bio.trim() || 'One line about you'}</Text>
-                        <View style={styles.previewPill}><Text style={styles.previewPillText}>JOIN POWR WITH {data?.profile.code ?? 'YOUR CODE'}</Text></View>
+                        <Text style={styles.previewName}>{name.trim() || t('affiliate:profile.namePlaceholder')}</Text>
+                        <Text style={styles.previewBio}>{bio.trim() || t('affiliate:profile.bioPlaceholder')}</Text>
+                        <View style={styles.previewPill}><Text style={styles.previewPillText}>{t('affiliate:profile.join', { code: data?.profile.code ?? t('affiliate:profile.yourCode') })}</Text></View>
                     </View>
 
-                    <Text style={styles.label}>PHOTO</Text>
+                    <Text style={styles.label}>{t('affiliate:profile.photo')}</Text>
                     <View style={styles.row}>
                         {memberAvatar && memberAvatar !== avatar ? (
-                            <Pressable onPress={() => setAvatar(memberAvatar)} style={styles.ghostBtn}><Ionicons name="person-circle-outline" size={16} color={GOLD} /><Text style={styles.ghostBtnText}>USE MY POWR PHOTO</Text></Pressable>
+                            <Pressable onPress={() => setAvatar(memberAvatar)} style={styles.ghostBtn}><Ionicons name="person-circle-outline" size={16} color={GOLD} /><Text style={styles.ghostBtnText}>{t('affiliate:profile.useMyPhoto')}</Text></Pressable>
                         ) : avatar ? (
-                            <Pressable onPress={() => setAvatar(null)} style={styles.ghostBtn}><Ionicons name="close" size={14} color={DIM} /><Text style={[styles.ghostBtnText, { color: DIM }]}>REMOVE</Text></Pressable>
+                            <Pressable onPress={() => setAvatar(null)} style={styles.ghostBtn}><Ionicons name="close" size={14} color={DIM} /><Text style={[styles.ghostBtnText, { color: DIM }]}>{t('affiliate:profile.remove')}</Text></Pressable>
                         ) : (
-                            <Text style={styles.hint}>Add a photo to your POWR profile first (Settings › Edit Profile) and it’ll appear here.</Text>
+                            <Text style={styles.hint}>{t('affiliate:profile.photoHint')}</Text>
                         )}
                     </View>
 
-                    <Text style={styles.label}>DISPLAY NAME</Text>
-                    <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Your name" placeholderTextColor={MUTED} maxLength={60} />
+                    <Text style={styles.label}>{t('affiliate:profile.displayName')}</Text>
+                    <TextInput value={name} onChangeText={setName} style={styles.input} placeholder={t('affiliate:profile.namePlaceholder')} placeholderTextColor={MUTED} maxLength={60} />
 
-                    <Text style={styles.label}>ONE LINE ABOUT YOU</Text>
-                    <TextInput value={bio} onChangeText={setBio} style={[styles.input, styles.inputMulti]} placeholder="Coach at Iron Works, marathon addict, here to get you moving" placeholderTextColor={MUTED} maxLength={140} multiline />
+                    <Text style={styles.label}>{t('affiliate:profile.bio')}</Text>
+                    <TextInput value={bio} onChangeText={setBio} style={[styles.input, styles.inputMulti]} placeholder={t('affiliate:profile.bioExample')} placeholderTextColor={MUTED} maxLength={140} multiline />
                     <Text style={styles.counter}>{bio.length}/140</Text>
 
-                    {save.isError && <Text style={styles.err}>Couldn’t save — try again.</Text>}
+                    {save.isError && <Text style={styles.err}>{t('affiliate:profile.saveError')}</Text>}
                     <Pressable onPress={() => save.mutate()} disabled={save.isPending || !data} style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-                        {save.isPending ? <ActivityIndicator color="#080808" /> : <Text style={styles.ctaText}>SAVE</Text>}
+                        {save.isPending ? <ActivityIndicator color="#080808" /> : <Text style={styles.ctaText}>{t('affiliate:profile.save')}</Text>}
                     </Pressable>
                 </ScrollView>
             </KeyboardAvoidingView>

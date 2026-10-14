@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Trans, useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
@@ -57,6 +58,7 @@ const dotStyles = StyleSheet.create({
 
 type AuthOption = {
     id: string;
+    /** A translation key, resolved with t() at render. */
     label: string;
     icon: React.ReactNode;
 };
@@ -64,17 +66,17 @@ type AuthOption = {
 const AUTH_OPTIONS: AuthOption[] = [
     ...(Platform.OS === 'ios' ? [{
         id: 'apple',
-        label: 'Continue with Apple',
+        label: 'auth:account.option.apple',
         icon: <FontAwesome name="apple" size={19} color="#F2F2F2" />,
     }] : []),
     {
         id: 'google',
-        label: 'Continue with Google',
+        label: 'auth:account.option.google',
         icon: <FontAwesome name="google" size={17} color="#F2F2F2" />,
     },
     {
         id: 'email',
-        label: 'Sign up with Email',
+        label: 'auth:account.option.email',
         icon: <Ionicons name="mail-outline" size={18} color="#F2F2F2" />,
     },
 ];
@@ -84,6 +86,7 @@ export default function OnboardingAccountScreen() {
     const insets = useSafeAreaInsets();
     const { signInWithGoogle, signInWithApple, session } = useAuth();
     const didNavigate = useRef(false);
+    const { t } = useTranslation();
 
     useEffect(() => {
         if (!session || didNavigate.current) return;
@@ -164,7 +167,7 @@ export default function OnboardingAccountScreen() {
 
                     {/* Headline */}
                     <View style={styles.headlineRow}>
-                        <Text style={[styles.headline, styles.headlineGold]}>Start earning.</Text>
+                        <Text style={[styles.headline, styles.headlineGold]}>{t('auth:account.headline')}</Text>
                     </View>
                 </Animated.View>
 
@@ -195,7 +198,7 @@ export default function OnboardingAccountScreen() {
                                     }
                                 </View>
                                 <Text style={styles.authLabelSocial}>
-                                    {opt.label.split(' ').pop()}
+                                    {t(opt.label).split(' ').pop()}
                                 </Text>
                             </Pressable>
                         ))}
@@ -203,7 +206,7 @@ export default function OnboardingAccountScreen() {
 
                     {/* Separator */}
                     <View style={styles.separatorContainer}>
-                        <Text style={styles.separatorText}>or</Text>
+                        <Text style={styles.separatorText}>{t('auth:account.or')}</Text>
                     </View>
 
                     {/* Email Button */}
@@ -222,7 +225,7 @@ export default function OnboardingAccountScreen() {
                             }
                         </View>
                         <Text style={styles.authLabel}>
-                            {AUTH_OPTIONS.find(o => o.id === 'email')!.label}
+                            {t(AUTH_OPTIONS.find(o => o.id === 'email')!.label)}
                         </Text>
                     </Pressable>
 
@@ -241,8 +244,7 @@ export default function OnboardingAccountScreen() {
                 <StepDots current={dotIndexFor('/onboarding-account')} />
                 <Pressable onPress={() => handleAuth('login')}>
                     <Text style={styles.footerText}>
-                        Already have an account?{'  '}
-                        <Text style={styles.footerLink}>Log in</Text>
+                        <Trans i18nKey="auth:account.footer" components={{ action: <Text style={styles.footerLink} /> }} />
                     </Text>
                 </Pressable>
             </Animated.View>

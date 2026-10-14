@@ -1,0 +1,116 @@
+{
+  "close": "Fermer",
+  "loading": "Ouverture de ton bon…",
+  "rewardFallback": "Récompense",
+  "yourReward": "Ta récompense",
+  "done": "Terminé",
+  "errors": {
+    "alreadyUsed": {
+      "title": "Déjà utilisée",
+      "body": "Cette récompense a déjà été utilisée. Tu la retrouves dans l’historique de ton portefeuille."
+    },
+    "expired": {
+      "title": "Récompense expirée",
+      "body": "Cette récompense a dépassé sa date limite d’utilisation."
+    },
+    "notActive": {
+      "title": "Indisponible",
+      "body": "Cette récompense n’est plus dans ton portefeuille."
+    },
+    "notFound": {
+      "title": "Introuvable",
+      "body": "Impossible de trouver cette récompense dans ton portefeuille."
+    },
+    "notInStore": {
+      "title": "Pas une récompense en magasin",
+      "body": "Celle-ci ne s’utilise plus en magasin. Utilise-la depuis ton portefeuille."
+    },
+    "notSignedIn": {
+      "title": "Session expirée",
+      "body": "Reconnecte-toi pour utiliser ta récompense."
+    },
+    "standRequired": {
+      "title": "Scanne le présentoir",
+      "body": "Scanne le présentoir POWR sur le comptoir."
+    },
+    "standOtherShop": {
+      "title": "Autre magasin",
+      "body": "Ce présentoir appartient à un autre magasin."
+    },
+    "standInvalid": {
+      "title": "Présentoir non reconnu",
+      "body": "Ce présentoir a été remplacé. Demande le nouveau au personnel."
+    },
+    "closed": {
+      "title": "Bon fermé",
+      "body": "Rouvre-le quand tu es en caisse."
+    },
+    "unknown": {
+      "title": "Impossible d’ouvrir le bon",
+      "body": "Vérifie ta connexion et réessaie."
+    },
+    "tryAgain": "Réessayer",
+    "backToWallet": "Retour au portefeuille"
+  },
+  "closed": {
+    "title": "Bon fermé",
+    "body": "Ta récompense est toujours dans ton portefeuille. Rouvre le bon quand tu es en caisse.",
+    "openAgain": "Rouvrir",
+    "notNow": "Plus tard"
+  },
+  "voucher": {
+    "marquee": "BON LIVE · POWR · ",
+    "memberSince": "MEMBRE POWR DEPUIS {{since}}",
+    "memberFallback": "Membre POWR",
+    "codeA11y": "Code du bon {{code}}",
+    "newCodeIn_one": "CHANGE DANS {{count}} S",
+    "newCodeIn_other": "CHANGE DANS {{count}} S",
+    "timeNow": "HEURE ACTUELLE",
+    "closesIn": "SE FERME DANS",
+    "liveTime": "HEURE EN DIRECT · ELLE DOIT DÉFILER",
+    "swipeNoteQr": "Pas de scanner en caisse ? Le personnel peut glisser à la place.",
+    "swipeNoteLook": "Personnel : vérifier que l’heure défile, puis glisser.",
+    "swipe": "PERSONNEL : GLISSER POUR VALIDER",
+    "swipeA11y": "Personnel : glisser pour valider",
+    "swipeA11yHint": "Touche deux fois pour valider cette récompense maintenant"
+  },
+  "stand": {
+    "step": "ÉTAPE {{step}} SUR {{total}}",
+    "title": "<light>Scanne le présentoir </light><gold>en caisse</gold>",
+    "body": "Le magasin le demande, pour que ton bon ne s’ouvre que sur place.",
+    "bodyBrand": "{{brand}} le demande, pour que ton bon ne s’ouvre que sur place.",
+    "cameraOff": "L’accès à la caméra est désactivé pour POWR.",
+    "openSettings": "Ouvrir les réglages",
+    "point": "Vise le QR code sur le comptoir.",
+    "noStand": "Pas de présentoir sur le comptoir ? Demande au personnel.",
+    "notAStand": "Ce n’est pas un présentoir POWR. Cherche le QR code POWR sur le comptoir.",
+    "otherShopNamed": "Ce présentoir correspond à {{standShop}}. Cette récompense est valable chez {{rewardShop}}.",
+    "notRewardShop": "Ce présentoir n’appartient pas à {{shop}}. Cherche le présentoir POWR sur le comptoir."
+  },
+  "outcome": {
+    "recorded": "ENREGISTRÉ",
+    "confirmed": "CONFIRMÉ",
+    "swipedAt": "Le personnel a validé ton bon à {{time}}. Profites-en !",
+    "swipedAtTill": "Le personnel a validé ton bon en caisse. Profites-en !",
+    "scanned": "{{shop}} a scanné ton bon.",
+    "scannedNoName": "Le magasin a scanné ton bon.",
+    "shop": "MAGASIN",
+    "time": "HEURE",
+    "checkedBy": "VALIDATION",
+    "staffSwipe": "Glissé par le personnel",
+    "staffScan": "Scan du personnel",
+    "managerScan": "Scan d’un responsable",
+    "inHistory": "Tu la retrouves maintenant dans l’historique de ton portefeuille."
+  },
+  "barcode": {
+    "showAtTill": "À MONTRER EN CAISSE",
+    "staffAt": "Chez {{shop}}, le personnel le scanne comme n’importe quel coupon.",
+    "brightness": "Monte la luminosité de ton écran si la caisse n’arrive pas à le lire.",
+    "uses": "UTILISATIONS",
+    "one": "Une seule",
+    "useBy": "VALABLE JUSQU’AU",
+    "noExpiry": "Sans date d’expiration",
+    "qrA11y": "QR code {{code}}",
+    "barcodeA11y": "Code-barres {{code}}"
+  }
+}

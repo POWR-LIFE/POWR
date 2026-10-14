@@ -1,0 +1,494 @@
+{
+  "shared": {
+    "close": "Fermer",
+    "you": "Toi",
+    "aFriend": "Quelqu’un",
+    "loading": "Chargement…",
+    "done": "Terminé",
+    "viewProfile": "Voir le profil de {{name}}",
+    "viewFriends": "Voir mes amis",
+    "scanFriendCode": "Scanner un code ami",
+    "clearSearch": "Effacer la recherche",
+    "searchByUsername": "Rechercher un pseudo",
+    "typeMore": "Tape au moins 2 caractères.",
+    "searching": "Recherche…",
+    "noResults": "Aucun résultat pour « {{query}} ».",
+    "requested": "Demandé",
+    "add": "Ajouter",
+    "addName": "Ajouter {{name}}",
+    "inviteName": "Inviter {{name}}",
+    "addFriend": "Ajouter aux amis",
+    "acceptRequest": "Accepter la demande",
+    "shareLink": "Partager le lien",
+    "couldntJoin": "Impossible de rejoindre",
+    "couldntDecline": "Impossible de refuser",
+    "pts": "pts",
+    "removeFriend": {
+      "title": "Retirer {{name}} ?",
+      "body": "Cette personne sera retirée de ta liste d’amis. Vos défis en commun continuent, et vous pourrez vous rajouter quand vous voulez.",
+      "confirm": "Retirer"
+    },
+    "tier": {
+      "easy": "Facile",
+      "medium": "Moyen",
+      "hard": "Difficile"
+    }
+  },
+  "friends": {
+    "title": "AMIS",
+    "showMyCode": "Afficher mon code",
+    "searchPlaceholder": "Ajouter par pseudo",
+    "searchResults": "RÉSULTATS",
+    "requests": "DEMANDES · {{total}}",
+    "wantsToConnect": "@{{username}} · veut t’ajouter",
+    "acceptName": "Accepter {{name}}",
+    "declineName": "Refuser {{name}}",
+    "friendsCount": "AMIS · {{total}}",
+    "empty": "Pas encore d’amis — cherche un pseudo pour en ajouter.",
+    "removeName": "Retirer {{name}}",
+    "pending": "EN ATTENTE · {{total}}",
+    "sent": "Envoyée"
+  },
+  "addFriend": {
+    "title": "AJOUTER AUX AMIS",
+    "fallbackName": "Membre POWR",
+    "notFound": {
+      "title": "Personne introuvable",
+      "body": "Ce code est peut-être invalide ou expiré. Demande-lui de te remontrer son code."
+    },
+    "connected": {
+      "title": "C’est fait !",
+      "body": "Vous pouvez maintenant relever des défis ensemble."
+    },
+    "sent": {
+      "title": "Demande envoyée",
+      "body": "On prévient cette personne — la connexion se fera dès qu’elle aura accepté."
+    },
+    "self": {
+      "title": "C’est toi",
+      "body": "C’est ton propre code — fais-le scanner à tes amis."
+    },
+    "already": {
+      "title": "Déjà en contact",
+      "body": "Vous êtes déjà en contact sur POWR."
+    },
+    "pending": {
+      "title": "Demande en attente",
+      "body": "Tu lui as déjà envoyé une demande — en attente de sa réponse."
+    }
+  },
+  "scanFriend": {
+    "title": "SCANNER UN CODE",
+    "notPowr": "Ce n’est pas un code POWR — réessaie avec son code.",
+    "hint": "Vise le code POWR à scanner",
+    "denied": {
+      "title": "Accès à l’appareil photo requis",
+      "body": "POWR a besoin de l’appareil photo pour scanner un code ami. Tu peux l’activer dans les réglages, ou ajouter tes amis par pseudo.",
+      "allow": "Autoriser l’appareil photo",
+      "openSettings": "Ouvrir les réglages",
+      "byUsername": "Ajouter par pseudo"
+    }
+  },
+  "myQr": {
+    "title": "MON CODE",
+    "shareMessage": "Ajoute-moi sur POWR 💪\n{{link}}",
+    "loadError": "Impossible de charger ton code. Réessaie dans un instant.",
+    "caption": "Fais scanner ce code pour vous ajouter sur POWR — puis relevez des défis ensemble.",
+    "shareA11y": "Partager ton code",
+    "copyA11y": "Copier le lien",
+    "copy": "Copier",
+    "copied": "Copié",
+    "scanInstead": "Scanner un code ami à la place"
+  },
+  "join": {
+    "missingCode": "Il manque le code dans ce lien d’invitation.",
+    "failed": "Un problème est survenu en rejoignant ce défi.",
+    "goHome": "Retour à l’accueil",
+    "joining": "Tu rejoins le défi…"
+  },
+  "challenges": {
+    "title": "DÉFIS",
+    "takeFailed": "Impossible de relever celui-ci",
+    "atCap": "Tu es dans {{open}} défis sur {{cap}} — termines-en un ou quittes-en un pour en lancer un autre.",
+    "tabs": {
+      "parallel": {
+        "label": "En parallèle",
+        "sub": "Chacun fait sa part."
+      },
+      "pooled": {
+        "label": "Total d’équipe",
+        "sub": "Mettez vos efforts en commun pour un même objectif."
+      }
+    },
+    "bonusLine": "Tout le monde gagne un bonus qui grimpe quand vous allez au bout.",
+    "board": {
+      "title": "Défis ouverts",
+      "hint": "Qui le relève en premier l’affronte"
+    },
+    "emptyParallel": "Aucun défi en parallèle pour le moment.",
+    "emptyPooled": "Aucun défi en total d’équipe pour le moment."
+  },
+  "openBoard": {
+    "waiting_one": "{{count}} membre attend un adversaire",
+    "waiting_other": "{{count}} membres attendent un adversaire",
+    "waitingBody": "Relève-en un et tu l’affrontes pour de vrai. Cette personne ne voit que ton prénom et ta photo.",
+    "waitingCta": "Montre-moi",
+    "beFirst": {
+      "title": "Lance le premier défi",
+      "body": "Publie un défi : n’importe quel membre POWR peut le relever. Le chrono démarre quand quelqu’un le prend, vous vous affrontez donc sur la même semaine.",
+      "cta": "En publier un"
+    },
+    "pitch": {
+      "title": "Personne à défier pour l’instant ?",
+      "body": "Publie un défi que n’importe quel membre POWR peut relever, et découvre les leurs. On ne voit que ton prénom et ta photo.",
+      "cta": "Activer le tableau"
+    }
+  },
+  "openCard": {
+    "takeA11y": "Relever le défi {{title}} de {{name}}",
+    "spotsOpen": "{{slots}} places libres",
+    "waiting": "attend un adversaire",
+    "takeIt": "Je relève"
+  },
+  "templateCard": {
+    "pitch": "Toi & {{who}} — finissez ensemble : +{{each}} de bonus par personne",
+    "a11y": "Défier tes amis sur {{title}}",
+    "noCrew": "Pas encore d’équipe ? Lance-toi en solo contre le lièvre — bats-le, empoche les points.",
+    "racePacer": "Défier le lièvre",
+    "challengeFriends": "Défier des amis"
+  },
+  "create": {
+    "title": "Défier des amis",
+    "backToInvites": "Retour aux invitations",
+    "addAFriend": "Ajouter des amis",
+    "plate": {
+      "title": "Tu en as plein les bras",
+      "body": "Tu es dans {{open}} défis sur {{cap}}. Termine ta part — ou quittes-en un — pour en relever un autre.",
+      "leaveName": "Quitter {{title}}",
+      "leave": "Quitter",
+      "gotIt": "Compris"
+    },
+    "searchIntro": "Cherche un pseudo et envoie une demande d’ami. Dès qu’elle est acceptée, la personne rejoint ta liste d’invitations.",
+    "requestSentNote": "Demande envoyée — dès qu’elle sera acceptée, la personne apparaîtra dans ta liste d’invitations.",
+    "challenge": "Défi",
+    "pickChallenge": "Choisis un défi",
+    "runsNow": "Dure {{duration}} — le chrono démarre tout de suite",
+    "runsWhenAllIn": "Dure {{duration}} — le chrono démarre quand tout le monde est là",
+    "inviteFriends": "Inviter des amis",
+    "selected": "Sélection : {{selected}}/{{max}}",
+    "noFriends": "Pas encore d’amis — cherche un pseudo plus bas, ou partage un lien pour inviter qui tu veux.",
+    "notOnTogether": "{{name}} a désactivé Ensemble",
+    "off": "Inactif",
+    "shareLinkA11y": "Inviter via un lien",
+    "link": "Lien",
+    "addByUsernameA11y": "Ajouter quelqu’un par pseudo",
+    "board": {
+      "title": "Publier sur le tableau ouvert",
+      "body": "N’importe quel membre POWR peut le relever — la première personne à le faire t’affronte. Seuls ton prénom et ta photo sont visibles."
+    },
+    "summary": {
+      "friends_one": "{{count}} ami · groupe de {{size}}",
+      "friends_other": "{{count}} amis · groupe de {{size}}",
+      "waiting": "En attente d’un adversaire — vous démarrez ensemble dès que le défi est relevé",
+      "solo": "En solo — invite des amis quand tu veux pour un bonus",
+      "needsFriend": "Un total d’équipe demande au moins un ami"
+    },
+    "bonusEach": "+{{bonus}} chacun si tous finissent",
+    "bonusEachMax": "+{{bonus}} chacun si tous finissent (max)",
+    "send": {
+      "posting": "Publication…",
+      "starting": "Lancement…",
+      "sending": "Envoi…",
+      "post": "Publier sur le tableau",
+      "solo": "Lancer en solo",
+      "invites": "Envoyer les invitations"
+    },
+    "timing": {
+      "board": "Démarre quand quelqu’un le relève : vous courez contre le même chrono.",
+      "solo": "Démarre dès que tu appuies — tu cours contre le lièvre.",
+      "group": "Démarre dès que quelqu’un te rejoint — tout ce que tu fais à partir de maintenant compte."
+    },
+    "shareMessage": "Rejoins-moi sur POWR : « {{title}} » — {{goal}}. {{url}}",
+    "shareMessageDuration": "Rejoins-moi sur POWR : « {{title}} » — {{goal}} en {{duration}}. {{url}}"
+  },
+  "invite": {
+    "title": "Inviter du monde",
+    "inviteAFriend": "INVITER DES AMIS",
+    "noFriends": "Tu n’as encore personne à inviter — cherche quelqu’un de nouveau ci-dessous.",
+    "allIn": "Tout le monde est déjà dans le défi. Ajoute quelqu’un de nouveau ci-dessous.",
+    "inviting": "Invitation…",
+    "invite": "Inviter",
+    "sent_one": "Invitation envoyée.",
+    "sent_other": "{{count}} invitations envoyées.",
+    "willNotify": "Une notification les invitera à rejoindre le défi.",
+    "notFriendsYet": "PAS ENCORE EN CONTACT ?",
+    "searchIntro": "Trouve quelqu’un par pseudo. Ta demande d’ami doit être acceptée avant que tu puisses l’inviter.",
+    "requestSent": "Demande envoyée. Une fois acceptée, tu pourras inviter cette personne dans ce défi."
+  },
+  "countdown": {
+    "ended": "Terminé",
+    "left": "encore {{time}}",
+    "toAcceptSuffix": " pour accepter",
+    "daysHours": "{{d}} j {{h}} h",
+    "hoursMinutes": "{{h}} h {{m}} min",
+    "minutesSeconds": "{{m}} min {{s}} s",
+    "seconds": "{{s}} s"
+  },
+  "detail": {
+    "header": "ENSEMBLE",
+    "headerMissing": "DÉFI",
+    "loadError": {
+      "title": "Impossible de charger ce défi",
+      "body": "Vérifie ta connexion et réessaie.",
+      "retry": "Réessayer"
+    },
+    "missing": {
+      "title": "Défi indisponible",
+      "body": "Il est peut-être terminé ou a été annulé.",
+      "back": "Retour"
+    },
+    "state": {
+      "done": "A fini",
+      "invited": "En attente",
+      "declined": "A refusé"
+    },
+    "today": "Aujourd’hui · {{value}}",
+    "poolSteps": "{{total}} / {{target}} pas",
+    "outcome": {
+      "notJoined": "Ce défi s’est terminé avant que tu le rejoignes.",
+      "cancelledPaid": "Annulé avant la fin — tu gardes ce que tu avais déjà gagné.",
+      "cancelled": "Défi annulé avant la fin.",
+      "expiredPooled": "Temps écoulé avant que le groupe atteigne l’objectif.",
+      "expired": "Temps écoulé — personne n’a terminé celui-ci.",
+      "wonWith_one": "Toi et {{count}} autre personne avez terminé. +{{points}} gagnés.",
+      "wonWith_other": "Toi et {{count}} autres personnes avez terminé. +{{points}} gagnés.",
+      "wonSolo": "Tu as terminé. +{{points}} gagnés.",
+      "lostPooled": "Le groupe a atteint l’objectif sans toi cette fois.",
+      "lost": "Temps écoulé — {{finished}} sur {{total}} ont terminé. Ce n’était pas pour toi cette fois.",
+      "lostNobody": "Temps écoulé — personne n’a terminé celui-ci."
+    },
+    "pace": "Environ {{amount}} par jour et c’est bouclé.",
+    "pacePooled": "Environ {{amount}} par jour pour le groupe et c’est bouclé.",
+    "leave": {
+      "titleCreator": "Annuler le défi ?",
+      "title": "Quitter le défi ?",
+      "bodyCreator": "Cela met fin à « {{title}} » pour tout le monde. C’est irréversible.",
+      "bodyLast": "Tu quittes « {{title}} ». Comme il ne reste plus personne, il se termine pour tout le monde.",
+      "body": "Tu quittes « {{title}} ». Les autres continuent.",
+      "keep": "Garder le défi",
+      "stay": "Rester",
+      "cancelChallenge": "Annuler le défi",
+      "leave": "Quitter",
+      "leaveChallenge": "Quitter le défi",
+      "cancelFailed": "Impossible d’annuler",
+      "leaveFailed": "Impossible de quitter"
+    },
+    "share": {
+      "plain": "Rejoins mon défi POWR « {{title}} » — {{goal}}. {{url}}",
+      "plainDuration": "Rejoins mon défi POWR « {{title}} » — {{goal}} en {{duration}}. {{url}}",
+      "invite": "Rejoins mon défi POWR « {{title}} » — {{goal}}. Pour rejoindre : {{url}}",
+      "inviteDuration": "Rejoins mon défi POWR « {{title}} » — {{goal}} en {{duration}}. Pour rejoindre : {{url}}",
+      "resultA11y": "Partager le résultat du défi",
+      "inviteA11y": "Partager l’invitation au défi",
+      "linkA11y": "Partager le lien du défi",
+      "result": "Partager le résultat"
+    },
+    "inCount": "{{total}} en lice",
+    "ended": "Terminé",
+    "cancelled": "Annulé",
+    "notStarted": "Pas commencé",
+    "remain": {
+      "label": "RESTE À FAIRE",
+      "done": "Fini",
+      "targetHit": "objectif atteint",
+      "goalIn": "objectif rempli",
+      "toGo": "à faire",
+      "toGoUnit": "{{unit}} à faire",
+      "timeLeft": "temps restant",
+      "startsOnceIn": "démarre quand le groupe est prêt",
+      "selfDone": "Tu as fini — ton bonus grimpe encore à mesure que les autres terminent."
+    },
+    "pool": {
+      "label": "TOTAL DU GROUPE",
+      "hit": "Objectif atteint — chaque participation rapporte +{{base}}.",
+      "hitBonus": "Objectif atteint — chaque participation rapporte +{{base}}, plus jusqu’à +{{max}} de bonus.",
+      "cancelled": "Annulé avant que le groupe y arrive.",
+      "live": "Ajoute ta part au total pour gagner. Chaque participation rapporte +{{base}}, et le bonus grimpe avec chaque personne qui s’y met — jusqu’à +{{max}}."
+    },
+    "points": {
+      "label": "TES POINTS",
+      "base": "base",
+      "bonus": "bonus",
+      "bankedCancelled": "Crédités quand tu as fini ta part, avant l’annulation.",
+      "final": "Définitif — crédités à la clôture du défi.",
+      "friendsDone_one": "{{count}} personne a fini — ton bonus grimpe à chaque arrivée.",
+      "friendsDone_other": "{{count}} personnes ont fini — ton bonus grimpe à chaque arrivée.",
+      "grows": "Ton bonus grimpe chaque fois que quelqu’un termine.",
+      "upTo": "Jusqu’à {{points}} si tout le monde termine."
+    },
+    "contributors": "CONTRIBUTIONS",
+    "participants": "PARTICIPANTS",
+    "doneCount": "<green>{{finished}}</green><plain> sur {{total}} ont fini</plain>",
+    "pacer": {
+      "name": "Lièvre",
+      "a11yAhead": "Lièvre à {{pct}} pour cent — tu es devant",
+      "a11yBehind": "Lièvre à {{pct}} pour cent — le lièvre est devant",
+      "youAhead": "Tu es devant",
+      "pacerAhead": "Devant toi"
+    },
+    "invitePrompt": "{{name}} t’invite. Finissez ensemble pour <gold>jusqu’à +{{max}} de bonus</gold>.",
+    "underway": "Ce défi est déjà lancé — tu le rejoindrais alors qu’il reste <time></time>.",
+    "accept": "Accepter le défi",
+    "joining": "On t’inscrit…",
+    "declineA11y": "Refuser le défi",
+    "declining": "Refus…",
+    "decline": "Refuser",
+    "invitePeopleA11y": "Inviter du monde à ce défi",
+    "invitePeople": "Inviter du monde"
+  },
+  "activity": {
+    "title": "ACTIVITÉ",
+    "ignore": "Ignorer",
+    "ignoreA11y": "Ignorer : {{title}}",
+    "actionA11y": "{{action}} : {{title}}",
+    "remove": "Supprimer",
+    "removeA11y": "Supprimer : {{label}}",
+    "timeAgo": {
+      "now": "à l’instant",
+      "minutes": "{{n}} min",
+      "hours": "{{n}} h",
+      "days": "{{n}} j",
+      "weeks": "{{n}} sem.",
+      "months_one": "{{count}} mois",
+      "months_other": "{{count}} mois"
+    },
+    "empty": {
+      "title": "Tu es à jour",
+      "body": "Les demandes d’amis, les invitations à des défis et ton activité récente s’afficheront ici."
+    },
+    "needsYou": "ON T’ATTEND",
+    "friendRequest": "@{{username}} · t’a envoyé une demande d’ami",
+    "accept": "Accepter",
+    "challengeInvite": "{{name}} t’invite · {{goal}}",
+    "join": "Rejoindre",
+    "recent": "RÉCENT"
+  },
+  "profile": {
+    "error": {
+      "title": "Un problème est survenu",
+      "body": "Impossible de mettre à jour pour le moment — réessaie."
+    },
+    "thisPerson": "cette personne",
+    "unknown": "Sans nom",
+    "level": "NIV. {{level}} · {{name}}",
+    "achievementCount": "{{earned}} / {{total}} succès",
+    "achievements": "SUCCÈS",
+    "theirPts": "SES PTS",
+    "vsYou": "VS TOI",
+    "yourPts": "TES PTS",
+    "activity30d": "ACTIVITÉ · 30 DERNIERS JOURS",
+    "gallery": "GALERIE",
+    "declineRequest": "Refuser la demande",
+    "friendsTapToRemove": "Amis — touche pour retirer",
+    "friends": "Amis",
+    "joined": "Membre depuis {{date}}",
+    "monthYear": "{{month}} {{year}}",
+    "months": {
+      "jan": "janv.",
+      "feb": "févr.",
+      "mar": "mars",
+      "apr": "avr.",
+      "may": "mai",
+      "jun": "juin",
+      "jul": "juil.",
+      "aug": "août",
+      "sep": "sept.",
+      "oct": "oct.",
+      "nov": "nov.",
+      "dec": "déc."
+    },
+    "someone": "Quelqu’un",
+    "mutual": "En commun : {{names}}",
+    "mutualMore": "En commun : {{names}} +{{more}}",
+    "friendCount_one": "{{count}} ami",
+    "friendCount_other": "{{count}} amis",
+    "friendsSince": "Amis depuis {{date}}",
+    "challengesTogether_one": "{{count}} défi ensemble",
+    "challengesTogether_other": "{{count}} défis ensemble",
+    "dayStreak": "JOURS DE SÉRIE",
+    "best": "record : {{n}}",
+    "ptsWeek": "{{points}} PTS / 7 J",
+    "sessions30d": "SÉANCES · 30 J"
+  },
+  "units": {
+    "qualifyingDays_one": "jour validé",
+    "qualifyingDays_other": "jours validés",
+    "steps_one": "pas",
+    "steps_other": "pas",
+    "checkIns_one": "check-in",
+    "checkIns_other": "check-ins",
+    "runs_one": "course",
+    "runs_other": "courses",
+    "rides_one": "sortie vélo",
+    "rides_other": "sorties vélo",
+    "sessions_one": "séance",
+    "sessions_other": "séances",
+    "qualifyingCheckIns_one": "check-in validé",
+    "qualifyingCheckIns_other": "check-ins validés",
+    "qualifyingRuns_one": "course validée",
+    "qualifyingRuns_other": "courses validées",
+    "qualifyingRides_one": "sortie vélo validée",
+    "qualifyingRides_other": "sorties vélo validées",
+    "qualifyingSessions_one": "séance validée",
+    "qualifyingSessions_other": "séances validées",
+    "activityTypes_one": "type d’activité",
+    "activityTypes_other": "types d’activité",
+    "activityCombos_one": "combo d’activités",
+    "activityCombos_other": "combos d’activités"
+  },
+  "milestone": {
+    "anyTime_one": "Atteins {{steps}} pas sur {{count}} jour.",
+    "anyTime_other": "Atteins {{steps}} pas sur {{count}} jours.",
+    "morning_one": "Atteins {{steps}} pas avant 9 h sur {{count}} jour.",
+    "morning_other": "Atteins {{steps}} pas avant 9 h sur {{count}} jours.",
+    "midday_one": "Atteins {{steps}} pas entre 12 h et 14 h sur {{count}} jour.",
+    "midday_other": "Atteins {{steps}} pas entre 12 h et 14 h sur {{count}} jours.",
+    "evening_one": "Atteins {{steps}} pas après 18 h sur {{count}} jour.",
+    "evening_other": "Atteins {{steps}} pas après 18 h sur {{count}} jours."
+  },
+  "share": {
+    "categoryLabel": "Ensemble"
+  },
+  "category": {
+    "all": "Tout",
+    "fallback": "Activité"
+  },
+  "duration": {
+    "weeks_one": "{{count}} semaine",
+    "weeks_other": "{{count}} semaines",
+    "days_one": "{{count}} jour",
+    "days_other": "{{count}} jours",
+    "hours": "{{hours}} h"
+  },
+  "remaining": {
+    "notStarted": "Pas commencé",
+    "ended": "Terminé",
+    "minutes_one": "Encore {{count}} min",
+    "minutes_other": "Encore {{count}} min",
+    "hours_one": "Encore {{count}} h",
+    "hours_other": "Encore {{count}} h",
+    "days_one": "Encore {{count}} j",
+    "days_other": "Encore {{count}} j"
+  },
+  "errors": {
+    "respond": {
+      "accept": "Impossible de rejoindre ce défi. Vérifie ta connexion et réessaie.",
+      "decline": "Impossible de refuser cette invitation. Vérifie ta connexion et réessaie.",
+      "leave": "Impossible de quitter ce défi. Vérifie ta connexion et réessaie.",
+      "dismiss": "Impossible de retirer ce défi. Vérifie ta connexion et réessaie.",
+      "cancel": "Impossible d’annuler ce défi. Vérifie ta connexion et réessaie."
+    },
+    "create": "Impossible de créer ce défi"
+  },
+  "fallbackTitle": "Défi"
+}

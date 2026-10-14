@@ -5,6 +5,7 @@ import PermissionFixScreen, { type PermissionFixKind } from '@/components/Permis
 import { fetchPartnersInArea, getPartnerGeometry, searchPartners, useGeofenceContext, type DayKey, type OpeningHours, type Partner, type PartnerGeoPoint, type Trainer } from '@/context/GeofenceContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { createGymRequest } from '@/lib/api/gyms';
+import { getFormatLocale } from '@/lib/i18n';
 import {
   getLocationPromptState,
   isForegroundMissing,
@@ -15,12 +16,15 @@ import {
 } from '@/lib/locationPrompt';
 import { GOOGLE_DIRECTIONS_KEY, MAP_PROVIDER } from '@/lib/mapProvider';
 import { getSessionUser, supabase } from '@/lib/supabase';
+import { discoverDistanceUnit, METRES_PER_MILE, useDistancePreference } from '@/lib/units';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -105,6 +109,19 @@ type RouteStep = {
 
 const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
+type PlaceUnit = 'mi' | 'km';
+
+/**
+ * Max-distance chips, in round numbers of the unit on screen. Kilometres get
+ * their own ladder rather than 1.6 / 8 / 16 / 40: 2 km is a walk, 5 and 10 are
+ * the distances people already think in, and 25 km still takes in the whole
+ * ~15 km box the nearby list is fetched for, like 25 mi does.
+ */
+const DISTANCE_FILTER_STEPS: Record<PlaceUnit, number[]> = {
+  mi: [1, 5, 10, 25],
+  km: [2, 5, 10, 25],
+};
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -122,21 +139,40 @@ function getDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: number
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function formatHours(oh: OpeningHours | undefined): string | null {
+/** toFixed(1), written with the decimal mark of the language on screen ("1.2" / "1,2"). */
+function fixed1(n: number): string {
+  const mark = (1.5).toLocaleString(getFormatLocale()).replace(/\d/g, '') || '.';
+  return n.toFixed(1).replace('.', mark);
+}
+
+/** A place's distance in Discover's unit, from miles: "1.2 mi", "< 0.1 km". */
+function formatPlaceDistance(miles: number, unit: PlaceUnit, t: TFunction): string {
+  if (unit === 'km') {
+    const km = (miles * METRES_PER_MILE) / 1000;
+    return km < 0.1
+      ? t('discover:distance.underKm', { distance: fixed1(0.1) })
+      : t('discover:distance.km', { distance: fixed1(km) });
+  }
+  return miles < 0.1
+    ? t('discover:distance.underMiles', { distance: fixed1(0.1) })
+    : t('discover:distance.miles', { distance: fixed1(miles) });
+}
+
+function formatHours(oh: OpeningHours | undefined, t: TFunction): string | null {
   if (!oh) return null;
   const now = new Date();
   const todayKey = DAY_KEYS[now.getDay()];
   const todayHours = oh[todayKey];
-  if (!todayHours) return 'Closed today';
-  return `Today ${todayHours.open} – ${todayHours.close}`;
+  if (!todayHours) return t('discover:hours.closedToday');
+  return t('discover:hours.today', { open: todayHours.open, close: todayHours.close });
 }
 
-function formatRouteEta(totalMinutes: number): string {
+function formatRouteEta(totalMinutes: number, t: TFunction): string {
   const rounded = Math.max(1, Math.round(totalMinutes));
-  if (rounded < 60) return `${rounded} min`;
+  if (rounded < 60) return t('discover:eta.minutes', { minutes: rounded });
   const hours = Math.floor(rounded / 60);
   const mins = rounded % 60;
-  return mins === 0 ? `${hours} hr` : `${hours} hr ${mins} min`;
+  return mins === 0 ? t('discover:eta.hours', { hours }) : t('discover:eta.hoursMinutes', { hours, minutes: mins });
 }
 
 function stripHtmlInstructions(input: string): string {
@@ -226,7 +262,7 @@ function clusterGeoPoints(points: GeoLike[], longitudeDelta: number): MapCluster
 }
 
 function formatClusterCount(count: number): string {
-  return count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
+  return count >= 1000 ? `${fixed1(count / 1000)}k` : String(count);
 }
 
 // djb2 — collapses an overlay signature into a short stable key fragment.
@@ -278,6 +314,7 @@ function synthesizePartner(g: GeoLike): Partner {
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const mapRef = useRef<MapView>(null);
   const navMapRef = useRef<MapView>(null);
 
@@ -298,7 +335,15 @@ export default function DiscoverScreen() {
   const [openNowFilter, setOpenNowFilter] = useState(false);
   const [visitedFilter, setVisitedFilter] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('nearest');
-  const [maxDistanceMi, setMaxDistanceMi] = useState<number | null>(null); // null = any
+  // Miles unless the member picked kilometres (Settings › Distance units).
+  const distanceUnit = discoverDistanceUnit(useDistancePreference());
+  // The chip picked, in the unit it was picked in; null = any. A pick from the
+  // other unit (the setting changed since) matches no chip, so it lapses.
+  const [maxDistancePick, setMaxDistancePick] = useState<{ value: number; unit: PlaceUnit } | null>(null);
+  const maxDistance = maxDistancePick?.unit === distanceUnit ? maxDistancePick.value : null;
+  // Every distance below is compared in miles (_distMi), whatever is on screen.
+  const maxDistanceMi =
+    maxDistance === null ? null : distanceUnit === 'km' ? (maxDistance * 1000) / METRES_PER_MILE : maxDistance;
 
   // Set of partner dbIds the user has previously checked in at (for the
   // "Visited" filter + the gold badge on the map pins).
@@ -560,7 +605,7 @@ export default function DiscoverScreen() {
       );
       return {
         ...p,
-        distance: miles < 0.1 ? '< 0.1 mi' : `${miles.toFixed(1)} mi`,
+        distance: formatPlaceDistance(miles, distanceUnit, t),
         _distMi: miles,
       };
     });
@@ -570,7 +615,7 @@ export default function DiscoverScreen() {
       if (sortMode === 'pts') return b.pts - a.pts;
       return a.name.localeCompare(b.name);
     });
-  }, [rawPartners, userLoc, sortMode]);
+  }, [rawPartners, userLoc, sortMode, distanceUnit, t]);
 
   /** Everything that happens once foreground location is actually granted:
    *  first fix, provider coverage, map centring. Split out of the mount effect
@@ -763,14 +808,14 @@ export default function DiscoverScreen() {
     Object.values(areaPartners).forEach(p => {
       if (userLoc) {
         const miles = getDistanceMiles(userLoc.coords.latitude, userLoc.coords.longitude, p.lat, p.lng);
-        m.set(p.id, { ...p, distance: miles < 0.1 ? '< 0.1 mi' : `${miles.toFixed(1)} mi`, _distMi: miles } as Partner);
+        m.set(p.id, { ...p, distance: formatPlaceDistance(miles, distanceUnit, t), _distMi: miles } as Partner);
       } else {
         m.set(p.id, { ...p, _distMi: Infinity } as Partner);
       }
     });
     partners.forEach(p => m.set(p.id, p));
     return m;
-  }, [partners, areaPartners, userLoc]);
+  }, [partners, areaPartners, userLoc, distanceUnit, t]);
 
   // What the map may place, honouring the active filters. The nationwide
   // geometry set backs the default view so counts are true everywhere; server
@@ -887,9 +932,9 @@ export default function DiscoverScreen() {
   // while the chain is dead, so those users don't see this — see
   // project_ios_provisional_always_gap.
   const showBackgroundBanner = locSettled && locationGranted && backgroundMissing;
-  const alwaysLabel = Platform.OS === 'ios' ? '“Always”' : '“Allow all the time”';
+  const alwaysLabel = Platform.OS === 'ios' ? t('discover:location.alwaysIos') : t('discover:location.alwaysAndroid');
 
-  const sortLabel = sortMode === 'nearest' ? 'Nearest' : sortMode === 'pts' ? 'Most Points' : 'A–Z';
+  const sortLabel = sortMode === 'nearest' ? t('discover:sort.nearest') : sortMode === 'pts' ? t('discover:sort.points') : t('discover:sort.az');
 
   // Count active non-default filters for the badge
   const activeFilterCount = [
@@ -1159,11 +1204,11 @@ export default function DiscoverScreen() {
         {(areaFetching || geometryPending) ? (
           <View style={styles.mapStatusPill} pointerEvents="none">
             <ActivityIndicator size="small" color={GOLD} />
-            <Text style={styles.mapStatusText}>{areaFetching ? 'Loading this area…' : 'Loading map…'}</Text>
+            <Text style={styles.mapStatusText}>{areaFetching ? t('discover:map.loadingArea') : t('discover:map.loadingMap')}</Text>
           </View>
         ) : showEmptyArea ? (
           <View style={styles.mapStatusPill} pointerEvents="none">
-            <Text style={styles.mapStatusText}>No partners in this area yet</Text>
+            <Text style={styles.mapStatusText}>{t('discover:map.emptyArea')}</Text>
           </View>
         ) : null}
 
@@ -1173,8 +1218,8 @@ export default function DiscoverScreen() {
               <Text style={styles.routeOverlayTitle} numberOfLines={1}>{routePartner.name}</Text>
               <Text style={styles.routeOverlayMeta}>
                 {routeSummary
-                  ? `${formatRouteEta(routeSummary.durationMin)} • ${routeSummary.distanceKm.toFixed(1)} km`
-                  : 'Loading walking route...'}
+                  ? t('discover:route.summary', { eta: formatRouteEta(routeSummary.durationMin, t), distance: fixed1(routeSummary.distanceKm) })
+                  : t('discover:route.loading')}
               </Text>
             </View>
             <View style={styles.routeOverlayActions}>
@@ -1183,7 +1228,7 @@ export default function DiscoverScreen() {
                 onPress={() => setWalkingNavVisible(true)}
               >
                 <Ionicons name="navigate" size={14} color="#0d0d0d" />
-                <Text style={styles.routeStartButtonText}>Start Walk</Text>
+                <Text style={styles.routeStartButtonText}>{t('discover:route.startWalk')}</Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [styles.routeClearButton, pressed && { opacity: 0.75 }]}
@@ -1196,7 +1241,7 @@ export default function DiscoverScreen() {
                   setWalkingNavVisible(false);
                 }}
               >
-                <Text style={styles.routeClearButtonText}>Clear</Text>
+                <Text style={styles.routeClearButtonText}>{t('discover:route.clear')}</Text>
               </Pressable>
             </View>
           </View>
@@ -1228,8 +1273,10 @@ export default function DiscoverScreen() {
             >
               <Ionicons name="location-outline" size={16} color={GOLD} />
               <Text style={styles.locationBannerText}>
-                <Text style={styles.locationBannerStrong}>Location is off.</Text> Turn it on for
-                distances, directions and automatic check-ins.
+                <Trans
+                  i18nKey="discover:location.offBanner"
+                  components={{ strong: <Text style={styles.locationBannerStrong} /> }}
+                />
               </Text>
               <Ionicons name="chevron-forward" size={14} color={GOLD} />
             </Pressable>
@@ -1244,8 +1291,11 @@ export default function DiscoverScreen() {
             >
               <Ionicons name="location-outline" size={16} color={GOLD} />
               <Text style={styles.locationBannerText}>
-                <Text style={styles.locationBannerStrong}>Automatic check-ins are off.</Text> Set
-                location to {alwaysLabel} so visits count with the app closed.
+                <Trans
+                  i18nKey="discover:location.backgroundBanner"
+                  values={{ always: alwaysLabel }}
+                  components={{ strong: <Text style={styles.locationBannerStrong} /> }}
+                />
               </Text>
               <Ionicons name="chevron-forward" size={14} color={GOLD} />
             </Pressable>
@@ -1259,13 +1309,13 @@ export default function DiscoverScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <FilterChip
-              label="Open Now"
+              label={t('discover:filters.openNow')}
               active={openNowFilter}
               onPress={() => setOpenNowFilter(v => !v)}
             />
             {visitedIds.size > 0 && (
               <FilterChip
-                label="Visited"
+                label={t('discover:filters.visited')}
                 active={visitedFilter}
                 icon="checkmark-circle"
                 onPress={() => setVisitedFilter(v => !v)}
@@ -1279,7 +1329,7 @@ export default function DiscoverScreen() {
               <Text style={styles.filterChipTrailing}>▾</Text>
             </Pressable>
             <FilterChip
-              label="Filters"
+              label={t('discover:filters.filters')}
               active={activeFilterCount > 0}
               onPress={() => setFiltersVisible(true)}
               icon="options-outline"
@@ -1291,7 +1341,7 @@ export default function DiscoverScreen() {
           <View style={styles.searchBar}>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search gyms, classes..."
+              placeholder={t('discover:list.searchPlaceholder')}
               placeholderTextColor={MUTED}
               value={search}
               onChangeText={setSearch}
@@ -1305,7 +1355,7 @@ export default function DiscoverScreen() {
           </View>
 
           <Text style={styles.sectionLabel}>
-            {filtered.length} PARTNER{filtered.length !== 1 ? 'S' : ''} · {sortLabel.toUpperCase()}
+            {t('discover:list.count', { count: filtered.length, sort: sortLabel.toUpperCase() })}
           </Text>
         </View>
 
@@ -1327,14 +1377,14 @@ export default function DiscoverScreen() {
           {filtered.length === 0 && (
           <View style={styles.emptyState}>
             <Ionicons name="search-outline" size={32} color={MUTED} />
-            <Text style={styles.emptyText}>No partners match your filters</Text>
+            <Text style={styles.emptyText}>{t('discover:list.empty')}</Text>
             <Pressable onPress={() => {
               setOpenNowFilter(false);
               setVisitedFilter(false);
-              setMaxDistanceMi(null);
+              setMaxDistancePick(null);
               setSearch('');
             }}>
-              <Text style={styles.emptyReset}>Clear filters</Text>
+              <Text style={styles.emptyReset}>{t('discover:list.clearFilters')}</Text>
             </Pressable>
           </View>
           )}
@@ -1374,9 +1424,9 @@ export default function DiscoverScreen() {
             <Text style={styles.comingSoonPlus}>+</Text>
           </View>
           <View style={styles.comingSoonInfo}>
-            <Text style={styles.comingSoonTitle}>Can't find your venue?</Text>
+            <Text style={styles.comingSoonTitle}>{t('discover:list.requestTitle')}</Text>
             <Text style={styles.comingSoonSub}>
-              Request it and we'll work on adding it to POWR.
+              {t('discover:list.requestBody')}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={DIM} />
@@ -1482,13 +1532,13 @@ export default function DiscoverScreen() {
                     <View style={styles.modalDetailItem}>
                       <View style={[styles.modalStatusDot, selectedPartner.isOpenNow ? styles.modalStatusOpen : styles.modalStatusClosed]} />
                       <Text style={[styles.modalDetailText, { color: selectedPartner.isOpenNow ? '#4ade80' : '#f87171' }]}>
-                        {selectedPartner.isOpenNow ? 'Open now' : 'Closed'}
+                        {selectedPartner.isOpenNow ? t('discover:partner.openNow') : t('discover:partner.closed')}
                       </Text>
                     </View>
-                    {formatHours(selectedPartner.openingHours) !== null && (
+                    {formatHours(selectedPartner.openingHours, t) !== null && (
                       <View style={styles.modalDetailItem}>
                         <Ionicons name="time-outline" size={13} color={DIM} />
-                        <Text style={styles.modalDetailText}>{formatHours(selectedPartner.openingHours)}</Text>
+                        <Text style={styles.modalDetailText}>{formatHours(selectedPartner.openingHours, t)}</Text>
                       </View>
                     )}
                     <View style={styles.modalDetailItem}>
@@ -1515,17 +1565,17 @@ export default function DiscoverScreen() {
                     <View style={styles.trainersSection}>
                       <View style={styles.trainersDivider} />
                       <Text style={styles.trainersSectionTitle}>{teamHeading(trainers)}</Text>
-                      {trainers.map(t => (
+                      {trainers.map(trainer => (
                         <TrainerCard
-                          key={t.id}
-                          trainer={t}
-                          line={teamLine(t, trainers)}
-                          expanded={expandedTrainerId === t.id}
+                          key={trainer.id}
+                          trainer={trainer}
+                          line={teamLine(trainer, trainers)}
+                          expanded={expandedTrainerId === trainer.id}
                           onToggle={() => {
                             LayoutAnimation.configureNext(
                               LayoutAnimation.create(260, 'easeInEaseOut', 'opacity'),
                             );
-                            setExpandedTrainerId(prev => (prev === t.id ? null : t.id));
+                            setExpandedTrainerId(prev => (prev === trainer.id ? null : trainer.id));
                           }}
                         />
                       ))}
@@ -1549,7 +1599,7 @@ export default function DiscoverScreen() {
                       styles.preferredBtnText,
                       preferredGymId === selectedPartner.dbId && { color: GOLD },
                     ]}>
-                      {preferredGymId === selectedPartner.dbId ? 'Home Gym' : 'Set as Home Gym'}
+                      {preferredGymId === selectedPartner.dbId ? t('discover:partner.homeGym') : t('discover:partner.setHomeGym')}
                     </Text>
                   </Pressable>
 
@@ -1570,7 +1620,7 @@ export default function DiscoverScreen() {
                     }}
                   >
                     <Ionicons name="navigate" size={18} color="#0d0d0d" />
-                    <Text style={styles.actionButtonText}>Get Directions</Text>
+                    <Text style={styles.actionButtonText}>{t('discover:partner.directions')}</Text>
                   </Pressable>
                 </View>
               </ScrollView>
@@ -1630,11 +1680,11 @@ export default function DiscoverScreen() {
               <Ionicons name="chevron-back" size={20} color={TEXT} />
             </Pressable>
             <View style={styles.walkNavSummary}>
-              <Text style={styles.walkNavTitle} numberOfLines={1}>{routePartner?.name ?? 'Route'}</Text>
+              <Text style={styles.walkNavTitle} numberOfLines={1}>{routePartner?.name ?? t('discover:walkNav.routeFallback')}</Text>
               <Text style={styles.walkNavMeta}>
                 {routeSummary
-                  ? `${formatRouteEta(routeSummary.durationMin)} • ${routeSummary.distanceKm.toFixed(1)} km walk`
-                  : 'Walking route'}
+                  ? t('discover:walkNav.summary', { eta: formatRouteEta(routeSummary.durationMin, t), distance: fixed1(routeSummary.distanceKm) })
+                  : t('discover:walkNav.walkingRoute')}
               </Text>
             </View>
             <Pressable
@@ -1647,7 +1697,7 @@ export default function DiscoverScreen() {
 
           {activeStep && (
             <View style={[styles.nextStepCard, { top: insets.top + 64 }]}>
-              <Text style={styles.nextStepLabel}>Next</Text>
+              <Text style={styles.nextStepLabel}>{t('discover:walkNav.next')}</Text>
               <Text style={styles.nextStepInstruction} numberOfLines={2}>{activeStep.instruction}</Text>
               <Text style={styles.nextStepMeta}>{activeStep.distanceText} • {activeStep.durationText}</Text>
             </View>
@@ -1674,7 +1724,7 @@ export default function DiscoverScreen() {
               }}
             >
               <Ionicons name="locate" size={14} color="#0d0d0d" />
-              <Text style={styles.routeStartButtonText}>Recenter</Text>
+              <Text style={styles.routeStartButtonText}>{t('discover:walkNav.recenter')}</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [styles.routeClearButton, pressed && { opacity: 0.75 }]}
@@ -1683,7 +1733,7 @@ export default function DiscoverScreen() {
                 fitNavToOverview();
               }}
             >
-              <Text style={styles.routeClearButtonText}>Overview</Text>
+              <Text style={styles.routeClearButtonText}>{t('discover:walkNav.overview')}</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [styles.routeClearButton, pressed && { opacity: 0.75 }]}
@@ -1696,7 +1746,7 @@ export default function DiscoverScreen() {
                 setRouteStepsVisible(false);
               }}
             >
-              <Text style={styles.routeClearButtonText}>End Route</Text>
+              <Text style={styles.routeClearButtonText}>{t('discover:walkNav.endRoute')}</Text>
             </Pressable>
           </View>
         </View>
@@ -1713,9 +1763,9 @@ export default function DiscoverScreen() {
           <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setRouteStepsVisible(false)} />
           <View style={[styles.stepsSheet, { paddingBottom: Math.max(insets.bottom, 24) }]}>
             <View style={styles.modalHandle} />
-            <Text style={styles.sortTitle}>Walking Directions</Text>
+            <Text style={styles.sortTitle}>{t('discover:steps.title')}</Text>
             {routePartner && (
-              <Text style={styles.stepsDestination} numberOfLines={1}>To {routePartner.name}</Text>
+              <Text style={styles.stepsDestination} numberOfLines={1}>{t('discover:steps.destination', { name: routePartner.name })}</Text>
             )}
             <ScrollView
               style={styles.stepsScroll}
@@ -1724,9 +1774,9 @@ export default function DiscoverScreen() {
               nestedScrollEnabled
             >
               {routeStepsLoading ? (
-                <Text style={styles.stepsLoadingText}>Loading route steps...</Text>
+                <Text style={styles.stepsLoadingText}>{t('discover:steps.loading')}</Text>
               ) : routeSteps.length === 0 ? (
-                <Text style={styles.stepsLoadingText}>No detailed steps available yet.</Text>
+                <Text style={styles.stepsLoadingText}>{t('discover:steps.empty')}</Text>
               ) : (
                 routeSteps.map((step, index) => (
                   <View
@@ -1749,7 +1799,7 @@ export default function DiscoverScreen() {
               style={[styles.actionButton, { marginTop: 12 }]}
               onPress={() => setRouteStepsVisible(false)}
             >
-              <Text style={styles.actionButtonText}>Done</Text>
+              <Text style={styles.actionButtonText}>{t('discover:steps.done')}</Text>
             </Pressable>
           </View>
         </View>
@@ -1765,11 +1815,11 @@ export default function DiscoverScreen() {
         <Pressable style={styles.modalOverlay} onPress={() => setSortMenuVisible(false)}>
           <View style={[styles.sortSheet, { paddingBottom: Math.max(insets.bottom, 24) }]}>
             <View style={styles.modalHandle} />
-            <Text style={styles.sortTitle}>Sort by</Text>
+            <Text style={styles.sortTitle}>{t('discover:sort.title')}</Text>
             {([
-              { key: 'nearest', label: 'Nearest', icon: 'location-outline' },
-              { key: 'pts',     label: 'Most Points', icon: 'star-outline' },
-              { key: 'az',      label: 'A–Z', icon: 'text-outline' },
+              { key: 'nearest', label: t('discover:sort.nearest'), icon: 'location-outline' },
+              { key: 'pts',     label: t('discover:sort.points'), icon: 'star-outline' },
+              { key: 'az',      label: t('discover:sort.az'), icon: 'text-outline' },
             ] as { key: SortMode; label: string; icon: string }[]).map(opt => (
               <Pressable
                 key={opt.key}
@@ -1802,27 +1852,29 @@ export default function DiscoverScreen() {
           <Pressable style={[styles.filtersSheet, { paddingBottom: Math.max(insets.bottom, 24) }]} onPress={e => e.stopPropagation()}>
             <View style={styles.modalHandle} />
             <View style={styles.filtersHeader}>
-              <Text style={styles.sortTitle}>Filters</Text>
+              <Text style={styles.sortTitle}>{t('discover:filters.title')}</Text>
               <Pressable onPress={() => {
-                setMaxDistanceMi(null);
+                setMaxDistancePick(null);
               }}>
-                <Text style={styles.resetText}>Reset</Text>
+                <Text style={styles.resetText}>{t('discover:filters.reset')}</Text>
               </Pressable>
             </View>
 
             {/* Max distance */}
-            <Text style={[styles.filterSectionLabel, { marginTop: 20 }]}>MAX DISTANCE</Text>
+            <Text style={[styles.filterSectionLabel, { marginTop: 20 }]}>{t('discover:filters.maxDistance')}</Text>
             <View style={styles.distanceRow}>
-              {([null, 1, 5, 10, 25] as (number | null)[]).map(d => {
-                const active = maxDistanceMi === d;
+              {([null, ...DISTANCE_FILTER_STEPS[distanceUnit]] as (number | null)[]).map(d => {
+                const active = maxDistance === d;
                 return (
                   <Pressable
                     key={String(d)}
                     style={[styles.distanceChip, active && styles.distanceChipActive]}
-                    onPress={() => setMaxDistanceMi(d)}
+                    onPress={() => setMaxDistancePick(d === null ? null : { value: d, unit: distanceUnit })}
                   >
                     <Text style={[styles.distanceChipText, active && styles.distanceChipTextActive]}>
-                      {d === null ? 'Any' : `${d} mi`}
+                      {d === null
+                        ? t('discover:filters.any')
+                        : t(distanceUnit === 'km' ? 'discover:distance.km' : 'discover:distance.miles', { distance: d })}
                     </Text>
                   </Pressable>
                 );
@@ -1834,7 +1886,7 @@ export default function DiscoverScreen() {
               onPress={() => setFiltersVisible(false)}
             >
               <Text style={styles.actionButtonText}>
-                Show {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+                {t('discover:filters.showResults', { count: filtered.length })}
               </Text>
             </Pressable>
           </Pressable>
@@ -1860,18 +1912,18 @@ export default function DiscoverScreen() {
               {reqSent ? (
                 <View style={styles.requestSentBox}>
                   <Ionicons name="checkmark-circle" size={42} color={GOLD} />
-                  <Text style={styles.requestSentTitle}>Thanks!</Text>
-                  <Text style={styles.requestSentBody}>We'll take a look and try to add it.</Text>
+                  <Text style={styles.requestSentTitle}>{t('discover:request.sentTitle')}</Text>
+                  <Text style={styles.requestSentBody}>{t('discover:request.sentBody')}</Text>
                 </View>
               ) : (
                 <>
-                  <Text style={styles.sortTitle}>Request a gym</Text>
-                  <Text style={styles.requestSub}>Tell us where you train and we'll work on adding it.</Text>
+                  <Text style={styles.sortTitle}>{t('discover:request.title')}</Text>
+                  <Text style={styles.requestSub}>{t('discover:request.body')}</Text>
                   <TextInput
                     style={styles.requestInput}
                     value={reqName}
                     onChangeText={setReqName}
-                    placeholder="Gym name"
+                    placeholder={t('discover:request.namePlaceholder')}
                     placeholderTextColor={MUTED}
                     autoCapitalize="words"
                   />
@@ -1879,7 +1931,7 @@ export default function DiscoverScreen() {
                     style={styles.requestInput}
                     value={reqLocation}
                     onChangeText={setReqLocation}
-                    placeholder="City or address (optional)"
+                    placeholder={t('discover:request.locationPlaceholder')}
                     placeholderTextColor={MUTED}
                     autoCapitalize="words"
                   />
@@ -1894,10 +1946,10 @@ export default function DiscoverScreen() {
                   >
                     {reqSubmitting
                       ? <ActivityIndicator color="#0d0d0d" size="small" />
-                      : <Text style={styles.actionButtonText}>Send Request</Text>}
+                      : <Text style={styles.actionButtonText}>{t('discover:request.send')}</Text>}
                   </Pressable>
                   <Pressable onPress={() => setRequestVisible(false)} hitSlop={8}>
-                    <Text style={styles.requestCancel}>Cancel</Text>
+                    <Text style={styles.requestCancel}>{t('common:actions.cancel')}</Text>
                   </Pressable>
                 </>
               )}
@@ -1997,6 +2049,7 @@ function PartnerListRow({
 }: {
   partner: Partner; isActive?: boolean; isPreferred?: boolean; isVisited?: boolean; onPress?: () => void; onStarPress?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Pressable
       style={({ pressed }) => [
@@ -2028,7 +2081,7 @@ function PartnerListRow({
           )}
         </View>
         <Text style={styles.partnerMeta} numberOfLines={1}>
-          {isActive ? 'Session active' : partner.isOpenNow ? 'Open now' : 'Closed'} · {partner.area}
+          {isActive ? t('discover:list.sessionActive') : partner.isOpenNow ? t('discover:list.openNow') : t('discover:list.closed')} · {partner.area}
         </Text>
       </View>
       <View style={styles.partnerRight}>
@@ -2054,6 +2107,7 @@ function TrainerCard({
   /** Their role (once the team is mixed) and experience: shared/gymTeam.ts. */
   trainer: Trainer; line: string; expanded: boolean; onToggle: () => void;
 }) {
+  const { t } = useTranslation();
   const hasProfile = !!trainer.profile_url;
   const hasBooking = !!trainer.booking_url;
 
@@ -2148,7 +2202,7 @@ function TrainerCard({
                   ]}
                 >
                   <Ionicons name="calendar" size={15} color="#0d0d0d" />
-                  <Text style={styles.trainerBookBtnText}>Book Session</Text>
+                  <Text style={styles.trainerBookBtnText}>{t('discover:partner.bookSession')}</Text>
                 </Pressable>
               )}
               {hasProfile && (
@@ -2161,7 +2215,7 @@ function TrainerCard({
                   ]}
                 >
                   <Ionicons name="open-outline" size={14} color={TEXT} />
-                  <Text style={styles.trainerProfileBtnText}>View Profile</Text>
+                  <Text style={styles.trainerProfileBtnText}>{t('discover:partner.viewProfile')}</Text>
                 </Pressable>
               )}
             </View>

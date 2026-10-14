@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
@@ -54,6 +55,7 @@ const BORDER = '#222222';
  */
 export default function HealthPrimeSheet() {
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const { user } = useAuth();
     const { activeGeofence } = useActiveGeofence();
     const health = useHealthData();
@@ -199,7 +201,7 @@ export default function HealthPrimeSheet() {
 
     if (mode === 'hidden') return null;
 
-    const platformName = Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect';
+    const ios = Platform.OS === 'ios';
     const isReconnect = mode === 'reconnect';
 
     return (
@@ -209,49 +211,43 @@ export default function HealthPrimeSheet() {
                 <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
                     <View style={styles.handle} />
 
-                    <Text style={styles.eyebrow}>STEP TRACKING</Text>
+                    <Text style={styles.eyebrow}>{t('nudges:healthPrime.eyebrow')}</Text>
                     <Text style={styles.headline}>
-                        {isReconnect ? (
-                            <>
-                                Your steps{'\n'}
-                                <Text style={styles.headlineGold}>stopped counting.</Text>
-                            </>
-                        ) : mode === 'settings' ? (
-                            <>
-                                One switch{'\n'}
-                                <Text style={styles.headlineGold}>from earning.</Text>
-                            </>
-                        ) : (
-                            <>
-                                Every step,{'\n'}
-                                <Text style={styles.headlineGold}>banked.</Text>
-                            </>
-                        )}
+                        <Trans
+                            i18nKey={
+                                isReconnect
+                                    ? 'nudges:healthPrime.headline.reconnect'
+                                    : mode === 'settings'
+                                        ? 'nudges:healthPrime.headline.settings'
+                                        : 'nudges:healthPrime.headline.connect'
+                            }
+                            components={{ gold: <Text style={styles.headlineGold} /> }}
+                        />
                     </Text>
                     <Text style={styles.body}>
                         {isReconnect
-                            ? `${platformName} is no longer sharing with POWR — its permissions can switch off after a reinstall or update. Your phone is still counting every step; POWR just can't see them. Reconnect and today's walking starts earning again.`
+                            ? (ios ? t('nudges:healthPrime.body.reconnectIos') : t('nudges:healthPrime.body.reconnectAndroid'))
                             : mode === 'settings'
-                                ? `POWR needs read access in ${platformName} to count your steps. Flip it on in ${Platform.OS === 'ios' ? 'the Health app' : 'Health Connect'} and this picks up right where you left off.`
-                                : `Your phone already counts every step you take. Connect ${platformName} and they turn into POWR points automatically — no logging, no check-ins, just walking.`}
+                                ? (ios ? t('nudges:healthPrime.body.settingsIos') : t('nudges:healthPrime.body.settingsAndroid'))
+                                : (ios ? t('nudges:healthPrime.body.connectIos') : t('nudges:healthPrime.body.connectAndroid'))}
                     </Text>
 
                     {mode === 'settings' ? (
                         <Text style={styles.settingsPath}>
-                            {Platform.OS === 'ios'
-                                ? 'Health › Profile › Apps › POWR'
-                                : 'Health Connect › App permissions › POWR'}
+                            {ios
+                                ? t('nudges:healthPrime.path.ios')
+                                : t('nudges:healthPrime.path.android')}
                         </Text>
                     ) : (
                         <View style={styles.tierMock}>
                             {([[4000, 2], [8000, 4], [10000, 5]] as const).map(([steps, pts]) => (
                                 <View key={steps} style={styles.tierRow}>
                                     <Ionicons name="footsteps" size={13} color={GREEN} />
-                                    <Text style={styles.tierSteps}>{steps.toLocaleString()} steps</Text>
+                                    <Text style={styles.tierSteps}>{t('health:onboarding.sync.steps', { steps: steps.toLocaleString() })}</Text>
                                     <View style={styles.tierTrack}>
                                         <View style={[styles.tierFill, { width: `${(steps / 10000) * 100}%` as const }]} />
                                     </View>
-                                    <Text style={styles.tierPts}>+{pts} pts</Text>
+                                    <Text style={styles.tierPts}>{t('nudges:healthPrime.tierPts', { points: pts })}</Text>
                                 </View>
                             ))}
                         </View>
@@ -264,17 +260,19 @@ export default function HealthPrimeSheet() {
                     >
                         <Text style={styles.primaryLabel}>
                             {busy
-                                ? 'REQUESTING...'
+                                ? t('permissions:cta.requesting')
                                 : mode === 'settings'
-                                    ? 'OPEN HEALTH SETTINGS'
+                                    ? t('nudges:healthPrime.cta.settings')
                                     : isReconnect
-                                        ? 'RECONNECT'
-                                        : `CONNECT ${platformName.toUpperCase()}`}
+                                        ? t('nudges:healthPrime.cta.reconnect')
+                                        : ios
+                                            ? t('health:actions.connectAppleHealth')
+                                            : t('health:actions.connectHealthConnect')}
                         </Text>
                     </Pressable>
 
                     <Pressable style={styles.skipButton} onPress={dismiss}>
-                        <Text style={styles.skipLabel}>Not now</Text>
+                        <Text style={styles.skipLabel}>{t('permissions:fix.notNow')}</Text>
                     </Pressable>
                 </View>
             </View>

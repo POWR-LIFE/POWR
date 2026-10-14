@@ -92,6 +92,22 @@ describe('app catalogs', () => {
     expect(missing).toEqual([]);
   });
 
+  it('never names a <Trans> tag after a void HTML element (it renders empty and drops the styling)', () => {
+    const VOID = /<\/?(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\b/i;
+    const bad = Object.keys(CATALOGS).flatMap(lang =>
+      Object.entries(flattenLanguage(lang)).filter(([, text]) => VOID.test(text)).map(([key]) => `${lang} ${key}`),
+    );
+    expect(bad).toEqual([]);
+  });
+
+  it('writes French with typographic apostrophes and no-break spaces before ? ! : ; and inside « »', () => {
+    const problems = Object.entries(flattenLanguage('fr')).flatMap(([key, text]) => [
+      ...(text.includes("'") ? [`${key}: straight apostrophe, use ’`] : []),
+      ...(/ [?!:;»]|« /.test(text) ? [`${key}: plain space where French needs a no-break space (U+00A0)`] : []),
+    ]);
+    expect(problems).toEqual([]);
+  });
+
   it('only switches on languages that cover every English string', () => {
     // A loop, not it.each: today the list is just English, and it.each refuses an empty table.
     for (const lang of APP_LANGUAGES.filter(l => l !== 'en')) {

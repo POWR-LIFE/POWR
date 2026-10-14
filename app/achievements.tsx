@@ -12,6 +12,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
@@ -103,6 +104,7 @@ const SHOW_BADGES = false;
 export default function AchievementsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const { totalEarned } = usePoints();
   const { all, earnedCount, totalCount, loading } = useAchievements(totalEarned);
 
@@ -138,7 +140,9 @@ export default function AchievementsScreen() {
   const summaryEarned = SHOW_BADGES && mainView === 'badges' ? earnedCount : levelsUnlocked;
   const summaryTotal  = SHOW_BADGES && mainView === 'badges' ? totalCount : levelsTotal;
   const summaryPct    = SHOW_BADGES && mainView === 'badges' ? pct : levelPct;
-  const summaryLabel  = SHOW_BADGES && mainView === 'badges' ? 'earned' : 'levels';
+  const summaryLabel  = SHOW_BADGES && mainView === 'badges'
+    ? t('points:achievementsScreen.summary.earned')
+    : t('points:achievementsScreen.summary.levels');
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -149,7 +153,7 @@ export default function AchievementsScreen() {
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn}>
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>ACHIEVEMENTS</Text>
+        <Text style={styles.headerTitle}>{t('points:achievementsScreen.title')}</Text>
         <View style={styles.headerBtn} />
       </View>
 
@@ -178,7 +182,7 @@ export default function AchievementsScreen() {
               onPress={() => setMainView(v)}
             >
               <Text style={[styles.viewTabText, mainView === v && styles.viewTabTextActive]}>
-                {v === 'levels' ? 'LEVELS' : 'BADGES'}
+                {v === 'levels' ? t('points:achievementsScreen.tabs.levels') : t('points:achievementsScreen.tabs.badges')}
               </Text>
             </Pressable>
           ))}
@@ -243,7 +247,7 @@ export default function AchievementsScreen() {
                     <Ionicons name={meta.icon as any} size={11} color={isActive ? colour : MUTED} />
                   )}
                   <Text style={[styles.filterPillText, isActive && { color: colour }]}>
-                    {cat === 'all' ? 'All' : meta!.label}
+                    {cat === 'all' ? t('points:achievementsScreen.filterAll') : meta!.label}
                   </Text>
                 </Pressable>
               );
@@ -257,14 +261,14 @@ export default function AchievementsScreen() {
               onPress={() => setShowEarnedOnly(v => !v)}
             >
               <Ionicons name="checkmark-circle-outline" size={11} color={showEarnedOnly ? GOLD : MUTED} />
-              <Text style={[styles.filterPillText, showEarnedOnly && { color: GOLD }]}>Earned</Text>
+              <Text style={[styles.filterPillText, showEarnedOnly && { color: GOLD }]}>{t('points:achievementsScreen.filterEarned')}</Text>
             </Pressable>
           </ScrollView>
 
           <View style={styles.catProgress}>
             <Text style={styles.catProgressText}>
               {earnedInCategory} / {totalInCategory}
-              {activeCategory !== 'all' ? `  ·  ${CATEGORY_META[activeCategory].label}` : '  ·  All categories'}
+              {activeCategory !== 'all' ? `  ·  ${CATEGORY_META[activeCategory].label}` : `  ·  ${t('points:achievementsScreen.allCategories')}`}
             </Text>
           </View>
 
@@ -275,12 +279,12 @@ export default function AchievementsScreen() {
           >
             {loading ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>Loading…</Text>
+                <Text style={styles.emptyText}>{t('points:achievementsScreen.loading')}</Text>
               </View>
             ) : filtered.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="trophy-outline" size={40} color={MUTED} />
-                <Text style={styles.emptyText}>No achievements here yet</Text>
+                <Text style={styles.emptyText}>{t('points:achievementsScreen.empty')}</Text>
               </View>
             ) : (
               <View style={styles.tileGrid}>
@@ -305,6 +309,7 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
   isNext: boolean;
   totalEarned: number;
 }) {
+  const { t } = useTranslation();
   // Four states: locked (named, artwork concealed), next (locked + XP-to-unlock
   // counter), earned (tier-accent premium), current (gold hero).
   const accent = isCurrent ? GOLD : TIER_ACCENT[levelDef.tier];
@@ -342,7 +347,7 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
           <Ionicons name="lock-closed" size={9} color="rgba(255,255,255,0.7)" />
         </View>
 
-        <Text style={[styles.levelNum, styles.levelNumLocked]}>LVL {levelDef.level}</Text>
+        <Text style={[styles.levelNum, styles.levelNumLocked]}>{t('points:achievementsScreen.levelNumber', { level: levelDef.level })}</Text>
 
         {/* Concealed artwork — a faded POWR mark stands in for it, the same
             placeholder the onboarding avatar uses before a photo is picked. */}
@@ -368,7 +373,7 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
           />
         ) : (
           <Text style={[styles.levelXp, { color: 'rgba(255,255,255,0.25)' }]}>
-            Unlock at {xpLabel} pts
+            {t('points:achievementsScreen.unlockAt', { xp: xpLabel })}
           </Text>
         )}
       </View>
@@ -391,7 +396,7 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
           <Text style={styles.levelSealCheck}>✓</Text>
         </View>
 
-        <Text style={[styles.levelNum, styles.levelNumOverlay]}>LVL {levelDef.level}</Text>
+        <Text style={[styles.levelNum, styles.levelNumOverlay]}>{t('points:achievementsScreen.levelNumber', { level: levelDef.level })}</Text>
 
         {/* Name + XP pinned to the bottom */}
         <View style={styles.levelImageFooter}>
@@ -399,7 +404,7 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
             {levelDef.name.toUpperCase()}
           </Text>
           <Text style={[styles.levelXp, { color: accent }]}>
-            {xpLabel} pts
+            {t('points:achievementsScreen.xp', { xp: xpLabel })}
           </Text>
         </View>
       </View>
@@ -425,7 +430,7 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
 
       {/* Level number */}
       <Text style={[styles.levelNum, styles.levelNumEarned]}>
-        LVL {levelDef.level}
+        {t('points:achievementsScreen.levelNumber', { level: levelDef.level })}
       </Text>
 
       {/* Premium icon */}
@@ -440,7 +445,7 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
 
       {/* XP threshold */}
       <Text style={[styles.levelXp, { color: accent }]}>
-        {xpLabel} pts
+        {t('points:achievementsScreen.xp', { xp: xpLabel })}
       </Text>
     </View>
   );
@@ -457,6 +462,7 @@ function NextLevelCounter({ xpToGo, progress, totalEarned, target, accent }: {
   target: number;
   accent: string;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.nextCounter}>
       <View style={styles.nextTrack}>
@@ -468,7 +474,7 @@ function NextLevelCounter({ xpToGo, progress, totalEarned, target, accent }: {
         />
       </View>
       <Text style={[styles.nextToGo, { color: accent }]}>
-        {xpToGo.toLocaleString()} pts to go
+        {t('points:achievementsScreen.toGo', { xp: xpToGo.toLocaleString() })}
       </Text>
       <Text style={styles.nextOf}>
         {totalEarned.toLocaleString()} / {target.toLocaleString()}
@@ -488,6 +494,7 @@ function AchievementTile({
   width: number;
   totalEarned: number;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const rarity = RARITY_META[a.rarity];
   const targetLevel = a.unlock.type === 'level' ? a.unlock.level : undefined;
@@ -503,8 +510,8 @@ function AchievementTile({
   const accentAlpha = a.earned ? 0.9 : 0.1 + levelProgress * 0.7;
   const accentBorder = `rgba(232,210,0,${accentAlpha.toFixed(3)})`;
   const progressLabel = a.earned
-    ? 'COMPLETE'
-    : `${Math.round(levelProgress * 100)}% to LV${targetLevel}`;
+    ? t('points:achievementsScreen.complete')
+    : t('points:achievementsScreen.progressTo', { percent: Math.round(levelProgress * 100), level: targetLevel });
   const isCurrentTarget = Boolean(targetLevel && currentLevel.level + 1 === targetLevel);
 
   return (

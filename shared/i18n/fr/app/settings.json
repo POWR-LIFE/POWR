@@ -4,7 +4,7 @@
     "title": "Langue",
     "hint": "POWR suit la langue de ton téléphone, sauf si tu en choisis une ici.",
     "phone": "Langue du téléphone",
-    "phoneUnavailable": "{{language}} n'est pas encore disponible, POWR s'affiche donc en anglais",
+    "phoneUnavailable": "{{language}} n’est pas encore disponible, POWR s’affiche donc en anglais",
     "draft": "Brouillon",
     "previewOn": {
       "title": "Aperçu des traductions activé",
@@ -14,5 +14,264 @@
       "title": "Aperçu des traductions désactivé",
       "body": "POWR revient aux langues qui sont prêtes."
     }
+  },
+  "units": {
+    "section": "Unités",
+    "title": "Unités de distance",
+    "hint": "En mode automatique, Découvrir affiche les miles et tes séances suivent les unités habituelles de ta région.",
+    "auto": "Automatique",
+    "miles": "Miles",
+    "milesDetail": "mi · mph",
+    "kilometres": "Kilomètres",
+    "kilometresDetail": "km · km/h",
+    "swimNote": "La natation reste toujours en mètres."
+  },
+  "main": {
+    "title": "Paramètres",
+    "section": {
+      "account": "Compte",
+      "affiliate": "Affiliation",
+      "points": "Points",
+      "activityFocus": "Activités phares",
+      "onYourPhone": "Sur ton téléphone",
+      "wearables": "Montres connectées",
+      "connections": "Connexions",
+      "notifications": "Notifications",
+      "email": "E-mail",
+      "social": "Social",
+      "privacy": "Confidentialité",
+      "admin": "Admin",
+      "support": "Assistance"
+    },
+    "account": {
+      "editProfile": "Modifier le profil",
+      "email": "E-mail",
+      "changePassword": "Changer de mot de passe",
+      "powrIdHint": "À donner si on doit te retrouver · c’est aussi ton code d’invitation",
+      "copied": "Copié",
+      "invitedBy": "Invitation de",
+      "invitedByHint": "Vous gagnez tous les deux 20 POWR après ta première séance vérifiée",
+      "haveInviteCode": "Tu as un code d’invitation ?",
+      "inviteDaysLeft": "Ajoute un code d’invitation dans tes premiers jours — plus que {{days}} jours",
+      "inviteLastDay": "Dernier jour pour ajouter un code d’invitation"
+    },
+    "affiliate": {
+      "row": "Affiliation",
+      "hint": "Ton code, ton lien, tes inscriptions et tes récompenses"
+    },
+    "points": {
+      "logManually": "Saisir une activité à la main",
+      "history": "Historique des points"
+    },
+    "activityFocus": "Activités phares",
+    "health": {
+      "phoneHint": "Les pas et les séances enregistrés par ton téléphone. Les appareils Garmin et Samsung se synchronisent automatiquement.",
+      "wearablesHint": "Des données plus riches — sommeil, fréquence cardiaque, séances vérifiées.",
+      "connectedDevice": "Appareil connecté",
+      "noneConnected": "Aucun",
+      "connectHint": "Connecte une source santé pour valider tes séances et gagner des points avec tes pas et ton sommeil."
+    },
+    "connections": {
+      "location": "Localisation",
+      "locationHintGyms": "Valide tes séances dans les salles partenaires",
+      "locationHintVenues": "Valide tes séances dans les lieux partenaires",
+      "background": "Localisation en arrière-plan",
+      "backgroundHint": "Ton check-in, même quand l’app est fermée",
+      "battery": "Activité en arrière-plan",
+      "batteryHint": "Empêche Android de mettre en veille la détection des check-ins",
+      "status": {
+        "denied": "Refusée",
+        "notSetUp": "Non configurée",
+        "approximate": "Approximative",
+        "enabled": "Activée",
+        "always": "Toujours",
+        "allTheTime": "Toujours",
+        "whileUsing": "En utilisation",
+        "off": "Désactivée"
+      },
+      "locationRequiredGyms": "La localisation est nécessaire pour gagner des points dans les lieux géolocalisés et les salles partenaires.",
+      "locationRequiredVenues": "La localisation est nécessaire pour gagner des points dans les lieux partenaires.",
+      "backgroundMissing": "Sans localisation en arrière-plan, POWR ne peut faire ton check-in que lorsque l’app est ouverte."
+    },
+    "notifications": {
+      "offBanner": "<strong>Les notifications sont désactivées.</strong> Les check-ins en salle et les alertes récompenses ne t’arriveront pas, et les boutons ci-dessous n’auront aucun effet tant que tu n’auras pas activé les notifications.",
+      "turnOn": "Activer les notifications",
+      "showMeHow": "Montre-moi comment",
+      "gymCheckIn": "Alertes de check-in en salle",
+      "rewards": "Alertes récompenses",
+      "workoutSync": "Synchro des séances",
+      "workoutSyncHint": "Quand une séance de ta montre arrive et rapporte des POWR",
+      "streak": "Alertes de série",
+      "streakHint": "Un rappel le soir quand ta série est en danger, et des offres pour la sauver",
+      "levelUp": "Nouveaux niveaux",
+      "dailyNudges": "Rappels quotidiens",
+      "dailyNudgesHint": "Rappels d’objectif de pas et, de temps en temps, un coup de pouce pour bouger — jamais plus d’un par jour",
+      "nearby": "Récompenses à proximité",
+      "nearbyHint": "Un petit signal quand une récompense est boostée près de toi",
+      "friends": "Activité des amis",
+      "friendsHint": "Demandes d’ami et nouvelles des défis partagés",
+      "news": "Nouveautés",
+      "newsHint": "De temps en temps, des annonces sur les nouvelles fonctionnalités et récompenses"
+    },
+    "email": {
+      "weekly": "Bilan de la semaine",
+      "weeklyHint": "Tes points, tes séances et ton classement de la semaine, chaque lundi"
+    },
+    "social": {
+      "together": "Défis Ensemble",
+      "togetherHint": "Relève des défis avec tes amis depuis ton écran d’accueil",
+      "openBoard": "Tableau ouvert des défis",
+      "openBoardHint": "Publie des défis que n’importe quel membre POWR peut relever, et découvre les leurs. Les autres voient ton prénom et ta photo.",
+      "boardAlerts": "Alertes du tableau",
+      "boardAlertsHint": "Préviens-moi quand quelqu’un publie un défi que je peux relever"
+    },
+    "privacy": {
+      "shareActivity": "Partager mon activité",
+      "shareActivityHint": "Tes amis voient tes séances",
+      "gymBoards": "M’afficher dans les classements des salles",
+      "gymBoardsHint": "Ton nom et tes points dans le classement des salles où tu t’entraînes : dans l’app, sur leurs écrans et dans Gym Clash. Désactivé, tu gagnes quand même.",
+      "gymVisits": "Montrer mes passages aux salles",
+      "gymVisitsHint": "Les salles où tu t’entraînes voient tes passages, pour remarquer si tu arrêtes de venir. Jamais tes autres entraînements, tes données de santé ni ta position.",
+      "shareWithGym": "Partager avec {{gym}}",
+      "shareWithGymHint": "Ta salle voit aussi le reste de tes entraînements : courses, sorties vélo, séances à la maison, leur fréquence et leurs horaires. Jamais ton sommeil, ta fréquence cardiaque ni ta position."
+    },
+    "admin": {
+      "partners": "Gérer les partenaires",
+      "athletes": "Candidatures d’athlètes",
+      "challenges": "Gérer les défis"
+    },
+    "support": {
+      "permissions": "Autorisations et configuration",
+      "permissionsHint": "Règle la localisation, les notifications et l’accès santé",
+      "updates": "Rechercher des mises à jour",
+      "updatesHint": "Tu as la v{{version}}",
+      "helpCentre": "Centre d’aide",
+      "terms": "Conditions d’utilisation",
+      "privacy": "Politique de confidentialité"
+    },
+    "signOut": "Se déconnecter",
+    "deleteAccount": "Supprimer le compte",
+    "deleteAlert": {
+      "title": "Supprimer le compte",
+      "body": "Ton compte et toutes les données associées seront définitivement supprimés. Impossible de revenir en arrière.",
+      "confirm": "Supprimer",
+      "supportTitle": "Contacte l’assistance",
+      "supportBody": "Envoie un e-mail à l’assistance pour finaliser la suppression de ton compte. Ta session va maintenant être fermée."
+    },
+    "changeFailed": {
+      "title": "Impossible de modifier ce réglage",
+      "body": "Réessaie dans un instant."
+    }
+  },
+  "providers": {
+    "status": {
+      "primary": "Principale",
+      "connected": "Connecté",
+      "notConnected": "Non connecté"
+    },
+    "healthConnectHint": "Pixel Watch, Galaxy Watch et plus encore",
+    "notConnected": "{{name}} n’est pas connecté",
+    "permissionNotGranted": "L’autorisation n’a pas été accordée. Tu peux l’activer dans les paramètres de Santé Connect.",
+    "permissionNotGrantedAllow": "L’autorisation n’a pas été accordée. Tu peux l’accorder dans les paramètres de Santé Connect.",
+    "openHealthConnect": "Ouvrir Santé Connect",
+    "couldNotStart": "Impossible de lancer la connexion. Réessaie.",
+    "comingSoon": "{{name}} arrive bientôt",
+    "notAvailable": "Cette intégration n’est pas encore disponible.",
+    "connectionFailed": "Échec de la connexion",
+    "setPrimary": "Définir comme source principale",
+    "disconnect": "Déconnecter",
+    "disconnectTitle": "Déconnecter {{name}} ?",
+    "disconnectNative": "POWR arrêtera de lire cette source. Pour révoquer complètement l’accès, désactive aussi l’autorisation dans les réglages de ton téléphone.",
+    "disconnectCloud": "POWR arrêtera de lire cette source et effacera les identifiants enregistrés.",
+    "disconnectDevice": "POWR arrêtera de lire les données de cet appareil et effacera les identifiants enregistrés.",
+    "isPrimary": "C’est ta source principale.",
+    "switchTitle": "Passer à {{name}} ?",
+    "switchBody": "Tu ne peux connecter qu’un appareil à la fois. {{current}} sera déconnecté.",
+    "switchConfirm": "Passer à {{name}}"
+  },
+  "wearables": {
+    "title": "Montres connectées",
+    "hint": "Connecte un appareil pour valider tes séances et gagner des points bonus. Tu peux en changer à tout moment — un seul peut être actif.",
+    "footer": "D’autres appareils se synchronisent automatiquement via l’app Santé ou Santé Connect — connecte-les depuis la section des sources santé, dans les Paramètres."
+  },
+  "activityPreferences": {
+    "title": "Activités phares",
+    "headline": "Tes activités\n<gold>phares ?</gold>",
+    "bodyWithDevices": "Choisis-en jusqu’à {{max}}. On suit automatiquement ce que tes appareils prennent en charge.",
+    "bodyNoDevices": "Choisis-en jusqu’à {{max}}. Sans montre connectée, la plupart se saisissent à la main.",
+    "pickOne": "Choisis au moins une activité",
+    "roomFor_one": "Encore {{count}} activité possible",
+    "roomFor_other": "Encore {{count}} activités possibles",
+    "saving": "ENREGISTREMENT...",
+    "save": "ENREGISTRER"
+  },
+  "permissionsHelp": {
+    "title": "Autorisations et configuration",
+    "intro": "POWR a besoin de quelques autorisations pour te faire gagner des points automatiquement. Voici à quoi sert chacune, et comment la réactiver si elle est désactivée.",
+    "status": {
+      "ok": "Activé",
+      "limited": "Limité",
+      "off": "Désactivé",
+      "unknown": "Gérer"
+    },
+    "openSettings": "Ouvrir les réglages",
+    "location": {
+      "title": "Localisation",
+      "whyGym": "Détecte ton arrivée dans une salle partenaire et te fait gagner des points dans les lieux géolocalisés — même quand l’app est fermée.",
+      "whyVenue": "Détecte ton arrivée dans un lieu partenaire et te fait gagner des points dans les lieux géolocalisés — même quand l’app est fermée.",
+      "ios": {
+        "step1": "Touche « Ouvrir les réglages » ci-dessous pour aller aux réglages de POWR",
+        "step2": "Touche Position",
+        "step3": "Choisis « Toujours » (et active aussi Position exacte)"
+      },
+      "android": {
+        "step1": "Touche « Ouvrir les réglages » ci-dessous pour ouvrir les infos de l’appli POWR",
+        "step2": "Touche Autorisations › Position",
+        "step3": "Choisis « Toujours autoriser » et « Utiliser la position exacte »"
+      },
+      "noteIosGym": "La localisation est activée, mais pas sur « Toujours » — POWR ne peut pas détecter tes arrivées en salle quand l’app est fermée. Si « Toujours » n’apparaît pas encore, choisis d’abord « Lorsque l’app est active », puis reviens.",
+      "noteIosVenue": "La localisation est activée, mais pas sur « Toujours » — POWR ne peut pas détecter tes arrivées dans un lieu partenaire quand l’app est fermée. Si « Toujours » n’apparaît pas encore, choisis d’abord « Lorsque l’app est active », puis reviens.",
+      "noteAndroidGym": "La localisation est activée, mais pas sur « Toujours autoriser » — POWR ne peut pas détecter tes arrivées en salle quand l’app est fermée.",
+      "noteAndroidVenue": "La localisation est activée, mais pas sur « Toujours autoriser » — POWR ne peut pas détecter tes arrivées dans un lieu partenaire quand l’app est fermée."
+    },
+    "battery": {
+      "title": "Activité en arrière-plan",
+      "whyGym": "Permet à POWR de continuer à détecter tes arrivées en salle même quand l’app est complètement fermée. Sans ça, Android peut mettre l’app en veille et rater des check-ins.",
+      "whyVenue": "Permet à POWR de continuer à détecter tes arrivées dans un lieu partenaire même quand l’app est complètement fermée. Sans ça, Android peut mettre l’app en veille et rater des check-ins.",
+      "step1": "Touche « Ouvrir les réglages » ci-dessous",
+      "step2": "Autorise POWR à ignorer l’optimisation de la batterie",
+      "step3": "Ou règle Batterie sur « Sans restriction » dans la page de l’appli POWR"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "whyGym": "Confirme tes check-ins en salle, te prévient quand des points arrivent et t’alerte des récompenses à récupérer.",
+      "whyVenue": "Confirme tes séances, te prévient quand des points arrivent et t’alerte des récompenses à récupérer.",
+      "ios": {
+        "step1": "Ouvre Réglages, puis Notifications",
+        "step2": "Trouve POWR dans la liste",
+        "step3": "Active Autoriser les notifications"
+      },
+      "android": {
+        "step1": "Ouvre Paramètres, puis Applications › POWR",
+        "step2": "Touche Notifications",
+        "step3": "Active les notifications"
+      }
+    },
+    "health": {
+      "why": "Lit tes pas, tes séances et ton sommeil pour les valider et les transformer en points — pas besoin de montre connectée.",
+      "ios": {
+        "step1": "Ouvre l’app Santé",
+        "step2": "Touche ta photo de profil (en haut à droite), puis Confidentialité › Apps",
+        "step3": "Touche POWR et active les catégories que tu veux partager"
+      },
+      "android": {
+        "step1": "Touche « Ouvrir Santé Connect » ci-dessous",
+        "step2": "Va dans Autorisations des applis › POWR",
+        "step3": "Autorise la lecture des données Pas, Exercice et Sommeil"
+      },
+      "openAppleHealth": "Ouvrir l’app Santé",
+      "openHealthConnect": "Ouvrir Santé Connect"
+    },
+    "footer": "Tu as modifié un réglage ? Reviens ici, le statut ci-dessus se mettra à jour. Encore un souci ? Contacte-nous depuis le Centre d’aide."
   }
 }

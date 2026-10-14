@@ -17,8 +17,19 @@ type I18nModule = typeof import('@/lib/i18n');
  * lib/i18n holds module-level state (it IS the app's language), so every test
  * loads a fresh copy after seeding the phone's language and the saved pick.
  */
-async function load(opts: { device?: string; saved?: Record<string, string> } = {}) {
+async function load(opts: { device?: string; saved?: Record<string, string>; drafts?: boolean } = {}) {
   jest.resetModules();
+  // The draft gate is tested against a stand-in list: French and Spanish are
+  // live now, so `drafts` puts them back where a new language would sit.
+  if (opts.drafts) {
+    jest.doMock('@/shared/i18n', () => ({
+      ...jest.requireActual('@/shared/i18n'),
+      APP_LANGUAGES: ['en'],
+      APP_DRAFT_LANGUAGES: ['fr', 'es'],
+    }));
+  } else {
+    jest.dontMock('@/shared/i18n');
+  }
   const tag = opts.device ?? 'en-GB';
   (require('expo-localization').getLocales as jest.Mock).mockReturnValue([
     { languageTag: tag, languageCode: tag.split('-')[0], regionCode: tag.split('-')[1] ?? null, textDirection: 'ltr' },
@@ -32,14 +43,26 @@ async function load(opts: { device?: string; saved?: Record<string, string> } = 
 }
 
 describe('the app language', () => {
-  it('stays English on a French phone while French is only a draft', async () => {
+  it('follows a French phone now French is live', async () => {
     const { mod, i18n } = await load({ device: 'fr-FR' });
+    expect(mod.getLanguageState()).toMatchObject({ language: 'fr', deviceLanguage: 'fr', preview: false, available: ['en', 'fr', 'es'] });
+    expect(i18n.t('settings:language.title')).toBe('Langue');
+  });
+
+  it('stays English on a phone in a language POWR does not speak', async () => {
+    const { mod, i18n } = await load({ device: 'de-DE' });
+    expect(mod.getLanguageState()).toMatchObject({ language: 'en', deviceLanguage: 'de' });
+    expect(i18n.t('settings:language.title')).toBe('Language');
+  });
+
+  it('stays English on a French phone while French is only a draft', async () => {
+    const { mod, i18n } = await load({ device: 'fr-FR', drafts: true });
     expect(mod.getLanguageState()).toMatchObject({ language: 'en', deviceLanguage: 'fr', preview: false, available: ['en'] });
     expect(i18n.t('settings:language.title')).toBe('Language');
   });
 
   it('follows a French phone into the draft once the translation preview is on', async () => {
-    const { mod, i18n } = await load({ device: 'fr-FR', saved: { 'powr:language:preview': '1' } });
+    const { mod, i18n } = await load({ device: 'fr-FR', saved: { 'powr:language:preview': '1' }, drafts: true });
     expect(mod.getLanguageState().language).toBe('fr');
     expect(i18n.t('settings:language.title')).toBe('Langue');
   });
@@ -54,7 +77,7 @@ describe('the app language', () => {
   });
 
   it('ignores a draft pick while the preview is off, and restores it when it comes back', async () => {
-    const { mod } = await load({ device: 'en-GB', saved: { 'powr:language': 'fr' } });
+    const { mod } = await load({ device: 'en-GB', saved: { 'powr:language': 'fr' }, drafts: true });
     expect(mod.getLanguageState()).toMatchObject({ language: 'en', preference: 'fr' });
     await mod.setTranslationPreview(true);
     expect(mod.getLanguageState().language).toBe('fr');

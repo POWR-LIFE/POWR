@@ -5,10 +5,16 @@
 // a hardcoded allowlist — this function cannot email anyone else.
 // Delete once the set is approved and wired to its real triggers.
 //
-// POST { key: "powr-email-previews", only?: string[], to?: string }
+// POST ?lang=fr|es { key: "powr-email-previews", only?: string[], to?: string }
 //   `only` filters by preview id: welcome | weekly | weekly_down | weekly_starter |
-//   invite | invite_approved | partner_welcome | partner_weekly | recovery | level_up
+//   invite | invite_approved | partner_welcome | partner_weekly | recovery | level_up |
+//   reengagement_lapsed_1 | reengagement_lapsed_2 | reengagement_new_1 |
+//   reengagement_new_2 | receipt_code | receipt_link
 //   `to` must be one of ALLOWED_RECIPIENTS (default: the first).
+//   `?lang=` renders the member emails (welcome, weekly*, level_up,
+//   reengagement_*, receipt_*) in that language — drafts included, so French
+//   and Spanish can be reviewed before they go live; anything else is English.
+//   The partner/brand mails and the recovery template stay English.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { sendEmail } from "../_shared/mailgun.ts";
@@ -20,7 +26,12 @@ import {
   partnerWeeklySummaryEmail,
   levelUpEmail,
 } from "../_shared/email-templates.ts";
-import { WEEKLY_SAMPLES } from "../_shared/emails/weekly-summary.samples.ts";
+import { reEngagementEmail, type ReEngagementData } from "../_shared/emails/re-engagement.ts";
+import { redemptionReceiptEmail } from "../_shared/emails/redemption-receipt.ts";
+import { tierLabel } from "../_shared/emails/member-copy.ts";
+import { WEEKLY_SAMPLES, weeklySample } from "../_shared/emails/weekly-summary.samples.ts";
+import { levelName, previewLanguage } from "../_shared/i18n/index.ts";
+import { rewardsReadyFor } from "../_shared/reward-catalogue.ts";
 
 // Work inbox + Jamie's personal Gmail (Gmail is where font/dark-mode quirks show).
 const ALLOWED_RECIPIENTS = ["jamie@powr.life", "jamiemasonwright@gmail.com"];
@@ -93,8 +104,47 @@ function recoveryPreview(): { subject: string; html: string; text: string } {
   };
 }
 
-/** Every preview in send order, with realistic sample data. */
-function buildPreviews(): { id: string; email: { subject: string; html: string; text: string } }[] {
+/** Re-engagement sample — the same shapes send-reengagement-email { sample: true } sends. */
+function reEngagementSample(variant: ReEngagementData["variant"], stage: 1 | 2, lang: string) {
+  // The sample rewards, cheapest first (OMNITY 150, Tribe 220, MATHAN 300).
+  const byCost = WEEKLY_SAMPLES.starter.upcomingRewards ?? [];
+  const lapsed = variant === "lapsed";
+  const balance = lapsed ? 611 : 40;
+  return reEngagementEmail({
+    name: "Jamie Wright",
+    variant,
+    stage,
+    daysAway: lapsed ? (stage === 1 ? 8 : 23) : (stage === 1 ? 3 : 14),
+    balance,
+    lifetimeEarned: lapsed ? 1840 : 40,
+    rewardsReady: rewardsReadyFor(byCost, balance),
+    closestReward: byCost.find((r) => r.cost > balance) ?? null,
+    locationGranted: lapsed,
+    wearable: lapsed ? "Whoop" : null,
+  }, lang);
+}
+
+/** Redemption receipt sample: a code applied by the shop link, or an affiliate link. */
+function receiptSample(kind: "code" | "link", lang: string) {
+  const reward = WEEKLY_SAMPLES.starter.topRewards?.[0];
+  return redemptionReceiptEmail({
+    name: "Jamie Wright",
+    rewardTitle: reward?.title ?? "MATHAN",
+    brand: reward?.brand ?? "MATHAN",
+    valueLabel: reward?.valueLabel ?? "£15 OFF",
+    integrationType: kind === "link" ? "AFFILIATE" : "POOL",
+    code: kind === "link" ? null : "POWR-7K2Q9X",
+    checkoutUrl: kind === "link" ? "https://powr.life" : "https://powr.life/?discount=POWR-7K2Q9X",
+    expiresAt: new Date(Date.now() + 30 * 86400_000).toISOString(),
+    powrSpent: 300,
+    balanceAfter: 411,
+    terms: "One code per member. Can't be combined with other offers.",
+    imageUrl: reward?.image ?? null,
+  }, lang);
+}
+
+/** Every preview in send order, with realistic sample data. Member emails in `lang`. */
+function buildPreviews(lang: string): { id: string; email: { subject: string; html: string; text: string } }[] {
   return [
     {
       id: "welcome",
@@ -104,11 +154,11 @@ function buildPreviews(): { id: string; email: { subject: string; html: string; 
         locationGranted: true,
         wearableConnected: false,
         pointsEarned: 40,
-      }),
+      }, lang),
     },
-    { id: "weekly", email: weeklySummaryEmail(WEEKLY_SAMPLES.up) },
-    { id: "weekly_down", email: weeklySummaryEmail(WEEKLY_SAMPLES.down) },
-    { id: "weekly_starter", email: weeklySummaryEmail(WEEKLY_SAMPLES.starter) },
+    { id: "weekly", email: weeklySummaryEmail(weeklySample("up", lang), lang) },
+    { id: "weekly_down", email: weeklySummaryEmail(weeklySample("down", lang), lang) },
+    { id: "weekly_starter", email: weeklySummaryEmail(weeklySample("starter", lang), lang) },
     {
       id: "invite",
       email: brandInviteEmail({
@@ -160,16 +210,22 @@ function buildPreviews(): { id: string; email: { subject: string; html: string; 
       email: levelUpEmail({
         name: "Jamie Wright",
         level: 6,
-        levelName: "Can't Sit Still",
-        tierLabel: "Athlete",
+        levelName: levelName(lang, 6),
+        tierLabel: tierLabel(lang, "athlete"),
         tierColor: "#fb923c",
         totalEarned: 7040,
         vaultBonus: 50,
         levelImageUrl: "https://auth.powr.life/storage/v1/object/public/powr-level-logo/cant-sit-still.png?v=20260711",
-        nextLevelName: "Iron Lungs",
+        nextLevelName: levelName(lang, 7),
         nextLevelAt: 10000,
-      }),
+      }, lang),
     },
+    { id: "reengagement_lapsed_1", email: reEngagementSample("lapsed", 1, lang) },
+    { id: "reengagement_lapsed_2", email: reEngagementSample("lapsed", 2, lang) },
+    { id: "reengagement_new_1", email: reEngagementSample("never_started", 1, lang) },
+    { id: "reengagement_new_2", email: reEngagementSample("never_started", 2, lang) },
+    { id: "receipt_code", email: receiptSample("code", lang) },
+    { id: "receipt_link", email: receiptSample("link", lang) },
   ];
 }
 
@@ -194,8 +250,11 @@ Deno.serve(async (req: Request) => {
     return new Response("Recipient not allowed", { status: 403 });
   }
 
+  // ?lang=fr / ?lang=es — live or draft languages only; anything else is English.
+  const lang = previewLanguage(new URL(req.url).searchParams.get("lang"));
+
   const only = Array.isArray(body.only) && body.only.length ? new Set(body.only) : null;
-  const previews = buildPreviews().filter((p) => !only || only.has(p.id));
+  const previews = buildPreviews(lang).filter((p) => !only || only.has(p.id));
 
   const sent: string[] = [];
   const failed: { id: string; error: string }[] = [];
@@ -204,7 +263,7 @@ Deno.serve(async (req: Request) => {
     try {
       await sendEmail({
         to: RECIPIENT,
-        subject: `[Preview · ${p.id}] ${p.email.subject}`,
+        subject: `[Preview · ${p.id}${lang === "en" ? "" : ` · ${lang}`}] ${p.email.subject}`,
         html: p.email.html,
         text: p.email.text,
         tag: `preview-${p.id}`,
@@ -215,7 +274,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  return new Response(JSON.stringify({ to: RECIPIENT, sent, failed }), {
+  return new Response(JSON.stringify({ to: RECIPIENT, lang, sent, failed }), {
     status: failed.length ? 502 : 200,
     headers: { "Content-Type": "application/json" },
   });

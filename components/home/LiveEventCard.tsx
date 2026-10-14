@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EventLockup } from '@/components/events/EventLockup';
@@ -12,6 +13,7 @@ import {
     type EventLeaderboard,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
+import i18n from '@/lib/i18n';
 import { eventStatusChip, isComingSoon, isVideoUrl, onStartLine, registrationLine, scoringLine } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
@@ -41,7 +43,10 @@ function registeredPill(
         event.status === 'live' && !event.is_locked &&
         typeof board?.viewer.rank === 'number' && !onStartLine(board.viewer.points)
     ) {
-        return { label: `RANK ${board.viewer.rank}`, a11y: `You're ranked ${board.viewer.rank}.` };
+        return {
+            label: i18n.t('home:liveEvent.pill.rank', { rank: board.viewer.rank }),
+            a11y: i18n.t('home:liveEvent.a11y.ranked', { rank: board.viewer.rank }),
+        };
     }
 
     const gate = event.viewer.gate;
@@ -53,17 +58,17 @@ function registeredPill(
         const own = board?.viewer.points;
         if (typeof own === 'number' && own > 0) {
             return {
-                label: `${own} POWR`,
-                a11y: `You've earned ${own} POWR this week — the leaderboard unlocks at ${gate.required} friends.`,
+                label: i18n.t('home:liveEvent.pill.points', { points: own }),
+                a11y: i18n.t('home:liveEvent.a11y.gatedPoints', { points: own, count: gate.required }),
             };
         }
         return {
-            label: `${gate.count} OF ${gate.required} FRIENDS`,
-            a11y: `${gate.count} of ${gate.required} friends in — the leaderboard unlocks at ${gate.required}.`,
+            label: i18n.t('home:liveEvent.pill.friends', { joined: gate.count, count: gate.required }),
+            a11y: i18n.t('home:liveEvent.a11y.friends', { joined: gate.count, count: gate.required }),
         };
     }
 
-    if (event.is_locked) return { label: 'SCORES LOCKED', a11y: 'Scores are locked for the reveal.' };
+    if (event.is_locked) return { label: i18n.t('home:liveEvent.pill.locked'), a11y: i18n.t('home:liveEvent.a11y.locked') };
 
     // Live and on the board: your rank is the fact worth carrying. Points
     // alone before a rank exists still beats a generic "you're in".
@@ -72,10 +77,10 @@ function registeredPill(
         // On the start line the board doesn't rank you, so neither does the
         // pill — "RANK 9" or "0 POWR" would both read as last place.
         if (onStartLine(points)) {
-            return { label: 'YOU’RE IN', a11y: 'You’re in — one verified workout puts you on the board.' };
+            return { label: i18n.t('home:liveEvent.pill.in'), a11y: i18n.t('home:liveEvent.a11y.startLine') };
         }
-        if (typeof rank === 'number') return { label: `RANK ${rank}`, a11y: `You're ranked ${rank}.` };
-        if (typeof points === 'number') return { label: `${points} POWR`, a11y: `You've earned ${points} POWR.` };
+        if (typeof rank === 'number') return { label: i18n.t('home:liveEvent.pill.rank', { rank }), a11y: i18n.t('home:liveEvent.a11y.ranked', { rank }) };
+        if (typeof points === 'number') return { label: i18n.t('home:liveEvent.pill.points', { points }), a11y: i18n.t('home:liveEvent.a11y.earned', { points }) };
     }
 
     // Registered but not yet booked with the venue: the one thing left to do
@@ -90,12 +95,12 @@ function registeredPill(
         !event.viewer.booking?.confirmed
     ) {
         return {
-            label: 'BOOK YOUR SPOT',
-            a11y: `You're registered — book your place with ${event.venue?.name ?? 'the venue'} from the League tab.`,
+            label: i18n.t('home:liveEvent.pill.book'),
+            a11y: i18n.t('home:liveEvent.a11y.book', { venue: event.venue?.name ?? i18n.t('home:liveEvent.a11y.venueFallback') }),
         };
     }
 
-    return { label: 'YOU’RE IN', a11y: 'You’re registered.' };
+    return { label: i18n.t('home:liveEvent.pill.in'), a11y: i18n.t('home:liveEvent.a11y.registered') };
 }
 
 /** Whether Home carries this event at all — the carousel filters on it so a
@@ -135,6 +140,7 @@ export function showsOnHome(event: LiveEvent): boolean {
 export function LiveEventCard({ event, active = true }: { event: LiveEvent; active?: boolean }) {
     const [sheetOpen, setSheetOpen] = useState(false);
     const router = useRouter();
+    const { t } = useTranslation();
 
     // Your standing, for the pill only. Shares League's board cache key so the
     // two never show different numbers, but sets NO refetchInterval — Home
@@ -169,7 +175,7 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
     // owns the event from here on.
     const opensSheet = !comingSoon && (!registered || !!event.is_preview);
     const pill = comingSoon
-        ? { label: 'SEE EVENT', a11y: `${registrationLine(event)}. Tap to see the event.` }
+        ? { label: t('home:liveEvent.pill.see'), a11y: t('home:liveEvent.a11y.see', { line: registrationLine(event) }) }
         : registeredPill(event, board);
     const outlinedPill = registered || comingSoon;
 
@@ -187,12 +193,12 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
                 accessibilityRole="button"
                 accessibilityLabel={
                     comingSoon
-                        ? `Coming soon: ${event.name}. ${pill.a11y}`
+                        ? t('home:liveEvent.a11y.card.comingSoon', { name: event.name, status: pill.a11y })
                         : !registered
-                        ? `Live event: ${event.name}. Tap to register.`
+                        ? t('home:liveEvent.a11y.card.register', { name: event.name })
                         : event.is_preview
-                            ? `Live event: ${event.name}. Registered — tap to reset the preview.`
-                            : `Live event: ${event.name}. ${pill.a11y} Tap to open the League tab.`
+                            ? t('home:liveEvent.a11y.card.preview', { name: event.name })
+                            : t('home:liveEvent.a11y.card.registered', { name: event.name, status: pill.a11y })
                 }
             >
                 <View style={styles.card}>
@@ -225,14 +231,14 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
                         )}
 
                         <View style={styles.topRow}>
-                            <Text style={styles.eyebrowText}>LIVE EVENT</Text>
+                            <Text style={styles.eyebrowText}>{t('home:liveEvent.eyebrow')}</Text>
                             <View style={[styles.statusChip, event.is_preview && styles.statusChipPreview]}>
                                 {event.status === 'live' && !event.is_preview && <View style={styles.liveDot} />}
                                 <Text
                                     style={[styles.statusText, event.is_preview && styles.statusTextPreview]}
                                     numberOfLines={1}
                                 >
-                                    {event.is_preview ? `PREVIEW · ${eventStatusChip(event)}` : eventStatusChip(event)}
+                                    {event.is_preview ? t('home:liveEvent.preview', { status: eventStatusChip(event) }) : eventStatusChip(event)}
                                 </Text>
                             </View>
                         </View>
@@ -266,7 +272,7 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
                                 </View>
                                 <View style={[styles.registerPill, outlinedPill && styles.registeredPill]}>
                                     <Text style={[styles.registerText, outlinedPill && styles.registeredText]}>
-                                        {outlinedPill ? pill.label : 'REGISTER'}
+                                        {outlinedPill ? pill.label : t('home:liveEvent.register')}
                                     </Text>
                                 </View>
                             </View>

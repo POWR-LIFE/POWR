@@ -98,6 +98,9 @@ async function notifyAccepted(supabase: any, challengeId: string, accepterId: st
       title,
       accepted_count: accepted.length,
       total_count: live.length,
+      // English stand-ins flagged for other languages (pushCopy sentText).
+      from_name_missing: !(prof?.display_name || prof?.username),
+      title_missing: ch?.template?.title == null,
     });
   }
 }
@@ -286,7 +289,8 @@ async function cancelChallenge(
   supabase: any,
   challengeId: string,
   live: { user_id: string; state: string }[],
-  title: string,
+  /** The template's title; null/undefined when it has none. */
+  title: string | null | undefined,
   /** The person who caused it — they just tapped the button, so don't push at
    *  them about their own action. */
   actorId?: string,
@@ -304,13 +308,15 @@ async function cancelChallenge(
   // in — same exclusion tryStartForming already applies on its cancel path.
   for (const p of live.filter((p) => p.state !== 'invited' && p.user_id !== actorId)) {
     await notifyPush(p.user_id, 'challenge_ended', {
-      challenge_id: challengeId, title, outcome: 'cancelled',
+      challenge_id: challengeId, title: title ?? 'your challenge', outcome: 'cancelled',
+      // English stand-ins flagged for other languages (pushCopy sentText).
+      title_missing: title == null,
     });
   }
   return true;
 }
 
-async function cancelIfTooThin(supabase: any, challengeId: string, title: string) {
+async function cancelIfTooThin(supabase: any, challengeId: string, title: string | null | undefined) {
   const { data: parts } = await supabase
     .from('shared_challenge_participants')
     .select('user_id, state')
@@ -420,7 +426,7 @@ const handler = async (req) => {
       if (challenge.status === 'forming') {
         await tryStartForming(supabase, challenge_id);
       } else {
-        await cancelIfTooThin(supabase, challenge_id, challenge.template?.title ?? 'your challenge');
+        await cancelIfTooThin(supabase, challenge_id, challenge.template?.title);
       }
       return json({ ok: true, state: 'left' });
     }
@@ -438,7 +444,7 @@ const handler = async (req) => {
         .eq('challenge_id', challenge_id);
       const live = (parts ?? []).filter((p: any) => p.state !== 'declined' && p.state !== 'left');
       const done = await cancelChallenge(
-        supabase, challenge_id, live, challenge.template?.title ?? 'your challenge', user.id,
+        supabase, challenge_id, live, challenge.template?.title, user.id,
       );
       return json({ ok: true, state: me.state, cancelled: done });
     }
@@ -547,7 +553,12 @@ const handler = async (req) => {
       const fromName = prof?.display_name || prof?.username || 'A friend';
       const title = challenge.template?.title ?? 'a challenge';
       for (const fid of newlyInvited) {
-        await notifyPush(fid, 'challenge_invite', { challenge_id, from_name: fromName, title });
+        await notifyPush(fid, 'challenge_invite', {
+          challenge_id, from_name: fromName, title,
+          // English stand-ins flagged for other languages (pushCopy sentText).
+          from_name_missing: !(prof?.display_name || prof?.username),
+          title_missing: challenge.template?.title == null,
+        });
       }
 
       return json({ ok: true, invited: newlyInvited.length, already_in: alreadyIn.length });
