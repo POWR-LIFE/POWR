@@ -39,11 +39,13 @@ import {
 } from '../_shared/garminApi.ts';
 import { accessTokenFor, endGarminConnection } from '../_shared/garminConnection.ts';
 
-const CLIENT_ID = Deno.env.get('GARMIN_CLIENT_ID') ?? '';
-const CLIENT_SECRET = Deno.env.get('GARMIN_CLIENT_SECRET') ?? '';
+// Trimmed: a secret pasted into the dashboard picked up a trailing newline on
+// 2026-10-19, which no comparison or token call survives.
+const CLIENT_ID = (Deno.env.get('GARMIN_CLIENT_ID') ?? '').trim();
+const CLIENT_SECRET = (Deno.env.get('GARMIN_CLIENT_SECRET') ?? '').trim();
 // Must match the OAuth redirect URL registered on the Garmin app exactly.
-const REDIRECT_URI = Deno.env.get('GARMIN_REDIRECT_URI')
-  ?? `${Deno.env.get('SUPABASE_URL')}/functions/v1/garmin-auth/callback`;
+const REDIRECT_URI = (Deno.env.get('GARMIN_REDIRECT_URI')
+  ?? `${Deno.env.get('SUPABASE_URL')}/functions/v1/garmin-auth/callback`).trim();
 
 /** A sign-in left unfinished this long is abandoned. */
 const STATE_TTL_MS = 20 * 60 * 1000;

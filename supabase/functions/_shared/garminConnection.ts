@@ -5,8 +5,8 @@
 import { profileAfterDeauth } from './terraDeauth.ts';
 import { expiriesFrom, needsRefresh, refreshTokens } from './garminApi.ts';
 
-const CLIENT_ID = Deno.env.get('GARMIN_CLIENT_ID') ?? '';
-const CLIENT_SECRET = Deno.env.get('GARMIN_CLIENT_SECRET') ?? '';
+const CLIENT_ID = (Deno.env.get('GARMIN_CLIENT_ID') ?? '').trim();
+const CLIENT_SECRET = (Deno.env.get('GARMIN_CLIENT_SECRET') ?? '').trim();
 
 /**
  * A usable access token for the user, refreshing (and storing the rotated

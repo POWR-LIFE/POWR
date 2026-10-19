@@ -37,8 +37,8 @@ import {
 import { endGarminConnection } from '../_shared/garminConnection.ts';
 import { handleActivity, handleDaily, handleSleep } from '../_shared/wearableIngest.ts';
 
-const WEBHOOK_KEY = Deno.env.get('GARMIN_WEBHOOK_KEY') ?? '';
-const CLIENT_ID = Deno.env.get('GARMIN_CLIENT_ID') ?? '';
+const WEBHOOK_KEY = (Deno.env.get('GARMIN_WEBHOOK_KEY') ?? '').trim();
+const CLIENT_ID = (Deno.env.get('GARMIN_CLIENT_ID') ?? '').trim();
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
