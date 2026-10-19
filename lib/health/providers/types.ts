@@ -38,8 +38,11 @@ export type ConnectResult = 'connected' | 'pending' | 'failed';
  *   - 'terra':  aggregated by Terra and pushed to the terra-webhook edge
  *     function (server side). The client never pulls these — it only drives the
  *     connect/disconnect flow via the Terra widget.
+ *   - 'direct': POWR's own integration with the brand's cloud API (Garmin:
+ *     garmin-auth signs the user in, garmin-webhook receives the pushes). Server
+ *     side like Terra, but not subject to the Terra pause switch.
  */
-export type HealthProviderTransport = 'native' | 'terra';
+export type HealthProviderTransport = 'native' | 'terra' | 'direct';
 
 export type HealthProviderCapability =
     | 'steps'

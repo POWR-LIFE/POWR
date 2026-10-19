@@ -33,6 +33,7 @@ import {
 import { verificationFromProvenances, summarizeSources, type HealthDataProvenance } from '@/lib/health/dataSource';
 import { getInferredRunWindowsToday } from '@/lib/health/runInference';
 import { hydrateTerraPause } from '@/lib/health/terraPause';
+import { hydrateGarminDirect } from '@/lib/health/garminDirect';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 export const WALKING_SYNC_TASK = 'powr-walking-sync';
@@ -258,7 +259,7 @@ async function resolveActiveProviderId(): Promise<HealthProviderId | null> {
         // can run first (background task, before any screen mounts the hook),
         // and the remote Terra pause never rewrites it. A headless start has no
         // switch value in memory yet; load the cached one.
-        await hydrateTerraPause();
+        await Promise.all([hydrateTerraPause(), hydrateGarminDirect()]);
         if (!active || isPausedProvider(active)) return getNativeProviderId();
         return active;
     } catch {

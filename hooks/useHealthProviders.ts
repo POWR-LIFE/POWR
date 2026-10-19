@@ -6,6 +6,7 @@ import {
     getNativeProviderId,
     getProvider,
     isPausedProvider,
+    isServerDelivered,
     isStaticallyPaused,
     isTerraProvider,
     visibleProviders,
@@ -17,7 +18,9 @@ import { getSessionUser, supabase } from '@/lib/supabase';
 import { awardBonus } from '@/lib/api/points';
 import { backfillHealthHistoryIfNeeded } from '@/lib/api/onboardingSync';
 import { refreshTerraPause } from '@/lib/health/terraPauseRemote';
+import { refreshGarminDirect } from '@/lib/health/garminDirectRemote';
 import { useTerraPaused } from '@/hooks/useTerraPaused';
+import { useGarminDirect } from '@/hooks/useGarminDirect';
 
 export type ProviderConnection = {
     connected_at?: string;
@@ -25,6 +28,8 @@ export type ProviderConnection = {
     scopes?: string[];
     /** Terra's per-connection user id — present once Terra's auth webhook fires. */
     terra_user_id?: string;
+    /** Garmin's API user id — present once garmin-auth has linked the account. */
+    garmin_user_id?: string;
 };
 
 export type ProviderRow = {
@@ -39,11 +44,14 @@ type ProfileRow = {
 };
 
 /**
- * Drop Terra-provider connections that can't deliver:
+ * Drop server-delivered connections that can't deliver:
  *   - stale entries that predate the Terra migration — an old direct Whoop/Fitbit
  *     entry with no `terra_user_id`. Such an entry can no longer sync (the direct
  *     integrations were retired), so it must read as "not connected" to prompt
  *     the user to reconnect through Terra.
+ *   - a Garmin entry with no `garmin_user_id`: left over from Garmin-through-
+ *     Terra, which has delivered nothing since 2026-09-21. Garmin now links
+ *     directly (garmin-auth), so the user reconnects.
  *   - providers paused in the provider list (Garmin): Terra delivers nothing
  *     for them, so keeping the entry would leave native sync switched off.
  *     Dropping it lets the self-heal in `refresh` move `active` back to the
@@ -59,10 +67,15 @@ export function sanitizeConnections(
     const out: Record<string, ProviderConnection> = {};
     for (const [id, conn] of Object.entries(conns)) {
         if (isTerraProvider(id as HealthProviderId) && !conn?.terra_user_id) continue;
+        if (isDirectProvider(id) && !conn?.garmin_user_id) continue;
         if (isStaticallyPaused(id)) continue;
         out[id] = conn;
     }
     return out;
+}
+
+function isDirectProvider(id: string): boolean {
+    return ALL_PROVIDER_META.find(m => m.id === id)?.transport === 'direct';
 }
 
 /**
@@ -76,9 +89,10 @@ export function useHealthProviders() {
     const [activeId, setActiveId] = useState<HealthProviderId | null>(null);
     const [connections, setConnections] = useState<Record<string, ProviderConnection>>({});
 
-    // Re-render when the Terra pause switch flips — rows and connect routing
-    // read isPausedProvider().
+    // Re-render when the Terra pause or Garmin direct switch flips — rows and
+    // connect routing read isPausedProvider().
     useTerraPaused();
+    useGarminDirect();
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -87,7 +101,7 @@ export function useHealthProviders() {
             if (!user) return;
             // The pause switch decides how Terra brands read below; refresh it
             // with the profile. Never throws, keeps the last value offline.
-            await refreshTerraPause();
+            await Promise.all([refreshTerraPause(), refreshGarminDirect()]);
             const { data } = await supabase
                 .from('profiles')
                 .select('active_health_provider, health_provider_connections')
@@ -95,15 +109,15 @@ export function useHealthProviders() {
                 .single<ProfileRow>();
             const sanitized = sanitizeConnections(data?.health_provider_connections ?? {});
             let active = data?.active_health_provider ?? null;
-            // Self-heal: if active still points at a Terra wearable whose connection
-            // was dropped as stale (no terra_user_id) or paused, the sync gates would stay shut
-            // — useHealthSync treats a Terra active as "webhook owns sync" and turns
-            // native sleep/workout sync off, and walkingSync skips native steps for
-            // step-capable wearables. Re-point active at a still-valid connection
+            // Self-heal: if active still points at a server-delivered wearable whose
+            // connection was dropped as stale (no terra_user_id / garmin_user_id) or
+            // paused, the sync gates would stay shut — useHealthSync treats a
+            // server-delivered active as "the webhook owns sync" and turns native
+            // sleep/workout sync off. Re-point active at a still-valid connection
             // (native first) and persist, so sync resumes from the phone.
-            if (active && isTerraProvider(active) && !sanitized[active]) {
+            if (active && isServerDelivered(active) && !sanitized[active]) {
                 const keys = Object.keys(sanitized) as HealthProviderId[];
-                active = keys.find(k => !isTerraProvider(k)) ?? keys[0] ?? null;
+                active = keys.find(k => !isServerDelivered(k)) ?? keys[0] ?? null;
                 await supabase.from('profiles')
                     .update({ health_provider_connections: sanitized, active_health_provider: active })
                     .eq('id', user.id);
@@ -179,9 +193,9 @@ export function useHealthProviders() {
             // is left alone.
             let baseConns = connections;
             let baseActive = activeId;
-            if (isTerraProvider(id)) {
+            if (isServerDelivered(id)) {
                 const others = (Object.keys(connections) as HealthProviderId[])
-                    .filter(k => k !== id && isTerraProvider(k));
+                    .filter(k => k !== id && isServerDelivered(k));
                 if (others.length) {
                     for (const o of others) {
                         try { await getProvider(o).disconnect(); }
@@ -198,8 +212,9 @@ export function useHealthProviders() {
 
             const result = await provider.connect();
             if (result !== 'connected') {
-                // 'pending' → /terra-callback (and Terra's auth webhook) write the
-                // connection and promote the wearable to active. 'failed' → nothing
+                // 'pending' → /terra-callback and Terra's auth webhook (or, for
+                // Garmin, garmin-auth's callback) write the connection and promote
+                // the wearable to active. 'failed' → nothing
                 // to write. Either way we don't write the connection here.
                 return result;
             }
@@ -210,7 +225,7 @@ export function useHealthProviders() {
             };
             // A connected wearable becomes the source of truth; native only takes
             // active if nothing else holds it.
-            const nextActive = isTerraProvider(id) ? id : (baseActive ?? id);
+            const nextActive = isServerDelivered(id) ? id : (baseActive ?? id);
             await writeProfile({
                 health_provider_connections: next,
                 active_health_provider: nextActive,
