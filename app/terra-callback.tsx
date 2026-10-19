@@ -5,7 +5,7 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as SecureStore from 'expo-secure-store';
 
-import { isTerraProvider } from '@/lib/health/providers';
+import { isServerDelivered } from '@/lib/health/providers';
 import i18n from '@/lib/i18n';
 import type { HealthProviderId } from '@/lib/health/providers';
 import { getSessionUser, supabase } from '@/lib/supabase';
@@ -69,7 +69,7 @@ export default function TerraCallback() {
                     const conns: Record<string, { connected_at?: string; terra_user_id?: string }> =
                         { ...(prof?.health_provider_connections ?? {}) };
                     for (const k of Object.keys(conns)) {
-                        if (k !== providerId && isTerraProvider(k as HealthProviderId)) delete conns[k];
+                        if (k !== providerId && isServerDelivered(k as HealthProviderId)) delete conns[k];
                     }
                     conns[providerId] = {
                         connected_at: new Date().toISOString(),

@@ -3,9 +3,10 @@
  *
  * While it's on, every Terra brand reads as paused and the phone's health
  * store stands in for it — but NOTHING is dropped from the profile, so turning
- * it off restores Terra exactly as it was. Garmin's own `paused` flag is the
- * permanent kind and still drops the connection. Disconnecting for good is a
- * separate step whose profile rewrite lives in profileAfterDeauth.
+ * it off restores Terra exactly as it was. Garmin is no longer a Terra brand
+ * (it links directly since 2026-10-19 — see garmin-direct.test.ts), so its
+ * leftover Terra entries are dropped. Disconnecting for good is a separate
+ * step whose profile rewrite lives in profileAfterDeauth.
  */
 jest.mock('@/lib/supabase', () => ({ supabase: {}, getSessionUser: jest.fn(async () => null) }));
 jest.mock('@/lib/api/points', () => ({ awardBonus: jest.fn() }));
@@ -43,7 +44,7 @@ describe('the switch value', () => {
 });
 
 describe('isPausedProvider with the switch', () => {
-    it('off: only Garmin is paused', () => {
+    it('off: only Garmin is paused (garmin_direct has not let this user in)', () => {
         expect(isPausedProvider('garmin')).toBe(true);
         expect(isPausedProvider('whoop')).toBe(false);
     });
@@ -70,7 +71,7 @@ describe('isPausedProvider with the switch', () => {
 });
 
 describe('sanitizeConnections — the remote pause is reversible', () => {
-    it('keeps a Whoop connection while the switch is on (Garmin\'s permanent pause still drops)', () => {
+    it('keeps a Whoop connection while the switch is on (a leftover Terra Garmin entry still drops)', () => {
         setTerraPaused(true);
         const out = sanitizeConnections({
             'apple-health': { connected_at: '2026-08-01T00:00:00Z' },
@@ -79,7 +80,7 @@ describe('sanitizeConnections — the remote pause is reversible', () => {
         });
         expect(Object.keys(out).sort()).toEqual(['apple-health', 'whoop']);
         expect(isStaticallyPaused('whoop')).toBe(false);
-        expect(isStaticallyPaused('garmin')).toBe(true);
+        expect(isStaticallyPaused('garmin')).toBe(false);
     });
 });
 

@@ -2,8 +2,9 @@ import { useEffect, useCallback, useRef } from 'react';
 import { Alert, Platform } from 'react-native';
 import { useHealthData, type DayHealthSummary } from './useHealthData';
 import { useHealthProviders } from './useHealthProviders';
-import { getProvider, verificationForProvider, isTerraProvider, effectiveProviderId, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
+import { getProvider, verificationForProvider, isServerDelivered, effectiveProviderId, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
 import { useTerraPaused } from '@/hooks/useTerraPaused';
+import { useGarminDirect } from '@/hooks/useGarminDirect';
 import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
 import { verificationFromProvenance, sourceLabel } from '@/lib/health/dataSource';
 import { getInferredActivitiesForWeek } from '@/lib/health/runInference';
@@ -39,15 +40,17 @@ function sourceForProvider(id: HealthProviderId | null): 'healthkit' | 'health_c
 export function useHealthSync() {
   const nativeHealth = useHealthData();
   const { activeId: storedActiveId, disconnect } = useHealthProviders();
-  // A paused brand (Garmin, or every Terra brand while the Terra pause switch
-  // is on) delivers nothing — read the phone's health store in its place.
-  // Re-derived when the switch flips; the profile itself is left alone.
+  // A paused brand (Garmin while garmin_direct leaves this user out, or every
+  // Terra brand while the Terra pause switch is on) delivers nothing — read the
+  // phone's health store in its place. Re-derived when either switch flips; the
+  // profile itself is left alone.
   useTerraPaused();
+  useGarminDirect();
   const activeId = effectiveProviderId(storedActiveId);
   const isNativeProvider = !activeId || activeId === 'apple-health' || activeId === 'health-connect';
-  // Terra providers are synced server-side by the terra-webhook edge function —
-  // the client must never pull their data here.
-  const isTerra = isTerraProvider(activeId);
+  // Terra providers (terra-webhook) and Garmin direct (garmin-webhook) are
+  // synced server-side — the client must never pull their data here.
+  const isTerra = isServerDelivered(activeId);
   const authExpiredHandled = useRef(false);
 
   // Reset the guard when the active provider changes (e.g. user reconnects).
