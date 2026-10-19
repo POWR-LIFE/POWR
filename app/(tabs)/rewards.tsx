@@ -3,6 +3,8 @@ import MagicRings from '@/components/MagicRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { VaultWidget } from '@/components/rewards/VaultWidget';
+import { RewardDoors } from '@/components/pitch/RewardDoors';
+import { DROP_PROTOTYPE } from '@/lib/dev/dropPrototype';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { usePoints } from '@/hooks/usePoints';
@@ -408,6 +410,9 @@ export default function SpendScreen() {
           />
         }
       >
+        {/* Design scaffold — false outside __DEV__, see lib/dev/pitchPrototype. */}
+        {DROP_PROTOTYPE && <RewardDoors />}
+
         {!catalogueLoaded && !catalogueError ? (
           <View style={styles.keepMovingCenterWrap}>
             <ActivityIndicator color={GOLD} />

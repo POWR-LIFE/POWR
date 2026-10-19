@@ -1,19 +1,23 @@
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInLeft, FadeOutLeft } from 'react-native-reanimated';
 
 import { fontFamily } from '@/constants/tokens';
 import { crewSim } from '@/lib/dev/crewPrototype';
-import { dropSim } from '@/lib/dev/dropPrototype';
+import { dropSim, useDropPrototype } from '@/lib/dev/dropPrototype';
+import { pitchSim, usePitchPrototype } from '@/lib/dev/pitchPrototype';
 
 /**
- * DESIGN SCAFFOLD — one floating SIM button for the Drop and Crew prototypes,
+ * DESIGN SCAFFOLD — one floating SIM button for the Drop, Crew and pitch prototypes,
  * so the cards themselves look like the real thing instead of carrying a row
  * of dev chips each. Rendered only behind DROP_PROTOTYPE (false outside
  * __DEV__). Chip labels double as accessibility labels for the web harness.
  */
 export function PrototypeSim() {
     const [open, setOpen] = useState(false);
+    const pitch = usePitchPrototype();
+    const drop = useDropPrototype();
 
     const groups: { title: string; chips: { label: string; run: () => void }[] }[] = [
         {
@@ -21,6 +25,8 @@ export function PrototypeSim() {
             chips: [
                 { label: '+1K STEPS', run: () => dropSim.addSteps(1000) },
                 { label: '+10 MIN', run: () => dropSim.addMinutes(10) },
+                { label: `HISTORY: ${drop.history.toUpperCase()}`, run: dropSim.cycleHistory },
+                { label: drop.bigYesterday ? 'BIG DAY YESTERDAY: ON' : 'BIG DAY YESTERDAY: OFF', run: dropSim.toggleBigYesterday },
                 { label: 'COMEBACK', run: dropSim.comeback },
                 { label: 'NEW DAY', run: dropSim.newDay },
             ],
@@ -32,6 +38,19 @@ export function PrototypeSim() {
                 { label: 'CREW MOVES', run: crewSim.crewMoves },
                 { label: 'NUDGED ONE MOVES', run: crewSim.nudgedMove },
                 { label: 'NO CREW', run: crewSim.reset },
+            ],
+        },
+        {
+            title: 'PITCH',
+            chips: [
+                { label: pitch.scale === 'pitch' ? 'SCALE: 5K USERS' : 'SCALE: TODAY', run: pitchSim.toggleScale },
+                { label: 'OFF HOME', run: () => { setOpen(false); router.push('/pitch'); } },
+                { label: 'NEXT PUSH', run: pitchSim.nextPush },
+                { label: pitch.beatMe.rival === 'friend' ? 'RIVAL: JAMES' : 'RIVAL: YESTERDAY', run: pitchSim.toggleRival },
+                { label: 'RIVAL WALKS', run: pitchSim.rivalWalks },
+                { label: 'END DAY', run: pitchSim.endBeatMe },
+                { label: '+CLAIMS', run: pitchSim.claims },
+                { label: 'RESET PITCH', run: pitchSim.reset },
             ],
         },
     ];

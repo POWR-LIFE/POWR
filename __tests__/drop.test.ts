@@ -1,4 +1,4 @@
-import { DROP_POOLS, dropProgress, dropTier, nextMove, pickDropReward } from '@/lib/drop';
+import { AUTO_STARTER, autoTarget, DROP_POOLS, dropProgress, dropTier, nextMove, pickDropReward } from '@/lib/drop';
 
 describe('dropProgress', () => {
     const steady = dropTier('steady'); // 10,000 steps or 30 min
@@ -53,5 +53,45 @@ describe('pickDropReward', () => {
         expect(pickDropReward('long', 0)).toBe(DROP_POOLS.long[0]);
         expect(pickDropReward('long', 0.999)).toBe(DROP_POOLS.long[2]);
         expect(pickDropReward('long', 1)).toBe(DROP_POOLS.long[2]);
+    });
+});
+
+describe('autoTarget', () => {
+    const week = (steps: number, minutes: number, n = 14) =>
+        Array.from({ length: n }, (_, i) => ({ steps: steps + (i % 3 - 1) * 400, minutes: i % 2 ? minutes : 0 }));
+
+    it('starts new members on the starter target', () => {
+        expect(autoTarget(week(8000, 30, 3))).toMatchObject({ ...AUTO_STARTER, basis: 'starter' });
+    });
+
+    it('sits a nudge above your typical day', () => {
+        const t = autoTarget(week(7600, 25));
+        expect(t.basis).toBe('history');
+        expect(t.typicalSteps).toBe(7600);
+        expect(t.steps).toBe(8500); // 7,600 × 1.1 = 8,360 → nearest 500
+        expect(t.minutes).toBe(30); // 25 + 5
+    });
+
+    it('eases back to typical after a big day', () => {
+        const days = [...week(7600, 25, 13), { steps: 16000, minutes: 0 }];
+        const t = autoTarget(days);
+        expect(t.basis).toBe('recovery');
+        expect(t.steps).toBe(7500);
+    });
+
+    it('doesn’t claim a rest day when easing off changes nothing', () => {
+        // 4,300 a day: the usual (4,730) and the eased (4,300) both round to 4,500
+        const days = [...week(4300, 0, 13), { steps: 9000, minutes: 0 }];
+        expect(autoTarget(days)).toMatchObject({ basis: 'history', steps: 4500 });
+    });
+
+    it('asks for less on a comeback', () => {
+        expect(autoTarget(week(7600, 25), { comeback: true })).toMatchObject({ basis: 'comeback', steps: 5500, minutes: 20 }); // 17.5 → nearest 5
+    });
+
+    it('keeps targets inside sane bounds', () => {
+        expect(autoTarget(week(1500, 0)).steps).toBe(4000);
+        expect(autoTarget(week(30000, 120)).steps).toBe(15000);
+        expect(autoTarget(week(30000, 120)).minutes).toBe(60);
     });
 });

@@ -37,7 +37,10 @@ export function dropTier(id: DropTier): DropTierDef {
 export const STEPS_PER_MIN = 100;
 
 /** 0..1 — the further along of the two routes. */
-export function dropProgress(tier: DropTierDef, steps: number, minutes: number): number {
+/** Anything with a steps route and an active-minutes route: a tier, or today's automatic target. */
+export type DropTarget = Pick<DropTierDef, 'steps' | 'minutes'>;
+
+export function dropProgress(tier: DropTarget, steps: number, minutes: number): number {
     const bySteps = tier.steps > 0 ? Math.max(0, steps) / tier.steps : 0;
     const byMinutes = tier.minutes > 0 ? Math.max(0, minutes) / tier.minutes : 0;
     return Math.min(1, Math.max(bySteps, byMinutes));
@@ -59,7 +62,7 @@ export function formatSteps(n: number): string {
     return Math.round(n).toLocaleString('en-GB');
 }
 
-export function nextMove(tier: DropTierDef, steps: number, minutes: number): NextMove {
+export function nextMove(tier: DropTarget, steps: number, minutes: number): NextMove {
     const stepsLeft = Math.max(0, tier.steps - Math.max(0, steps));
     const minsLeft = Math.max(0, tier.minutes - Math.max(0, minutes));
 
@@ -119,3 +122,93 @@ export function pickDropReward(tier: DropTier, roll: number): DropReward {
 export const COMEBACK_AFTER_DAYS = 3;
 /** Comeback doubles the first N POWR of the day — sized to one capped gym day. */
 export const COMEBACK_DOUBLE_UP_TO = 30;
+
+// ── Automatic target ────────────────────────────────────────────────────────
+// The member doesn't pick: today's target is set from their own recent days.
+
+export interface DayMovement {
+    steps: number;
+    /** Active minutes: tracked workouts and verified gym visits. */
+    minutes: number;
+}
+
+export type TargetBasis = 'starter' | 'history' | 'recovery' | 'comeback';
+
+export interface AutoTarget extends DropTarget {
+    basis: TargetBasis;
+    /** The member's typical day, for the "set from…" line. */
+    typicalSteps: number;
+    typicalMinutes: number;
+}
+
+/** Fewer days than this and there's nothing to learn from yet. */
+export const AUTO_MIN_DAYS = 5;
+/** How far past your typical day the target sits. */
+export const AUTO_STRETCH = 1.1;
+/** A day this far over typical counts as a big one, and tomorrow eases off. */
+export const AUTO_BIG_DAY = 1.5;
+/** Comeback asks for this share of your typical day. */
+export const AUTO_COMEBACK = 0.7;
+export const AUTO_STARTER: DropTarget = { steps: 6000, minutes: 20 };
+const STEPS_FLOOR = 4000;
+const STEPS_CEIL = 15000;
+const MIN_FLOOR = 15;
+const MIN_CEIL = 60;
+
+function median(xs: number[]): number {
+    if (!xs.length) return 0;
+    const v = [...xs].sort((a, b) => a - b);
+    const m = Math.floor(v.length / 2);
+    return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+const to500 = (x: number) => Math.round(x / 500) * 500;
+const to5 = (x: number) => Math.round(x / 5) * 5;
+
+/**
+ * Today's target from the last two weeks (oldest first, yesterday last):
+ * your typical day plus a nudge, steps or active minutes, whichever comes
+ * first. Eases back to typical after a big day so it never ratchets into
+ * burnout, and asks for less on a comeback.
+ */
+export function autoTarget(days: DayMovement[], opts: { comeback?: boolean } = {}): AutoTarget {
+    const recent = days.slice(-14);
+    const known = recent.filter(d => d.steps > 0 || d.minutes > 0);
+    if (known.length < AUTO_MIN_DAYS) {
+        return { ...AUTO_STARTER, basis: 'starter', typicalSteps: 0, typicalMinutes: 0 };
+    }
+
+    const typicalSteps = median(known.map(d => d.steps));
+    const activeDays = known.filter(d => d.minutes > 0).map(d => d.minutes);
+    const typicalMinutes = activeDays.length ? median(activeDays) : AUTO_STARTER.minutes;
+
+    const shape = (steps: number, minutes: number) => ({
+        steps: clamp(to500(steps), STEPS_FLOOR, STEPS_CEIL),
+        minutes: clamp(to5(minutes), MIN_FLOOR, MIN_CEIL),
+        typicalSteps,
+        typicalMinutes,
+    });
+
+    if (opts.comeback) {
+        return { ...shape(typicalSteps * AUTO_COMEBACK, typicalMinutes * AUTO_COMEBACK), basis: 'comeback' };
+    }
+    const y = recent[recent.length - 1];
+    const bigYesterday = !!y && (
+        (typicalSteps > 0 && y.steps > typicalSteps * AUTO_BIG_DAY) ||
+        (typicalMinutes > 0 && y.minutes > typicalMinutes * AUTO_BIG_DAY)
+    );
+    const usual = { ...shape(typicalSteps * AUTO_STRETCH, typicalMinutes + 5), basis: 'history' as const };
+    if (bigYesterday) {
+        const easier = shape(typicalSteps, typicalMinutes);
+        // Only call it a rest day when it really is one on a route they use —
+        // after rounding and the floors, a low typical day can land on the same
+        // steps either way, and a walker never touches the minutes route.
+        const usesMinutes = activeDays.length > 0;
+        if (easier.steps < usual.steps || (usesMinutes && easier.minutes < usual.minutes)) {
+            return { ...easier, basis: 'recovery' };
+        }
+    }
+    return usual;
+}
+

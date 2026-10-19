@@ -30,6 +30,13 @@ export function nextResetIso(now: Date = new Date()): string {
     return d.toISOString();
 }
 
+/** Next local midnight — when day-long races (Beat Me, Bounties) end. */
+export function nextMidnightIso(now: Date = new Date()): string {
+    const d = new Date(now);
+    d.setHours(24, 0, 0, 0);
+    return d.toISOString();
+}
+
 /** The outcome line once a Drop is open: "On your next workout. Up to +30 POWR…". */
 export function outcomeLine(r: DropReward): string {
     if (r.kind === 'points') return r.detail;

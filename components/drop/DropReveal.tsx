@@ -15,7 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DROP_GAP_DEG, DROP_MARK_ASPECT, DropMark } from '@/components/drop/DropMark';
+import { DROP_GAP_DEG, DROP_GAP_X, DROP_MARK_ASPECT, DropMark } from '@/components/drop/DropMark';
 import { colours, fontFamily } from '@/constants/tokens';
 import type { DropReward } from '@/lib/drop';
 
@@ -153,7 +153,7 @@ export function DropReveal({ visible, kicker, subtitle, reward, onOpened, onClos
                 >
                     <Animated.View style={[{ width: markW, height: MARK_H }, markWrap]}>
                         <DropMark height={MARK_H} fill={charge} split={split} stroke={1.2} tint={0.04} />
-                        <Animated.View pointerEvents="none" style={[styles.flash, { left: markW * 0.543, height: MARK_H * 1.25, top: -MARK_H * 0.125 }, flashStyle]} />
+                        <Animated.View pointerEvents="none" style={[styles.flash, { left: markW * DROP_GAP_X - 1, height: MARK_H * 1.25, top: -MARK_H * 0.125 }, flashStyle]} />
                     </Animated.View>
 
                     {/* Under the P, not at the screen's foot — the instruction
