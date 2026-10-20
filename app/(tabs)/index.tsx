@@ -25,6 +25,11 @@ import { LiveEventCarousel } from '@/components/home/LiveEventCarousel';
 import { CreatorInviteCard } from '@/components/home/CreatorInviteCard';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
+import { DropCard } from '@/components/home/DropCard';
+import { DROP_PROTOTYPE } from '@/lib/dev/dropPrototype';
+import { PrototypeSim } from '@/components/dev/PrototypeSim';
+import { BeatMeCard } from '@/components/pitch/BeatMeCard';
+import { PushPreview } from '@/components/pitch/PushPreview';
 import { LevelUpCelebration } from '@/components/LevelUpCelebration';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
@@ -695,10 +700,16 @@ export default function HomeScreen() {
                     onLongPress={previewLevelUp}
                 />
 
-                {/* Shared "together" challenges — the social hero band. Sits above
-                    the steady weekly grid; collapses to a slim CTA when empty so
-                    the weekly card reads as the hero for users with no friends yet. */}
-                {user?.user_metadata?.together_enabled !== false && (
+                {/* Design scaffold — false outside __DEV__ (lib/dev/dropPrototype).
+                    Home keeps two of the pitch: the personal daily pull (the Drop)
+                    and the social one (Beat Me). The rest are on /pitch. */}
+                {DROP_PROTOTYPE && <DropCard />}
+                {DROP_PROTOTYPE && <BeatMeCard youName={displayName} />}
+
+                {/* Shared "together" challenges — the social hero band. Collapses
+                    to a slim CTA when empty. Hidden while the Drop prototype is on
+                    (Crew Charge takes the social slot); real builds still show it. */}
+                {!DROP_PROTOTYPE && user?.user_metadata?.together_enabled !== false && (
                     <TogetherSection
                         deferred={!!pendingLevelUp || sessionModalVisible || rescueVisible}
                     />
@@ -724,13 +735,17 @@ export default function HomeScreen() {
                     />
                 )}
 
-                <ChallengeCard
-                    onTogether={(c) => router.push({ pathname: '/challenges', params: { create: '1', category: c.category } })}
-                    challenges={weeklyChallenges}
-                    totalBalance={balance}
-                    celebrateId={newlyCompletedId}
-                    onShare={handleChallengeShare}
-                />
+                {/* "This week" — hidden while the Drop prototype is on (the Drop is
+                    the daily goal there). Real builds still show it. */}
+                {!DROP_PROTOTYPE && (
+                    <ChallengeCard
+                        onTogether={(c) => router.push({ pathname: '/challenges', params: { create: '1', category: c.category } })}
+                        challenges={weeklyChallenges}
+                        totalBalance={balance}
+                        celebrateId={newlyCompletedId}
+                        onShare={handleChallengeShare}
+                    />
+                )}
 
                 {featuredReward && (() => {
                     const rewardUnlocked = balance >= featuredReward.powr_cost;
@@ -761,6 +776,10 @@ export default function HomeScreen() {
 
             </ReAnimated.ScrollView>
             </ReAnimated.View>
+
+            {/* Design scaffold — false outside __DEV__: drives the Drop/Crew prototypes. */}
+            {DROP_PROTOTYPE && <PrototypeSim />}
+            {DROP_PROTOTYPE && <PushPreview />}
 
             {/* FAB — orbital ring only when a session is active */}
             {/*

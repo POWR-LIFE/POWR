@@ -203,6 +203,7 @@ function RootLayoutNav() {
           <Stack.Screen name="wallet" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="vault" options={{ headerShown: false, contentStyle: { backgroundColor: '#07090A' } }} />
           <Stack.Screen name="achievements" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
+          <Stack.Screen name="pitch" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="admin-partners" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="admin-challenges" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="challenges" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
