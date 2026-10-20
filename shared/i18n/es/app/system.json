@@ -15,7 +15,10 @@
     "samsungReturned": "Respuesta de Samsung Health: {{error}}",
     "missingCode": "Falta el código de autorización",
     "stateMismatch": "El estado no coincide o la respuesta del token está vacía",
-    "exchangeFailed": "Error al intercambiar el token"
+    "exchangeFailed": "Error al intercambiar el token",
+    "connectingGarmin": "Conectando con Garmin Connect…",
+    "garminDenied": "Garmin no se ha conectado: no se ha permitido el acceso.",
+    "garminAlreadyLinked": "Esa cuenta de Garmin ya está vinculada a otra cuenta de POWR."
   },
   "circleCamera": {
     "close": "Cerrar",

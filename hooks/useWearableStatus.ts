@@ -43,11 +43,11 @@ type ConnRow = {
 };
 
 /**
- * Live wearable + how recently it delivered. Reads terra_connections directly
- * (RLS already lets a user read their own rows) rather than
- * profiles.health_provider_connections, because that JSON records only that a
- * connection was made — it carries no delivery history at all, which is exactly
- * the blind spot this hook exists to close.
+ * Live wearable + how recently it delivered. Reads terra_connections and
+ * garmin_connections directly (RLS already lets a user read their own rows)
+ * rather than profiles.health_provider_connections, because that JSON records
+ * only that a connection was made — it carries no delivery history at all,
+ * which is exactly the blind spot this hook exists to close.
  *
  * Returns freshness 'none' for the ~95% of users with no wearable, so callers
  * can render nothing without a separate "has a wearable" check.
@@ -65,26 +65,43 @@ export function useWearableStatus(): WearableStatus {
             const user = await getSessionUser();
             if (!user) { setState(EMPTY); return; }
 
-            // Live connection only. One wearable at a time is enforced by the
-            // webhook's handleAuth, but order by freshness anyway so a stray
+            // Live connections only. One wearable at a time is enforced when a
+            // wearable is linked, but order by freshness anyway so a stray
             // second live row can't win with older data.
-            const { data, error } = await supabase
-                .from('terra_connections')
-                .select('provider, last_upload_at, created_at, device_name')
-                .eq('user_id', user.id)
-                .is('deauthed_at', null)
-                .order('last_upload_at', { ascending: false, nullsFirst: false })
-                .limit(5);
+            const [terra, garmin] = await Promise.all([
+                supabase
+                    .from('terra_connections')
+                    .select('provider, last_upload_at, created_at, device_name')
+                    .eq('user_id', user.id)
+                    .is('deauthed_at', null)
+                    .order('last_upload_at', { ascending: false, nullsFirst: false })
+                    .limit(5),
+                supabase
+                    .from('garmin_connections')
+                    .select('last_upload_at, created_at, device_name')
+                    .eq('user_id', user.id)
+                    .is('deregistered_at', null)
+                    .maybeSingle(),
+            ]);
 
             // supabase-js resolves rather than throws on query errors, so an
             // explicit check is the only thing standing between a failed fetch
             // and a false "no wearable" (see the partner-portal empty-state bug).
-            if (error) { setState(s => ({ ...s, loading: false })); return; }
+            if (terra.error || garmin.error) { setState(s => ({ ...s, loading: false })); return; }
 
             // A paused provider's row stays live, and Terra's empty polls keep
             // restamping last_upload_at — it would read "synced just now" while
-            // delivering nothing. Skip it so the chip doesn't vouch for it.
-            const row = ((data ?? []) as ConnRow[]).find(r => !isPausedProvider(r.provider));
+            // delivering nothing. Skip it so the chip doesn't vouch for it. The
+            // same goes for a Terra row of a brand Terra no longer carries for
+            // us (GARMIN — Garmin is direct now, via garmin_connections).
+            const rows = ((terra.data ?? []) as ConnRow[]).filter(r =>
+                ALL_PROVIDER_META.find(m => m.id === r.provider.toLowerCase())?.transport === 'terra'
+                && !isPausedProvider(r.provider));
+            if (garmin.data && !isPausedProvider('garmin')) {
+                rows.push({ provider: 'GARMIN', ...(garmin.data as Omit<ConnRow, 'provider'>) });
+            }
+            const freshest = (r: ConnRow) => (r.last_upload_at ? Date.parse(r.last_upload_at) : -Infinity);
+            const row = rows.sort((a, b) => freshest(b) - freshest(a))[0];
             if (!row) { setState(EMPTY); return; }
 
             const providerId = row.provider.toLowerCase() as HealthProviderId;

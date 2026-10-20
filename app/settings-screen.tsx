@@ -341,6 +341,10 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Garmin requires us to release the user at Garmin when they
+              // delete their account with us. The SQL delete can't call
+              // Garmin, so do it first. Best effort, and a no-op without a link.
+              await supabase.functions.invoke('garmin-auth', { body: { action: 'disconnect' } }).catch(() => {});
               // Call a Supabase edge function or RPC to delete user data
               const { error } = await supabase.rpc('delete_user_account');
               if (error) {

@@ -1,7 +1,9 @@
 import { Platform } from 'react-native';
 
 import type { ActivityType } from '@/constants/activities';
+import { isGarminDirectAvailable } from '../garminDirect';
 import { isTerraPaused } from '../terraPause';
+import { createGarminProvider } from './garminProvider';
 import { createNativeHealthProvider } from './nativeProvider';
 import { createSamsungHealthProvider } from './samsungHealthProvider';
 import { createTerraProvider } from './terraProvider';
@@ -33,10 +35,12 @@ export const ALL_PROVIDER_META: HealthProviderMeta[] = [
     { id: 'whoop',  name: 'Whoop',  native: false, transport: 'terra', capabilities: ['activities', 'sleep', 'heart-rate', 'calories'] },
     { id: 'oura',   name: 'Oura',   native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate'] },
     { id: 'polar',  name: 'Polar',  native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
-    // Paused 2026-10: Garmin now approves each app itself and has paused new
-    // approvals, so Terra's shared access has delivered nothing since 21 Sep.
-    // Garmin Connect still writes to Apple Health / Health Connect — see `paused`.
-    { id: 'garmin', name: 'Garmin', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'], paused: true },
+    // Direct since 2026-10-19: POWR's own Garmin Connect Developer app. Terra's
+    // shared Garmin access delivered nothing after 21 Sep, so Garmin no longer
+    // goes through Terra. Until garmin_direct lets this user in
+    // (lib/health/garminDirect) Garmin reads as paused and syncs through the
+    // phone, which Garmin Connect writes to.
+    { id: 'garmin', name: 'Garmin', native: false, transport: 'direct', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
     { id: 'fitbit', name: 'Fitbit', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
     { id: 'strava', name: 'Strava', native: false, transport: 'terra', capabilities: ['activities', 'heart-rate'] },
     { id: 'huawei', name: 'Huawei Health', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
@@ -114,22 +118,39 @@ export function isTerraProvider(id: HealthProviderId | null): boolean {
 }
 
 /**
- * True for a provider whose direct link is paused: Garmin's own `paused` flag
- * (see `HealthProviderMeta.paused`), or ANY Terra brand while the Terra pause
- * switch is on (lib/health/terraPause). Accepts Terra's uppercase slugs too
- * ('GARMIN'), as stored on terra_connections.
+ * Providers whose data reaches POWR server-side — through Terra or our own
+ * direct integration (Garmin). The client never pulls their data, never runs
+ * the native workout/sleep sync while one is active, and treats them as the
+ * one wearable a user has. See useHealthSync and useHealthProviders.
+ */
+export function isServerDelivered(id: HealthProviderId | null): boolean {
+    if (!id) return false;
+    const transport = ALL_PROVIDER_META.find(m => m.id === id)?.transport;
+    return transport === 'terra' || transport === 'direct';
+}
+
+/**
+ * True for a provider whose link is paused: a `paused` flag in the list (see
+ * `HealthProviderMeta.paused`), ANY Terra brand while the Terra pause switch is
+ * on (lib/health/terraPause), or Garmin direct while the garmin_direct switch
+ * doesn't include this user (lib/health/garminDirect). Accepts Terra's
+ * uppercase slugs too ('WHOOP'), as stored on terra_connections.
  */
 export function isPausedProvider(id: string | null | undefined): boolean {
     if (!id) return false;
     const meta = ALL_PROVIDER_META.find(m => m.id === id.toLowerCase());
     if (!meta) return false;
-    return meta.paused === true || (meta.transport === 'terra' && isTerraPaused());
+    if (meta.paused === true) return true;
+    if (meta.transport === 'terra') return isTerraPaused();
+    if (meta.transport === 'direct') return !isGarminDirectAvailable();
+    return false;
 }
 
 /**
- * Only the `paused` flag written into the provider list (Garmin). Paused
- * there, a connection is dropped from the profile for good; paused by the
- * remote switch, it is left alone so turning the switch off restores it.
+ * Only the `paused` flag written into the provider list (no provider carries
+ * it today; Garmin did until it went direct). Paused there, a connection is
+ * dropped from the profile for good; paused by a remote switch (Terra pause,
+ * garmin_direct), it is left alone so switching back restores it.
  */
 export function isStaticallyPaused(id: string | null | undefined): boolean {
     if (!id) return false;
@@ -188,7 +209,6 @@ export function getProvider(id: HealthProviderId): HealthProvider {
         case 'whoop':
         case 'oura':
         case 'polar':
-        case 'garmin':
         case 'fitbit':
         case 'strava':
         case 'huawei':
@@ -206,6 +226,8 @@ export function getProvider(id: HealthProviderId): HealthProvider {
             const meta = ALL_PROVIDER_META.find(m => m.id === id)!;
             return createTerraProvider(meta);
         }
+        case 'garmin':
+            return createGarminProvider(ALL_PROVIDER_META.find(m => m.id === 'garmin')!);
     }
     throw new HealthProviderNotImplementedError(id, 'connect');
 }

@@ -15,7 +15,10 @@
     "samsungReturned": "Samsung Health returned: {{error}}",
     "missingCode": "Missing authorization code",
     "stateMismatch": "State mismatch or empty token response",
-    "exchangeFailed": "Token exchange failed"
+    "exchangeFailed": "Token exchange failed",
+    "connectingGarmin": "Connecting Garmin Connect…",
+    "garminDenied": "Garmin wasn’t connected — access wasn’t allowed.",
+    "garminAlreadyLinked": "That Garmin account is already linked to another POWR account."
   },
   "circleCamera": {
     "close": "Close",

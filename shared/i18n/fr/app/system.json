@@ -15,7 +15,10 @@
     "samsungReturned": "Réponse de Samsung Health : {{error}}",
     "missingCode": "Code d’autorisation manquant",
     "stateMismatch": "État non concordant ou réponse de jeton vide",
-    "exchangeFailed": "Échec de l’échange de jeton"
+    "exchangeFailed": "Échec de l’échange de jeton",
+    "connectingGarmin": "Connexion à Garmin Connect…",
+    "garminDenied": "Garmin n’est pas connecté : l’accès n’a pas été autorisé.",
+    "garminAlreadyLinked": "Ce compte Garmin est déjà lié à un autre compte POWR."
   },
   "circleCamera": {
     "close": "Fermer",

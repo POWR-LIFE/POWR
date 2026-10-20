@@ -408,6 +408,17 @@ verify_jwt = false
 # on). No user JWT — gated by the x-resolve-token Vault secret like terra-poll.
 verify_jwt = false
 
+[functions.garmin-auth]
+# Garmin sign-in broker. Garmin's OAuth redirect is a browser GET with no
+# Supabase session, so verify_jwt is off; the POST actions check the caller's
+# JWT themselves and the callback is bound to its one-time PKCE state row.
+verify_jwt = false
+
+[functions.garmin-webhook]
+# Garmin pushes data here. Garmin is not a Supabase user and doesn't sign its
+# pushes — the secret ?k= in the URL configured at Garmin is the gate.
+verify_jwt = false
+
 [functions.notify-waitlist]
 # Invoked by the notify-slack-on-waitlist trigger via pg_net (no Supabase user
 # JWT). Security rests on the in-code gate: x-resolve-token (verify_resolve_token)
