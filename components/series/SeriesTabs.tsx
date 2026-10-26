@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
@@ -14,9 +15,9 @@ import {
     fmt,
     initialsOf,
     type LensKey,
-    ordinal,
     type TabGames,
 } from '@/lib/dev/seriesPrototype';
+import i18n from '@/lib/i18n';
 import {
     AVATAR_BG,
     CARD_BG,
@@ -148,6 +149,21 @@ function TableRow({
 
 const rankText = (n: number, me: boolean) => <Text style={[s.trRank, me && { color: GOLD, fontWeight: '500' }]}>{n}</Text>;
 
+/**
+ * A place in the language on screen: "1st" and "22nd", "1er" and "2e", "1.º".
+ * Each language's own ordinal rule picks the form (as lib/prizeShare does).
+ */
+const PLACE_KEYS: Record<string, string> = {
+    one: 'series:tabs.place.one',
+    two: 'series:tabs.place.two',
+    few: 'series:tabs.place.few',
+    other: 'series:tabs.place.other',
+};
+function place(rank: number): string {
+    const form = new Intl.PluralRules(i18n.language, { type: 'ordinal' }).select(rank);
+    return i18n.t(PLACE_KEYS[form] ?? PLACE_KEYS.other, { rank });
+}
+
 /** My city: you're on a team. Cities ranked on average Series points per member. */
 export function CityClash({
     tabs, city, forming = 0,
@@ -157,6 +173,7 @@ export function CityClash({
     /** Cities not ranked yet. */
     forming?: number;
 }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     const rows = cityRanked(tabs);
     const i = rows.findIndex((r) => r.you);
@@ -165,53 +182,62 @@ export function CityClash({
     const rv = me && rows.length > 1 ? rows[ahead ? 1 : i - 1] : null;
     const gap = me && rv ? Math.max(1, Math.abs(rv.avg - me.avg)) : 0;
     const hidden = Math.max(0, rows.length - 6);
-    const more = [hidden ? `${hidden} more cities` : null, forming ? `${forming} forming` : null].filter(Boolean).join(' · ');
+    const more = [
+        hidden ? t('series:tabs.city.moreCities', { count: hidden }) : null,
+        forming ? t('series:tabs.city.formingCount', { n: forming }) : null,
+    ].filter(Boolean).join(' · ');
     return (
         <>
-            <SectionLabel text="City clash" right="avg points per member" />
+            <SectionLabel text={t('series:tabs.city.title')} right={t('series:tabs.city.right')} />
             {me && rv ? (
                 <View style={[s.card, s.versus, sc]}>
                     <View style={s.vsRow}>
                         <View style={s.vsSide}>
-                            <Text style={s.vsWho} numberOfLines={1}>{me.name} · {ordinal(i + 1)}</Text>
+                            <Text style={s.vsWho} numberOfLines={1}>{me.name} · {place(i + 1)}</Text>
                             <Text style={[s.vsNum, { color: GOLD }]}>{fmt(me.avg)}</Text>
                         </View>
                         <View style={s.vsGap}>
-                            <Text style={s.vsGapLabel}>{ahead ? 'LEAD' : 'GAP'}</Text>
+                            <Text style={s.vsGapLabel}>{ahead ? t('series:tabs.city.lead') : t('series:tabs.city.gap')}</Text>
                             <Text style={s.vsGapNum}>{fmt(gap)}</Text>
-                            <Text style={s.vsGapSub}>per member</Text>
+                            <Text style={s.vsGapSub}>{t('series:tabs.city.perMember')}</Text>
                         </View>
                         <View style={[s.vsSide, { alignItems: 'flex-end' }]}>
-                            <Text style={s.vsWho} numberOfLines={1}>{rv.name} · {ordinal(ahead ? 2 : i)}</Text>
+                            <Text style={s.vsWho} numberOfLines={1}>{rv.name} · {place(ahead ? 2 : i)}</Text>
                             <Text style={s.vsNum}>{fmt(rv.avg)}</Text>
                         </View>
                     </View>
                     <Tug share={me.avg / Math.max(1, me.avg + rv.avg)} />
                     <Text style={s.body}>
                         {ahead
-                            ? `${me.name} is the top city. Hold ${rv.name} off until the round closes.`
-                            : `Pass ${rv.name} and ${me.name} ${i === 1 ? 'tops the round' : `moves up to ${ordinal(i)}`}. Every session logged in ${me.name} lifts the average.`}
+                            ? t('series:tabs.city.top', { city: me.name, rival: rv.name })
+                            : i === 1
+                                ? t('series:tabs.city.passTop', { city: me.name, rival: rv.name })
+                                : t('series:tabs.city.passUp', { city: me.name, rival: rv.name, place: place(i) })}
                     </Text>
                 </View>
             ) : city ? (
                 <View style={[s.card, s.versus, sc]}>
-                    <Text style={s.body}>{city.name} joins the table once more of its members are moving. Every session you log brings it closer.</Text>
+                    <Text style={s.body}>{t('series:tabs.city.forming', { city: city.name })}</Text>
                 </View>
             ) : null}
             {city && (
                 <Text style={s.yourPart}>
-                    You’re <Text style={s.yourPartGold}>#{fmt(city.rank)}</Text> of {fmt(city.members)} in {city.name}. Every point you log counts for the city too.
+                    <Trans
+                        i18nKey="series:tabs.city.yourPart"
+                        values={{ rank: fmt(city.rank), members: fmt(city.members), city: city.name }}
+                        components={{ gold: <Text style={s.yourPartGold} /> }}
+                    />
                 </Text>
             )}
-            <SectionLabel text="The table" right={`${rows.length} cities`} />
+            <SectionLabel text={t('series:tabs.city.table')} right={t('series:tabs.city.cities', { count: rows.length })} />
             <View style={[s.card, s.table, sc]}>
                 {rows.slice(0, 6).map((r, j) => (
                     <TableRow
                         key={r.name}
                         rank={rankText(j + 1, r.you)}
                         name={r.name}
-                        tag={r.you ? 'YOUR CITY' : undefined}
-                        sub={`${fmt(r.members)} members`}
+                        tag={r.you ? t('series:tabs.city.yourCity') : undefined}
+                        sub={t('series:tabs.city.members', { count: r.members, n: fmt(r.members) })}
                         value={fmt(r.avg)}
                         me={r.you}
                         divider={j > 0 && !r.you && !rows[j - 1].you}
@@ -219,7 +245,7 @@ export function CityClash({
                 ))}
                 {more ? <MoreLine text={more} /> : null}
             </View>
-            <Text style={s.note}>Ranked per member, so a small city can beat a big one. When the round closes, 5 members of the top city win a Nutrition Reset.</Text>
+            <Text style={s.note}>{t('series:tabs.city.note')}</Text>
         </>
     );
 }
@@ -232,11 +258,12 @@ export function LockedGame({
     lock: GameLock;
     onAction: (action: NonNullable<GameLock['action']>) => void;
 }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     const action = lock.action;
     return (
         <>
-            <SectionLabel text={title} right="opening soon" />
+            <SectionLabel text={title} right={t('series:tabs.lock.right')} />
             <View style={[s.card, s.lock, sc]}>
                 <View style={s.lockHead}>
                     <View style={s.lockIcon}><Ionicons name="lock-closed" size={12} color={GOLD} /></View>
@@ -248,14 +275,14 @@ export function LockedGame({
                             <View key={it.label} style={[s.lockItem, j > 0 && s.lockItemLine]}>
                                 <View style={s.trNameRow}>
                                     <Text style={[s.lockName, it.you && { color: TEXT }]} numberOfLines={1}>{it.label}</Text>
-                                    {it.you ? <Text style={s.trTag}>YOU</Text> : null}
+                                    {it.you ? <Text style={s.trTag}>{t('series:tabs.lock.you')}</Text> : null}
                                 </View>
                                 {it.ready ? (
-                                    <Text style={s.lockReady}>READY</Text>
+                                    <Text style={s.lockReady}>{t('series:tabs.lock.ready')}</Text>
                                 ) : it.progress != null ? (
                                     <View style={s.lockBar}><View style={[s.lockFill, { width: `${Math.round(it.progress * 100)}%` }]} /></View>
                                 ) : (
-                                    <Text style={s.lockForming}>FORMING</Text>
+                                    <Text style={s.lockForming}>{t('series:tabs.lock.forming')}</Text>
                                 )}
                             </View>
                         ))}
@@ -270,7 +297,7 @@ export function LockedGame({
                         accessibilityRole="button"
                     >
                         <Ionicons name={action === 'invite' ? 'person-add-outline' : 'location-outline'} size={14} color="#0a0a0a" />
-                        <Text style={s.lockBtnText}>{action === 'invite' ? 'INVITE A FRIEND' : 'SET YOUR GYM'}</Text>
+                        <Text style={s.lockBtnText}>{action === 'invite' ? t('series:tabs.lock.invite') : t('series:tabs.lock.setGym')}</Text>
                     </Pressable>
                 )}
             </View>
@@ -283,6 +310,7 @@ export function LockedGame({
  * the pick takes two taps (choose, then confirm).
  */
 export function CityPicker({ options, onPick }: { options: string[]; onPick: (city: string) => Promise<void> }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     const [chosen, setChosen] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -293,9 +321,9 @@ export function CityPicker({ options, onPick }: { options: string[]; onPick: (ci
     };
     return (
         <>
-            <SectionLabel text="Your city" right="locks for the round" />
+            <SectionLabel text={t('series:tabs.pick.title')} right={t('series:tabs.pick.right')} />
             <View style={[s.card, s.lock, sc]}>
-                <Text style={s.lockRule}>Which city do you move in?</Text>
+                <Text style={s.lockRule}>{t('series:tabs.pick.question')}</Text>
                 <View style={s.pickWrap}>
                     {options.slice(0, 9).map((c) => {
                         const on = c === chosen;
@@ -319,10 +347,10 @@ export function CityPicker({ options, onPick }: { options: string[]; onPick: (ci
                         disabled={busy}
                         accessibilityRole="button"
                     >
-                        <Text style={s.lockBtnText}>{`MOVE FOR ${chosen.toUpperCase()}`}</Text>
+                        <Text style={s.lockBtnText}>{t('series:tabs.pick.confirm', { city: chosen.toUpperCase() })}</Text>
                     </Pressable>
                 ) : null}
-                <Text style={s.body}>Your points count for its team until the round ends. Set your gym on POWR and it picks for you.</Text>
+                <Text style={s.body}>{t('series:tabs.pick.note')}</Text>
             </View>
         </>
     );
@@ -330,6 +358,7 @@ export function CityPicker({ options, onPick }: { options: string[]; onPick: (ci
 
 /** My gym: the crown. King of the hill on sessions verified at your gym, rolling 7 days. */
 export function GymCrown({ tabs, youLabel, sessionPts }: { tabs: TabGames; youLabel: string; sessionPts: number }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     const scFill = useSeasonCard(true);
     const g = tabs.gym;
@@ -344,42 +373,51 @@ export function GymCrown({ tabs, youLabel, sessionPts }: { tabs: TabGames; youLa
     if (!king) {
         return (
             <>
-                <SectionLabel text="The crown" right={where} />
+                <SectionLabel text={t('series:tabs.crown.title')} right={where} />
                 <View style={[s.crown, scFill]}>
                     <Crown size={44} />
-                    <Text style={s.crownEyebrow}>THE CROWN IS FREE</Text>
-                    <Text style={s.crownSub}>Nobody has checked in at {g.name} this week. One session takes it.</Text>
+                    <Text style={s.crownEyebrow}>{t('series:tabs.crown.free')}</Text>
+                    <Text style={s.crownSub}>{t('series:tabs.crown.freeLine', { gym: g.name })}</Text>
                 </View>
             </>
         );
     }
     return (
         <>
-            <SectionLabel text="The crown" right={where} />
+            <SectionLabel text={t('series:tabs.crown.title')} right={where} />
             <View style={[s.crown, scFill, mine && { borderColor: 'rgba(232,210,0,0.5)' }]}>
                 <LinearGradient colors={['rgba(232,210,0,0.10)', 'rgba(232,210,0,0)']} style={[StyleSheet.absoluteFill, { bottom: '45%' }]} />
                 <Crown size={44} />
-                <Text style={s.crownEyebrow}>{mine ? 'YOU HOLD THE CROWN' : 'HOLDS THE CROWN'}</Text>
+                <Text style={s.crownEyebrow}>{mine ? t('series:tabs.crown.youHold') : t('series:tabs.crown.holds')}</Text>
                 <Text style={s.crownName} numberOfLines={1}>{mine ? youLabel : king.name}</Text>
                 <Text style={s.crownSub}>
-                    {fmt(king.pts)} pts at {g.name} this week{g.held == null ? '' : ` · ${g.held ? `held ${g.held} day${g.held > 1 ? 's' : ''}` : 'taken just now'}`}
+                    {/* How long it's been held is sample-only (the live board sends no `held`). */}
+                    {t('series:tabs.crown.points', { points: fmt(king.pts), gym: g.name })}{g.held == null ? '' : ` · ${g.held ? `held ${g.held} day${g.held > 1 ? 's' : ''}` : 'taken just now'}`}
                 </Text>
                 <View style={s.crownYou}>
                     {mine && c[1] ? (
                         <Text style={s.crownYouText}>
-                            <Text style={s.gold}>{fmt(king.pts - c[1].pts)} pts</Text> clear of {c[1].name}. They can take it back any day.
+                            <Trans
+                                i18nKey="series:tabs.crown.clear"
+                                values={{ points: fmt(king.pts - c[1].pts), name: c[1].name }}
+                                components={{ gold: <Text style={s.gold} /> }}
+                            />
                         </Text>
                     ) : mine ? (
-                        <Text style={s.crownYouText}>Nobody else has checked in at {g.name} this week. Yet.</Text>
+                        <Text style={s.crownYouText}>{t('series:tabs.crown.alone', { gym: g.name })}</Text>
                     ) : me ? (
                         <Text style={s.crownYouText}>
-                            You’re {ordinal(i + 1)} here · <Text style={s.gold}>{fmt(behind)} pts</Text> behind the crown{'\n'}
-                            About {n} gym session{n > 1 ? 's' : ''} at {g.name} takes it
+                            <Trans
+                                i18nKey="series:tabs.crown.behind"
+                                values={{ place: place(i + 1), points: fmt(behind) }}
+                                components={{ gold: <Text style={s.gold} /> }}
+                            />{'\n'}
+                            {t('series:tabs.crown.takeIt', { count: n, gym: g.name })}
                         </Text>
                     ) : (
                         <Text style={s.crownYouText}>
-                            You haven’t checked in at {g.name} this week{'\n'}
-                            About {n} gym session{n > 1 ? 's' : ''} takes the crown
+                            {t('series:tabs.crown.notIn', { gym: g.name })}{'\n'}
+                            {t('series:tabs.crown.takeCrown', { count: n })}
                         </Text>
                     )}
                 </View>
@@ -392,7 +430,7 @@ export function GymCrown({ tabs, youLabel, sessionPts }: { tabs: TabGames; youLa
                     </Text>
                 </View>
             )}
-            <SectionLabel text="The court" right={`this week at ${g.name}`} />
+            <SectionLabel text={t('series:tabs.crown.court')} right={t('series:tabs.crown.courtRight', { gym: g.name })} />
             <View style={[s.card, s.table, sc]}>
                 {c.slice(0, 5).map((r, j) => (
                     <TableRow
@@ -405,24 +443,29 @@ export function GymCrown({ tabs, youLabel, sessionPts }: { tabs: TabGames; youLa
                     />
                 ))}
             </View>
-            <Text style={s.note}>Only sessions verified at {g.name} count, over a rolling 7 days, so the crown can change hands any day.</Text>
+            <Text style={s.note}>{t('series:tabs.crown.note', { gym: g.name })}</Text>
         </>
     );
 }
 
 function DuelRow({ d, you, first }: { d: Duel; you: number; first: boolean }) {
+    const { t } = useTranslation();
     const lead = you - d.them;
     const share = you / Math.max(1, you + d.them);
     const rec = d.w + d.l
-        ? `${d.w}–${d.l} ${d.w > d.l ? 'to you' : d.w < d.l ? `to ${firstName(d.name)}` : 'all square'}`
-        : 'first duel';
+        ? d.w > d.l
+            ? t('series:tabs.duel.record.you', { w: d.w, l: d.l })
+            : d.w < d.l
+                ? t('series:tabs.duel.record.them', { w: d.w, l: d.l, name: firstName(d.name) })
+                : t('series:tabs.duel.record.square', { w: d.w, l: d.l })
+        : t('series:tabs.duel.record.first');
     return (
         <View style={s.duel}>
             {!first && <View style={[s.hair, { left: 66 }]} />}
             <Disc name={d.name} />
             <View style={s.duelMid}>
                 <View style={s.duelNameRow}>
-                    <Text style={s.duelVs} numberOfLines={1}>vs {d.name}</Text>
+                    <Text style={s.duelVs} numberOfLines={1}>{t('series:tabs.duel.vs', { name: d.name })}</Text>
                     <Text style={s.duelRec}>{rec}</Text>
                 </View>
                 <View style={s.dbar}>
@@ -432,7 +475,7 @@ function DuelRow({ d, you, first }: { d: Duel; you: number; first: boolean }) {
             </View>
             <View style={s.duelGap}>
                 <Text style={[s.duelGapNum, lead >= 0 && { color: GOLD }]}>{lead >= 0 ? '+' : '−'}{fmt(Math.abs(lead))}</Text>
-                <Text style={s.duelGapLabel}>{lead >= 0 ? 'AHEAD' : 'BEHIND'}</Text>
+                <Text style={s.duelGapLabel}>{lead >= 0 ? t('series:tabs.duel.ahead') : t('series:tabs.duel.behind')}</Text>
             </View>
         </View>
     );
@@ -447,6 +490,7 @@ export function Duels({
     onChallenge: (id: string) => void;
     onInvite: () => void;
 }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     const scFill = useSeasonCard(true);
     const D = tabs.duel;
@@ -455,7 +499,12 @@ export function Duels({
     return (
         <>
             {(D.active.length > 0 || none) && (
-                <SectionLabel text="Duels" right={D.active.length ? `winning ${winning} of ${D.active.length} · ends ${D.ends}` : `ends ${D.ends}`} />
+                <SectionLabel
+                    text={t('series:tabs.duel.title')}
+                    right={D.active.length
+                        ? t('series:tabs.duel.winning', { winning, total: D.active.length, ends: D.ends })
+                        : t('series:tabs.duel.ends', { ends: D.ends })}
+                />
             )}
             {D.active.length > 0 && (
                 <View style={[s.card, { paddingVertical: 2 }, sc]}>
@@ -464,10 +513,10 @@ export function Duels({
             )}
             {none && (
                 <View style={[s.card, s.versus, sc]}>
-                    <Text style={s.body}>Duels are you against one friend on this week’s points. Add friends on POWR and they’ll show up here to challenge.</Text>
+                    <Text style={s.body}>{t('series:tabs.duel.empty')}</Text>
                     <Pressable style={({ pressed }) => [s.lockBtn, pressed && { opacity: 0.8 }]} onPress={onInvite} accessibilityRole="button">
                         <Ionicons name="person-add-outline" size={14} color="#0a0a0a" />
-                        <Text style={s.lockBtnText}>INVITE A FRIEND</Text>
+                        <Text style={s.lockBtnText}>{t('series:tabs.lock.invite')}</Text>
                     </Pressable>
                 </View>
             )}
@@ -475,17 +524,23 @@ export function Duels({
                 <View style={[s.invite, scFill]}>
                     <Disc name={D.invite.name} />
                     <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={s.inviteText} numberOfLines={1}><Text style={s.inviteStrong}>{D.invite.name}</Text> challenged you</Text>
-                        <Text style={s.inviteSub}>7 days on this week’s points</Text>
+                        <Text style={s.inviteText} numberOfLines={1}>
+                            <Trans
+                                i18nKey="series:tabs.duel.challenged"
+                                values={{ name: D.invite.name }}
+                                components={{ strong: <Text style={s.inviteStrong} /> }}
+                            />
+                        </Text>
+                        <Text style={s.inviteSub}>{t('series:tabs.duel.inviteLine')}</Text>
                     </View>
                     <Pressable style={({ pressed }) => [s.accept, pressed && { opacity: 0.8 }]} onPress={onAccept} accessibilityRole="button">
-                        <Text style={s.acceptText}>ACCEPT</Text>
+                        <Text style={s.acceptText}>{t('series:tabs.duel.accept')}</Text>
                     </Pressable>
                 </View>
             )}
             {D.open.length > 0 && (
                 <>
-                    <SectionLabel text="Start a duel" right={D.active.length ? undefined : `ends ${D.ends}`} />
+                    <SectionLabel text={t('series:tabs.duel.start')} right={D.active.length ? undefined : t('series:tabs.duel.ends', { ends: D.ends })} />
                     {/* Two even columns, so the friends line up however long their names are. */}
                     <View style={s.grid}>
                         {Array.from({ length: Math.ceil(D.open.length / 2) }, (_, r) => D.open.slice(r * 2, r * 2 + 2)).map((pair) => (
@@ -499,11 +554,11 @@ export function Duels({
                                             onPress={() => onChallenge(id)}
                                             disabled={sent}
                                             accessibilityRole="button"
-                                            accessibilityLabel={sent ? `Challenge sent to ${n}` : `Challenge ${n} to a duel`}
+                                            accessibilityLabel={sent ? t('series:tabs.duel.sentA11y', { name: n }) : t('series:tabs.duel.challengeA11y', { name: n })}
                                         >
                                             <View style={s.chipDisc}><Text style={s.chipInit}>{initialsOf(n)}</Text></View>
                                             <Text style={s.chipName} numberOfLines={1}>{firstName(n)}</Text>
-                                            <Text style={[s.chipEm, sent && { color: TEXT_2 }]}>{sent ? 'SENT' : 'DUEL'}</Text>
+                                            <Text style={[s.chipEm, sent && { color: TEXT_2 }]}>{sent ? t('series:tabs.duel.sent') : t('series:tabs.duel.duel')}</Text>
                                         </Pressable>
                                     );
                                 })}
@@ -513,7 +568,7 @@ export function Duels({
                     </View>
                 </>
             )}
-            <Text style={s.note}>You vs one friend on this week’s points. Everyone starts at zero on Monday, so anyone can win.</Text>
+            <Text style={s.note}>{t('series:tabs.duel.note')}</Text>
         </>
     );
 }

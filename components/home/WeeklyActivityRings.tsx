@@ -150,7 +150,7 @@ function ActivityCircle({ data, onPress, boost }: { data: WeeklyRingData; onPres
         </View>
         {/* A Series moment boosting this activity right now (Double Down, Power Hour …). */}
         {boost ? (
-          <View style={circleStyles.boost} accessibilityLabel={`${boost} in the Series right now`}>
+          <View style={circleStyles.boost} accessibilityLabel={t('series:homeBits.boostA11y', { boost })}>
             <Text style={circleStyles.boostText}>{boost}</Text>
           </View>
         ) : null}

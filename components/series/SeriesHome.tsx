@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, FadeOut, useAnimatedRef, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { router } from 'expo-router';
 
 import { DropReveal } from '@/components/drop/DropReveal';
@@ -56,12 +56,8 @@ import { useSeriesSim } from './useSeriesSim';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-const TABS: { key: LensKey; label: string }[] = [
-    { key: 'overall', label: 'Overall' },
-    { key: 'city', label: 'My city' },
-    { key: 'gym', label: 'My gym' },
-    { key: 'friends', label: 'Friends' },
-];
+/** The games, in tab order (their labels are translated in the component). */
+const TABS: LensKey[] = ['overall', 'city', 'gym', 'friends'];
 /** Between rounds only the games that run all year stay open. */
 const ALL_YEAR: LensKey[] = ['gym', 'friends'];
 const STATES: SeriesState[] = ['day3', 'doubleDown', 'eventNight', 'plague', 'blind', 'powerHour', 'allIn'];
@@ -203,7 +199,13 @@ export function SeriesHome({
 
     // Every game keeps its tab, locked until enough people are in it, so the
     // ones still opening are on show. Between rounds only the all-year ones.
-    const tabs = TABS.filter((x) => running || upcoming || ALL_YEAR.includes(x.key)).map((x) => ({ ...x, locked: !v.open[x.key] }));
+    const tabLabel: Record<LensKey, string> = {
+        overall: t('series:league.tabs.overall'),
+        city: t('series:league.tabs.city'),
+        gym: t('series:league.tabs.gym'),
+        friends: t('series:league.tabs.friends'),
+    };
+    const tabs = TABS.filter((k) => running || upcoming || ALL_YEAR.includes(k)).map((k) => ({ key: k, label: tabLabel[k], locked: !v.open[k] }));
     const tabShown = tabs.some((x) => x.key === sim.tab);
     const onOverall = running && (tabShown ? sim.tab : tabs[0]?.key) === 'overall';
     const setTab = sim.setTab;
@@ -251,14 +253,15 @@ export function SeriesHome({
     // What gets shared never leads with a place on the big board (pacers fill
     // it): your place in your heat, else the places you climbed, else your points.
     const myPts = youOf(v.board).p.pts;
-    const dayLine = `DAY ${v.hero.day} OF ${v.round.days}`;
+    const dayLine = t('series:league.share.day', { day: v.hero.day, days: v.round.days });
+    // The heat headline is sample-only (the live board has no heats yet).
     const share = v.hero.blind
-        ? { big: fmt(myPts), line: `SERIES POINTS · ${dayLine}` }
+        ? { big: fmt(myPts), line: t('series:league.share.points', { dayLine }) }
         : v.headline === 'heat' && v.heat
             ? { big: ordinal(v.heat.rank).toUpperCase(), line: `IN MY HEAT · DIVISION ${v.heat.meta.div}${v.heat.move > 0 ? ` · ▲${v.heat.move} TODAY` : ''}` }
             : v.hero.move > 0
-                ? { big: `▲${v.hero.move}`, line: `PLACES TODAY · ${fmt(myPts)} PTS · ${dayLine}` }
-                : { big: fmt(myPts), line: `SERIES POINTS · ${dayLine}` };
+                ? { big: `▲${v.hero.move}`, line: t('series:league.share.climbed', { count: v.hero.move, points: fmt(myPts), dayLine }) }
+                : { big: fmt(myPts), line: t('series:league.share.points', { dayLine }) };
     const showAlerts = forceAlerts || alerts.needed;
 
     // What the Series pushes say, previewed in-app. One morning push carries the
@@ -284,7 +287,7 @@ export function SeriesHome({
     const invite = async () => {
         trackTap('series_invite', { tab: sim.tab });
         const code = profile?.referral_code;
-        if (!code) { sim.showToast('YOUR INVITE CODE IS STILL LOADING'); return; }
+        if (!code) { sim.showToast(t('series:league.toast.codeLoading')); return; }
         const link = friendInviteLink(code);
         try {
             await Share.share({ message: `${t('events:invite.joinMe', { codeLine: inviteCodeLine(code) })}\n${link}`, url: link });
@@ -302,10 +305,10 @@ export function SeriesHome({
         try {
             const got = await pickSeriesCity(city);
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            sim.showToast(`YOU MOVE FOR ${got.toUpperCase()} THIS ROUND`);
+            sim.showToast(t('series:league.toast.cityPicked', { city: got.toUpperCase() }));
             await live.refresh();
         } catch {
-            sim.showToast('COULDN’T SET YOUR CITY · TRY AGAIN');
+            sim.showToast(t('series:league.toast.cityFailed'));
         }
     };
 
@@ -315,16 +318,16 @@ export function SeriesHome({
         const iv = v.tabs.duel.invite;
         if (!v.live || !iv) { sim.acceptDuel(); return; }
         respondToDuel(iv.id, true)
-            .then(() => { sim.showToast(`DUEL ON · YOU VS ${iv.name.toUpperCase()} · ENDS SUNDAY`); return live.refresh(); })
-            .catch(() => sim.showToast('COULDN’T ACCEPT · TRY AGAIN'));
+            .then(() => { sim.showToast(t('series:league.toast.duelOn', { name: iv.name.toUpperCase() })); return live.refresh(); })
+            .catch(() => sim.showToast(t('series:league.toast.acceptFailed')));
     };
     const challenge = (id: string) => {
         trackTap('series_duel_challenge');
         if (!v.live) { sim.challenge(id); return; }
         const name = v.tabs.duel.open.find((o) => o.id === id)?.name ?? '';
         challengeFriend(id)
-            .then(() => { void Haptics.selectionAsync(); sim.showToast(`CHALLENGE SENT TO ${firstName(name).toUpperCase()}`); return live.refresh(); })
-            .catch(() => sim.showToast('COULDN’T SEND · TRY AGAIN'));
+            .then(() => { void Haptics.selectionAsync(); sim.showToast(t('series:league.toast.challengeSent', { name: firstName(name).toUpperCase() })); return live.refresh(); })
+            .catch(() => sim.showToast(t('series:league.toast.sendFailed')));
     };
 
     const alertsCardEl = showAlerts
@@ -364,7 +367,11 @@ export function SeriesHome({
                             v={v}
                             lit={lit}
                             onRules={() => { trackTap('series_rules_open'); setSheet('rules'); }}
-                            blindBack={blindCard?.back ? `back ${/^\d/.test(blindCard.back) ? 'at ' : ''}${blindCard.back}` : undefined}
+                            blindBack={blindCard?.back
+                                ? (/^\d/.test(blindCard.back)
+                                    ? t('series:league.rival.backAt', { time: blindCard.back })
+                                    : t('series:league.rival.backOn', { day: blindCard.back }))
+                                : undefined}
                         />
                     )}
                     <Race v={v} hits={v.live ? {} : sim.hits} you={you} heat={inHeat ? v.heat : null} />
@@ -395,12 +402,12 @@ export function SeriesHome({
                     {v.cityPick && <CityPicker options={v.cityPick} onPick={pickCity} />}
                     {v.open.city
                         ? <CityClash tabs={v.tabs} city={v.city} forming={v.cityForming} />
-                        : v.locks.city && <LockedGame title="City clash" lock={v.locks.city} onAction={onLockAction} />}
+                        : v.locks.city && <LockedGame title={t('series:tabs.city.title')} lock={v.locks.city} onAction={onLockAction} />}
                 </>
             )}
             {sim.tab === 'gym' && tabShown && (v.open.gym
                 ? <GymCrown tabs={v.tabs} youLabel={youLabel} sessionPts={v.gymSessionPts} />
-                : v.locks.gym && <LockedGame title="The crown" lock={v.locks.gym} onAction={onLockAction} />)}
+                : v.locks.gym && <LockedGame title={t('series:tabs.crown.title')} lock={v.locks.gym} onAction={onLockAction} />)}
             {sim.tab === 'friends' && v.loop?.results && (
                 <DuelResults results={v.loop.results} rematched={v.loop.rematched} onRematch={(id) => { trackTap('series_rematch'); sim.rematch(id); }} />
             )}
@@ -415,7 +422,7 @@ export function SeriesHome({
                 onPress={() => { trackTap('series_rules_open'); setSheet('rules'); }}
                 accessibilityRole="button"
             >
-                <Text style={s.linkText}>How the Series works</Text>
+                <Text style={s.linkText}>{t('series:league.links.howItWorks')}</Text>
                 <Ionicons name="arrow-forward" size={15} color={TEXT} />
             </Pressable>
         </View>
@@ -456,14 +463,14 @@ export function SeriesHome({
                     </Animated.View>
                 )}
                 <Sheet visible={sheet === 'race'} onClose={() => setSheet(null)}>
-                    <SheetHead light="The invite " bold="race" onClose={() => setSheet(null)} />
+                    <SheetHead light={t('series:league.inviteRace.light')} bold={t('series:league.inviteRace.bold')} onClose={() => setSheet(null)} />
                     {inviteBoard && <View style={{ marginHorizontal: -16 }}><InviteBoardCard board={inviteBoard} you={youLabel} onInvite={() => { void invite(); }} /></View>}
                     <Text style={[s.roundNote, { marginTop: 12 }]}>
-                        {`A friend counts once they join with your code and log a workout. Most friends by the gun is on course for Patient Zero.`}
+                        {t('series:league.inviteRace.note')}
                     </Text>
                 </Sheet>
                 <Sheet visible={sheet === 'city'} onClose={() => setSheet(null)}>
-                    <SheetHead light="Your " bold="city" onClose={() => setSheet(null)} />
+                    <SheetHead light={t('series:league.citySheet.light')} bold={t('series:league.citySheet.bold')} onClose={() => setSheet(null)} />
                     {v.cityPick && (
                         <View style={{ marginHorizontal: -16 }}>
                             <CityPicker options={v.cityPick} onPick={async (c) => { await pickCity(c); setSheet(null); }} />
@@ -511,14 +518,20 @@ export function SeriesHome({
                         <View style={[s.today, todayCard]}>
                             <View style={s.todayHead}>
                                 <View style={{ flex: 1, gap: 4 }}>
-                                    <Text style={s.todayTitle}>Today <Text style={{ color: GREEN }}>+{fmt(v.hero.today)} pts</Text></Text>
+                                    <Text style={s.todayTitle}>
+                                        <Trans
+                                            i18nKey="series:league.today.title"
+                                            values={{ points: fmt(v.hero.today) }}
+                                            components={{ green: <Text style={{ color: GREEN }} /> }}
+                                        />
+                                    </Text>
                                     <Pressable
                                         onPress={() => { trackTap('series_activity_open'); router.push('/(tabs)/progress'); }}
                                         hitSlop={8}
                                         style={({ pressed }) => [s.inlineLink, pressed && { opacity: 0.6 }]}
                                         accessibilityRole="button"
                                     >
-                                        <Text style={s.inlineLinkText}>View activity</Text>
+                                        <Text style={s.inlineLinkText}>{t('series:league.today.viewActivity')}</Text>
                                         <Ionicons name="arrow-forward" size={13} color={TEXT} />
                                     </Pressable>
                                 </View>
@@ -542,17 +555,17 @@ export function SeriesHome({
                                 round={{ day: v.hero.day, days: v.round.days }}
                             />
                         </View>
-                        <SectionLabel text="Ways to win" right={`prizes land ${v.round.prizesOn}`} />
+                        <SectionLabel text={t('series:league.waysToWin')} right={t('series:league.prizesLand', { date: v.round.prizesDay })} />
                         <WaysToWin state={prizeState} onOpen={openPrize} />
                         {/* The round's moments, as set in /admin/series (the sample has its own). */}
                         {momentCards.length > 0 && (
                             <>
                                 <View onLayout={(e) => { roundY.current = e.nativeEvent.layout.y; }}>
-                                    <SectionLabel text="The round" right={`${v.round.name} · ${v.round.days} days`} />
+                                    <SectionLabel text={t('series:league.round.title')} right={t('series:league.round.right', { name: v.round.name, count: v.round.days })} />
                                 </View>
                                 <MomentStrip cards={momentCards} />
                                 <Text style={s.roundNote}>
-                                    {`Each moment is named when it’s next.${!v.live || momentCards.some((m) => m.secret) ? ' One more is never announced.' : ''}`}
+                                    {!v.live || momentCards.some((m) => m.secret) ? t('series:league.round.noteSecret') : t('series:league.round.note')}
                                 </Text>
                             </>
                         )}
@@ -566,7 +579,7 @@ export function SeriesHome({
                                 onPress={() => { void Haptics.selectionAsync(); trackTap('series_share_open'); setSheet('share'); }}
                                 accessibilityRole="button"
                             >
-                                <Text style={s.linkText}>Share my position</Text>
+                                <Text style={s.linkText}>{t('series:league.links.share')}</Text>
                                 <Ionicons name="arrow-up" size={15} color={TEXT} style={{ transform: [{ rotate: '45deg' }] }} />
                             </Pressable>
                             <View style={[s.linkRule, todayCard && { backgroundColor: todayCard.borderColor }]} />
@@ -575,7 +588,7 @@ export function SeriesHome({
                                 onPress={() => { trackTap('series_rules_open'); setSheet('rules'); }}
                                 accessibilityRole="button"
                             >
-                                <Text style={s.linkText}>Round, prizes and rules</Text>
+                                <Text style={s.linkText}>{t('series:league.links.rules')}</Text>
                                 <Ionicons name="arrow-forward" size={15} color={TEXT} />
                             </Pressable>
                         </View>
@@ -652,7 +665,7 @@ export function SeriesHome({
                 live={v.live}
                 days={v.round.days}
                 need={v.hero.need}
-                when={v.round.prizesOn}
+                when={v.round.prizesDay}
                 boosts={extras.moments.some((m) => (m.multiplier ?? 1) > 1)}
                 blindMode={extras.moments.some((m) => m.kind === 'blind')}
                 mostWanted={!v.live || prizeSet.named.most_wanted != null}
@@ -703,21 +716,22 @@ export function SeriesHome({
 
 /** Push is how a race reaches you when the app is shut, so ask while it's obviously useful. */
 function AlertsCard({ onEnable }: { onEnable: () => void }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard(true);
     return (
         <View style={[s.alerts, sc]}>
             <View style={s.nextIcon}><Ionicons name="notifications-outline" size={17} color={GOLD} /></View>
             <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={s.alertsTitle}>Know when someone passes you</Text>
-                <Text style={s.nextSmall}>Your rival and the round’s results.</Text>
+                <Text style={s.alertsTitle}>{t('series:league.alerts.title')}</Text>
+                <Text style={s.nextSmall}>{t('series:league.alerts.line')}</Text>
             </View>
             <Pressable
                 onPress={() => { void Haptics.selectionAsync(); onEnable(); }}
                 style={({ pressed }) => [s.alertsBtn, pressed && { opacity: 0.8 }]}
                 accessibilityRole="button"
-                accessibilityLabel="Turn on notifications"
+                accessibilityLabel={t('series:league.alerts.a11y')}
             >
-                <Text style={s.alertsBtnText}>TURN ON</Text>
+                <Text style={s.alertsBtnText}>{t('series:league.alerts.cta')}</Text>
             </Pressable>
         </View>
     );
@@ -812,15 +826,26 @@ function HeatRow({ h, blind, lit, onRules }: { h: HeatInfo; blind: boolean; lit:
 
 /** The one to pass, said as something to do; the earning rules a tap away. */
 function RivalRow({ v, lit, onRules, blindBack }: { v: SeriesView; lit: boolean; onRules: () => void; blindBack?: string }) {
+    const { t } = useTranslation();
     const r = v.rival;
     if (!r) return null;
     const sealed = v.hero.blind || r.sealed;
-    const head = sealed ? 'Ranks are hidden' : r.ahead ? `${fmt(r.gap)} pts clear of ${r.p.name}` : `${fmt(r.gap)} pts to pass ${r.p.name}`;
-    // The gap as one activity: "a 30-min walk", "about 3 walks".
+    const head = sealed
+        ? t('series:league.rival.hidden')
+        : r.ahead
+            ? t('series:league.rival.clear', { gap: fmt(r.gap), name: r.p.name })
+            : t('series:league.rival.toPass', { gap: fmt(r.gap), name: r.p.name });
+    // The gap as one activity: "a 30-min walk", "about 3 walks". `how` is matched
+    // as the sample writes it; anything else shows as it came.
     const walks = r.how.match(/(\d+) walks?/);
     const tail = sealed
-        ? `Points still count · ${blindBack ?? 'back Thu'}`
-        : r.ahead ? r.how : r.how.startsWith('One 30-min walk') ? 'Suggested: a 30-min walk' : walks ? `Suggested: about ${walks[1]} walks` : r.how;
+        // 'back Thu' is the sample's (live Blind Mode always says when it's back).
+        ? t('series:league.rival.stillCount', { back: blindBack ?? 'back Thu' })
+        : r.ahead
+            ? r.how
+            : r.how.startsWith('One 30-min walk')
+                ? t('series:league.rival.suggestWalk')
+                : walks ? t('series:league.rival.suggestWalks', { count: Number(walks[1]) }) : r.how;
     return (
         <View style={[s.rival, lit && { backgroundColor: 'rgba(232,210,0,0.06)', borderColor: 'rgba(232,210,0,0.4)' }]}>
             <View style={s.rivalIcon}>
@@ -831,7 +856,7 @@ function RivalRow({ v, lit, onRules, blindBack }: { v: SeriesView; lit: boolean;
                 <Text style={s.rivalTail} numberOfLines={1}>{tail}</Text>
             </View>
             <Pressable onPress={onRules} hitSlop={8} style={({ pressed }) => [s.inlineLink, pressed && { opacity: 0.6 }]} accessibilityRole="button">
-                <Text style={s.rulesLink}>Earning rules</Text>
+                <Text style={s.rulesLink}>{t('series:league.rival.earningRules')}</Text>
                 <Ionicons name="arrow-forward" size={13} color={TEXT_2} />
             </Pressable>
         </View>
@@ -840,6 +865,7 @@ function RivalRow({ v, lit, onRules, blindBack }: { v: SeriesView; lit: boolean;
 
 /** Overall: the race. You against everyone (or your heat), on Series points. */
 function Race({ v, hits, you, heat }: { v: SeriesView; hits: Sim['hits']; you: You; heat: HeatInfo | null }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     return (
         <>
@@ -877,21 +903,22 @@ function Race({ v, hits, you, heat }: { v: SeriesView; hits: Sim['hits']; you: Y
                         );
                     }
                     if (r.type === 'sep') {
-                        return <Animated.View key={r.key} layout={ROW_LAYOUT}><MoreLine text={`${fmt(r.n)} more`} /></Animated.View>;
+                        return <Animated.View key={r.key} layout={ROW_LAYOUT}><MoreLine text={t('series:league.race.more', { count: r.n, n: fmt(r.n) })} /></Animated.View>;
                     }
                     if (r.type === 'prize') {
                         return (
                             <Animated.View key={r.key} layout={ROW_LAYOUT} style={s.prize}>
                                 <View style={s.prizeLine} />
-                                <Text style={s.prizeText}>PRIZES · TOP 3</Text>
+                                <Text style={s.prizeText}>{t('series:league.race.prizes')}</Text>
                                 <View style={s.prizeLine} />
                             </Animated.View>
                         );
                     }
                     return (
                         <Animated.View key={r.key} layout={ROW_LAYOUT} style={s.darkLabel}>
+                            {/* Blind Mode is a name (the same in every language); The Dark 10 is sample-only. */}
                             <Text style={s.darkLabelText}>{v.hero.blind ? 'BLIND MODE · A–Z' : 'THE DARK 10 · A–Z'}</Text>
-                            <Text style={[s.darkLabelText, { color: TEXT_3 }]}>POSITIONS SEALED</Text>
+                            <Text style={[s.darkLabelText, { color: TEXT_3 }]}>{t('series:league.race.sealed')}</Text>
                         </Animated.View>
                     );
                 })}
@@ -921,27 +948,32 @@ function VenueLogo({ event }: { event: LiveEvent }) {
 
 /** The way into a live event, joined or not. The event keeps its own page. */
 function EventCard({ event, rank, onPress }: { event: LiveEvent; rank: number | null; onPress: () => void }) {
-    const venue = event.venue?.name ?? 'the venue';
+    const { t } = useTranslation();
+    const venue = event.venue?.name ?? null;
     const sealed = event.is_locked && !event.revealed_at;
     const over = event.status === 'revealed' || event.status === 'settled';
     const joined = event.viewer.joined;
     const eyebrow = over
-        ? (joined ? 'LIVE EVENT · FINISHED' : 'LIVE EVENT · RESULTS')
-        : sealed ? 'EVENT NIGHT · TONIGHT'
-            : event.status === 'announced' ? 'LIVE EVENT · COMING SOON'
-                : joined ? 'YOU’RE ALSO IN A LIVE EVENT' : 'LIVE EVENT · OPEN TO JOIN';
+        ? (joined ? t('series:league.event.finished') : t('series:league.event.results'))
+        : sealed ? t('series:league.event.tonight')
+            : event.status === 'announced' ? t('series:league.event.comingSoon')
+                : joined ? t('series:league.event.alsoIn') : t('series:league.event.open');
     const sub = over
-        ? (joined && rank ? `You finished #${rank} · tap for the results` : 'Tap for the results')
-        : sealed ? `Results revealed at ${venue}`
-            : joined ? `${rank ? `#${rank} on its board · ` : ''}${scoringLine(event)}`
-                : `Its own board at ${venue} · ${scoringLine(event)}`;
+        ? (joined && rank ? t('series:league.event.finishedRank', { rank }) : t('series:league.event.tapResults'))
+        : sealed
+            ? (venue ? t('series:league.event.revealedAt', { venue }) : t('series:league.event.revealedAtVenue'))
+            : joined
+                ? (rank ? t('series:league.event.joinedRank', { rank, scoring: scoringLine(event) }) : scoringLine(event))
+                : venue
+                    ? t('series:league.event.ownBoard', { venue, scoring: scoringLine(event) })
+                    : t('series:league.event.ownBoardVenue', { scoring: scoringLine(event) });
     const sc = useSeasonCard();
     return (
         <Pressable
             onPress={() => { void Haptics.selectionAsync(); onPress(); }}
             style={({ pressed }) => [s.evCard, sc, pressed && { opacity: 0.7 }]}
             accessibilityRole="button"
-            accessibilityLabel={`Open ${event.name}`}
+            accessibilityLabel={t('series:league.event.a11y', { event: event.name })}
         >
             <VenueLogo event={event} />
             <View style={{ flex: 1, gap: 3, minWidth: 0 }}>

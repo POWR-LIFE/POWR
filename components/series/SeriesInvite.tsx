@@ -2,23 +2,24 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { SeriesInviteBoard } from '@/lib/api/series';
-import { fmt, ordinal } from '@/lib/dev/seriesPrototype';
+import { type SeriesInviteBoard, seriesNum, seriesOrdinal } from '@/lib/api/series';
+import i18n from '@/lib/i18n';
 import { CARD_BG, CARD_BORDER, GOLD, HAIR, MoreLine, TEXT, TEXT_2, TEXT_3, YOU_LINE, YOU_TINT } from './SeriesLane';
 import { useSeasonCard } from './season';
 
 /** "1 more friend passes Tom", "You lead", "Bring 1 friend to get on the board". */
 export function inviteNext(b: SeriesInviteBoard): string {
     const me = b.me;
-    if (me.rank == null) return 'Bring 1 friend to get on the board';
-    if (me.rank === 1) return 'You lead the invite race';
+    if (me.rank == null) return i18n.t('series:invite.bringOne');
+    if (me.rank === 1) return i18n.t('series:invite.youLead');
     const above = b.rows.find((r) => r.rank === me.rank! - 1);
-    if (!above) return `You’re ${ordinal(me.rank)}`;
+    if (!above) return i18n.t('series:invite.youAre', { place: seriesOrdinal(me.rank) });
     // Level on friends goes to whoever got there first: passing takes one more than theirs.
     const need = Math.max(1, above.friends - me.friends + 1);
-    return `${need} more friend${need === 1 ? '' : 's'} passes ${above.name.split(' ')[0]}`;
+    return i18n.t('series:invite.passes', { count: need, name: above.name.split(' ')[0] });
 }
 
 /**
@@ -29,6 +30,7 @@ export function inviteNext(b: SeriesInviteBoard): string {
  * Patient Zero. Real members only.
  */
 export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInviteBoard; you: string; onInvite: () => void }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     // The top five, then you if you're further down.
     const top = b.rows.filter((r) => r.rank <= 5);
@@ -38,15 +40,15 @@ export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInvi
         <View style={[s.card, sc]}>
             <View style={s.head}>
                 <Text style={[s.headText, { width: 30, textAlign: 'center' }]}>#</Text>
-                <Text style={[s.headText, { flex: 1 }]}>MEMBER</Text>
-                <Text style={s.headText}>FRIENDS IN</Text>
+                <Text style={[s.headText, { flex: 1 }]}>{t('series:invite.member')}</Text>
+                <Text style={s.headText}>{t('series:invite.friendsIn')}</Text>
             </View>
             {top.map((r, i) => <Row key={`${r.rank}-${r.name}`} r={r} you={you} first={i === 0} />)}
-            {mine && gap > 0 && <MoreLine text={`${fmt(gap)} more`} />}
+            {mine && gap > 0 && <MoreLine text={t('series:invite.more', { n: seriesNum(gap) })} />}
             {mine && <Row r={mine} you={you} first={gap > 0} />}
             <View style={s.start}>
                 <View style={s.startLine} />
-                <Text style={s.startText}>{`${fmt(b.start_line)} ON THE START LINE`}</Text>
+                <Text style={s.startText}>{t('series:invite.startLine', { n: seriesNum(b.start_line) })}</Text>
                 <View style={s.startLine} />
             </View>
 
@@ -55,7 +57,7 @@ export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInvi
                     <Text style={s.next} numberOfLines={1}>{inviteNext(b)}</Text>
                     {b.me.joining > 0 && (
                         <Text style={s.joining} numberOfLines={1}>
-                            {`${b.me.joining} joining · they count once they work out`}
+                            {t('series:invite.joining', { n: b.me.joining })}
                         </Text>
                     )}
                 </View>
@@ -63,10 +65,10 @@ export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInvi
                     onPress={() => { void Haptics.selectionAsync(); onInvite(); }}
                     style={({ pressed }) => [s.btn, pressed && { opacity: 0.85 }]}
                     accessibilityRole="button"
-                    accessibilityLabel="Invite a friend"
+                    accessibilityLabel={t('series:invite.inviteA11y')}
                 >
                     <Ionicons name="person-add-outline" size={14} color="#0a0a0a" />
-                    <Text style={s.btnText}>INVITE</Text>
+                    <Text style={s.btnText}>{t('series:invite.invite')}</Text>
                 </Pressable>
             </View>
         </View>
@@ -74,6 +76,7 @@ export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInvi
 }
 
 function Row({ r, you, first }: { r: SeriesInviteBoard['rows'][number]; you: string; first: boolean }) {
+    const { t } = useTranslation();
     return (
         <View style={[s.row, r.you && s.rowMe]}>
             {r.you && <LinearGradient colors={YOU_TINT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />}
@@ -81,7 +84,7 @@ function Row({ r, you, first }: { r: SeriesInviteBoard['rows'][number]; you: str
             <Text style={[s.rank, r.you && { color: GOLD, fontWeight: '500' }, r.rank === 1 && !r.you && { color: GOLD }]}>{r.rank}</Text>
             <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text style={[s.name, r.you && { color: TEXT, fontWeight: '400' }]} numberOfLines={1}>{r.you ? you : r.name}</Text>
-                {r.joining > 0 && <Text style={s.tag}>{`+${r.joining} JOINING`}</Text>}
+                {r.joining > 0 && <Text style={s.tag}>{t('series:invite.joiningTag', { n: r.joining })}</Text>}
             </View>
             <Text style={[s.count, r.you && { color: GOLD }]}>{r.friends}</Text>
         </View>

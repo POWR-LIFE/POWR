@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { type SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import type { SeriesMoment } from '@/lib/api/series';
 import { type DailyTitle, fmt, ordinal, ROUND_MOMENTS, roundDate, TITLES } from '@/lib/dev/seriesPrototype';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { CARD_BG, CARD_BORDER, GOLD, GREEN, HAIR, MoveChip, ORANGE, RollNumber, TEXT, TEXT_2, TEXT_3, YOU_LINE, YOU_TINT } from './SeriesLane';
 import { BUTTER, hexA, mixHex, SeriesLockup, useSeason, useSeasonCard } from './season';
 import type { SeriesView } from './seriesView';
@@ -49,6 +51,7 @@ export function SeriesCard({
     /** Its full height, so the page can start below it. */
     onHeight?: (h: number) => void;
 }) {
+    const { t } = useTranslation();
     const { def, tint } = useSeason();
     const card = tint?.card ?? CARD_BG;
     const h = v.hero;
@@ -91,7 +94,7 @@ export function SeriesCard({
                     <SeriesLockup height={34} def={def} />
                     <View style={s.timeLeft}>
                         <Ionicons name="time-outline" size={13} color={TEXT_2} />
-                        <Text style={s.timeText}>{running ? `${h.left} left` : f ? 'Final' : v.next.starts}</Text>
+                        <Text style={s.timeText}>{running ? t('series:round.timeLeft', { left: h.left }) : f ? t('series:round.final') : v.next.starts}</Text>
                     </View>
                 </View>
 
@@ -150,31 +153,37 @@ export function SeriesCard({
                     ) : running ? (
                         <>
                             <View style={s.posMain}>
-                                <Text style={s.label}>YOUR POSITION</Text>
+                                <Text style={s.label}>{t('series:round.yourPosition')}</Text>
                                 <View style={s.posRank}>
                                     <Text style={s.posHash}>#</Text>
                                     {h.blind ? <Text style={s.posNum}>?</Text> : <RollNumber value={h.rank} style={s.posNum} />}
                                 </View>
                                 <Text style={[s.posToday, { color: h.blind || !h.move ? TEXT_3 : h.move > 0 ? GREEN : RED }]}>
-                                    {h.blind ? 'hidden today' : h.move ? `${h.move > 0 ? '▲' : '▼'} ${Math.abs(h.move)} today` : 'no move today'}
+                                    {h.blind ? t('series:round.hiddenToday') : h.move ? t('series:round.moveToday', { arrow: h.move > 0 ? '▲' : '▼', n: Math.abs(h.move) }) : t('series:round.noMoveToday')}
                                 </Text>
                             </View>
                             <View style={s.posRule} />
                             <View style={s.posStat}>
-                                <Text style={s.label}>LAST ROUND</Text>
-                                <Text style={s.statVal}>{h.last == null ? 'New' : `#${fmt(h.last)}`}</Text>
-                                <Text style={s.statSub}>{h.last == null ? 'first round' : h.blind ? '' : h.last > h.rank ? `${fmt(h.last - h.rank)} places up` : h.last < h.rank ? `${fmt(h.rank - h.last)} places down` : 'same place'}</Text>
+                                <Text style={s.label}>{t('series:round.lastRound')}</Text>
+                                <Text style={s.statVal}>{h.last == null ? t('series:round.new') : `#${fmt(h.last)}`}</Text>
+                                <Text style={s.statSub}>
+                                    {h.last == null ? t('series:round.firstRound')
+                                        : h.blind ? ''
+                                            : h.last > h.rank ? t('series:round.placesUp', { count: h.last - h.rank, n: fmt(h.last - h.rank) })
+                                                : h.last < h.rank ? t('series:round.placesDown', { count: h.rank - h.last, n: fmt(h.rank - h.last) })
+                                                    : t('series:round.samePlace')}
+                                </Text>
                             </View>
                             <View style={s.posRule} />
                             <View style={s.posStat}>
-                                <Text style={s.label}>{h.blind ? 'RANKS BACK' : 'YOUR BEST'}</Text>
+                                <Text style={s.label}>{h.blind ? t('series:round.ranksBack') : t('series:round.yourBest')}</Text>
                                 <Text style={s.statVal}>
                                     {h.blind
-                                        ? (v.live ? moments?.find((m) => m.kind === 'blind' && m.state === 'live')?.back ?? 'Soon' : 'Thu 08:00')
+                                        ? (v.live ? moments?.find((m) => m.kind === 'blind' && m.state === 'live')?.back ?? t('series:round.soon') : 'Thu 08:00')
                                         : h.pb != null ? `#${fmt(h.pb)}` : '—'}
                                 </Text>
                                 <Text style={[s.statSub, away != null && away <= 0 && !h.blind && { color: GREEN }]}>
-                                    {h.blind ? 'keep moving' : away == null ? '' : away <= 0 ? 'new best' : `${fmt(away)} places away`}
+                                    {h.blind ? t('series:round.keepMoving') : away == null ? '' : away <= 0 ? t('series:round.newBest') : t('series:round.placesAway', { count: away, n: fmt(away) })}
                                 </Text>
                             </View>
                         </>
@@ -182,46 +191,46 @@ export function SeriesCard({
                         // Before the round: when it starts, how long it runs, what gets you in The Draw.
                         <>
                             <View style={s.posMain}>
-                                <Text style={s.label}>STARTS IN</Text>
+                                <Text style={s.label}>{t('series:round.startsIn')}</Text>
                                 <View style={s.posRank}><Text style={s.posNum}>{v.next.inDays}</Text></View>
-                                <Text style={[s.posToday, { color: TEXT_3 }]}>{v.next.inDays === 1 ? 'day to go' : 'days to go'}</Text>
+                                <Text style={[s.posToday, { color: TEXT_3 }]}>{t('series:round.daysToGo', { count: v.next.inDays })}</Text>
                             </View>
                             <View style={s.posRule} />
                             <View style={s.posStat}>
-                                <Text style={s.label}>THE ROUND</Text>
-                                <Text style={s.statVal}>{v.round.days} days</Text>
-                                <Text style={s.statSub} numberOfLines={1}>to {v.round.lastDay}</Text>
+                                <Text style={s.label}>{t('series:round.theRound')}</Text>
+                                <Text style={s.statVal}>{t('series:round.days', { count: v.round.days })}</Text>
+                                <Text style={s.statSub} numberOfLines={1}>{t('series:round.toDate', { date: v.round.lastDay })}</Text>
                             </View>
                             <View style={s.posRule} />
                             <View style={s.posStat}>
                                 <Text style={s.label}>THE DRAW</Text>
-                                <Text style={s.statVal}>{h.need} days</Text>
-                                <Text style={s.statSub} numberOfLines={1}>to get in</Text>
+                                <Text style={s.statVal}>{t('series:round.days', { count: h.need })}</Text>
+                                <Text style={s.statSub} numberOfLines={1}>{t('series:round.toGetIn')}</Text>
                             </View>
                         </>
                     ) : (
                         <>
                             <View style={s.posMain}>
-                                <Text style={s.label}>{f ? `${v.round.name.toUpperCase()} · FINISH` : v.next.label.toUpperCase()}</Text>
+                                <Text style={s.label}>{f ? t('series:round.finish', { round: v.round.name.toUpperCase() }) : v.next.label.toUpperCase()}</Text>
                                 <View style={s.posRank}>
                                     {f && <Text style={s.posHash}>#</Text>}
                                     <Text style={s.posNum}>{f ? fmt(f.rank) : v.next.inDays}</Text>
                                 </View>
                                 <Text style={[s.posToday, { color: f?.climb ? GREEN : TEXT_3 }]}>
-                                    {f ? (f.climb ? `▲ ${f.climb} in the round` : `top ${f.pct}%`) : 'days to go'}
+                                    {f ? (f.climb ? t('series:round.climb', { n: f.climb }) : t('series:round.topPct', { pct: f.pct })) : t('series:round.daysToGo', { count: v.next.inDays })}
                                 </Text>
                             </View>
                             <View style={s.posRule} />
                             <View style={s.posStat}>
                                 <Text style={s.label}>THE DRAW</Text>
-                                <Text style={s.statVal}>{f ? (f.inDraw ? 'You’re in' : 'Not in') : 'Open'}</Text>
-                                <Text style={s.statSub}>drawn {v.round.prizesOn}</Text>
+                                <Text style={s.statVal}>{f ? (f.inDraw ? t('series:round.drawIn') : t('series:round.drawOut')) : t('series:round.drawOpen')}</Text>
+                                <Text style={s.statSub}>{t('series:round.drawnOn', { on: v.round.prizesOn })}</Text>
                             </View>
                             <View style={s.posRule} />
                             <View style={s.posStat}>
-                                <Text style={s.label}>NEXT ROUND</Text>
+                                <Text style={s.label}>{t('series:round.nextRound')}</Text>
                                 <Text style={s.statVal}>{v.next.starts}</Text>
-                                <Text style={s.statSub}>everyone starts level</Text>
+                                <Text style={s.statSub}>{t('series:round.startsLevel')}</Text>
                             </View>
                         </>
                     )}
@@ -232,20 +241,21 @@ export function SeriesCard({
                     const on = v.live ? moments?.find((m) => m.state === 'live') : undefined;
                     const nx = v.live ? moments?.find((m) => m.state === 'next') : undefined;
                     const text = v.live
-                        ? on ? `${on.name} · ON NOW`
-                            : nx ? `NEXT · ${nx.name} · ${(nx.soon ?? nx.when).toUpperCase()}`
-                                : `THE DRAW · ${h.logged >= h.need ? 'YOU’RE IN' : `${h.logged} OF ${h.need} DAYS`}`
+                        ? on ? t('series:round.footOnNow', { name: on.name })
+                            : nx ? t('series:round.footNext', { name: nx.name, when: (nx.soon ?? nx.when).toUpperCase() })
+                                : h.logged >= h.need ? t('series:round.footDrawIn') : t('series:round.footDrawDays', { logged: h.logged, need: h.need })
                         : band ? band.text : next ? `NEXT · ${next.name} · ${roundDate(next.day).toUpperCase()}` : 'THE LAST DAYS OF THE ROUND';
                     const icon: IconName = v.live ? on?.icon ?? nx?.icon ?? 'ticket-outline' : band?.icon ?? next?.icon ?? 'flag-outline';
                     const gold = v.live ? !!on : !!band;
-                    const right = v.live ? on?.until?.toUpperCase() ?? `DAY ${h.day} OF ${v.round.days}` : band ? band.right ?? clock : `DAY ${h.day} OF ${v.round.days}`;
+                    const dayOfRound = t('series:round.dayOf', { day: h.day, days: v.round.days });
+                    const right = v.live ? on?.until?.toUpperCase() ?? dayOfRound : band ? band.right ?? clock : dayOfRound;
                     return (
                         <Pressable
                             onPress={onMoment}
                             hitSlop={8}
                             style={({ pressed }) => [s.foot, pressed && { opacity: 0.6 }]}
                             accessibilityRole="button"
-                            accessibilityLabel={`${text}. Day ${h.day} of ${v.round.days}. Shows the round.`}
+                            accessibilityLabel={t('series:round.footA11y', { text, day: h.day, days: v.round.days })}
                         >
                             <Ionicons name={icon} size={12} color={GOLD} />
                             <Text style={[s.footText, gold && { color: GOLD }]} numberOfLines={1}>{text}</Text>
@@ -262,12 +272,12 @@ export function SeriesCard({
                     <Text style={s.barNum}>
                         {running
                             ? (h.blind ? '#?' : heat ? ordinal(heat.rank) : `#${fmt(h.rank)}`)
-                            : f ? `#${fmt(f.rank)}` : `${v.next.inDays} days`}
+                            : f ? `#${fmt(f.rank)}` : t('series:round.days', { count: v.next.inDays })}
                     </Text>
                     {running && heat && !h.blind && <Text style={s.barTag}>IN HEAT</Text>}
                     {running && !h.blind && <MoveChip delta={heat ? heat.move : h.move} />}
                 </View>
-                <Text style={s.barDay}>{running ? `DAY ${h.day} OF ${v.round.days}` : f ? 'FINAL' : 'TO GO'}</Text>
+                <Text style={s.barDay}>{running ? t('series:round.dayOf', { day: h.day, days: v.round.days }) : f ? t('series:round.finalCaps') : t('series:round.toGo')}</Text>
             </Animated.View>
         </Animated.View>
     );
@@ -333,9 +343,10 @@ export function sampleMomentCards(day: number): MomentCard[] {
 }
 
 const LON = 'Europe/London';
-const dayOf = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: LON }).replace(',', '');
-const timeOf = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: LON });
-const isMidnight = (d: Date) => timeOf(d) === '00:00';
+const dayOf = (d: Date) => d.toLocaleDateString(getFormatLocale(), { weekday: 'short', day: 'numeric', month: 'short', timeZone: LON }).replace(',', '');
+const timeOf = (d: Date) => d.toLocaleTimeString(getFormatLocale(), { hour: '2-digit', minute: '2-digit', timeZone: LON });
+/** A check, not copy: read in one fixed locale, since "00:00" is "00 h 00" or "12:00 a.m." in others. */
+const isMidnight = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: LON }) === '00:00';
 /** "Thu 22" */
 const dayShort = (d: Date) => dayOf(d).split(' ').slice(0, 2).join(' ');
 
@@ -344,7 +355,7 @@ export function liveMomentCards(moments: SeriesMoment[], now = Date.now()): Mome
     let nextSeen = false;
     return moments.map((m, i) => {
         if (m.kind === 'secret' || !m.starts_at || !m.ends_at) {
-            return { key: m.id ?? `secret-${i}`, name: 'SEALED', what: 'One moment is never announced', icon: 'help-outline', when: '', state: 'later', secret: true };
+            return { key: m.id ?? `secret-${i}`, name: i18n.t('series:round.sealed'), what: i18n.t('series:round.secretWhat'), icon: 'help-outline', when: '', state: 'later', secret: true };
         }
         const a = new Date(m.starts_at);
         const b = new Date(m.ends_at);
@@ -360,7 +371,10 @@ export function liveMomentCards(moments: SeriesMoment[], now = Date.now()): Mome
             ? (sameDay ? dayOf(a) : `${dayShort(a)}–${dayOf(last)}`)
             : sameClockDay ? `${dayShort(a)} · ${timeOf(a)}–${timeOf(b)}` : `${dayShort(a)} ${timeOf(a)} → ${dayShort(b)}`;
         const until = live
-            ? (isMidnight(b) && !sameDay ? `until ${dayOf(last).split(' ')[0]}` : isMidnight(b) ? 'until midnight' : sameClockDay ? `until ${timeOf(b)}` : `until ${dayShort(b)} ${timeOf(b)}`)
+            ? (isMidnight(b) && !sameDay ? i18n.t('series:round.untilDay', { day: dayOf(last).split(' ')[0] })
+                : isMidnight(b) ? i18n.t('series:round.untilMidnight')
+                    : sameClockDay ? i18n.t('series:round.untilTime', { time: timeOf(b) })
+                        : i18n.t('series:round.untilDayTime', { day: dayShort(b), time: timeOf(b) }))
             : undefined;
         const soon = isMidnight(a) ? dayOf(a) : `${dayShort(a)} ${timeOf(a)}`;
         const back = live ? (dayOf(b) === dayOf(new Date(now)) ? timeOf(b) : dayShort(b)) : undefined;
@@ -373,6 +387,7 @@ export function liveMomentCards(moments: SeriesMoment[], now = Date.now()): Mome
 
 /** The round's moments, swipeable: done, on now, next, and the ones still sealed. */
 export function MomentStrip({ cards }: { cards: MomentCard[] }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     const ref = useRef<ScrollView>(null);
     const focus = Math.max(0, cards.findIndex((c) => c.state === 'live' || c.state === 'next'));
@@ -396,11 +411,11 @@ export function MomentStrip({ cards }: { cards: MomentCard[] }) {
                                     ? <Ionicons name={past ? 'checkmark' : m.icon} size={13} color={past || live ? '#0a0a0a' : GOLD} />
                                     : <Text style={s.mQ}>?</Text>}
                             </View>
-                            <Text style={[s.mState, live && { color: GREEN }, isNext && { color: GOLD }]}>{live ? 'ON NOW' : isNext ? 'NEXT' : past ? 'DONE' : 'SEALED'}</Text>
+                            <Text style={[s.mState, live && { color: GREEN }, isNext && { color: GOLD }]}>{live ? t('series:round.momentOnNow') : isNext ? t('series:round.momentNext') : past ? t('series:round.momentDone') : t('series:round.sealed')}</Text>
                         </View>
                         <Text style={s.mDate}>{m.secret ? '—' : m.when}</Text>
-                        <Text style={[s.mName, !named && { color: TEXT_3 }]}>{named ? m.name : 'SEALED'}</Text>
-                        <Text style={s.mWhat}>{m.secret ? m.what : named ? m.what : 'Revealed when it’s close'}</Text>
+                        <Text style={[s.mName, !named && { color: TEXT_3 }]}>{named ? m.name : t('series:round.sealed')}</Text>
+                        <Text style={s.mWhat}>{m.secret ? m.what : named ? m.what : t('series:round.revealedClose')}</Text>
                     </View>
                 );
             })}

@@ -12,6 +12,7 @@ import type { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
 import type { PrizeRace, SeriesInviteBoard } from '@/lib/api/series';
+import { getFormatLocale } from '@/lib/i18n';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -166,7 +167,8 @@ export function roundDate(day: number): string {
     return `${W[(day - 1) % 7]} ${day} Nov`;
 }
 
-export const fmt = (n: number) => Math.round(n).toLocaleString('en-GB');
+/** A whole number in the member's locale: "1,234" in English, "1 234" in French (live screens use it too). */
+export const fmt = (n: number) => Math.round(n).toLocaleString(getFormatLocale());
 
 /** Sample flags: mostly British, as a London Series would be, with a few from abroad. */
 const FLAG_OF: Record<string, string> = {

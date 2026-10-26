@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image, type ImageSource } from 'expo-image';
 import React, { useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -15,6 +16,7 @@ const ON_GOLD = '#0a0a0a';
  * close (it springs back if you let go early), or tap it.
  */
 export function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
+    const { t } = useTranslation();
     const insets = useSafeAreaInsets();
     const { tint } = useSeason();
     const drag = useRef(new Animated.Value(0)).current;
@@ -35,9 +37,9 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
     }), [drag, onClose]);
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <Pressable style={s.scrim} onPress={onClose} accessibilityLabel="Close" />
+            <Pressable style={s.scrim} onPress={onClose} accessibilityLabel={t('series:sheets.close')} />
             <Animated.View style={[s.sheet, tint && { backgroundColor: tint.sheet }, { paddingBottom: Math.max(28, insets.bottom + 12), transform: [{ translateY: drag }] }]}>
-                <View {...pan.panHandlers} style={s.grabZone} accessibilityRole="button" accessibilityLabel="Close">
+                <View {...pan.panHandlers} style={s.grabZone} accessibilityRole="button" accessibilityLabel={t('series:sheets.close')}>
                     <View style={s.grab} />
                 </View>
                 {children}
@@ -47,10 +49,11 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
 }
 
 export function SheetHead({ light, bold, onClose }: { light: string; bold: string; onClose: () => void }) {
+    const { t } = useTranslation();
     return (
         <View style={s.sheetHead}>
             <Text style={s.sheetTitle}>{light}<Text style={s.sheetTitleBold}>{bold}</Text></Text>
-            <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
+            <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('series:sheets.close')}>
                 <Ionicons name="close" size={22} color={DIM} />
             </Pressable>
         </View>
@@ -59,9 +62,13 @@ export function SheetHead({ light, bold, onClose }: { light: string; bold: strin
 
 /** What gets shared: the season's square editorial card from Sorine's lookbook, with your rank. */
 export function ShareCard({ big, line }: { big: string; line: string }) {
+    const { t } = useTranslation();
     const { def, line: round } = useSeason();
     return (
-        <View style={[s.card, { backgroundColor: def.ground }]} accessibilityLabel={`Share card: ${def.name}, ${round.toLowerCase()}, ${big}, ${line}`}>
+        <View
+            style={[s.card, { backgroundColor: def.ground }]}
+            accessibilityLabel={t('series:sheets.shareCardA11y', { season: def.name, round: round.toLowerCase(), big, line })}
+        >
             <View style={s.cardRow}><Text style={s.cardTiny}>POWR ATHLETIC CLUB</Text><Text style={s.cardTiny}>{def.no}</Text></View>
             <View style={s.cardRule} />
             <View style={{ alignItems: 'center', marginTop: 10 }}><SeriesLockup height={48} def={def} words={false} /></View>
@@ -75,12 +82,13 @@ export function ShareCard({ big, line }: { big: string; line: string }) {
 }
 
 export function ShareSheet({ visible, onClose, big, line, onShare }: { visible: boolean; onClose: () => void; big: string; line: string; onShare: () => void }) {
+    const { t } = useTranslation();
     return (
         <Sheet visible={visible} onClose={onClose}>
-            <SheetHead light="Share your " bold="rank" onClose={onClose} />
+            <SheetHead light={t('series:sheets.share.light')} bold={t('series:sheets.share.bold')} onClose={onClose} />
             <ShareCard big={big} line={line} />
             <Pressable style={({ pressed }) => [s.solid, pressed && { opacity: 0.85 }]} onPress={onShare}>
-                <Text style={s.solidText}>SHARE</Text>
+                <Text style={s.solidText}>{t('series:sheets.share.cta')}</Text>
             </Pressable>
         </Sheet>
     );
@@ -129,7 +137,7 @@ export function InfoList({ rows, onRowLayout }: { rows: InfoRow[]; onRowLayout?:
 
 /** How the Series works, in six lines. What you can win has its own drawer. */
 export function RulesSheet({
-    visible, onClose, onPrizes, live = false, days = 15, need = 10, when = 'on the 16th', boosts = false, blindMode = false, heat = null, mostWanted = false,
+    visible, onClose, onPrizes, live = false, days = 15, need = 10, when = '16 Nov', boosts = false, blindMode = false, heat = null, mostWanted = false,
 }: {
     visible: boolean;
     onClose: () => void;
@@ -138,7 +146,7 @@ export function RulesSheet({
     live?: boolean;
     days?: number;
     need?: number;
-    /** When the winners land: "on the 16th". */
+    /** The day the winners land: "Sun 16 Nov" (the sentence around it is translated here). */
     when?: string;
     /** Live: the round has boost moments / a Blind Mode (set in /admin/series). */
     boosts?: boolean;
@@ -148,6 +156,8 @@ export function RulesSheet({
     /** The round has Most Wanted, so the bounty is on. */
     mostWanted?: boolean;
 }) {
+    const { t } = useTranslation();
+    // The heat rows and the !live lines are sample-only (the server has no heats yet).
     const heatLine = heat
         ? [heat.div > 1 ? `top ${heat.up} move up` : null, heat.down > 0 ? `bottom ${heat.down} drop` : null].filter(Boolean).join(', ')
         : '';
@@ -156,21 +166,31 @@ export function RulesSheet({
             key: 'heat', icon: 'people-outline' as const, title: `Your heat: ${heat.size} at your pace`,
             line: heatLine ? `Set for the round · ${heatLine}` : 'Set for the round',
         }] : []),
-        { key: 'round', icon: 'calendar-outline', title: `${days} days, one board`, line: live ? `Winners ${when}` : '1–15 Nov · winners on the 16th' },
-        { key: 'score', icon: 'walk-outline', title: 'Your POWR points count', line: 'Up to 120 active minutes a day' },
-        ...(live && !boosts ? [] : [{ key: 'boost', icon: 'flash-outline' as const, title: 'Boosts up to ×2', line: live ? 'The round’s moments: they never stack' : 'Streaks, the Drop and the round’s moments' }]),
-        { key: 'draw', icon: 'ticket-outline', title: 'Every Move Counts', line: `A draw: be active on ${need} of the ${days} days` },
-        ...(live && !blindMode ? [] : [{ key: 'blind', icon: 'eye-off-outline' as const, title: 'Blind Mode', line: live ? 'Every rank hidden while it’s on' : 'Every rank hidden for 48 hours' }]),
-        ...(mostWanted ? [{ key: 'bounty', icon: 'locate-outline' as const, title: 'The bounty', line: 'Take the lead to claim it · most claims wins', tone: 'ember' as const }] : []),
-        { key: 'one', icon: 'gift-outline', title: 'One prize each', line: 'Win two and the next in line takes the other' },
+        {
+            key: 'round', icon: 'calendar-outline', title: t('series:sheets.rules.round', { count: days }),
+            line: live ? t('series:sheets.rules.winners', { date: when }) : '1–15 Nov · winners on the 16th',
+        },
+        { key: 'score', icon: 'walk-outline', title: t('series:sheets.rules.score'), line: t('series:sheets.rules.scoreLine') },
+        ...(live && !boosts ? [] : [{
+            key: 'boost', icon: 'flash-outline' as const, title: t('series:sheets.rules.boost'),
+            line: live ? t('series:sheets.rules.boostLine') : 'Streaks, the Drop and the round’s moments',
+        }]),
+        // Every Move Counts and Blind Mode are names: they stay as they are in every language.
+        { key: 'draw', icon: 'ticket-outline', title: 'Every Move Counts', line: t('series:sheets.rules.drawLine', { need, days }) },
+        ...(live && !blindMode ? [] : [{
+            key: 'blind', icon: 'eye-off-outline' as const, title: 'Blind Mode',
+            line: live ? t('series:sheets.rules.blindLine') : 'Every rank hidden for 48 hours',
+        }]),
+        ...(mostWanted ? [{ key: 'bounty', icon: 'locate-outline' as const, title: t('series:sheets.rules.bounty'), line: t('series:sheets.rules.bountyLine'), tone: 'ember' as const }] : []),
+        { key: 'one', icon: 'gift-outline', title: t('series:sheets.rules.one'), line: t('series:sheets.rules.oneLine') },
     ];
     return (
         <Sheet visible={visible} onClose={onClose}>
-            <SheetHead light="How it " bold="works" onClose={onClose} />
+            <SheetHead light={t('series:sheets.rules.light')} bold={t('series:sheets.rules.bold')} onClose={onClose} />
             <InfoList rows={rows} />
             {onPrizes && (
                 <Pressable onPress={onPrizes} style={({ pressed }) => [s.sheetLink, pressed && { opacity: 0.6 }]} accessibilityRole="button">
-                    <Text style={s.sheetLinkText}>What you can win</Text>
+                    <Text style={s.sheetLinkText}>{t('series:sheets.rules.prizesLink')}</Text>
                     <Ionicons name="arrow-forward" size={15} color={TEXT} />
                 </Pressable>
             )}

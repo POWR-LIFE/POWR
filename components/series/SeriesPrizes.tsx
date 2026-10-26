@@ -2,15 +2,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, type ImageSource } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { trackTap } from '@/lib/analytics';
 import { NAMED_PRIZES, type NamedPrize, type PrizeRace, type PrizeRaceEntry, type SeriesPrize, type SeriesResults } from '@/lib/api/series';
-import { fmt, ordinal } from '@/lib/dev/seriesPrototype';
+import { fmt } from '@/lib/dev/seriesPrototype';
+import i18n from '@/lib/i18n';
 import { storageImage } from '@/lib/storageImage';
 import { BRONZE, CARD_BG, CARD_BORDER, GOLD, GREEN, HAIR, SectionLabel, SILVER, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
 import { InfoList, type InfoRow, Sheet, SheetHead } from './SeriesSheets';
 import { useSeasonCard } from './season';
+import { placeOrdinal } from './seriesView';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -46,7 +49,8 @@ export type PrizeSet = {
 /*
  * The ten ways to win, one prize each: whoever already holds a prize is passed
  * over for the next one. Names here are the prizes' own; nothing else in the
- * app uses them (the daily titles that did are gone).
+ * app uses them (the daily titles that did are gone). The titles stay English
+ * in every language; the lines are getters, read in the language on screen.
  */
 export const NAMED: Record<NamedPrize, {
     title: string;
@@ -59,34 +63,34 @@ export const NAMED: Record<NamedPrize, {
     unit: (n: number, detail: number | null) => string;
 }> = {
     most_wanted: {
-        title: 'Most Wanted', icon: 'locate-outline', short: 'Most bounties claimed',
-        how: 'Whoever leads carries a bounty. Take the lead and you’ve claimed it. Most claims wins.',
-        unit: (n) => `${n} bount${n === 1 ? 'y' : 'ies'}`,
+        title: 'Most Wanted', icon: 'locate-outline', get short() { return i18n.t('series:prizes.mostWanted.short'); },
+        get how() { return i18n.t('series:prizes.mostWanted.how'); },
+        unit: (n) => i18n.t('series:prizes.mostWanted.unit', { count: n }),
     },
     hot_streak: {
-        title: 'Hot Streak', icon: 'flame-outline', short: 'Most days in a row',
-        how: 'The longest run of days in a row with a session that counts.',
-        unit: (n) => `${n} day${n === 1 ? '' : 's'} in a row`,
+        title: 'Hot Streak', icon: 'flame-outline', get short() { return i18n.t('series:prizes.hotStreak.short'); },
+        get how() { return i18n.t('series:prizes.hotStreak.how'); },
+        unit: (n) => i18n.t('series:prizes.hotStreak.unit', { count: n }),
     },
     biggest_mover: {
-        title: 'Biggest Mover', icon: 'trending-up-outline', short: 'Most places climbed from day 3',
-        how: 'The most places climbed between the end of day 3 and the finish.',
-        unit: (n) => `▲${fmt(n)} place${n === 1 ? '' : 's'}`,
+        title: 'Biggest Mover', icon: 'trending-up-outline', get short() { return i18n.t('series:prizes.biggestMover.short'); },
+        get how() { return i18n.t('series:prizes.biggestMover.how'); },
+        unit: (n) => i18n.t('series:prizes.biggestMover.unit', { count: n, n: fmt(n) }),
     },
     underdog: {
-        title: 'Underdog', icon: 'arrow-up-circle-outline', short: 'Best finish from the bottom half',
-        how: 'In the bottom half at halfway? Whoever finishes highest from there wins it.',
+        title: 'Underdog', icon: 'arrow-up-circle-outline', get short() { return i18n.t('series:prizes.underdog.short'); },
+        get how() { return i18n.t('series:prizes.underdog.how'); },
         unit: (n, d) => (d != null ? `#${fmt(d)} → #${fmt(n)}` : `#${fmt(n)}`),
     },
     patient_zero: {
-        title: 'Patient Zero', icon: 'people-outline', short: 'Most friends brought in during The Plague',
-        how: 'The most friends who join with your code during The Plague. Each counts once they log a workout.',
-        unit: (n) => `${n} friend${n === 1 ? '' : 's'}`,
+        title: 'Patient Zero', icon: 'people-outline', get short() { return i18n.t('series:prizes.patientZero.short'); },
+        get how() { return i18n.t('series:prizes.patientZero.how'); },
+        unit: (n) => i18n.t('series:prizes.patientZero.unit', { count: n }),
     },
     photo_finish: {
-        title: 'Photo Finish', icon: 'stopwatch-outline', short: 'Most points on the last day',
-        how: 'The most Series points on the round’s last day.',
-        unit: (n) => `${fmt(n)} pts`,
+        title: 'Photo Finish', icon: 'stopwatch-outline', get short() { return i18n.t('series:prizes.photoFinish.short'); },
+        get how() { return i18n.t('series:prizes.photoFinish.how'); },
+        unit: (n) => i18n.t('series:prizes.photoFinish.unit', { n: fmt(n) }),
     },
 };
 
@@ -123,15 +127,16 @@ export function prizeSetFrom(rows: SeriesPrize[]): PrizeSet {
     };
 }
 
-const TBA = 'To be announced';
+/** A prize not announced yet (read at call time, in the language on screen). */
+const tba = () => i18n.t('series:prizes.tba');
 const MEDALS = [GOLD, SILVER, BRONZE];
 /** 1st, 2nd and 3rd as list rows, with their medal colours. */
 const placeRows = (P: PrizeSet): InfoRow[] => (P.places.length
     ? P.places.map((x, i) => ({
         key: `place-${i + 1}`, img: x.img, icon: x.img ? undefined : 'trophy-outline' as const,
-        eyebrow: { text: ordinal(i + 1).toUpperCase(), color: MEDALS[i] ?? TEXT_3 }, title: x.name, line: x.by ?? x.line ?? '',
+        eyebrow: { text: placeOrdinal(i + 1).toUpperCase(), color: MEDALS[i] ?? TEXT_3 }, title: x.name, line: x.by ?? x.line ?? '',
     }))
-    : [{ key: 'place-1', icon: 'trophy-outline' as const, title: TBA, line: 'The top places win prizes' }]);
+    : [{ key: 'place-1', icon: 'trophy-outline' as const, title: tba(), line: i18n.t('series:prizes.topPlacesWin') }]);
 
 export type PrizeKey = 'draw' | 'top3' | 'golden' | 'city' | 'event' | 'tickets' | NamedPrize;
 const isNamed = (k: PrizeKey): k is NamedPrize => (NAMED_PRIZES as readonly string[]).includes(k);
@@ -174,20 +179,20 @@ type Tile = { key: PrizeKey; img?: ImageSource; icon?: IconName; title: string; 
 function raceStatus(k: NamedPrize, e: PrizeRaceEntry | undefined, p: PrizeState): { status: string; tone: Tone } {
     const days = p.drawDots.length;
     const half = Math.floor(days / 2);
-    if (p.notYet) return { status: 'NOT STARTED', tone: 'muted' };
-    if (e?.sealed || (p.blind && (k === 'biggest_mover' || k === 'underdog'))) return { status: 'HIDDEN IN BLIND MODE', tone: 'muted' };
+    if (p.notYet) return { status: i18n.t('series:prizes.status.notStarted'), tone: 'muted' };
+    if (e?.sealed || (p.blind && (k === 'biggest_mover' || k === 'underdog'))) return { status: i18n.t('series:prizes.status.hiddenBlind'), tone: 'muted' };
     if (!e?.leader) {
-        const wait = k === 'biggest_mover' && p.day <= 3 ? 'COUNTS FROM DAY 4'
-            : k === 'underdog' && p.day <= half ? `COUNTS FROM DAY ${half + 1}`
-                : k === 'photo_finish' && p.day < days ? 'ON THE LAST DAY'
-                    : k === 'most_wanted' ? 'NO BOUNTIES YET' : 'NOBODY YET';
+        const wait = k === 'biggest_mover' && p.day <= 3 ? i18n.t('series:prizes.status.countsFrom', { day: 4 })
+            : k === 'underdog' && p.day <= half ? i18n.t('series:prizes.status.countsFrom', { day: half + 1 })
+                : k === 'photo_finish' && p.day < days ? i18n.t('series:prizes.status.lastDay')
+                    : k === 'most_wanted' ? i18n.t('series:prizes.status.noBounties') : i18n.t('series:prizes.status.nobody');
         return { status: wait, tone: 'muted' };
     }
     const unit = NAMED[k].unit(e.leader.score, e.leader.detail).toUpperCase();
-    if (e.leader.you) return { status: `YOU LEAD · ${unit}`, tone: 'gold' };
+    if (e.leader.you) return { status: i18n.t('series:prizes.status.youLead', { unit }), tone: 'gold' };
     const first = e.leader.name.split(' ')[0].toUpperCase();
-    if (e.you) return { status: `YOU’RE ${ordinal(e.you.ord).toUpperCase()} · ${first} LEADS`, tone: 'muted' };
-    return { status: `${first} LEADS · ${unit}`, tone: 'muted' };
+    if (e.you) return { status: i18n.t('series:prizes.status.youreBehind', { ord: placeOrdinal(e.you.ord).toUpperCase(), name: first }), tone: 'muted' };
+    return { status: i18n.t('series:prizes.status.theyLead', { name: first, unit }), tone: 'muted' };
 }
 
 function tilesFor(p: PrizeState): Tile[] {
@@ -198,20 +203,22 @@ function tilesFor(p: PrizeState): Tile[] {
     const named: Tile[] = namedOn(P).map((k) => {
         const x = P.named[k];
         const st = raceStatus(k, p.race[k], p);
-        return { key: k, img: x?.img, icon: NAMED[k].icon, title: NAMED[k].title, prize: x?.name ?? TBA, how: NAMED[k].short, ...st };
+        return { key: k, img: x?.img, icon: NAMED[k].icon, title: NAMED[k].title, prize: x?.name ?? tba(), how: NAMED[k].short, ...st };
     });
     const tiles: Tile[] = [
         {
-            key: 'draw', img: P.draw?.img, icon: 'ticket-outline', title: 'Every Move Counts', prize: P.draw?.name ?? TBA, lead: true,
-            status: inDraw ? 'YOU’RE IN' : `${p.logged}/${p.need} DAYS`, tone: inDraw ? 'ok' : 'gold',
-            how: `${P.draw ? `${P.draw.winners} winner${P.draw.winners === 1 ? '' : 's'} · ` : ''}${inDraw
-                ? (p.live ? 'you’re in' : `you’re in with ${p.tickets + 1} entries`)
-                : `${p.need - p.logged} more active days gets you in`}`,
+            key: 'draw', img: P.draw?.img, icon: 'ticket-outline', title: 'Every Move Counts', prize: P.draw?.name ?? tba(), lead: true,
+            status: inDraw ? i18n.t('series:prizes.status.youreIn') : i18n.t('series:prizes.status.drawDays', { logged: p.logged, need: p.need }), tone: inDraw ? 'ok' : 'gold',
+            how: `${P.draw ? `${i18n.t('series:prizes.draw.winners', { count: P.draw.winners })} · ` : ''}${inDraw
+                ? (p.live ? i18n.t('series:prizes.draw.youreIn') : `you’re in with ${p.tickets + 1} entries`)
+                : i18n.t('series:prizes.draw.moreDays', { count: p.need - p.logged })}`,
         },
         {
-            key: 'top3', img: first?.img, icon: 'trophy-outline', title: 'Champion', prize: first?.name ?? TBA,
-            how: first ? `${first.by ?? first.line ?? ''}${P.places.length > 1 ? ` · Runner-up${P.places.length > 2 ? ' and Podium' : ''} win too` : ''}` : 'The top places win prizes',
-            status: p.notYet ? 'NOT STARTED' : p.blind ? 'RANK HIDDEN' : `YOU’RE #${fmt(p.rank)}`, tone: 'muted',
+            key: 'top3', img: first?.img, icon: 'trophy-outline', title: 'Champion', prize: first?.name ?? tba(),
+            how: first
+                ? `${first.by ?? first.line ?? ''}${P.places.length > 1 ? ` · ${P.places.length > 2 ? i18n.t('series:prizes.top3.alsoPodium') : i18n.t('series:prizes.top3.alsoRunnerUp')}` : ''}`
+                : i18n.t('series:prizes.topPlacesWin'),
+            status: p.notYet ? i18n.t('series:prizes.status.notStarted') : p.blind ? i18n.t('series:prizes.status.rankHidden') : i18n.t('series:prizes.status.yourRank', { rank: fmt(p.rank) }), tone: 'muted',
         },
         ...named,
     ];
@@ -225,14 +232,21 @@ function tilesFor(p: PrizeState): Tile[] {
     // Top city only when the round has a city prize (parked until cities open).
     if (p.cityPos != null && P.city) {
         tiles.push({
-            key: 'city', icon: 'location-outline', title: 'Top city', prize: `${P.city.name} for ${P.city.winners}`, how: 'Drawn from the winning city',
-            status: `${(p.cityName ?? 'YOUR CITY').toUpperCase()} ${ordinal(p.cityPos + 1).toUpperCase()}`, tone: p.cityPos === 0 ? 'gold' : 'muted',
+            key: 'city', icon: 'location-outline', title: i18n.t('series:prizes.city.title'),
+            prize: i18n.t('series:prizes.city.prizeFor', { name: P.city.name, winners: P.city.winners }), how: i18n.t('series:prizes.city.how'),
+            status: i18n.t('series:prizes.city.status', {
+                city: (p.cityName ?? i18n.t('series:prizes.city.yourCity')).toUpperCase(), ord: placeOrdinal(p.cityPos + 1).toUpperCase(),
+            }),
+            tone: p.cityPos === 0 ? 'gold' : 'muted',
         });
     }
     if (p.event) {
         tiles.push({
-            key: 'event', icon: 'trophy-outline', title: p.event.name, prize: 'Its own prizes', how: 'A separate board, on the event’s page',
-            status: p.event.rank ? (p.event.over ? `FINISHED #${p.event.rank}` : `#${p.event.rank} THERE`) : 'OPEN TO JOIN', tone: 'muted',
+            key: 'event', icon: 'trophy-outline', title: p.event.name, prize: i18n.t('series:prizes.event.ownPrizes'), how: i18n.t('series:prizes.event.how'),
+            status: p.event.rank
+                ? (p.event.over ? i18n.t('series:prizes.event.finished', { rank: p.event.rank }) : i18n.t('series:prizes.event.rankThere', { rank: p.event.rank }))
+                : i18n.t('series:prizes.event.open'),
+            tone: 'muted',
         });
     }
     return tiles;
@@ -241,6 +255,7 @@ const toneColor = (t: Tone) => (t === 'ok' ? GREEN : t === 'gold' ? GOLD : TEXT_
 
 /** What you can win, under the race: one tile per prize, with where you stand on it. */
 export function PrizeRow({ state, onOpen }: { state: PrizeState; onOpen: (k: PrizeKey) => void }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     return (
         <ScrollView
@@ -250,30 +265,30 @@ export function PrizeRow({ state, onOpen }: { state: PrizeState; onOpen: (k: Pri
             snapToInterval={184}
             decelerationRate="fast"
         >
-            {tilesFor(state).map((t) => (
+            {tilesFor(state).map((tile) => (
                 <Pressable
-                    key={t.key}
-                    onPress={() => { trackTap('series_prize_open', { prize: t.key }); onOpen(t.key); }}
-                    style={({ pressed }) => [s.tile, sc, t.lead && s.tileLead, pressed && { opacity: 0.8 }]}
+                    key={tile.key}
+                    onPress={() => { trackTap('series_prize_open', { prize: tile.key }); onOpen(tile.key); }}
+                    style={({ pressed }) => [s.tile, sc, tile.lead && s.tileLead, pressed && { opacity: 0.8 }]}
                     accessibilityRole="button"
-                    accessibilityLabel={`${t.title}: ${t.prize}. ${t.status.toLowerCase()}. Opens the prizes.`}
+                    accessibilityLabel={t('series:prizes.tileA11y', { title: tile.title, prize: tile.prize, status: tile.status.toLowerCase() })}
                 >
                     <View style={s.pic}>
-                        {t.img
-                            ? <Image source={t.img} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
+                        {tile.img
+                            ? <Image source={tile.img} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
                             : (
                                 <View style={[StyleSheet.absoluteFill, s.icoBox]}>
                                     <LinearGradient colors={['rgba(232,210,0,0.14)', 'rgba(232,210,0,0)']} style={StyleSheet.absoluteFill} start={{ x: 0.5, y: 0.2 }} end={{ x: 0.5, y: 1 }} />
-                                    <Ionicons name={t.icon} size={30} color={GOLD} />
+                                    <Ionicons name={tile.icon} size={30} color={GOLD} />
                                 </View>
                             )}
                         <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']} style={s.picFade} />
-                        <View style={s.status}><Text style={[s.statusText, { color: toneColor(t.tone) }]}>{t.status}</Text></View>
+                        <View style={s.status}><Text style={[s.statusText, { color: toneColor(tile.tone) }]}>{tile.status}</Text></View>
                     </View>
                     <View style={s.body}>
-                        <Text style={s.tTitle} numberOfLines={1}>{t.title.toUpperCase()}</Text>
-                        <Text style={s.tPrize} numberOfLines={2}>{t.prize}</Text>
-                        <Text style={s.tHow} numberOfLines={2}>{t.how}</Text>
+                        <Text style={s.tTitle} numberOfLines={1}>{tile.title.toUpperCase()}</Text>
+                        <Text style={s.tPrize} numberOfLines={2}>{tile.prize}</Text>
+                        <Text style={s.tHow} numberOfLines={2}>{tile.how}</Text>
                     </View>
                 </Pressable>
             ))}
@@ -283,38 +298,40 @@ export function PrizeRow({ state, onOpen }: { state: PrizeState; onOpen: (k: Pri
 
 /** Ways to win, as one list: each prize, what's on offer and where you stand. Tap for the full sheet. */
 export function WaysToWin({ state, onOpen }: { state: PrizeState; onOpen: (k: PrizeKey) => void }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     const P = state.prizes;
-    const NAME: Partial<Record<PrizeKey, string>> = { top3: 'Champion · Runner-up · Podium', draw: 'Every Move Counts', city: 'Top city' };
+    const TBA = t('series:prizes.tba');
+    const NAME: Partial<Record<PrizeKey, string>> = { top3: 'Champion · Runner-up · Podium', draw: 'Every Move Counts', city: t('series:prizes.city.title') };
     const SUB: Partial<Record<PrizeKey, string>> = {
-        top3: P.places.length ? `${P.places[0].name}${P.places.length > 1 ? ' and more' : ''}` : TBA,
+        top3: P.places.length ? (P.places.length > 1 ? t('series:prizes.andMore', { name: P.places[0].name }) : P.places[0].name) : TBA,
         draw: P.draw ? `${P.draw.winners} × ${P.draw.name}` : TBA,
     };
     const order: PrizeKey[] = ['top3', ...NAMED_PRIZES, 'draw', 'golden', 'city', 'event'];
     // The event has its own card on the page, so it isn't repeated here.
-    const tiles = tilesFor(state).filter((t) => t.key !== 'event').sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+    const tiles = tilesFor(state).filter((x) => x.key !== 'event').sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
     return (
         <View style={[s.list, sc]}>
-            {tiles.map((t, i) => (
+            {tiles.map((tile, i) => (
                 <Pressable
-                    key={t.key}
-                    onPress={() => { trackTap('series_prize_open', { prize: t.key }); onOpen(t.key); }}
+                    key={tile.key}
+                    onPress={() => { trackTap('series_prize_open', { prize: tile.key }); onOpen(tile.key); }}
                     style={({ pressed }) => [s.wRow, i > 0 && s.yrRule, pressed && { opacity: 0.7 }]}
                     accessibilityRole="button"
-                    accessibilityLabel={`${NAME[t.key] ?? t.title}: ${SUB[t.key] ?? t.prize}. ${t.status.toLowerCase()}. Opens the prizes.`}
+                    accessibilityLabel={t('series:prizes.tileA11y', { title: NAME[tile.key] ?? tile.title, prize: SUB[tile.key] ?? tile.prize, status: tile.status.toLowerCase() })}
                 >
-                    {t.img
-                        ? <Image source={t.img} style={s.wThumb} contentFit="cover" />
-                        : <View style={[s.wThumb, s.wIcon]}><Ionicons name={t.icon ?? 'trophy-outline'} size={20} color={GOLD} /></View>}
+                    {tile.img
+                        ? <Image source={tile.img} style={s.wThumb} contentFit="cover" />
+                        : <View style={[s.wThumb, s.wIcon]}><Ionicons name={tile.icon ?? 'trophy-outline'} size={20} color={GOLD} /></View>}
                     <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={s.wTitle} numberOfLines={1}>{NAME[t.key] ?? t.title}</Text>
-                        <Text style={s.wSub} numberOfLines={1}>{SUB[t.key] ?? t.prize}</Text>
-                        <Text style={[s.wStatus, { color: toneColor(t.tone) }]} numberOfLines={1}>{t.status}</Text>
+                        <Text style={s.wTitle} numberOfLines={1}>{NAME[tile.key] ?? tile.title}</Text>
+                        <Text style={s.wSub} numberOfLines={1}>{SUB[tile.key] ?? tile.prize}</Text>
+                        <Text style={[s.wStatus, { color: toneColor(tile.tone) }]} numberOfLines={1}>{tile.status}</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={TEXT_3} />
                 </Pressable>
             ))}
-            <Text style={s.oneEach}>One prize each. Win two and the next in line takes the other.</Text>
+            <Text style={s.oneEach}>{t('series:prizes.oneEach')}</Text>
         </View>
     );
 }
@@ -332,24 +349,29 @@ export function PrizeDetailSheet({
     onClose: () => void;
     onOpenEvent?: () => void;
 }) {
+    const { t } = useTranslation();
+    const TBA = t('series:prizes.tba');
     const key: PrizeKey = prize === 'tickets' ? 'draw' : prize ?? 'draw';
-    const t = tilesFor(state).find((x) => x.key === key);
-    const tone = t ? toneColor(t.tone) : TEXT_3;
+    const tile = tilesFor(state).find((x) => x.key === key);
+    const tone = tile ? toneColor(tile.tone) : TEXT_3;
     const head: Record<PrizeKey, [string, string]> = {
-        top3: ['The ', 'top three'], draw: ['Every Move ', 'Counts'], golden: ['The Golden ', 'P'],
-        city: ['Top ', 'city'], event: ['Live ', 'event'], tickets: ['Every Move ', 'Counts'],
+        top3: [t('series:prizes.head.top3Light'), t('series:prizes.head.top3Bold')], draw: ['Every Move ', 'Counts'], golden: ['The Golden ', 'P'],
+        city: [t('series:prizes.head.cityLight'), t('series:prizes.head.cityBold')], event: [t('series:prizes.head.eventLight'), t('series:prizes.head.eventBold')], tickets: ['Every Move ', 'Counts'],
         most_wanted: ['Most ', 'Wanted'], hot_streak: ['Hot ', 'Streak'], biggest_mover: ['Biggest ', 'Mover'],
         underdog: ['', 'Underdog'], patient_zero: ['Patient ', 'Zero'], photo_finish: ['Photo ', 'Finish'],
     };
     const P = state.prizes;
-    const drawHow = `A draw from everyone active on ${state.need} of the ${state.drawDots.length} days`;
+    const drawHow = t('series:prizes.drawHow', { need: state.need, days: state.drawDots.length });
     // A prize with a picture gets the picture; without one, its icon.
     const hero: Partial<Record<PrizeKey, { img: ImageSource; name: string; how: string }>> = {};
     if (P.draw?.img) hero.draw = { img: P.draw.img, name: `${P.draw.winners} × ${P.draw.name}`, how: drawHow };
     if (P.golden?.img) hero.golden = { img: P.golden.img, name: `${P.golden.name} + a Draw ticket`, how: 'Be one of the first 10 to find the Golden P' };
     const plain: Partial<Record<PrizeKey, { icon: React.ComponentProps<typeof Ionicons>['name']; name: string; how: string }>> = {
-        city: { icon: 'location-outline', name: P.city ? `${P.city.name} for ${P.city.winners}` : TBA, how: 'Drawn from the top city when the round closes' },
-        event: { icon: 'trophy-outline', name: state.event?.name ?? 'Live event', how: 'Its own board and prizes, on its page' },
+        city: {
+            icon: 'location-outline', name: P.city ? t('series:prizes.city.prizeFor', { name: P.city.name, winners: P.city.winners }) : TBA,
+            how: t('series:prizes.city.drawnAtClose'),
+        },
+        event: { icon: 'trophy-outline', name: state.event?.name ?? t('series:prizes.event.liveEvent'), how: t('series:prizes.event.ownBoard') },
     };
     NAMED_PRIZES.forEach((k) => {
         const x = P.named[k];
@@ -369,13 +391,13 @@ export function PrizeDetailSheet({
                 {h && (
                     <View style={s.dHero}>
                         <Image source={h.img} style={StyleSheet.absoluteFill} contentFit="cover" />
-                        {t && <View style={s.status}><Text style={[s.statusText, { color: tone }]}>{t.status}</Text></View>}
+                        {tile && <View style={s.status}><Text style={[s.statusText, { color: tone }]}>{tile.status}</Text></View>}
                     </View>
                 )}
                 {pl && (
                     <View style={s.dIconRow}>
                         <View style={s.dIcon}><Ionicons name={pl.icon} size={26} color={GOLD} /></View>
-                        {t && <Text style={[s.dStatus, { color: tone }]}>{t.status}</Text>}
+                        {tile && <Text style={[s.dStatus, { color: tone }]}>{tile.status}</Text>}
                     </View>
                 )}
                 {(h || pl) && (
@@ -393,7 +415,7 @@ export function PrizeDetailSheet({
                             ))}
                         </View>
                         <Text style={s.dMeta}>
-                            {state.logged} of {state.need} days{state.live ? '' : ` · ${state.tickets} extra ticket${state.tickets === 1 ? '' : 's'}`}
+                            {t('series:prizes.drawMeta', { logged: state.logged, need: state.need })}{state.live ? '' : ` · ${state.tickets} extra ticket${state.tickets === 1 ? '' : 's'}`}
                         </Text>
                     </View>
                 )}
@@ -402,8 +424,9 @@ export function PrizeDetailSheet({
                     <>
                         <InfoList rows={placeRows(P)} />
                         <Text style={s.dMeta}>
-                            {state.notYet ? 'Places count from the first day of the round'
-                                : state.blind ? (state.live ? 'Ranks are hidden while Blind Mode is on' : 'Ranks are hidden till Thursday') : `You’re #${fmt(state.rank)} of ${fmt(state.total)}`}
+                            {state.notYet ? t('series:prizes.top3.notYet')
+                                : state.blind ? (state.live ? t('series:prizes.top3.blind') : 'Ranks are hidden till Thursday')
+                                    : t('series:prizes.top3.rankOf', { rank: fmt(state.rank), total: fmt(state.total) })}
                         </Text>
                     </>
                 )}
@@ -411,20 +434,20 @@ export function PrizeDetailSheet({
                 {isNamed(key) && race?.leader && !race.sealed && (
                     <InfoList rows={[
                         {
-                            key: 'lead', icon: NAMED[key].icon, eyebrow: { text: 'ON COURSE', color: GOLD },
-                            title: race.leader.you ? 'You' : race.leader.name, line: NAMED[key].unit(race.leader.score, race.leader.detail),
+                            key: 'lead', icon: NAMED[key].icon, eyebrow: { text: t('series:prizes.race.onCourse'), color: GOLD },
+                            title: race.leader.you ? t('series:prizes.race.you') : race.leader.name, line: NAMED[key].unit(race.leader.score, race.leader.detail),
                         },
                         ...(race.you && !race.leader.you ? [{
-                            key: 'you', icon: 'person-outline' as const, eyebrow: { text: 'YOU', color: TEXT_3 },
-                            title: `${ordinal(race.you.ord)} in line`, line: NAMED[key].unit(race.you.score, race.you.detail),
+                            key: 'you', icon: 'person-outline' as const, eyebrow: { text: t('series:prizes.race.youCaps'), color: TEXT_3 },
+                            title: t('series:prizes.race.inLine', { ord: placeOrdinal(race.you.ord) }), line: NAMED[key].unit(race.you.score, race.you.detail),
                         }] : []),
                     ]} />
                 )}
-                {isNamed(key) && <Text style={s.dMeta}>One prize each: if you win two, the next in line takes the other.</Text>}
+                {isNamed(key) && <Text style={s.dMeta}>{t('series:prizes.oneEachIf')}</Text>}
 
                 {key === 'event' && onOpenEvent && (
                     <Pressable onPress={onOpenEvent} style={({ pressed }) => [s.dBtn, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-                        <Text style={s.dBtnText}>OPEN THE EVENT</Text>
+                        <Text style={s.dBtnText}>{t('series:prizes.openEvent')}</Text>
                     </Pressable>
                 )}
             </ScrollView>
@@ -434,19 +457,20 @@ export function PrizeDetailSheet({
 
 /** The round's winners, once they're announced in /admin/series: places, then The Draw and the top city. */
 export function WinnersCard({ results }: { results: SeriesResults }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     if (!results.winners.length) return null;
     const PLACE = ['CHAMPION', 'RUNNER-UP', 'PODIUM'];
     const label = (w: SeriesResults['winners'][number]) => (w.kind === 'place'
-        ? PLACE[w.place - 1] ?? ordinal(w.place).toUpperCase()
+        ? PLACE[w.place - 1] ?? placeOrdinal(w.place).toUpperCase()
         : w.kind === 'draw' ? 'EVERY MOVE COUNTS'
-            : w.kind === 'city' ? `TOP CITY${w.city ? ` · ${w.city.toUpperCase()}` : ''}`
+            : w.kind === 'city' ? `${t('series:prizes.winners.topCity')}${w.city ? ` · ${w.city.toUpperCase()}` : ''}`
                 : NAMED[w.kind].title.toUpperCase());
     const icon = (k: SeriesResults['winners'][number]['kind']): IconName => (k === 'place' ? 'trophy-outline'
         : k === 'draw' ? 'ticket-outline' : k === 'city' ? 'location-outline' : NAMED[k].icon);
     return (
         <>
-            <SectionLabel text="The winners" right={results.round.name} />
+            <SectionLabel text={t('series:prizes.winners.title')} right={results.round.name} />
             <View style={[s.list, sc]}>
                 {results.winners.map((w, i) => (
                     <View key={`${w.kind}-${w.place}`} style={[s.wRow, i > 0 && s.yrRule]}>
@@ -459,7 +483,7 @@ export function WinnersCard({ results }: { results: SeriesResults }) {
                             )}
                         <View style={{ flex: 1, minWidth: 0 }}>
                             <Text style={[s.wStatus, { marginTop: 0, marginBottom: 3, color: w.kind === 'place' ? (MEDALS[w.place - 1] ?? TEXT_3) : GOLD }]}>{label(w)}</Text>
-                            <Text style={[s.wTitle, w.you && { color: GOLD }]} numberOfLines={1}>{w.you ? `${w.name} (you)` : w.name}</Text>
+                            <Text style={[s.wTitle, w.you && { color: GOLD }]} numberOfLines={1}>{w.you ? t('series:prizes.winners.you', { name: w.name }) : w.name}</Text>
                             {w.prize ? <Text style={s.wSub} numberOfLines={1}>{w.prize}{w.sponsor ? ` · ${w.sponsor}` : ''}</Text> : null}
                         </View>
                     </View>
@@ -471,6 +495,8 @@ export function WinnersCard({ results }: { results: SeriesResults }) {
 
 /** Every prize as one list, opened at the one you tapped. */
 export function PrizesSheet({ visible, focus, state, onClose }: { visible: boolean; focus: PrizeKey | null; state: PrizeState; onClose: () => void }) {
+    const { t } = useTranslation();
+    const TBA = t('series:prizes.tba');
     const scroll = useRef<ScrollView>(null);
     const ys = useRef<Record<string, number>>({});
     useEffect(() => {
@@ -481,11 +507,11 @@ export function PrizesSheet({ visible, focus, state, onClose }: { visible: boole
         return () => clearTimeout(tm);
     }, [visible, focus]);
     const tiles = tilesFor(state);
-    const st = (k: PrizeKey) => tiles.find((t) => t.key === k);
-    const tone = (k: PrizeKey): InfoRow['tone'] => { const t = st(k)?.tone; return t === 'ok' ? 'green' : t === 'gold' ? 'gold' : 'muted'; };
+    const st = (k: PrizeKey) => tiles.find((x) => x.key === k);
+    const tone = (k: PrizeKey): InfoRow['tone'] => { const tn = st(k)?.tone; return tn === 'ok' ? 'green' : tn === 'gold' ? 'gold' : 'muted'; };
     const P = state.prizes;
     const places = placeRows(P);
-    places[0] = { ...places[0], right: state.blind || state.notYet ? undefined : `YOU’RE #${fmt(state.rank)}`, tone: 'muted' };
+    places[0] = { ...places[0], right: state.blind || state.notYet ? undefined : t('series:prizes.status.yourRank', { rank: fmt(state.rank) }), tone: 'muted' };
     const rows: InfoRow[] = [
         ...places,
         ...namedOn(P).map((k): InfoRow => ({
@@ -495,19 +521,24 @@ export function PrizesSheet({ visible, focus, state, onClose }: { visible: boole
         {
             key: 'draw', img: P.draw?.img, icon: P.draw?.img ? undefined : 'ticket-outline', eyebrow: { text: 'EVERY MOVE COUNTS', color: GOLD },
             title: P.draw ? `${P.draw.winners} × ${P.draw.name}` : TBA,
-            line: `A draw: active on ${state.need} of the ${state.drawDots.length} days`, right: st('draw')?.status, tone: tone('draw'),
+            line: t('series:prizes.drawLine', { need: state.need, days: state.drawDots.length }), right: st('draw')?.status, tone: tone('draw'),
         },
     ];
     if (state.golden && P.golden) rows.push({ key: 'golden', img: P.golden.img, title: P.golden.name, line: 'Find the Golden P in the app', right: st('golden')?.status, tone: tone('golden') });
-    if (state.cityPos != null && P.city) rows.push({ key: 'city', icon: 'location-outline', title: P.city ? `${P.city.name} × ${P.city.winners}` : `Top city · ${TBA.toLowerCase()}`, line: 'Your city finishes top', right: st('city')?.status, tone: tone('city') });
-    if (state.event) rows.push({ key: 'event', icon: 'trophy-outline', title: state.event.name, line: 'Its own prizes, on its page', right: st('event')?.status, tone: 'muted' });
+    if (state.cityPos != null && P.city) {
+        rows.push({
+            key: 'city', icon: 'location-outline', title: P.city ? `${P.city.name} × ${P.city.winners}` : `${t('series:prizes.city.title')} · ${TBA.toLowerCase()}`,
+            line: t('series:prizes.city.finishesTop'), right: st('city')?.status, tone: tone('city'),
+        });
+    }
+    if (state.event) rows.push({ key: 'event', icon: 'trophy-outline', title: state.event.name, line: t('series:prizes.event.ownPrizesPage'), right: st('event')?.status, tone: 'muted' });
     return (
         <Sheet visible={visible} onClose={onClose}>
-            <SheetHead light="What you can " bold="win" onClose={onClose} />
-            <Text style={s.sub}>{state.roundName} · prizes land {state.prizesOn}</Text>
+            <SheetHead light={t('series:prizes.sheet.light')} bold={t('series:prizes.sheet.bold')} onClose={onClose} />
+            <Text style={s.sub}>{t('series:prizes.sheet.sub', { round: state.roundName, on: state.prizesOn })}</Text>
             <ScrollView ref={scroll} style={{ maxHeight: 520 }} showsVerticalScrollIndicator={false}>
                 <InfoList rows={rows} onRowLayout={(k, y) => { ys.current[k] = y; }} />
-                <Text style={s.foot}>{P.sample ? 'Sample prizes. ' : ''}One prize each: win two and the next in line takes the other. Prizes never cost points.</Text>
+                <Text style={s.foot}>{P.sample ? 'Sample prizes. ' : ''}{t('series:prizes.sheet.foot')}</Text>
             </ScrollView>
         </Sheet>
     );

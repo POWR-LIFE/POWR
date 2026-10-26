@@ -1,5 +1,6 @@
 import type { NextMove } from '@/lib/drop';
 import { firstName, fmt, type Rival } from '@/lib/dev/seriesPrototype';
+import i18n from '@/lib/i18n';
 
 /** One action and what it does. Home's Drop card and the League say the same thing. */
 export type TodayMove = {
@@ -24,22 +25,28 @@ export function todayMove(drop: NextMove | null, rival: Rival | null, gain: numb
     const who = rival ? firstName(rival.p.name) : '';
     const sealed = !!rival?.sealed;
     if (drop && drop.minutes > 0) {
-        const head = drop.route === 'steps' ? `Walk ${drop.minutes} min` : drop.left;
+        const head = drop.route === 'steps' ? i18n.t('series:move.walk', { minutes: drop.minutes }) : drop.left;
         // In Blind Mode nobody knows who they'd pass.
         const chasing = rival && !rival.ahead && !sealed;
         const passes = !!chasing && gain != null && gain >= rival.gap;
-        const tail = `opens today’s Drop${chasing ? (passes ? ` · passes ${who}` : ` · ${who} is ${fmt(rival.gap)} ${rival.gap === 1 ? 'pt' : 'pts'} ahead`) : ''}`;
+        const tail = chasing
+            ? (passes
+                ? i18n.t('series:move.opensPasses', { name: who })
+                : i18n.t('series:move.opensBehind', { count: rival.gap, name: who, gap: fmt(rival.gap) }))
+            : i18n.t('series:move.opensDrop');
         return { head, tail, passes, who, sealed };
     }
     if (sealed) {
-        return { head: 'Bank it in the dark', tail: 'every point still counts · ranks come back Thursday', passes: false, who, sealed: true };
+        return { head: i18n.t('series:move.darkHead'), tail: i18n.t('series:move.darkTail'), passes: false, who, sealed: true };
     }
     if (rival) {
         return {
-            head: `${fmt(rival.gap)} pts`,
+            head: i18n.t('series:move.headPts', { gap: fmt(rival.gap) }),
             tail: rival.ahead
-                ? `clear of ${rival.p.name} · ${rival.how}`
-                : `to pass ${rival.p.name} · ${rival.how}${rival.friend ? ' · your friend' : ''}`,
+                ? i18n.t('series:move.clearOf', { name: rival.p.name, how: rival.how })
+                : rival.friend
+                    ? i18n.t('series:move.toPassFriend', { name: rival.p.name, how: rival.how })
+                    : i18n.t('series:move.toPass', { name: rival.p.name, how: rival.how }),
             passes: false,
             who,
             sealed: false,
@@ -59,25 +66,25 @@ export type GapToday = { label: string; value: string; fill: number; tone: 'gold
  * (the card puts the number in red, never a red bar on Home).
  */
 export function gapToday(r: Rival, first = firstName(r.p.name)): GapToday {
-    if (r.sealed) return { label: 'Gap closed today', value: '?', fill: 0, tone: 'gold' };
+    if (r.sealed) return { label: i18n.t('series:move.gapClosed'), value: '?', fill: 0, tone: 'gold' };
     const net = r.meToday - r.p.today;
-    const pts = (n: number) => `${fmt(n)} ${n === 1 ? 'pt' : 'pts'}`;
+    const pts = (n: number) => i18n.t('series:move.pts', { count: n, n: fmt(n) });
     const part = (n: number, of: number) => Math.min(1, n / Math.max(1, of));
     // Their lead now (+) or yours (-), and this morning.
     const lead = r.ahead ? -r.gap : r.gap;
     const morning = lead + net;
     if (net >= 0) {
-        if (lead > 0) return { label: 'Gap closed today', value: pts(net), fill: part(net, morning), tone: 'gold' };
-        if (net === 0) return { label: 'Your lead held today', value: pts(0), fill: 0, tone: 'green' };
+        if (lead > 0) return { label: i18n.t('series:move.gapClosed'), value: pts(net), fill: part(net, morning), tone: 'gold' };
+        if (net === 0) return { label: i18n.t('series:move.leadHeld'), value: pts(0), fill: 0, tone: 'green' };
         return morning > 0
-            ? { label: `You passed ${first} today`, value: `+${pts(net)}`, fill: 1, tone: 'green' }
-            : { label: 'Your lead grew today', value: `+${pts(net)}`, fill: part(net, r.gap), tone: 'green' };
+            ? { label: i18n.t('series:move.youPassed', { name: first }), value: `+${pts(net)}`, fill: 1, tone: 'green' }
+            : { label: i18n.t('series:move.leadGrew'), value: `+${pts(net)}`, fill: part(net, r.gap), tone: 'green' };
     }
     const lost = -net;
     if (lead > 0) {
         return morning < 0
-            ? { label: `${first} passed you today`, value: `+${pts(lost)}`, fill: 1, tone: 'grey' }
-            : { label: 'Gap grew today', value: `+${pts(lost)}`, fill: part(lost, r.gap), tone: 'grey' };
+            ? { label: i18n.t('series:move.theyPassed', { name: first }), value: `+${pts(lost)}`, fill: 1, tone: 'grey' }
+            : { label: i18n.t('series:move.gapGrew'), value: `+${pts(lost)}`, fill: part(lost, r.gap), tone: 'grey' };
     }
-    return { label: `${first} closed today`, value: pts(lost), fill: part(lost, -morning), tone: 'grey' };
+    return { label: i18n.t('series:move.theyClosed', { name: first }), value: pts(lost), fill: part(lost, -morning), tone: 'grey' };
 }

@@ -283,7 +283,7 @@ export function StreakCard({
                 disabled={!onSeriesDrawPress}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel={`${seriesDraw.text.toLowerCase()}. Opens the Draw prize.`}
+                accessibilityLabel={t('series:homeBits.drawA11y', { chip: seriesDraw.text.toLowerCase() })}
                 style={({ pressed }) => [styles.drawChip, { borderColor: border }, seriesDraw.tone === 'act' && styles.drawChipAct, seriesDraw.tone === 'warn' && styles.drawChipWarn, pressed && { opacity: 0.7 }]}
               >
                 <Ionicons name={icon} size={10} color={c} />

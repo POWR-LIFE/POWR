@@ -11,8 +11,9 @@ import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { kit } from '@/components/drop/cardKit';
 import { HomeCard, HomeNote, type HomeStat, HomeStats } from '@/components/home/HomeCard';
 import { trackTap } from '@/lib/analytics';
-import { fmt, ordinal } from '@/lib/dev/seriesPrototype';
+import { seriesClock, seriesNum, seriesOrdinal } from '@/lib/api/series';
 import { inviteCodeLine } from '@/lib/eventInviteLink';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { friendInviteLink } from '@/lib/social/friendCode';
 import { inviteNext } from './SeriesInvite';
 import { useSeriesDress } from './SeriesRoundCard';
@@ -32,7 +33,8 @@ type IconName = React.ComponentProps<typeof Ionicons>['name'];
  */
 
 const LON = 'Europe/London';
-const timeOf = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: LON });
+const timeOf = (ms: number) => new Date(ms).toLocaleTimeString(getFormatLocale(), { hour: '2-digit', minute: '2-digit', timeZone: LON });
+// A London calendar day to compare, never shown: fixed format, whatever the language.
 const dateKey = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { timeZone: LON });
 const first = (name: string) => name.split(' ')[0];
 
@@ -47,9 +49,7 @@ export function countdown(ms: number): string {
     const m = Math.max(0, Math.floor(ms / 60_000));
     const d = Math.floor(m / 1440);
     const h = Math.floor((m % 1440) / 60);
-    if (d > 0) return `${d}d ${String(h).padStart(2, '0')}h`;
-    if (h > 0) return `${h}h ${String(m % 60).padStart(2, '0')}m`;
-    return `${m}m`;
+    return d > 0 ? seriesClock(d, h, null) : seriesClock(0, h, m % 60);
 }
 
 /* ── Before a round, and between rounds ──────────────────────────────── */
@@ -74,8 +74,8 @@ export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
     const upcoming = c.phase === 'upcoming';
     // Gold is for your own numbers: the countdown stays white.
     const clock: HomeStat = c.next
-        ? { value: countdown(c.next.startsAt - now), label: upcoming ? `To ${c.roundName}` : `To ${c.next.name}` }
-        : { value: '—', label: 'Next round soon' };
+        ? { value: countdown(c.next.startsAt - now), label: t('series:homeCards.toRound', { round: upcoming ? c.roundName : c.next.name }) }
+        : { value: '—', label: t('series:homeCards.nextSoon') };
     const inv = upcoming ? c.invite : null;
     const shareInvite = async () => {
         const code = inv?.me.code;
@@ -90,33 +90,52 @@ export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
     };
     const items: HomeStat[] = inv
         ? [
-            inv.me.rank != null ? { value: ordinal(inv.me.rank), label: 'Your place', tone: 'gold' } : { value: '—', label: 'Not on it yet' },
+            inv.me.rank != null
+                ? { value: seriesOrdinal(inv.me.rank), label: t('series:homeCards.yourPlace'), tone: 'gold' }
+                : { value: '—', label: t('series:homeCards.notOnIt') },
             {
                 value: `${inv.me.friends}`,
-                label: `${inv.me.friends === 1 ? 'Friend in' : 'Friends in'}${inv.me.joining > 0 ? ` · +${inv.me.joining} joining` : ''}`,
+                label: inv.me.joining > 0
+                    ? t('series:homeCards.friendsInJoining', { count: inv.me.friends, n: inv.me.joining })
+                    : t('series:homeCards.friendsIn', { count: inv.me.friends }),
             },
             clock,
         ]
         : upcoming
-        ? [clock, { value: `${c.days}`, label: 'Days in the round' }, { value: `${c.need}`, label: 'Days for the draw' }]
+        ? [clock, { value: `${c.days}`, label: t('series:homeCards.roundDays') }, { value: `${c.need}`, label: t('series:homeCards.drawDays') }]
         : [
-            c.finish ? { value: `#${fmt(c.finish.rank)}`, label: `Finished · of ${fmt(c.finish.total)}`, tone: 'gold' } : { value: '—', label: 'Finished' },
-            c.finish ? { value: c.finish.inDraw ? 'In' : 'Out', label: 'The draw', tone: c.finish.inDraw ? 'green' : undefined } : { value: '—', label: 'The draw' },
+            c.finish
+                ? { value: `#${seriesNum(c.finish.rank)}`, label: t('series:homeCards.finishedOf', { n: seriesNum(c.finish.total) }), tone: 'gold' }
+                : { value: '—', label: t('series:homeCards.finished') },
+            c.finish
+                ? {
+                    value: c.finish.inDraw ? t('series:homeCards.in') : t('series:homeCards.out'),
+                    label: t('series:homeCards.theDraw'),
+                    tone: c.finish.inDraw ? 'green' : undefined,
+                }
+                : { value: '—', label: t('series:homeCards.theDraw') },
             clock,
         ];
-    const dress = useSeriesDress(c.season, inv ? `Invite race · ${c.roundName} next` : upcoming ? `${c.roundName} · starting soon` : `${c.roundName} · finished`);
+    const dress = useSeriesDress(
+        c.season,
+        inv
+            ? t('series:homeCards.inviteRaceNext', { round: c.roundName })
+            : upcoming ? t('series:homeCards.startingSoon', { round: c.roundName }) : t('series:homeCards.roundFinished', { round: c.roundName }),
+    );
     return (
         <HomeCard
             {...dress}
-            title={inv ? `${c.season} · invite race` : upcoming ? `${c.season} · ${c.roundName}` : `${c.roundName} · finished`}
+            title={inv
+                ? t('series:homeCards.inviteRaceTitle', { season: c.season })
+                : upcoming ? `${c.season} · ${c.roundName}` : t('series:homeCards.roundFinished', { round: c.roundName })}
             onPress={() => openLeague(upcoming ? 'coming' : 'finished')}
-            label={`${c.season}. ${items.map((x) => `${x.value} ${x.label}`).join('. ')}. Opens the League.`}
+            label={t('series:homeCards.a11y', { season: c.season, stats: items.map((x) => `${x.value} ${x.label}`).join('. ') })}
             action={inv && inv.me.code
-                ? { icon: 'person-add-outline', label: 'Invite a friend', onPress: () => { void shareInvite(); }, primary: true }
-                : !upcoming && c.winners ? { icon: 'trophy-outline', label: 'See the winners', onPress: () => openLeague('winners') } : undefined}
+                ? { icon: 'person-add-outline', label: t('series:homeCards.inviteAction'), onPress: () => { void shareInvite(); }, primary: true }
+                : !upcoming && c.winners ? { icon: 'trophy-outline', label: t('series:homeCards.winners'), onPress: () => openLeague('winners') } : undefined}
         >
             <HomeStats items={items} />
-            {inv && <HomeNote icon="people-outline" lead="Next" text={inviteNext(inv)} />}
+            {inv && <HomeNote icon="people-outline" lead={t('series:homeCards.next')} text={inviteNext(inv)} />}
         </HomeCard>
     );
 }
@@ -132,9 +151,10 @@ const AWAY_MS = 3 * 3_600_000;
 
 /** "SINCE 09:14" today, "SINCE YESTERDAY", else "SINCE TUE". */
 export function sinceLabel(at: number, now: number): string {
-    if (dateKey(at) === dateKey(now)) return `SINCE ${timeOf(at)}`;
-    if (dateKey(at) === dateKey(now - 86_400_000)) return 'SINCE YESTERDAY';
-    return `SINCE ${new Date(at).toLocaleDateString('en-GB', { weekday: 'short', timeZone: LON }).toUpperCase()}`;
+    if (dateKey(at) === dateKey(now)) return i18n.t('series:homeCards.sinceTime', { time: timeOf(at) });
+    if (dateKey(at) === dateKey(now - 86_400_000)) return i18n.t('series:homeCards.sinceYesterday');
+    const day = new Date(at).toLocaleDateString(getFormatLocale(), { weekday: 'short', timeZone: LON }).toUpperCase();
+    return i18n.t('series:homeCards.sinceDay', { day });
 }
 
 /**
@@ -146,24 +166,33 @@ export function sinceLines(seen: Seen, t: SeriesToday): RecapLine[] {
     const lines: RecapLine[] = [];
     const names = (xs: Around[]) => {
         const f = xs.map((x) => first(x.name));
-        return f.length <= 2 ? f.join(' and ') : `${f[0]}, ${f[1]} and ${f.length - 2} more`;
+        if (f.length === 1) return f[0];
+        return f.length === 2
+            ? i18n.t('series:homeCards.namesTwo', { a: f[0], b: f[1] })
+            : i18n.t('series:homeCards.namesMore', { a: f[0], b: f[1], count: f.length - 2 });
     };
     if (!t.blind) {
         const places = seen.rank - t.rank;
-        if (places > 0) lines.push({ icon: 'caret-up', tone: 'green', text: `Up ${fmt(places)} ${places === 1 ? 'place' : 'places'} · you’re #${fmt(t.rank)}` });
-        else if (places < 0) lines.push({ icon: 'caret-down', tone: 'red', text: `Down ${fmt(-places)} ${places === -1 ? 'place' : 'places'} · you’re #${fmt(t.rank)}` });
+        const rank = seriesNum(t.rank);
+        if (places > 0) lines.push({ icon: 'caret-up', tone: 'green', text: i18n.t('series:homeCards.up', { count: places, n: seriesNum(places), rank }) });
+        else if (places < 0) lines.push({ icon: 'caret-down', tone: 'red', text: i18n.t('series:homeCards.down', { count: -places, n: seriesNum(-places), rank }) });
         const now = new Map(t.around.map((a) => [a.id, a.pts]));
         const passed = seen.around.filter((a) => a.pts > seen.points && (now.get(a.id) ?? Infinity) < t.points);
         const passedYou = seen.around.filter((a) => a.pts < seen.points && (now.get(a.id) ?? -Infinity) > t.points);
-        if (passed.length) lines.push({ icon: 'trending-up-outline', tone: 'muted', text: `You passed ${names(passed)}` });
-        if (passedYou.length) lines.push({ icon: 'trending-down-outline', tone: 'muted', text: `${names(passedYou)} passed you` });
+        if (passed.length) lines.push({ icon: 'trending-up-outline', tone: 'muted', text: i18n.t('series:homeCards.youPassed', { names: names(passed) }) });
+        if (passedYou.length) {
+            lines.push({ icon: 'trending-down-outline', tone: 'muted', text: i18n.t('series:homeCards.passedYou', { count: passedYou.length, names: names(passedYou) }) });
+        }
     }
-    if (seen.logged < seen.need && t.draw.logged >= t.draw.need) lines.push({ icon: 'ticket-outline', tone: 'gold', text: 'You’re in the Draw' });
+    if (seen.logged < seen.need && t.draw.logged >= t.draw.need) lines.push({ icon: 'ticket-outline', tone: 'gold', text: i18n.t('series:homeCards.inDraw') });
     if (!lines.length) return lines;
     const r = t.rival;
     if (r && !t.blind && lines.length < 3) {
-        const gap = `${fmt(r.gap)} ${r.gap === 1 ? 'pt' : 'pts'}`;
-        lines.push({ icon: 'locate-outline', tone: 'muted', text: r.ahead ? `${first(r.p.name)} is ${gap} behind you` : `${first(r.p.name)} is ${gap} ahead` });
+        const gap = { count: r.gap, n: seriesNum(r.gap), name: first(r.p.name) };
+        lines.push({
+            icon: 'locate-outline', tone: 'muted',
+            text: r.ahead ? i18n.t('series:homeCards.rivalBehind', gap) : i18n.t('series:homeCards.rivalAhead', gap),
+        });
     }
     return lines.slice(0, 3);
 }
@@ -221,12 +250,13 @@ function useLiveSince(t: SeriesToday | null): { label: string; lines: RecapLine[
 
 /** Under the top line on the first look after a while: what changed, no tap needed to find out. */
 export function SeriesSinceCard({ today }: { today: SeriesToday }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     const liveSince = useLiveSince(today);
     const hidden = useSinceHidden();
     const [closed, setClosed] = useState<string | null>(null);
     const since = today.source === 'sample'
-        ? (hidden || !today.news?.length ? null : { label: 'SINCE YESTERDAY', lines: today.news.slice(0, 3) })
+        ? (hidden || !today.news?.length ? null : { label: t('series:homeCards.sinceYesterday'), lines: today.news.slice(0, 3) })
         : liveSince;
     if (!since || closed === since.label + since.lines.map((l) => l.text).join()) return null;
     const close = () => {
@@ -239,7 +269,7 @@ export function SeriesSinceCard({ today }: { today: SeriesToday }) {
         <View style={[s.since, sc]}>
             <View style={s.sinceHead}>
                 <Text style={s.kicker}>{since.label}</Text>
-                <Pressable onPress={close} hitSlop={12} accessibilityRole="button" accessibilityLabel="Dismiss">
+                <Pressable onPress={close} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('series:homeCards.dismiss')}>
                     <Ionicons name="close" size={15} color={TEXT_3} />
                 </Pressable>
             </View>
@@ -247,7 +277,7 @@ export function SeriesSinceCard({ today }: { today: SeriesToday }) {
                 onPress={() => openLeague('since')}
                 style={({ pressed }) => [s.sinceBody, pressed && { opacity: 0.8 }]}
                 accessibilityRole="button"
-                accessibilityLabel={`${since.label.toLowerCase()}: ${since.lines.map((l) => l.text).join('. ')}. Opens the League.`}
+                accessibilityLabel={t('series:homeCards.sinceA11y', { label: since.label.toLowerCase(), lines: since.lines.map((l) => l.text).join('. ') })}
             >
                 {since.lines.map((l) => {
                     const c = l.tone === 'green' ? GREEN : l.tone === 'red' ? RED : l.tone === 'gold' ? GOLD : TEXT_3;
@@ -283,6 +313,7 @@ export function seriesPrizeState(t: SeriesToday): PrizeState {
  * Nothing until the round has prizes.
  */
 export function SeriesPrizeRow({ today, onOpen }: { today: SeriesToday; onOpen: () => void }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     const P = today.prizes;
     const draw = P.draw;
@@ -291,15 +322,19 @@ export function SeriesPrizeRow({ today, onOpen }: { today: SeriesToday; onOpen: 
     if (!main) return null;
     const inDraw = today.draw.logged >= today.draw.need;
     const kicker = draw
-        ? `THE DRAW · ${draw.winners} ${draw.winners === 1 ? 'WINNER' : 'WINNERS'}${inDraw ? ' · YOU’RE IN' : ''}`
-        : '1ST PLACE';
-    const sub = draw && top ? `1st place wins ${top.name}` : draw ? `Drawn ${today.prizesOn}` : P.places.length > 1 ? '2nd and 3rd win too' : `Decided ${today.prizesOn}`;
+        ? (inDraw ? t('series:homeCards.prizeDrawIn', { count: draw.winners }) : t('series:homeCards.prizeDraw', { count: draw.winners }))
+        : t('series:homeCards.firstPlace');
+    const sub = draw && top
+        ? t('series:homeCards.firstWins', { prize: top.name })
+        : draw
+            ? t('series:homeCards.drawn', { when: today.prizesOn })
+            : P.places.length > 1 ? t('series:homeCards.podiumToo') : t('series:homeCards.decided', { when: today.prizesOn });
     return (
         <Pressable
             onPress={() => { void Haptics.selectionAsync(); trackTap('series_home_prizes'); onOpen(); }}
             style={({ pressed }) => [kit.card, s.prize, sc, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
-            accessibilityLabel={`Playing for: ${main.name}. ${sub}. Opens the prizes.`}
+            accessibilityLabel={t('series:homeCards.prizeA11y', { prize: main.name, sub })}
         >
             {main.img
                 ? <Image source={main.img} style={s.prizeImg} contentFit="cover" />

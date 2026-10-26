@@ -2,12 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { HomeCard, type HomeStat, HomeNote, HomeStats } from '@/components/home/HomeCard';
 import { fontFamily } from '@/constants/tokens';
 import { trackTap } from '@/lib/analytics';
-import { fmt, ordinal } from '@/lib/dev/seriesPrototype';
+import { seriesNum } from '@/lib/api/series';
+import { ordinal } from '@/lib/dev/seriesPrototype';
 import { type SeriesToday, seriesDrawChip, seriesNextMove, useDropMove } from './SeriesToday';
 import { BUTTER, hexA, mixHex, plainCard, SeasonMark, useSeason } from './season';
 
@@ -27,6 +29,8 @@ import { BUTTER, hexA, mixHex, plainCard, SeasonMark, useSeason } from './season
  * mark and name in butter (no P: Home keeps the P to the level badge).
  */
 export function SeriesRoundCard({ today: t }: { today: SeriesToday }) {
+    // `t` is the round here, so the translator goes by another name.
+    const { t: tr } = useTranslation();
     const r = t.rival;
     const h = t.heat;
     const first = r ? r.p.name.split(' ')[0] : '';
@@ -36,41 +40,49 @@ export function SeriesRoundCard({ today: t }: { today: SeriesToday }) {
     const move = seriesNextMove(t, drop?.passes ? drop : null);
 
     const place: HomeStat = t.blind
-        ? { value: '?', label: 'Rank hidden' }
+        ? { value: '?', label: tr('series:roundCard.rankHidden') }
         : unranked
-            ? { value: '—', label: 'Not ranked yet' }
+            ? { value: '—', label: tr('series:roundCard.notRanked') }
             : h
                 ? { value: ordinal(h.rank), label: 'In your heat', tone: 'gold', move: h.move }
-                : { value: `#${fmt(t.rank)}`, label: `Of ${fmt(t.total)}`, tone: 'gold', move: t.move };
+                : { value: `#${seriesNum(t.rank)}`, label: tr('series:roundCard.of', { n: seriesNum(t.total) }), tone: 'gold', move: t.move };
     const gap: HomeStat = !r
-        ? { value: '—', label: 'No rival yet' }
+        ? { value: '—', label: tr('series:roundCard.noRival') }
         : t.blind || r.sealed
-            ? { value: '?', label: `Pts to ${first}` }
+            ? { value: '?', label: tr('series:roundCard.ptsTo', { name: first }) }
             : r.ahead
-                ? { value: fmt(r.gap), label: `Pts clear of ${first}`, tone: 'green' }
-                : { value: fmt(r.gap), label: `Pts to ${first}` };
+                ? { value: seriesNum(r.gap), label: tr('series:roundCard.ptsClear', { name: first }), tone: 'green' }
+                : { value: seriesNum(r.gap), label: tr('series:roundCard.ptsTo', { name: first }) };
     const chip = seriesDrawChip(t);
     const { logged, need } = t.draw;
     const draw: HomeStat = {
         value: `${Math.min(logged, need)}/${need}`,
-        label: logged >= need ? 'In the draw' : chip?.tone === 'warn' ? 'Draw · move today' : chip?.tone === 'out' ? 'Draw out of reach' : 'Draw days',
+        label: logged >= need
+            ? tr('series:roundCard.inDraw')
+            : chip?.tone === 'warn' ? tr('series:roundCard.drawMoveToday') : chip?.tone === 'out' ? tr('series:roundCard.drawOut') : tr('series:roundCard.drawDays'),
         tone: logged >= need ? 'green' : chip?.tone === 'warn' ? 'orange' : chip?.tone === 'out' ? 'red' : undefined,
     };
 
-    const dress = useSeriesDress(t.season, `${t.roundName} · day ${t.day} of ${t.days}`);
+    const dress = useSeriesDress(t.season, tr('series:roundCard.dayOf', { name: t.roundName, day: t.day, days: t.days }));
 
     return (
         <HomeCard
-            title={`${t.season} · day ${t.day} of ${t.days}`}
+            title={tr('series:roundCard.dayOf', { name: t.season, day: t.day, days: t.days })}
             {...dress}
             onPress={() => {
                 trackTap('series_home_open', { from: 'card' });
                 router.push({ pathname: '/(tabs)/league', params: { focus: 'rival', at: String(Date.now()) } });
             }}
-            label={`${t.season}. ${place.value} ${place.label}. ${gap.value} ${gap.label}. ${draw.value} ${draw.label}. Next: ${move}. Opens the League.`}
+            label={tr('series:roundCard.a11y', {
+                season: t.season,
+                place: `${place.value} ${place.label}`,
+                gap: `${gap.value} ${gap.label}`,
+                draw: `${draw.value} ${draw.label}`,
+                move,
+            })}
         >
             <HomeStats items={[place, gap, draw]} />
-            <HomeNote icon="flash-outline" lead="Next" text={move} />
+            <HomeNote icon="flash-outline" lead={tr('series:roundCard.next')} text={move} />
         </HomeCard>
     );
 }

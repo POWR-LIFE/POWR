@@ -29,10 +29,29 @@ import {
     visibleRows,
     youOf,
 } from '@/lib/dev/seriesPrototype';
+import i18n from '@/lib/i18n';
 import type { RecapLine, useSeriesSim } from './useSeriesSim';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type Sim = ReturnType<typeof useSeriesSim>;
+
+/**
+ * A place as the language on screen says it: "1st", "22nd"; "1er", "2e";
+ * "1.º". The language's own ordinal rule picks the form, which in English is
+ * exactly seriesPrototype's st/nd/rd/th `ordinal`.
+ */
+export function placeOrdinal(n: number): string {
+    let form = 'other';
+    try {
+        form = new Intl.PluralRules(i18n.language, { type: 'ordinal' }).select(n);
+    } catch {
+        // No ordinal rules here: the general form.
+    }
+    if (form === 'one') return i18n.t('series:view.ordinal.one', { n });
+    if (form === 'two') return i18n.t('series:view.ordinal.two', { n });
+    if (form === 'few') return i18n.t('series:view.ordinal.few', { n });
+    return i18n.t('series:view.ordinal.other', { n });
+}
 
 /** Why a game isn't open yet, and what opens it. Shown in place of the game. */
 export type GameLock = {
@@ -126,19 +145,19 @@ export type SeriesView = {
 function gymLock(t: TabGames, hasGym: boolean): GameLock {
     if (!hasGym) {
         return {
-            rule: 'Set your gym on POWR to play for its crown.',
+            rule: i18n.t('series:view.gymLock.noGymRule'),
             items: [],
             more: null,
-            note: 'The crown goes to whoever logs the most at a gym over 7 days.',
+            note: i18n.t('series:view.gymLock.noGymNote'),
             action: 'pickGym',
         };
     }
     const g = t.gym;
     return {
-        rule: `The crown opens when ${GYM_MIN} people train at ${g.name} in a week.`,
+        rule: i18n.t('series:view.gymLock.rule', { min: GYM_MIN, gym: g.name }),
         items: [{ label: g.name, ready: false, progress: Math.min(1, g.people / GYM_MIN), you: true }],
         more: null,
-        note: `${g.people} of ${GYM_MIN} so far this week. Bring a training partner and it opens sooner.`,
+        note: i18n.t('series:view.gymLock.note', { people: g.people, min: GYM_MIN }),
         action: 'invite',
     };
 }
@@ -165,12 +184,14 @@ function liveCityLock(c: SeriesCity): GameLock {
     const items: GameLock['items'] = c.cities.map((x) => ({ label: x.name, ready: true, progress: null, you: x.you }));
     if (c.you && !c.cities.some((x) => x.you)) items.push({ label: c.you.name, ready: false, progress: null, you: true });
     return {
-        rule: `City vs city starts when ${c.min_cities} cities have enough people moving.`,
+        rule: i18n.t('series:view.cityLock.rule', { min: c.min_cities }),
         items,
-        more: `${need} more cit${need === 1 ? 'y' : 'ies'} to go${c.forming ? ` · ${c.forming} forming` : ''}`,
+        more: c.forming
+            ? i18n.t('series:view.cityLock.moreForming', { count: need, forming: c.forming })
+            : i18n.t('series:view.cityLock.more', { count: need }),
         note: c.you
-            ? `You’re on ${c.you.name}’s team. Every friend you bring counts for ${c.you.name}.`
-            : 'Pick your city above to join its team.',
+            ? i18n.t('series:view.cityLock.team', { city: c.you.name })
+            : i18n.t('series:view.cityLock.pick'),
         action: c.you ? 'invite' : null,
     };
 }
@@ -300,12 +321,12 @@ export function fromLive(b: SeriesBoard, name = 'Series', blind = false): Series
     const tabs: TabGames = {
         city: (c?.cities ?? []).map((x) => ({ name: x.name, members: x.members, avg: x.avg, you: x.you })),
         gym: {
-            name: g?.name ?? 'Your gym', area, held: null, inNow: null, friendIn: null, people: g?.people ?? 0,
+            name: g?.name ?? i18n.t('series:view.yourGym'), area, held: null, inNow: null, friendIn: null, people: g?.people ?? 0,
             court: (g?.court ?? []).map((c) => ({ name: c.name, pts: c.points, you: c.you })),
         },
         duel: {
             you: b.duels.you,
-            ends: 'Sun 23:59',
+            ends: i18n.t('series:view.duelEnds'),
             sent: b.duels.sent,
             invite: b.duels.invites[0] ? { id: b.duels.invites[0].id, name: b.duels.invites[0].name, them: b.duels.invites[0].them } : null,
             open: b.duels.open.map((o) => ({ id: o.user_id, name: o.name })),
@@ -321,13 +342,13 @@ export function fromLive(b: SeriesBoard, name = 'Series', blind = false): Series
         live: true,
         phase,
         round: {
-            slug: r.slug, name: r.name, days: r.days, prizesOn: `on ${seriesDate(r.ends_at)}`, prizesDay: seriesDate(r.ends_at),
+            slug: r.slug, name: r.name, days: r.days, prizesOn: i18n.t('series:view.prizesOn', { date: seriesDate(r.ends_at) }), prizesDay: seriesDate(r.ends_at),
             // ends_at is the midnight after the last day
             lastDay: seriesDate(new Date(new Date(r.ends_at).getTime() - 12 * 3_600_000).toISOString()),
         },
         header: phase === 'running'
-            ? `${name} · Day ${r.day} of ${r.days}`
-            : `${name} · ${next.label} starts ${next.starts}`,
+            ? i18n.t('series:view.headerDay', { name, day: r.day, days: r.days })
+            : i18n.t('series:view.headerNext', { name, round: next.label, date: next.starts }),
         band: null,
         hero: {
             rank: me.rank, move: me.rank_mid - me.rank, total: b.total, left: timeLeft(r.ends_at), badge: null, blind,

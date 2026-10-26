@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -351,17 +352,44 @@ export async function respondToDuel(duelId: string, accept: boolean): Promise<vo
  * supabase/functions/_shared/pushCopy.ts so the push and the screen agree.
  */
 export function seriesHow(gap: number, ahead: boolean): string {
-    if (ahead) return 'One session today keeps you clear';
-    if (gap <= 10) return 'One run does it';
-    if (gap <= 20) return 'One gym session does it';
-    return `About ${Math.ceil(gap / 15)} sessions do it`;
+    if (ahead) return i18n.t('series:api.howClear');
+    if (gap <= 10) return i18n.t('series:api.howRun');
+    if (gap <= 20) return i18n.t('series:api.howGym');
+    return i18n.t('series:api.howSessions', { count: Math.ceil(gap / 15) });
+}
+
+/** A whole number as the member reads it: "1,234" in English, "1 234" in French. */
+export function seriesNum(n: number): string {
+    return Math.round(n).toLocaleString(getFormatLocale());
+}
+
+const ORDINAL_KEYS: Partial<Record<Intl.LDMLPluralRule, string>> = {
+    one: 'series:api.ordinalOne', two: 'series:api.ordinalTwo', few: 'series:api.ordinalFew',
+};
+
+/** A place, in the language on screen: "2nd", "2e", "2.º". */
+export function seriesOrdinal(n: number): string {
+    let rule: Intl.LDMLPluralRule = 'other';
+    try {
+        rule = new Intl.PluralRules(getFormatLocale(), { type: 'ordinal' }).select(n);
+    } catch {
+        // No ordinal rules here: the plain form.
+    }
+    return i18n.t(ORDINAL_KEYS[rule] ?? 'series:api.ordinalOther', { n });
+}
+
+/** A countdown in the language on screen: "23d 04h" (no minutes given), else "14h 05m", or "38m" with no hours. */
+export function seriesClock(d: number, h: number, m: number | null): string {
+    if (m == null) return i18n.t('series:api.clockDH', { d, h: String(h).padStart(2, '0') });
+    if (h > 0) return i18n.t('series:api.clockHM', { h, m: String(m).padStart(2, '0') });
+    return i18n.t('series:api.clockM', { m });
 }
 
 /** "Sun 1 Nov", London time. */
 export function seriesDate(iso: string): string {
     const d = new Date(iso);
     try {
-        return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' }).replace(',', '');
+        return d.toLocaleDateString(getFormatLocale(), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' }).replace(',', '');
     } catch {
         const W = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -374,7 +402,7 @@ export function timeLeft(iso: string, now = Date.now()): string {
     const ms = Math.max(0, new Date(iso).getTime() - now);
     const d = Math.floor(ms / 86_400_000);
     const h = Math.floor((ms % 86_400_000) / 3_600_000);
-    return `${d}d ${String(h).padStart(2, '0')}h`;
+    return seriesClock(d, h, null);
 }
 
 /** The live board while the screen is in view: fetched on focus, then every minute. */

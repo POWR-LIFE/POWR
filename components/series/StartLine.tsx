@@ -3,6 +3,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, {
     Easing,
@@ -17,8 +18,7 @@ import Animated, {
 import Svg, { Defs, G, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 
 import { HomeStats } from '@/components/home/HomeCard';
-import { crowdAt, crowdAtGun, type SeriesInviteBoard } from '@/lib/api/series';
-import { fmt, ordinal } from '@/lib/dev/seriesPrototype';
+import { crowdAt, crowdAtGun, type SeriesInviteBoard, seriesNum, seriesOrdinal } from '@/lib/api/series';
 import { GOLD, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
 import {
     BOXES, type Cell, fillOrder, glyph, jitter, P_BOWL_CURVES, P_H, P_LEG_CURVES, P_W, seatsFor, SLANT,
@@ -82,6 +82,7 @@ function useNow(ms: number) {
  * second's tick, so the crowd isn't redrawn every second.
  */
 function Clock({ to, roundName, onZero }: { to: number; roundName: string; onZero: () => void }) {
+    const { t } = useTranslation();
     const now = useNow(1000);
     const ms = Math.max(0, to - now);
     const sec = Math.floor(ms / 1000);
@@ -91,18 +92,29 @@ function Clock({ to, roundName, onZero }: { to: number; roundName: string; onZer
     useEffect(() => { if (ms === 0) zero.current(); }, [ms]);
     return (
         <>
-            <View style={s.clock} accessibilityRole="timer" accessibilityLabel={`${parts[0]} days ${parts[1]} hours ${parts[2]} minutes to ${roundName}`}>
+            <View
+                style={s.clock}
+                accessibilityRole="timer"
+                accessibilityLabel={t('series:start.clockA11y', {
+                    days: t('series:start.a11yDays', { count: parts[0] }),
+                    hours: t('series:start.a11yHours', { count: parts[1] }),
+                    minutes: t('series:start.a11yMinutes', { count: parts[2] }),
+                    round: roundName,
+                })}
+            >
                 {parts.map((n, i) => (
                     <React.Fragment key={i}>
                         {i > 0 && <Text style={s.colon}>:</Text>}
                         <View style={s.unit}>
                             <Text style={s.num}>{String(n).padStart(2, '0')}</Text>
-                            <Text style={s.unitLabel}>{['DAYS', 'HRS', 'MIN', 'SEC'][i]}</Text>
+                            <Text style={s.unitLabel}>
+                                {[t('series:start.unitDays'), t('series:start.unitHours'), t('series:start.unitMinutes'), t('series:start.unitSeconds')][i]}
+                            </Text>
                         </View>
                     </React.Fragment>
                 ))}
             </View>
-            <Text style={s.toWhat}>{`TO ${roundName.toUpperCase()}`}</Text>
+            <Text style={s.toWhat}>{t('series:start.toRound', { round: roundName.toUpperCase() })}</Text>
         </>
     );
 }
@@ -146,6 +158,7 @@ export function StartLine({
     /** Dev: how far ahead the crowd's clock runs (ms), to watch it fill. */
     shift?: number;
 }) {
+    const { t } = useTranslation();
     const { def } = useSeason();
     const [done, setDone] = useState(false);
     useEffect(() => { setDone(false); }, [startsAt]);
@@ -194,38 +207,42 @@ export function StartLine({
                 <StartLineBar go={go} />
                 <Text style={s.lineLabel}>
                     {done
-                        ? `${roundName.toUpperCase()} IS ON`
-                        : invite ? `${fmt(waiting)} WAITING AT THE START LINE` : `EVERYONE STARTS ON 0 · ${days} DAYS · ${need} FOR THE DRAW`}
+                        ? t('series:start.roundOn', { round: roundName.toUpperCase() })
+                        : invite ? t('series:start.waiting', { n: seriesNum(waiting) }) : t('series:start.basics', { days, need })}
                 </Text>
             </View>
 
             {invite && me ? (
                 <>
-                    <Pressable onPress={onRace} style={({ pressed }) => [s.stats, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="See the whole invite race">
+                    <Pressable onPress={onRace} style={({ pressed }) => [s.stats, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={t('series:start.raceA11y')}>
                         <HomeStats items={[
-                            me.rank != null ? { value: ordinal(me.rank), label: 'Your place', tone: 'gold' } : { value: '—', label: 'Not on it yet' },
-                            { value: `${me.friends}`, label: `Friends in${me.joining ? ` · +${me.joining} joining` : ''}` },
-                            leader ? { value: `${leader.friends}`, label: `${leader.you ? 'You lead' : `${leader.name.split(' ')[0]} leads`} ›` } : { value: '0', label: 'Nobody yet ›' },
+                            me.rank != null
+                                ? { value: seriesOrdinal(me.rank), label: t('series:start.yourPlace'), tone: 'gold' }
+                                : { value: '—', label: t('series:start.notOnIt') },
+                            { value: `${me.friends}`, label: me.joining ? t('series:start.friendsInJoining', { n: me.joining }) : t('series:start.friendsIn') },
+                            leader
+                                ? { value: `${leader.friends}`, label: leader.you ? t('series:start.youLead') : t('series:start.leads', { name: leader.name.split(' ')[0] }) }
+                                : { value: '0', label: t('series:start.nobody') },
                         ]} />
                     </Pressable>
                     <Pressable
                         onPress={() => { void Haptics.selectionAsync(); onInvite(); }}
                         style={({ pressed }) => [s.btn, pressed && { opacity: 0.85 }]}
                         accessibilityRole="button"
-                        accessibilityLabel="Invite a friend"
+                        accessibilityLabel={t('series:start.inviteA11y')}
                     >
                         <Ionicons name="person-add-outline" size={16} color="#0a0a0a" />
-                        <Text style={s.btnText}>INVITE A FRIEND</Text>
+                        <Text style={s.btnText}>{t('series:start.invite')}</Text>
                     </Pressable>
-                    <Text style={s.fine}>A friend counts once they work out · most friends wins Patient Zero</Text>
+                    <Text style={s.fine}>{t('series:start.fineRace')}</Text>
                 </>
             ) : (
-                <Text style={s.fine}>The board opens at midnight. Every verified session counts.</Text>
+                <Text style={s.fine}>{t('series:start.fineBoard')}</Text>
             )}
             {onCity && (
                 <Pressable onPress={onCity} hitSlop={8} style={({ pressed }) => [s.city, pressed && { opacity: 0.6 }]} accessibilityRole="button">
                     <Ionicons name="location-outline" size={12} color={TEXT_2} />
-                    <Text style={s.cityText}>Pick the city you move for</Text>
+                    <Text style={s.cityText}>{t('series:start.city')}</Text>
                     <Ionicons name="chevron-forward" size={12} color={TEXT_2} />
                 </Pressable>
             )}

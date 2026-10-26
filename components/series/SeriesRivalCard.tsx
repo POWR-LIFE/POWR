@@ -2,12 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSeasonCard } from './season';
 
 import { CARD_BG, GOLD, GREEN, kit, MUTED, StatusChip } from '@/components/drop/cardKit';
 import { Avatar } from '@/components/social/Avatar';
-import { fmt, ordinal, type Rival } from '@/lib/dev/seriesPrototype';
+import { seriesNum } from '@/lib/api/series';
+import { ordinal, type Rival } from '@/lib/dev/seriesPrototype';
 import type { Friend } from '@/lib/social/types';
 import { RED, RollNumber } from './SeriesLane';
 import { type SeriesToday, useDropMove } from './SeriesToday';
@@ -27,6 +29,7 @@ import { gapToday } from './todayMove';
  * ("Walk 18 min opens today’s Drop · passes Arjun").
  */
 export function SeriesRivalCard({ youName, today, rival }: { youName: string; today: SeriesToday; rival: Rival }) {
+    const { t } = useTranslation();
     // The card wears the active Series season.
     const sc = useSeasonCard();
     const r = { ...rival, sealed: rival.sealed || today.blind };
@@ -56,13 +59,19 @@ export function SeriesRivalCard({ youName, today, rival }: { youName: string; to
     const them: Friend = { id: r.p.id, username: '', displayName: r.p.name, status: 'accepted' };
     const daysLeft = Math.max(0, today.days - today.day);
     const title = passed
-        ? `You passed ${passed}`
-        : r.sealed ? `${first} is sealed` : r.ahead ? `${first} is chasing you` : `${first} is just ahead`;
-    const goal = passed
-        ? `New rival: ${r.p.name}, ${fmt(r.gap)} pts ahead. ${next ? `${next.head} ${next.tail}` : r.how}.`
+        ? t('series:rival.youPassed', { name: passed })
         : r.sealed
-            ? 'Blind Mode: every rank is hidden. Keep moving.'
-            : `${r.how}. ${r.friend ? 'Your friend, just above you' : r.ahead ? 'Right behind you' : `Just above you at #${fmt(r.rank ?? r.meRank - 1)}`} in the ${today.season}.`;
+            ? t('series:rival.sealed', { name: first })
+            : r.ahead ? t('series:rival.chasing', { name: first }) : t('series:rival.justAhead', { name: first });
+    const goal = passed
+        ? t('series:rival.newRival', { name: r.p.name, n: seriesNum(r.gap), how: next ? `${next.head} ${next.tail}` : r.how })
+        : r.sealed
+            ? t('series:rival.blind')
+            : r.friend
+                ? t('series:rival.goalFriend', { how: r.how, season: today.season })
+                : r.ahead
+                    ? t('series:rival.goalBehind', { how: r.how, season: today.season })
+                    : t('series:rival.goalAbove', { how: r.how, rank: seriesNum(r.rank ?? r.meRank - 1), season: today.season });
 
     return (
         <View>
@@ -71,7 +80,7 @@ export function SeriesRivalCard({ youName, today, rival }: { youName: string; to
                 onPress={open}
                 style={({ pressed }) => [kit.card, sc, passed && kit.cardLit, pressed && { opacity: 0.85 }]}
                 accessibilityRole="button"
-                accessibilityLabel={`${title}. ${next && !passed ? `${next.head} ${next.tail}.` : goal} Opens the League.`}
+                accessibilityLabel={t('series:rival.a11y', { title, goal: next && !passed ? `${next.head} ${next.tail}.` : goal })}
             >
                 {/* The gap is the card's number, friend or not; while you've just
                     passed someone the win leads instead. */}
@@ -81,14 +90,19 @@ export function SeriesRivalCard({ youName, today, rival }: { youName: string; to
                             <View style={styles.avatarWrap}><Avatar friend={you} size={30} /></View>
                             <View style={[styles.avatarWrap, { marginLeft: -10 }]}><Avatar friend={them} size={30} /></View>
                         </View>
-                        {r.friend && !passed && <StatusChip icon="people-outline" text="Friend" tone="gold" />}
+                        {r.friend && !passed && <StatusChip icon="people-outline" text={t('series:rival.friend')} tone="gold" />}
                     </View>
                     {passed ? (
-                        <StatusChip icon="trending-up-outline" text="Passed" tone="green" />
+                        <StatusChip icon="trending-up-outline" text={t('series:rival.passed')} tone="green" />
                     ) : (
                         <View style={kit.points}>
                             {r.sealed ? <Text style={kit.pointsValue}>?</Text> : <RollNumber value={r.gap} style={kit.pointsValue} />}
-                            <Text style={kit.pointsLabel}>{`${r.gap === 1 && !r.sealed ? 'pt' : 'pts'} ${r.ahead ? 'ahead' : 'behind'}`}</Text>
+                            {/* Sealed, the gap is "?": always the plural. */}
+                            <Text style={kit.pointsLabel}>
+                                {r.ahead
+                                    ? t('series:rival.ptsAhead', { count: r.sealed ? 2 : r.gap })
+                                    : t('series:rival.ptsBehind', { count: r.sealed ? 2 : r.gap })}
+                            </Text>
                         </View>
                     )}
                 </View>
@@ -117,14 +131,14 @@ export function SeriesRivalCard({ youName, today, rival }: { youName: string; to
                         <View style={styles.next}>
                             <Ionicons name={today.nextMoment.icon} size={12} color={GOLD} />
                             <Text style={kit.footerMuted} numberOfLines={1}>
-                                <Text style={{ color: GOLD }}>Next: {today.nextMoment.name}</Text>
+                                <Text style={{ color: GOLD }}>{t('series:rival.next', { name: today.nextMoment.name })}</Text>
                                 {today.nextMoment.when ? ` · ${today.nextMoment.when}` : ''}
                             </Text>
                         </View>
                     ) : (
                         <Text style={kit.footerMuted}>{today.season}</Text>
                     )}
-                    <Text style={kit.timeText}>{daysLeft === 0 ? 'Last day' : `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`}</Text>
+                    <Text style={kit.timeText}>{daysLeft === 0 ? t('series:rival.lastDay') : t('series:rival.daysLeft', { count: daysLeft })}</Text>
                 </View>
             </Pressable>
         </View>
@@ -133,9 +147,12 @@ export function SeriesRivalCard({ youName, today, rival }: { youName: string; to
 
 /** The Series block's header: which Series, your place and today's move, and the way to League. */
 function SeriesHeader({ today, onOpen }: { today: SeriesToday; onOpen: () => void }) {
+    const { t } = useTranslation();
     const h = today.heat;
     const unranked = today.points === 0 && !today.blind;
-    const place = today.blind ? 'RANK HIDDEN' : unranked ? 'NOT RANKED' : h ? `${ordinal(h.rank).toUpperCase()} IN HEAT` : `#${fmt(today.rank)}`;
+    const place = today.blind
+        ? t('series:rival.rankHidden')
+        : unranked ? t('series:rival.notRanked') : h ? `${ordinal(h.rank).toUpperCase()} IN HEAT` : `#${seriesNum(today.rank)}`;
     const move = today.blind || unranked ? 0 : h ? h.move : today.move;
     return (
         <View style={kit.sectionRow}>
@@ -145,9 +162,9 @@ function SeriesHeader({ today, onOpen }: { today: SeriesToday; onOpen: () => voi
                 <Text style={{ color: GOLD }}>{place}</Text>
                 {move !== 0 && <Text style={{ color: move > 0 ? GREEN : RED }}>{`  ${move > 0 ? '▲' : '▼'}${Math.abs(move)}`}</Text>}
             </Text>
-            <Pressable hitSlop={8} style={kit.newBtn} onPress={onOpen} accessibilityRole="button" accessibilityLabel="Open the League">
+            <Pressable hitSlop={8} style={kit.newBtn} onPress={onOpen} accessibilityRole="button" accessibilityLabel={t('series:rival.openA11y')}>
                 <Ionicons name="chevron-forward" size={14} color={GOLD} />
-                <Text style={kit.newBtnText}>League</Text>
+                <Text style={kit.newBtnText}>{t('series:rival.league')}</Text>
             </Pressable>
         </View>
     );

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
     Easing,
@@ -81,6 +82,7 @@ export function TodayReadouts({
     drawnOn: string;
     round?: { day: number; days: number };
 }) {
+    const { t } = useTranslation();
     const inDraw = logged >= need;
     const tight = !!golden;
     const pct = drop ? Math.floor(drop.progress * 100) : 0;
@@ -124,11 +126,11 @@ export function TodayReadouts({
         <View style={s.cells}>
             {dropCell && <View style={s.cellPress}>{dropCell}</View>}
             <Pressable onPress={onDraw} style={({ pressed }) => [s.cellPress, pressed && { opacity: 0.7 }]} accessibilityRole="button"
-                accessibilityLabel={inDraw ? 'You’re in The Draw' : `The Draw: ${logged} of ${need} days logged`}
+                accessibilityLabel={inDraw ? t('series:daily.inA11y') : t('series:daily.drawA11y', { logged, need })}
             >
-                <Cell first={!dropCell} tight={tight} label="DRAW" meta={inDraw ? drawnOn : 'days'}>
+                <Cell first={!dropCell} tight={tight} label="DRAW" meta={inDraw ? drawnOn : t('series:daily.days')}>
                     {inDraw
-                        ? <Text style={[s.cellValue, { color: GREEN }]}>In</Text>
+                        ? <Text style={[s.cellValue, { color: GREEN }]}>{t('series:daily.in')}</Text>
                         : <><Text style={s.cellValue}>{logged}</Text><Text style={s.cellUnit}>/{need}</Text></>}
                 </Cell>
             </Pressable>
@@ -143,7 +145,7 @@ export function TodayReadouts({
                 </Pressable>
             ) : round ? (
                 <View style={s.cellPress}>
-                    <Cell tight={tight} label="ROUND" meta={`${Math.max(0, round.days - round.day)} days left`}>
+                    <Cell tight={tight} label={t('series:daily.round')} meta={t('series:daily.daysLeft', { count: Math.max(0, round.days - round.day) })}>
                         <Text style={s.cellValue}>{round.day}</Text><Text style={s.cellUnit}>/{round.days}</Text>
                     </Cell>
                 </View>

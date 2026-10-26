@@ -157,12 +157,13 @@ function Move({ delta }: { delta: number | null }) {
 
 /** The race's column labels. */
 export function RaceHeader() {
+    const { t } = useTranslation();
     return (
         <View style={s.head}>
-            <Text style={[s.headText, { width: RACE_COLS.rank, textAlign: 'center' }]}>RANK</Text>
-            <Text style={[s.headText, { flex: 1, marginLeft: RACE_COLS.flag + 12 }]}>MEMBER</Text>
-            <Text style={[s.headText, { width: RACE_COLS.move, textAlign: 'center' }]}>TODAY</Text>
-            <Text style={[s.headText, { width: RACE_COLS.pts, textAlign: 'right' }]}>POINTS</Text>
+            <Text style={[s.headText, { width: RACE_COLS.rank, textAlign: 'center' }]}>{t('series:lane.rank')}</Text>
+            <Text style={[s.headText, { flex: 1, marginLeft: RACE_COLS.flag + 12 }]}>{t('series:lane.member')}</Text>
+            <Text style={[s.headText, { width: RACE_COLS.move, textAlign: 'center' }]}>{t('series:lane.today')}</Text>
+            <Text style={[s.headText, { width: RACE_COLS.pts, textAlign: 'right' }]}>{t('series:lane.points')}</Text>
         </View>
     );
 }
@@ -239,7 +240,7 @@ export function SeriesLane({
                 </View>
                 {tag
                     ? <TitlePill title={tag} />
-                    : <Text style={s.sub} numberOfLines={1}>{sub ?? (p.last == null ? 'New this round' : `Last round #${fmt(p.last)}`)}</Text>}
+                    : <Text style={s.sub} numberOfLines={1}>{sub ?? (p.last == null ? t('series:lane.newThisRound') : t('series:lane.lastRound', { rank: fmt(p.last) }))}</Text>}
             </View>
 
             <Move delta={dark || hideRank ? null : p.mid - rank} />

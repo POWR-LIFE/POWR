@@ -3,16 +3,18 @@ import { useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { trackTap } from '@/lib/analytics';
 import {
-    fetchSeriesMoments, fetchSeriesPrizes, fetchSeriesResults, type SeriesBoard, type SeriesInviteBoard, type SeriesMoment, useSeriesBoard,
-    useSeriesEnabled, useSeriesInviteBoard,
+    fetchSeriesMoments, fetchSeriesPrizes, fetchSeriesResults, type SeriesBoard, seriesClock, type SeriesInviteBoard, type SeriesMoment, seriesNum,
+    useSeriesBoard, useSeriesEnabled, useSeriesInviteBoard,
 } from '@/lib/api/series';
 import { DROP_PROTOTYPE, todayTarget, useDropPrototype } from '@/lib/dev/dropPrototype';
-import { fmt, type HeatInfo, ordinal, type Rival, SERIES_PROTOTYPE, type SeriesState } from '@/lib/dev/seriesPrototype';
+import { type HeatInfo, ordinal, type Rival, SERIES_PROTOTYPE, type SeriesState } from '@/lib/dev/seriesPrototype';
 import { dropProgress, nextMove } from '@/lib/drop';
+import i18n, { getFormatLocale } from '@/lib/i18n';
 import { CARD_BG, CARD_BORDER, GOLD, GREEN, RED, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
 import { type PrizeSet, prizeSetFrom, SAMPLE_PRIZES } from './SeriesPrizes';
 import { liveMomentCards, MOMENT_ICON, sampleMomentCards } from './SeriesRound';
@@ -180,7 +182,9 @@ export function liveNextMoment(moments: SeriesMoment[], now: number): NextMoment
     const cards = liveMomentCards(moments, now);
     const i = cards.findIndex((c) => c.state === 'next');
     if (i >= 0) return { name: moments[i].name || titleCase(cards[i].name), when: cards[i].soon ?? cards[i].when, icon: cards[i].icon };
-    return cards.some((c) => c.secret) ? { name: 'A secret moment', when: 'this round', icon: 'help-outline' } : null;
+    return cards.some((c) => c.secret)
+        ? { name: i18n.t('series:today.secretMoment'), when: i18n.t('series:today.thisRound'), icon: 'help-outline' }
+        : null;
 }
 
 function sampleNextMoment(day: number): NextMoment | null {
@@ -336,6 +340,9 @@ export function useSeriesHome(refreshKey?: number): SeriesHome {
 
 /* ── What each Home card takes from it ───────────────────────────────── */
 
+/** A boost's multiplier as the member reads it: "2", "1.5" ("1,5" in French). */
+const times = (x: number) => Number(x.toFixed(2)).toLocaleString(getFormatLocale());
+
 /** Does the moment boost you (All In skips the top N)? */
 const boostsYou = (t: SeriesToday) => !!t.moment && t.moment.multiplier > 1 && !(t.moment.topN != null && t.rank <= t.moment.topN);
 
@@ -347,7 +354,7 @@ const boostsYou = (t: SeriesToday) => !!t.moment && t.moment.multiplier > 1 && !
 export function seriesRingBoosts(t: SeriesToday | null): Partial<Record<string, string>> | undefined {
     const m = t?.moment;
     if (!t || !m || m.kind !== 'double_down' || !m.activities?.length || !boostsYou(t)) return undefined;
-    const x = `×${Number(m.multiplier.toFixed(2))}`;
+    const x = `×${times(m.multiplier)}`;
     return Object.fromEntries(m.activities.map((a) => [a, x]));
 }
 
@@ -360,14 +367,18 @@ export type DrawTone = 'done' | 'act' | 'warn' | 'calm' | 'out';
 export function seriesDrawChip(t: SeriesToday | null): { text: string; tone: DrawTone } | undefined {
     if (!t) return undefined;
     const { logged, need, todayLogged } = t.draw;
-    if (logged >= need) return { text: 'IN THE DRAW', tone: 'done' };
+    if (logged >= need) return { text: i18n.t('series:today.chipIn'), tone: 'done' };
     const short = need - logged;
     // Days still to come, today included unless it's already logged.
     const left = t.days - t.day + (todayLogged ? 0 : 1);
     const spare = left - short;
-    if (spare < 0) return { text: 'DRAW OUT OF REACH', tone: 'out' };
-    if (!todayLogged) return spare === 0 ? { text: 'DRAW · MOVE TODAY', tone: 'warn' } : { text: 'DRAW · NOT LOGGED TODAY', tone: 'act' };
-    return { text: `DRAW ${logged}/${need} · ${spare} TO SPARE`, tone: 'calm' };
+    if (spare < 0) return { text: i18n.t('series:today.chipOut'), tone: 'out' };
+    if (!todayLogged) {
+        return spare === 0
+            ? { text: i18n.t('series:today.chipMoveToday'), tone: 'warn' }
+            : { text: i18n.t('series:today.chipNotLogged'), tone: 'act' };
+    }
+    return { text: i18n.t('series:today.chipSpare', { logged, need, spare }), tone: 'calm' };
 }
 
 /**
@@ -391,14 +402,23 @@ export function useDropMove(t: SeriesToday | null): TodayMove | null {
  * Mode names nobody; at #1 it's about staying clear.
  */
 export function seriesNextMove(t: SeriesToday, drop: TodayMove | null = null): string {
+    // The Drop's route is dev-only (DROP_PROTOTYPE), so it stays in English.
     if (drop) return drop.passes ? `${drop.head} passes ${drop.who}` : `${drop.head} opens your Drop`;
     const r = t.rival;
-    if (t.blind) return 'Bank points in the dark';
+    if (t.blind) return i18n.t('series:today.moveBlind');
     // No points yet: a rank among everyone tied on zero means nothing.
-    if (t.points === 0) return 'One session puts you on the board';
-    if (!r) return 'Move today to climb';
+    if (t.points === 0) return i18n.t('series:today.moveFirst');
+    if (!r) return i18n.t('series:today.moveClimb');
     const first = r.p.name.split(' ')[0];
-    if (r.ahead) return `Stay clear of ${first}`;
+    if (r.ahead) return i18n.t('series:today.moveStayClear', { name: first });
+    // The live line is one of seriesHow's, in the language on screen: say it as the pass.
+    if (r.how === i18n.t('series:api.howRun')) return i18n.t('series:today.moveOneRun', { name: first });
+    if (r.how === i18n.t('series:api.howGym')) return i18n.t('series:today.moveOneGym', { name: first });
+    const sessions = Number(r.how.match(/\d+/)?.[0]);
+    if (sessions && r.how === i18n.t('series:api.howSessions', { count: sessions })) {
+        return i18n.t('series:today.moveSessions', { count: sessions, name: first });
+    }
+    // The sample's own lines (dev only), in English.
     const how = r.how
         .replace(/^About (\d+) walks to pass$/, 'About $1 walks')
         .replace(/ does it$/, '')
@@ -414,12 +434,16 @@ export function seriesSessionLine(t: SeriesToday | null, visitPts: number): stri
     const boosted = m && boostsYou(t) && (m.kind === 'power_hour' || m.kind === 'all_in'
         || (m.kind === 'double_down' && (!m.activities?.length || m.activities.includes('gym'))));
     const pts = Math.round(visitPts * (boosted ? m!.multiplier : 1));
-    const head = `This visit: ~${fmt(pts)} Series pts${boosted ? ` (${m!.name} ×${Number(m!.multiplier.toFixed(2))})` : ''}`;
+    const head = boosted
+        ? i18n.t('series:today.visitBoost', { n: seriesNum(pts), moment: m!.name, x: times(m!.multiplier) })
+        : i18n.t('series:today.visit', { n: seriesNum(pts) });
     const r = t.rival;
     if (!r || t.blind) return head;
     const first = r.p.name.split(' ')[0];
-    if (r.ahead) return `${head} · keeps you clear of ${first}`;
-    return pts > r.gap ? `${head} · enough to pass ${first}` : `${head} · ${fmt(r.gap - pts + 1)} short of ${first}`;
+    if (r.ahead) return i18n.t('series:today.visitClear', { head, name: first });
+    return pts > r.gap
+        ? i18n.t('series:today.visitPass', { head, name: first })
+        : i18n.t('series:today.visitShort', { head, n: seriesNum(r.gap - pts + 1), name: first });
 }
 
 /* ── The top of Home ─────────────────────────────────────────────────── */
@@ -432,6 +456,7 @@ const openLeague = (what: string) => {
 
 /** One line above the streak: your place, and the one move that changes it. */
 export function SeriesTopLine({ today }: { today: SeriesToday }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard();
     // With heats, Home leads with your place in your heat, like the League card.
     const h = today.heat;
@@ -444,12 +469,18 @@ export function SeriesTopLine({ today }: { today: SeriesToday }) {
             onPress={() => openLeague('line')}
             style={({ pressed }) => [s.row, sc, pressed && { opacity: 0.8 }]}
             accessibilityRole="button"
-            accessibilityLabel={`${today.season}, ${today.blind ? 'rank hidden' : unranked ? 'not ranked yet' : h ? `${ordinal(h.rank)} in your heat` : `number ${today.rank}`}. ${move}. Opens the League.`}
+            accessibilityLabel={t('series:today.topA11y', {
+                season: today.season,
+                place: today.blind
+                    ? t('series:today.rankHiddenA11y')
+                    : unranked ? t('series:today.notRankedA11y') : h ? `${ordinal(h.rank)} in your heat` : t('series:today.numberA11y', { rank: today.rank }),
+                move,
+            })}
         >
             <View style={s.dot} />
             {unranked
-                ? <Text style={s.unranked}>NOT RANKED</Text>
-                : <Text style={s.rank}>{today.blind ? '#?' : h ? ordinal(h.rank) : `#${fmt(today.rank)}`}</Text>}
+                ? <Text style={s.unranked}>{t('series:today.notRanked')}</Text>
+                : <Text style={s.rank}>{today.blind ? '#?' : h ? ordinal(h.rank) : `#${seriesNum(today.rank)}`}</Text>}
             {h && !today.blind && !unranked && <Text style={s.unranked}>IN HEAT</Text>}
             {!today.blind && !unranked && places !== 0 && (
                 <Text style={[s.move, { color: up ? GREEN : RED }]}>{up ? '▲' : '▼'} {Math.abs(places)}</Text>
@@ -489,11 +520,11 @@ export function useSeriesPayoff(t: SeriesToday | null): Payoff | null {
 
 /** The payoff, said in the top line's place. */
 export function payoffLine(p: Payoff): string {
-    const bits = [`+${fmt(p.pts)} Series pts`];
-    if (p.blind) bits.push('banked in the dark');
+    const bits = [i18n.t('series:today.payoffPts', { n: seriesNum(p.pts) })];
+    if (p.blind) bits.push(i18n.t('series:today.payoffDark'));
     else {
-        if (p.places > 0) bits.push(`up ${fmt(p.places)} ${p.places === 1 ? 'place' : 'places'}`);
-        if (p.passed) bits.push(`passed ${p.passed}`);
+        if (p.places > 0) bits.push(i18n.t('series:today.payoffUp', { count: p.places, n: seriesNum(p.places) }));
+        if (p.passed) bits.push(i18n.t('series:today.payoffPassed', { name: p.passed }));
     }
     return bits.join(' · ');
 }
@@ -504,6 +535,7 @@ export function payoffLine(p: Payoff): string {
  * Home opens on your streak, and your place lives in the Series block below.
  */
 export function SeriesAlert({ today }: { today: SeriesToday }) {
+    const { t } = useTranslation();
     const payoff = useSeriesPayoff(today);
     const sc = useSeasonCard();
     if (payoff) {
@@ -512,11 +544,11 @@ export function SeriesAlert({ today }: { today: SeriesToday }) {
                 onPress={() => openLeague('payoff')}
                 style={({ pressed }) => [s.row, sc, s.rowLit, pressed && { opacity: 0.8 }]}
                 accessibilityRole="button"
-                accessibilityLabel={`${payoffLine(payoff)}. Opens the League.`}
+                accessibilityLabel={t('series:today.opensLeague', { text: payoffLine(payoff) })}
                 accessibilityLiveRegion="polite"
             >
                 <Ionicons name="trending-up" size={15} color={GOLD} />
-                {!payoff.blind && <Text style={s.rank}>#{fmt(today.rank)}</Text>}
+                {!payoff.blind && <Text style={s.rank}>#{seriesNum(today.rank)}</Text>}
                 <View style={s.rule} />
                 <Text style={[s.line, { color: GOLD }]} numberOfLines={1}>{payoffLine(payoff)}</Text>
             </Pressable>
@@ -525,20 +557,27 @@ export function SeriesAlert({ today }: { today: SeriesToday }) {
     return today.moment ? <MomentBanner today={today} /> : null;
 }
 
-/** "41:20" under an hour, "3h 12m" under a day, else the day it ends. */
-function clockTo(endsAt: number, now: number): { big: string; small: string } {
+/** "41:20" under an hour, "3h 12m" under a day, else the day it ends (`until`). */
+function clockTo(endsAt: number, now: number): { big: string; small: string; until: boolean } {
     const ms = Math.max(0, endsAt - now);
     if (ms < 3_600_000) {
         const mm = Math.floor(ms / 60_000);
         const ss = Math.floor((ms % 60_000) / 1000);
-        return { big: `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`, small: 'LEFT' };
+        return { big: `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`, small: i18n.t('series:today.left'), until: false };
     }
-    if (ms < 86_400_000) return { big: `${Math.floor(ms / 3_600_000)}h ${String(Math.floor((ms % 3_600_000) / 60_000)).padStart(2, '0')}m`, small: 'LEFT' };
-    return { big: new Date(endsAt).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'Europe/London' }), small: 'UNTIL' };
+    if (ms < 86_400_000) {
+        return { big: seriesClock(0, Math.floor(ms / 3_600_000), Math.floor((ms % 3_600_000) / 60_000)), small: i18n.t('series:today.left'), until: false };
+    }
+    return {
+        big: new Date(endsAt).toLocaleDateString(getFormatLocale(), { weekday: 'short', timeZone: 'Europe/London' }),
+        small: i18n.t('series:today.until'),
+        until: true,
+    };
 }
 
 /** While a moment is on, it takes the top line's place: what it is and how long it has. */
 export function MomentBanner({ today }: { today: SeriesToday }) {
+    const { t } = useTranslation();
     const sc = useSeasonCard(true);
     const m = today.moment!;
     const [now, setNow] = useState(Date.now());
@@ -555,23 +594,23 @@ export function MomentBanner({ today }: { today: SeriesToday }) {
             onPress={() => openLeague(`moment_${m.kind}`)}
             style={({ pressed }) => [s.banner, sc, !blind && s.bannerLive, pressed && { opacity: 0.85 }]}
             accessibilityRole="button"
-            accessibilityLabel={`${m.name}: ${m.what}. ${clock ? `${clock.big} ${clock.small.toLowerCase()}` : ''}. Opens the League.`}
+            accessibilityLabel={t('series:today.momentA11y', { name: m.name, what: m.what, clock: clock ? `${clock.big} ${clock.small.toLowerCase()}` : '' })}
         >
             <View style={[s.bIcon, blind && s.bIconBlind]}>
                 <Ionicons name={m.icon} size={17} color={blind ? TEXT : '#0a0a0a'} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[s.bName, blind && { color: TEXT_2 }]} numberOfLines={1}>
-                    {m.name.toUpperCase()}{m.multiplier > 1 ? ` · ×${Number(m.multiplier.toFixed(2))}` : ''}
+                    {m.name.toUpperCase()}{m.multiplier > 1 ? ` · ×${times(m.multiplier)}` : ''}
                 </Text>
                 <Text style={s.bWhat} numberOfLines={2}>
-                    {missesOut ? `You’re in the top ${m.topN}: hold your place` : m.what}
+                    {missesOut ? t('series:today.topHold', { n: m.topN }) : m.what}
                 </Text>
             </View>
             {clock && (
                 <View style={s.bClock}>
                     <Text style={s.bClockBig}>{blind ? clock.big.replace('LEFT', '') : clock.big}</Text>
-                    <Text style={s.bClockSmall}>{blind ? (clock.small === 'UNTIL' ? 'RANKS BACK' : 'TILL RANKS') : clock.small}</Text>
+                    <Text style={s.bClockSmall}>{blind ? (clock.until ? t('series:today.ranksBack') : t('series:today.tillRanks')) : clock.small}</Text>
                 </View>
             )}
         </Pressable>
