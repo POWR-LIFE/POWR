@@ -62,7 +62,6 @@
     "startingSoon": "{{round}} · starting soon",
     "roundFinished": "{{round}} · finished",
     "a11y": "{{season}}. {{stats}}. Opens the League.",
-    "inviteAction": "Invite a friend",
     "winners": "See the winners",
     "next": "Next",
     "sinceTime": "SINCE {{time}}",

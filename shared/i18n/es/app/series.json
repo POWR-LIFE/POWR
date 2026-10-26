@@ -62,7 +62,6 @@
     "startingSoon": "{{round}} · muy pronto",
     "roundFinished": "{{round}} · terminado",
     "a11y": "{{season}}. {{stats}}. Abre la Liga.",
-    "inviteAction": "Invita a un amigo",
     "winners": "Ver los ganadores",
     "next": "Siguiente",
     "sinceTime": "DESDE LAS {{time}}",

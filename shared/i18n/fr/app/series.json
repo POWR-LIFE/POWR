@@ -62,7 +62,6 @@
     "startingSoon": "{{round}} · bientôt",
     "roundFinished": "{{round}} · terminé",
     "a11y": "{{season}}. {{stats}}. Ouvre la Ligue.",
-    "inviteAction": "Invite un ami",
     "winners": "Voir les gagnants",
     "next": "Ensuite",
     "sinceTime": "DEPUIS {{time}}",
