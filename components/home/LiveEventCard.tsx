@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSeasonCard } from '@/components/series/season';
 
 import { EventLockup } from '@/components/events/EventLockup';
 import { EventRegisterFlow } from '@/components/events/EventRegisterFlow';
@@ -138,6 +139,8 @@ export function showsOnHome(event: LiveEvent): boolean {
  * is always active.
  */
 export function LiveEventCard({ event, active = true }: { event: LiveEvent; active?: boolean }) {
+    // While the Series is on for the member (always in dev): the card wears the active Series season.
+    const sc = useSeasonCard();
     const [sheetOpen, setSheetOpen] = useState(false);
     const router = useRouter();
     const { t } = useTranslation();
@@ -201,7 +204,7 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
                             : t('home:liveEvent.a11y.card.registered', { name: event.name, status: pill.a11y })
                 }
             >
-                <View style={styles.card}>
+                <View style={[styles.card, sc]}>
                     <View style={styles.heroContainer}>
                         <RewardHeroMedia
                             videoUrl={videoUrl}

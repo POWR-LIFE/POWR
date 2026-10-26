@@ -44,6 +44,8 @@
     "weeks_one": "week",
     "weeks_other": "weeks",
     "resets": "Resets midnight",
+    "restFree": "Rest day free · safe tonight",
+    "restDay": "Rest day",
     "rescue": "SAVE YOUR STREAK · {{done}}/{{required}}",
     "rescueTimed_one": "SAVE YOUR STREAK · {{done}}/{{required}} · {{count}}H LEFT",
     "rescueTimed_other": "SAVE YOUR STREAK · {{done}}/{{required}} · {{count}}H LEFT",
@@ -284,5 +286,76 @@
   "recapRange": {
     "sameMonth": "{{month}} {{start}} – {{end}}",
     "crossMonth": "{{startMonth}} {{start}} – {{endMonth}} {{end}}"
+  },
+  "drop": {
+    "title": "Today’s Drop",
+    "nextIn": "Next in",
+    "open": "Open your Drop",
+    "stepsToGo": "Steps to go",
+    "minutesToGo": "Active min to go",
+    "yours": "It’s yours",
+    "targetHit": "Today’s target hit",
+    "voided": "Withdrawn",
+    "voidedSub": "Today’s Drop was taken back",
+    "a11yRing": "Open today’s Drop",
+    "steps": "Steps",
+    "minutes": "Active min",
+    "of": "of {{value}}",
+    "thisWeek": "This week",
+    "a11yWeek_one": "{{count}} Drop opened this week",
+    "a11yWeek_other": "{{count}} Drops opened this week",
+    "opened_one": "{{count}} opened",
+    "opened_other": "{{count}} opened",
+    "insideLead": "Could be inside",
+    "basis": {
+      "starter": "Starter target",
+      "recovery": "Easier today",
+      "comeback": "Easy start back"
+    },
+    "inside": {
+      "points": "+{{amount}} POWR",
+      "vault": "+{{amount}} Vault"
+    },
+    "prize": {
+      "pointsUnit": "POWR",
+      "pointsDetail": "Added to your balance now.",
+      "vaultUnit": "POWR to your Vault",
+      "vaultDetail_one": "Yours in {{count}} day.",
+      "vaultDetail_other": "Yours in {{count}} days.",
+      "partnerUnit": "Partner reward",
+      "partnerDetail": "{{title}}. The code is in your Wallet.",
+      "partnerDetailNoTitle": "The code is in your Wallet.",
+      "partnerFallbackBrand": "A POWR partner"
+    },
+    "error": {
+      "not_yet": "Your movement hasn’t reached us yet. Give it a minute and try again.",
+      "empty": "Today’s Drop couldn’t be packed. We’re on it, so try again later.",
+      "error": "Couldn’t reach POWR. Check your connection and try again.",
+      "off": "Today’s Drop isn’t available."
+    },
+    "reveal": {
+      "kicker": "Today’s Drop",
+      "subtitle": "Opened by moving",
+      "hold": "Hold to open",
+      "packing": "Packing your Drop…",
+      "earned": "Earned, not given.",
+      "done": "Done",
+      "close": "Close",
+      "wallet": "View in Wallet",
+      "a11yOpen": "Open your Drop",
+      "a11yHint": "Press and hold until the P fills"
+    },
+    "comeback": {
+      "kicker": "Comeback",
+      "doubleUnit": "Your first {{amount}} POWR today",
+      "doubleBody_one": "{{count}} day off. It happens.\nMove today and it counts double.",
+      "doubleBody_other": "{{count}} days off. It happens.\nMove today and it counts double.",
+      "daysAway_one": "day away",
+      "daysAway_other": "days away",
+      "easyBody": "It happens. Today’s target is easier,\nso one good move gets you going.",
+      "go": "Let’s go",
+      "fine": "Start with an easy target today.",
+      "doubleNote": "2× your first {{amount}} POWR"
+    }
   }
 }

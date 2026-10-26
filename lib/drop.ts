@@ -82,7 +82,7 @@ export function nextMove(tier: DropTarget, steps: number, minutes: number): Next
 }
 
 /** What can be inside. Sized under the daily earn caps — see POWR_Points_Logic. */
-export type DropRewardKind = 'points' | 'vault' | 'boost' | 'partner' | 'event';
+export type DropRewardKind = 'points' | 'vault' | 'boost' | 'partner' | 'event' | 'series';
 
 export interface DropReward {
     kind: DropRewardKind;
@@ -92,6 +92,8 @@ export interface DropReward {
     unit: string;
     /** One plain sentence. */
     detail: string;
+    /** During an Autumn Series round: what it does in the Series. */
+    series?: 'double60' | 'ticket';
 }
 
 export const DROP_POOLS: Record<DropTier, readonly DropReward[]> = {
@@ -111,12 +113,28 @@ export const DROP_POOLS: Record<DropTier, readonly DropReward[]> = {
     ],
 };
 
+/**
+ * While an Autumn Series round is on, the Drop can hold Series prizes too. It's
+ * the app's one daily reveal: the League shows the same Drop rather than a
+ * second sealed thing of its own. Never points beyond the caps, never staked.
+ */
+export const DROP_SERIES_POOL: readonly DropReward[] = [
+    { kind: 'series', headline: '2×', unit: 'SERIES POINTS · 60 MIN', detail: 'Every session in the next hour counts double in the Series.', series: 'double60' },
+    { kind: 'series', headline: '+1', unit: 'DRAW TICKET', detail: 'An extra entry in this round’s Draw.', series: 'ticket' },
+];
+
 /** Deterministic pick so a given roll always gives the same reward (tests, replays). */
 export function pickDropReward(tier: DropTier, roll: number): DropReward {
-    const pool = DROP_POOLS[tier];
+    return pickFromPool(DROP_POOLS[tier], roll);
+}
+
+export function pickFromPool(pool: readonly DropReward[], roll: number): DropReward {
     const i = Math.min(pool.length - 1, Math.max(0, Math.floor(roll * pool.length)));
     return pool[i];
 }
+
+/** How long a Drop's 2× Series points last once it's opened. */
+export const SERIES_DOUBLE_MS = 60 * 60 * 1000;
 
 /** Comeback: days away before the welcome-back offer shows. */
 export const COMEBACK_AFTER_DAYS = 3;

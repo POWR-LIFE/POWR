@@ -1,35 +1,52 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
+import { Image, type ImageSource } from 'expo-image';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { ClipPath, Defs, Path } from 'react-native-svg';
 
-import { fmt, type Scale } from '@/lib/dev/seriesPrototype';
-import { CARD_BG, CARD_BORDER, DIM, EMBER, GOLD, GREEN, MUTED, TEXT } from './SeriesLane';
+import { fmt, type HeatMeta, type Scale } from '@/lib/dev/seriesPrototype';
+import { CARD_BG, CARD_BORDER, DIM, EMBER, GOLD, GREEN, HAIR, MUTED, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
+import { BUTTER, hexA, SeriesLockup, useSeason } from './season';
 
 const ON_GOLD = '#0a0a0a';
-// The POWR P, traced from the logo artwork (same geometry as the shared mock).
-const LEG = 'M251.65 0.00 L505.45 0.00 A78.00 78.00 0 0 0 465.67 41.58 L283.61 490.33 A65.25 65.25 0 0 1 223.14 531.05 L0.00 531.05 L201.84 33.54 A53.75 53.75 0 0 1 251.65 0.00 Z';
-const BOWL = 'M556.68 0.00 L719.59 0.00 A41.00 41.00 0 0 1 757.59 56.41 L644.27 335.71 A68.25 68.25 0 0 1 581.03 378.30 L361.61 378.30 L499.46 38.54 A61.75 61.75 0 0 1 556.68 0.00 Z';
 
-/** A bottom sheet in the app's dark style. */
-function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
+/**
+ * A bottom sheet in the app's dark style. The handle works: drag it down to
+ * close (it springs back if you let go early), or tap it.
+ */
+export function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
     const insets = useSafeAreaInsets();
+    const { tint } = useSeason();
+    const drag = useRef(new Animated.Value(0)).current;
+    useEffect(() => { if (visible) drag.setValue(0); }, [visible, drag]);
+    const pan = useMemo(() => PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 3,
+        onPanResponderMove: (_e, g) => drag.setValue(Math.max(0, g.dy)),
+        onPanResponderRelease: (_e, g) => {
+            if (Math.abs(g.dy) < 4 && Math.abs(g.dx) < 4) { onClose(); return; }
+            if (g.dy > 90 || g.vy > 0.8) {
+                Animated.timing(drag, { toValue: 700, duration: 180, useNativeDriver: true }).start(() => onClose());
+            } else {
+                Animated.spring(drag, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+            }
+        },
+        onPanResponderTerminate: () => { Animated.spring(drag, { toValue: 0, useNativeDriver: true }).start(); },
+    }), [drag, onClose]);
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
             <Pressable style={s.scrim} onPress={onClose} accessibilityLabel="Close" />
-            <View style={[s.sheet, { paddingBottom: Math.max(28, insets.bottom + 12) }]}>
-                <View style={s.grab} />
+            <Animated.View style={[s.sheet, tint && { backgroundColor: tint.sheet }, { paddingBottom: Math.max(28, insets.bottom + 12), transform: [{ translateY: drag }] }]}>
+                <View {...pan.panHandlers} style={s.grabZone} accessibilityRole="button" accessibilityLabel="Close">
+                    <View style={s.grab} />
+                </View>
                 {children}
-            </View>
+            </Animated.View>
         </Modal>
     );
 }
 
-function SheetHead({ light, bold, onClose }: { light: string; bold: string; onClose: () => void }) {
+export function SheetHead({ light, bold, onClose }: { light: string; bold: string; onClose: () => void }) {
     return (
         <View style={s.sheetHead}>
             <Text style={s.sheetTitle}>{light}<Text style={s.sheetTitleBold}>{bold}</Text></Text>
@@ -40,23 +57,19 @@ function SheetHead({ light, bold, onClose }: { light: string; bold: string; onCl
     );
 }
 
-/** The inverse lockup card from the brand file: what gets shared. */
+/** What gets shared: the season's square editorial card from Sorine's lookbook, with your rank. */
 export function ShareCard({ big, line }: { big: string; line: string }) {
+    const { def, line: round } = useSeason();
     return (
-        <View style={s.card} accessibilityLabel={`Share card: Autumn Series, ${big}, ${line}`}>
-            <View style={s.cardRow}><Text style={s.cardTiny}>AUTUMN SERIES</Text><Text style={s.cardTiny}>AW26</Text></View>
-            <Svg width={58} height={41} viewBox="0 0 760.59 531.05" style={{ marginTop: 8 }}>
-                <Defs><ClipPath id="seriesBowl"><Path d={BOWL} /></ClipPath></Defs>
-                <Path d={LEG} fill={ON_GOLD} />
-                <Path d={BOWL} fill="none" stroke={ON_GOLD} strokeWidth={70} clipPath="url(#seriesBowl)" />
-            </Svg>
-            <View>
-                <Text style={s.cardBold}>AUTUMN</Text>
-                <Text style={s.cardLight}>SERIES</Text>
-            </View>
+        <View style={[s.card, { backgroundColor: def.ground }]} accessibilityLabel={`Share card: ${def.name}, ${round.toLowerCase()}, ${big}, ${line}`}>
+            <View style={s.cardRow}><Text style={s.cardTiny}>POWR ATHLETIC CLUB</Text><Text style={s.cardTiny}>{def.no}</Text></View>
+            <View style={s.cardRule} />
+            <View style={{ alignItems: 'center', marginTop: 10 }}><SeriesLockup height={48} def={def} words={false} /></View>
+            <Text style={s.cardWords}>{def.words}<Text style={{ color: hexA(BUTTER, 0.5) }}>{'  |  '}</Text>{round}</Text>
             <Text style={s.cardRank}>{big}</Text>
             <Text style={s.cardLine}>{line}</Text>
-            <View style={[s.cardRow, { marginTop: 'auto' }]}><Text style={s.cardFoot}>Every move counts.</Text><Text style={s.cardFoot}>powr.life</Text></View>
+            <View style={[s.cardRule, { marginTop: 'auto' }]} />
+            <View style={s.cardRow}><Text style={s.cardTiny}>EVERY MOVE COUNTS.</Text><Text style={s.cardTiny}>POWR.LIFE</Text></View>
         </View>
     );
 }
@@ -64,7 +77,7 @@ export function ShareCard({ big, line }: { big: string; line: string }) {
 export function ShareSheet({ visible, onClose, big, line, onShare }: { visible: boolean; onClose: () => void; big: string; line: string; onShare: () => void }) {
     return (
         <Sheet visible={visible} onClose={onClose}>
-            <SheetHead light="Share your " bold="position" onClose={onClose} />
+            <SheetHead light="Share your " bold="rank" onClose={onClose} />
             <ShareCard big={big} line={line} />
             <Pressable style={({ pressed }) => [s.solid, pressed && { opacity: 0.85 }]} onPress={onShare}>
                 <Text style={s.solidText}>SHARE</Text>
@@ -73,40 +86,109 @@ export function ShareSheet({ visible, onClose, big, line, onShare }: { visible: 
     );
 }
 
-export function RulesSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-    const H = ({ t, ember }: { t: string; ember?: boolean }) => <Text style={[s.rulesH, ember && { color: EMBER }]}>{t}</Text>;
-    const P = ({ children }: { children: React.ReactNode }) => <Text style={s.rulesP}>{children}</Text>;
-    const B = ({ children }: { children: React.ReactNode }) => <Text style={s.rulesB}>{children}</Text>;
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+/** One line in a drawer: a picture or icon, a short title, one short line, and where you stand. */
+export type InfoRow = {
+    key: string;
+    title: string;
+    line?: string;
+    icon?: IconName;
+    img?: ImageSource;
+    /** A small label over the title: 1ST, 2ND, 3RD. */
+    eyebrow?: { text: string; color: string };
+    right?: string;
+    tone?: 'gold' | 'green' | 'muted' | 'ember';
+};
+const TONE_C = { gold: GOLD, green: GREEN, muted: TEXT_3, ember: EMBER };
+
+/** The drawers' one layout: rows, nothing to read twice. */
+export function InfoList({ rows, onRowLayout }: { rows: InfoRow[]; onRowLayout?: (key: string, y: number) => void }) {
+    return (
+        <View style={s.info}>
+            {rows.map((r, i) => (
+                <View key={r.key} style={[s.infoRow, i > 0 && s.infoRule]} onLayout={onRowLayout ? (e) => onRowLayout(r.key, e.nativeEvent.layout.y) : undefined}>
+                    {r.img
+                        ? <Image source={r.img} style={s.infoPic} contentFit="cover" />
+                        : (
+                            <View style={[s.infoPic, s.infoIcon, r.tone === 'ember' && { borderColor: 'rgba(229,138,58,0.35)', backgroundColor: 'rgba(229,138,58,0.08)' }]}>
+                                <Ionicons name={r.icon ?? 'ellipse-outline'} size={18} color={r.tone === 'ember' ? EMBER : GOLD} />
+                            </View>
+                        )}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                        {r.eyebrow && <Text style={[s.infoEyebrow, { color: r.eyebrow.color }]}>{r.eyebrow.text}</Text>}
+                        <Text style={s.infoTitle} numberOfLines={1}>{r.title}</Text>
+                        {r.line ? <Text style={s.infoLine} numberOfLines={1}>{r.line}</Text> : null}
+                    </View>
+                    {r.right ? <Text style={[s.infoRight, { color: TONE_C[r.tone ?? 'muted'] }]}>{r.right}</Text> : null}
+                </View>
+            ))}
+        </View>
+    );
+}
+
+/** How the Series works, in six lines. What you can win has its own drawer. */
+export function RulesSheet({
+    visible, onClose, onPrizes, live = false, days = 15, need = 10, when = 'on the 16th', boosts = false, blindMode = false, heat = null, mostWanted = false,
+}: {
+    visible: boolean;
+    onClose: () => void;
+    onPrizes?: () => void;
+    /** Live data: only the rules the server runs (no boosts, Blind Mode or bounty yet). */
+    live?: boolean;
+    days?: number;
+    need?: number;
+    /** When the winners land: "on the 16th". */
+    when?: string;
+    /** Live: the round has boost moments / a Blind Mode (set in /admin/series). */
+    boosts?: boolean;
+    blindMode?: boolean;
+    /** Your heat, when there is one: it leads the list. */
+    heat?: HeatMeta | null;
+    /** The round has Most Wanted, so the bounty is on. */
+    mostWanted?: boolean;
+}) {
+    const heatLine = heat
+        ? [heat.div > 1 ? `top ${heat.up} move up` : null, heat.down > 0 ? `bottom ${heat.down} drop` : null].filter(Boolean).join(', ')
+        : '';
+    const rows: InfoRow[] = [
+        ...(heat ? [{
+            key: 'heat', icon: 'people-outline' as const, title: `Your heat: ${heat.size} at your pace`,
+            line: heatLine ? `Set for the round · ${heatLine}` : 'Set for the round',
+        }] : []),
+        { key: 'round', icon: 'calendar-outline', title: `${days} days, one board`, line: live ? `Winners ${when}` : '1–15 Nov · winners on the 16th' },
+        { key: 'score', icon: 'walk-outline', title: 'Your POWR points count', line: 'Up to 120 active minutes a day' },
+        ...(live && !boosts ? [] : [{ key: 'boost', icon: 'flash-outline' as const, title: 'Boosts up to ×2', line: live ? 'The round’s moments: they never stack' : 'Streaks, the Drop and the round’s moments' }]),
+        { key: 'draw', icon: 'ticket-outline', title: 'Every Move Counts', line: `A draw: be active on ${need} of the ${days} days` },
+        ...(live && !blindMode ? [] : [{ key: 'blind', icon: 'eye-off-outline' as const, title: 'Blind Mode', line: live ? 'Every rank hidden while it’s on' : 'Every rank hidden for 48 hours' }]),
+        ...(mostWanted ? [{ key: 'bounty', icon: 'locate-outline' as const, title: 'The bounty', line: 'Take the lead to claim it · most claims wins', tone: 'ember' as const }] : []),
+        { key: 'one', icon: 'gift-outline', title: 'One prize each', line: 'Win two and the next in line takes the other' },
+    ];
     return (
         <Sheet visible={visible} onClose={onClose}>
-            <SheetHead light="How the " bold="Series works" onClose={onClose} />
-            <ScrollView style={{ maxHeight: 520 }} showsVerticalScrollIndicator={false}>
-                <H t="FORMAT" />
-                <P>Two rounds of 15 days: <B>1–15 Nov</B> and <B>1–15 Dec</B>. Everyone on POWR is entered. Results land on the 16th.</P>
-                <H t="SCORING" />
-                <P>Series points are the POWR points you already earn from verified movement, times whatever you hold. Only your first <B>120 active minutes a day</B> count.</P>
-                <H t="MULTIPLIERS · CAPPED AT ×2.0" />
-                <P><B>Hot Streak</B> ×1.1 at 3 days, ×1.25 at 7, ×1.5 at 12. One Rest Token a round.</P>
-                <P><B>Flash Window</B> ×2 for an hour, three a round, 15 minutes’ notice by push.</P>
-                <P><B>Rain Check</B> ×1.25 on outdoor sessions when it rains in London.</P>
-                <P><B>Final 48</B> ×1.5 for everyone outside the top 10.</P>
-                <H t="THE BOUNTY" ember />
-                <P>When #1 leads #2 by <B>15% or more at midnight</B>, they become Most Wanted. The pot opens at 1,000 pts and grows 500 a night. First to overtake takes it.</P>
-                <H t="LIVE EVENTS" />
-                <P>Venue competitions like <B>ONE LDN x POWR</B> have their own board and prizes. A session counts on both if you’re in both. Check in on event night for ×2 Series points.</P>
-                <H t="PRIZES" />
-                <P><B>Top 3 overall</B> · partner prize boxes [1ST / 2ND / 3RD PRIZE]</P>
-                <P><B>The Draw</B> · log 10 of 15 days to be in it [PRIZE]</P>
-                <P><B>Golden Ticket</B> · one hidden in a random verified session</P>
-                <H t="BLACKOUT" />
-                <P>For the final 48 hours the top 10 goes dark. Revealed live on Instagram on the 16th at 20:00.</P>
-            </ScrollView>
+            <SheetHead light="How it " bold="works" onClose={onClose} />
+            <InfoList rows={rows} />
+            {onPrizes && (
+                <Pressable onPress={onPrizes} style={({ pressed }) => [s.sheetLink, pressed && { opacity: 0.6 }]} accessibilityRole="button">
+                    <Text style={s.sheetLinkText}>What you can win</Text>
+                    <Ionicons name="arrow-forward" size={15} color={TEXT} />
+                </Pressable>
+            )}
         </Sheet>
     );
 }
 
 /** The end-of-round summary: one card per member, made to be shared. */
-export function YourFile({ visible, onClose, scale, onShare }: { visible: boolean; onClose: () => void; scale: Scale; onShare: () => void }) {
+export function YourFile({
+    visible, onClose, scale, onShare, prizes = [],
+}: {
+    visible: boolean;
+    onClose: () => void;
+    scale: Scale;
+    onShare: () => void;
+    /** The round's named prizes, the one you won lit (one prize each). */
+    prizes?: { key: string; label: string; icon: IconName; won: boolean }[];
+}) {
     const insets = useSafeAreaInsets();
     const f = scale === 'pitch'
         ? { rank: 298, total: 5000, pct: 6, climb: 55, passed: 214, best: 1240 }
@@ -132,10 +214,22 @@ export function YourFile({ visible, onClose, scale, onShare }: { visible: boolea
                         <Stat k="BEST DAY" v="Sat 8 Nov" sub={`${fmt(f.best)} pts`} />
                         <Stat k="DAYS LOGGED" v="13 of 15" sub="You’re in The Draw" />
                         <Stat k="PEOPLE PASSED" v={String(f.passed)} sub="Rival beaten: Tom Fitzgerald" />
-                        <Stat k="TITLE WORN" v="Hot Streak" sub="9 days running" />
+                        <Stat k="YOUR PRIZE" v={prizes.find((x) => x.won)?.label ?? 'None this time'} sub={prizes.some((x) => x.won) ? '13 days in a row' : 'One prize each'} />
+                    </View>
+                    <Text style={[s.fileK, { marginBottom: 10 }]}>THE ROUND’S PRIZES · ONE EACH</Text>
+                    <View style={s.titles}>
+                        {prizes.map((x) => (
+                            <View key={x.key} style={s.titleCell}>
+                                <View style={[s.titleDisc, x.won && s.titleDiscOn]}>
+                                    <Ionicons name={x.icon} size={16} color={x.won ? '#0a0a0a' : 'rgba(255,255,255,0.25)'} />
+                                </View>
+                                <Text style={[s.titleName, x.won && { color: TEXT }]} numberOfLines={2}>{x.label.toUpperCase()}</Text>
+                            </View>
+                        ))}
                     </View>
                     <Text style={[s.fileK, { marginBottom: 10 }]}>YOUR CARD</Text>
-                    <ShareCard big={`#${f.rank}`} line={`TOP ${f.pct}% · ROUND 01`} />
+                    {/* Never a big-board place (pacers fill it): the places you climbed. */}
+                    <ShareCard big={`▲${f.climb}`} line="PLACES CLIMBED · ROUND 01" />
                     <Pressable style={({ pressed }) => [s.solid, pressed && { opacity: 0.85 }]} onPress={onShare}>
                         <Text style={s.solidText}>SHARE MY FILE</Text>
                     </Pressable>
@@ -146,54 +240,46 @@ export function YourFile({ visible, onClose, scale, onShare }: { visible: boolea
     );
 }
 
-/** One ticket hidden in one verified session per round. */
-export function GoldenTicket({ visible, onClaim }: { visible: boolean; onClaim: () => void }) {
-    return (
-        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClaim}>
-            <Animated.View entering={FadeIn.duration(300)} style={s.gtScrim}>
-                <Animated.View entering={ZoomIn.springify().damping(11)} style={s.ticket}>
-                    <LinearGradient colors={['#f6ea8a', GOLD, '#c2ad00']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-                    <View style={[s.notch, { left: -12 }]} />
-                    <View style={[s.notch, { right: -12 }]} />
-                    <View style={s.tkTop}>
-                        <Text style={s.tkSmall}>AUTUMN SERIES · ROUND 01</Text>
-                        <Text style={s.tkH}>GOLDEN{'\n'}TICKET</Text>
-                        <Text style={s.tkP}>Your 34-min walk was the one. One ticket was hidden this round, and it landed on you.</Text>
-                    </View>
-                    <View style={s.tear}>{Array.from({ length: 22 }, (_, i) => <View key={i} style={s.tearDash} />)}</View>
-                    <Text style={s.tkSmall}>A PRIZE BOX IS ON ITS WAY</Text>
-                    <Text style={s.tkPrize}>[PRIZE BOX]</Text>
-                    <Pressable style={({ pressed }) => [s.tkBtn, pressed && { opacity: 0.85 }]} onPress={() => { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onClaim(); }}>
-                        <Text style={s.tkBtnText}>CLAIM IT</Text>
-                    </Pressable>
-                </Animated.View>
-            </Animated.View>
-        </Modal>
-    );
-}
-
 const s = StyleSheet.create({
+    info: { marginTop: 8 },
+    infoRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 11 },
+    infoRule: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: HAIR },
+    infoPic: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#0b0b0b' },
+    infoIcon: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(232,210,0,0.25)', backgroundColor: 'rgba(232,210,0,0.06)' },
+    infoEyebrow: { fontSize: 8, fontWeight: '700', letterSpacing: 1.6, marginBottom: 1 },
+    infoTitle: { fontSize: 15, fontWeight: '400', color: TEXT },
+    infoLine: { marginTop: 2, fontSize: 12, fontWeight: '300', color: TEXT_2 },
+    infoRight: { fontSize: 9, fontWeight: '700', letterSpacing: 1.3, textAlign: 'right' },
+    sheetLink: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingVertical: 10 },
+    sheetLinkText: { fontSize: 15, fontWeight: '400', color: TEXT },
     scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
     sheet: {
         position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '86%', backgroundColor: '#161616',
         borderTopLeftRadius: 22, borderTopRightRadius: 22, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 20, paddingTop: 10,
     },
-    grab: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.18)', alignSelf: 'center', marginBottom: 14 },
+    grabZone: { alignSelf: 'stretch', marginTop: -10, marginHorizontal: -20, paddingTop: 12, paddingBottom: 16, alignItems: 'center' },
+    grab: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.28)' },
     sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
     sheetTitle: { fontSize: 24, fontWeight: '200', color: TEXT, letterSpacing: -0.5 },
     sheetTitleBold: { fontWeight: '700', color: GOLD },
     rulesH: { fontSize: 9, fontWeight: '600', letterSpacing: 2, color: GOLD, marginTop: 18, marginBottom: 6 },
     rulesP: { fontSize: 13, fontWeight: '300', color: DIM, lineHeight: 20, marginBottom: 4 },
     rulesB: { color: TEXT, fontWeight: '500' },
+    yr: { borderRadius: 14, borderWidth: 1, borderColor: CARD_BORDER, backgroundColor: 'rgba(255,255,255,0.02)', overflow: 'hidden' },
+    yrRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 12, paddingVertical: 11 },
+    yrDiv: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.10)' },
+    yrTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    yrTitle: { flexShrink: 1, fontSize: 13, fontWeight: '500', color: TEXT },
+    yrStatus: { fontSize: 9, fontWeight: '700', letterSpacing: 1.2 },
+    yrBody: { fontSize: 12, fontWeight: '300', lineHeight: 16, color: DIM },
 
-    card: { width: 250, aspectRatio: 0.8, alignSelf: 'center', marginVertical: 14, borderRadius: 14, backgroundColor: GOLD, padding: 16, gap: 8 },
+    card: { width: 250, aspectRatio: 0.8, alignSelf: 'center', marginVertical: 14, borderRadius: 18, padding: 16, gap: 10 },
     cardRow: { flexDirection: 'row', justifyContent: 'space-between' },
-    cardTiny: { fontSize: 8, fontWeight: '600', letterSpacing: 1.8, color: ON_GOLD },
-    cardBold: { fontSize: 30, fontWeight: '800', color: ON_GOLD, letterSpacing: -0.5, lineHeight: 30 },
-    cardLight: { fontSize: 30, fontWeight: '300', color: ON_GOLD, letterSpacing: -0.5, lineHeight: 30 },
-    cardRank: { fontSize: 46, fontWeight: '200', color: ON_GOLD, letterSpacing: -2, marginTop: 4, fontVariant: ['tabular-nums'] },
-    cardLine: { fontSize: 9, fontWeight: '700', letterSpacing: 1.6, color: ON_GOLD },
-    cardFoot: { fontSize: 9, fontWeight: '500', color: ON_GOLD },
+    cardTiny: { fontSize: 7, fontWeight: '600', letterSpacing: 1.6, color: hexA(BUTTER, 0.7) },
+    cardRule: { height: StyleSheet.hairlineWidth, backgroundColor: hexA(BUTTER, 0.25) },
+    cardWords: { textAlign: 'center', fontSize: 8, fontWeight: '500', letterSpacing: 2.6, color: BUTTER },
+    cardRank: { marginTop: 4, textAlign: 'center', fontSize: 52, fontWeight: '100', letterSpacing: -2, color: BUTTER, fontVariant: ['tabular-nums'] },
+    cardLine: { textAlign: 'center', fontSize: 8, fontWeight: '700', letterSpacing: 1.6, color: hexA(BUTTER, 0.8) },
     solid: { height: 46, borderRadius: 23, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
     solidText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, color: ON_GOLD },
 
@@ -210,17 +296,10 @@ const s = StyleSheet.create({
     fileV: { fontSize: 17, fontWeight: '400', color: TEXT },
     fileSub: { fontSize: 11, fontWeight: '300', color: MUTED },
     fine: { fontSize: 10, color: MUTED, textAlign: 'center', marginTop: 12 },
+    titles: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 14, marginBottom: 24 },
+    titleCell: { width: '20%', alignItems: 'center', gap: 6 },
+    titleDisc: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+    titleDiscOn: { backgroundColor: GOLD, borderColor: GOLD },
+    titleName: { fontSize: 7, fontWeight: '700', letterSpacing: 0.8, color: MUTED, textAlign: 'center' },
 
-    gtScrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.86)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-    ticket: { width: 300, maxWidth: '100%', borderRadius: 18, overflow: 'hidden', paddingHorizontal: 20, paddingTop: 22, paddingBottom: 18 },
-    notch: { position: 'absolute', top: 178, width: 24, height: 24, borderRadius: 12, backgroundColor: '#0b0b0b', zIndex: 2 },
-    tkTop: { height: 168 },
-    tkSmall: { fontSize: 9, fontWeight: '700', letterSpacing: 2, color: ON_GOLD },
-    tkH: { fontSize: 40, fontWeight: '800', color: ON_GOLD, letterSpacing: -1, lineHeight: 38, marginTop: 12 },
-    tkP: { fontSize: 12, color: ON_GOLD, lineHeight: 17, marginTop: 'auto' },
-    tear: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, marginBottom: 14 },
-    tearDash: { width: 6, height: 2, backgroundColor: 'rgba(10,10,10,0.35)' },
-    tkPrize: { fontSize: 18, fontWeight: '600', color: ON_GOLD, marginTop: 2 },
-    tkBtn: { marginTop: 16, height: 46, borderRadius: 23, backgroundColor: ON_GOLD, alignItems: 'center', justifyContent: 'center' },
-    tkBtnText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, color: GOLD },
 });

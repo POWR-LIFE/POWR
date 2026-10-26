@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSeasonCard } from '@/components/series/season';
 
 import { CARD_BG, GOLD, GREEN, kit, MUTED, nextMidnightIso, SECONDARY, SectionHeader, StatusChip } from '@/components/drop/cardKit';
 import { Avatar } from '@/components/social/Avatar';
@@ -24,6 +25,14 @@ const RIVAL: Friend = { id: 'sample-james', username: 'james', displayName: 'Jam
  * race, playable alone, on day one.
  */
 export function BeatMeCard({ youName }: { youName: string }) {
+    // Off-season card. During a Series round Home shows SeriesRivalCard
+    // instead (app/(tabs)/index.tsx decides, from useSeriesToday).
+    return <BeatMeClassic youName={youName} />;
+}
+
+function BeatMeClassic({ youName }: { youName: string }) {
+    // While the Series is on for the member (always in dev): the card wears the active Series season.
+    const sc = useSeasonCard();
     const pitch = usePitchPrototype();
     const drop = useDropPrototype();
     const resetAt = useMemo(() => nextMidnightIso(), []);
@@ -71,7 +80,7 @@ export function BeatMeCard({ youName }: { youName: string }) {
     return (
         <View>
             <SectionHeader label="Head to head" />
-            <View style={[kit.card, phase === 'live' && ahead && kit.cardLit]}>
+            <View style={[kit.card, sc, phase === 'live' && ahead && kit.cardLit]}>
                 <View style={kit.header}>
                     <View style={styles.avatars}>
                         <View style={styles.avatarWrap}><Avatar friend={you} size={30} /></View>

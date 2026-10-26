@@ -111,7 +111,9 @@
       "friends": "Actividad de amigos",
       "friendsHint": "Solicitudes de amistad y novedades de retos compartidos",
       "news": "Novedades",
-      "newsHint": "Anuncios ocasionales sobre nuevas funciones y recompensas"
+      "newsHint": "Anuncios ocasionales sobre nuevas funciones y recompensas",
+      "series": "POWR Series",
+      "seriesHint": "Tu rival cada mañana y cuando alguien te adelanta"
     },
     "email": {
       "weekly": "Resumen semanal",

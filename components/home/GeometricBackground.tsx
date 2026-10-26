@@ -1,5 +1,6 @@
 import React from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
+import { SeasonBackdrop } from '@/components/series/season';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
   Circle,
@@ -104,6 +105,9 @@ export function GeometricBackground() {
         <Circle cx={W * 0.58} cy={H * 0.38} r={2} fill="#ffffff" fillOpacity={0.22} />
 
       </Svg>
+
+      {/* While the Series is on for the member (always in dev): the active Series season, over every screen that uses this background. */}
+      <SeasonBackdrop />
     </View>
   );
 }

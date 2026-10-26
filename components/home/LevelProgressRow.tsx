@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSeasonCard } from '@/components/series/season';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -37,6 +38,8 @@ interface Props {
 }
 
 export function LevelProgressRow({ totalEarned, onPress, onLongPress }: Props) {
+  // While the Series is on for the member (always in dev): the card wears the active Series season.
+  const sc = useSeasonCard();
   const { t } = useTranslation();
   const { current, next, xpIntoLevel, xpForLevel } = getLevelInfo(totalEarned);
   const pct = xpForLevel > 0 ? Math.min(xpIntoLevel / xpForLevel, 1) : 1;
@@ -75,7 +78,7 @@ export function LevelProgressRow({ totalEarned, onPress, onLongPress }: Props) {
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
-      style={({ pressed }) => [styles.row, pressed && { opacity: 0.8, transform: [{ scale: 0.99 }] }]}
+      style={({ pressed }) => [styles.row, sc, pressed && { opacity: 0.8, transform: [{ scale: 0.99 }] }]}
     >
       <LinearGradient
         colors={['rgba(255,255,255,0.04)', 'transparent']}

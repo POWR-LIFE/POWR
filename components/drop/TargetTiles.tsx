@@ -90,6 +90,7 @@ export function teaser(r: DropReward): string {
         case 'boost': return `${r.headline} next workout`;
         case 'partner': return `${r.headline.toLowerCase()} at a partner`;
         case 'event': return 'Free event entry';
+        case 'series': return r.series === 'ticket' ? '+1 Draw ticket' : '2× Series points';
     }
 }
 

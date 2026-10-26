@@ -111,7 +111,9 @@
       "friends": "Friend activity",
       "friendsHint": "Friend requests and shared-challenge updates",
       "news": "Product news",
-      "newsHint": "Occasional announcements about new features and rewards"
+      "newsHint": "Occasional announcements about new features and rewards",
+      "series": "POWR Series",
+      "seriesHint": "Your rival each morning, and when someone passes you"
     },
     "email": {
       "weekly": "Weekly summary",

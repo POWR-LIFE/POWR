@@ -7,6 +7,9 @@ import { fontFamily } from '@/constants/tokens';
 import { crewSim } from '@/lib/dev/crewPrototype';
 import { dropSim, useDropPrototype } from '@/lib/dev/dropPrototype';
 import { pitchSim, usePitchPrototype } from '@/lib/dev/pitchPrototype';
+import { restDaySim, useRestDaySim } from '@/lib/dev/restDayPrototype';
+import { sinceSim } from '@/components/series/SeriesHomeCards';
+import { seriesSim, useSeriesRoundPhase } from '@/components/series/useSeriesSim';
 
 /**
  * DESIGN SCAFFOLD — one floating SIM button for the Drop, Crew and pitch prototypes,
@@ -18,11 +21,14 @@ export function PrototypeSim() {
     const [open, setOpen] = useState(false);
     const pitch = usePitchPrototype();
     const drop = useDropPrototype();
+    const roundPhase = useSeriesRoundPhase();
+    const restMode = useRestDaySim();
 
     const groups: { title: string; chips: { label: string; run: () => void }[] }[] = [
         {
             title: 'DROP',
             chips: [
+                { label: drop.forceSim ? 'DROP: SAMPLE' : 'DROP: SERVER IF ON', run: dropSim.toggleForceSim },
                 { label: '+1K STEPS', run: () => dropSim.addSteps(1000) },
                 { label: '+10 MIN', run: () => dropSim.addMinutes(10) },
                 { label: `HISTORY: ${drop.history.toUpperCase()}`, run: dropSim.cycleHistory },
@@ -38,6 +44,20 @@ export function PrototypeSim() {
                 { label: 'CREW MOVES', run: crewSim.crewMoves },
                 { label: 'NUDGED ONE MOVES', run: crewSim.nudgedMove },
                 { label: 'NO CREW', run: crewSim.reset },
+            ],
+        },
+        {
+            title: 'STREAK',
+            chips: [
+                { label: restMode === 'real' ? 'REST DAY: YOUR STREAK' : restMode === 'free' ? 'REST DAY: FREE' : 'REST DAY: USED TUE', run: restDaySim.cycle },
+            ],
+        },
+        {
+            title: 'SERIES',
+            chips: [
+                { label: roundPhase === 'on' ? 'ROUND: ON' : roundPhase === 'soon' ? 'ROUND: STARTS SOON' : 'ROUND: JUST ENDED', run: seriesSim.cycleRound },
+                { label: 'YOU OVERTAKE', run: seriesSim.overtake },
+                { label: 'SINCE YESTERDAY', run: sinceSim.show },
             ],
         },
         {

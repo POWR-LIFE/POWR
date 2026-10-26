@@ -1,10 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
+import { STREAK_REST_DAYS, streakWithRest, type RestStreak, weekOf } from '@/lib/streakRest';
 import { getSessionUser, supabase } from '@/lib/supabase';
+
+/** The streak with one rest day a week (lib/streakRest), and which day of this week it held, Mon = 0. */
+export type StreakRest = RestStreak & { weekIndex: number | null };
 
 type StreakState = {
     currentStreak: number;
     longestStreak: number;
     multiplier: number;
+    /** Dev only (STREAK_REST_DAYS): for display. The strict streak above is what pays and what's stored. */
+    rest: StreakRest | null;
     loading: boolean;
     refresh: () => void;
 };
@@ -24,7 +30,7 @@ function streakMultiplier(streak: number): number {
  * Also syncs the result back to user_streaks so the notification edge function
  * always has an accurate stored value to read.
  */
-async function computeStreakFromSessions(): Promise<{ current: number; longest: number }> {
+async function computeStreakFromSessions(): Promise<{ current: number; longest: number; rest?: StreakRest | null }> {
     const since = new Date();
     since.setDate(since.getDate() - 90);
 
@@ -33,7 +39,7 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
     // can read all" policy, so without this an admin account computes its
     // streak from every user's sessions and shows a permanently maxed streak.
     const user = await getSessionUser();
-    if (!user) return { current: 0, longest: 0 };
+    if (!user) return { current: 0, longest: 0, rest: null };
 
     const { data, error } = await supabase
         .from('activity_sessions')
@@ -72,7 +78,7 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
-    let result: { current: number; longest: number };
+    let result: { current: number; longest: number; rest?: StreakRest | null };
     let lastActiveDate: string | null = null;
 
     const sessionDays = (error ? [] : (data ?? [])).map(s => {
@@ -103,6 +109,13 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
                 }
             }
             result = { current: streak, longest: Math.max(streak, longestRun(uniqueDays)) };
+        }
+        // Display only: never synced below, so the stored streak and the bonus stay strict.
+        if (STREAK_REST_DAYS) {
+            const r = streakWithRest(uniqueDays, todayStr);
+            const held = r.restDays.find((d) => weekOf(d) === weekOf(todayStr));
+            const weekIndex = held ? Math.round((Date.parse(`${held}T00:00:00Z`) - Date.parse(`${weekOf(todayStr)}T00:00:00Z`)) / 86_400_000) : null;
+            result.rest = { ...r, weekIndex };
         }
     }
 
@@ -191,6 +204,7 @@ export function useStreak(): StreakState {
         currentStreak,
         longestStreak: data?.longest ?? 0,
         multiplier: streakMultiplier(currentStreak),
+        rest: data?.rest ?? null,
         loading: isPending,
         // Returns the refetch promise so pull-to-refresh can await completion.
         refresh: () => refetch(),

@@ -34,6 +34,8 @@ import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { selectionLabel } from '@/constants/activityCatalog';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
+import { SERIES_PROTOTYPE } from '@/lib/dev/seriesPrototype';
+import { useSeriesEnabled } from '@/lib/api/series';
 import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
@@ -231,6 +233,9 @@ export default function SettingsScreen() {
   const [notifRewards,    setNotifRewards]    = useState(true);
   const [notifFriends,    setNotifFriends]    = useState(meta.notif_friends ?? true);
   const [notifNews,       setNotifNews]       = useState(true);
+  const [notifSeries,     setNotifSeries]     = useState(true);
+  // The Series row shows while the Series is on for this member (or in the dev prototype).
+  const seriesOn = useSeriesEnabled();
   const [notifNearby,     setNotifNearby]     = useState(true);
   const [notifWearable,   setNotifWearable]   = useState(true);
   const [notifStreak,     setNotifStreak]     = useState(true);
@@ -306,6 +311,7 @@ export default function SettingsScreen() {
       setNotifWorkouts(prefs.check_in_reminder);
       setNotifRewards(prefs.reward_unlocked);
       setNotifNews(prefs.announcements);
+      setNotifSeries(prefs.series_updates);
       setEmailWeekly(prefs.email_weekly_summary);
       // The "Friend activity" switch fronts all the together push types.
       setNotifFriends(prefs.challenge_invite);
@@ -825,6 +831,18 @@ export default function SettingsScreen() {
               });
             }}
           />
+          {(SERIES_PROTOTYPE || seriesOn) && (
+            <RowToggle
+              icon="trophy-outline"
+              label={t('settings:main.notifications.series')}
+              sublabel={t('settings:main.notifications.seriesHint')}
+              value={notifSeries}
+              onValueChange={(v) => {
+                setNotifSeries(v);
+                if (user?.id) updateNotificationPreferences(user.id, { series_updates: v });
+              }}
+            />
+          )}
           <RowToggle
             icon="megaphone-outline"
             label={t('settings:main.notifications.news')}

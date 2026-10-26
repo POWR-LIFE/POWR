@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSeasonCard } from '@/components/series/season';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { fontFamily } from '@/constants/tokens';
@@ -36,6 +37,8 @@ export function WeeklyRecapCard({
     onDismiss: () => void;
 }) {
     const { t } = useTranslation();
+    // While the Series is on for the member (always in dev): the card wears the active Series season.
+    const sc = useSeasonCard();
     const enter = useSharedValue(0);
     useEffect(() => {
         enter.value = withTiming(1, { duration: 350, easing: Easing.out(Easing.cubic) });
@@ -66,7 +69,7 @@ export function WeeklyRecapCard({
                     onPress={onOpen}
                     accessibilityRole="button"
                     accessibilityLabel={t('home:recapCard.openA11y')}
-                    style={({ pressed }) => [styles.card, pressed && { opacity: 0.92 }]}
+                    style={({ pressed }) => [styles.card, sc, pressed && { opacity: 0.92 }]}
                 >
                     <View style={styles.headline}>
                         <View style={styles.ptsWrap}>

@@ -27,8 +27,12 @@ import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
 import { DropCard } from '@/components/home/DropCard';
 import { DROP_PROTOTYPE } from '@/lib/dev/dropPrototype';
+import { sampleRestWeek, useRestDaySim } from '@/lib/dev/restDayPrototype';
 import { PrototypeSim } from '@/components/dev/PrototypeSim';
 import { BeatMeCard } from '@/components/pitch/BeatMeCard';
+import { SeriesAlert, seriesRingBoosts, seriesSessionLine, useSeriesHome } from '@/components/series/SeriesToday';
+import { SeriesComingCard } from '@/components/series/SeriesHomeCards';
+import { SeriesRoundCard } from '@/components/series/SeriesRoundCard';
 import { PushPreview } from '@/components/pitch/PushPreview';
 import { LevelUpCelebration } from '@/components/LevelUpCelebration';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
@@ -144,7 +148,8 @@ export default function HomeScreen() {
         })();
     }, [user, router]);
 
-    const { currentStreak, multiplier, refresh: refreshStreak } = useStreak();
+    const { currentStreak, multiplier, rest: streakRest, refresh: refreshStreak } = useStreak();
+    const restMode = useRestDaySim();
     const { rescue, refresh: refreshRescue } = useStreakRescue();
     const [rescueReopenNonce, setRescueReopenNonce] = useState(0);
 
@@ -156,8 +161,18 @@ export default function HomeScreen() {
         [rescue],
     );
     const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
+    // One rest day a week (dev only, display only: lib/streakRest). The SIM's
+    // STREAK chip swaps in a sample week so both states can be seen on demand.
+    const restSample = restMode === 'real' ? null : sampleRestWeek(restMode, TODAY_INDEX);
+    const streakShown = restSample?.streak ?? streakRest?.current ?? currentStreak;
+    const streakWeek = restSample?.activeDays ?? weekActiveDays;
     const { balance, totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
+    // The Series on Home (null outside a round, or while it's off for this member).
+    // The Series: today's round, or the one coming (bumped when a session ends,
+    // so the payoff lands straight away rather than on the next minute's poll).
+    const [seriesBump, setSeriesBump] = useState(0);
+    const { today: seriesToday, coming: seriesComing } = useSeriesHome(seriesBump);
     const { pending: pendingLevelUp, ack: ackLevelUp, preview: previewLevelUp } = useLevelUp();
     const { partners } = useGeofenceContext();
     const [devMsg, setDevMsg] = useState<string | null>(null);
@@ -371,6 +386,7 @@ export default function HomeScreen() {
         refreshPoints();
         refreshActivity();
         refreshStreak();
+        setSeriesBump((n) => n + 1);
         clearSessionCompleted();
     }, [sessionCompleted]);
 
@@ -655,6 +671,12 @@ export default function HomeScreen() {
                     already queue behind one another. */}
                 <SetupHealthBanner />
 
+                {/* Home opens on your own progress; the Series sits under it as one
+                    block. Only what can't wait comes up here: a moment that's on
+                    (Power Hour's clock), or for a few seconds after points land,
+                    what they just did. */}
+                {seriesToday && <SeriesAlert today={seriesToday} />}
+
                 <StreakRescueModal
                     rescue={rescue}
                     reopenNonce={rescueReopenNonce}
@@ -668,10 +690,12 @@ export default function HomeScreen() {
                     rescueRequired={rescue?.state === 'offered' ? rescue.sessionsRequired : 0}
                     rescueExpiresAt={rescue?.state === 'offered' ? rescue.expiresAt : null}
                     onRescuePress={() => setRescueReopenNonce(n => n + 1)}
-                    streak={currentStreak}
+                    streak={streakShown}
                     multiplier={multiplier}
-                    activeDays={weekActiveDays}
+                    activeDays={streakWeek}
                     todayIndex={TODAY_INDEX}
+                    restDayIndex={restSample ? restSample.restIndex : streakRest?.weekIndex ?? null}
+                    restFree={restSample ? restSample.restFree : streakRest ? streakRest.restFree : null}
                     sessionActive={isSessionActive}
                     sessionPartnerName={activeGeofence?.partnerName}
                     sessionElapsed={elapsedStr}
@@ -682,6 +706,7 @@ export default function HomeScreen() {
                     sessionUpgradeMinutes={upgradeTierMins}
                     sessionMaxTier={sessionMaxTier}
                     onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
+                    seriesSession={isSessionActive ? seriesSessionLine(seriesToday, projectedPoints) : undefined}
                 />
 
                 <ReAnimated.View
@@ -690,6 +715,7 @@ export default function HomeScreen() {
                 >
                     <WeeklyActivityCircles
                         rings={displayRings}
+                        boosts={seriesRingBoosts(seriesToday)}
                         onPressRing={(type) => router.push({ pathname: '/(tabs)/progress', params: { tab: type } })}
                     />
                 </ReAnimated.View>
@@ -700,11 +726,21 @@ export default function HomeScreen() {
                     onLongPress={previewLevelUp}
                 />
 
-                {/* Design scaffold — false outside __DEV__ (lib/dev/dropPrototype).
-                    Home keeps two of the pitch: the personal daily pull (the Drop)
-                    and the social one (Beat Me). The rest are on /pitch. */}
-                {DROP_PROTOTYPE && <DropCard />}
-                {DROP_PROTOTYPE && <BeatMeCard youName={displayName} />}
+                {/* The Series, one card under your own progress (Home's one layout,
+                    components/home/HomeCard): your place, the gap to your rival and
+                    your Draw days, then the one move. Before a round and between
+                    rounds: the countdown card, same layout. */}
+                {seriesToday
+                    ? <SeriesRoundCard today={seriesToday} />
+                    : seriesComing && <SeriesComingCard coming={seriesComing} />}
+
+                {/* Today's Drop: the server's when drop_live has it on for this
+                    member, else nothing (the dev sample in __DEV__). Beat Me is
+                    still a design scaffold, false outside __DEV__; the rest of the
+                    pitch is on /pitch. */}
+                <DropCard />
+                {/* Outside a round (dev): the classic Beat Me. */}
+                {DROP_PROTOTYPE && !seriesToday?.rival && <BeatMeCard youName={displayName} />}
 
                 {/* Shared "together" challenges — the social hero band. Collapses
                     to a slim CTA when empty. Hidden while the Drop prototype is on

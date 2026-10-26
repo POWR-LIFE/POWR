@@ -19,6 +19,11 @@
  * schemes and the repo bans it for links (see app/+native-intent.tsx).
  */
 
+/** The smart-link a friend code travels as: a non-user lands on the store, a user on add-friend with the code filled. */
+export function friendInviteLink(code: string): string {
+  return `https://powr.life/app?to=add-friend&ref=${code}`;
+}
+
 /** Referral codes are 6–10 chars of the unambiguous uppercase alphanumeric set. */
 const BARE_CODE = /^[A-Z0-9]{6,10}$/i;
 /** The 8-char code in its display form — `ABC1 23ZZ` / `ABC1-23ZZ` (see shared/memberId). */

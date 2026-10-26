@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSeasonCard } from '@/components/series/season';
 
 import { fontFamily } from '@/constants/tokens';
 import {
@@ -21,6 +22,8 @@ const CARD_BG = '#111111';
 // up to date, so Home just mounts it unconditionally. Dismissal sticks per
 // target version — it returns only when the NEXT release goes out.
 export function UpdateBanner() {
+  // While the Series is on for the member (always in dev): the card wears the active Series season.
+  const sc = useSeasonCard();
   const { t } = useTranslation();
   const [latest, setLatest] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
@@ -46,7 +49,7 @@ export function UpdateBanner() {
   };
 
   return (
-    <View style={styles.card} testID="update-banner">
+    <View style={[styles.card, sc]} testID="update-banner">
       <View style={styles.iconWrap}>
         <Ionicons name="arrow-up-circle" size={20} color={GOLD} />
       </View>

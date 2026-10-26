@@ -39,7 +39,7 @@ export function nextMidnightIso(now: Date = new Date()): string {
 
 /** The outcome line once a Drop is open: "On your next workout. Up to +30 POWR…". */
 export function outcomeLine(r: DropReward): string {
-    if (r.kind === 'points') return r.detail;
+    if (r.kind === 'points' || r.kind === 'series') return r.detail;
     const u = r.unit.toLowerCase().replace(/powr/g, 'POWR');
     return `${u.charAt(0).toUpperCase()}${u.slice(1)}. ${r.detail}`;
 }

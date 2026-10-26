@@ -296,6 +296,27 @@ const push: Catalog = {
     todayCounts: "Tout se joue aujourd’hui.",
     bodyNoRank: "Regarde où tu te situes au classement.",
   },
+  seriesRival: {
+    title: "Ton rival",
+    someone: "Ton rival",
+    series: "Series",
+    bodyChase: "{{name}} a {{gap}} pts d’avance au classement {{series}}. {{how}}",
+    bodyLead: "{{name}} a {{gap}} pts de retard sur toi au classement {{series}}. Une séance aujourd’hui et tu restes devant.",
+    howRun: "Une course suffit.",
+    howGym: "Une séance à la salle suffit.",
+    howMany: "Environ {{n}} séances suffisent.",
+  },
+  seriesPassed: {
+    title: "{{name}} vient de te dépasser",
+    body: "Tu es n° {{rank}} au classement {{series}}, à {{gap}} pts. {{how}}",
+    howRun: "Une course et tu reprends ta place.",
+    howGym: "Une séance à la salle et tu reprends ta place.",
+    howMany: "Environ {{n}} séances et tu reprends ta place.",
+  },
+  seriesMoment: {
+    title: "C’est parti",
+    body: "Quelque chose vient de commencer au classement {{series}}. Ouvre POWR pour voir.",
+  },
   eventGateReminder: {
     titleSignups_one: "{{event}} : plus que {{remaining}} inscription 🎟️",
     titleSignups_other: "{{event}} : plus que {{remaining}} inscriptions 🎟️",

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { useSeasonCard } from '@/components/series/season';
 import Animated, { Easing, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { CrewSetupSheet } from '@/components/crew/CrewSetupSheet';
@@ -27,6 +28,8 @@ const MAX_VISIBLE_AVATARS = 5;
  * everyone. Your own movement is read from the Drop, so one walk moves both.
  */
 export function CrewCard({ youName }: { youName: string }) {
+    // While the Series is on for the member (always in dev): the card wears the active Series season.
+    const sc = useSeasonCard();
     const crew = useCrewPrototype();
     const drop = useDropPrototype();
     const [picking, setPicking] = useState(false);
@@ -118,7 +121,7 @@ export function CrewCard({ youName }: { youName: string }) {
                     onPress={() => setViewing(true)}
                     accessibilityRole="button"
                     accessibilityLabel={`Open ${crew.name}`}
-                    style={({ pressed }) => [kit.card, ready && kit.cardLit, pressed && { opacity: 0.95 }]}
+                    style={({ pressed }) => [kit.card, sc, ready && kit.cardLit, pressed && { opacity: 0.95 }]}
                 >
                     {/* Who's in + where the bar is */}
                     <View style={kit.header}>
