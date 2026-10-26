@@ -120,6 +120,7 @@ function depositLabel(d: VaultDeposit): string {
 function depositSub(d: VaultDeposit): string {
   if (d.source === 'level_up') return i18n.t('rewards:vault.deposit.subLevelUp');
   if (d.source === 'admin_grant') return i18n.t('rewards:vault.deposit.subGrant');
+  if (d.source === 'drop') return i18n.t('rewards:vault.deposit.subDrop');
   return i18n.t('rewards:vault.deposit.subCapOverflow');
 }
 
@@ -580,7 +581,7 @@ function DepositRow({
   sealedMinLevel: number | null;
 }) {
   const isLevel = deposit.source === 'level_up';
-  const isGrant = deposit.source === 'admin_grant';
+  const isGrant = deposit.source === 'admin_grant' || deposit.source === 'drop';
 
   const effectiveAt =
     vaultDayAt && new Date(vaultDayAt) < new Date(deposit.vests_at)

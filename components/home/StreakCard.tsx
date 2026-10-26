@@ -42,6 +42,16 @@ interface StreakCardProps {
   /** Tapping the rescue readout re-opens the rescue modal — user-initiated,
    *  so it doesn't violate the one-shot announcement rule. */
   onRescuePress?: () => void;
+  /** During a Series round: The Draw, an active day counts for both. */
+  seriesDraw?: { text: string; tone: 'done' | 'act' | 'warn' | 'calm' | 'out' };
+  /** Tapping the Draw chip: Home opens the Series prizes on the Draw. */
+  onSeriesDrawPress?: () => void;
+  /** During a Series round and a gym visit: what it's worth there. */
+  seriesSession?: string;
+  /** One rest day a week (lib/streakRest): the day this week it held the streak, Mon = 0. */
+  restDayIndex?: number | null;
+  /** This week's rest day is unused, so a day off today won't break the streak. null = no rest days. */
+  restFree?: boolean | null;
 }
 
 const DAYS = [
@@ -82,6 +92,11 @@ export function StreakCard({
   rescueRequired = 0,
   rescueExpiresAt = null,
   onRescuePress,
+  seriesDraw,
+  onSeriesDrawPress,
+  seriesSession,
+  restDayIndex = null,
+  restFree = null,
 }: StreakCardProps) {
   const { t } = useTranslation();
   const streakWeeks = Math.floor(streak / 7);
@@ -201,6 +216,7 @@ export function StreakCard({
               const isToday = i === todayIndex;
               const isFuture = i > todayIndex;
               const isRescue = i === rescueDayIndex && !done;
+              const isRest = i === restDayIndex && !done && !isToday && !isRescue;
               return (
                 <View key={i} style={styles.weekDayCol}>
                   <Text style={[
@@ -215,15 +231,20 @@ export function StreakCard({
                     isToday && styles.weekDateCircleToday,
                     isFuture && styles.weekDateCircleFuture,
                     isRescue && styles.weekDateCircleRescue,
+                    isRest && styles.weekDateCircleRest,
                   ]}>
-                    <Text style={[
-                      styles.weekDateNumber,
-                      done && styles.weekDateNumberDone,
-                      isToday && styles.weekDateNumberToday,
-                      isRescue && styles.weekDateNumberRescue,
-                    ]}>
-                      {weekDates[i]}
-                    </Text>
+                    {isRest ? (
+                      <Ionicons name="moon" size={12} color="rgba(255,255,255,0.6)" accessibilityLabel={t('home:streak.restDay')} />
+                    ) : (
+                      <Text style={[
+                        styles.weekDateNumber,
+                        done && styles.weekDateNumberDone,
+                        isToday && styles.weekDateNumberToday,
+                        isRescue && styles.weekDateNumberRescue,
+                      ]}>
+                        {weekDates[i]}
+                      </Text>
+                    )}
                   </View>
                 </View>
               );
@@ -233,8 +254,43 @@ export function StreakCard({
 
         {/* Countdown to midnight */}
         <View style={styles.countdownRow}>
-          <Text style={styles.countdownTime}>{countdown}</Text>
-          <Text style={styles.countdownLabel}>{t('home:streak.resets')}</Text>
+          {/* Not moved yet and the week's rest day is free: nothing resets tonight. */}
+          {restFree && !activeDays[todayIndex] ? (
+            <>
+              <Ionicons name="moon-outline" size={11} color="rgba(255,255,255,0.55)" />
+              <Text style={styles.restLabel}>{t('home:streak.restFree')}</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.countdownTime}>{countdown}</Text>
+              <Text style={styles.countdownLabel}>{t('home:streak.resets')}</Text>
+            </>
+          )}
+          {seriesDraw && (() => {
+            // What's at stake for The Draw today: green in, gold act now, orange
+            // last chance; on track stays quiet so the loud ones mean something.
+            const [c, border] = {
+              done: ['#4ade80', 'rgba(74,222,128,0.35)'],
+              act: [GOLD, 'rgba(232,210,0,0.4)'],
+              warn: [ORANGE, 'rgba(249,115,22,0.45)'],
+              calm: ['rgba(255,255,255,0.6)', 'rgba(255,255,255,0.14)'],
+              out: ['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.1)'],
+            }[seriesDraw.tone];
+            const icon = seriesDraw.tone === 'done' ? 'checkmark-circle' : seriesDraw.tone === 'warn' ? 'alert-circle-outline' : 'ticket-outline';
+            return (
+              <Pressable
+                onPress={onSeriesDrawPress}
+                disabled={!onSeriesDrawPress}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('series:homeBits.drawA11y', { chip: seriesDraw.text.toLowerCase() })}
+                style={({ pressed }) => [styles.drawChip, { borderColor: border }, seriesDraw.tone === 'act' && styles.drawChipAct, seriesDraw.tone === 'warn' && styles.drawChipWarn, pressed && { opacity: 0.7 }]}
+              >
+                <Ionicons name={icon} size={10} color={c} />
+                <Text style={[styles.drawChipText, { color: c }]} numberOfLines={1}>{seriesDraw.text}</Text>
+              </Pressable>
+            );
+          })()}
         </View>
 
         {/* Live rescue readout — one quiet line, the modal already announced it.
@@ -304,6 +360,12 @@ export function StreakCard({
                   ? t('home:streak.session.hintMax', { points: sessionProjectedPts })
                   : t('home:streak.session.hintUpgrade', { points: sessionProjectedPts, minutes: sessionUpgradeMinutes, bonus: sessionUpgradeBonus })}
               </Text>
+            )}
+            {seriesSession && (
+              <View style={styles.seriesLine}>
+                <Ionicons name="trophy-outline" size={10} color={GOLD} />
+                <Text style={styles.seriesLineText} numberOfLines={2}>{seriesSession}</Text>
+              </View>
             )}
           </View>
         )}
@@ -476,6 +538,19 @@ const styles = StyleSheet.create({
     color: ORANGE,
     fontWeight: '700',
   },
+  weekDateCircleRest: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  restLabel: {
+    fontSize: 8,
+    fontWeight: '500',
+    letterSpacing: 1,
+    color: 'rgba(255,255,255,0.55)',
+    textTransform: 'uppercase',
+  },
   rescueRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -496,6 +571,23 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 4,
   },
+  drawChip: {
+    marginLeft: 'auto',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.3)',
+  },
+  drawChipAct: { backgroundColor: 'rgba(232,210,0,0.10)' },
+  drawChipWarn: { backgroundColor: 'rgba(249,115,22,0.12)' },
+  drawChipText: { fontSize: 8, fontWeight: '700', letterSpacing: 1, color: GOLD },
+  seriesLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
+  seriesLineText: { flex: 1, fontSize: 10, fontWeight: '400', color: GOLD },
   countdownTime: {
     fontSize: 13,
     fontWeight: '200',

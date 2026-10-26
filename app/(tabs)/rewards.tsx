@@ -3,6 +3,8 @@ import MagicRings from '@/components/MagicRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { VaultWidget } from '@/components/rewards/VaultWidget';
+import { RewardDoors } from '@/components/pitch/RewardDoors';
+import { DROP_PROTOTYPE } from '@/lib/dev/dropPrototype';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { usePoints } from '@/hooks/usePoints';
@@ -52,6 +54,10 @@ const BORDER  = 'rgba(255,255,255,0.08)';
 const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.35)';
 const DIM     = 'rgba(255,255,255,0.55)';
+
+// Doors are parked, even in __DEV__, until that work is finished. Set back to
+// DROP_PROTOTYPE to bring them back.
+const SHOW_REWARD_DOORS = false && DROP_PROTOTYPE;
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -408,6 +414,9 @@ export default function SpendScreen() {
           />
         }
       >
+        {/* Design scaffold — false outside __DEV__, see lib/dev/pitchPrototype. */}
+        {SHOW_REWARD_DOORS && <RewardDoors />}
+
         {!catalogueLoaded && !catalogueError ? (
           <View style={styles.keepMovingCenterWrap}>
             <ActivityIndicator color={GOLD} />

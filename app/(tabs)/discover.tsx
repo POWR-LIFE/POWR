@@ -42,6 +42,7 @@ import {
   UIManager,
   View,
 } from 'react-native';
+import { useSeason } from '@/components/series/season';
 import MapView, { Circle, Marker, Polyline, type Region } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -314,6 +315,8 @@ function synthesizePartner(g: GeoLike): Partner {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function DiscoverScreen() {
+  // While the Series is on for the member (always in dev): the list header wears the active Series season, like the background.
+  const { tint: seasonTint } = useSeason();
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   const mapRef = useRef<MapView>(null);
@@ -1259,7 +1262,7 @@ export default function DiscoverScreen() {
         keyboardVerticalOffset={0}
       >
         {/* ── Sticky header: filters + search + tabs ─────────── */}
-        <View style={styles.listHeader}>
+        <View style={[styles.listHeader, seasonTint && { backgroundColor: seasonTint.sheet }]}>
           {/* Quiet, permanent way back into the location grant. It leads the
               sticky header rather than living in the scrolling list so it stays
               reachable at any scroll position, and it sits directly under the

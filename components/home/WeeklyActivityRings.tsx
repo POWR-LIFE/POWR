@@ -109,7 +109,7 @@ const CIRCLE_SIZE = 80;
 const CIRCLE_R = 32;
 const CIRCLE_SW = 5;
 
-function ActivityCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () => void }) {
+function ActivityCircle({ data, onPress, boost }: { data: WeeklyRingData; onPress?: () => void; boost?: string }) {
   const { t } = useTranslation();
   const isGetReady = !!data.isGetReady;
   const pct = isGetReady ? 0.2 : Math.min(data.pct, 1);
@@ -148,6 +148,12 @@ function ActivityCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () 
         <View style={circleStyles.centerIcon}>
           <IconComp name={data.icon as any} size={20} color="#F2F2F2" />
         </View>
+        {/* A Series moment boosting this activity right now (Double Down, Power Hour …). */}
+        {boost ? (
+          <View style={circleStyles.boost} accessibilityLabel={t('series:homeBits.boostA11y', { boost })}>
+            <Text style={circleStyles.boostText}>{boost}</Text>
+          </View>
+        ) : null}
       </View>
 
       <Text style={circleStyles.label}>{data.label.toUpperCase()}</Text>
@@ -173,13 +179,15 @@ function ActivityCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () 
 interface WeeklyActivityCirclesProps {
   rings: WeeklyRingData[];
   onPressRing?: (type: string) => void;
+  /** Series boosts on now, by activity: { running: '×2' }. */
+  boosts?: Partial<Record<string, string>>;
 }
 
-export function WeeklyActivityCircles({ rings, onPressRing }: WeeklyActivityCirclesProps) {
+export function WeeklyActivityCircles({ rings, onPressRing, boosts }: WeeklyActivityCirclesProps) {
   return (
     <View style={circleStyles.row}>
       {rings.map((d) => (
-        <ActivityCircle key={d.type} data={d} onPress={() => onPressRing?.(d.type)} />
+        <ActivityCircle key={d.type} data={d} onPress={() => onPressRing?.(d.type)} boost={boosts?.[d.type]} />
       ))}
     </View>
   );
@@ -252,6 +260,16 @@ const circleStyles = StyleSheet.create({
     height: CIRCLE_SIZE,
     position: 'relative',
   },
+  boost: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 9,
+    backgroundColor: '#E8D200',
+  },
+  boostText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.3, color: '#0a0a0a' },
   centerIcon: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,

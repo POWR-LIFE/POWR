@@ -24,7 +24,7 @@ export default function PowrPushBanner({
         <View style={styles.banner}>
             <View style={styles.appIcon}>
                 <Image
-                    source={require('@/assets/images/ic_stat_powr_logo_black.png')}
+                    source={require('@/assets/images/powr_p_solid.png')}
                     style={styles.appIconImage}
                     resizeMode="contain"
                 />

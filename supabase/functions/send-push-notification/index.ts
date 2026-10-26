@@ -34,6 +34,8 @@ const FEED_EXCLUDED: Set<NotificationType> = new Set([
   // "It's on" and "tonight" mean nothing the day after. The announcement IS
   // logged: the event it names stays joinable until it locks.
   'event_kickoff', 'event_doors_open',
+  // A Series gap or pass is stale within hours; the board is the record.
+  'series_rival', 'series_passed', 'series_moment',
 ]);
 
 // Coarse bucket the client renders an icon/accent from.
@@ -59,6 +61,9 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'event_doors_open':
     case 'gym_quiet_nudge':
     case 'gym_on_powr':
+    case 'series_rival':
+    case 'series_passed':
+    case 'series_moment':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -257,6 +262,10 @@ async function processOne(
     // (live_events.notify_*_at + Send now), killed globally in
     // notification_config. No preference column exists for them, so mapping
     // to `type` would 400 on every send — see the warning above.
+    // Both Series pushes ride one switch (20261020150000): "Autumn Series".
+    : type === 'series_rival' ? 'series_updates'
+    : type === 'series_passed' ? 'series_updates'
+    : type === 'series_moment' ? 'series_updates'
     : type === 'event_rank_daily' ? null
     : type === 'event_gate_reminder' ? null
     // Registrant one-offs: same reasoning as the pulses above.

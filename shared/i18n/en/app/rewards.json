@@ -182,7 +182,9 @@
       "capOverflow": "{{activity}} over the daily cap",
       "capOverflowStreak_one": "{{count}}-day streak · {{activity}} over the daily cap",
       "capOverflowStreak_other": "{{count}}-day streak · {{activity}} over the daily cap",
-      "capOverflowUpgrade": "gym session upgrade ({{minutes}}min) · over the daily cap"
+      "capOverflowUpgrade": "gym session upgrade ({{minutes}}min) · over the daily cap",
+      "drop": "POWR Drop",
+      "subDrop": "From today’s Drop"
     },
     "errors": {
       "alreadyMoved": "That POWR had already moved into your balance.",

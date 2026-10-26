@@ -57,6 +57,8 @@ const SAMPLES: Sample[] = [
     // live events
     { key: 'attended', stored: 'Attended ONE LDN Friday Night Lights', ctx: { kind: 'bonus', source: 'event_attendance' } },
     { key: 'attendedUnnamed', stored: 'Attended a live event', ctx: { kind: 'bonus', source: 'event_attendance' } },
+    { key: 'drop', stored: 'POWR Drop', ctx: { kind: 'bonus', source: 'drop' } },
+    { key: 'dropVoid', stored: 'POWR Drop taken back', ctx: { kind: 'bonus', source: 'drop_void' } },
     // rewards
     { key: 'redeemed', stored: 'Redeemed: 20% off at Gymshark', ctx: { kind: 'redeem' } },
     // challenges

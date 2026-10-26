@@ -1,0 +1,157 @@
+import { router } from 'expo-router';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInLeft, FadeOutLeft } from 'react-native-reanimated';
+
+import { fontFamily } from '@/constants/tokens';
+import { crewSim } from '@/lib/dev/crewPrototype';
+import { dropSim, useDropPrototype } from '@/lib/dev/dropPrototype';
+import { pitchSim, usePitchPrototype } from '@/lib/dev/pitchPrototype';
+import { restDaySim, useRestDaySim } from '@/lib/dev/restDayPrototype';
+import { sinceSim } from '@/components/series/SeriesHomeCards';
+import { seriesSim, useSeriesRoundPhase } from '@/components/series/useSeriesSim';
+
+/**
+ * DESIGN SCAFFOLD — one floating SIM button for the Drop, Crew and pitch prototypes,
+ * so the cards themselves look like the real thing instead of carrying a row
+ * of dev chips each. Rendered only behind DROP_PROTOTYPE (false outside
+ * __DEV__). Chip labels double as accessibility labels for the web harness.
+ */
+export function PrototypeSim() {
+    const [open, setOpen] = useState(false);
+    const pitch = usePitchPrototype();
+    const drop = useDropPrototype();
+    const roundPhase = useSeriesRoundPhase();
+    const restMode = useRestDaySim();
+
+    const groups: { title: string; chips: { label: string; run: () => void }[] }[] = [
+        {
+            title: 'DROP',
+            chips: [
+                { label: drop.forceSim ? 'DROP: SAMPLE' : 'DROP: SERVER IF ON', run: dropSim.toggleForceSim },
+                { label: '+1K STEPS', run: () => dropSim.addSteps(1000) },
+                { label: '+10 MIN', run: () => dropSim.addMinutes(10) },
+                { label: `HISTORY: ${drop.history.toUpperCase()}`, run: dropSim.cycleHistory },
+                { label: drop.bigYesterday ? 'BIG DAY YESTERDAY: ON' : 'BIG DAY YESTERDAY: OFF', run: dropSim.toggleBigYesterday },
+                { label: 'COMEBACK', run: dropSim.comeback },
+                { label: 'NEW DAY', run: dropSim.newDay },
+            ],
+        },
+        {
+            title: 'CREW',
+            chips: [
+                { label: 'THEY JOIN', run: crewSim.allJoin },
+                { label: 'CREW MOVES', run: crewSim.crewMoves },
+                { label: 'NUDGED ONE MOVES', run: crewSim.nudgedMove },
+                { label: 'NO CREW', run: crewSim.reset },
+            ],
+        },
+        {
+            title: 'STREAK',
+            chips: [
+                { label: restMode === 'real' ? 'REST DAY: YOUR STREAK' : restMode === 'free' ? 'REST DAY: FREE' : 'REST DAY: USED TUE', run: restDaySim.cycle },
+            ],
+        },
+        {
+            title: 'SERIES',
+            chips: [
+                { label: roundPhase === 'on' ? 'ROUND: ON' : roundPhase === 'soon' ? 'ROUND: STARTS SOON' : 'ROUND: JUST ENDED', run: seriesSim.cycleRound },
+                { label: 'YOU OVERTAKE', run: seriesSim.overtake },
+                { label: 'SINCE YESTERDAY', run: sinceSim.show },
+            ],
+        },
+        {
+            title: 'PITCH',
+            chips: [
+                { label: pitch.scale === 'pitch' ? 'SCALE: 5K USERS' : 'SCALE: TODAY', run: pitchSim.toggleScale },
+                { label: 'OFF HOME', run: () => { setOpen(false); router.push('/pitch'); } },
+                { label: 'NEXT PUSH', run: pitchSim.nextPush },
+                { label: pitch.beatMe.rival === 'friend' ? 'RIVAL: JAMES' : 'RIVAL: YESTERDAY', run: pitchSim.toggleRival },
+                { label: 'RIVAL WALKS', run: pitchSim.rivalWalks },
+                { label: 'END DAY', run: pitchSim.endBeatMe },
+                { label: '+CLAIMS', run: pitchSim.claims },
+                { label: 'RESET PITCH', run: pitchSim.reset },
+            ],
+        },
+    ];
+
+    return (
+        // A slim tab on the left edge, mid-screen: the cards' buttons all sit on
+        // the right, so nothing real is ever under it.
+        <View pointerEvents="box-none" style={styles.wrap}>
+            <Pressable
+                onPress={() => setOpen(o => !o)}
+                accessibilityRole="button"
+                accessibilityLabel={open ? 'Close simulator' : 'Open simulator'}
+                hitSlop={{ top: 8, bottom: 8, right: 10 }}
+                style={({ pressed }) => [styles.tab, open && styles.tabOpen, pressed && { opacity: 0.7 }]}
+            >
+                <Text style={[styles.tabText, open && { color: '#ddd' }]}>{open ? '×' : 'SIM'}</Text>
+            </Pressable>
+            {open && (
+                <Animated.View entering={FadeInLeft.duration(180)} exiting={FadeOutLeft.duration(140)} style={styles.panel}>
+                    {groups.map(g => (
+                        <View key={g.title} style={styles.group}>
+                            <Text style={styles.groupTitle}>{g.title}</Text>
+                            <View style={styles.chips}>
+                                {g.chips.map(c => (
+                                    <Pressable
+                                        key={c.label}
+                                        onPress={c.run}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={c.label}
+                                        style={({ pressed }) => [styles.chip, pressed && { opacity: 0.6 }]}
+                                    >
+                                        <Text style={styles.chipText}>{c.label}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        </View>
+                    ))}
+                </Animated.View>
+            )}
+        </View>
+    );
+}
+
+const styles = StyleSheet.create({
+    wrap: { position: 'absolute', left: 0, top: '42%', flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+    panel: {
+        width: 268,
+        backgroundColor: '#151515',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: '#3a3a3a',
+        padding: 12,
+        gap: 12,
+    },
+    group: { gap: 6 },
+    groupTitle: { fontFamily: fontFamily.medium, fontSize: 8, letterSpacing: 1.8, color: '#666' },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    chip: { borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', borderColor: '#3a3a3a', paddingHorizontal: 10, paddingVertical: 6 },
+    chipText: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1.2, color: '#aaa' },
+    tab: {
+        width: 18,
+        height: 58,
+        borderTopRightRadius: 9,
+        borderBottomRightRadius: 9,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(21,21,21,0.92)',
+        borderWidth: 1,
+        borderLeftWidth: 0,
+        borderStyle: 'dashed',
+        borderColor: '#444',
+    },
+    tabOpen: { borderColor: '#666' },
+    tabText: {
+        width: 40,
+        textAlign: 'center',
+        transform: [{ rotate: '-90deg' }],
+        fontFamily: fontFamily.medium,
+        fontSize: 8,
+        letterSpacing: 1.6,
+        color: '#888',
+    },
+});

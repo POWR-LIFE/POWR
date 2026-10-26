@@ -89,7 +89,7 @@ export default function HealthDataScene({
                 <View style={styles.powrWrap}>
                     <View style={styles.powrIcon}>
                         <RNImage
-                            source={require('@/assets/images/ic_stat_powr_logo_black.png')}
+                            source={require('@/assets/images/powr_p_solid.png')}
                             style={styles.powrLogo}
                             resizeMode="contain"
                         />

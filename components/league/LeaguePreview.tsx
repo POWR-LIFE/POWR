@@ -16,6 +16,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { fetchProfile } from '@/lib/api/user';
 import { inviteCodeLine } from '@/lib/eventInviteLink';
 import { memberInitials } from '@/lib/memberName';
+import { friendInviteLink } from '@/lib/social/friendCode';
 
 /**
  * The League tab between events — no live event configured, global
@@ -197,11 +198,6 @@ function EmptyPodium({ avatarUrl, initials }: { avatarUrl: string | null; initia
 
 // ─── EVENTS ───────────────────────────────────────────────────────────────────
 
-/** The same smart-link the My QR screen encodes: a non-user who opens it
- *  lands on the store, a user lands on add-friend with the code filled. */
-function friendLink(code: string): string {
-    return `https://powr.life/app?to=add-friend&ref=${code}`;
-}
 
 function EventsSegment() {
     const router = useRouter();
@@ -212,7 +208,7 @@ function EventsSegment() {
         staleTime: 5 * 60_000,
     });
     const code = profile?.referral_code ?? null;
-    const link = code ? friendLink(code) : null;
+    const link = code ? friendInviteLink(code) : null;
     const message = code && link ? `${t('events:invite.joinMe', { codeLine: inviteCodeLine(code) })}\n${link}` : null;
     const [copied, setCopied] = useState(false);
 

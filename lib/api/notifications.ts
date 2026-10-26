@@ -81,6 +81,8 @@ export interface NotificationPreferences {
   nearby_offer: boolean;
   /** Product announcements broadcast from the admin panel (App Store 4.5.4 opt-out). */
   announcements: boolean;
+  /** Autumn Series pushes: the 08:00 rival push and "<name> just passed you". */
+  series_updates: boolean;
   /** Email: Monday weekly summary recap. */
   email_weekly_summary: boolean;
   // Together (shared challenges + friend graph).
@@ -118,6 +120,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   step_goal_nudge: true,
   nearby_offer: true,
   announcements: true,
+  series_updates: true,
   email_weekly_summary: true,
   friend_request: true,
   friend_accepted: true,
@@ -160,6 +163,7 @@ export async function getNotificationPreferences(
     step_goal_nudge: data.step_goal_nudge ?? true,
     nearby_offer: data.nearby_offer ?? true,
     announcements: data.announcements ?? true,
+    series_updates: data.series_updates ?? true,
     email_weekly_summary: data.email_weekly_summary ?? true,
     friend_request: data.friend_request ?? true,
     friend_accepted: data.friend_accepted ?? true,

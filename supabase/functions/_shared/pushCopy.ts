@@ -78,7 +78,15 @@ export type NotificationType =
   | 'challenge_expiring'
   | 'challenge_ended'
   | 'challenge_open_unclaimed'
-  | 'challenge_open_posted';
+  | 'challenge_open_posted'
+  // The Autumn Series (series_dispatch_pushes, every 15 min): the 08:00 push
+  // about your rival, and "<name> just passed you". Both open League on the
+  // next-move line (focus=rival).
+  | 'series_rival'
+  | 'series_passed'
+  // A round's moment starting (Double Down, Power Hour, Blind Mode …), set in
+  // /admin/series: its name and line as written there.
+  | 'series_moment';
 
 /** One push, ready for deliverVisiblePush (which adds the per-device `to`). */
 export interface PushMessage {
@@ -117,7 +125,21 @@ export const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   event_announced:         24 * 60 * 60,
   event_kickoff:           12 * 60 * 60,
   event_doors_open:        8 * 60 * 60,   // sent 09:00 for an evening night
+  // A gap from this morning is wrong by tonight; a pass from an hour ago may
+  // already be undone.
+  series_rival:            6 * 60 * 60,
+  series_passed:           3 * 60 * 60,
+  // A Power Hour is over in an hour; nothing a moment says is news after two.
+  series_moment:           2 * 60 * 60,
 };
+
+/** The one session that closes a Series gap, as the app says it (SeriesHome). */
+function seriesHow(lang: string, gap: number, kind: 'rival' | 'passed'): string {
+  const key = kind === 'rival' ? 'seriesRival' : 'seriesPassed';
+  if (gap <= 10) return tPush(lang, `${key}.howRun`);
+  if (gap <= 20) return tPush(lang, `${key}.howGym`);
+  return tPush(lang, `${key}.howMany`, { n: `${Math.ceil(gap / 15)}` });
+}
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -771,6 +793,62 @@ export function buildMessage(
             event_id: payload.event_id,
             rank: Number.isFinite(rank) && rank > 0 ? rank : undefined,
           },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'series_rival': {
+        // series_dispatch_pushes, 08:00 in the member's own timezone. The rival
+        // is the same person League's next-move line names (get_series_board).
+        const name = String(payload.name ?? '').trim() || tPush(lang, 'seriesRival.someone');
+        const gap = Math.max(1, Math.round(Number(payload.gap ?? 0)));
+        const pts = grouped(lang, gap);
+        // The season's name ("Winter Series"), from the round's season.
+        const series = String(payload.series ?? '').trim() || tPush(lang, 'seriesRival.series');
+        return {
+          title: tPush(lang, 'seriesRival.title'),
+          body: payload.ahead === true
+            ? tPush(lang, 'seriesRival.bodyLead', { name, gap: pts, series })
+            : tPush(lang, 'seriesRival.bodyChase', { name, gap: pts, series, how: seriesHow(lang, gap, 'rival') }),
+          data: { type, route: '/(tabs)/league?focus=rival' },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'series_passed': {
+        // series_dispatch_pushes: the closest person above you who was behind
+        // you at the last check. Capped once a day in notification_config.
+        const name = String(payload.name ?? '').trim() || tPush(lang, 'seriesRival.someone');
+        const gap = Math.max(1, Math.round(Number(payload.gap ?? 0)));
+        const rank = Math.round(Number(payload.rank));
+        const series = String(payload.series ?? '').trim() || tPush(lang, 'seriesRival.series');
+        return {
+          title: tPush(lang, 'seriesPassed.title', { name }),
+          body: tPush(lang, 'seriesPassed.body', {
+            series,
+            rank: Number.isFinite(rank) && rank > 0 ? `${rank}` : '?',
+            gap: grouped(lang, gap),
+            how: seriesHow(lang, gap, 'passed'),
+          }),
+          data: { type, route: '/(tabs)/league?focus=rival' },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+      case 'series_moment': {
+        // series_dispatch_pushes, once, when a moment starts. The name and line
+        // are the admin's words for this moment; the line falls back to "It's on
+        // now in the <season>" when it's left empty.
+        const series = String(payload.series ?? '').trim() || tPush(lang, 'seriesRival.series');
+        const title = String(payload.title ?? '').trim() || tPush(lang, 'seriesMoment.title');
+        const body = String(payload.body ?? '').trim() || tPush(lang, 'seriesMoment.body', { series });
+        return {
+          title,
+          body,
+          data: { type, route: '/(tabs)/league' },
           sound: 'default',
           channelId: 'powr_default_v2',
           priority: 'high',

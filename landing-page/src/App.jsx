@@ -28,7 +28,7 @@ import {
     Zap,
     ArrowUpRight,
     ArrowDownRight,
-    PartyPopper,
+    PartyPopper, Trophy,
     Radio,
     Sparkles,
     HeartPulse,
@@ -105,6 +105,8 @@ import NotificationManager from './pages/admin/NotificationManager';
 import StreakRescue from './pages/admin/StreakRescue';
 import VaultManager from './pages/admin/VaultManager';
 import LiveEvents from './pages/admin/LiveEvents';
+import SeriesManager from './pages/admin/SeriesManager';
+import DropManager from './pages/admin/DropManager';
 import LiveOps from './pages/admin/LiveOps';
 import SystemHealth from './pages/admin/SystemHealth';
 import GymPortals from './pages/admin/GymPortals';
@@ -563,6 +565,8 @@ const PATH_LABELS = {
     'streak-rescue': 'Streak Rescue',
     studio: 'Studio',
     events: 'Live Events',
+    series: 'Series',
+    drop: 'POWR Drop',
     liveops: 'Live Ops',
     'system-health': 'System Health',
     config: 'Config',
@@ -1503,6 +1507,8 @@ const AdminLayout = ({ children }) => {
         { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
         { label: 'Streak Rescue',  path: '/admin/streak-rescue',  icon: Flame        },
         { label: 'Live Events',    path: '/admin/events',         icon: PartyPopper  },
+        { label: 'Series',         path: '/admin/series',         icon: Trophy       },
+        { label: 'Drop',           path: '/admin/drop',           icon: Zap          },
         { label: 'Vault',          path: '/admin/vault',          icon: Lock         },
         { label: 'Config',         path: '/admin/config',         icon: Settings     },
     ];
@@ -1772,6 +1778,8 @@ export default function App() {
                     <Route path="/admin/notifications" element={<ProtectedRoute><AdminLayout><NotificationManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/streak-rescue" element={<ProtectedRoute><AdminLayout><StreakRescue /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/events" element={<ProtectedRoute><AdminLayout><LiveEvents /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/series" element={<ProtectedRoute><AdminLayout><SeriesManager /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/drop" element={<ProtectedRoute><AdminLayout><DropManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/liveops" element={<ProtectedRoute><AdminLayout><LiveOps /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/system-health" element={<ProtectedRoute><AdminLayout><SystemHealth /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/tracker" element={<ProtectedRoute><AdminLayout><Tracker /></AdminLayout></ProtectedRoute>} />

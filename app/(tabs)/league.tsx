@@ -42,6 +42,10 @@ import { EventSharePanel } from '@/components/league/EventSharePanel';
 import { LeaguePreview } from '@/components/league/LeaguePreview';
 import { PodiumAvatarRing } from '@/components/league/PodiumAvatarRing';
 import { SegmentBar } from '@/components/league/SegmentBar';
+import { SeriesHome } from '@/components/series/SeriesHome';
+import { BUTTER, useSeason } from '@/components/series/season';
+import { SERIES_PROTOTYPE } from '@/lib/dev/seriesPrototype';
+import { refreshSeriesEnabled, useSeriesEnabled } from '@/lib/api/series';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { usePoints } from '@/hooks/usePoints';
@@ -113,7 +117,7 @@ export default function LeagueScreen() {
   const [selectedUserPoints, setSelectedUserPoints] = useState<number | undefined>(undefined);
   const indicatorX = useSharedValue(0);
 
-  const { tab, event: eventSlug, at: eventPinnedAt } = useLocalSearchParams<{ tab?: string; event?: string; at?: string }>();
+  const { tab, event: eventSlug, at: eventPinnedAt, focus } = useLocalSearchParams<{ tab?: string; event?: string; at?: string; focus?: string }>();
 
   const { weeklyEarned, totalEarned } = usePoints();
   const myPoints = metric === 'weekly' ? weeklyEarned : totalEarned;
@@ -134,6 +138,22 @@ export default function LeagueScreen() {
   const [openSlug, setOpenSlug] = useState<string | undefined>(paramSlug);
   useEffect(() => { if (paramSlug) setOpenSlug(paramSlug); }, [paramSlug, eventPinnedAt]);
   const hubMode = liveEvents.length > 1;
+  // The Autumn Series board is the tab's home (the dev prototype, or for a member
+  // once admin's series_live switch reaches them); an event opens as its own page
+  // on top of it, with the same back button the hub uses. If a member build has
+  // no live board to show, the tab goes back to the League it had.
+  const seriesOn = useSeriesEnabled();
+  const [seriesGone, setSeriesGone] = useState(false);
+  useEffect(() => { setSeriesGone(false); }, [seriesOn]);
+  useFocusEffect(useCallback(() => { void refreshSeriesEnabled(); }, []));
+  const seriesHome = (SERIES_PROTOTYPE || seriesOn) && !seriesGone && !LEAGUE_LIVE;
+  // The Series names itself under the title, the way an open event does.
+  const [seriesSub, setSeriesSub] = useState('');
+  // While the Series is on for the member (always in dev): the tab wears the Series' season; its name leads the line under the title.
+  const season = useSeason();
+  const seriesRest = seriesSub.startsWith(season.def.name) ? seriesSub.slice(season.def.name.length) : null;
+  // Home's rival card lands on the Series itself, not on an event left open.
+  useEffect(() => { if (focus === 'rival') setOpenSlug(undefined); }, [focus, eventPinnedAt]);
   const showHub = hubMode && !openSlug;
   // Always resolve an event, even behind the hub: the first card's page is
   // then already loaded, and a single-event tab needs no extra request.
@@ -144,13 +164,13 @@ export default function LeagueScreen() {
   // Back to the hub: Android's back button, or tapping the League tab again
   // while an event is open (the usual "tap the tab to go to its top").
   useFocusEffect(useCallback(() => {
-    if (!hubMode || !openSlug) return undefined;
+    if (!(hubMode || seriesHome) || !openSlug) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       setOpenSlug(undefined);
       return true;
     });
     return () => sub.remove();
-  }, [hubMode, openSlug]));
+  }, [hubMode, seriesHome, openSlug]));
   const navigation = useNavigation();
   useEffect(() => navigation.addListener('tabPress' as never, () => {
     if (navigation.isFocused()) setOpenSlug(undefined);
@@ -256,13 +276,20 @@ export default function LeagueScreen() {
         {/* Inside one event from the hub: a round back button where people
             look for one, and the event's name under the title so it's clear
             which event this is and that there's a level above it. */}
-        {!LEAGUE_LIVE && hubMode && openSlug && (
+        {!LEAGUE_LIVE && (hubMode || seriesHome) && openSlug && (
           <EventHubBackButton onPress={() => setOpenSlug(undefined)} />
         )}
         <View style={styles.titleBlock}>
           <Text style={styles.title}>{t('events:league.title')}</Text>
-          {!LEAGUE_LIVE && hubMode && openSlug && activeEvent && (
+          {!LEAGUE_LIVE && (hubMode || seriesHome) && openSlug && activeEvent && (
             <Text style={styles.titleSub} numberOfLines={1}>{activeEvent.name}</Text>
+          )}
+          {seriesHome && !openSlug && !!seriesSub && (
+            <Text style={styles.titleSub} numberOfLines={1}>
+              {seriesRest !== null
+                ? <><Text style={season.tint ? { color: BUTTER } : null}>{season.def.name}</Text>{seriesRest}</>
+                : seriesSub}
+            </Text>
           )}
         </View>
         <HeaderActions />
@@ -276,7 +303,19 @@ export default function LeagueScreen() {
            the between-events preview. Nothing while the list is still
            arriving, so a multi-event tab never flashes one event's page
            before the hub. */
-        eventsLoading && !openSlug ? null
+        seriesHome && !openSlug ? (
+          <SeriesHome
+            events={liveEvents}
+            eventRank={activeEvent && activeEvent.slug === liveEvents[0]?.slug ? eventBoard?.viewer?.rank ?? null : null}
+            onOpenEvent={slug => setOpenSlug(slug)}
+            onHeader={setSeriesSub}
+            focus={typeof focus === 'string' ? focus : undefined}
+            focusAt={typeof eventPinnedAt === 'string' ? eventPinnedAt : undefined}
+            bottomInset={insets.bottom}
+            onUnavailable={() => setSeriesGone(true)}
+          />
+        )
+        : eventsLoading && !openSlug ? null
         : showHub ? (
           <EventHub
             events={liveEvents}

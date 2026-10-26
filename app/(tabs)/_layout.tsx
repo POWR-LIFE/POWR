@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, StyleSheet, Text, View } from 'react-native';
+import { useSeason } from '@/components/series/season';
 
 import { colours, components, typography } from '@/constants/tokens';
 import { useHealthSync } from '@/hooks/useHealthSync';
@@ -35,12 +36,14 @@ export default function TabLayout() {
   // Live-event lifecycle pushed from the DB — the reveal turns every phone
   // over by itself. Above the tabs so it holds whichever tab is showing.
   useLiveEventSignals();
+  // While the Series is on for the member (always in dev): the tab bar wears the active Series season (components/series/season).
+  const { tint } = useSeason();
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, tint && { backgroundColor: tint.card, borderTopColor: tint.border }],
         tabBarShowLabel: false,
       }}
     >

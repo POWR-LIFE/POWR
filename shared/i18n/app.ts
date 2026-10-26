@@ -28,6 +28,7 @@ import enPermissions from './en/app/permissions.json';
 import enPoints from './en/app/points.json';
 import enProgress from './en/app/progress.json';
 import enRewards from './en/app/rewards.json';
+import enSeries from './en/app/series.json';
 import enSettings from './en/app/settings.json';
 import enShare from './en/app/share.json';
 import enSocial from './en/app/social.json';
@@ -51,6 +52,7 @@ import esPermissions from './es/app/permissions.json';
 import esPoints from './es/app/points.json';
 import esProgress from './es/app/progress.json';
 import esRewards from './es/app/rewards.json';
+import esSeries from './es/app/series.json';
 import esSettings from './es/app/settings.json';
 import esShare from './es/app/share.json';
 import esSocial from './es/app/social.json';
@@ -74,6 +76,7 @@ import frPermissions from './fr/app/permissions.json';
 import frPoints from './fr/app/points.json';
 import frProgress from './fr/app/progress.json';
 import frRewards from './fr/app/rewards.json';
+import frSeries from './fr/app/series.json';
 import frSettings from './fr/app/settings.json';
 import frShare from './fr/app/share.json';
 import frSocial from './fr/app/social.json';
@@ -103,6 +106,7 @@ export const APP_NAMESPACES = [
   'notifications',
   'inStore',
   'challenges',
+  'series',
 ] as const;
 export type AppNamespace = (typeof APP_NAMESPACES)[number];
 
@@ -131,6 +135,7 @@ export const APP_RESOURCES = {
     notifications: enNotifications,
     inStore: enInStore,
     challenges: enChallenges,
+    series: enSeries,
   },
   fr: {
     common: frCommon,
@@ -156,6 +161,7 @@ export const APP_RESOURCES = {
     notifications: frNotifications,
     inStore: frInStore,
     challenges: frChallenges,
+    series: frSeries,
   },
   es: {
     common: esCommon,
@@ -181,6 +187,7 @@ export const APP_RESOURCES = {
     notifications: esNotifications,
     inStore: esInStore,
     challenges: esChallenges,
+    series: esSeries,
   },
 } satisfies Record<string, Partial<Record<AppNamespace, object>>>;
 

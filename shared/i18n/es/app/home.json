@@ -44,6 +44,8 @@
     "weeks_one": "semana",
     "weeks_other": "semanas",
     "resets": "Se reinicia a medianoche",
+    "restFree": "Descanso libre · racha a salvo",
+    "restDay": "Día de descanso",
     "rescue": "SALVA TU RACHA · {{done}}/{{required}}",
     "rescueTimed_one": "SALVA TU RACHA · {{done}}/{{required}} · QUEDA {{count}} H",
     "rescueTimed_other": "SALVA TU RACHA · {{done}}/{{required}} · QUEDAN {{count}} H",
@@ -284,5 +286,76 @@
   "recapRange": {
     "sameMonth": "{{start}} – {{end}} {{month}}",
     "crossMonth": "{{start}} {{startMonth}} – {{end}} {{endMonth}}"
+  },
+  "drop": {
+    "title": "El Drop de hoy",
+    "nextIn": "Siguiente en",
+    "open": "Abre tu Drop",
+    "stepsToGo": "Pasos restantes",
+    "minutesToGo": "Min activos restantes",
+    "yours": "Es tuyo",
+    "targetHit": "Objetivo de hoy cumplido",
+    "voided": "Retirado",
+    "voidedSub": "El Drop de hoy se ha retirado",
+    "a11yRing": "Abrir el Drop de hoy",
+    "steps": "Pasos",
+    "minutes": "Min activos",
+    "of": "de {{value}}",
+    "thisWeek": "Esta semana",
+    "a11yWeek_one": "{{count}} Drop abierto esta semana",
+    "a11yWeek_other": "{{count}} Drops abiertos esta semana",
+    "opened_one": "{{count}} abierto",
+    "opened_other": "{{count}} abiertos",
+    "insideLead": "Puede contener",
+    "basis": {
+      "starter": "Objetivo inicial",
+      "recovery": "Más suave hoy",
+      "comeback": "Vuelta suave"
+    },
+    "inside": {
+      "points": "+{{amount}} POWR",
+      "vault": "+{{amount}} Vault"
+    },
+    "prize": {
+      "pointsUnit": "POWR",
+      "pointsDetail": "Añadidos a tu saldo.",
+      "vaultUnit": "POWR a tu Vault",
+      "vaultDetail_one": "Tuyos en {{count}} día.",
+      "vaultDetail_other": "Tuyos en {{count}} días.",
+      "partnerUnit": "Recompensa de socio",
+      "partnerDetail": "{{title}}. El código está en tu cartera.",
+      "partnerDetailNoTitle": "El código está en tu cartera.",
+      "partnerFallbackBrand": "Un socio de POWR"
+    },
+    "error": {
+      "not_yet": "Tu actividad aún no nos ha llegado. Espera un minuto y vuelve a intentarlo.",
+      "empty": "No hemos podido preparar el Drop de hoy. Estamos en ello, inténtalo más tarde.",
+      "error": "No se pudo conectar con POWR. Revisa tu conexión y vuelve a intentarlo.",
+      "off": "El Drop de hoy no está disponible."
+    },
+    "reveal": {
+      "kicker": "El Drop de hoy",
+      "subtitle": "Abierto moviéndote",
+      "hold": "Mantén para abrir",
+      "packing": "Preparando tu Drop…",
+      "earned": "Ganado, no regalado.",
+      "done": "Hecho",
+      "close": "Cerrar",
+      "wallet": "Ver la cartera",
+      "a11yOpen": "Abre tu Drop",
+      "a11yHint": "Mantén pulsado hasta que se llene la P"
+    },
+    "comeback": {
+      "kicker": "Vuelta",
+      "doubleUnit": "Tus primeros {{amount}} POWR de hoy",
+      "doubleBody_one": "{{count}} día de descanso. Pasa.\nMuévete hoy y cuenta doble.",
+      "doubleBody_other": "{{count}} días de descanso. Pasa.\nMuévete hoy y cuenta doble.",
+      "daysAway_one": "día fuera",
+      "daysAway_other": "días fuera",
+      "easyBody": "Pasa. El objetivo de hoy es más suave,\ncon un buen movimiento vuelves a arrancar.",
+      "go": "Vamos",
+      "fine": "Empieza hoy con un objetivo fácil.",
+      "doubleNote": "2× tus primeros {{amount}} POWR"
+    }
   }
 }

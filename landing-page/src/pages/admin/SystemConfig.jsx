@@ -42,6 +42,15 @@ const STEPPERS = {
     vault_bonus_athlete: { step: 10, min: 0, max: 1000, unit: 'pts' },
     vault_bonus_elite:   { step: 25, min: 0, max: 2000, unit: 'pts' },
     vault_bonus_legend:  { step: 50, min: 0, max: 5000, unit: 'pts' },
+    // POWR Drop targets. Whole numbers only here: drop_stretch and
+    // drop_comeback_share are decimals, so they stay plain inputs.
+    drop_starter_steps:       { step: 500, min: 1000, max: 20000, unit: 'steps' },
+    drop_steps_floor:         { step: 500, min: 1000, max: 15000, unit: 'steps' },
+    drop_steps_ceiling:       { step: 500, min: 2000, max: 30000, unit: 'steps' },
+    drop_starter_minutes:     { step: 5,   min: 5,    max: 120,   unit: 'min' },
+    drop_minutes_floor:       { step: 5,   min: 5,    max: 60,    unit: 'min' },
+    drop_minutes_ceiling:     { step: 5,   min: 10,   max: 180,   unit: 'min' },
+    drop_comeback_after_days: { step: 1,   min: 1,    max: 30,    unit: 'days' },
 };
 const clampStep = (n, { step, min, max }) => {
     const snapped = Math.round(n / step) * step;
@@ -81,6 +90,16 @@ const GROUPS = [
         keys: [
             'streak_rescue_enabled', 'streak_rescue_min_streak', 'streak_rescue_cooldown_days',
             'nudge_daily_cap', 'streak_at_risk_min_streak',
+        ],
+    },
+    {
+        id: 'drop', title: 'POWR Drop', icon: Sparkles, accent: '#6366F1',
+        blurb: 'The daily sealed reward. The switch, testers, launch date and prize pool live on the Drop page; the budget and how each member’s target is set are here. Keep each floor under its ceiling.',
+        keys: [
+            'drop_live', 'drop_testers', 'drop_launch_at', 'drop_daily_budget',
+            'drop_starter_steps', 'drop_starter_minutes', 'drop_stretch',
+            'drop_steps_floor', 'drop_steps_ceiling', 'drop_minutes_floor', 'drop_minutes_ceiling',
+            'drop_comeback_share', 'drop_comeback_after_days',
         ],
     },
     {
@@ -149,6 +168,19 @@ const LABELS = {
     creator_invite_threshold: 'Earned invite: converted referrals needed',
     creator_invite_window_days: 'Earned invite: counting window (0 = all time)',
     weekly_challenges: 'Weekly challenges',
+    drop_live: 'Drop switch',
+    drop_testers: 'Drop testers',
+    drop_launch_at: 'Drop launch date',
+    drop_daily_budget: 'Daily POWR budget',
+    drop_starter_steps: 'Starter target, steps',
+    drop_starter_minutes: 'Starter target, minutes',
+    drop_stretch: 'Stretch on a typical day',
+    drop_steps_floor: 'Lowest steps target',
+    drop_steps_ceiling: 'Highest steps target',
+    drop_minutes_floor: 'Lowest minutes target',
+    drop_minutes_ceiling: 'Highest minutes target',
+    drop_comeback_share: 'Comeback share of a typical day',
+    drop_comeback_after_days: 'Days away before a comeback',
 };
 
 // Unit suffix shown beside free-text numeric inputs (steppers carry their own).
@@ -166,6 +198,9 @@ const UNITS = {
     geofence_radius_m: 'm',
     creator_invite_threshold: 'referrals',
     creator_invite_window_days: 'days',
+    drop_daily_budget: 'POWR',
+    drop_stretch: '×',
+    drop_comeback_share: '×',
 };
 
 // Keys whose value is edited elsewhere — link out instead of a raw text box.
@@ -179,6 +214,13 @@ const MANAGED = {
     // app-load path, so hand-editing it in a 128px text box is a good way to
     // black out the Vault. The Vault page has a real editor with validation.
     vault_rollout: { to: '/admin/vault', cta: 'Edit on Vault' },
+    // The Series launch switch sits with the rest of the Series (rounds, prizes, pacers).
+    series_live:    { to: '/admin/series', cta: 'Edit on Series' },
+    series_testers: { to: '/admin/series', cta: 'Edit on Series' },
+    // The Drop's switch, testers and launch date sit with its prize pool.
+    drop_live:      { to: '/admin/drop', cta: 'Edit on Drop' },
+    drop_testers:   { to: '/admin/drop', cta: 'Edit on Drop' },
+    drop_launch_at: { to: '/admin/drop', cta: 'Edit on Drop' },
 };
 
 const prettyKey = (k) => k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -191,7 +233,8 @@ export default function SystemConfig() {
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState({}); // key -> new value
     const [saving, setSaving] = useState(null);
-    const [query, setQuery] = useState('');
+    // ?q= seeds the search, so other pages can link straight to their group.
+    const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
 
     useEffect(() => { fetchConfigs(); }, []);
 
