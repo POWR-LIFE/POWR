@@ -3,8 +3,9 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
+    cancelAnimation,
     Easing,
     type SharedValue,
     useAnimatedProps,
@@ -129,7 +130,6 @@ function LiveDropCard({ drop, settled, refresh, open }: {
         // Partner codes lead: something to use today is the strongest pull.
         inside: [...drop.could_be_inside]
             .sort((a, b) => Number(b.kind === 'partner') - Number(a.kind === 'partner'))
-            .slice(0, 3)
             .map(dropInsideLabel),
     };
 
@@ -200,7 +200,7 @@ function SimDropCard() {
         comebackDays: drop.comebackDays,
         doubleUpTo: COMEBACK_DOUBLE_UP_TO,
         resetAt,
-        inside: pool.slice(0, 3).map(r => `${r.headline} ${r.unit}`),
+        inside: pool.map(r => `${r.headline} ${r.unit}`),
     };
 
     return (
@@ -355,7 +355,7 @@ function DropCardBody({ view, onOpen, comeback, reveal }: {
                         <HomeNote icon="sparkles-outline" lead={t('home:drop.comeback.kicker')} text={t('home:drop.comeback.doubleNote', { amount: view.doubleUpTo })} tone="gold" />
                     )}
                     {phase === 'sealed' && view.inside.length > 0 && (view.comebackDays == null || view.doubleUpTo == null) && (
-                        <HomeNote icon="gift-outline" lead={t('home:drop.insideLead')} text={view.inside.join(' · ')} />
+                        <InsideTicker lead={t('home:drop.insideLead')} items={view.inside} />
                     )}
                 </HomeCard>
             </Animated.View>
@@ -379,6 +379,55 @@ function DropCardBody({ view, onOpen, comeback, reveal }: {
                 onOpened={reveal.onOpened}
                 onClose={reveal.onClose}
             />
+        </View>
+    );
+}
+
+/** Pixels a second the could-be-inside line slides: slow enough to read. */
+const TICKER_PX_S = 28;
+
+/**
+ * COULD BE INSIDE, then every prize in one line that slides right to left on
+ * a loop, so none is cut off. It only moves when the line is wider than the
+ * card; with Reduce Motion on it stays still and wraps instead.
+ */
+function InsideTicker({ lead, items }: { lead: string; items: string[] }) {
+    const [reduce, setReduce] = useState(false);
+    const [windowW, setWindowW] = useState(0);
+    const [copyW, setCopyW] = useState(0);
+    const x = useSharedValue(0);
+    useEffect(() => {
+        AccessibilityInfo.isReduceMotionEnabled().then(setReduce).catch(() => {});
+        const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduce);
+        return () => sub.remove();
+    }, []);
+    const loop = !reduce && windowW > 0 && copyW > windowW;
+    useEffect(() => {
+        cancelAnimation(x);
+        x.value = 0;
+        if (!loop) return undefined;
+        x.value = withRepeat(withTiming(-copyW, { duration: (copyW / TICKER_PX_S) * 1000, easing: Easing.linear }), -1, false);
+        return () => cancelAnimation(x);
+    }, [loop, copyW, x]);
+    const slide = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
+    const line = items.map((i) => i.toUpperCase()).join('  ·  ');
+    return (
+        <View style={s.ticker} accessible accessibilityLabel={`${lead}: ${items.join(', ')}`}>
+            <Ionicons name="gift-outline" size={12} color={HC.label} />
+            <Text style={[s.tickerText, { color: HC.label }]}>{lead.toUpperCase()}</Text>
+            <View style={s.tickerWindow} onLayout={(e) => setWindowW(e.nativeEvent.layout.width)}>
+                {reduce ? (
+                    <Text style={s.tickerText}>{line}</Text>
+                ) : (
+                    <Animated.View style={[s.tickerRow, slide]}>
+                        {/* One copy, measured; a second follows it so the loop has no gap. */}
+                        <Text style={s.tickerText} numberOfLines={1} onLayout={(e) => setCopyW(e.nativeEvent.layout.width)}>
+                            {loop ? `${line}  ·  ` : line}
+                        </Text>
+                        {loop && <Text style={s.tickerText} numberOfLines={1}>{`${line}  ·  `}</Text>}
+                    </Animated.View>
+                )}
+            </View>
         </View>
     );
 }
@@ -489,4 +538,9 @@ const s = StyleSheet.create({
     dot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5 },
     dotOn: { backgroundColor: GOLD, borderColor: GOLD },
     dotInner: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: GOLD },
+
+    ticker: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: -4 },
+    tickerWindow: { flex: 1, overflow: 'hidden' },
+    tickerRow: { flexDirection: 'row', alignSelf: 'flex-start' },
+    tickerText: { flexShrink: 0, fontFamily: fontFamily.medium, fontSize: 9.5, letterSpacing: 1.1, color: HC.text },
 });
