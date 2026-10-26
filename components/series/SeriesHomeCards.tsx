@@ -11,7 +11,7 @@ import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { kit } from '@/components/drop/cardKit';
 import { HomeCard, HomeNote, type HomeStat, HomeStats } from '@/components/home/HomeCard';
 import { trackTap } from '@/lib/analytics';
-import { seriesClock, seriesNum, seriesOrdinal } from '@/lib/api/series';
+import { crowdAt, seriesClock, seriesDate, seriesNum, seriesOrdinal } from '@/lib/api/series';
 import { inviteCodeLine } from '@/lib/eventInviteLink';
 import i18n, { getFormatLocale } from '@/lib/i18n';
 import { friendInviteLink } from '@/lib/social/friendCode';
@@ -59,9 +59,12 @@ export function countdown(ms: number): string {
  * one, when it starts and what gets you in the Draw; between rounds, where
  * you finished, whether you made the Draw, and the countdown to the next.
  *
- * While a round's invite period is on, it's the invite race instead: your
- * place, your friends in, the countdown, and INVITE A FRIEND as the one
- * button. Just the card: picking a city is left to the League for now.
+ * While a round's invite period is on, everyone is already in: the card
+ * leads with that, who's waiting at the start line (it grows towards the gun,
+ * as on the League) and the countdown, with INVITE A FRIEND as the one button.
+ * The invite race is an optional extra for Patient Zero, never a way onto the
+ * board: once you've brought a friend in, your race place shows instead.
+ * Never a dash or a 0. Just the card: picking a city is left to the League.
  */
 export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
     const { t } = useTranslation();
@@ -88,11 +91,18 @@ export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
             // dismissed
         }
     };
-    const items: HomeStat[] = inv
+    // Everyone's in. Not in the invite race (yet): the crowd at the line and
+    // that you're in; in it: your race place and friends in.
+    const offRace = inv != null && inv.me.rank == null;
+    const items: HomeStat[] = inv && offRace
         ? [
-            inv.me.rank != null
-                ? { value: seriesOrdinal(inv.me.rank), label: t('series:homeCards.yourPlace'), tone: 'gold' }
-                : { value: '—', label: t('series:homeCards.notOnIt') },
+            { value: seriesNum(crowdAt(inv, now)), label: t('series:homeCards.onStartLine') },
+            { value: t('series:homeCards.in'), label: t('series:homeCards.youreInRound', { round: c.roundName }), tone: 'green' },
+            clock,
+        ]
+        : inv
+        ? [
+            { value: seriesOrdinal(inv.me.rank!), label: t('series:homeCards.racePlace'), tone: 'gold' },
             {
                 value: `${inv.me.friends}`,
                 label: inv.me.joining > 0
@@ -118,16 +128,14 @@ export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
         ];
     const dress = useSeriesDress(
         c.season,
-        inv
-            ? t('series:homeCards.inviteRaceNext', { round: c.roundName })
+        inv && c.next
+            ? t('series:homeCards.roundStarts', { round: c.roundName, date: seriesDate(new Date(c.next.startsAt).toISOString()) })
             : upcoming ? t('series:homeCards.startingSoon', { round: c.roundName }) : t('series:homeCards.roundFinished', { round: c.roundName }),
     );
     return (
         <HomeCard
             {...dress}
-            title={inv
-                ? t('series:homeCards.inviteRaceTitle', { season: c.season })
-                : upcoming ? `${c.season} · ${c.roundName}` : t('series:homeCards.roundFinished', { round: c.roundName })}
+            title={upcoming ? `${c.season} · ${c.roundName}` : t('series:homeCards.roundFinished', { round: c.roundName })}
             onPress={() => openLeague(upcoming ? 'coming' : 'finished')}
             label={t('series:homeCards.a11y', { season: c.season, stats: items.map((x) => `${x.value} ${x.label}`).join('. ') })}
             action={inv && inv.me.code
@@ -135,7 +143,7 @@ export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
                 : !upcoming && c.winners ? { icon: 'trophy-outline', label: t('series:homeCards.winners'), onPress: () => openLeague('winners') } : undefined}
         >
             <HomeStats items={items} />
-            {inv && <HomeNote icon="people-outline" lead={t('series:homeCards.next')} text={inviteNext(inv)} />}
+            {inv && <HomeNote icon="people-outline" lead={t('series:homeCards.next')} text={offRace && inv.me.joining > 0 ? t('series:invite.joining', { n: seriesNum(inv.me.joining) }) : inviteNext(inv)} />}
         </HomeCard>
     );
 }
