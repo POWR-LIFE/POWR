@@ -215,14 +215,18 @@ export function StartLine({
             {invite && me ? (
                 <>
                     <Pressable onPress={onRace} style={({ pressed }) => [s.stats, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={t('series:start.raceA11y')}>
-                        <HomeStats items={[
-                            me.rank != null
-                                ? { value: seriesOrdinal(me.rank), label: t('series:start.yourPlace'), tone: 'gold' }
-                                : { value: '—', label: t('series:start.notOnIt') },
+                        {/* Everyone's in. The invite race is an optional extra for
+                            Patient Zero: in it, your place and friends; not, the round. */}
+                        <HomeStats items={me.rank != null ? [
+                            { value: seriesOrdinal(me.rank), label: t('series:start.racePlace'), tone: 'gold' },
                             { value: `${me.friends}`, label: me.joining ? t('series:start.friendsInJoining', { n: me.joining }) : t('series:start.friendsIn') },
-                            leader
-                                ? { value: `${leader.friends}`, label: leader.you ? t('series:start.youLead') : t('series:start.leads', { name: leader.name.split(' ')[0] }) }
-                                : { value: '0', label: t('series:start.nobody') },
+                            leader && !leader.you
+                                ? { value: `${leader.friends}`, label: t('series:start.leads', { name: leader.name.split(' ')[0] }) }
+                                : { value: seriesNum(days), label: t('series:start.roundDays') },
+                        ] : [
+                            { value: t('series:start.in'), label: t('series:start.youreIn', { round: roundName }), tone: 'green' },
+                            { value: seriesNum(days), label: t('series:start.roundDays') },
+                            { value: seriesNum(need), label: t('series:start.drawDays') },
                         ]} />
                     </Pressable>
                     <Pressable
