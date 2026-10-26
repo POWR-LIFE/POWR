@@ -57,6 +57,9 @@ import { useSeriesSim } from './useSeriesSim';
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 /** The games, in tab order (their labels are translated in the component). */
+/** Picking a city is hidden on the League for now (Jamie, 26 Oct): the start line's link and the City tab's picker. */
+const SHOW_CITY_PICK = false;
+
 const TABS: LensKey[] = ['overall', 'city', 'gym', 'friends'];
 /** Between rounds only the games that run all year stay open. */
 const ALL_YEAR: LensKey[] = ['gym', 'friends'];
@@ -399,7 +402,7 @@ export function SeriesHome({
             )}
             {sim.tab === 'city' && running && (
                 <>
-                    {v.cityPick && <CityPicker options={v.cityPick} onPick={pickCity} />}
+                    {SHOW_CITY_PICK && v.cityPick && <CityPicker options={v.cityPick} onPick={pickCity} />}
                     {v.open.city
                         ? <CityClash tabs={v.tabs} city={v.city} forming={v.cityForming} />
                         : v.locks.city && <LockedGame title={t('series:tabs.city.title')} lock={v.locks.city} onAction={onLockAction} />}
@@ -445,7 +448,7 @@ export function SeriesHome({
                     shift={crowdShift}
                     onInvite={() => { void invite(); }}
                     onRace={() => { trackTap('series_invite_race_open'); setSheet('race'); }}
-                    onCity={v.cityPick ? () => setSheet('city') : undefined}
+                    onCity={SHOW_CITY_PICK && v.cityPick ? () => setSheet('city') : undefined}
                     onStarted={() => {
                         setGunAt(null);
                         if (v.live) void live.refresh(); else sim.setInRound(true);
