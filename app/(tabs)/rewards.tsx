@@ -55,6 +55,10 @@ const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.35)';
 const DIM     = 'rgba(255,255,255,0.55)';
 
+// Doors are parked, even in __DEV__, until that work is finished. Set back to
+// DROP_PROTOTYPE to bring them back.
+const SHOW_REWARD_DOORS = false && DROP_PROTOTYPE;
+
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 type Category = 'ALL' | 'EAT' | 'MOVE' | 'MIND' | 'SLEEP';
@@ -411,7 +415,7 @@ export default function SpendScreen() {
         }
       >
         {/* Design scaffold — false outside __DEV__, see lib/dev/pitchPrototype. */}
-        {DROP_PROTOTYPE && <RewardDoors />}
+        {SHOW_REWARD_DOORS && <RewardDoors />}
 
         {!catalogueLoaded && !catalogueError ? (
           <View style={styles.keepMovingCenterWrap}>

@@ -1,5 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +10,8 @@ import { colours, fontFamily } from '@/constants/tokens';
 
 /**
  * Comeback — the first open after days away is an event, not a verdict.
- * Instead of meeting a dead streak, the member meets a doubled start. Shown
+ * Instead of meeting a dead streak, the member meets an easy start (and, in
+ * the dev sample, a doubled one — the live server has no 2× yet). Shown
  * once per lapse, then the Drop card carries it (COMEBACK badge, LIGHT as the
  * easy start). Same dark stage as the Drop reveal so the two feel like one
  * family, but a tap, not a hold: there's nothing to earn yet.
@@ -21,12 +23,14 @@ const MARK_H = 64;
 export interface ComebackWelcomeProps {
     visible: boolean;
     daysAway: number;
-    doubleUpTo: number;
+    /** The sample's 2× offer. Unset (live) = no offer: only the easier target. */
+    doubleUpTo?: number;
     onDone: () => void;
 }
 
 export function ComebackWelcome({ visible, daysAway, doubleUpTo, onDone }: ComebackWelcomeProps) {
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const fill = useSharedValue(0);
     const textIn = useSharedValue(0);
 
@@ -50,17 +54,25 @@ export function ComebackWelcome({ visible, daysAway, doubleUpTo, onDone }: Comeb
     return (
         <Modal visible={visible} animationType="fade" transparent={false} statusBarTranslucent onRequestClose={onDone}>
             <View style={[styles.screen, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }]}>
-                <Text style={styles.kicker}>COMEBACK</Text>
+                <Text style={styles.kicker}>{t('home:drop.comeback.kicker').toUpperCase()}</Text>
 
                 <View style={styles.stage}>
                     <DropMark height={MARK_H} fill={fill} stroke={1.2} tint={0.04} />
 
                     <Animated.View style={[styles.copy, textStyle]}>
-                        <Text style={styles.big}>2×</Text>
-                        <Text style={styles.unit}>YOUR FIRST {doubleUpTo} POWR TODAY</Text>
-                        <Text style={styles.body}>
-                            {daysAway} days off. It happens.{'\n'}Move today and it counts double.
-                        </Text>
+                        {doubleUpTo ? (
+                            <>
+                                <Text style={styles.big}>2×</Text>
+                                <Text style={styles.unit}>{t('home:drop.comeback.doubleUnit', { amount: doubleUpTo }).toUpperCase()}</Text>
+                                <Text style={styles.body}>{t('home:drop.comeback.doubleBody', { count: daysAway })}</Text>
+                            </>
+                        ) : (
+                            <>
+                                <Text style={styles.big}>{daysAway}</Text>
+                                <Text style={styles.unit}>{t('home:drop.comeback.daysAway', { count: daysAway }).toUpperCase()}</Text>
+                                <Text style={styles.body}>{t('home:drop.comeback.easyBody')}</Text>
+                            </>
+                        )}
                     </Animated.View>
                 </View>
 
@@ -68,12 +80,12 @@ export function ComebackWelcome({ visible, daysAway, doubleUpTo, onDone }: Comeb
                     <Pressable
                         onPress={onDone}
                         accessibilityRole="button"
-                        accessibilityLabel="Let’s go"
+                        accessibilityLabel={t('home:drop.comeback.go')}
                         style={({ pressed }) => [styles.btn, pressed && { opacity: 0.85 }]}
                     >
-                        <Text style={styles.btnText}>LET’S GO</Text>
+                        <Text style={styles.btnText}>{t('home:drop.comeback.go').toUpperCase()}</Text>
                     </Pressable>
-                    <Text style={styles.fine}>Start with an easy target today.</Text>
+                    <Text style={styles.fine}>{t('home:drop.comeback.fine')}</Text>
                 </Animated.View>
             </View>
         </Modal>

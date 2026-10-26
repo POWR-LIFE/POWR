@@ -177,6 +177,17 @@ const PATTERNS: Pattern[] = [
             ? i18n.t('points:transaction.attendedUnnamed')
             : i18n.t('points:transaction.attended', { event: m[1] }),
     },
+    // open_my_drop: 'POWR Drop'; admin_void_drop: 'POWR Drop taken back'
+    {
+        re: /^POWR Drop$/,
+        sources: ['drop'],
+        say: () => i18n.t('points:transaction.drop'),
+    },
+    {
+        re: /^POWR Drop taken back$/,
+        sources: ['drop_void'],
+        say: () => i18n.t('points:transaction.dropVoid'),
+    },
     // redeem-reward → spend_points: `Redeemed: ${reward.title}`
     {
         re: /^Redeemed: (.+)$/,
@@ -292,6 +303,7 @@ export function vaultDepositDescriptionLabel(
 ): string | null {
     const text = description?.trim();
     if (!text) return null;
+    if (source === 'drop') return i18n.t('rewards:vault.deposit.drop');
     if (source === 'admin_grant') {
         return text === POWR_DROP ? i18n.t('rewards:vault.deposit.powrDrop') : description!;
     }

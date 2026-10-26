@@ -268,6 +268,8 @@
     "togetherChallenge": "Défi Ensemble : {{title}} (+{{points}})",
     "togetherBonus_one": "Bonus Ensemble : {{title}} (+{{points}} · {{count}} ami)",
     "togetherBonus_other": "Bonus Ensemble : {{title}} (+{{points}} · {{count}} amis)",
-    "challengeFallback": "Défi"
+    "challengeFallback": "Défi",
+    "drop": "Drop POWR",
+    "dropVoid": "Drop POWR repris"
   }
 }

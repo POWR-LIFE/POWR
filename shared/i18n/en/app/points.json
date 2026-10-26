@@ -268,6 +268,8 @@
     "togetherChallenge": "Together challenge: {{title}} (+{{points}})",
     "togetherBonus_one": "Together bonus: {{title}} (+{{points}} · {{count}} friend)",
     "togetherBonus_other": "Together bonus: {{title}} (+{{points}} · {{count}} friends)",
-    "challengeFallback": "Challenge"
+    "challengeFallback": "Challenge",
+    "drop": "POWR Drop",
+    "dropVoid": "POWR Drop taken back"
   }
 }

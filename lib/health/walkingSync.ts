@@ -401,10 +401,11 @@ async function _syncWalkingNowImpl(): Promise<void> {
 // (the row otherwise freezes at that partial count forever). Idempotent: steps
 // only ever go up, and point top-ups award only the tier delta under that day's cap.
 
-// Run once per JS context: cheap to repeat (the unique index dedups), but no need
-// to re-scan a week of history on every foreground. Reset on failure so a later
-// trigger can retry.
-let _backfilledThisSession = false;
+// Run once per local day per JS context: cheap to repeat (the unique index
+// dedups), but no need to re-scan a week of history on every foreground. Reset
+// on failure so a later trigger can retry.
+let _backfilledFor: string | null = null;
+let _backfillInFlight: Promise<void> | null = null;
 
 /** Local midnight `i` days before today. */
 function startOfDaysAgo(i: number): Date {
@@ -419,10 +420,19 @@ function startOfDaysAgo(i: number): Date {
  * Best-effort and safe to call repeatedly. Phone-store read, so it covers the
  * phone-only users who have no wearable cloud push to top them up server-side.
  */
-export async function backfillWalkingDays(daysBack = 7): Promise<void> {
-    if (Platform.OS === 'web') return;
-    if (_backfilledThisSession) return;
-    _backfilledThisSession = true;
+export function backfillWalkingDays(daysBack = 7): Promise<void> {
+    if (Platform.OS === 'web') return Promise.resolve();
+    // A caller arriving mid-run waits for that run (the Drop's target reads
+    // what it writes), and a new day backfills again even in a long session.
+    if (_backfillInFlight) return _backfillInFlight;
+    const today = localDateKey(new Date());
+    if (_backfilledFor === today) return Promise.resolve();
+    _backfilledFor = today;
+    _backfillInFlight = backfillWalkingDaysImpl(daysBack).finally(() => { _backfillInFlight = null; });
+    return _backfillInFlight;
+}
+
+async function backfillWalkingDaysImpl(daysBack: number): Promise<void> {
     try {
         const activeId = await resolveActiveProviderId();
         const verification = verificationForProvider(activeId);
@@ -468,7 +478,7 @@ export async function backfillWalkingDays(daysBack = 7): Promise<void> {
         }
     } catch (e) {
         console.warn('[walkingSync] backfill failed:', e);
-        _backfilledThisSession = false; // allow a retry on the next trigger
+        _backfilledFor = null; // allow a retry on the next trigger
     }
 }
 

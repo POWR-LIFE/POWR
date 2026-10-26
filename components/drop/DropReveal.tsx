@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
     Easing,
@@ -20,7 +21,7 @@ import { colours, fontFamily } from '@/constants/tokens';
 import type { DropReward } from '@/lib/drop';
 
 /**
- * The reveal. No wheel, no confetti: the screen goes dark, a thin gold P
+ * The reveal. No wheel, no confetti: the screen goes dark, a thin white P
  * appears, and holding it fills it. Let go early and it drains — the hold is
  * the commitment, the same gesture as the Vault door. Full, it cracks along
  * its own gap and what's inside comes up where the P was.
@@ -30,6 +31,8 @@ const HOLD_MS = 1600;
 const TICK_MS = 260;
 const MARK_H = 150;
 const BG = '#070707';
+/** The P is white here, not gold — the gold is saved for what comes out of it. */
+const MARK = '#FFFFFF';
 
 export interface DropRevealProps {
     visible: boolean;
@@ -37,15 +40,21 @@ export interface DropRevealProps {
     kicker: string;
     /** Under HOLD TO OPEN: "Drop · opened by moving". */
     subtitle: string;
-    /** Decided before the hold starts; the hold only reveals it. */
+    /** Decided before the hold starts; the hold only reveals it. Null = still
+     *  on its way from the server: the hold waits for it. */
     reward: DropReward | null;
+    /** The open failed: shown instead of the P's prompt, with a close button. */
+    error?: string | null;
+    /** A second button beside DONE, e.g. the Wallet for a partner code. */
+    action?: { label: string; onPress: () => void } | null;
     /** The hold completed — the caller records the open. */
     onOpened: () => void;
     onClose: () => void;
 }
 
-export function DropReveal({ visible, kicker, subtitle, reward, onOpened, onClose }: DropRevealProps) {
+export function DropReveal({ visible, kicker, subtitle, reward, error, action, onOpened, onClose }: DropRevealProps) {
     const insets = useSafeAreaInsets();
+    const { t } = useTranslation();
     const [opened, setOpened] = useState(false);
     const ticks = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -92,7 +101,7 @@ export function DropReveal({ visible, kicker, subtitle, reward, onOpened, onClos
     }, [onOpened, flash, split, rewardIn]);
 
     const startHold = () => {
-        if (opened) return;
+        if (opened || !reward) return;
         Haptics.selectionAsync().catch(() => {});
         stopTicks();
         ticks.current = setInterval(() => {
@@ -136,7 +145,7 @@ export function DropReveal({ visible, kicker, subtitle, reward, onOpened, onClos
                 <View style={styles.topRow}>
                     <Text style={styles.kicker}>{kicker}</Text>
                     {!opened && (
-                        <Pressable onPress={onClose} hitSlop={14} accessibilityRole="button" accessibilityLabel="Close">
+                        <Pressable onPress={onClose} hitSlop={14} accessibilityRole="button" accessibilityLabel={t('home:drop.reveal.close')}>
                             <Ionicons name="close" size={20} color="rgba(255,255,255,0.35)" />
                         </Pressable>
                     )}
@@ -146,22 +155,28 @@ export function DropReveal({ visible, kicker, subtitle, reward, onOpened, onClos
                     style={styles.stage}
                     onPressIn={startHold}
                     onPressOut={endHold}
-                    disabled={opened}
+                    disabled={opened || !!error}
                     accessibilityRole="button"
-                    accessibilityLabel="Open your Drop"
-                    accessibilityHint="Press and hold until the P fills"
+                    accessibilityLabel={t('home:drop.reveal.a11yOpen')}
+                    accessibilityHint={t('home:drop.reveal.a11yHint')}
                 >
                     <Animated.View style={[{ width: markW, height: MARK_H }, markWrap]}>
-                        <DropMark height={MARK_H} fill={charge} split={split} stroke={1.2} tint={0.04} />
+                        <DropMark height={MARK_H} fill={charge} split={split} stroke={1.2} tint={0.04} color={MARK} />
                         <Animated.View pointerEvents="none" style={[styles.flash, { left: markW * DROP_GAP_X - 1, height: MARK_H * 1.25, top: -MARK_H * 0.125 }, flashStyle]} />
                     </Animated.View>
 
                     {/* Under the P, not at the screen's foot — the instruction
                         belongs to the object. Out of flow so the P stays centred. */}
-                    <Animated.View pointerEvents="none" style={[styles.promptWrap, { top: '50%', marginTop: MARK_H / 2 + 44 }, promptStyle]}>
-                        <Text style={styles.prompt}>HOLD TO OPEN</Text>
-                        <Text style={styles.promptSub}>{subtitle}</Text>
-                    </Animated.View>
+                    {error ? (
+                        <View pointerEvents="none" style={[styles.promptWrap, { top: '50%', marginTop: MARK_H / 2 + 44 }]}>
+                            <Text style={styles.errorText}>{error}</Text>
+                        </View>
+                    ) : (
+                        <Animated.View pointerEvents="none" style={[styles.promptWrap, { top: '50%', marginTop: MARK_H / 2 + 44 }, promptStyle]}>
+                            <Text style={styles.prompt}>{reward ? t('home:drop.reveal.hold') : t('home:drop.reveal.packing')}</Text>
+                            <Text style={styles.promptSub}>{subtitle}</Text>
+                        </Animated.View>
+                    )}
 
                     {reward && (
                         <Animated.View pointerEvents="none" style={[styles.reward, rewardStyle]}>
@@ -175,16 +190,38 @@ export function DropReveal({ visible, kicker, subtitle, reward, onOpened, onClos
                 <View style={styles.footer}>
                     {opened && (
                         <Animated.View style={[styles.doneWrap, doneStyle]}>
-                            <Text style={styles.earned}>Earned, not given.</Text>
-                            <Pressable
-                                onPress={onClose}
-                                accessibilityRole="button"
-                                accessibilityLabel="Done"
-                                style={({ pressed }) => [styles.doneBtn, pressed && { opacity: 0.85 }]}
-                            >
-                                <Text style={styles.doneText}>DONE</Text>
-                            </Pressable>
+                            <Text style={styles.earned}>{t('home:drop.reveal.earned')}</Text>
+                            <View style={styles.doneRow}>
+                                {action && (
+                                    <Pressable
+                                        onPress={action.onPress}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={action.label}
+                                        style={({ pressed }) => [styles.ghostBtn, pressed && { opacity: 0.7 }]}
+                                    >
+                                        <Text style={styles.ghostText}>{action.label.toUpperCase()}</Text>
+                                    </Pressable>
+                                )}
+                                <Pressable
+                                    onPress={onClose}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t('home:drop.reveal.done')}
+                                    style={({ pressed }) => [styles.doneBtn, pressed && { opacity: 0.85 }]}
+                                >
+                                    <Text style={styles.doneText}>{t('home:drop.reveal.done').toUpperCase()}</Text>
+                                </Pressable>
+                            </View>
                         </Animated.View>
+                    )}
+                    {!opened && error && (
+                        <Pressable
+                            onPress={onClose}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('home:drop.reveal.close')}
+                            style={({ pressed }) => [styles.ghostBtn, pressed && { opacity: 0.7 }]}
+                        >
+                            <Text style={styles.ghostText}>{t('home:drop.reveal.close').toUpperCase()}</Text>
+                        </Pressable>
                     )}
                 </View>
             </View>
@@ -201,7 +238,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         width: 2,
         borderRadius: 1,
-        backgroundColor: '#FFF6B0',
+        backgroundColor: MARK,
     },
     reward: { position: 'absolute', left: 0, right: 0, alignItems: 'center', paddingHorizontal: 12 },
     rewardHeadline: {
@@ -220,6 +257,10 @@ const styles = StyleSheet.create({
     promptSub: { fontFamily: fontFamily.light, fontSize: 11.5, color: 'rgba(255,255,255,0.35)' },
     doneWrap: { alignItems: 'center', gap: 14 },
     earned: { fontFamily: fontFamily.light, fontSize: 12, color: 'rgba(255,255,255,0.4)' },
+    doneRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     doneBtn: { backgroundColor: colours.accent, borderRadius: 20, paddingHorizontal: 34, paddingVertical: 11 },
+    ghostBtn: { borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 22, paddingVertical: 10 },
+    ghostText: { fontFamily: fontFamily.bold, fontSize: 12, letterSpacing: 1.5, color: '#F2F2F2' },
+    errorText: { fontFamily: fontFamily.light, fontSize: 13, lineHeight: 19, color: 'rgba(255,255,255,0.6)', textAlign: 'center', paddingHorizontal: 12 },
     doneText: { fontFamily: fontFamily.bold, fontSize: 12, letterSpacing: 1.5, color: colours.onAccent },
 });
