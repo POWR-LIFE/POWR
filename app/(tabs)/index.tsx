@@ -68,6 +68,10 @@ import { useWeeklyRecap } from '@/hooks/useWeeklyRecap';
 import { WeeklyRecapCard } from '@/components/home/WeeklyRecapCard';
 import { WeeklyRecapSheet } from '@/components/home/WeeklyRecapSheet';
 
+/** Home's "Together" and "This week" sections are hidden for now (Jamie, 26 Oct). Set back to true to show them. */
+const SHOW_TOGETHER = false;
+const SHOW_THIS_WEEK = false;
+
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
 const TEXT_MUTED = 'rgba(255,255,255,0.25)';
@@ -743,9 +747,8 @@ export default function HomeScreen() {
                 {DROP_PROTOTYPE && !seriesToday?.rival && <BeatMeCard youName={displayName} />}
 
                 {/* Shared "together" challenges — the social hero band. Collapses
-                    to a slim CTA when empty. Hidden while the Drop prototype is on
-                    (Crew Charge takes the social slot); real builds still show it. */}
-                {!DROP_PROTOTYPE && user?.user_metadata?.together_enabled !== false && (
+                    to a slim CTA when empty. Hidden for now (SHOW_TOGETHER). */}
+                {SHOW_TOGETHER && !DROP_PROTOTYPE && user?.user_metadata?.together_enabled !== false && (
                     <TogetherSection
                         deferred={!!pendingLevelUp || sessionModalVisible || rescueVisible}
                     />
@@ -771,9 +774,9 @@ export default function HomeScreen() {
                     />
                 )}
 
-                {/* "This week" — hidden while the Drop prototype is on (the Drop is
-                    the daily goal there). Real builds still show it. */}
-                {!DROP_PROTOTYPE && (
+                {/* "This week" — hidden for now (SHOW_THIS_WEEK); the Drop is the
+                    daily goal. */}
+                {SHOW_THIS_WEEK && !DROP_PROTOTYPE && (
                     <ChallengeCard
                         onTogether={(c) => router.push({ pathname: '/challenges', params: { create: '1', category: c.category } })}
                         challenges={weeklyChallenges}
