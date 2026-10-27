@@ -27,7 +27,7 @@ export function inviteNext(b: SeriesInviteBoard): string {
  * your code AND logged a workout); the ones still to work out show as joining.
  * Everyone with none yet is on the start line, never given a place among
  * people tied on zero. The top of it when the round starts is on course for
- * Patient Zero. Real members only.
+ * Squad Builder. Real members only.
  */
 export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInviteBoard; you: string; onInvite: () => void }) {
     const { t } = useTranslation();

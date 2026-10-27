@@ -21,7 +21,7 @@
     "leads": "{{name}} va primero ›",
     "inviteA11y": "Invitar a un amigo",
     "invite": "INVITA A UN AMIGO",
-    "fineRace": "Opcional: quien traiga más amigos gana Patient Zero · un amigo cuenta cuando entrena",
+    "fineRace": "Opcional: quien traiga más amigos gana Squad Builder · un amigo cuenta cuando entrena",
     "fineBoard": "La clasificación abre a medianoche. Cada entreno verificado cuenta.",
     "city": "Elige tu ciudad",
     "in": "Dentro",
@@ -31,7 +31,7 @@
     "drawDays": "Días para el Draw"
   },
   "invite": {
-    "bringOne": "Trae amigos para ir a por Patient Zero",
+    "bringOne": "Trae amigos para ir a por Squad Builder",
     "youLead": "Vas primero en la carrera de invitaciones",
     "youAre": "Vas {{place}}",
     "passes_one": "{{count}} amigo más y adelantas a {{name}}",
@@ -71,8 +71,8 @@
     "notNow": "Ahora no",
     "youreIn": "Estás dentro",
     "inSub": "{{season}} · {{round}}",
-    "pzEyebrow": "OPCIONAL · PATIENT ZERO",
-    "pzText": "Trae a más amigos que nadie y gana Patient Zero. Un amigo cuenta en cuanto entrena.",
+    "squadEyebrow": "OPCIONAL · SQUAD BUILDER",
+    "squadText": "Trae a más amigos que nadie y gana Squad Builder. Un amigo cuenta en cuanto entrena.",
     "invite": "INVITA A UN AMIGO",
     "done": "Listo",
     "closeA11y": "Cerrar",
@@ -314,7 +314,7 @@
     "inviteRace": {
       "light": "La carrera de ",
       "bold": "invitaciones",
-      "note": "Un amigo cuenta cuando se une con tu código y registra un entreno. Con más amigos que nadie antes de The Gun, vas camino de Patient Zero."
+      "note": "Un amigo cuenta cuando se une con tu código y registra un entreno. Con más amigos que nadie antes de The Gun, vas camino de Squad Builder."
     },
     "citySheet": {
       "light": "Tu ",
@@ -363,8 +363,6 @@
       "boostLine": "Los momentos de la ronda: nunca se acumulan",
       "drawLine": "Un sorteo: muévete {{need}} de los {{days}} días",
       "blindLine": "Todos los puestos ocultos mientras dure",
-      "bounty": "El Bounty",
-      "bountyLine": "Ponte en cabeza para reclamarlo · gana quien más lo reclame",
       "one": "Un premio por persona",
       "oneLine": "Si ganas dos, el siguiente se lleva el otro",
       "prizesLink": "Lo que puedes ganar"
@@ -461,45 +459,33 @@
   "prizes": {
     "tba": "Por anunciar",
     "topPlacesWin": "Los primeros puestos ganan premios",
-    "mostWanted": {
-      "short": "Más recompensas cobradas",
-      "how": "Quien va primero lleva una recompensa. Ponte en cabeza y es tuya. Gana quien más cobre.",
-      "unit_one": "{{count}} recompensa",
-      "unit_other": "{{count}} recompensas"
+    "squadBuilder": {
+      "short": "Más amigos traídos",
+      "how": "Más amigos que se unan con tu código antes de la ronda o durante The Plague. Cada uno cuenta cuando registra un entreno.",
+      "unit_one": "{{count}} amigo",
+      "unit_other": "{{count}} amigos"
     },
-    "hotStreak": {
+    "unbreakable": {
       "short": "Más días seguidos",
       "how": "La racha más larga de días seguidos con una sesión que cuente.",
       "unit_one": "{{count}} día seguido",
       "unit_other": "{{count}} días seguidos"
     },
-    "biggestMover": {
+    "levelUp": {
       "short": "Más puestos escalados desde el día 3",
       "how": "Quien más puestos escale entre el final del día 3 y la meta.",
       "unit_one": "▲{{n}} puesto",
       "unit_other": "▲{{n}} puestos"
     },
-    "underdog": {
-      "short": "Mejor final desde la mitad de abajo",
-      "how": "¿En la mitad de abajo a mitad de ronda? Quien acabe más arriba desde ahí se lo lleva."
-    },
-    "patientZero": {
-      "short": "Más amigos traídos durante The Plague",
-      "how": "Más amigos que se unan con tu código durante The Plague. Cada uno cuenta cuando registra un entreno.",
-      "unit_one": "{{count}} amigo",
-      "unit_other": "{{count}} amigos"
-    },
-    "photoFinish": {
-      "short": "Más puntos el último día",
-      "how": "Más puntos Series el último día de la ronda.",
+    "rookie": {
+      "short": "Mejor recién llegado a POWR",
+      "how": "¿Llegaste a POWR en los 30 días antes de la ronda, o durante ella? Gana el recién llegado con más puntos Series.",
       "unit": "{{n}} pts"
     },
     "status": {
       "notStarted": "SIN EMPEZAR",
       "hiddenBlind": "OCULTO EN BLIND MODE",
       "countsFrom": "CUENTA DESDE EL DÍA {{day}}",
-      "lastDay": "EL ÚLTIMO DÍA",
-      "noBounties": "AÚN SIN RECOMPENSAS",
       "nobody": "AÚN NADIE",
       "youLead": "LIDERAS · {{unit}}",
       "youreBehind": "VAS {{ord}} · {{name}} LIDERA",
@@ -517,8 +503,8 @@
       "moreDays_other": "{{count}} días activos más y estás dentro"
     },
     "top3": {
-      "alsoRunnerUp": "Runner-up también gana",
-      "alsoPodium": "Runner-up y Podium también ganan",
+      "alsoContender": "Contender también gana",
+      "alsoChallenger": "Contender y Challenger también ganan",
       "notYet": "Los puestos cuentan desde el primer día de la ronda",
       "blind": "Los puestos están ocultos mientras dura Blind Mode",
       "rankOf": "Vas #{{rank}} de {{total}}"

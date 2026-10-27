@@ -49,7 +49,7 @@ import {
 } from '@/lib/dev/seriesPrototype';
 
 /** A session that just landed on a lane: drives the green "+N" and the row flash. */
-export type Hit = { key: number; pts: number; old: number; x2: boolean; ember?: boolean };
+export type Hit = { key: number; pts: number; old: number; x2: boolean };
 export type Toast = { key: number; text: string; tone: 'gold' | 'ember' };
 export type RecapLine = { icon: string; text: string; tone: 'green' | 'red' | 'gold' | 'muted' };
 type LaneRow = Extract<Row, { type: 'lane' }>;
@@ -239,14 +239,13 @@ function land(p: Person, o: { act?: ActKey; min?: number; pts?: number } = {}) {
     const meBefore = before.find((k) => k.p.you)!.rank;
     const heatBefore = heatInfo(m0);
     const rankBefore = before.find((k) => k.p === p)?.rank ?? 0;
-    const leaderBefore = b.segs[0].people[0];
     const act = o.act ?? pickAct(m0, p);
     const A = ACTS[act];
     const min = o.min ?? Math.round(A.min[0] + m0.rnd() * (A.min[1] - A.min[0]));
     // Your Drop's 2× Series points, for an hour after you open it: on top of
     // what you hold, still capped at ×2.
     const dropDouble = p.you && seriesDoubleLeft(getDropState()) > 0;
-    const m = Math.min(2, multOf(p, rankBefore, b, st, m0.bounty.live, act) * (dropDouble ? 2 : 1));
+    const m = Math.min(2, multOf(p, rankBefore, st, act) * (dropDouble ? 2 : 1));
     const pts = o.pts ?? Math.max(1, Math.round(min * A.ppm * m0.k * m));
     const tw = twins(p).map((x) => ({ x, old: x.pts }));
     tw.forEach(({ x }) => { x.pts += pts; x.today += pts; x.totalEarned += pts; });
@@ -282,18 +281,6 @@ function land(p: Person, o: { act?: ActKey; min?: number; pts?: number } = {}) {
             const n = meBefore - meAfter;
             showToast(`+${n} PLACE${n > 1 ? 'S' : ''} · YOU PASSED ${(passed?.p.name ?? '').toUpperCase()}`);
         }
-    }
-    // Taking the lead claims the bounty: one more for Most Wanted, never points.
-    // The new leader carries it now. Paused in Blind Mode, like the server.
-    const leaderAfter = b.segs[0].people[0];
-    if (st !== 'blind' && leaderAfter !== leaderBefore) {
-        const who = leaderAfter.you ? 'you' : leaderAfter.name;
-        m0.bounty = {
-            ...m0.bounty, claimedBy: leaderAfter.name, from: leaderBefore.name,
-            claims: { ...m0.bounty.claims, [who]: (m0.bounty.claims[who] ?? 0) + 1 },
-        };
-        twins(leaderAfter).forEach((x) => { markHit(x.id, { key: ++seq, pts: 0, old: x.pts, x2: false, ember: true }, 2200); });
-        if (tapped()) showToast(`BOUNTY CLAIMED · ${leaderAfter.name.toUpperCase()} TOOK THE LEAD`, 'ember');
     }
     emit();
 }
@@ -546,18 +533,6 @@ export const seriesSim = {
         if (isDark(S.state, above.rank, above.p)) { showToast('THE ONE ABOVE YOU IS SEALED'); return; }
         land(me.p, { act: 'walk', min: 34, pts: above.p.pts - me.p.pts + Math.round((3 + S.model.rnd() * 15) * S.model.k * 2) + 1 });
     },
-    claimBounty() {
-        const m0 = S.model;
-        if (S.state === 'blind') { showToast('THE BOUNTY IS HIDDEN IN BLIND MODE'); return; }
-        fromTap(4500);
-        if (S.tab !== 'overall') seriesSim.setTab('overall');
-        const [a, c] = race().segs[0].people;
-        // Fast-forward a few days: #2 has closed the gap, then lands the session that passes.
-        const target = a.pts - Math.round(48 * m0.k);
-        twins(c).forEach((x) => { x.pts = target; });
-        emit();
-        setTimeout(() => land(c, { act: 'run', min: 41, pts: Math.round(140 * m0.k) }), 1100);
-    },
     acceptDuel() {
         const iv = S.tabs.duel.invite;
         if (!iv) return;
@@ -682,7 +657,7 @@ export function useSeriesSim(active: boolean) {
         /** Series points `minutes` of walking (steps route) or training (active minutes) would earn you now. */
         gainFor: (minutes: number, route: 'steps' | 'minutes') => {
             const act: ActKey = route === 'steps' ? 'walk' : 'run';
-            const m = Math.min(2, multOf(me.p, me.rank, board, S.state, S.model.bounty.live, act) * (seriesDoubleLeft(drop) > 0 ? 2 : 1));
+            const m = Math.min(2, multOf(me.p, me.rank, S.state, act) * (seriesDoubleLeft(drop) > 0 ? 2 : 1));
             return Math.round(ACTS[act].ppm * S.model.k * m * minutes);
         },
     };

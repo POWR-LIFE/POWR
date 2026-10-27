@@ -241,7 +241,7 @@ export function StartLine({
                 <>
                     <Pressable onPress={onRace} style={({ pressed }) => [s.stats, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={t('series:start.raceA11y')}>
                         {/* Everyone's in. The invite race is an optional extra for
-                            Patient Zero: in it, your place and friends; not, the round. */}
+                            Squad Builder: in it, your place and friends; not, the round. */}
                         <HomeStats items={me.rank != null ? [
                             { value: seriesOrdinal(me.rank), label: t('series:start.racePlace'), tone: 'gold' },
                             { value: `${me.friends}`, label: me.joining ? t('series:start.friendsInJoining', { n: me.joining }) : t('series:start.friendsIn') },

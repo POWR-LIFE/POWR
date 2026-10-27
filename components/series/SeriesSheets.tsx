@@ -137,12 +137,12 @@ export function InfoList({ rows, onRowLayout }: { rows: InfoRow[]; onRowLayout?:
 
 /** How the Series works, in six lines. What you can win has its own drawer. */
 export function RulesSheet({
-    visible, onClose, onPrizes, live = false, days = 15, need = 10, when = '16 Nov', boosts = false, blindMode = false, heat = null, mostWanted = false,
+    visible, onClose, onPrizes, live = false, days = 15, need = 10, when = '16 Nov', boosts = false, blindMode = false, heat = null,
 }: {
     visible: boolean;
     onClose: () => void;
     onPrizes?: () => void;
-    /** Live data: only the rules the server runs (no boosts, Blind Mode or bounty yet). */
+    /** Live data: only the rules the server runs (boosts and Blind Mode when the round has them). */
     live?: boolean;
     days?: number;
     need?: number;
@@ -153,8 +153,6 @@ export function RulesSheet({
     blindMode?: boolean;
     /** Your heat, when there is one: it leads the list. */
     heat?: HeatMeta | null;
-    /** The round has Most Wanted, so the bounty is on. */
-    mostWanted?: boolean;
 }) {
     const { t } = useTranslation();
     // The heat rows and the !live lines are sample-only (the server has no heats yet).
@@ -181,7 +179,6 @@ export function RulesSheet({
             key: 'blind', icon: 'eye-off-outline' as const, title: 'Blind Mode',
             line: live ? t('series:sheets.rules.blindLine') : 'Every rank hidden for 48 hours',
         }]),
-        ...(mostWanted ? [{ key: 'bounty', icon: 'locate-outline' as const, title: t('series:sheets.rules.bounty'), line: t('series:sheets.rules.bountyLine'), tone: 'ember' as const }] : []),
         { key: 'one', icon: 'gift-outline', title: t('series:sheets.rules.one'), line: t('series:sheets.rules.oneLine') },
     ];
     return (

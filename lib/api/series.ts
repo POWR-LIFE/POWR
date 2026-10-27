@@ -118,10 +118,12 @@ export async function challengeFriend(friendId: string): Promise<void> {
 }
 
 /**
- * The round's named prizes (20261025120000), in the order they're given out:
+ * The round's named prizes (20261027150000), in the order they're given out:
  * one prize each, so whoever already holds one is passed over for the next.
+ * The kinds are the server's keys; the names on screen are Squad Builder,
+ * Unbreakable, Level Up and Rookie of the Series (NAMED in SeriesPrizes).
  */
-export const NAMED_PRIZES = ['most_wanted', 'hot_streak', 'biggest_mover', 'underdog', 'patient_zero', 'photo_finish'] as const;
+export const NAMED_PRIZES = ['patient_zero', 'hot_streak', 'biggest_mover', 'rookie'] as const;
 export type NamedPrize = (typeof NAMED_PRIZES)[number];
 
 /** A round's prize, as set in /admin/series (series_prizes). */
@@ -191,7 +193,7 @@ export type SeriesResults = {
 
 /**
  * The invite board (get_series_invite_board, 20261026120000): before a round,
- * a race on friends brought in, counting towards its Patient Zero. A friend
+ * a race on friends brought in, counting towards its Squad Builder. A friend
  * counts once they've joined with your code and logged a verified workout;
  * `joining` = signed up, not yet moved. `open` = the invite period is on.
  */
@@ -258,9 +260,9 @@ export async function fetchSeriesResults(): Promise<SeriesResults | null> {
 
 /**
  * Who's on course for one prize (get_series_prize_race). `score` and `detail`
- * mean what the prize counts: bounties, days in a row, places climbed (detail:
- * where you started), your place now (detail: your place at halfway), friends
- * brought in, points on the last day. `sealed` = hidden while Blind Mode is on.
+ * mean what the prize counts: friends brought in, days in a row, places climbed
+ * (detail: where you started), a newcomer's points. `sealed` = hidden while
+ * Blind Mode is on.
  */
 export type PrizeRaceEntry = {
     kind: 'place' | NamedPrize;

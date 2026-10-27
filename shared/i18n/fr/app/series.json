@@ -21,7 +21,7 @@
     "leads": "{{name}} mène ›",
     "inviteA11y": "Inviter un ami",
     "invite": "INVITE UN AMI",
-    "fineRace": "En option : le plus d’amis gagne Patient Zero · un ami compte dès qu’il s’entraîne",
+    "fineRace": "En option : le plus d’amis gagne Squad Builder · un ami compte dès qu’il s’entraîne",
     "fineBoard": "Le classement ouvre à minuit. Chaque séance vérifiée compte.",
     "city": "Choisis ta ville",
     "in": "Dedans",
@@ -31,7 +31,7 @@
     "drawDays": "Jours pour le Draw"
   },
   "invite": {
-    "bringOne": "Invite des amis pour viser Patient Zero",
+    "bringOne": "Invite des amis pour viser Squad Builder",
     "youLead": "Tu mènes la course aux invitations",
     "youAre": "Tu es {{place}}",
     "passes_one": "{{count}} ami de plus et tu dépasses {{name}}",
@@ -71,8 +71,8 @@
     "notNow": "Pas maintenant",
     "youreIn": "Tu es dedans",
     "inSub": "{{season}} · {{round}}",
-    "pzEyebrow": "EN OPTION · PATIENT ZERO",
-    "pzText": "Fais venir le plus d’amis et gagne Patient Zero. Un ami compte dès qu’il s’est entraîné.",
+    "squadEyebrow": "EN OPTION · SQUAD BUILDER",
+    "squadText": "Fais venir le plus d’amis et gagne Squad Builder. Un ami compte dès qu’il s’est entraîné.",
     "invite": "INVITE UN AMI",
     "done": "Terminé",
     "closeA11y": "Fermer",
@@ -314,7 +314,7 @@
     "inviteRace": {
       "light": "La course aux ",
       "bold": "invitations",
-      "note": "Un ami compte dès qu’il s’inscrit avec ton code et enregistre une séance. Avec le plus d’amis avant The Gun, tu es en route pour Patient Zero."
+      "note": "Un ami compte dès qu’il s’inscrit avec ton code et enregistre une séance. Avec le plus d’amis avant The Gun, tu es en route pour Squad Builder."
     },
     "citySheet": {
       "light": "Ta ",
@@ -363,8 +363,6 @@
       "boostLine": "Les moments de la manche : jamais cumulés",
       "drawLine": "Un tirage au sort : bouge {{need}} jours sur {{days}}",
       "blindLine": "Tous les rangs masqués tant qu’il est actif",
-      "bounty": "Le Bounty",
-      "bountyLine": "Prends la tête pour le décrocher · le plus de prises l’emporte",
       "one": "Un prix chacun",
       "oneLine": "Si tu en gagnes deux, le suivant prend l’autre",
       "prizesLink": "Ce que tu peux gagner"
@@ -461,45 +459,33 @@
   "prizes": {
     "tba": "À annoncer",
     "topPlacesWin": "Les premières places gagnent des prix",
-    "mostWanted": {
-      "short": "Le plus de primes récupérées",
-      "how": "Qui mène porte une prime. Prends la tête et elle est à toi. Le plus de primes l’emporte.",
-      "unit_one": "{{count}} prime",
-      "unit_other": "{{count}} primes"
+    "squadBuilder": {
+      "short": "Le plus d’amis amenés",
+      "how": "Le plus d’amis qui s’inscrivent avec ton code avant la manche ou pendant The Plague. Chacun compte dès qu’il enregistre une séance.",
+      "unit_one": "{{count}} ami",
+      "unit_other": "{{count}} amis"
     },
-    "hotStreak": {
+    "unbreakable": {
       "short": "Le plus de jours d’affilée",
       "how": "La plus longue série de jours d’affilée avec une séance qui compte.",
       "unit_one": "{{count}} jour d’affilée",
       "unit_other": "{{count}} jours d’affilée"
     },
-    "biggestMover": {
+    "levelUp": {
       "short": "Le plus de places gagnées depuis le jour 3",
       "how": "Le plus de places gagnées entre la fin du jour 3 et l’arrivée.",
       "unit_one": "▲{{n}} place",
       "unit_other": "▲{{n}} places"
     },
-    "underdog": {
-      "short": "Meilleure fin depuis la moitié basse",
-      "how": "Dans la moitié basse à mi-parcours ? Qui finit le plus haut à partir de là l’emporte."
-    },
-    "patientZero": {
-      "short": "Le plus d’amis amenés pendant The Plague",
-      "how": "Le plus d’amis qui s’inscrivent avec ton code pendant The Plague. Chacun compte dès qu’il enregistre une séance.",
-      "unit_one": "{{count}} ami",
-      "unit_other": "{{count}} amis"
-    },
-    "photoFinish": {
-      "short": "Le plus de points le dernier jour",
-      "how": "Le plus de points Series le dernier jour de la manche.",
+    "rookie": {
+      "short": "Le meilleur nouveau venu sur POWR",
+      "how": "Arrivé sur POWR dans les 30 jours avant la manche, ou pendant ? Le nouveau venu avec le plus de points Series l’emporte.",
       "unit": "{{n}} pts"
     },
     "status": {
       "notStarted": "PAS ENCORE COMMENCÉ",
       "hiddenBlind": "MASQUÉ EN BLIND MODE",
       "countsFrom": "COMPTE DÈS LE JOUR {{day}}",
-      "lastDay": "LE DERNIER JOUR",
-      "noBounties": "AUCUNE PRIME POUR L’INSTANT",
       "nobody": "PERSONNE POUR L’INSTANT",
       "youLead": "TU MÈNES · {{unit}}",
       "youreBehind": "TU ES {{ord}} · {{name}} MÈNE",
@@ -517,8 +503,8 @@
       "moreDays_other": "encore {{count}} jours actifs pour en être"
     },
     "top3": {
-      "alsoRunnerUp": "Runner-up gagne aussi",
-      "alsoPodium": "Runner-up et Podium gagnent aussi",
+      "alsoContender": "Contender gagne aussi",
+      "alsoChallenger": "Contender et Challenger gagnent aussi",
       "notYet": "Les places comptent dès le premier jour de la manche",
       "blind": "Les rangs sont masqués pendant Blind Mode",
       "rankOf": "Tu es #{{rank}} sur {{total}}"

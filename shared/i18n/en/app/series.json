@@ -21,7 +21,7 @@
     "leads": "{{name}} leads ›",
     "inviteA11y": "Invite a friend",
     "invite": "INVITE A FRIEND",
-    "fineRace": "Optional: most friends wins Patient Zero · a friend counts once they work out",
+    "fineRace": "Optional: most friends wins Squad Builder · a friend counts once they work out",
     "fineBoard": "The board opens at midnight. Every verified session counts.",
     "city": "Pick the city you move for",
     "in": "In",
@@ -31,7 +31,7 @@
     "drawDays": "Days for the Draw"
   },
   "invite": {
-    "bringOne": "Bring friends to race for Patient Zero",
+    "bringOne": "Bring friends to race for Squad Builder",
     "youLead": "You lead the invite race",
     "youAre": "You’re {{place}}",
     "passes_one": "{{count}} more friend passes {{name}}",
@@ -71,8 +71,8 @@
     "notNow": "Not now",
     "youreIn": "You’re in",
     "inSub": "{{season}} · {{round}}",
-    "pzEyebrow": "OPTIONAL · PATIENT ZERO",
-    "pzText": "Bring the most friends and win Patient Zero. A friend counts once they’ve worked out.",
+    "squadEyebrow": "OPTIONAL · SQUAD BUILDER",
+    "squadText": "Bring the most friends and win Squad Builder. A friend counts once they’ve worked out.",
     "invite": "INVITE A FRIEND",
     "done": "Done",
     "closeA11y": "Close",
@@ -314,7 +314,7 @@
     "inviteRace": {
       "light": "The invite ",
       "bold": "race",
-      "note": "A friend counts once they join with your code and log a workout. Most friends by the gun is on course for Patient Zero."
+      "note": "A friend counts once they join with your code and log a workout. Most friends by the gun is on course for Squad Builder."
     },
     "citySheet": {
       "light": "Your ",
@@ -363,8 +363,6 @@
       "boostLine": "The round’s moments: they never stack",
       "drawLine": "A draw: be active on {{need}} of the {{days}} days",
       "blindLine": "Every rank hidden while it’s on",
-      "bounty": "The bounty",
-      "bountyLine": "Take the lead to claim it · most claims wins",
       "one": "One prize each",
       "oneLine": "Win two and the next in line takes the other",
       "prizesLink": "What you can win"
@@ -461,45 +459,33 @@
   "prizes": {
     "tba": "To be announced",
     "topPlacesWin": "The top places win prizes",
-    "mostWanted": {
-      "short": "Most bounties claimed",
-      "how": "Whoever leads carries a bounty. Take the lead and you’ve claimed it. Most claims wins.",
-      "unit_one": "{{count}} bounty",
-      "unit_other": "{{count}} bounties"
+    "squadBuilder": {
+      "short": "Most friends brought in",
+      "how": "The most friends who join with your code before the round or during The Plague. Each counts once they log a workout.",
+      "unit_one": "{{count}} friend",
+      "unit_other": "{{count}} friends"
     },
-    "hotStreak": {
+    "unbreakable": {
       "short": "Most days in a row",
       "how": "The longest run of days in a row with a session that counts.",
       "unit_one": "{{count}} day in a row",
       "unit_other": "{{count}} days in a row"
     },
-    "biggestMover": {
+    "levelUp": {
       "short": "Most places climbed from day 3",
       "how": "The most places climbed between the end of day 3 and the finish.",
       "unit_one": "▲{{n}} place",
       "unit_other": "▲{{n}} places"
     },
-    "underdog": {
-      "short": "Best finish from the bottom half",
-      "how": "In the bottom half at halfway? Whoever finishes highest from there wins it."
-    },
-    "patientZero": {
-      "short": "Most friends brought in during The Plague",
-      "how": "The most friends who join with your code during The Plague. Each counts once they log a workout.",
-      "unit_one": "{{count}} friend",
-      "unit_other": "{{count}} friends"
-    },
-    "photoFinish": {
-      "short": "Most points on the last day",
-      "how": "The most Series points on the round’s last day.",
+    "rookie": {
+      "short": "Best newcomer to POWR",
+      "how": "Joined POWR in the 30 days before the round, or during it? The newcomer with the most Series points wins.",
       "unit": "{{n}} pts"
     },
     "status": {
       "notStarted": "NOT STARTED",
       "hiddenBlind": "HIDDEN IN BLIND MODE",
       "countsFrom": "COUNTS FROM DAY {{day}}",
-      "lastDay": "ON THE LAST DAY",
-      "noBounties": "NO BOUNTIES YET",
       "nobody": "NOBODY YET",
       "youLead": "YOU LEAD · {{unit}}",
       "youreBehind": "YOU’RE {{ord}} · {{name}} LEADS",
@@ -517,8 +503,8 @@
       "moreDays_other": "{{count}} more active days gets you in"
     },
     "top3": {
-      "alsoRunnerUp": "Runner-up win too",
-      "alsoPodium": "Runner-up and Podium win too",
+      "alsoContender": "Contender wins too",
+      "alsoChallenger": "Contender and Challenger win too",
       "notYet": "Places count from the first day of the round",
       "blind": "Ranks are hidden while Blind Mode is on",
       "rankOf": "You’re #{{rank}} of {{total}}"
