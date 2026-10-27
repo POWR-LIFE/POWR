@@ -1,3 +1,4 @@
+import type { Honour } from '@/constants/honours';
 import type { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
@@ -268,12 +269,13 @@ export function fromSim(sim: Sim, name = 'Autumn Series'): SeriesView {
 }
 
 const person = (
-    r: { user_id: string; name: string; points: number; today: number; country?: string | null },
+    r: { user_id: string; name: string; points: number; today: number; country?: string | null; honours?: Honour[] },
     rankMid: number,
     you: boolean,
 ): Person => ({
     id: r.user_id, name: r.name, pts: r.points, today: r.today, mid: rankMid, title: null, mult: 1,
     act: 'walk', city: '', you, event: false, totalEarned: 0, flag: r.country ?? undefined,
+    honours: r.honours ?? [],
 });
 
 /** The rows the server sent (top 3 + around you) as runs of consecutive ranks. */

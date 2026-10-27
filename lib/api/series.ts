@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
+import type { Honour, HonourKind, HonourTier } from '@/constants/honours';
 import i18n, { getFormatLocale } from '@/lib/i18n';
 import { supabase } from '@/lib/supabase';
 
@@ -20,6 +21,8 @@ export type SeriesRow = {
     you: boolean;
     /** Their ISO country code, for the flag (null = not known yet). */
     country: string | null;
+    /** What they've earned (get_honours, 20261027180000): attached after the board arrives. */
+    honours?: Honour[];
 };
 
 /**
@@ -83,7 +86,28 @@ export type SeriesBoard = {
 export async function fetchSeriesBoard(): Promise<SeriesBoard | null> {
     const { data, error } = await supabase.rpc('get_series_board');
     if (error) throw error;
-    return (data as SeriesBoard | null) ?? null;
+    const board = (data as SeriesBoard | null) ?? null;
+    if (board) await attachHonours(board);
+    return board;
+}
+
+/**
+ * The honours of everyone on the board, in one call. A server without
+ * get_honours (or any error) just leaves the rows as they came: the icons
+ * are an extra, never the reason a board fails to show.
+ */
+async function attachHonours(board: SeriesBoard): Promise<void> {
+    const ids = board.rows.map((r) => r.user_id);
+    if (ids.length === 0) return;
+    const { data, error } = await supabase.rpc('get_honours', { p_users: ids });
+    if (error || !Array.isArray(data)) return;
+    const by = new Map<string, Honour[]>();
+    for (const h of data as { user_id: string; kind: HonourKind; tier: HonourTier; count: number }[]) {
+        const list = by.get(h.user_id) ?? [];
+        list.push({ kind: h.kind, tier: h.tier, count: h.count });
+        by.set(h.user_id, list);
+    }
+    board.rows.forEach((r) => { r.honours = by.get(r.user_id) ?? []; });
 }
 
 /** Have you joined? An older server has no joining (everyone's in), so a missing answer is yes. */

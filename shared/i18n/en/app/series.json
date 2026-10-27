@@ -626,7 +626,8 @@
     "today": "TODAY",
     "points": "POINTS",
     "newThisRound": "New this round",
-    "lastRound": "Last round #{{rank}}"
+    "lastRound": "Last round #{{rank}}",
+    "lastShort": "Last #{{rank}}"
   },
   "view": {
     "ordinal": {
@@ -677,5 +678,40 @@
     "theyPassed": "{{name}} passed you today",
     "gapGrew": "Gap grew today",
     "theyClosed": "{{name}} closed today"
+  },
+  "honours": {
+    "king": {
+      "name": "King",
+      "line": "Hold Nº 1 on the board"
+    },
+    "on_fire": {
+      "name": "On Fire",
+      "line": "Move every week"
+    },
+    "power": {
+      "name": "Power",
+      "line": "Move 5+ days a week"
+    },
+    "diamond": {
+      "name": "Diamond",
+      "line": "Move every day of a round"
+    },
+    "wings": {
+      "name": "Wings",
+      "line": "Biggest climb up the board"
+    },
+    "hive": {
+      "name": "The Hive",
+      "line": "Bring friends into the squad"
+    },
+    "strength": {
+      "name": "Strength",
+      "line": "Most strength sessions in a round"
+    },
+    "tier": {
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold"
+    }
   }
 }

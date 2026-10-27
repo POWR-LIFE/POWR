@@ -13,6 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 
+import { HonourRow } from '@/components/honours/HonourRow';
 import { flagEmoji, fmt, initialsOf, type Person, TITLES, type TitleKey } from '@/lib/dev/seriesPrototype';
 import type { Hit } from './useSeriesSim';
 
@@ -203,6 +204,8 @@ export function SeriesLane({
     const initials = isMe ? you.initials : initialsOf(p.name);
     // One tag at most: the leader's. Everyone else shows where they finished last round.
     const tag = title === 'leader' ? title : null;
+    // Their honours (the small line icons); a sealed row keeps nothing but its name.
+    const honours = dark ? [] : p.honours ?? [];
     return (
         <Animated.View
             layout={ROW_LAYOUT}
@@ -225,6 +228,8 @@ export function SeriesLane({
             <View style={s.middle}>
                 <View style={s.nameRow}>
                     <Text style={[s.name, isTop && { color: TEXT }, isMe && s.nameMe]} numberOfLines={1}>{name}</Text>
+                    {/* Your heat writes a sentence under the name, so there the honours sit beside it. */}
+                    {sub && honours.length > 0 && <HonourRow honours={honours} max={2} size={12} />}
                     {/* What a session just added, beside the name so it never sits on the row below. */}
                     {hit && !dark && (
                         <Animated.Text
@@ -236,9 +241,24 @@ export function SeriesLane({
                         </Animated.Text>
                     )}
                 </View>
-                {tag
-                    ? <TitlePill title={tag} />
-                    : <Text style={s.sub} numberOfLines={1}>{sub ?? (p.last == null ? t('series:lane.newThisRound') : t('series:lane.lastRound', { rank: fmt(p.last) }))}</Text>}
+                {/* The line under the name: the leader's tag or last round's place,
+                    then their honours. Three or fewer sit after the place; more than
+                    three take the line, with a count (the column is ~110 px wide). */}
+                {(() => {
+                    const many = honours.length > 3;
+                    const place = sub ?? (p.last == null ? t('series:lane.newThisRound') : honours.length ? t('series:lane.lastShort', { rank: fmt(p.last) }) : t('series:lane.lastRound', { rank: fmt(p.last) }));
+                    return (
+                        <View style={s.subRow}>
+                            {tag ? <TitlePill title={tag} /> : !(many && !sub) && <Text style={[s.sub, { flexShrink: 1 }]} numberOfLines={1}>{place}</Text>}
+                            {honours.length > 0 && !sub && (
+                                <>
+                                    {(tag || !many) && <View style={s.subDiv} />}
+                                    <HonourRow honours={honours} max={tag ? 2 : 3} />
+                                </>
+                            )}
+                        </View>
+                    );
+                })()}
             </View>
 
             <Move delta={dark || hideRank ? null : p.mid - rank} />
@@ -263,6 +283,8 @@ const s = StyleSheet.create({
     flagEmoji: { fontSize: 16, lineHeight: 19, textAlign: 'center', includeFontPadding: false },
     flagInitials: { width: 20, height: 20, borderRadius: 10, backgroundColor: AVATAR_BG, borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)' },
     sub: { fontSize: 11, fontWeight: '300', color: TEXT_3 },
+    subRow: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 13 },
+    subDiv: { width: StyleSheet.hairlineWidth, height: 11, backgroundColor: 'rgba(255,255,255,0.2)', marginHorizontal: 2 },
     moveCol: { width: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 },
     moveNum: { fontSize: 13, fontWeight: '500', fontVariant: ['tabular-nums'] },
     moveNone: { fontSize: 13, fontWeight: '300', color: TEXT_3 },

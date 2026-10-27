@@ -8,6 +8,7 @@
  * around you, ranks are base + index inside each window, and every session
  * re-sorts its window so overtakes animate.
  */
+import { type Honour, type HonourKind, type HonourTier, TIER_RANK } from '@/constants/honours';
 import type { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
@@ -66,7 +67,35 @@ export type Person = {
     last?: number | null;
     /** Your heat: where they came from last round (null = new this round). */
     heatFrom?: 'up' | 'down' | 'held' | null;
+    /** What they've earned (the icons under the name). */
+    honours?: Honour[];
 };
+
+/**
+ * Sample honours, settled by the name so a person keeps theirs between
+ * renders: about half the field has something, a few have a lot.
+ */
+export function sampleHonours(name: string, you = false): Honour[] {
+    if (you) return [{ kind: 'diamond', tier: 'bronze', count: 1 }, { kind: 'power', tier: 'silver', count: 5 }, { kind: 'on_fire', tier: 'bronze', count: 6 }];
+    let h = 0;
+    for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    const pick = (kind: HonourKind, chance: number, tiers: HonourTier[]): Honour | null => {
+        h = (h * 1103515245 + 12345) >>> 0;
+        if ((h >>> 8) / 0xffffff > chance) return null;
+        h = (h * 1103515245 + 12345) >>> 0;
+        const tier = tiers[(h >>> 8) % tiers.length];
+        return { kind, tier, count: TIER_RANK[tier] };
+    };
+    return [
+        pick('king', 0.04, ['gold']),
+        pick('diamond', 0.12, ['bronze', 'bronze', 'silver']),
+        pick('wings', 0.1, ['bronze', 'silver']),
+        pick('strength', 0.1, ['bronze', 'silver', 'gold']),
+        pick('hive', 0.18, ['bronze', 'bronze', 'silver', 'gold']),
+        pick('power', 0.3, ['bronze', 'silver', 'gold']),
+        pick('on_fire', 0.35, ['bronze', 'silver', 'gold']),
+    ].filter((x): x is Honour => !!x);
+}
 
 export type Seg = { base: number; people: Person[] };
 export type LensKey = 'overall' | 'city' | 'gym' | 'friends';
@@ -218,6 +247,7 @@ export function createModel(scale: Scale): Model {
         totalEarned: Math.round(pts * k * 2.6),
         flag: o.you ? 'GB' : flagOf(name),
         last: o.last,
+        honours: o.honours ?? sampleHonours(name, !!o.you),
     });
     const you = (pts: number, mid: number) => P('you', pts, { you: true, mid, title: 'hot', mult: 1.25, act: 'walk', today: 186, event: true, last: scale === 'pitch' ? 428 : 31 });
     const seg = (base: number, people: Person[]): Seg => {

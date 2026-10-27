@@ -626,7 +626,8 @@
     "today": "AUJ.",
     "points": "POINTS",
     "newThisRound": "Première manche",
-    "lastRound": "Manche précédente #{{rank}}"
+    "lastRound": "Manche précédente #{{rank}}",
+    "lastShort": "Manche préc. #{{rank}}"
   },
   "view": {
     "ordinal": {
@@ -677,5 +678,40 @@
     "theyPassed": "{{name}} t’a dépassé aujourd’hui",
     "gapGrew": "L’écart a grandi aujourd’hui",
     "theyClosed": "{{name}} a réduit l’écart aujourd’hui"
+  },
+  "honours": {
+    "king": {
+      "name": "King",
+      "line": "Garder la 1re place du classement"
+    },
+    "on_fire": {
+      "name": "On Fire",
+      "line": "Bouger chaque semaine"
+    },
+    "power": {
+      "name": "Power",
+      "line": "Bouger 5 jours ou plus par semaine"
+    },
+    "diamond": {
+      "name": "Diamond",
+      "line": "Bouger chaque jour d’une manche"
+    },
+    "wings": {
+      "name": "Wings",
+      "line": "La plus grande montée au classement"
+    },
+    "hive": {
+      "name": "The Hive",
+      "line": "Faire entrer des amis dans l’équipe"
+    },
+    "strength": {
+      "name": "Strength",
+      "line": "Le plus de séances de muscu sur une manche"
+    },
+    "tier": {
+      "bronze": "Bronze",
+      "silver": "Argent",
+      "gold": "Or"
+    }
   }
 }
