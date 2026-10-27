@@ -446,7 +446,53 @@ export function timeLeft(iso: string, now = Date.now()): string {
     return seriesClock(d, h, null);
 }
 
-/** The live board while the screen is in view: fetched on focus, then every minute. */
+/*
+ * The board's live tick (20261027180000_series_board_live_tick): a trigger on
+ * point_transactions broadcasts 'tick' on the public topic 'series-board'
+ * whenever anyone earns, and every board on screen re-reads itself. The
+ * payload is empty on purpose; the read is what carries the data.
+ *
+ * ⚠ supabase.channel(topic) is a CACHE LOOKUP, not a factory, and .on()
+ * throws on an instance that is already joined (context/AuthContext.tsx has
+ * the full story). So: one channel for the life of the JS runtime, created
+ * the first time a board asks, dispatching through a module-level set that
+ * boards add themselves to and leave. Never asked for twice.
+ */
+const BOARD_TOPIC = 'series-board';
+const tickSubs = new Set<() => void>();
+let boardChannelMade = false;
+
+function ensureBoardChannel() {
+    if (boardChannelMade) return;
+    boardChannelMade = true;
+    try {
+        // A cached instance we don't know about (dev Fast Refresh re-ran this
+        // module but the client kept its channels): leave it be rather than
+        // call .on() on a joined channel; the poll still carries the board.
+        if (supabase.getChannels().some(c => c.topic === `realtime:${BOARD_TOPIC}`)) return;
+        supabase
+            .channel(BOARD_TOPIC, { config: { broadcast: { self: false } } })
+            .on('broadcast', { event: 'tick' }, () => { tickSubs.forEach((f) => { try { f(); } catch { /* one board's error is not another's */ } }); })
+            .subscribe();
+    } catch {
+        // No realtime here (a test, a stale client): the poll is the board.
+    }
+}
+
+/** Hear the board tick while on screen. Returns the unsubscribe. */
+export function subscribeSeriesTicks(f: () => void): () => void {
+    ensureBoardChannel();
+    tickSubs.add(f);
+    return () => { tickSubs.delete(f); };
+}
+
+/** Ticks arrive in bursts (one per point row); one re-read serves the burst. */
+const TICK_SETTLE_MS = 1_500;
+
+/**
+ * The live board while the screen is in view: fetched on focus, re-read
+ * within a couple of seconds of anyone earning, and every minute regardless.
+ */
 export function useSeriesBoard(active: boolean) {
     const [board, setBoard] = useState<SeriesBoard | null>(null);
     // False until the first answer, so "no board" can be told from "not yet".
@@ -467,7 +513,16 @@ export function useSeriesBoard(active: boolean) {
         if (!active) return undefined;
         void refresh();
         const t = setInterval(() => { void refresh(); }, 60_000);
-        return () => clearInterval(t);
+        let settle: ReturnType<typeof setTimeout> | null = null;
+        const off = subscribeSeriesTicks(() => {
+            if (settle) clearTimeout(settle);
+            settle = setTimeout(() => { settle = null; void refresh(); }, TICK_SETTLE_MS);
+        });
+        return () => {
+            clearInterval(t);
+            if (settle) clearTimeout(settle);
+            off();
+        };
     }, [active, refresh, joined]);
     return { board, loaded, refresh };
 }

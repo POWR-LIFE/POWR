@@ -13,6 +13,7 @@
 //                                   POWR_GEOFENCE_BOOT_REARM
 //   lib/backgroundNotificationTask  POWR_BACKGROUND_NOTIFICATION (beacon wake)
 //   lib/health/walkingSync          powr-walking-sync
+//   lib/health/healthKitObserver    (no task: arms HealthKit delivery at boot)
 //   lib/placementNotifyTask         POWR_PLACEMENT_NOTIFY
 //   lib/stepGoalNotifyTask          POWR_STEP_GOAL_NOTIFY
 //
@@ -21,5 +22,6 @@
 import '@/context/GeofenceContext';
 import '@/lib/backgroundNotificationTask';
 import '@/lib/health/walkingSync';
+import '@/lib/health/healthKitObserver';
 import '@/lib/placementNotifyTask';
 import '@/lib/stepGoalNotifyTask';

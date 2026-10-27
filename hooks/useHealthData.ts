@@ -1207,3 +1207,13 @@ export function useHealthData(): HealthDataHook {
 
     return { isAvailable, isAuthorized, requesting, requestPermissions, getStepsToday, getActivitiesToday, getLastNightSleep, getHeartRateToday, getCaloriesToday, getWeekHistory, verifyWalking, verifyWorkout };
 }
+
+/** Today's heart rate from the phone store, with no hook mounted (the headless sync). */
+export async function getHeartRateTodayNow(): Promise<HeartRateSummary | null> {
+    return Platform.OS === 'ios' ? await iosGetHeartRateToday() : await androidGetHeartRateToday();
+}
+
+/** Today's calories from the phone store, with no hook mounted (the headless sync). */
+export async function getCaloriesTodayNow(): Promise<CalorieSummary | null> {
+    return Platform.OS === 'ios' ? await iosGetCaloriesToday() : await androidGetCaloriesToday();
+}
