@@ -63,7 +63,7 @@ export function countdown(ms: number): string {
  * invite period is on, the card leads with that, who's waiting at the start
  * line (it grows towards the gun, as on the League) and the countdown.
  * Inviting is on the League: the card opens it. The invite race is an
- * optional extra for Patient Zero, never a way onto the board: once you've
+ * optional extra for Squad Builder, never a way onto the board: once you've
  * brought a friend in, your race place shows instead.
  * Never a dash or a 0. Just the card: picking a city is left to the League.
  */

@@ -27,11 +27,9 @@ export const ACTS: Record<ActKey, { label: string; icon: IconName; min: [number,
     swim: { label: 'Swim', icon: 'water-outline', min: [20, 45], ppm: 6.0, outdoor: false },
 };
 
-export type TitleKey = 'leader' | 'wanted' | 'hot' | 'mover' | 'under' | 'rookie' | 'early' | 'giant' | 'crown' | 'pack';
+export type TitleKey = 'leader' | 'hot' | 'mover' | 'under' | 'rookie' | 'early' | 'giant' | 'crown' | 'pack';
 export const TITLES: Record<TitleKey, { label: string; icon: IconName; ember?: boolean }> = {
     leader: { label: 'LEADER', icon: 'ribbon-outline' },
-    // The leader carries the bounty; Most Wanted is the round prize for claiming the most.
-    wanted: { label: 'BOUNTY', icon: 'locate-outline', ember: true },
     hot: { label: 'HOT STREAK', icon: 'flame' },
     mover: { label: 'BIGGEST MOVER', icon: 'trending-up-outline' },
     under: { label: 'UNDERDOG', icon: 'arrow-up-circle-outline' },
@@ -44,7 +42,7 @@ export const TITLES: Record<TitleKey, { label: string; icon: IconName; ember?: b
 /** The titles a round can award you, for the collection in Your File. */
 /** Titles that give away places: they sit out Blind Mode. */
 export const BLIND_HIDES: TitleKey[] = ['mover', 'giant', 'under'];
-export const COLLECTABLE: TitleKey[] = ['mover', 'early', 'giant', 'hot', 'crown', 'pack', 'under', 'rookie', 'leader', 'wanted'];
+export const COLLECTABLE: TitleKey[] = ['mover', 'early', 'giant', 'hot', 'crown', 'pack', 'under', 'rookie', 'leader'];
 
 export type Person = {
     id: string;
@@ -101,8 +99,6 @@ export type Model = {
     k: number;
     rnd: () => number;
     pid: number;
-    /** The bounty on the leader. Taking the lead claims it: a count for Most Wanted, never points. */
-    bounty: { live: boolean; pot: number; claimedBy: string | null; from: string | null; claims: Record<string, number> };
     hour: number;
     /** Your best ever place in a round. */
     pb: number;
@@ -156,7 +152,7 @@ export const ROUND_MOMENTS: RoundMoment[] = [
     { day: 1, key: 'gun', name: 'THE GUN', what: 'The board goes live', icon: 'flag-outline' },
     { day: 4, key: 'doubleDown', name: 'DOUBLE DOWN', what: 'A surprise activity counts 2× for 24 hours', icon: 'flash-outline' },
     { day: 6, key: 'eventNight', name: 'EVENT NIGHT', what: 'ONE LDN · ×2 Series points if you check in', icon: 'location-outline' },
-    { day: 8, days: 2, key: 'plague', name: 'THE PLAGUE', what: 'Friends you bring in count for Patient Zero', icon: 'people-outline' },
+    { day: 8, days: 2, key: 'plague', name: 'THE PLAGUE', what: 'Friends you bring in count for Squad Builder', icon: 'people-outline' },
     { day: 10, days: 2, key: 'blind', name: 'BLIND MODE', what: 'Every rank goes dark for 48 hours, yours too', icon: 'eye-off-outline' },
     { day: 12, key: 'powerHour', name: 'POWER HOUR', what: 'One hour at ×2, with 15 minutes’ notice', icon: 'timer-outline' },
     { day: 14, days: 2, key: 'allIn', name: 'ALL IN', what: 'The last 48 hours · ×1.5 for everyone outside the top 10', icon: 'flame-outline' },
@@ -201,7 +197,6 @@ export function createModel(scale: Scale): Model {
         k,
         rnd,
         pid: 0,
-        bounty: { live: true, pot: 2000, claimedBy: null, from: null, claims: { 'Alex Reid': 2, 'Marta Ruiz': 1 } },
         hour: scale === 'pitch' ? 212 : 9,
         pb: scale === 'pitch' ? 280 : 14,
         heat: { key: 'heat', total: 0, segs: [], prizes: false },
@@ -234,7 +229,7 @@ export function createModel(scale: Scale): Model {
         return { base, people };
     };
     const top12 = () => [
-        P('Alex Reid', 24860, { title: 'wanted', mult: 1.25, act: 'run', mid: 1 }), P('Marta Ruiz', 21040, { title: 'hot', act: 'run', city: 'Manchester', mid: 2 }),
+        P('Alex Reid', 24860, { title: 'leader', mult: 1.25, act: 'run', mid: 1 }), P('Marta Ruiz', 21040, { title: 'hot', act: 'run', city: 'Manchester', mid: 2 }),
         P('James Okafor', 20915, { title: 'mover', mult: 1.1, act: 'gym', mid: 5 }), P('Priya Kaur', 20480, { mult: 1.1, act: 'ride', city: 'Bristol', mid: 4 }),
         P('Sam Lyons', 19730, { title: 'hot', act: 'gym', mid: 3 }), P('Noor Haddad', 19312, { act: 'swim', city: 'Leeds', mid: 7 }),
         P('Kofi Asante', 18904, { mult: 1.1, act: 'run', mid: 6 }), P('Ben Carter', 18650, { act: 'ride', city: 'Brighton', mid: 8 }),
@@ -516,22 +511,20 @@ export function visibleRows(b: Board, state: SeriesState, view: RaceView = 'arou
     return out;
 }
 
-export function multOf(p: Person, rank: number, b: Board, state: SeriesState, bountyLive: boolean, act: ActKey = p.act) {
+export function multOf(p: Person, rank: number, state: SeriesState, act: ActKey = p.act) {
     let m = p.mult;
     if (state === 'powerHour') m *= 2;
     if (state === 'doubleDown' && act === 'run') m *= 2;
     if (state === 'eventNight' && p.event) m *= 2;
     if (state === 'allIn' && rank > 10) m *= 1.5;
-    const wanted = b.key === 'overall' && rank === 1 && bountyLive;
-    return Math.min(m, wanted ? 1.25 : 2);
+    return Math.min(m, 2);
 }
 
 // Quarter steps (×1.25, ×1.5) read as they are; a stacked ×1.875 reads ×1.9.
 export const multLabel = (m: number) => (m >= 2 ? '×2' : `×${Number.isInteger(m * 4) ? m : Math.round(m * 10) / 10}`);
 
-export function titleOf(p: Person, rank: number, b: Board, bountyLive: boolean): TitleKey | null {
-    if (b.key === 'overall' && rank === 1) return bountyLive ? 'wanted' : 'leader';
-    if (p.title === 'wanted') return bountyLive ? 'wanted' : null;
+export function titleOf(p: Person, rank: number, b: Board): TitleKey | null {
+    if (b.key === 'overall' && rank === 1) return 'leader';
     if (p.title === 'leader') return null;
     return p.title;
 }
@@ -569,7 +562,7 @@ export function rivalOf(model: Model, state: SeriesState): Rival {
     const ov = model.boards.overall;
     const all = known(ov);
     const me = all.find((k) => k.p.you)!;
-    const walk = Math.max(1, Math.round(ACTS.walk.ppm * model.k * multOf(me.p, me.rank, ov, state, model.bounty.live, 'walk') * 30));
+    const walk = Math.max(1, Math.round(ACTS.walk.ppm * model.k * multOf(me.p, me.rank, state, 'walk') * 30));
     const fr = known(model.boards.friends);
     const meF = fr.find((k) => k.p.you)!;
     const fAbove = fr.find((k) => k.rank === meF.rank - 1);
@@ -713,9 +706,9 @@ export const GOLDEN_FINDERS = 10;
 
 export type DailyTitle = { key: TitleKey; who: string; why: string; you: boolean };
 /**
- * Daily titles are gone (2026-10-25): their names now belong to the round's
- * prizes (Hot Streak, Biggest Mover …), and who's on course for each prize is
- * the daily thing to check (sampleRace). Kept so the loop's plumbing still runs.
+ * Daily titles are gone (2026-10-25): who's on course for each of the round's
+ * prizes is the daily thing to check now (sampleRace). Kept so the loop's
+ * plumbing still runs.
  */
 export function titlesFor(_morning: number): DailyTitle[] {
     return [];
@@ -723,37 +716,28 @@ export function titlesFor(_morning: number): DailyTitle[] {
 
 /**
  * Who's on course for each named prize in the sample, by the round's day. The
- * same shape the live get_series_prize_race returns. Biggest Mover counts from
- * the end of day 3, Underdog from halfway (day 8), Photo Finish only on the
- * last day, so earlier they have nobody in line.
+ * same shape the live get_series_prize_race returns. Level Up counts from the
+ * end of day 3, so before that it has nobody in line. You're not a Rookie: the
+ * sample has you in an earlier round.
  */
 export function sampleRace(model: Model, day: number, days: boolean[]): PrizeRace {
-    const c = model.bounty.claims;
-    const top = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
     // Your longest run of days so far.
     let run = 0;
     let best = 0;
     days.slice(0, day).forEach((on) => { run = on ? run + 1 : 0; best = Math.max(best, run); });
     const lead = (name: string, score: number, detail: number | null = null) => ({ name, score, detail, you: false });
     return {
-        most_wanted: {
-            kind: 'most_wanted',
-            leader: top ? lead(top[0], top[1]) : null,
-            you: c.you ? { score: c.you, detail: null, ord: 1 + Object.values(c).filter((n) => n > c.you).length } : null,
-        },
-        hot_streak: { kind: 'hot_streak', leader: lead('Alex Reid', day), you: best ? { score: best, detail: null, ord: best === day ? 2 : 14 } : null },
-        biggest_mover: day <= 3
-            ? { kind: 'biggest_mover', leader: null, you: null }
-            : { kind: 'biggest_mover', leader: lead('Léa Laurent', 38 + (day - 4) * 3, 452), you: { score: 12, detail: 310, ord: 9 } },
-        underdog: day <= 7
-            ? { kind: 'underdog', leader: null, you: null }
-            : { kind: 'underdog', leader: lead('Rachel Tan', 61, 2140), you: null },
         patient_zero: {
             kind: 'patient_zero',
             leader: lead('Jo King', day >= 8 ? 3 : 2),
             you: day >= 8 ? { score: 1, detail: null, ord: 2 } : null,
         },
-        photo_finish: { kind: 'photo_finish', leader: null, you: null },
+        hot_streak: { kind: 'hot_streak', leader: lead('Alex Reid', day), you: best ? { score: best, detail: null, ord: best === day ? 2 : 14 } : null },
+        biggest_mover: day <= 3
+            ? { kind: 'biggest_mover', leader: null, you: null }
+            : { kind: 'biggest_mover', leader: lead('Léa Laurent', 38 + (day - 4) * 3, 452), you: { score: 12, detail: 310, ord: 9 } },
+        // Rachel Tan, the sample's rookie, on her board pace (about 3,100 a day at full size).
+        rookie: { kind: 'rookie', leader: lead('Rachel Tan', Math.round(3120 * day * model.k)), you: null },
     };
 }
 
@@ -780,7 +764,7 @@ export const ordinal = (n: number) => {
 
 /*
  * The invite board in the sample (the live app reads get_series_invite_board):
- * a race on friends brought in before Round 01, for Patient Zero. Ties go to
+ * a race on friends brought in before Round 01, for Squad Builder. Ties go to
  * whoever got there first, so you sit below anyone level with you.
  */
 /** The sample round's gun: 6 days 14 hours from when the app opened. */

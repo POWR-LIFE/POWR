@@ -8,7 +8,7 @@ import {
     Trophy, Rocket, CalendarDays, Gift, ListOrdered, MapPin, Bot, Medal, Plus, Save, Trash2, Search, X, Check,
     RefreshCw, AlertTriangle, ShieldCheck, UserX, UserCheck, Megaphone, ImagePlus, LoaderCircle, ChevronLeft,
     ChevronRight, Shuffle, Eye, EyeOff, Bell, ExternalLink, Ticket, Crown, Zap, Timer, Flame, Flag, Lock,
-    Target, TrendingUp, ArrowUpCircle, Users,
+    TrendingUp, Sprout, Users,
 } from 'lucide-react';
 
 /*
@@ -770,7 +770,7 @@ function SeasonsTab({ seasons, rounds, focus, onSaved }) {
                             </Field>
                             {days != null && days < 1 && <p className="col-span-2 -mt-2 text-[12px] font-semibold text-[#E11D48]">The last day ({fmtDay(edit.end)}) is before the first day ({fmtDay(edit.start)}).</p>}
                             <Field label="Days to log for The Draw"><input type="number" min={1} className={input} value={edit.draw_days} onChange={e => set({ draw_days: e.target.value })} /></Field>
-                            <Field label="Invite race opens" hint="Friends who join from here until the round starts count for Patient Zero. Opens by itself when the Series goes on; empty = none.">
+                            <Field label="Invite race opens" hint="Friends who join from here until the round starts count for Squad Builder. Opens by itself when the Series goes on; empty = none.">
                                 <input type="date" className={input} value={edit.invite ?? ''} onChange={e => set({ invite: e.target.value })} />
                             </Field>
                             <Field label="Board size on day 1" hint="Pacers fill the gap to this; 0 = no pacers"><input type="number" min={0} className={input} value={edit.pacer_target} onChange={e => set({ pacer_target: e.target.value })} /></Field>
@@ -865,15 +865,16 @@ function SeasonsTab({ seasons, rounds, focus, onSaved }) {
 
 // One prize each: settling gives the places, then these in this order, passing
 // over anyone who already holds a prize; Every Move Counts and the top city are
-// drawn last from whoever's left (20261025120000).
+// drawn last from whoever's left (20261027150000). The kinds are the server's
+// keys, older than the names.
 const NAMED_KINDS = [
-    { kind: 'most_wanted', title: 'Most Wanted', icon: Target, blurb: 'Most bounties claimed: taking the lead from a member claims one (checked every 15 minutes, paused in Blind Mode).', unit: (n) => `${n} bount${n === 1 ? 'y' : 'ies'}` },
-    { kind: 'hot_streak', title: 'Hot Streak', icon: Flame, blurb: 'Most days in a row with a paying session.', unit: (n) => `${n} days in a row` },
-    { kind: 'biggest_mover', title: 'Biggest Mover', icon: TrendingUp, blurb: 'Most places climbed from the end of day 3 to the finish (members only).', unit: (n) => `▲${n} places` },
-    { kind: 'underdog', title: 'Underdog', icon: ArrowUpCircle, blurb: 'Best finish from the bottom half at halfway (members only).', unit: (n) => `finished #${n}` },
-    { kind: 'patient_zero', title: 'Patient Zero', icon: Users, blurb: 'Most friends who joined with their code during The Plague (the whole round if there’s no Plague moment) and logged a verified workout before the end.', unit: (n) => `${n} friend${n === 1 ? '' : 's'}` },
-    { kind: 'photo_finish', title: 'Photo Finish', icon: Timer, blurb: 'Most Series points on the last day.', unit: (n) => `${n} pts on the last day` },
+    { kind: 'patient_zero', title: 'Squad Builder', icon: Users, blurb: 'Most friends who joined with their code in the invite race or during The Plague (the whole round if neither) and logged a verified workout before the end.', unit: (n) => `${n} friend${n === 1 ? '' : 's'}` },
+    { kind: 'hot_streak', title: 'Unbreakable', icon: Flame, blurb: 'Most days in a row with a paying session.', unit: (n) => `${n} days in a row` },
+    { kind: 'biggest_mover', title: 'Level Up', icon: TrendingUp, blurb: 'Most places climbed from the end of day 3 to the finish (members only).', unit: (n) => `▲${n} places` },
+    { kind: 'rookie', title: 'Rookie of the Series', icon: Sprout, blurb: 'Most Series points among members new to POWR: an account made in the 30 days before the round, or during it.', unit: (n) => `${n} pts` },
 ];
+// The places' names: gold, silver, bronze.
+const PLACE_NAMES = ['Champion', 'Contender', 'Challenger'];
 const PRIZE_KINDS = [
     ...NAMED_KINDS.map(k => ({ ...k, many: false })),
     { kind: 'draw', title: 'Every Move Counts', icon: Ticket, blurb: 'Drawn at random from everyone who logged enough days and holds no other prize.', many: true },
@@ -931,7 +932,7 @@ function PrizesTab({ round }) {
     if (!rows) return <Loading />;
     return (
         <>
-            <Section title="Places" blurb="Finishing places, won by points. The app shows these on the race and in “Ways to win”. Without any, settling still names a top 3."
+            <Section title="Places" blurb="Finishing places, won by points: 1st Champion (gold), 2nd Contender (silver), 3rd Challenger (bronze). The app shows these on the race and in “Ways to win”. Without any, settling still names a top 3."
                 right={<button className={btnQuiet} onClick={addPlace}><Plus size={13} /> Add a place</button>}>
                 {places.length === 0 ? <Empty icon={Trophy} text="No place prizes yet" /> : (
                     <div className="space-y-3">{places.map(r => <PrizeRow key={r.id} r={val(r)} dirty={!!draft[r.id] || r.id.startsWith('new')} onChange={p => change(r, p)} onSave={() => save(r)} onRemove={() => remove(r)} />)}</div>
@@ -1016,8 +1017,8 @@ const MOMENT_KINDS = {
                    name: 'All In', line: 'The last 48 hours: ×1.5 for everyone outside the top 10.', multiplier: 1.5, top_n: 10 },
     blind:       { label: 'Blind Mode', icon: EyeOff, blurb: 'Every rank hidden while it’s on, and no “passed you” pushes.', boost: false,
                    name: 'Blind Mode', line: 'Every rank is hidden. Keep moving.' },
-    plague:      { label: 'The Plague', icon: Users, blurb: 'No boost. Friends who join with a member’s code in this window count for Patient Zero.', boost: false,
-                   name: 'The Plague', line: 'For two days, every friend who joins with your code counts for Patient Zero.' },
+    plague:      { label: 'The Plague', icon: Users, blurb: 'No boost. Friends who join with a member’s code in this window count for Squad Builder.', boost: false,
+                   name: 'The Plague', line: 'For two days, every friend who joins with your code counts for Squad Builder.' },
 };
 const MOMENT_ACTIVITIES = ['running', 'cycling', 'gym', 'swimming', 'walking', 'hiit', 'yoga', 'sports', 'dance'];
 
@@ -1057,7 +1058,7 @@ const effectOf = (m) => {
         case 'power_hour': return `${x} on every session`;
         case 'all_in': return `${x} for everyone outside the top ${m.top_n}`;
         case 'blind': return 'Ranks hidden · no “passed you” pushes';
-        case 'plague': return 'No boost · friends who join count for Patient Zero';
+        case 'plague': return 'No boost · friends who join count for Squad Builder';
         default: return 'Announcement';
     }
 };
@@ -1667,7 +1668,7 @@ function PacersTab({ round }) {
 
 // ── Results ──────────────────────────────────────────────────────────────────
 
-const KIND_LABEL = { place: 'Places', draw: 'Every Move Counts', city: 'Top city', ...Object.fromEntries(NAMED_KINDS.map(k => [k.kind, k.title])) };
+const KIND_LABEL = { place: PLACE_NAMES.join(' · '), draw: 'Every Move Counts', city: 'Top city', ...Object.fromEntries(NAMED_KINDS.map(k => [k.kind, k.title])) };
 const scoreOf = (r) => NAMED_KINDS.find(k => k.kind === r.kind)?.unit(r.score ?? 0);
 const STATUS_COLOR = { provisional: '#F97316', confirmed: '#10B981', void: '#9CA3AF' };
 

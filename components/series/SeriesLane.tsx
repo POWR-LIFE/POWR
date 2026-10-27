@@ -174,14 +174,12 @@ export function RaceHeader() {
  * only on the top 3; under the name, the leader's tag or last round's place.
  */
 export function SeriesLane({
-    p, rank, hit, title, bounty, isMe, dark, first, you, hideRank, sub, zone = null,
+    p, rank, hit, title, isMe, dark, first, you, hideRank, sub, zone = null,
 }: {
     p: Person;
     rank: number;
     hit?: Hit;
     title: TitleKey | null;
-    /** The pot on #1's head while the bounty is live. */
-    bounty: number | null;
     isMe: boolean;
     dark: boolean;
     first: boolean;
@@ -203,8 +201,8 @@ export function SeriesLane({
     const accent = isTop ? MEDAL[rank] : isMe ? GOLD : zoneColour;
     const name = isMe ? `${you.name}${t('events:board.youSuffix')}` : p.name;
     const initials = isMe ? you.initials : initialsOf(p.name);
-    // One tag at most: the leader's (Most Wanted / Leader). Everyone else shows where they finished last round.
-    const tag = title && (title === 'wanted' || title === 'leader') ? title : null;
+    // One tag at most: the leader's. Everyone else shows where they finished last round.
+    const tag = title === 'leader' ? title : null;
     return (
         <Animated.View
             layout={ROW_LAYOUT}
@@ -214,7 +212,7 @@ export function SeriesLane({
         >
             {isMe && <LinearGradient colors={YOU_TINT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />}
             {!first && !isMe && <View style={s.hair} />}
-            {hit && <Flash key={hit.key} colour={hit.ember ? 'rgba(229,138,58,0.12)' : 'rgba(255,255,255,0.05)'} />}
+            {hit && <Flash key={hit.key} colour="rgba(255,255,255,0.05)" />}
 
             <View style={s.rankCol}>
                 {dark
@@ -232,9 +230,9 @@ export function SeriesLane({
                         <Animated.Text
                             entering={FadeIn.duration(200)}
                             exiting={FadeOut.duration(300)}
-                            style={[s.plus, hit.ember && { color: EMBER }]}
+                            style={s.plus}
                         >
-                            {hit.ember && !hit.pts ? 'BOUNTY' : `+${fmt(hit.pts)}${hit.x2 ? ' ×2' : ''}`}
+                            {`+${fmt(hit.pts)}${hit.x2 ? ' ×2' : ''}`}
                         </Animated.Text>
                     )}
                 </View>

@@ -36,21 +36,24 @@ export type PrizeItem = { name: string; by: string | null; line?: string | null;
  */
 export type PrizeSet = {
     sample: boolean;
-    /** 1st, 2nd, 3rd … (Champion, Runner-up, Podium) */
+    /** 1st, 2nd, 3rd … (Champion, Contender, Challenger) */
     places: PrizeItem[];
     /** Every Move Counts: the draw. */
     draw?: PrizeItem;
-    /** The six named prizes; a missing one isn't on offer this round (sample: not announced yet). */
+    /** The four named prizes; a missing one isn't on offer this round (sample: not announced yet). */
     named: Partial<Record<NamedPrize, PrizeItem>>;
-    /** Set in /admin/series only: not part of the round's standard ten. */
+    /** Set in /admin/series only: not part of the round's standard eight. */
     golden?: PrizeItem;
     city?: PrizeItem;
 };
+/** The places' names, gold, silver and bronze. */
+export const PLACE_NAMES = ['Champion', 'Contender', 'Challenger'];
 /*
- * The ten ways to win, one prize each: whoever already holds a prize is passed
+ * The eight ways to win, one prize each: whoever already holds a prize is passed
  * over for the next one. Names here are the prizes' own; nothing else in the
  * app uses them (the daily titles that did are gone). The titles stay English
  * in every language; the lines are getters, read in the language on screen.
+ * The keys are the server's kinds, older than the names (patient_zero = Squad Builder).
  */
 export const NAMED: Record<NamedPrize, {
     title: string;
@@ -62,35 +65,25 @@ export const NAMED: Record<NamedPrize, {
     /** What the prize counts, read out: score (and detail, where it has one). */
     unit: (n: number, detail: number | null) => string;
 }> = {
-    most_wanted: {
-        title: 'Most Wanted', icon: 'locate-outline', get short() { return i18n.t('series:prizes.mostWanted.short'); },
-        get how() { return i18n.t('series:prizes.mostWanted.how'); },
-        unit: (n) => i18n.t('series:prizes.mostWanted.unit', { count: n }),
+    patient_zero: {
+        title: 'Squad Builder', icon: 'people-outline', get short() { return i18n.t('series:prizes.squadBuilder.short'); },
+        get how() { return i18n.t('series:prizes.squadBuilder.how'); },
+        unit: (n) => i18n.t('series:prizes.squadBuilder.unit', { count: n }),
     },
     hot_streak: {
-        title: 'Hot Streak', icon: 'flame-outline', get short() { return i18n.t('series:prizes.hotStreak.short'); },
-        get how() { return i18n.t('series:prizes.hotStreak.how'); },
-        unit: (n) => i18n.t('series:prizes.hotStreak.unit', { count: n }),
+        title: 'Unbreakable', icon: 'flame-outline', get short() { return i18n.t('series:prizes.unbreakable.short'); },
+        get how() { return i18n.t('series:prizes.unbreakable.how'); },
+        unit: (n) => i18n.t('series:prizes.unbreakable.unit', { count: n }),
     },
     biggest_mover: {
-        title: 'Biggest Mover', icon: 'trending-up-outline', get short() { return i18n.t('series:prizes.biggestMover.short'); },
-        get how() { return i18n.t('series:prizes.biggestMover.how'); },
-        unit: (n) => i18n.t('series:prizes.biggestMover.unit', { count: n, n: fmt(n) }),
+        title: 'Level Up', icon: 'trending-up-outline', get short() { return i18n.t('series:prizes.levelUp.short'); },
+        get how() { return i18n.t('series:prizes.levelUp.how'); },
+        unit: (n) => i18n.t('series:prizes.levelUp.unit', { count: n, n: fmt(n) }),
     },
-    underdog: {
-        title: 'Underdog', icon: 'arrow-up-circle-outline', get short() { return i18n.t('series:prizes.underdog.short'); },
-        get how() { return i18n.t('series:prizes.underdog.how'); },
-        unit: (n, d) => (d != null ? `#${fmt(d)} → #${fmt(n)}` : `#${fmt(n)}`),
-    },
-    patient_zero: {
-        title: 'Patient Zero', icon: 'people-outline', get short() { return i18n.t('series:prizes.patientZero.short'); },
-        get how() { return i18n.t('series:prizes.patientZero.how'); },
-        unit: (n) => i18n.t('series:prizes.patientZero.unit', { count: n }),
-    },
-    photo_finish: {
-        title: 'Photo Finish', icon: 'stopwatch-outline', get short() { return i18n.t('series:prizes.photoFinish.short'); },
-        get how() { return i18n.t('series:prizes.photoFinish.how'); },
-        unit: (n) => i18n.t('series:prizes.photoFinish.unit', { n: fmt(n) }),
+    rookie: {
+        title: 'Rookie of the Series', icon: 'leaf-outline', get short() { return i18n.t('series:prizes.rookie.short'); },
+        get how() { return i18n.t('series:prizes.rookie.how'); },
+        unit: (n) => i18n.t('series:prizes.rookie.unit', { n: fmt(n) }),
     },
 };
 
@@ -134,13 +127,13 @@ const MEDALS = [GOLD, SILVER, BRONZE];
 const placeRows = (P: PrizeSet): InfoRow[] => (P.places.length
     ? P.places.map((x, i) => ({
         key: `place-${i + 1}`, img: x.img, icon: x.img ? undefined : 'trophy-outline' as const,
-        eyebrow: { text: placeOrdinal(i + 1).toUpperCase(), color: MEDALS[i] ?? TEXT_3 }, title: x.name, line: x.by ?? x.line ?? '',
+        eyebrow: { text: (PLACE_NAMES[i] ?? placeOrdinal(i + 1)).toUpperCase(), color: MEDALS[i] ?? TEXT_3 }, title: x.name, line: x.by ?? x.line ?? '',
     }))
     : [{ key: 'place-1', icon: 'trophy-outline' as const, title: tba(), line: i18n.t('series:prizes.topPlacesWin') }]);
 
 export type PrizeKey = 'draw' | 'top3' | 'golden' | 'city' | 'event' | 'tickets' | NamedPrize;
 const isNamed = (k: PrizeKey): k is NamedPrize => (NAMED_PRIZES as readonly string[]).includes(k);
-/** The named prizes the round has: the admin's, or all six in the sample. */
+/** The named prizes the round has: the admin's, or all four in the sample. */
 const namedOn = (P: PrizeSet): NamedPrize[] => NAMED_PRIZES.filter((k) => P.sample || P.named[k]);
 /** Where you stand on each prize, from whatever's on screen (sample or live). */
 export type PrizeState = {
@@ -177,15 +170,11 @@ type Tile = { key: PrizeKey; img?: ImageSource; icon?: IconName; title: string; 
 
 /** Where a named prize stands: who's on course, and you. */
 function raceStatus(k: NamedPrize, e: PrizeRaceEntry | undefined, p: PrizeState): { status: string; tone: Tone } {
-    const days = p.drawDots.length;
-    const half = Math.floor(days / 2);
     if (p.notYet) return { status: i18n.t('series:prizes.status.notStarted'), tone: 'muted' };
-    if (e?.sealed || (p.blind && (k === 'biggest_mover' || k === 'underdog'))) return { status: i18n.t('series:prizes.status.hiddenBlind'), tone: 'muted' };
+    // Level Up and Rookie both read places off the board, so they go dark with it.
+    if (e?.sealed || (p.blind && (k === 'biggest_mover' || k === 'rookie'))) return { status: i18n.t('series:prizes.status.hiddenBlind'), tone: 'muted' };
     if (!e?.leader) {
-        const wait = k === 'biggest_mover' && p.day <= 3 ? i18n.t('series:prizes.status.countsFrom', { day: 4 })
-            : k === 'underdog' && p.day <= half ? i18n.t('series:prizes.status.countsFrom', { day: half + 1 })
-                : k === 'photo_finish' && p.day < days ? i18n.t('series:prizes.status.lastDay')
-                    : k === 'most_wanted' ? i18n.t('series:prizes.status.noBounties') : i18n.t('series:prizes.status.nobody');
+        const wait = k === 'biggest_mover' && p.day <= 3 ? i18n.t('series:prizes.status.countsFrom', { day: 4 }) : i18n.t('series:prizes.status.nobody');
         return { status: wait, tone: 'muted' };
     }
     const unit = NAMED[k].unit(e.leader.score, e.leader.detail).toUpperCase();
@@ -216,7 +205,7 @@ function tilesFor(p: PrizeState): Tile[] {
         {
             key: 'top3', img: first?.img, icon: 'trophy-outline', title: 'Champion', prize: first?.name ?? tba(),
             how: first
-                ? `${first.by ?? first.line ?? ''}${P.places.length > 1 ? ` · ${P.places.length > 2 ? i18n.t('series:prizes.top3.alsoPodium') : i18n.t('series:prizes.top3.alsoRunnerUp')}` : ''}`
+                ? `${first.by ?? first.line ?? ''}${P.places.length > 1 ? ` · ${P.places.length > 2 ? i18n.t('series:prizes.top3.alsoChallenger') : i18n.t('series:prizes.top3.alsoContender')}` : ''}`
                 : i18n.t('series:prizes.topPlacesWin'),
             status: p.notYet ? i18n.t('series:prizes.status.notStarted') : p.blind ? i18n.t('series:prizes.status.rankHidden') : i18n.t('series:prizes.status.yourRank', { rank: fmt(p.rank) }), tone: 'muted',
         },
@@ -302,7 +291,7 @@ export function WaysToWin({ state, onOpen }: { state: PrizeState; onOpen: (k: Pr
     const sc = useSeasonCard();
     const P = state.prizes;
     const TBA = t('series:prizes.tba');
-    const NAME: Partial<Record<PrizeKey, string>> = { top3: 'Champion · Runner-up · Podium', draw: 'Every Move Counts', city: t('series:prizes.city.title') };
+    const NAME: Partial<Record<PrizeKey, string>> = { top3: PLACE_NAMES.join(' · '), draw: 'Every Move Counts', city: t('series:prizes.city.title') };
     const SUB: Partial<Record<PrizeKey, string>> = {
         top3: P.places.length ? (P.places.length > 1 ? t('series:prizes.andMore', { name: P.places[0].name }) : P.places[0].name) : TBA,
         draw: P.draw ? `${P.draw.winners} × ${P.draw.name}` : TBA,
@@ -324,7 +313,8 @@ export function WaysToWin({ state, onOpen }: { state: PrizeState; onOpen: (k: Pr
                         ? <Image source={tile.img} style={s.wThumb} contentFit="cover" />
                         : <View style={[s.wThumb, s.wIcon]}><Ionicons name={tile.icon ?? 'trophy-outline'} size={20} color={GOLD} /></View>}
                     <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={s.wTitle} numberOfLines={1}>{NAME[tile.key] ?? tile.title}</Text>
+                        {/* Two lines: "Champion · Contender · Challenger" won't fit one on a phone. */}
+                        <Text style={s.wTitle} numberOfLines={2}>{NAME[tile.key] ?? tile.title}</Text>
                         <Text style={s.wSub} numberOfLines={1}>{SUB[tile.key] ?? tile.prize}</Text>
                         <Text style={[s.wStatus, { color: toneColor(tile.tone) }]} numberOfLines={1}>{tile.status}</Text>
                     </View>
@@ -357,8 +347,7 @@ export function PrizeDetailSheet({
     const head: Record<PrizeKey, [string, string]> = {
         top3: [t('series:prizes.head.top3Light'), t('series:prizes.head.top3Bold')], draw: ['Every Move ', 'Counts'], golden: ['The Golden ', 'P'],
         city: [t('series:prizes.head.cityLight'), t('series:prizes.head.cityBold')], event: [t('series:prizes.head.eventLight'), t('series:prizes.head.eventBold')], tickets: ['Every Move ', 'Counts'],
-        most_wanted: ['Most ', 'Wanted'], hot_streak: ['Hot ', 'Streak'], biggest_mover: ['Biggest ', 'Mover'],
-        underdog: ['', 'Underdog'], patient_zero: ['Patient ', 'Zero'], photo_finish: ['Photo ', 'Finish'],
+        patient_zero: ['Squad ', 'Builder'], hot_streak: ['', 'Unbreakable'], biggest_mover: ['Level ', 'Up'], rookie: ['Rookie of the ', 'Series'],
     };
     const P = state.prizes;
     const drawHow = t('series:prizes.drawHow', { need: state.need, days: state.drawDots.length });
@@ -460,9 +449,8 @@ export function WinnersCard({ results }: { results: SeriesResults }) {
     const { t } = useTranslation();
     const sc = useSeasonCard();
     if (!results.winners.length) return null;
-    const PLACE = ['CHAMPION', 'RUNNER-UP', 'PODIUM'];
     const label = (w: SeriesResults['winners'][number]) => (w.kind === 'place'
-        ? PLACE[w.place - 1] ?? placeOrdinal(w.place).toUpperCase()
+        ? (PLACE_NAMES[w.place - 1] ?? placeOrdinal(w.place)).toUpperCase()
         : w.kind === 'draw' ? 'EVERY MOVE COUNTS'
             : w.kind === 'city' ? `${t('series:prizes.winners.topCity')}${w.city ? ` · ${w.city.toUpperCase()}` : ''}`
                 : NAMED[w.kind].title.toUpperCase());

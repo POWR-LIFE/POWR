@@ -109,7 +109,6 @@ export type SeriesView = {
     board: Board;
     rows: Row[];
     title: (p: Person, rank: number) => TitleKey | null;
-    bounty: number | null;
     tabs: TabGames;
     open: Record<LensKey, boolean>;
     /** Your city, your place in it and its size, once you have one. */
@@ -238,8 +237,7 @@ export function fromSim(sim: Sim, name = 'Autumn Series'): SeriesView {
         rival: sim.rival,
         board: sim.board,
         rows: sim.rows,
-        title: (p, rank) => titleOf(p, rank, sim.board, sim.model.bounty.live),
-        bounty: sim.model.bounty.live ? sim.model.bounty.pot : null,
+        title: (p, rank) => titleOf(p, rank, sim.board),
         tabs: sim.tabs,
         open,
         city: { name: 'London', rank: youOf(sim.model.boards.city).rank, members: sim.model.boards.city.total },
@@ -361,7 +359,6 @@ export function fromLive(b: SeriesBoard, name = 'Series', blind = false): Series
         board,
         rows: visibleRows(board, blind ? 'blind' : 'day3'),
         title: () => null,
-        bounty: null,
         tabs,
         open: { overall: true, city: !!c?.open, gym: gymOpen, friends: true },
         city: c?.you && c.rank != null && c.members != null ? { name: c.you.name, rank: c.rank, members: c.members } : null,

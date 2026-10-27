@@ -75,7 +75,7 @@ const MOMENT_PUSH: Record<string, { title: string; body: string }> = {
     gun: { title: 'The Gun', body: 'The Series is live. Every verified session counts from now.' },
     doubleDown: { title: 'Double Down', body: 'Runs count 2× today, until midnight.' },
     eventNight: { title: 'Event night', body: 'It’s on at ONE LDN. Check in for ×2 Series points until midnight.' },
-    plague: { title: 'The Plague', body: 'For two days, every friend who joins with your code counts for Patient Zero.' },
+    plague: { title: 'The Plague', body: 'For two days, every friend who joins with your code counts for Squad Builder.' },
     blind: { title: 'Blind Mode', body: 'The board just went dark. Every rank is hidden for 48 hours.' },
     powerHour: { title: 'Power Hour in 15 minutes', body: 'Every session from 18:00 to 19:00 counts 2×.' },
     allIn: { title: 'All In', body: 'The board is back. Everyone can see exactly what they need.' },
@@ -709,7 +709,6 @@ export function SeriesHome({
                 when={v.round.prizesDay}
                 boosts={extras.moments.some((m) => (m.multiplier ?? 1) > 1)}
                 blindMode={extras.moments.some((m) => m.kind === 'blind')}
-                mostWanted={!v.live || prizeSet.named.most_wanted != null}
                 heat={v.heat?.meta ?? null}
                 onPrizes={running ? () => { setSheet(null); setTimeout(() => openPrizes('top3'), 350); } : undefined}
             />
@@ -921,7 +920,6 @@ function Race({ v, hits, you, heat }: { v: SeriesView; hits: Sim['hits']; you: Y
                                 rank={r.rank}
                                 hit={hits[r.p.id]}
                                 title={r.dark || heat ? null : v.title(r.p, r.rank)}
-                                bounty={v.bounty}
                                 isMe={r.p.you}
                                 dark={r.dark}
                                 hideRank={r.hideRank}
@@ -1124,7 +1122,6 @@ function DevPanel({
                     <Text style={s.devSub}>OVERALL</Text>
                     <View style={s.devRow}>
                         {chip('YOU OVERTAKE', false, sim.overtake)}
-                        {chip('BOUNTY CLAIMED', false, sim.claimBounty)}
                         {chip('YOUR FILE', false, onFile)}
                     </View>
                 </>

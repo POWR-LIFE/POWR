@@ -84,7 +84,7 @@ export function SeriesJoinHost() {
  *
  *   pitch    what the Series is (the round, its prizes, how it works), the
  *            consent line and ONE gold JOIN.
- *   success  you're in, and the optional extra: invite friends for Patient Zero.
+ *   success  you're in, and the optional extra: invite friends for Squad Builder.
  *
  * From Home, Done goes on to the League, where the round lives.
  */
@@ -239,8 +239,8 @@ export function SeriesJoinSheet({ visible, onClose, round, from }: {
                         ) : (
                             <>
                                 <View style={s.block}>
-                                    <Text style={s.blockEyebrow}>{t('series:join.pzEyebrow')}</Text>
-                                    <Text style={s.ruleText}>{t('series:join.pzText')}</Text>
+                                    <Text style={s.blockEyebrow}>{t('series:join.squadEyebrow')}</Text>
+                                    <Text style={s.ruleText}>{t('series:join.squadText')}</Text>
                                 </View>
                                 <Pressable
                                     style={({ pressed }) => [s.primary, s.primaryRow, (pressed || !code) && { opacity: 0.85 }]}
