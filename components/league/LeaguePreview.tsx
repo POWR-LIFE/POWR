@@ -260,26 +260,28 @@ function EventsSegment() {
                         accessibilityLabel={t('events:invite.shareA11y')}
                     >
                         <Ionicons name="share-outline" size={14} color="#0a0a0a" />
-                        <Text style={styles.shareBtnText}>{t('events:invite.share')}</Text>
+                        <Text style={styles.shareBtnText} numberOfLines={1} adjustsFontSizeToFit>{t('events:invite.share')}</Text>
                     </Pressable>
-                    <Pressable
-                        style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
-                        onPress={handleCopy}
-                        disabled={!message}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('events:invite.copyA11y')}
-                    >
-                        <Text style={styles.codeText}>{code ?? '········'}</Text>
-                        <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={13} color={copied ? GOLD : MUTED} />
-                    </Pressable>
-                    <Pressable
-                        style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.7 }]}
-                        onPress={() => router.push('/my-qr')}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('events:preview.events.qrA11y')}
-                    >
-                        <Ionicons name="qr-code-outline" size={16} color={DIM} />
-                    </Pressable>
+                    <View style={styles.codeTools}>
+                        <Pressable
+                            style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
+                            onPress={handleCopy}
+                            disabled={!message}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('events:invite.copyA11y')}
+                        >
+                            <Text style={styles.codeText} numberOfLines={1} adjustsFontSizeToFit>{code ?? '········'}</Text>
+                            <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={13} color={copied ? GOLD : MUTED} />
+                        </Pressable>
+                        <Pressable
+                            style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.7 }]}
+                            onPress={() => router.push('/my-qr')}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('events:preview.events.qrA11y')}
+                        >
+                            <Ionicons name="qr-code-outline" size={16} color={DIM} />
+                        </Pressable>
+                    </View>
                 </View>
             </View>
         </>
@@ -366,19 +368,21 @@ const styles = StyleSheet.create({
         borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.12)' },
     crewLine: { fontSize: 12, fontWeight: '300', color: DIM, lineHeight: 17 },
 
-    // ── Code row: lifted from EventTicketCard so the two surfaces match
-    codeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    // ── Code row: lifted from EventTicketCard so the two surfaces match —
+    // wraps SHARE onto its own line when its label can't fit beside the code.
+    codeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
     shareBtn: {
-        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-        backgroundColor: GOLD, borderRadius: 100, paddingVertical: 10,
+        flexGrow: 1, flexShrink: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+        backgroundColor: GOLD, borderRadius: 100, paddingVertical: 10, paddingHorizontal: 6,
     },
-    shareBtnText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
+    shareBtnText: { flexShrink: 1, fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
+    codeTools: { flexGrow: 1, flexBasis: 0, minWidth: 118 + 36 + 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
     codeChip: {
-        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6,
         borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
         backgroundColor: 'rgba(0,0,0,0.25)', paddingHorizontal: 12, paddingVertical: 9, minWidth: 118,
     },
-    codeText: { fontSize: 13, fontWeight: '600', color: TEXT, letterSpacing: 2 },
+    codeText: { flexShrink: 1, fontSize: 13, fontWeight: '600', color: TEXT, letterSpacing: 2 },
     qrBtn: {
         width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
         borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', backgroundColor: 'rgba(0,0,0,0.25)',

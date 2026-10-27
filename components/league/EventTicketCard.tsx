@@ -226,7 +226,10 @@ export function EventTicketCard({
             </Text>
 
             {/* ── Share is the action this card exists for; code + QR ride
-                the same row rather than a second one. ── */}
+                the same row rather than a second one — until SHARE can't fit
+                beside them (larger system text, PARTAGER / COMPARTIR on a
+                narrow phone): then the row wraps and SHARE goes full width
+                above them, rather than spilling out of its pill. ── */}
             <View style={styles.codeRow}>
                 <Pressable
                     style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.85 }]}
@@ -236,41 +239,43 @@ export function EventTicketCard({
                     accessibilityLabel={t('events:invite.shareA11y')}
                 >
                     <Ionicons name="share-outline" size={14} color="#0a0a0a" />
-                    <Text style={styles.shareBtnText}>{t('events:invite.share')}</Text>
+                    <Text style={styles.shareBtnText} numberOfLines={1} adjustsFontSizeToFit>{t('events:invite.share')}</Text>
                 </Pressable>
-                <Pressable
-                    style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
-                    onPress={handleCopy}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('events:invite.copyA11y')}
-                >
-                    <Text style={styles.codeText}>{code ?? '········'}</Text>
-                    <Ionicons
-                        name={copied ? 'checkmark' : 'copy-outline'}
-                        size={13}
-                        color={copied ? GOLD : MUTED}
-                    />
-                </Pressable>
-                <Pressable
-                    style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.7 }]}
-                    onPress={() =>
-                        router.push({ pathname: '/event-qr', params: { slug: event.slug, name: event.name } })
-                    }
-                    accessibilityRole="button"
-                    accessibilityLabel={t('events:ticket.qrA11y')}
-                >
-                    <Ionicons name="qr-code-outline" size={16} color={DIM} />
-                </Pressable>
-                {/* The same invite as SHARE, as a picture: the event card with
-                    your code on it, for Stories and chats that want an image. */}
-                <Pressable
-                    style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.7 }]}
-                    onPress={() => router.push({ pathname: '/share-event', params: { slug: event.slug } })}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('events:invite.cardA11y')}
-                >
-                    <Ionicons name="image-outline" size={16} color={DIM} />
-                </Pressable>
+                <View style={styles.codeTools}>
+                    <Pressable
+                        style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
+                        onPress={handleCopy}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('events:invite.copyA11y')}
+                    >
+                        <Text style={styles.codeText} numberOfLines={1} adjustsFontSizeToFit>{code ?? '········'}</Text>
+                        <Ionicons
+                            name={copied ? 'checkmark' : 'copy-outline'}
+                            size={13}
+                            color={copied ? GOLD : MUTED}
+                        />
+                    </Pressable>
+                    <Pressable
+                        style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.7 }]}
+                        onPress={() =>
+                            router.push({ pathname: '/event-qr', params: { slug: event.slug, name: event.name } })
+                        }
+                        accessibilityRole="button"
+                        accessibilityLabel={t('events:ticket.qrA11y')}
+                    >
+                        <Ionicons name="qr-code-outline" size={16} color={DIM} />
+                    </Pressable>
+                    {/* The same invite as SHARE, as a picture: the event card with
+                        your code on it, for Stories and chats that want an image. */}
+                    <Pressable
+                        style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.7 }]}
+                        onPress={() => router.push({ pathname: '/share-event', params: { slug: event.slug } })}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('events:invite.cardA11y')}
+                    >
+                        <Ionicons name="image-outline" size={16} color={DIM} />
+                    </Pressable>
+                </View>
             </View>
 
             {/* ── Your physical spot: the venue's own booking system ──
@@ -438,7 +443,9 @@ const styles = StyleSheet.create({
     explainer: { fontSize: 11, fontWeight: '300', color: DIM, lineHeight: 15, marginTop: 8 },
 
     shareBtn: {
-        flex: 1,
+        // Sized by its label, never narrower: the row wraps first.
+        flexGrow: 1,
+        flexShrink: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -446,15 +453,29 @@ const styles = StyleSheet.create({
         backgroundColor: GOLD,
         borderRadius: 100,
         paddingVertical: 10,
+        paddingHorizontal: 6,
     },
-    shareBtnText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
+    // Shrinking is the last resort, for a label too wide even for a
+    // full-width pill (the largest accessibility text sizes).
+    shareBtnText: { flexShrink: 1, fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
 
-    codeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+    codeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10 },
+    // The code chip's 118 minimum plus both circles and their gaps — the
+    // most this group gives up before SHARE moves to a line of its own.
+    codeTools: {
+        flexGrow: 1,
+        flexBasis: 0,
+        minWidth: 118 + 2 * (36 + 8),
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
     codeChip: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        gap: 6,
         borderRadius: 10,
         borderWidth: 1,
         borderColor: BORDER,
@@ -463,7 +484,7 @@ const styles = StyleSheet.create({
         paddingVertical: 9,
         minWidth: 118,
     },
-    codeText: { fontSize: 13, fontWeight: '600', color: TEXT, letterSpacing: 2 },
+    codeText: { flexShrink: 1, fontSize: 13, fontWeight: '600', color: TEXT, letterSpacing: 2 },
     qrBtn: {
         width: 36,
         height: 36,
