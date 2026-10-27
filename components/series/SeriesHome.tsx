@@ -13,7 +13,7 @@ import { DropReveal } from '@/components/drop/DropReveal';
 import { trackTap } from '@/lib/analytics';
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import {
-    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, type SeriesInviteBoard, useSeriesBoard, useSeriesExtras, useSeriesInviteBoard,
+    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, seriesDate, type SeriesInviteBoard, useSeriesBoard, useSeriesExtras, useSeriesInviteBoard,
 } from '@/lib/api/series';
 import { fetchProfile, type Profile } from '@/lib/api/user';
 import { dropSim, todayTarget, useDropPrototype } from '@/lib/dev/dropPrototype';
@@ -48,6 +48,7 @@ import { liveMomentCards, MomentStrip, sampleMomentCards, SERIES_BAR_H, SeriesCa
 import { hexA, LOCKUP_LINES, type LockupLine, SEASON_ORDER, SEASONS, seasonDev, useSeason, useSeasonCard } from './season';
 import { RulesSheet, ShareSheet, Sheet, SheetHead, YourFile } from './SeriesSheets';
 import { InviteBoardCard } from './SeriesInvite';
+import { type JoinRound, joinRoundOf, JoinRoundScreen, openSeriesJoin, roundDays } from './SeriesJoin';
 import { StartLine } from './StartLine';
 import { CityClash, CityPicker, Duels, GameTabs, GymCrown, LockedGame } from './SeriesTabs';
 import { fromLive, fromSim, type SeriesView } from './seriesView';
@@ -136,12 +137,22 @@ export function SeriesHome({
     const focused = useIsFocused();
     const live = useSeriesBoard(focused);
     const [sample, setSample] = useState(false);
+    // Not on the board (20261027120000): you haven't joined, or you joined
+    // between rounds. `offRound` is the round you'd race (the one on now, else
+    // the next); before it starts, its start line; while it runs, the screen
+    // that asks you to join. JOIN puts you in `toJoin`.
+    const lb = sample ? null : live.board;
+    const toJoin = joinRoundOf(lb);
+    const offRound: JoinRound | null = lb && !lb.me && lb.join && (toJoin || lb.state !== 'running')
+        ? toJoin ?? { slug: lb.join.slug, name: lb.join.name, startsAt: Date.parse(lb.join.starts_at), endsAt: Date.parse(lb.join.ends_at), need: lb.join.draw_days }
+        : null;
+    const offBefore = !!offRound && offRound.startsAt > Date.now();
     // The sample sim only ticks while it's what's on screen, or its sessions
     // would toast over the live board.
-    const showLive = !sample && !!live.board?.me;
+    const showLive = !sample && (!!live.board?.me || !!offRound);
     const sim = useSeriesSim(focused && !showLive);
     // Before a round: the invite race (live once the invite period opens; the sample's otherwise).
-    const inviteLive = useSeriesInviteBoard(focused && !sample && live.board?.state === 'upcoming');
+    const inviteLive = useSeriesInviteBoard(focused && !sample && (live.board?.state === 'upcoming' || offBefore));
     const alerts = useAlerts();
     const [forceAlerts, setForceAlerts] = useState(false);
     const [profile, setProfile] = useState<Profile | null>(null);
@@ -182,16 +193,21 @@ export function SeriesHome({
     const liveView = live.board ? (blindNow ? fromLive(live.board, seasonDef.name, true) : liveBase) : null;
     // Sample data is for design work: only dev builds ever fall back to it.
     const v: SeriesView = (!sample && liveView) || fromSim(sim, seasonDef.name);
-    const unavailable = !SERIES_PROTOTYPE && !liveView;
+    const unavailable = !SERIES_PROTOTYPE && !liveView && !offRound;
     useEffect(() => { if (unavailable && live.loaded) onUnavailable?.(); }, [unavailable, live.loaded, onUnavailable]);
     const momentCards = v.live ? liveCards : sampleMomentCards(v.hero.day);
-    const inviteBoard: SeriesInviteBoard | null = v.live ? (inviteLive?.open ? inviteLive : null) : sim.inviteBoard;
+    const inviteBoard: SeriesInviteBoard | null = v.live || offRound ? (inviteLive?.open ? inviteLive : null) : sim.inviteBoard;
     const prizeSet = useMemo(() => (v.live ? prizeSetFrom(extras.prizes) : SAMPLE_PRIZES), [v.live, extras.prizes]);
     const running = v.phase === 'running';
     // Before the first round: every game shows, and Overall says what's coming.
     const upcoming = v.phase === 'upcoming';
     // Never the sample's header in release: "Day 3 of 15" while the board loads.
-    useEffect(() => { onHeader?.(unavailable ? '' : v.header); }, [onHeader, v.header, unavailable]);
+    const header = offRound && lb
+        ? (offBefore
+            ? t('series:view.headerNext', { name: seasonDef.name, round: offRound.name, date: seriesDate(new Date(offRound.startsAt).toISOString()) })
+            : t('series:view.headerDay', { name: seasonDef.name, ...roundDays(offRound) }))
+        : v.header;
+    useEffect(() => { onHeader?.(unavailable ? '' : header); }, [onHeader, header, unavailable]);
 
     // Today's Drop: Home's Drop, the app's one daily reveal. Here it's a row and
     // opens with the same hold; during a round it can hold Series prizes.
@@ -433,25 +449,47 @@ export function SeriesHome({
 
     if (unavailable) return <View style={{ flex: 1 }} />;
 
+    // A round on that you're not in: one screen that asks you to join.
+    if (lb && offRound && toJoin && !offBefore) {
+        return (
+            <View style={{ flex: 1, paddingBottom: bottomInset }}>
+                <JoinRoundScreen
+                    board={lb}
+                    round={toJoin}
+                    onJoin={() => openSeriesJoin(toJoin, 'league')}
+                    dev={SERIES_PROTOTYPE ? (
+                        <Pressable onPress={() => setSample(true)} style={s.devChip} accessibilityRole="button" accessibilityLabel="Series sample data">
+                            <Text style={s.devChipText}>SAMPLE DATA</Text>
+                        </Pressable>
+                    ) : undefined}
+                />
+            </View>
+        );
+    }
+
     // Before a round: The Start Line, one screen with no scrolling (the
     // countdown, the crowd at the line, your three numbers, one button).
-    if (upcoming) {
-        const startsAt = gunAt ?? Date.parse(inviteBoard?.round.starts_at ?? live.board?.round.starts_at ?? '') ?? Date.now();
+    // Not joined yet, it's the start line of the round you'd join, and the
+    // button is JOIN.
+    if (upcoming || offBefore) {
+        const pre = offBefore ? offRound : null;
+        const startsAt = gunAt ?? (pre ? pre.startsAt : Date.parse(inviteBoard?.round.starts_at ?? live.board?.round.starts_at ?? '')) ?? Date.now();
         return (
             <View style={{ flex: 1, paddingBottom: bottomInset }}>
                 <StartLine
                     startsAt={Number.isFinite(startsAt) ? startsAt : Date.now()}
-                    roundName={v.round.name}
+                    roundName={pre ? pre.name : v.round.name}
                     invite={inviteBoard}
-                    days={v.round.days}
-                    need={v.hero.need}
+                    days={pre ? roundDays(pre).days : v.round.days}
+                    need={pre ? pre.need : v.hero.need}
                     shift={crowdShift}
+                    onJoin={toJoin ? () => openSeriesJoin(toJoin, 'league') : undefined}
                     onInvite={() => { void invite(); }}
                     onRace={() => { trackTap('series_invite_race_open'); setSheet('race'); }}
-                    onCity={SHOW_CITY_PICK && v.cityPick ? () => setSheet('city') : undefined}
+                    onCity={SHOW_CITY_PICK && !pre && v.cityPick ? () => setSheet('city') : undefined}
                     onStarted={() => {
                         setGunAt(null);
-                        if (v.live) void live.refresh(); else sim.setInRound(true);
+                        if (v.live || pre) void live.refresh(); else sim.setInRound(true);
                     }}
                     dev={SERIES_PROTOTYPE ? (
                         <Pressable onPress={() => setSheet('dev')} style={s.devChip} accessibilityRole="button" accessibilityLabel="Series dev controls">
@@ -490,7 +528,7 @@ export function SeriesHome({
                             ['THE GUN (IN 4 S)', () => { setSheet(null); setGunAt(Date.now() + 4000); }],
                             ['ROUND ON', () => { setSheet(null); sim.setInRound(true); }],
                             ['BETWEEN ROUNDS', () => { setSheet(null); sim.setOffPhase('ended'); }],
-                            ...(liveView ? [[v.live ? 'SAMPLE DATA' : 'LIVE DATA', () => setSample(v.live)] as [string, () => void]] : []),
+                            ...(liveView || offRound || sample ? [[sample ? 'LIVE DATA' : 'SAMPLE DATA', () => setSample(!sample)] as [string, () => void]] : []),
                         ].map(([label, run]) => (
                             <Pressable key={label as string} onPress={run as () => void} style={s.devChip}>
                                 <Text style={s.devChipText}>{label as string}</Text>

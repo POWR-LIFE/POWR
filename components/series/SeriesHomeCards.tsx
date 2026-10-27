@@ -14,6 +14,7 @@ import { trackTap } from '@/lib/analytics';
 import { crowdAt, seriesClock, seriesDate, seriesNum, seriesOrdinal } from '@/lib/api/series';
 import i18n, { getFormatLocale } from '@/lib/i18n';
 import { inviteNext } from './SeriesInvite';
+import { type JoinRound, openSeriesJoin, roundDays } from './SeriesJoin';
 import { useSeriesDress } from './SeriesRoundCard';
 import { CARD_BG, CARD_BORDER, GOLD, GREEN, HAIR, RED, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
 import type { PrizeState } from './SeriesPrizes';
@@ -57,29 +58,40 @@ export function countdown(ms: number): string {
  * one, when it starts and what gets you in the Draw; between rounds, where
  * you finished, whether you made the Draw, and the countdown to the next.
  *
- * While a round's invite period is on, everyone is already in: the card
- * leads with that, who's waiting at the start line (it grows towards the gun,
- * as on the League) and the countdown. Inviting is on the League: the card opens it.
- * The invite race is an optional extra for Patient Zero, never a way onto the
- * board: once you've brought a friend in, your race place shows instead.
+ * Nobody is in until they join (20261027120000): until then the card carries
+ * one gold JOIN that opens the join sheet. Once you're in, while a round's
+ * invite period is on, the card leads with that, who's waiting at the start
+ * line (it grows towards the gun, as on the League) and the countdown.
+ * Inviting is on the League: the card opens it. The invite race is an
+ * optional extra for Patient Zero, never a way onto the board: once you've
+ * brought a friend in, your race place shows instead.
  * Never a dash or a 0. Just the card: picking a city is left to the League.
  */
 export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
-    const { t } = useTranslation();
     const [now, setNow] = useState(Date.now());
     const near = c.next != null && c.next.startsAt - now < 3_600_000;
     useEffect(() => {
         const t = setInterval(() => setNow(Date.now()), near ? 15_000 : 60_000);
         return () => clearInterval(t);
     }, [near]);
+    const join = c.join;
+    const openJoin = join ? () => openSeriesJoin(join, 'home') : undefined;
+    return join && openJoin && (c.phase === 'running' || (c.phase === 'between' && !c.finish))
+        ? <JoinCard coming={c} join={join} now={now} onJoin={openJoin} />
+        : <ComingCard coming={c} now={now} onJoin={openJoin} />;
+}
+
+function ComingCard({ coming: c, now, onJoin }: { coming: SeriesComing; now: number; onJoin?: () => void }) {
+    const { t } = useTranslation();
     const upcoming = c.phase === 'upcoming';
     // Gold is for your own numbers: the countdown stays white.
     const clock: HomeStat = c.next
         ? { value: countdown(c.next.startsAt - now), label: t('series:homeCards.toRound', { round: upcoming ? c.roundName : c.next.name }) }
         : { value: '—', label: t('series:homeCards.nextSoon') };
-    const inv = upcoming ? c.invite : null;
-    // Everyone's in. Not in the invite race (yet): the crowd at the line and
-    // that you're in; in it: your race place and friends in.
+    // You're in, before the round: the invite race, once its period is on.
+    const inv = upcoming && !c.join ? c.invite : null;
+    // Not in the invite race (yet): the crowd at the line and that you're in;
+    // in it: your race place and friends in.
     const offRace = inv != null && inv.me.rank == null;
     const items: HomeStat[] = inv && offRace
         ? [
@@ -98,6 +110,13 @@ export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
             },
             clock,
         ]
+        // Not joined yet: who's waiting at the line, the countdown and the round; JOIN below.
+        : upcoming && c.join && c.invite
+        ? [
+            { value: seriesNum(crowdAt(c.invite, now)), label: t('series:homeCards.onStartLine') },
+            clock,
+            { value: `${c.days}`, label: t('series:homeCards.roundDays') },
+        ]
         : upcoming
         ? [clock, { value: `${c.days}`, label: t('series:homeCards.roundDays') }, { value: `${c.need}`, label: t('series:homeCards.drawDays') }]
         : [
@@ -115,10 +134,14 @@ export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
         ];
     const dress = useSeriesDress(
         c.season,
-        inv && c.next
+        (inv || c.join) && upcoming && c.next
             ? t('series:homeCards.roundStarts', { round: c.roundName, date: seriesDate(new Date(c.next.startsAt).toISOString()) })
             : upcoming ? t('series:homeCards.startingSoon', { round: c.roundName }) : t('series:homeCards.roundFinished', { round: c.roundName }),
     );
+    // One button: JOIN while you're not in (it's the thing to do now), else the winners once they're out.
+    const action = onJoin
+        ? { icon: 'flag-outline' as const, label: t('series:join.button'), primary: true, onPress: onJoin }
+        : !upcoming && c.winners ? { icon: 'trophy-outline' as const, label: t('series:homeCards.winners'), onPress: () => openLeague('winners') } : undefined;
     return (
         <HomeCard
             {...dress}
@@ -126,10 +149,51 @@ export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
             onPress={() => openLeague(upcoming ? 'coming' : 'finished')}
             label={t('series:homeCards.a11y', { season: c.season, stats: items.map((x) => `${x.value} ${x.label}`).join('. ') })}
             // Inviting lives on the League (Jamie, 26 Oct): the card opens it.
-            action={!upcoming && c.winners ? { icon: 'trophy-outline', label: t('series:homeCards.winners'), onPress: () => openLeague('winners') } : undefined}
+            action={action}
         >
             <HomeStats items={items} />
             {inv && <HomeNote icon="people-outline" lead={t('series:homeCards.next')} text={offRace && inv.me.joining > 0 ? t('series:invite.joining', { n: seriesNum(inv.me.joining) }) : inviteNext(inv)} />}
+        </HomeCard>
+    );
+}
+
+/**
+ * Home while a round is on and you're not in it (or between rounds, when you
+ * weren't in the last one): the round to join, in the same layout. Racing ·
+ * days left · days for the Draw, a line that joining late costs nothing, and
+ * the one gold JOIN.
+ */
+function JoinCard({ coming: c, join, now, onJoin }: { coming: SeriesComing; join: JoinRound; now: number; onJoin: () => void }) {
+    const { t } = useTranslation();
+    const running = c.phase === 'running';
+    const { days, day } = roundDays(join, now);
+    const left = Math.max(1, days - day + 1);
+    const date = seriesDate(new Date(join.startsAt).toISOString());
+    const items: HomeStat[] = running
+        ? [
+            ...(c.racing ? [{ value: seriesNum(c.racing), label: t('series:join.racing') }] : []),
+            { value: seriesNum(left), label: t('series:join.daysLeft', { count: left }) },
+            { value: `${join.need}`, label: t('series:homeCards.drawDays') },
+        ]
+        : [
+            { value: countdown(join.startsAt - now), label: t('series:homeCards.toRound', { round: join.name }) },
+            { value: `${days}`, label: t('series:homeCards.roundDays') },
+            { value: `${join.need}`, label: t('series:homeCards.drawDays') },
+        ];
+    const dress = useSeriesDress(
+        c.season,
+        running ? t('series:join.onNowShort', { round: join.name, day, days }) : t('series:homeCards.roundStarts', { round: join.name, date }),
+    );
+    return (
+        <HomeCard
+            {...dress}
+            title={`${c.season} · ${join.name}`}
+            onPress={() => openLeague('join')}
+            label={t('series:homeCards.a11y', { season: c.season, stats: items.map((x) => `${x.value} ${x.label}`).join('. ') })}
+            action={{ icon: 'flag-outline', label: t('series:join.button'), primary: true, onPress: onJoin }}
+        >
+            <HomeStats items={items} />
+            {running && <HomeNote icon="time-outline" lead={t('series:join.lateLead')} text={t('series:join.lateNote', { date })} />}
         </HomeCard>
     );
 }

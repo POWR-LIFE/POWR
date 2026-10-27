@@ -38,11 +38,22 @@ export type SeriesCity = {
     options: string[] | null;
 };
 
+/** The round joining puts you in: the one on now, else the next one. */
+export type SeriesJoinRound = { slug: string; name: string; starts_at: string; ends_at: string; draw_days: number };
+
 export type SeriesBoard = {
     state: 'upcoming' | 'running' | 'ended';
     round: { slug: string; name: string; starts_at: string; ends_at: string; day: number; days: number; draw_days: number };
     next: { slug: string; name: string; starts_at: string } | null;
+    /**
+     * Whether you've joined the Series this season (20261027120000_series_join).
+     * Missing on an older server, where everyone is in: read it with seriesJoined().
+     */
+    joined?: boolean;
+    /** The round joining puts you in; null when there's none to join (or the Series is off for you). */
+    join?: SeriesJoinRound | null;
     total: number;
+    /** Null until you've joined: the rows are then the top 3 on their own. */
     me: { rank: number; rank_mid: number; points: number; today: number; days: number[] } | null;
     /** The top 3, plus the one above you, you and the two below. */
     rows: SeriesRow[];
@@ -73,6 +84,32 @@ export async function fetchSeriesBoard(): Promise<SeriesBoard | null> {
     const { data, error } = await supabase.rpc('get_series_board');
     if (error) throw error;
     return (data as SeriesBoard | null) ?? null;
+}
+
+/** Have you joined? An older server has no joining (everyone's in), so a missing answer is yes. */
+export const seriesJoined = (b: SeriesBoard | null | undefined): boolean => b?.joined !== false;
+
+/*
+ * Joining (join_series, 20261027120000): once a season, and you're in every
+ * round of it. Every board on screen reads again the moment you join, so Home
+ * and the League both change straight away.
+ */
+let joinedAt = 0;
+const joinSubs = new Set<() => void>();
+const useJoinedAt = () => useSyncExternalStore(
+    (f) => { joinSubs.add(f); return () => { joinSubs.delete(f); }; },
+    () => joinedAt,
+);
+
+export type SeriesJoinResult = { joined: true; season: string | null; round: SeriesJoinRound };
+
+/** Join the Series. Throws: P0001 = the server's reason ("The Series isn't open yet"). */
+export async function joinSeries(): Promise<SeriesJoinResult> {
+    const { data, error } = await supabase.rpc('join_series');
+    if (error) throw error;
+    joinedAt = Date.now();
+    joinSubs.forEach((f) => f());
+    return data as SeriesJoinResult;
 }
 
 export async function challengeFriend(friendId: string): Promise<void> {
@@ -165,7 +202,8 @@ export type SeriesInviteBoard = {
     rows: { rank: number; name: string; friends: number; joining: number; you: boolean }[];
     ranked: number;
     start_line: number;
-    me: { rank: number | null; friends: number; joining: number; code: string | null };
+    /** joined: you've joined the round's season (missing on an older server: everyone's in). */
+    me: { rank: number | null; friends: number; joining: number; code: string | null; joined?: boolean };
     /**
      * The crowd at the start line (20261026150000): real members waiting, plus
      * the pacers who fill it to the board's day-1 size by the gun. Missing on
@@ -199,6 +237,7 @@ export async function fetchSeriesInviteBoard(): Promise<SeriesInviteBoard | null
 /** The invite board while a screen that shows it is in view, re-read every minute. */
 export function useSeriesInviteBoard(active: boolean) {
     const [board, setBoard] = useState<SeriesInviteBoard | null>(null);
+    const joined = useJoinedAt();
     useEffect(() => {
         if (!active) return undefined;
         let live = true;
@@ -206,7 +245,7 @@ export function useSeriesInviteBoard(active: boolean) {
         read();
         const t = setInterval(read, 60_000);
         return () => { live = false; clearInterval(t); };
-    }, [active]);
+    }, [active, joined]);
     return board;
 }
 
@@ -421,11 +460,12 @@ export function useSeriesBoard(active: boolean) {
             setLoaded(true);
         }
     }, []);
+    const joined = useJoinedAt();
     useEffect(() => {
         if (!active) return undefined;
         void refresh();
         const t = setInterval(() => { void refresh(); }, 60_000);
         return () => clearInterval(t);
-    }, [active, refresh]);
+    }, [active, refresh, joined]);
     return { board, loaded, refresh };
 }

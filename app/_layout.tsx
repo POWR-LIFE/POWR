@@ -27,6 +27,7 @@ import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/context/ThemeC
 import { queryClient } from '@/lib/queryClient';
 import { startAnalytics, trackScreen, trackTouch } from '@/lib/analytics';
 import CrashRecoveryScreen from '@/components/CrashRecoveryScreen';
+import { SeriesJoinHost } from '@/components/series/SeriesJoin';
 import { flushCrashReports, noteRoute, reportHandled } from '@/lib/crashHandler';
 import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ensureAndroidChannels } from '@/lib/notifications';
@@ -231,6 +232,8 @@ function RootLayoutNav() {
           <Stack.Screen name="in-store" options={{ presentation: 'fullScreenModal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
         </Stack>
         <StatusBar style="auto" />
+        {/* Joining the Series: one sheet, whichever screen opened it (components/series/SeriesJoin). */}
+        <SeriesJoinHost />
       </ThemeProvider>
     </View>
   );

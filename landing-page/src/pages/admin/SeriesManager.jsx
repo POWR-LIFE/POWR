@@ -483,7 +483,10 @@ function OverviewTab({ round, season }) {
                             <Pill color={st.color}>{st.label}</Pill>
                         </div>}>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <Stat label="Members" value={fmtN(stats?.entrants)} sub={`${fmtN(stats?.moved)} have moved this round`} />
+                            {/* Members join the Series (20261027120000); before that everyone was in. */}
+                            {stats?.joined != null
+                                ? <Stat label="Joined" value={fmtN(stats.joined)} sub={`${fmtN(stats.entrants)} shown on the board · ${fmtN(stats.moved)} have moved`} />
+                                : <Stat label="Members" value={fmtN(stats?.entrants)} sub={`${fmtN(stats?.moved)} have moved this round`} />}
                             <Stat label="On the board" value={fmtN(stats?.board_total)} sub={`${fmtN(stats?.pacers_on_board)} of them pacers`} />
                             <Stat label="In The Draw" value={fmtN(stats?.in_the_draw)} sub={`logged ${round.draw_days}+ days · avg ${stats?.avg_days_logged ?? '—'} days`} />
                             <Stat label="Came back" value={fmtN(stats?.came_back)} sub={`moved in week 1 and again after · ${fmtN(stats?.week1_movers)} in week 1`} />
