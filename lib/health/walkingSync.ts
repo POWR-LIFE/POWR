@@ -531,6 +531,12 @@ export async function syncWalkingFromWake(): Promise<void> {
 defineTask(WALKING_SYNC_TASK, async () => {
     try {
         await syncWalkingNow();
+        // Where this scheduler does run (Android, with READ_HEALTH_DATA_IN_BACKGROUND
+        // from 1.6.0), the workouts and sleep ride it too. Throttled inside.
+        try {
+            const { syncHealthFromWake } = await import('@/lib/health/healthSync');
+            await syncHealthFromWake();
+        } catch { /* steps already landed; a workout can wait for the next run */ }
         return BackgroundFetch.BackgroundFetchResult.NewData;
     } catch {
         return BackgroundFetch.BackgroundFetchResult.Failed;

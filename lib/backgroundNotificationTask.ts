@@ -336,6 +336,16 @@ defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
           const { syncWalkingFromWake } = await import('@/lib/health/walkingSync');
           await syncWalkingFromWake();
         } catch { /* steps are never worth a wake */ }
+
+        // And after steps, the workouts and sleep the same store holds: the
+        // Series board moves on these rows, and a closed app used to hold them
+        // until its next open. Same contract as the walking sync above it:
+        // own try/catch, throttled to 10 min inside syncHealthFromWake, cannot
+        // reject, and never able to delay the check-in work this wake is for.
+        try {
+          const { syncHealthFromWake } = await import('@/lib/health/healthSync');
+          await syncHealthFromWake();
+        } catch { /* a workout row is never worth a wake */ }
       })
       .catch(() => { /* self-heal is best-effort by definition */ });
 
