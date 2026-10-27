@@ -7,7 +7,8 @@ import { countdown, type Seen, sinceLabel, sinceLines } from '@/components/serie
 import {
     liveComing, liveNextMoment, payoffLine, type SeriesToday, seriesDrawChip, seriesNextMove, seriesRingBoosts, seriesSessionLine, type TodayMoment,
 } from '@/components/series/SeriesToday';
-import type { SeriesBoard, SeriesMoment } from '@/lib/api/series';
+import { joinRoundOf, roundDays } from '@/components/series/SeriesJoin';
+import { type SeriesBoard, seriesJoined, type SeriesMoment } from '@/lib/api/series';
 import { gapToday } from '@/components/series/todayMove';
 import type { Rival } from '@/lib/dev/seriesPrototype';
 
@@ -214,6 +215,70 @@ describe('before and between rounds', () => {
         expect(countdown(23 * 86_400_000 + 4 * 3_600_000 + 60_000)).toBe('23d 04h');
         expect(countdown(14 * 3_600_000 + 5 * 60_000)).toBe('14h 05m');
         expect(countdown(38 * 60_000 + 30_000)).toBe('38m');
+    });
+});
+
+describe('joining the Series', () => {
+    const R1 = { slug: 'autumn-01', name: 'Round 01', starts_at: '2026-11-15T00:00:00Z', ends_at: '2026-12-01T00:00:00Z', draw_days: 10 };
+    const R2 = { slug: 'autumn-02', name: 'Round 02', starts_at: '2026-12-01T00:00:00Z', ends_at: '2026-12-16T00:00:00Z', draw_days: 9 };
+    const board = (state: SeriesBoard['state'], over: Partial<SeriesBoard> = {}): SeriesBoard => ({
+        state,
+        round: { ...R1, day: 5, days: 16 },
+        next: state === 'ended' ? { slug: R2.slug, name: R2.name, starts_at: R2.starts_at } : null,
+        total: 1550, me: null, joined: false, join: state === 'ended' ? R2 : R1,
+        rows: [], rival: null, gym: null,
+        duels: { week_start: '', ends_at: '', you: 0, active: [], invites: [], sent: [], open: [] },
+        ...over,
+    });
+    const P = { sample: false, places: [], named: {} };
+
+    it('an older server has no joining: everyone is in', () => {
+        const old = board('upcoming', { joined: undefined, join: undefined });
+        expect(seriesJoined(old)).toBe(true);
+        expect(joinRoundOf(old)).toBeNull();
+        expect(liveComing(old, 'S', P, false)?.join).toBeNull();
+    });
+
+    it('not joined, before the round: the round to join, from the board', () => {
+        const c = liveComing(board('upcoming'), 'S', P, false)!;
+        expect(c.phase).toBe('upcoming');
+        expect(c.join).toEqual({ slug: 'autumn-01', name: 'Round 01', startsAt: Date.parse(R1.starts_at), endsAt: Date.parse(R1.ends_at), need: 10 });
+    });
+
+    it('a round on that you are not in: Home asks you to join it, with how many are racing', () => {
+        const c = liveComing(board('running'), 'S', P, false)!;
+        expect(c).toMatchObject({ phase: 'running', racing: 1550, finish: null });
+        expect(c.join?.slug).toBe('autumn-01');
+        // In it: Home shows the round itself, not this card.
+        expect(liveComing(board('running', { joined: true, me: { rank: 3, rank_mid: 3, points: 40, today: 0, days: [1] } }), 'S', P, false)).toBeNull();
+    });
+
+    it('between rounds, not in the last one: the next round’s days and Draw', () => {
+        const c = liveComing(board('ended'), 'S', P, false)!;
+        expect(c).toMatchObject({ phase: 'between', finish: null, days: 15, need: 9 });
+        expect(c.join?.slug).toBe('autumn-02');
+    });
+
+    it('between rounds into a new season: your finish stays, with JOIN for the next', () => {
+        const me = { rank: 12, rank_mid: 12, points: 90, today: 0, days: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] };
+        const c = liveComing(board('ended', { me }), 'S', P, false)!;
+        expect(c.finish).toEqual({ rank: 12, total: 1550, inDraw: true });
+        expect(c.join?.slug).toBe('autumn-02');
+        expect(c.days).toBe(16);
+    });
+
+    it('joined, or nothing to join: no JOIN', () => {
+        expect(joinRoundOf(board('upcoming', { joined: true }))).toBeNull();
+        expect(joinRoundOf(board('upcoming', { join: null }))).toBeNull();
+    });
+
+    it('counts a round’s days on London’s calendar, across the clocks going back', () => {
+        // 25 Oct 2026: BST ends. A round from London midnight 20 Oct to London midnight 4 Nov is 15 days.
+        const r = { startsAt: Date.parse('2026-10-19T23:00:00Z'), endsAt: Date.parse('2026-11-04T00:00:00Z') };
+        expect(roundDays(r, Date.parse('2026-10-19T23:30:00Z'))).toEqual({ days: 15, day: 1 });
+        // 23:30 London on 26 Oct is still day 7.
+        expect(roundDays(r, Date.parse('2026-10-26T23:30:00Z'))).toEqual({ days: 15, day: 7 });
+        expect(roundDays(r, Date.parse('2026-11-30T12:00:00Z')).day).toBe(15);
     });
 });
 

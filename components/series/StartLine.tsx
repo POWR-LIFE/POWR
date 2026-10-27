@@ -131,17 +131,23 @@ function Clock({ to, roundName, onZero }: { to: number; roundName: string; onZer
  * The P, the line and the count sit together in the middle of the space.
  * Under them, three
  * numbers (your place in the invite race, your friends in, who leads: tap for
- * the whole race) and one button, INVITE A FRIEND.
+ * the whole race) and one button, INVITE A FRIEND. Until you've joined
+ * (onJoin): the round's days and the Draw's, and the button is JOIN THE SERIES.
  *
  * At zero, three beats: the line breaks and any empty seats fill in a wave,
  * so the P is whole; every tiny P turns gold and they fuse into one solid
  * gold P (a heavy tap); it holds, swells and `onStarted` opens the board.
  */
 export function StartLine({
-    startsAt, roundName, invite, onInvite, onRace, onStarted, onCity, dev, days, need, shift = 0,
+    startsAt, roundName, invite, onInvite, onRace, onStarted, onCity, dev, days, need, shift = 0, onJoin,
 }: {
     startsAt: number;
     roundName: string;
+    /**
+     * You haven't joined yet: the button is JOIN THE SERIES (it opens the join
+     * sheet) and the numbers are the round's. Inviting comes once you're in.
+     */
+    onJoin?: () => void;
     /** The invite race, while it's on; without it the screen is the countdown and the round's basics. */
     invite: SeriesInviteBoard | null;
     onInvite: () => void;
@@ -212,7 +218,26 @@ export function StartLine({
                 </Text>
             </View>
 
-            {invite && me ? (
+            {onJoin ? (
+                <>
+                    <View style={s.stats}>
+                        <HomeStats items={[
+                            { value: seriesNum(days), label: t('series:start.roundDays') },
+                            { value: seriesNum(need), label: t('series:start.drawDays') },
+                        ]} />
+                    </View>
+                    <Pressable
+                        onPress={() => { void Haptics.selectionAsync(); onJoin(); }}
+                        style={({ pressed }) => [s.btn, pressed && { opacity: 0.85 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('series:join.ctaA11y', { season: def.name })}
+                    >
+                        <Ionicons name="flag-outline" size={16} color="#0a0a0a" />
+                        <Text style={s.btnText}>{t('series:join.cta')}</Text>
+                    </Pressable>
+                    <Text style={s.fine}>{t('series:join.fineJoin')}</Text>
+                </>
+            ) : invite && me ? (
                 <>
                     <Pressable onPress={onRace} style={({ pressed }) => [s.stats, pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={t('series:start.raceA11y')}>
                         {/* Everyone's in. The invite race is an optional extra for

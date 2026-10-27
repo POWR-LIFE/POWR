@@ -17,6 +17,7 @@ import { dropProgress, nextMove } from '@/lib/drop';
 import i18n, { getFormatLocale } from '@/lib/i18n';
 import { CARD_BG, CARD_BORDER, GOLD, GREEN, RED, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
 import { type PrizeSet, prizeSetFrom, SAMPLE_PRIZES } from './SeriesPrizes';
+import { type JoinRound, joinRoundOf, roundDays } from './SeriesJoin';
 import { liveMomentCards, MOMENT_ICON, sampleMomentCards } from './SeriesRound';
 import { useSeason, useSeasonCard } from './season';
 import { fromLive, fromSim } from './seriesView';
@@ -96,10 +97,14 @@ export type SeriesToday = {
     gainFor: (minutes: number, route: 'steps' | 'minutes') => number;
 };
 
-/** Before a round, and between rounds: what's coming, and how the last one went. */
+/**
+ * Before a round, and between rounds: what's coming, and how the last one
+ * went. 'running' only when a round is on and you haven't joined: the card
+ * that asks you to (once you're in, Home shows the round itself).
+ */
 export type SeriesComing = {
     source: 'live' | 'sample';
-    phase: 'upcoming' | 'between';
+    phase: 'upcoming' | 'between' | 'running';
     season: string;
     /** The round that's coming (upcoming) or just finished (between). */
     roundName: string;
@@ -118,6 +123,10 @@ export type SeriesComing = {
     winners: boolean;
     /** Before the round, while its invite period is on: the invite race. */
     invite: SeriesInviteBoard | null;
+    /** The round JOIN puts you in; null once you've joined (or with nothing to join). */
+    join: JoinRound | null;
+    /** A round on that you're not in: how many are racing it. */
+    racing: number | null;
 };
 
 export type SeriesHome = { today: SeriesToday | null; coming: SeriesComing | null };
@@ -213,14 +222,20 @@ function sampleMoment(state: SeriesState, now: number): TodayMoment | null {
     }
 }
 
-/** The live board before a round or between rounds, as Home's card needs it. */
+/** The live board before a round or between rounds (or a round you're not in), as Home's card needs it. */
 export function liveComing(b: SeriesBoard, season: string, prizes: PrizeSet, winners: boolean, invite: SeriesInviteBoard | null = null): SeriesComing | null {
-    if (b.state === 'running') return null;
+    const join = joinRoundOf(b);
     const r = b.round;
     const base = {
         source: 'live' as const, season, roundName: r.name, days: r.days, need: r.draw_days,
-        cityPick: !!b.city?.options?.length && !b.city?.you, cityName: b.city?.you?.name ?? null, prizes,
+        cityPick: !!b.city?.options?.length && !b.city?.you, cityName: b.city?.you?.name ?? null, prizes, join, racing: null,
     };
+    if (b.state === 'running') {
+        // In it: Home's round card, not this one. Not in: the card that asks you to join.
+        return join
+            ? { ...base, phase: 'running', next: null, finish: null, winners: false, invite: null, racing: b.total }
+            : null;
+    }
     if (b.state === 'upcoming') {
         return {
             ...base, phase: 'upcoming', next: { name: r.name, startsAt: Date.parse(r.starts_at) }, finish: null, winners: false,
@@ -229,6 +244,8 @@ export function liveComing(b: SeriesBoard, season: string, prizes: PrizeSet, win
     }
     return {
         ...base, phase: 'between', winners, invite: null,
+        // Not in the round that ended: the round to come is all there is to say.
+        ...(join && !b.me ? { days: roundDays(join).days, need: join.need } : null),
         next: b.next ? { name: b.next.name, startsAt: Date.parse(b.next.starts_at) } : null,
         finish: b.me ? { rank: b.me.rank, total: b.total, inDraw: b.me.days.length >= r.draw_days } : null,
     };
@@ -238,7 +255,7 @@ export function liveComing(b: SeriesBoard, season: string, prizes: PrizeSet, win
 function sampleComing(phase: 'soon' | 'ended', season: string, now: number, invite: SeriesInviteBoard | null): SeriesComing {
     const midnight = new Date(now);
     midnight.setHours(24, 0, 0, 0);
-    const base = { source: 'sample' as const, season, days: 15, need: 10, cityPick: false, cityName: 'London', prizes: SAMPLE_PRIZES };
+    const base = { source: 'sample' as const, season, days: 15, need: 10, cityPick: false, cityName: 'London', prizes: SAMPLE_PRIZES, join: null, racing: null };
     return phase === 'soon'
         ? { ...base, phase: 'upcoming', roundName: 'Round 01', next: { name: 'Round 01', startsAt: midnight.getTime() + 2 * 86_400_000 }, finish: null, winners: false, invite }
         : { ...base, phase: 'between', roundName: 'Round 01', next: { name: 'Round 02', startsAt: midnight.getTime() + 86_400_000 }, finish: { rank: 298, total: 5000, inDraw: true }, winners: true, invite: null };
@@ -280,6 +297,8 @@ export function useSeriesHome(refreshKey?: number): SeriesHome {
     const sampleAt = useMemo(() => Date.now(), [sim.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!enabled) return { today: null, coming: null };
+    // Not in a round you could join: the live card that asks, dev builds included (never the sample).
+    if (b && !b.me && joinRoundOf(b)) return { today: null, coming: liveComing(b, def.name, livePrizes, winners, invite) };
     if (running && b && base) {
         const moment = liveMoment(moments, now);
         const v = moment?.kind === 'blind' ? fromLive(b, def.name, true) ?? base : base;
