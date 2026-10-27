@@ -385,6 +385,12 @@ function DropCardBody({ view, onOpen, comeback, reveal }: {
 
 /** Pixels a second the could-be-inside line slides: slow enough to read. */
 const TICKER_PX_S = 28;
+/**
+ * The sliding row's width. On device a Text is squeezed to its parent and cut
+ * with "…", so the row is given room for the whole line (twice) and the line
+ * measures at its real length; the window clips it to the card.
+ */
+const TICKER_ROW_W = 6000;
 
 /**
  * COULD BE INSIDE, then every prize in one line that slides right to left on
@@ -421,10 +427,10 @@ function InsideTicker({ lead, items }: { lead: string; items: string[] }) {
                 ) : (
                     <Animated.View style={[s.tickerRow, slide]}>
                         {/* One copy, measured; a second follows it so the loop has no gap. */}
-                        <Text style={s.tickerText} numberOfLines={1} onLayout={(e) => setCopyW(e.nativeEvent.layout.width)}>
+                        <Text style={s.tickerText} onLayout={(e) => setCopyW(e.nativeEvent.layout.width)}>
                             {loop ? `${line}  ·  ` : line}
                         </Text>
-                        {loop && <Text style={s.tickerText} numberOfLines={1}>{`${line}  ·  `}</Text>}
+                        {loop && <Text style={s.tickerText}>{`${line}  ·  `}</Text>}
                     </Animated.View>
                 )}
             </View>
@@ -541,6 +547,6 @@ const s = StyleSheet.create({
 
     ticker: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: -4 },
     tickerWindow: { flex: 1, overflow: 'hidden' },
-    tickerRow: { flexDirection: 'row', alignSelf: 'flex-start' },
+    tickerRow: { flexDirection: 'row', width: TICKER_ROW_W },
     tickerText: { flexShrink: 0, fontFamily: fontFamily.medium, fontSize: 9.5, letterSpacing: 1.1, color: HC.text },
 });
