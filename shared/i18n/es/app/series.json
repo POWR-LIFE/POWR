@@ -626,7 +626,8 @@
     "today": "HOY",
     "points": "PUNTOS",
     "newThisRound": "Primera ronda",
-    "lastRound": "Ronda anterior #{{rank}}"
+    "lastRound": "Ronda anterior #{{rank}}",
+    "lastShort": "Ronda ant. #{{rank}}"
   },
   "view": {
     "ordinal": {
@@ -677,5 +678,41 @@
     "theyPassed": "{{name}} te ha adelantado hoy",
     "gapGrew": "La distancia ha crecido hoy",
     "theyClosed": "{{name}} ha recortado hoy"
+  },
+  "honours": {
+    "king": {
+      "name": "King",
+      "line": "Ganar una ronda"
+    },
+    "power": {
+      "name": "Power",
+      "line": "Moverte casi todos los días"
+    },
+    "on_fire": {
+      "name": "On Fire",
+      "line": "Moverte cada semana"
+    },
+    "diamond": {
+      "name": "Diamond",
+      "line": "Moverte cada día de una ronda"
+    },
+    "wings": {
+      "name": "Wings",
+      "line": "Subir en la tabla en una ronda"
+    },
+    "hive": {
+      "name": "The Hive",
+      "line": "Traer amigos"
+    },
+    "strength": {
+      "name": "Strength",
+      "line": "Sesiones de fuerza, en total"
+    },
+    "tier": {
+      "bronze": "Bronce",
+      "silver": "Plata",
+      "gold": "Oro",
+      "platinum": "Platino"
+    }
   }
 }
