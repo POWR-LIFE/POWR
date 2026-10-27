@@ -682,15 +682,15 @@
   "honours": {
     "king": {
       "name": "King",
-      "line": "Garder la 1re place du classement"
+      "line": "Gagner une manche"
+    },
+    "power": {
+      "name": "Power",
+      "line": "Bouger presque tous les jours"
     },
     "on_fire": {
       "name": "On Fire",
       "line": "Bouger chaque semaine"
-    },
-    "power": {
-      "name": "Power",
-      "line": "Bouger 5 jours ou plus par semaine"
     },
     "diamond": {
       "name": "Diamond",
@@ -698,20 +698,21 @@
     },
     "wings": {
       "name": "Wings",
-      "line": "La plus grande montée au classement"
+      "line": "Grimper au classement sur une manche"
     },
     "hive": {
       "name": "The Hive",
-      "line": "Faire entrer des amis dans l’équipe"
+      "line": "Faire venir des amis"
     },
     "strength": {
       "name": "Strength",
-      "line": "Le plus de séances de muscu sur une manche"
+      "line": "Séances de muscu, en tout"
     },
     "tier": {
       "bronze": "Bronze",
       "silver": "Argent",
-      "gold": "Or"
+      "gold": "Or",
+      "platinum": "Platine"
     }
   }
 }

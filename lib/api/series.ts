@@ -102,9 +102,9 @@ async function attachHonours(board: SeriesBoard): Promise<void> {
     const { data, error } = await supabase.rpc('get_honours', { p_users: ids });
     if (error || !Array.isArray(data)) return;
     const by = new Map<string, Honour[]>();
-    for (const h of data as { user_id: string; kind: HonourKind; tier: HonourTier; count: number }[]) {
+    for (const h of data as { user_id: string; kind: HonourKind; tier: HonourTier; count: number; detail?: Record<string, number | boolean>; earned_at?: string }[]) {
         const list = by.get(h.user_id) ?? [];
-        list.push({ kind: h.kind, tier: h.tier, count: h.count });
+        list.push({ kind: h.kind, tier: h.tier, count: h.count, detail: h.detail ?? {}, earned_at: h.earned_at });
         by.set(h.user_id, list);
     }
     board.rows.forEach((r) => { r.honours = by.get(r.user_id) ?? []; });

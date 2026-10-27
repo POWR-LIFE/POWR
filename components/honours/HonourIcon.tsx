@@ -38,13 +38,15 @@ const PATHS: Record<HonourKind, string[]> = {
 /** The crown's three jewels; the wings lean 8° as supplied. */
 const KING_DOTS: [number, number][] = [[6, 16], [32, 9.5], [58, 16]];
 
+/** Gold, silver, bronze as supplied; platinum is a cooler, brighter silver until the set's own arrives. */
 export const TIER_STOPS: Record<HonourTier, [string, string, string, string]> = {
+    platinum: ['#FFFFFF', '#E3ECF5', '#A6B6C7', '#F2F7FC'],
     gold: ['#FFF1C2', '#E9C46A', '#B8862B', '#F7DF9A'],
     silver: ['#FFFFFF', '#C7CDD4', '#7E8792', '#E6EAEE'],
     bronze: ['#F8C9A8', '#C9825A', '#8A4B2C', '#E9A985'],
 };
 /** One flat colour per tier, for text beside an icon. */
-export const TIER_COLOUR: Record<HonourTier, string> = { gold: '#E9C46A', silver: '#C7CDD4', bronze: '#C9825A' };
+export const TIER_COLOUR: Record<HonourTier, string> = { platinum: '#E3ECF5', gold: '#E9C46A', silver: '#C7CDD4', bronze: '#C9825A' };
 
 let seq = 0;
 

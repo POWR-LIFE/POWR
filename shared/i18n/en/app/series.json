@@ -682,15 +682,15 @@
   "honours": {
     "king": {
       "name": "King",
-      "line": "Hold Nº 1 on the board"
+      "line": "Win a round"
+    },
+    "power": {
+      "name": "Power",
+      "line": "Move most days of the week"
     },
     "on_fire": {
       "name": "On Fire",
       "line": "Move every week"
-    },
-    "power": {
-      "name": "Power",
-      "line": "Move 5+ days a week"
     },
     "diamond": {
       "name": "Diamond",
@@ -698,20 +698,21 @@
     },
     "wings": {
       "name": "Wings",
-      "line": "Biggest climb up the board"
+      "line": "Climb the board in a round"
     },
     "hive": {
       "name": "The Hive",
-      "line": "Bring friends into the squad"
+      "line": "Bring friends in"
     },
     "strength": {
       "name": "Strength",
-      "line": "Most strength sessions in a round"
+      "line": "Strength sessions, all time"
     },
     "tier": {
       "bronze": "Bronze",
       "silver": "Silver",
-      "gold": "Gold"
+      "gold": "Gold",
+      "platinum": "Platinum"
     }
   }
 }

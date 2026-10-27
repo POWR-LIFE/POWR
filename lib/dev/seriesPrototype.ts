@@ -76,7 +76,7 @@ export type Person = {
  * renders: about half the field has something, a few have a lot.
  */
 export function sampleHonours(name: string, you = false): Honour[] {
-    if (you) return [{ kind: 'diamond', tier: 'bronze', count: 1 }, { kind: 'power', tier: 'silver', count: 5 }, { kind: 'on_fire', tier: 'bronze', count: 6 }];
+    if (you) return [{ kind: 'diamond', tier: 'bronze', count: 1 }, { kind: 'power', tier: 'silver', count: 12, detail: { w5: 6, w6: 1 } }, { kind: 'on_fire', tier: 'silver', count: 24 }];
     let h = 0;
     for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     const pick = (kind: HonourKind, chance: number, tiers: HonourTier[]): Honour | null => {
@@ -87,13 +87,13 @@ export function sampleHonours(name: string, you = false): Honour[] {
         return { kind, tier, count: TIER_RANK[tier] };
     };
     return [
-        pick('king', 0.04, ['gold']),
+        pick('king', 0.03, ['gold']),
         pick('diamond', 0.12, ['bronze', 'bronze', 'silver']),
-        pick('wings', 0.1, ['bronze', 'silver']),
-        pick('strength', 0.1, ['bronze', 'silver', 'gold']),
-        pick('hive', 0.18, ['bronze', 'bronze', 'silver', 'gold']),
+        pick('wings', 0.14, ['bronze', 'silver', 'gold']),
+        pick('strength', 0.2, ['bronze', 'silver', 'gold', 'platinum']),
+        pick('hive', 0.15, ['bronze', 'bronze', 'silver']),
         pick('power', 0.3, ['bronze', 'silver', 'gold']),
-        pick('on_fire', 0.35, ['bronze', 'silver', 'gold']),
+        pick('on_fire', 0.4, ['bronze', 'silver', 'gold', 'platinum']),
     ].filter((x): x is Honour => !!x);
 }
 
