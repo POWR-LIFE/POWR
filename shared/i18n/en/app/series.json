@@ -43,7 +43,17 @@
     "joining": "{{n}} joining · they count once they work out",
     "inviteA11y": "Invite a friend",
     "invite": "INVITE",
-    "joiningTag": "+{{n}} JOINING"
+    "joiningTag": "+{{n}} JOINING",
+    "message": "Join me in the {{season}} on POWR 💪",
+    "sheet": {
+      "light": "Invite a ",
+      "bold": "friend"
+    },
+    "eyebrow": "INVITE FRIENDS",
+    "countLabel": "friends with a verified workout",
+    "squad": "Most friends in wins Squad Builder.",
+    "qrA11y": "Show your invite QR code",
+    "cardA11y": "Share the Series as a card"
   },
   "join": {
     "button": "Join the Series",
@@ -714,5 +724,24 @@
       "gold": "Gold",
       "platinum": "Platinum"
     }
+  },
+  "shareCard": {
+    "headline": "Every verified session counts. Free to enter.",
+    "starts": "STARTS",
+    "onNow": "ON NOW",
+    "days": "DAYS",
+    "entry": "ENTRY",
+    "free": "Free",
+    "dayOf": "{{round}} · day {{day}} of {{days}}"
+  },
+  "shareLink": {
+    "title": "{{season}} on POWR",
+    "starts": "{{round}} starts {{date}}. Free to enter. Tap to get POWR and join me.",
+    "onNow": "{{round}} is on. Free to enter. Tap to get POWR and join me."
+  },
+  "shareScreen": {
+    "title": "Share the Series",
+    "postDialog": "Post the Series",
+    "missing": "The Series isn’t available to share."
   }
 }

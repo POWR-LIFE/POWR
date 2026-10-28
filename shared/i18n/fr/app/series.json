@@ -43,7 +43,17 @@
     "joining": "{{n}} en route · ils comptent dès qu’ils s’entraînent",
     "inviteA11y": "Inviter un ami",
     "invite": "INVITER",
-    "joiningTag": "+{{n}} EN ROUTE"
+    "joiningTag": "+{{n}} EN ROUTE",
+    "message": "Rejoins-moi pour la {{season}} sur POWR 💪",
+    "sheet": {
+      "light": "Inviter un ",
+      "bold": "ami"
+    },
+    "eyebrow": "INVITE TES AMIS",
+    "countLabel": "amis avec une séance vérifiée",
+    "squad": "Le plus d’amis inscrits remporte Squad Builder.",
+    "qrA11y": "Afficher ton QR code d’invitation",
+    "cardA11y": "Partager la Série en image"
   },
   "join": {
     "button": "Rejoindre la Series",
@@ -714,5 +724,24 @@
       "gold": "Or",
       "platinum": "Platine"
     }
+  },
+  "shareCard": {
+    "headline": "Chaque séance vérifiée compte. Entrée gratuite.",
+    "starts": "DÉBUT",
+    "onNow": "EN COURS",
+    "days": "JOURS",
+    "entry": "ENTRÉE",
+    "free": "Gratuite",
+    "dayOf": "{{round}} · jour {{day}} sur {{days}}"
+  },
+  "shareLink": {
+    "title": "{{season}} sur POWR",
+    "starts": "{{round}} commence le {{date}}. Entrée gratuite. Touche, installe POWR et rejoins-moi.",
+    "onNow": "{{round}} est en cours. Entrée gratuite. Touche, installe POWR et rejoins-moi."
+  },
+  "shareScreen": {
+    "title": "Partager la Série",
+    "postDialog": "Publier la Série",
+    "missing": "La Série ne peut pas être partagée."
   }
 }
