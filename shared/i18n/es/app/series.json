@@ -43,7 +43,17 @@
     "joining": "{{n}} en camino · cuentan cuando entrenen",
     "inviteA11y": "Invitar a un amigo",
     "invite": "INVITAR",
-    "joiningTag": "+{{n}} EN CAMINO"
+    "joiningTag": "+{{n}} EN CAMINO",
+    "message": "Únete conmigo a la {{season}} en POWR 💪",
+    "sheet": {
+      "light": "Invitar a un ",
+      "bold": "amigo"
+    },
+    "eyebrow": "INVITA A TUS AMIGOS",
+    "countLabel": "amigos con un entreno verificado",
+    "squad": "Quien más amigos traiga gana Squad Builder.",
+    "qrA11y": "Mostrar tu código QR de invitación",
+    "cardA11y": "Compartir la Serie como tarjeta"
   },
   "join": {
     "button": "Unirme a la Series",
@@ -714,5 +724,24 @@
       "gold": "Oro",
       "platinum": "Platino"
     }
+  },
+  "shareCard": {
+    "headline": "Cada entreno verificado cuenta. Entrada gratis.",
+    "starts": "EMPIEZA",
+    "onNow": "EN MARCHA",
+    "days": "DÍAS",
+    "entry": "ENTRADA",
+    "free": "Gratis",
+    "dayOf": "{{round}} · día {{day}} de {{days}}"
+  },
+  "shareLink": {
+    "title": "{{season}} en POWR",
+    "starts": "{{round}} empieza el {{date}}. Entrada gratis. Toca, descarga POWR y vente conmigo.",
+    "onNow": "{{round}} está en marcha. Entrada gratis. Toca, descarga POWR y vente conmigo."
+  },
+  "shareScreen": {
+    "title": "Compartir la Serie",
+    "postDialog": "Publicar la Serie",
+    "missing": "La Serie no se puede compartir."
   }
 }

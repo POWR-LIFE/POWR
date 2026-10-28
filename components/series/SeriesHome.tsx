@@ -21,10 +21,8 @@ import {
     cityRanked, firstName, fmt, heatFromLine, type HeatInfo, type HeatMeta, type LensKey, ordinal, type RaceView, ROUND_MOMENTS, SERIES_PROTOTYPE, type SeriesState, STATE_INFO, youOf,
 } from '@/lib/dev/seriesPrototype';
 import { DROP_SERIES_POOL, dropProgress, formatSteps } from '@/lib/drop';
-import { inviteCodeLine } from '@/lib/eventInviteLink';
 import { scoringLine } from '@/lib/liveEventDisplay';
 import { memberInitials, memberLabel } from '@/lib/memberName';
-import { friendInviteLink } from '@/lib/social/friendCode';
 import {
     CARD_BG,
     CARD_BORDER,
@@ -48,6 +46,7 @@ import { liveMomentCards, MomentStrip, sampleMomentCards, SERIES_BAR_H, SeriesCa
 import { hexA, LOCKUP_LINES, type LockupLine, SEASON_ORDER, SEASONS, seasonDev, useSeason, useSeasonCard } from './season';
 import { RulesSheet, ShareSheet, Sheet, SheetHead, YourFile } from './SeriesSheets';
 import { InviteBoardCard } from './SeriesInvite';
+import { SeriesInviteCard } from './SeriesInviteCard';
 import { type JoinRound, joinRoundOf, JoinRoundScreen, openSeriesJoin, roundDays } from './SeriesJoin';
 import { StartLine } from './StartLine';
 import { CityClash, CityPicker, Duels, GameTabs, GymCrown, LockedGame } from './SeriesTabs';
@@ -156,7 +155,7 @@ export function SeriesHome({
     const alerts = useAlerts();
     const [forceAlerts, setForceAlerts] = useState(false);
     const [profile, setProfile] = useState<Profile | null>(null);
-    const [sheet, setSheet] = useState<'rules' | 'share' | 'file' | 'golden' | 'prizes' | 'prize' | 'race' | 'dev' | 'city' | null>(null);
+    const [sheet, setSheet] = useState<'rules' | 'share' | 'file' | 'golden' | 'prizes' | 'prize' | 'race' | 'invite' | 'dev' | 'city' | null>(null);
     // Dev: fire the gun in a few seconds, to see the start line break.
     const [gunAt, setGunAt] = useState<number | null>(null);
     // Dev: run the start line's crowd ahead, to watch it fill.
@@ -301,21 +300,33 @@ export function SeriesHome({
         setPush({ key: Date.now(), ...copy[kind] });
     };
 
-    // A friend brought in counts for your city, opens your gym's crown and is
-    // someone to duel. The same smart-link as My QR: the code survives a store install.
-    const invite = async () => {
-        trackTap('series_invite', { tab: sim.tab });
-        const code = profile?.referral_code;
-        if (!code) { sim.showToast(t('series:league.toast.codeLoading')); return; }
-        const link = friendInviteLink(code);
-        try {
-            await Share.share({ message: `${t('events:invite.joinMe', { codeLine: inviteCodeLine(code) })}\n${link}`, url: link });
-        } catch {
-            // dismissed
-        }
+    // A friend brought in counts for Squad Builder, your city and your gym's
+    // crown, and is someone to duel. INVITE opens the invite card (the live
+    // events' ticket card: the count, SHARE, the code, your QR, the share
+    // card) rather than the phone's share sheet straight off; the card shares.
+    const invite = () => {
+        trackTap('series_invite_open', { tab: sim.tab });
+        setSheet('invite');
     };
+    // The share card (/share-series) needs the round and when it starts.
+    const cardRound = {
+        round: offRound ? offRound.name : v.round.name,
+        starts: String(offRound ? offRound.startsAt : (Date.parse(inviteBoard?.round.starts_at ?? live.board?.round.starts_at ?? '') || Date.now())),
+        days: String(offRound ? roundDays(offRound).days : v.round.days),
+    };
+    const inviteSheet = (
+        <Sheet visible={sheet === 'invite'} onClose={() => setSheet(null)}>
+            <SheetHead light={t('series:invite.sheet.light')} bold={t('series:invite.sheet.bold')} onClose={() => setSheet(null)} />
+            <SeriesInviteCard
+                board={inviteBoard}
+                code={profile?.referral_code ?? null}
+                seasonName={seasonDef.name}
+                onCard={() => { setSheet(null); setTimeout(() => router.push({ pathname: '/share-series', params: cardRound }), 300); }}
+            />
+        </Sheet>
+    );
     const onLockAction = (a: 'invite' | 'pickGym') => {
-        if (a === 'invite') { void invite(); return; }
+        if (a === 'invite') { invite(); return; }
         trackTap('series_set_gym');
         router.push('/(tabs)/discover');
     };
@@ -430,7 +441,7 @@ export function SeriesHome({
             {sim.tab === 'friends' && v.loop?.results && (
                 <DuelResults results={v.loop.results} rematched={v.loop.rematched} onRematch={(id) => { trackTap('series_rematch'); sim.rematch(id); }} />
             )}
-            {sim.tab === 'friends' && <Duels tabs={v.tabs} onAccept={acceptDuel} onChallenge={challenge} onInvite={() => { void invite(); }} />}
+            {sim.tab === 'friends' && <Duels tabs={v.tabs} onAccept={acceptDuel} onChallenge={challenge} onInvite={invite} />}
         </>
     );
     const alertsCard = alertsCardEl;
@@ -484,7 +495,7 @@ export function SeriesHome({
                     need={pre ? pre.need : v.hero.need}
                     shift={crowdShift}
                     onJoin={toJoin ? () => openSeriesJoin(toJoin, 'league') : undefined}
-                    onInvite={() => { void invite(); }}
+                    onInvite={invite}
                     onRace={() => { trackTap('series_invite_race_open'); setSheet('race'); }}
                     onCity={SHOW_CITY_PICK && !pre && v.cityPick ? () => setSheet('city') : undefined}
                     onStarted={() => {
@@ -505,11 +516,12 @@ export function SeriesHome({
                 )}
                 <Sheet visible={sheet === 'race'} onClose={() => setSheet(null)}>
                     <SheetHead light={t('series:league.inviteRace.light')} bold={t('series:league.inviteRace.bold')} onClose={() => setSheet(null)} />
-                    {inviteBoard && <View style={{ marginHorizontal: -16 }}><InviteBoardCard board={inviteBoard} you={youLabel} onInvite={() => { void invite(); }} /></View>}
+                    {inviteBoard && <View style={{ marginHorizontal: -16 }}><InviteBoardCard board={inviteBoard} you={youLabel} onInvite={() => { setSheet(null); setTimeout(invite, 350); }} /></View>}
                     <Text style={[s.roundNote, { marginTop: 12 }]}>
                         {t('series:league.inviteRace.note')}
                     </Text>
                 </Sheet>
+                {inviteSheet}
                 <Sheet visible={sheet === 'city'} onClose={() => setSheet(null)}>
                     <SheetHead light={t('series:league.citySheet.light')} bold={t('series:league.citySheet.bold')} onClose={() => setSheet(null)} />
                     {v.cityPick && (
@@ -719,6 +731,7 @@ export function SeriesHome({
                 line={share.line}
                 onShare={shared}
             />
+            {inviteSheet}
             <YourFile
                 visible={sheet === 'file'}
                 onClose={() => setSheet(null)}
