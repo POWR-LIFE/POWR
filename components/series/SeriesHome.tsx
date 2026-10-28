@@ -308,7 +308,7 @@ export function SeriesHome({
         trackTap('series_invite_open', { tab: sim.tab });
         setSheet('invite');
     };
-    // The share card (/share-series) needs the round and when it starts.
+    // The invite's words and the share card (/share-series) need the round and when it starts.
     const cardRound = {
         round: offRound ? offRound.name : v.round.name,
         starts: String(offRound ? offRound.startsAt : (Date.parse(inviteBoard?.round.starts_at ?? live.board?.round.starts_at ?? '') || Date.now())),
@@ -321,6 +321,7 @@ export function SeriesHome({
                 board={inviteBoard}
                 code={profile?.referral_code ?? null}
                 seasonName={seasonDef.name}
+                startsAt={Number(cardRound.starts)}
                 onCard={() => { setSheet(null); setTimeout(() => router.push({ pathname: '/share-series', params: cardRound }), 300); }}
             />
         </Sheet>

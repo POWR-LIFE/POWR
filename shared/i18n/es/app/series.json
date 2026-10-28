@@ -44,7 +44,8 @@
     "inviteA11y": "Invitar a un amigo",
     "invite": "INVITAR",
     "joiningTag": "+{{n}} EN CAMINO",
-    "message": "Únete conmigo a la {{season}} en POWR 💪",
+    "message": "{{season}} empieza el {{day}}. ¿Te apuntas?",
+    "messageOn": "{{season}} está en marcha. ¿Te apuntas?",
     "sheet": {
       "light": "Invitar a un ",
       "bold": "amigo"
@@ -735,7 +736,7 @@
     "dayOf": "{{round}} · día {{day}} de {{days}}"
   },
   "shareLink": {
-    "title": "{{season}} en POWR",
+    "title": "POWR · {{season}}",
     "starts": "{{round}} empieza el {{date}}. Entrada gratis. Toca, descarga POWR y vente conmigo.",
     "onNow": "{{round}} está en marcha. Entrada gratis. Toca, descarga POWR y vente conmigo."
   },
