@@ -19,6 +19,18 @@
     {
       "source": "/series",
       "headers": [{ "key": "Content-Type", "value": "text/html; charset=utf-8" }]
+    },
+    {
+      "source": "/s/:id",
+      "headers": [{ "key": "Content-Type", "value": "text/html; charset=utf-8" }]
+    },
+    {
+      "source": "/c/:token",
+      "headers": [{ "key": "Content-Type", "value": "text/html; charset=utf-8" }]
+    },
+    {
+      "source": "/join/:handle",
+      "headers": [{ "key": "Content-Type", "value": "text/html; charset=utf-8" }]
     }
   ],
   "rewrites": [
