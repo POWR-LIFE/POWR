@@ -265,7 +265,7 @@ export function SeriesCard({
                 })()}
             </Animated.View>
 
-            {/* Folded: the mark, your rank and the day, in one bar. */}
+            {/* Folded: the P, your rank and the day, in one bar. */}
             <Animated.View pointerEvents="none" style={[s.bar, { backgroundColor: mixHex(def.ground, card, 0.55) }, barFade]}>
                 <SeriesLockup height={24} def={def} words={false} />
                 <View style={s.barRank}>
