@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { currentRun, longestRun } from '@/lib/streakDays';
 import { STREAK_REST_DAYS, streakWithRest, type RestStreak, weekOf } from '@/lib/streakRest';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
@@ -30,7 +31,7 @@ function streakMultiplier(streak: number): number {
  * Also syncs the result back to user_streaks so the notification edge function
  * always has an accurate stored value to read.
  */
-async function computeStreakFromSessions(): Promise<{ current: number; longest: number; rest?: StreakRest | null }> {
+export async function computeStreakFromSessions(): Promise<{ current: number; longest: number; rest?: StreakRest | null }> {
     const since = new Date();
     since.setDate(since.getDate() - 90);
 
@@ -95,21 +96,11 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
 
         lastActiveDate = uniqueDays[0] ?? null;
 
-        if (uniqueDays[0] !== todayStr && uniqueDays[0] !== yesterdayStr) {
-            result = { current: 0, longest: longestRun(uniqueDays) };
-        } else {
-            let streak = 1;
-            for (let i = 1; i < uniqueDays.length; i++) {
-                const prev = new Date(uniqueDays[i - 1] + 'T00:00:00');
-                const curr = new Date(uniqueDays[i] + 'T00:00:00');
-                if (prev.getTime() - curr.getTime() === 86400000) {
-                    streak++;
-                } else {
-                    break;
-                }
-            }
-            result = { current: streak, longest: Math.max(streak, longestRun(uniqueDays)) };
-        }
+        // Day keys are stepped as UTC midnights (lib/streakDays): built from
+        // local wall-clock time the clocks-go-back day is 25 h long and the
+        // chain snapped there, so every UK streak read 3 on 2026-10-28.
+        const streak = currentRun(uniqueDays, todayStr, yesterdayStr);
+        result = { current: streak, longest: Math.max(streak, longestRun(uniqueDays)) };
         // Display only: never synced below, so the stored streak and the bonus stay strict.
         if (STREAK_REST_DAYS) {
             const r = streakWithRest(uniqueDays, todayStr);
@@ -173,24 +164,6 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
     }
 
     return result;
-}
-
-/** Find the longest consecutive-day run in a descending sorted array of date strings */
-function longestRun(days: string[]): number {
-    if (!days.length) return 0;
-    let best = 1;
-    let run = 1;
-    for (let i = 1; i < days.length; i++) {
-        const prev = new Date(days[i - 1] + 'T00:00:00');
-        const curr = new Date(days[i] + 'T00:00:00');
-        if (prev.getTime() - curr.getTime() === 86400000) {
-            run++;
-            if (run > best) best = run;
-        } else {
-            run = 1;
-        }
-    }
-    return best;
 }
 
 export function useStreak(): StreakState {
