@@ -11,7 +11,7 @@ import { trackTap } from '@/lib/analytics';
 import { seriesNum } from '@/lib/api/series';
 import { ordinal } from '@/lib/dev/seriesPrototype';
 import { type SeriesToday, seriesDrawChip, seriesNextMove, useDropMove } from './SeriesToday';
-import { BUTTER, hexA, mixHex, plainCard, SeasonMark, useSeason } from './season';
+import { BUTTER, hexA, mixHex, plainCard, useSeason } from './season';
 
 /**
  * The Series on Home while a round runs, as one card in Home's one layout
@@ -106,7 +106,6 @@ export function useSeriesDress(season: string, sub: string) {
         ),
         head: (
             <View style={s.head}>
-                <SeasonMark size={24} def={def} />
                 <View style={s.words}>
                     <Text style={s.season} numberOfLines={1}>{season.toUpperCase()}</Text>
                     <Text style={s.day} numberOfLines={1}>{sub.toUpperCase()}</Text>
