@@ -44,8 +44,8 @@
     "inviteA11y": "Inviter un ami",
     "invite": "INVITER",
     "joiningTag": "+{{n}} EN ROUTE",
-    "message": "{{season}} commence le {{day}}. Tu viens ?",
-    "messageOn": "{{season}} est en cours. Tu viens ?",
+    "message": "{{season}} commence le {{day}}. Tu viens ?",
+    "messageOn": "{{season}} est en cours. Tu viens ?",
     "sheet": {
       "light": "Inviter un ",
       "bold": "ami"
