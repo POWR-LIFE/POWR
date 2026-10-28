@@ -44,7 +44,8 @@
     "inviteA11y": "Invite a friend",
     "invite": "INVITE",
     "joiningTag": "+{{n}} JOINING",
-    "message": "Join me in the {{season}} on POWR 💪",
+    "message": "{{season}} starts on the {{day}}. You in?",
+    "messageOn": "{{season}} is on. You in?",
     "sheet": {
       "light": "Invite a ",
       "bold": "friend"
@@ -735,7 +736,7 @@
     "dayOf": "{{round}} · day {{day}} of {{days}}"
   },
   "shareLink": {
-    "title": "{{season}} on POWR",
+    "title": "POWR · {{season}}",
     "starts": "{{round}} starts {{date}}. Free to enter. Tap to get POWR and join me.",
     "onNow": "{{round}} is on. Free to enter. Tap to get POWR and join me."
   },

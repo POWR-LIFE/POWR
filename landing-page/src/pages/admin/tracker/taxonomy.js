@@ -130,7 +130,7 @@ export const SURFACES = [
             { key: 'audiences', label: 'Partners & affiliates pages', paths: ['landing-page/src/landing/'], features: ['/partners', '/affiliates'] },
             { key: 'public', label: 'Support & legal', paths: ['landing-page/src/pages/SupportPage.jsx', 'landing-page/src/pages/DeleteAccount.jsx'], features: ['Support form', 'Delete account', 'Privacy / terms / cookies'] },
             { key: 'flows', label: 'Public flows', paths: ['landing-page/src/pages/AthleteSignup.jsx', 'landing-page/src/pages/PartnerRewardSubmit.jsx'], features: ['Athlete signup', 'Partner reward submit', 'Waitlist'] },
-            { key: 'og', label: 'Share previews (OG)', paths: ['supabase/functions/share-card-og/', 'supabase/functions/challenge-invite-og/'], features: ['Share card OG', 'Challenge invite OG'] },
+            { key: 'og', label: 'Share previews (OG)', paths: ['supabase/functions/share-card-og/', 'supabase/functions/challenge-invite-og/', 'supabase/functions/series-invite-og/'], features: ['Share card OG', 'Challenge invite OG', 'Series invite OG'] },
         ],
     },
     {

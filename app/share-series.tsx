@@ -143,7 +143,7 @@ export default function ShareSeriesScreen() {
         referralCode,
         appPath: seriesInvitePath(referralCode),
       });
-      await Share.share({ message: buildSeriesShareMessage({ seasonName: def.name, shareUrl, code: referralCode }) });
+      await Share.share({ message: buildSeriesShareMessage({ seasonName: def.name, shareUrl, startsAt }) });
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : t('events:shareScreen.publishError'));
     } finally {

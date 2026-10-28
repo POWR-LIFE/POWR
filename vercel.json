@@ -11,12 +11,22 @@
     {
       "source": "/.well-known/assetlinks.json",
       "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    },
+    {
+      "source": "/series/:code",
+      "headers": [{ "key": "Content-Type", "value": "text/html; charset=utf-8" }]
+    },
+    {
+      "source": "/series",
+      "headers": [{ "key": "Content-Type", "value": "text/html; charset=utf-8" }]
     }
   ],
   "rewrites": [
     { "source": "/s/:id", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/share-card-og?id=:id" },
     { "source": "/c/:token", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/challenge-invite-og?token=:token" },
     { "source": "/join/:handle", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/creator-link?handle=:handle" },
+    { "source": "/series/:code", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/series-invite-og?ref=:code" },
+    { "source": "/series", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/series-invite-og" },
     { "source": "/api/partner/:path*", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/partner-api/:path*" },
     { "source": "/(.*)", "destination": "/" }
   ]

@@ -26,10 +26,12 @@ import { useSeasonCard } from './season';
  * round, or before the invite period opens) it's the invite alone. No 0 as
  * a stat: with nobody in yet the line is the ask, not a zero.
  */
-export function SeriesInviteCard({ board, code, seasonName, onCard }: {
+export function SeriesInviteCard({ board, code, seasonName, startsAt, onCard }: {
     board: SeriesInviteBoard | null;
     code: string | null;
     seasonName: string;
+    /** When the round starts (ms): the message says the day, or that it's on. */
+    startsAt: number;
     /** The invite as a picture (the share card); hidden when there's nowhere to send it. */
     onCard?: () => void;
 }) {
@@ -48,7 +50,7 @@ export function SeriesInviteCard({ board, code, seasonName, onCard }: {
     const fill = me?.rank == null ? null : me.rank === 1 ? 1 : target ? Math.min(1, friends / target) : null;
 
     const link = code ? seriesInviteLink(code) : null;
-    const message = link ? seriesInviteMessage({ seasonName, link, code }) : null;
+    const message = link ? seriesInviteMessage({ seasonName, link, startsAt }) : null;
 
     const handleShare = async () => {
         if (!link || !message) return;
@@ -61,8 +63,8 @@ export function SeriesInviteCard({ board, code, seasonName, onCard }: {
         }
     };
 
-    // Copies the whole invite (code + link), not the bare link: the code is
-    // the only part that survives a store install.
+    // Copies the whole invite (the words + link), not the bare link, so a
+    // pasted invite reads as the sent one.
     const handleCopy = async () => {
         if (!message) return;
         trackTap('series_invite', { via: 'copy' });

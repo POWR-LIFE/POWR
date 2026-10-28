@@ -11,8 +11,7 @@ import { useSheetDragDismiss } from '@/hooks/useSheetDragDismiss';
 import { trackTap } from '@/lib/analytics';
 import { fetchSeriesPrizes, joinSeries, type SeriesBoard, seriesDate, seriesJoined, seriesNum } from '@/lib/api/series';
 import { fetchProfile } from '@/lib/api/user';
-import { inviteCodeLine } from '@/lib/eventInviteLink';
-import { friendInviteLink } from '@/lib/social/friendCode';
+import { seriesInviteLink, seriesInviteMessage } from '@/lib/seriesInvite';
 import { GOLD, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
 import { type PrizeSet, prizeSetFrom } from './SeriesPrizes';
 import { BUTTER, hexA, SeriesLockup, useSeason } from './season';
@@ -143,9 +142,11 @@ export function SeriesJoinSheet({ visible, onClose, round, from }: {
         if (!code) return;
         void Haptics.selectionAsync();
         trackTap('series_invite', { from: 'join' });
-        const link = friendInviteLink(code);
+        // The same invite the League's invite card sends: the Series link
+        // (its preview is the Series card) and the day the round starts.
+        const link = seriesInviteLink(code);
         try {
-            await Share.share({ message: `${t('events:invite.joinMe', { codeLine: inviteCodeLine(code) })}\n${link}`, url: link });
+            await Share.share({ message: seriesInviteMessage({ seasonName: def.name, link, startsAt: round.startsAt }), url: link });
         } catch {
             // dismissed
         }

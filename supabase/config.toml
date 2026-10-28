@@ -509,6 +509,12 @@ verify_jwt = false
 # Joining itself happens in respond-shared-challenge under a real user JWT.
 verify_jwt = false
 
+[functions.series-invite-og]
+# Same crawler contract, for Series invite links (powr.life/series/<code>):
+# the season's name and look for the preview, then a redirect to the /app
+# smart-link. Nothing per member is served; the code only rides the redirect.
+verify_jwt = false
+
 [functions.claim-points]
 # Called by the app with a user JWT (validated in-code), AND by relay_gym_claim
 # via pg_net with x-resolve-token + an explicit user id — the background claim
