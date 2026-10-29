@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { pg, w } from '../../theme';
 import { useCompact } from '../../stages/shared';
 import { SERIES_FALLBACK, fetchSeries } from '../data';
-import { CARD, Check, Head, Pts, Reveal, Section, fmt } from '../ui';
+import { CARD, Check, Head, Item, Parallax, Pts, Reveal, Section, Stagger, fmt } from '../ui';
 
 /**
  * 05 — The Series. POWR's competition: a season of rounds on one live board,
@@ -12,7 +12,9 @@ import { CARD, Check, Head, Pts, Reveal, Section, fmt } from '../ui';
  * P, as the app does) and lets the clock decide what it shows — the start
  * line before the gun, the board while a round is on, the next round once
  * one has finished, a sealed card before a season is published. Nothing
- * here is dated by hand; the numbers are the app's own.
+ * here is dated by hand; the numbers are the app's own. The two cards
+ * arrive from either side, the ways to win cascade in, and the season's P
+ * drifts behind the card as the page scrolls.
  */
 
 /* One ground colour per season, from components/series/season.tsx. */
@@ -74,26 +76,26 @@ export default function Series() {
       />
       <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '0.9fr 1.1fr', gap: compact ? 28 : 44, alignItems: 'stretch' }}>
         {/* How a round works */}
-        <Reveal amount={0.2}>
-          <div style={{ ...CARD, padding: 'clamp(22px, 2.2vw, 30px)', height: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <Reveal from="left" amount={0.2}>
+          <Stagger gap={0.12} delay={0.25} amount={0.2} style={{ ...CARD, padding: 'clamp(22px, 2.2vw, 30px)', height: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ fontSize: 11, letterSpacing: 2.6, color: pg.accent, fontWeight: w.semiBold, marginBottom: 12 }}>HOW THE SERIES WORKS</div>
             {STEPS.map((s, i) => (
-              <div key={s.n} style={{ display: 'flex', gap: 16, padding: '14px 0', borderTop: i ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+              <Item key={s.n} from="left" dist={0.5} duration={0.7} style={{ display: 'flex', gap: 16, padding: '14px 0', borderTop: i ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
                 <span style={{ color: pg.accent, fontSize: 12, fontWeight: w.semiBold, letterSpacing: 3, paddingTop: 4, flexShrink: 0 }}>{s.n}</span>
                 <span>
                   <div style={{ fontSize: 'clamp(17px, 1.4vw, 20px)', fontWeight: w.light, color: pg.text, letterSpacing: -0.3 }}>{s.title}</div>
                   <div style={{ fontSize: 13.5, color: pg.textSec, lineHeight: 1.5, fontWeight: w.light, marginTop: 5 }}>{s.body}</div>
                 </span>
-              </div>
+              </Item>
             ))}
-            <div style={{ marginTop: 'auto', paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: 12.5, color: pg.textMuted, lineHeight: 1.5 }}>
+            <Item from="up" dist={0.4} duration={0.7} style={{ marginTop: 'auto', paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.07)', fontSize: 12.5, color: pg.textMuted, lineHeight: 1.5 }}>
               Up to 120 active minutes a day count. The round’s moments boost up to ×2 and never stack. Blind Mode hides every rank while it’s on. Prizes never cost points.
-            </div>
-          </div>
+            </Item>
+          </Stagger>
         </Reveal>
 
         {/* The season, live */}
-        <Reveal amount={0.2} delay={0.08}>
+        <Reveal from="right" dist={1.1} amount={0.2} delay={0.08}>
           {series.season && series.round
             ? <SeasonCard s={series} now={now} />
             : <SealedCard season={series.season} />}
@@ -101,17 +103,17 @@ export default function Series() {
       </div>
 
       {/* Ways to win */}
-      <Reveal amount={0.2} delay={0.12} style={{ marginTop: compact ? 28 : 44 }}>
-        <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', justifyContent: 'space-between', alignItems: compact ? 'flex-start' : 'baseline', gap: compact ? 6 : 16, marginBottom: 14 }}>
+      <div style={{ marginTop: compact ? 28 : 44 }}>
+        <Reveal from="up" dist={0.5} amount={0.5} style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', justifyContent: 'space-between', alignItems: compact ? 'flex-start' : 'baseline', gap: compact ? 6 : 16, marginBottom: 14 }}>
           <span style={{ fontSize: 11, letterSpacing: 2.6, color: pg.accent, fontWeight: w.semiBold, whiteSpace: 'nowrap' }}>WAYS TO WIN</span>
           <span style={{ fontSize: 12.5, color: pg.textMuted, fontWeight: w.light }}>One prize each. Win two and the next in line takes the other.</span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 10 }}>
+        </Reveal>
+        <Stagger gap={0.08} amount={0.2} style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 10 }}>
           {WAYS.map((way) => {
             const prize = prizeFor(prizes, way.kind);
             const how = typeof way.how === 'function' ? way.how(need, days) : way.how;
             return (
-              <div key={way.kind} style={{ ...CARD, borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 112 }}>
+              <Item key={way.kind} from="up" scale={0.96} duration={0.7} style={{ ...CARD, borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 112 }}>
                 <div style={{ fontSize: 'clamp(16px, 1.3vw, 18px)', fontWeight: w.light, color: pg.text, letterSpacing: -0.3 }}>{way.name}</div>
                 <div style={{ fontSize: 12.5, color: pg.textSec, lineHeight: 1.45, fontWeight: w.light }}>{how}</div>
                 {prize && (
@@ -119,11 +121,11 @@ export default function Series() {
                     <Pts size={10.5}>{prizeLabel(prize)}</Pts>
                   </div>
                 )}
-              </div>
+              </Item>
             );
           })}
-        </div>
-      </Reveal>
+        </Stagger>
+      </div>
     </Section>
   );
 }
@@ -215,7 +217,9 @@ function SeasonCard({ s, now }) {
         border: `1px solid ${alpha(BUTTER, p.key === 'on' ? 0.4 : 0.2)}`,
       }}
     >
-      <PMark height={190} color={BUTTER} style={{ position: 'absolute', right: -40, bottom: -46, opacity: 0.07, pointerEvents: 'none' }} />
+      <Parallax y={[34, -34]} style={{ position: 'absolute', right: -40, bottom: -46, pointerEvents: 'none' }}>
+        <PMark height={190} color={BUTTER} style={{ opacity: 0.07 }} />
+      </Parallax>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
         <span style={{ width: 52, height: 52, borderRadius: 14, background: alpha(BUTTER, 0.1), border: `1px solid ${alpha(BUTTER, 0.25)}`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
@@ -247,6 +251,7 @@ function SeasonCard({ s, now }) {
       {p.key === 'before' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', position: 'relative' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 999, border: `1px solid ${alpha(BUTTER, 0.35)}`, background: alpha(BUTTER, 0.08), color: BUTTER, fontSize: 11, fontWeight: w.semiBold, letterSpacing: 2 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: BUTTER, boxShadow: `0 0 8px ${BUTTER}`, animation: 'powrBreathe 2.4s ease-in-out infinite' }} />
             {countdown(Date.parse(r.starts_at) - now)} TO THE GUN
           </span>
           {s.prev_round && <span style={{ fontSize: 12, color: alpha(BUTTER, 0.6) }}>{s.prev_round.name} finished · winners in the app</span>}

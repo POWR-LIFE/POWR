@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { pg, w } from '../../theme';
 import { useCompact } from '../../stages/shared';
 import { GYM_PTS, LADDER, fetchLiveRewards } from '../data';
-import { CARD, Head, Pts, Reveal, Section, fmt } from '../ui';
+import { CARD, EASE, Head, Item, Parallax, Pts, Reveal, Section, Stagger, fmt } from '../ui';
 
 /**
  * 03 — What it's worth. The economy made concrete: the award ladder on the
- * left, the LIVE catalogue on the right, and every reward priced in gym
+ * left, arriving row by row, and the LIVE catalogue on the right, posters
+ * sliding in from the edge and drifting at two speeds as the page scrolls —
+ * the film's vault, settled into a grid. Every reward priced in gym
  * sessions as well as points. This is the page's most persuasive fact —
  * "a tenner off Huel is nine sessions" — and it is true.
  */
@@ -30,6 +32,8 @@ export default function Worth() {
     return () => { live = false; };
   }, []);
 
+  const cols = compact ? 2 : 4;
+
   return (
     <Section id="worth">
       <Head
@@ -40,38 +44,41 @@ export default function Worth() {
 
       <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : 'minmax(300px, 0.85fr) 1.6fr', gap: compact ? 40 : 56, alignItems: 'start' }}>
         {/* The ladder */}
-        <Reveal amount={0.2}>
-          <div style={{ ...CARD, padding: 'clamp(20px, 2vw, 28px)' }}>
+        <Reveal from="left" amount={0.2}>
+          <Stagger gap={0.06} delay={0.25} amount={0.2} style={{ ...CARD, padding: 'clamp(20px, 2vw, 28px)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
               <span style={{ fontSize: 11, letterSpacing: 2.6, color: pg.accent, fontWeight: w.semiBold }}>THE LADDER</span>
               <span style={{ fontSize: 11, color: pg.textMuted }}>points per session</span>
             </div>
             {LADDER.map((row, i) => (
-              <div key={`${row.label}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <Item key={`${row.label}-${i}`} from="left" dist={0.5} duration={0.6} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ fontSize: 14.5, color: pg.text, fontWeight: w.medium }}>{row.label}</span>
                   <span style={{ display: 'block', fontSize: 12, color: pg.textMuted, marginTop: 2 }}>{row.detail}</span>
                 </span>
                 <span style={{ fontSize: 20, fontWeight: w.light, color: row.pts >= 20 ? pg.accent : pg.text, letterSpacing: -0.5 }}>+{row.pts}</span>
-              </div>
+              </Item>
             ))}
-            <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 12, background: 'rgba(232,210,0,0.06)', border: '1px solid rgba(232,210,0,0.18)' }}>
+            <Item from="up" dist={0.5} style={{ marginTop: 14, padding: '12px 14px', borderRadius: 12, background: 'rgba(232,210,0,0.06)', border: '1px solid rgba(232,210,0,0.18)' }}>
               <div style={{ fontSize: 13, color: pg.text, fontWeight: w.medium }}>Streaks multiply.</div>
               <div style={{ fontSize: 12.5, color: pg.textSec, marginTop: 3, lineHeight: 1.5 }}>
                 Three active days in a row and a gym session pays ×1.2; five days ×1.5; seven ×2; ten ×3. Runs, rides and swims pay ×1.5 from a week. Walking and sleep top out at 5 a day; gym at 30. Runs, rides and swims are uncapped.
               </div>
-            </div>
-          </div>
+            </Item>
+          </Stagger>
         </Reveal>
 
         {/* The live vault */}
         <div>
-          <Reveal amount={0.1} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14, padding: '0 4px' }}>
-            <span style={{ fontSize: 11, letterSpacing: 2.6, color: pg.accent, fontWeight: w.semiBold }}>THE VAULT · LIVE</span>
+          <Reveal from="right" dist={0.6} amount={0.1} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14, padding: '0 4px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11, letterSpacing: 2.6, color: pg.accent, fontWeight: w.semiBold }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: pg.accent, boxShadow: '0 0 8px rgba(232,210,0,0.9)', animation: 'powrBreathe 2.4s ease-in-out infinite' }} />
+              THE VAULT · LIVE
+            </span>
             <span style={{ fontSize: 11, color: pg.textMuted }}>{rewards.length ? `${rewards.length} brands` : 'loading…'}</span>
           </Reveal>
-          <div style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: compact ? 12 : 16 }}>
-            {rewards.map((r, i) => <Poster key={r.id} r={r} i={i} />)}
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: compact ? 12 : 16 }}>
+            {rewards.map((r, i) => <Poster key={r.id} r={r} i={i} cols={cols} />)}
             {!rewards.length && Array.from({ length: 8 }).map((_, i) => (
               <div key={i} style={{ ...CARD, aspectRatio: '3 / 4', borderRadius: 18, background: '#101010' }} />
             ))}
@@ -147,40 +154,47 @@ function LogoChip({ src, alt }) {
   );
 }
 
-function Poster({ r, i }) {
+/* Alternate columns drift at different rates, so the grid reads as depth */
+const DRIFT = { 4: [0, 28, 10, 38], 2: [0, 26] };
+
+function Poster({ r, i, cols }) {
+  const reduce = useReducedMotion();
   const sessions = Math.ceil(r.pts / GYM_PTS);
+  const drift = DRIFT[cols][i % cols];
   return (
-    <motion.a
-      href="#download"
-      initial={{ opacity: 0, y: 22 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.8, delay: (i % 4) * 0.07, ease: [0.16, 1, 0.3, 1] }}
-      whileHover={{ y: -6 }}
-      style={{
-        ...CARD, borderRadius: 18, aspectRatio: '3 / 4', position: 'relative', overflow: 'hidden', display: 'block', textDecoration: 'none',
-        background: r.heroImage ? '#0e0e0e' : `linear-gradient(160deg, ${r.tint}55, #0e0e0e 70%)`,
-      }}
-    >
-      {r.heroImage && (
-        <img
-          src={r.heroImage} alt="" loading="lazy" decoding="async"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', maxWidth: 'none', filter: 'brightness(0.78) saturate(1.05)' }}
-        />
-      )}
-      <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 62%, rgba(0,0,0,0.92) 100%)' }} />
-      <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        {r.logo ? <LogoChip src={r.logo} alt={r.brand} /> : <span />}
-        {r.flash && <Pts size={11}>{r.flash}</Pts>}
-      </div>
-      <div style={{ position: 'absolute', left: 14, right: 14, bottom: 14 }}>
-        <div style={{ fontSize: 11, letterSpacing: 2.4, color: 'rgba(255,255,255,0.7)', fontWeight: w.semiBold, textTransform: 'uppercase' }}>{r.brand}</div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-          <span style={{ fontSize: 'clamp(26px, 2.4vw, 34px)', fontWeight: w.extraLight, color: pg.text, letterSpacing: -1, lineHeight: 1 }}>{fmt(r.pts)}</span>
-          <span style={{ fontSize: 10, letterSpacing: 1.6, color: pg.accent, fontWeight: w.semiBold }}>PTS</span>
+    <Parallax y={[drift, -drift]}>
+      <motion.a
+        href="#download"
+        initial={reduce ? { opacity: 0 } : { opacity: 0, x: 40, y: 14 }}
+        whileInView={{ opacity: 1, x: 0, y: 0 }}
+        viewport={{ once: true, amount: 0.2 }}
+        transition={{ duration: 0.85, delay: (i % cols) * 0.09, ease: EASE }}
+        whileHover={reduce ? undefined : { y: -6, scale: 1.015 }}
+        style={{
+          ...CARD, borderRadius: 18, aspectRatio: '3 / 4', position: 'relative', overflow: 'hidden', display: 'block', textDecoration: 'none',
+          background: r.heroImage ? '#0e0e0e' : `linear-gradient(160deg, ${r.tint}55, #0e0e0e 70%)`,
+        }}
+      >
+        {r.heroImage && (
+          <img
+            src={r.heroImage} alt="" loading="lazy" decoding="async"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', maxWidth: 'none', filter: 'brightness(0.78) saturate(1.05)' }}
+          />
+        )}
+        <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 62%, rgba(0,0,0,0.92) 100%)' }} />
+        <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          {r.logo ? <LogoChip src={r.logo} alt={r.brand} /> : <span />}
+          {r.flash && <Pts size={11}>{r.flash}</Pts>}
         </div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', marginTop: 5 }}>≈ {sessions} gym sessions</div>
-      </div>
-    </motion.a>
+        <div style={{ position: 'absolute', left: 14, right: 14, bottom: 14 }}>
+          <div style={{ fontSize: 11, letterSpacing: 2.4, color: 'rgba(255,255,255,0.7)', fontWeight: w.semiBold, textTransform: 'uppercase' }}>{r.brand}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+            <span style={{ fontSize: 'clamp(26px, 2.4vw, 34px)', fontWeight: w.extraLight, color: pg.text, letterSpacing: -1, lineHeight: 1 }}>{fmt(r.pts)}</span>
+            <span style={{ fontSize: 10, letterSpacing: 1.6, color: pg.accent, fontWeight: w.semiBold }}>PTS</span>
+          </div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', marginTop: 5 }}>≈ {sessions} gym sessions</div>
+        </div>
+      </motion.a>
+    </Parallax>
   );
 }

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { pg, w } from '../../theme';
-import { CARD, Chevron, Head, Reveal, Section, fmt } from '../ui';
+import { CARD, Chevron, Head, Item, Section, Stagger, fmt } from '../ui';
 
 /**
  * 07 — Questions. Native <details> so the answers are in the HTML for search
- * engines and screen readers; React only decorates the chevron.
+ * engines and screen readers; React only decorates the chevron. The rows
+ * cascade in from below.
  */
 export default function Faq({ stats }) {
   const QA = [
@@ -21,16 +22,18 @@ export default function Faq({ stats }) {
   return (
     <Section id="faq">
       <Head n="07" tag="Questions" title="Straight answers." center />
-      <Reveal amount={0.1} style={{ maxWidth: 780, margin: '0 auto' }}>
-        <div style={{ ...CARD, borderRadius: 20, overflow: 'hidden' }}>
-          {QA.map((item, i) => <Item key={item.q} {...item} first={i === 0} />)}
-        </div>
-      </Reveal>
+      <Stagger gap={0.06} amount={0.1} style={{ maxWidth: 780, margin: '0 auto', ...CARD, borderRadius: 20, overflow: 'hidden' }}>
+        {QA.map((item, i) => (
+          <Item key={item.q} from="up" dist={0.5} duration={0.7}>
+            <Question {...item} first={i === 0} />
+          </Item>
+        ))}
+      </Stagger>
     </Section>
   );
 }
 
-function Item({ q, a, first }) {
+function Question({ q, a, first }) {
   const [open, setOpen] = useState(false);
   return (
     <details

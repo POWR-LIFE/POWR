@@ -1,14 +1,17 @@
+import { motion, useReducedMotion } from 'framer-motion';
 import { pg, w } from '../../theme';
 import { useCompact } from '../../stages/shared';
 import PhoneFrame from '../../PhoneFrame';
 import { LEVELS } from '../data';
-import { CARD, Head, Reveal, Section, fmt } from '../ui';
+import { CARD, EASE, Head, Item, Parallax, Reveal, Section, Stagger, fmt } from '../ui';
 
 /**
  * 06 — Together & Become. The social layer and the identity layer in one
  * screen: the League as it is in the app — friends on the same board, a
- * rival to chase — beside the level ladder (legend tier classified) and the
- * seven honours a member keeps for good.
+ * rival to chase — arriving from the left and drifting with the scroll,
+ * beside the level ladder (badges popping in one by one, the tier rail
+ * lighting left to right, legend tier classified) and the seven honours,
+ * which draw themselves in their metals as the card lands.
  */
 const TIERS = ['Recruit', 'Athlete', 'Elite', 'Legend'];
 
@@ -31,9 +34,14 @@ const HONOURS = [
   { kind: 'strength', name: 'Strength', line: 'Strength sessions, all time', tier: 'gold', paths: ['M8 54 C22 57 38 56 50 53 V19 C49 15 45 12.5 31 10 L27.5 17.5 L30.5 22.5', 'M30.5 22.5 L37 19.5', 'M30.5 22.5 C34.5 24 38.5 24.2 42.5 23.6', 'M42.5 27 C42.3 33 39.5 38 35 42.5', 'M6 41.5 C16 34 30 35.5 38.5 47.5', 'M11.5 48 C16.5 49.5 21 49.6 25.5 49'] },
 ];
 
-function HonourIcon({ h, size = 34 }) {
+/* Each honour draws itself: the stroke runs its length, then the dots land */
+function HonourIcon({ h, size = 34, delay = 0 }) {
+  const reduce = useReducedMotion();
   const id = `hn-${h.kind}`;
   const [a, b, c, d] = METAL[h.tier];
+  const draw = reduce
+    ? {}
+    : { initial: { pathLength: 0, opacity: 0.2 }, whileInView: { pathLength: 1, opacity: 1 }, viewport: { once: true, amount: 0.8 } };
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden>
       <defs>
@@ -42,10 +50,32 @@ function HonourIcon({ h, size = 34 }) {
         </linearGradient>
       </defs>
       <g stroke={`url(#${id})`} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform={h.rotate ? `rotate(${h.rotate} 32 32)` : undefined}>
-        {h.paths.map((p) => <path key={p.slice(0, 12)} d={p} />)}
-        {h.dots?.map(([cx, cy]) => <circle key={cx} cx={cx} cy={cy} r="2.6" />)}
+        {h.paths.map((p, i) => (
+          <motion.path key={p.slice(0, 12)} d={p} {...draw} transition={{ duration: 1.4, ease: 'easeInOut', delay: delay + i * 0.08 }} />
+        ))}
+        {h.dots?.map(([cx, cy], i) => (
+          <motion.circle
+            key={cx} cx={cx} cy={cy} r="2.6"
+            initial={reduce ? undefined : { scale: 0, opacity: 0 }}
+            whileInView={reduce ? undefined : { scale: 1, opacity: 1 }}
+            viewport={{ once: true, amount: 0.8 }}
+            transition={{ duration: 0.4, ease: EASE, delay: delay + 1.1 + i * 0.08 }}
+            style={{ transformOrigin: `${cx}px ${cy}px`, transformBox: 'fill-box' }}
+          />
+        ))}
       </g>
     </svg>
+  );
+}
+
+/* One tier-rail segment lighting up in its turn */
+function Bar({ color, dim }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.span
+      variants={reduce ? undefined : { hidden: { scaleX: 0, opacity: 0 }, show: { scaleX: 1, opacity: dim, transition: { duration: 0.5, ease: EASE } } }}
+      style={{ height: 3, borderRadius: 2, background: color, opacity: dim, transformOrigin: '0 50%', display: 'block' }}
+    />
   );
 }
 
@@ -59,27 +89,31 @@ export default function Identity() {
         lede="Friends on the same board, a rival to chase, and an invite race before every round — bring the most friends and Squad Builder is yours. Twenty levels and seven honours turn what you've earned into who you are."
       />
       <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '0.8fr 1.2fr', gap: compact ? 36 : 56, alignItems: 'center' }}>
-        <Reveal amount={0.2} style={{ display: 'flex', justifyContent: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <div aria-hidden style={{ position: 'absolute', inset: '-20% -30%', background: 'radial-gradient(circle, rgba(1,62,55,0.5), transparent 60%)', filter: 'blur(20px)', pointerEvents: 'none' }} />
-            <PhoneFrame src="/app/league.webp" alt="The League in POWR — the Autumn Series board, day 4 of 16, with a rival one run ahead" width={compact ? 220 : 250} topColor="#062b28" />
-            <div style={{ position: 'absolute', right: compact ? -14 : -84, top: '63%', ...CARD, borderRadius: 14, padding: '10px 14px', background: 'rgba(14,14,14,0.9)', backdropFilter: 'blur(8px)' }}>
-              <div style={{ fontSize: 10, letterSpacing: 2.2, color: pg.textMuted, fontWeight: w.semiBold }}>YOUR RIVAL</div>
-              <div style={{ fontSize: 22, fontWeight: w.extraLight, color: pg.accent, letterSpacing: -0.6, marginTop: 2 }}>7 <span style={{ fontSize: 12, color: pg.textSec }}>pts ahead</span></div>
-              <div style={{ fontSize: 11.5, color: pg.textSec, marginTop: 2 }}>Your friend. One run passes her.</div>
+        <Reveal from="left" dist={1.2} amount={0.2} style={{ display: 'flex', justifyContent: 'center' }}>
+          <Parallax y={[44, -44]}>
+            <div style={{ position: 'relative' }}>
+              <div aria-hidden style={{ position: 'absolute', inset: '-20% -30%', background: 'radial-gradient(circle, rgba(1,62,55,0.5), transparent 60%)', filter: 'blur(20px)', pointerEvents: 'none' }} />
+              <PhoneFrame src="/app/league.webp" alt="The League in POWR — the Autumn Series board, day 4 of 16, with a rival one run ahead" width={compact ? 220 : 250} topColor="#062b28" />
+              <Reveal from="right" dist={0.6} scale={0.85} delay={0.6} amount={0.1} style={{ position: 'absolute', right: compact ? -14 : -84, top: '63%' }}>
+                <div style={{ ...CARD, borderRadius: 14, padding: '10px 14px', background: 'rgba(14,14,14,0.9)', backdropFilter: 'blur(8px)', boxShadow: '0 24px 60px -24px rgba(0,0,0,0.9)' }}>
+                  <div style={{ fontSize: 10, letterSpacing: 2.2, color: pg.textMuted, fontWeight: w.semiBold }}>YOUR RIVAL</div>
+                  <div style={{ fontSize: 22, fontWeight: w.extraLight, color: pg.accent, letterSpacing: -0.6, marginTop: 2 }}>7 <span style={{ fontSize: 12, color: pg.textSec }}>pts ahead</span></div>
+                  <div style={{ fontSize: 11.5, color: pg.textSec, marginTop: 2 }}>Your friend. One run passes her.</div>
+                </div>
+              </Reveal>
             </div>
-          </div>
+          </Parallax>
         </Reveal>
 
-        <Reveal amount={0.2} delay={0.1} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Reveal from="right" amount={0.15} delay={0.1} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ ...CARD, padding: 'clamp(22px, 2.2vw, 30px)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
               <span style={{ fontSize: 11, letterSpacing: 2.6, color: pg.accent, fontWeight: w.semiBold }}>TWENTY LEVELS · FOUR TIERS</span>
               <span style={{ fontSize: 11, color: pg.textMuted }}>lifetime points</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: compact ? 14 : 10, marginTop: 22 }}>
+            <Stagger gap={0.08} delay={0.3} amount={0.3} style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: compact ? 14 : 10, marginTop: 22 }}>
               {LEVELS.map((l) => (
-                <div key={l.level} style={{ textAlign: 'center' }}>
+                <Item key={l.level} from="up" dist={0.5} scale={0.6} duration={0.7} style={{ textAlign: 'center' }}>
                   <div style={{ position: 'relative', width: '100%', aspectRatio: '1', display: 'grid', placeItems: 'center' }}>
                     <div aria-hidden style={{ position: 'absolute', inset: '10%', borderRadius: '50%', background: `radial-gradient(circle, ${l.color}33, transparent 65%)`, filter: 'blur(10px)' }} />
                     <img
@@ -93,17 +127,17 @@ export default function Identity() {
                   <div style={{ fontSize: 10, letterSpacing: 2, color: pg.textMuted, fontWeight: w.semiBold, marginTop: 6 }}>LEVEL {l.level}</div>
                   <div style={{ fontSize: 13, color: l.name ? l.color : pg.textMuted, fontWeight: w.medium, marginTop: 3, letterSpacing: l.name ? 0 : 3 }}>{l.name || '?????'}</div>
                   <div style={{ fontSize: 11, color: pg.textMuted, marginTop: 2 }}>{l.xp ? fmt(l.xp) : '0'} pts</div>
-                </div>
+                </Item>
               ))}
-            </div>
-            {/* tier rail */}
-            <div style={{ marginTop: 22, display: 'grid', gridTemplateColumns: 'repeat(20, 1fr)', gap: 3 }}>
+            </Stagger>
+            {/* tier rail, lighting left to right */}
+            <Stagger gap={0.03} delay={0.7} amount={0.5} style={{ marginTop: 22, display: 'grid', gridTemplateColumns: 'repeat(20, 1fr)', gap: 3 }}>
               {Array.from({ length: 20 }, (_, i) => {
                 const tier = i < 5 ? 0 : i < 10 ? 1 : i < 15 ? 2 : 3;
                 const c = ['rgba(255,255,255,0.35)', '#F2C230', '#4A9EFF', '#E8D200'][tier];
-                return <span key={i} style={{ height: 3, borderRadius: 2, background: c, opacity: tier === 3 ? 0.9 : 0.55 }} />;
+                return <Bar key={i} color={c} dim={tier === 3 ? 0.9 : 0.55} />;
               })}
-            </div>
+            </Stagger>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
               {TIERS.map((t) => <span key={t} style={{ fontSize: 10, letterSpacing: 2, color: pg.textMuted, fontWeight: w.semiBold, textTransform: 'uppercase' }}>{t}</span>)}
             </div>
@@ -118,15 +152,15 @@ export default function Identity() {
               <span style={{ fontSize: 11, letterSpacing: 2.6, color: pg.accent, fontWeight: w.semiBold }}>SEVEN HONOURS · FOUR METALS</span>
               <span style={{ fontSize: 11, color: pg.textMuted, whiteSpace: 'nowrap' }}>under your name, for good</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(4, 1fr)' : 'repeat(7, 1fr)', gap: compact ? '16px 8px' : 8, marginTop: 18 }}>
-              {HONOURS.map((h) => (
-                <div key={h.kind} style={{ textAlign: 'center' }}>
-                  <div style={{ display: 'grid', placeItems: 'center', height: 40 }}><HonourIcon h={h} /></div>
+            <Stagger gap={0.1} delay={0.2} amount={0.4} style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(4, 1fr)' : 'repeat(7, 1fr)', gap: compact ? '16px 8px' : 8, marginTop: 18 }}>
+              {HONOURS.map((h, i) => (
+                <Item key={h.kind} from="up" dist={0.4} duration={0.7} style={{ textAlign: 'center' }}>
+                  <div style={{ display: 'grid', placeItems: 'center', height: 40 }}><HonourIcon h={h} delay={0.2 + i * 0.12} /></div>
                   <div style={{ fontSize: 12.5, color: pg.text, fontWeight: w.medium, marginTop: 8 }}>{h.name}</div>
                   <div style={{ fontSize: 10.5, color: pg.textMuted, marginTop: 3, lineHeight: 1.35 }}>{h.line}</div>
-                </div>
+                </Item>
               ))}
-            </div>
+            </Stagger>
             <div style={{ marginTop: 16, fontSize: 12.5, color: pg.textSec, fontWeight: w.light, lineHeight: 1.5 }}>
               Bronze to platinum. Win a round and the crown is gold from the first.
             </div>
