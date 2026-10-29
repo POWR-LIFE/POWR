@@ -6,17 +6,18 @@ export { fetchLiveRewards } from '../stages/RedeemTrack';
 /*
  * Live proof numbers — public.landing_stats() (migration 20260905150000).
  * Read-only aggregates, anon-executable, showcase QA accounts excluded.
- * The fallback is the 2026-09-05 read, used only if the RPC fails.
+ * The fallback is the 2026-10-29 read, used only if the RPC fails.
  */
 export const STATS_FALLBACK = {
-  partners: 7871,
+  partners: 8008,
   brands: 8,
-  sessions_7d: 785,
-  points_7d: 13393,
-  sessions_all: 4113,
-  points_all: 52503,
-  redemptions: 41,
+  sessions_7d: 520,
+  points_7d: 5952,
+  sessions_all: 10001,
+  points_all: 194693,
+  redemptions: 229,
 };
+export const STATS_AS_OF = '29 October 2026';
 
 export async function fetchStats() {
   try {
@@ -127,7 +128,9 @@ export async function fetchSeries() {
   }
 }
 
-/* Wearable marks — white-alpha PNGs in /public/wearables */
+/* Wearable marks — white-alpha PNGs in /public/wearables. Since the Terra
+   pause (2026-10-09) every wearable reaches POWR through the phone's health
+   store: Apple Health on iPhone, Health Connect on Android. */
 export const WEARABLES = [
   { id: 'apple-health', name: 'Apple Health' },
   { id: 'whoop', name: 'WHOOP' },

@@ -12,13 +12,13 @@ import { CARD, Check, Head, Pts, Reveal, Section } from '../ui';
 const STEPS = [
   {
     n: '01', title: 'Show up.',
-    body: 'Walk into any partner gym and the session starts on its own — no check-in button, no QR code. Runs, rides, swims, sleep and steps arrive from the wearable you already own.',
+    body: 'Walk into any partner gym and the session starts on its own — no check-in button, no QR code. Runs, rides, swims, sleep and steps arrive through Apple Health or Health Connect, from the watch, ring or app you already own.',
     demo: <SessionCard />,
     foot: <WearableRow />,
   },
   {
     n: '02', title: 'Get verified. Get paid.',
-    body: 'Every session is checked — where you were, for how long, what your device recorded — and the points land without you touching anything. Keep a streak and your workouts multiply.',
+    body: 'Every session is checked — where you were, for how long, what your device recorded — and the points land without you touching anything. Keep a streak and a gym session pays up to three times over.',
     demo: <Receipt />,
   },
   {
@@ -95,11 +95,10 @@ function SessionCard() {
 function WearableRow() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', paddingTop: 4 }}>
-      <span style={{ fontSize: 10, letterSpacing: 2, color: pg.textMuted, fontWeight: w.semiBold }}>ALSO FROM</span>
-      {WEARABLES.map((wb) => (
+      <span style={{ fontSize: 10, letterSpacing: 2, color: pg.textMuted, fontWeight: w.semiBold }}>APPLE HEALTH · HEALTH CONNECT</span>
+      {WEARABLES.filter((wb) => wb.id !== 'apple-health').map((wb) => (
         <img key={wb.id} src={`/wearables/${wb.id}.png`} alt={wb.name} title={wb.name} height={14} style={{ height: 14, width: 'auto', opacity: 0.6 }} />
       ))}
-      <span style={{ fontSize: 11, color: pg.textMuted }}>+15 more</span>
     </div>
   );
 }
@@ -108,7 +107,7 @@ const ROWS = [
   { icon: '▮', label: 'Gym', detail: 'ONE LDN · 52 min', pts: 20, color: '#E8D200' },
   { icon: '▮', label: 'Run', detail: '5.2 km · 26:40', pts: 8, color: '#FF9944' },
   { icon: '▮', label: 'Sleep', detail: '7h 42m', pts: 4, color: '#6366F1' },
-  { icon: '▮', label: 'Streak ×1.5', detail: '12 days · workouts', pts: 14, color: '#E8D200', bonus: true },
+  { icon: '▮', label: 'Streak ×1.5', detail: '5 days · gym +10, run +2', pts: 12, color: '#E8D200', bonus: true },
 ];
 
 function Receipt() {
@@ -127,7 +126,7 @@ function Receipt() {
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', paddingTop: 12 }}>
         <span style={{ fontSize: 10, letterSpacing: 2.4, color: pg.textMuted, fontWeight: w.semiBold }}>TODAY</span>
         <span style={{ fontSize: 30, fontWeight: w.extraLight, color: pg.accent, letterSpacing: -1, lineHeight: 1 }}>
-          +46 <span style={{ fontSize: 11, letterSpacing: 1.5, fontWeight: w.semiBold, opacity: 0.8 }}>PTS</span>
+          +44 <span style={{ fontSize: 11, letterSpacing: 1.5, fontWeight: w.semiBold, opacity: 0.8 }}>PTS</span>
         </span>
       </div>
     </div>

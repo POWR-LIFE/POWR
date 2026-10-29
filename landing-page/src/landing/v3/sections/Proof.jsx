@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useInView } from 'framer-motion';
 import { pg, w } from '../../theme';
 import { useCompact } from '../../stages/shared';
+import { STATS_AS_OF } from '../data';
 import { Hairline, Reveal, Section, fmt } from '../ui';
 
 /**
@@ -34,7 +35,7 @@ export default function Proof({ stats }) {
       <Hairline />
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 18, fontSize: 11.5, color: pg.textMuted }}>
         {stats.live && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00CC66', boxShadow: '0 0 8px #00CC66' }} />}
-        {stats.live ? 'Live from the POWR database' : 'As of 5 September 2026'}
+        {stats.live ? 'Live from the POWR database' : `As of ${STATS_AS_OF}`}
       </div>
     </Section>
   );

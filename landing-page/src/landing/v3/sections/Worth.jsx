@@ -58,7 +58,7 @@ export default function Worth() {
             <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 12, background: 'rgba(232,210,0,0.06)', border: '1px solid rgba(232,210,0,0.18)' }}>
               <div style={{ fontSize: 13, color: pg.text, fontWeight: w.medium }}>Streaks multiply.</div>
               <div style={{ fontSize: 12.5, color: pg.textSec, marginTop: 3, lineHeight: 1.5 }}>
-                Twelve days in a row and every workout pays ×1.5. Walking and sleep top out at 5 a day; gym at 30. Runs, rides and swims are uncapped.
+                Three active days in a row and a gym session pays ×1.2; five days ×1.5; seven ×2; ten ×3. Runs, rides and swims pay ×1.5 from a week. Walking and sleep top out at 5 a day; gym at 30. Runs, rides and swims are uncapped.
               </div>
             </div>
           </div>

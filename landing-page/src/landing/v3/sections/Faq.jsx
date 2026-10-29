@@ -11,10 +11,12 @@ export default function Faq({ stats }) {
     { q: 'Is POWR free?', a: 'Yes. Free to download on iOS and Android, free to earn. Points come from moving — there is nothing to buy.' },
     { q: 'How does POWR know I was at the gym?', a: 'Your phone\'s location, checked against the gym\'s geofence. Arrive and a session starts on its own; stay thirty minutes and it pays 15 points, forty minutes pays 20. No check-in button, no QR code, no photo of the treadmill.' },
     { q: 'Which gyms count?', a: `${fmt(stats.partners)} partner gyms across the UK — chains like Everlast, Virgin Active and Anytime Fitness, and thousands of independents. Search yours above. If it's missing, request it from the Discover tab in the app and we'll add it.` },
-    { q: 'Which wearables and apps connect?', a: 'Apple Health and Health Connect out of the box, plus WHOOP, Garmin, Oura, Fitbit, Strava and more through a single connection. Runs, rides, swims, sport, yoga, sleep and steps all count.' },
+    { q: 'Which wearables and apps connect?', a: 'Apple Health on iPhone and Health Connect on Android — which is where your watch, ring and apps already write: Apple Watch, WHOOP, Garmin, Oura, Fitbit, Strava and the rest. Runs, rides, swims, sport, yoga, sleep and steps all count.' },
+    { q: 'What is the Series?', a: 'POWR\'s competition: a season of rounds, about two weeks each, on one live board. Join once in the app, free, and every verified session counts. First place wins, and so do the people who bring the most friends, move the most days in a row, climb the furthest or only just joined. Move on most of the round\'s days and you\'re in the draw too.' },
     { q: 'Can I game it?', a: 'Not usefully. Gym points need your phone inside the geofence for the whole session; workouts need a device record; manual logs earn at a reduced, capped rate. Every award is bounded per session and per day, so the numbers stay honest for everyone.' },
     { q: 'What can I spend points on?', a: 'Live rewards from HUEL, MAJIC, TRIBE, REP, FRANk, SWT, OMNITY and MATHAN — discounts and codes at their checkouts. The vault above is the live catalogue; a code lands in your wallet the moment you redeem.' },
     { q: 'Does walking count?', a: 'Yes — up to 5 points a day for 10,000 steps, and up to 5 for a full night\'s sleep. Gym sessions, runs, rides and swims are where the big numbers are.' },
+    { q: 'Is POWR in my language?', a: 'English, French and Spanish, following your phone\'s language. Distances in miles or kilometres — your choice.' },
   ];
   return (
     <Section id="faq">

@@ -115,7 +115,7 @@ export default function Hero({ kicker = 'Live now', footnote = null }) {
             transition={{ duration: 6.5, ease: 'easeInOut', repeat: Infinity }}
             style={{ transformStyle: 'preserve-3d', rotateY: compact ? 0 : -16, rotateX: compact ? 0 : 4, rotate: compact ? 0 : 3 }}
           >
-            <PhoneFrame src="/app/home.webp" alt="POWR home screen" width={compact ? 250 : 322} topColor="#2d2d2d" priority />
+            <PhoneFrame src="/app/home.webp" alt="POWR home screen" width={compact ? 250 : 322} topColor="#062b28" priority />
           </motion.div>
         </motion.div>
         {/* Gold underlight so the phone reads as lit by the product, not the video */}
