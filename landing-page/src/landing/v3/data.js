@@ -88,42 +88,42 @@ const ONE_LDN_LOGO = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object
 export const DEMO_GYM = { name: 'ONE LDN', logo: ONE_LDN_LOGO };
 
 /*
- * Live events — public.landing_events() (migration 20260913120000). Never
- * hand-dated: the RPC decides which event is CURRENT (the app's own rule:
- * not draft, not archived, ended < 7 days ago) and which are history.
- * Prizes ride along as public storage URLs.
+ * The Series — public.landing_series() (migration 20261029120000). The
+ * published season and its round (on now, else next, else last), the
+ * round's prizes as entered in /admin/series, and the start line's crowd
+ * inputs exactly as the app reads them, so the site and the app show the
+ * same number. The fallback is Round 01 of the Autumn Series as set on
+ * 2026-10-29, used only if the RPC fails.
  */
-export const PAST_EVENTS_FALLBACK = [
-  {
-    slug: 'fnl-x-powr', name: 'FNL x POWR', status: 'archived',
-    window_start_at: '2026-08-26T23:00:00Z', window_end_at: '2026-09-04T18:00:00Z', doors_open_at: '2026-09-04T17:00:00Z',
-    venue: 'ONE LDN', venue_address: 'Imperial Wharf, London', venueLogo: storageImage(ONE_LDN_LOGO, 128),
-    participants: 25, prizes: [{}, {}, {}, {}], is_current: false,
+export const SERIES_FALLBACK = {
+  season: { slug: 'autumn-26', name: 'Autumn Series', look: 'autumn', number: 1, code: 'AS26', starts_on: '2026-10-01', ends_on: '2026-12-31', rounds: 2 },
+  round: {
+    slug: 'autumn-01', name: 'Round 01', starts_at: '2026-11-15T00:00:00Z', ends_at: '2026-12-01T00:00:00Z', draw_days: 10, prizes: [],
+    crowd: { real: 10, pacers_at_gun: 1490, ramp_from: '2026-10-26T15:01:51Z', ramp_to: '2026-11-15T00:00:00Z', base: 0.835 },
   },
-];
+  prev_round: null,
+  next_round: { slug: 'autumn-02', name: 'Round 02', starts_at: '2026-12-15T00:00:00Z', ends_at: '2027-01-01T00:00:00Z', draw_days: 10 },
+};
 
-function normaliseEvent(r) {
-  const prizes = Array.isArray(r.prizes) ? r.prizes : [];
-  return {
-    ...r,
-    venueLogo: storageImage(r.venue_logo || r.logo_url || null, 128),
-    prizes: prizes
-      .slice()
-      .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
-      .map((p) => ({ rank: p.rank, label: p.label, img: storageImage(p.image_url || null, 720) })),
-  };
+function normaliseSeries(s) {
+  const round = s.round
+    ? {
+      ...s.round,
+      prizes: (Array.isArray(s.round.prizes) ? s.round.prizes : []).map((p) => ({ ...p, img: storageImage(p.image_url || null, 720) })),
+    }
+    : null;
+  return { season: s.season || null, round, prev_round: s.prev_round || null, next_round: s.next_round || null };
 }
 
-export async function fetchEvents() {
+export async function fetchSeries() {
   try {
-    const { data, error } = await supabase.rpc('landing_events');
+    const { data, error } = await supabase.rpc('landing_series');
     if (error) throw error;
-    const rows = (Array.isArray(data) ? data : []).map(normaliseEvent);
-    const current = rows.find((r) => r.is_current) || null;
-    const past = rows.filter((r) => !r.is_current && new Date(r.window_end_at).getTime() < Date.now());
-    return { current, past, live: true };
+    // null is an answer: no season published yet → the sealed card, not the fallback
+    if (!data) return { season: null, round: null, prev_round: null, next_round: null, live: true };
+    return { ...normaliseSeries(data), live: true };
   } catch {
-    return { current: null, past: PAST_EVENTS_FALLBACK, live: false };
+    return { ...normaliseSeries(SERIES_FALLBACK), live: false };
   }
 }
 

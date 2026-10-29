@@ -11,7 +11,7 @@ import Claim from './sections/Claim';
 import HowItWorks from './sections/HowItWorks';
 import Worth from './sections/Worth';
 import GymFinder from './sections/GymFinder';
-import Events from './sections/Events';
+import Series from './sections/Series';
 import Identity from './sections/Identity';
 import Proof from './sections/Proof';
 import Faq from './sections/Faq';
@@ -24,7 +24,7 @@ import Faq from './sections/Faq';
  * signature moments, and reorders everything around the visitor's decision:
  * what is it (hero) → why it's different (claim) → how it works (plan) →
  * what it's worth (live vault, priced in sessions) → does it work for ME
- * (gym search) → events → crew & levels → proof → questions → download.
+ * (gym search) → the Series → crew & levels → proof → questions → download.
  * Nine viewports, nothing scroll-jacked, a CTA always within reach.
  */
 export default function LandingV3() {
@@ -48,7 +48,7 @@ export default function LandingV3() {
       <HowItWorks />
       <Worth />
       <GymFinder stats={stats} />
-      <Events />
+      <Series />
       <Identity />
       <Proof stats={stats} />
       <Faq stats={stats} />
@@ -64,7 +64,7 @@ const LINKS = [
   { label: 'How it works', href: '#how' },
   { label: 'Rewards', href: '#worth' },
   { label: 'Gyms', href: '#gyms' },
-  { label: 'Events', href: '#events' },
+  { label: 'Series', href: '#series' },
   { label: 'FAQ', href: '#faq' },
 ];
 
