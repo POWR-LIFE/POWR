@@ -6,9 +6,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { type SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import type { SeriesMoment } from '@/lib/api/series';
-import { type DailyTitle, fmt, ordinal, ROUND_MOMENTS, roundDate, TITLES } from '@/lib/dev/seriesPrototype';
+import { type DailyTitle, fmt, ROUND_MOMENTS, roundDate, TITLES } from '@/lib/dev/seriesPrototype';
 import i18n, { getFormatLocale } from '@/lib/i18n';
-import { CARD_BG, CARD_BORDER, GOLD, GREEN, HAIR, MoveChip, ORANGE, RollNumber, TEXT, TEXT_2, TEXT_3, YOU_LINE, YOU_TINT } from './SeriesLane';
+import { CARD_BG, CARD_BORDER, GOLD, GREEN, HAIR, MoveChip, RollNumber, TEXT, TEXT_2, TEXT_3, YOU_LINE, YOU_TINT } from './SeriesLane';
 import { BUTTER, hexA, mixHex, SeriesLockup, useSeason, useSeasonCard } from './season';
 import type { SeriesView } from './seriesView';
 import type { RecapLine } from './useSeriesSim';
@@ -61,8 +61,6 @@ export function SeriesCard({
     const next = ROUND_MOMENTS.find((m) => m.day > h.day);
     const f = v.finish;
     const away = h.pb != null ? h.rank - h.pb : null;
-    // Your heat leads: your place in it, the next line, then the big board.
-    const heat = v.headline === 'heat' ? v.heat : null;
     const [fullH, setFullH] = useState(0);
     const zero = useSharedValue(0);
     const y = scrollY ?? zero;
@@ -98,59 +96,9 @@ export function SeriesCard({
                     </View>
                 </View>
 
-                {/* Your position, in three: where you are, last round, your best.
-                    With heats: your heat, its next line, the big board. */}
+                {/* Your position, in three: where you are, last round, your best. */}
                 <View style={s.pos}>
-                    {running && heat ? (
-                        <>
-                            <View style={s.posMain}>
-                                <Text style={s.label} numberOfLines={1}>HEAT · DIV {heat.meta.div}</Text>
-                                <View style={s.posRank}>
-                                    {h.blind ? <Text style={s.posNum}>?</Text> : <RollNumber value={heat.rank} style={s.posNum} />}
-                                    {!h.blind && <Text style={[s.posHash, s.posSuffix]}>{ordinal(heat.rank).replace(/^\d+/, '')}</Text>}
-                                </View>
-                                <Text style={[s.posToday, { color: h.blind || !heat.move ? TEXT_3 : heat.move > 0 ? GREEN : RED }]}>
-                                    {h.blind ? 'hidden today' : heat.move ? `${heat.move > 0 ? '▲' : '▼'} ${Math.abs(heat.move)} today` : `of ${heat.meta.size}`}
-                                </Text>
-                            </View>
-                            <View style={s.posRule} />
-                            <View style={s.posStat}>
-                                {h.blind ? (
-                                    <>
-                                        <Text style={s.label}>RANKS BACK</Text>
-                                        <Text style={s.statVal}>{v.live ? moments?.find((m) => m.kind === 'blind' && m.state === 'live')?.back ?? 'Soon' : 'Thu 08:00'}</Text>
-                                        <Text style={s.statSub}>keep moving</Text>
-                                    </>
-                                ) : heat.status === 'up' ? (
-                                    <>
-                                        <Text style={s.label}>MOVING UP</Text>
-                                        <Text style={[s.statVal, { color: GREEN }]}>+{fmt(heat.clear ?? 0)}</Text>
-                                        <Text style={s.statSub} numberOfLines={1}>pts clear of {ordinal(heat.meta.up + 1)}</Text>
-                                    </>
-                                ) : heat.status === 'drop' ? (
-                                    <>
-                                        <Text style={s.label}>TO GET CLEAR</Text>
-                                        <Text style={[s.statVal, { color: ORANGE }]}>{fmt(heat.toSafe ?? 0)} pts</Text>
-                                        <Text style={s.statSub} numberOfLines={1}>out of the bottom {heat.meta.down}</Text>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Text style={s.label}>{heat.meta.div > 1 ? 'TO MOVE UP' : 'TO 1ST'}</Text>
-                                        <Text style={s.statVal}>{heat.toUp == null ? '—' : `${fmt(heat.toUp)} pts`}</Text>
-                                        <Text style={s.statSub} numberOfLines={1}>{heat.meta.div > 1 ? `to the top ${heat.meta.up}` : 'in your heat'}</Text>
-                                    </>
-                                )}
-                            </View>
-                            <View style={s.posRule} />
-                            <View style={s.posStat}>
-                                <Text style={s.label}>OVERALL</Text>
-                                <Text style={s.statVal}>{h.blind ? '#?' : `#${fmt(h.rank)}`}</Text>
-                                <Text style={[s.statSub, !h.blind && h.move > 0 && { color: GREEN }, !h.blind && h.move < 0 && { color: RED }]}>
-                                    {h.blind || !h.move ? `of ${fmt(h.total)}` : `${h.move > 0 ? '▲' : '▼'} ${fmt(Math.abs(h.move))} today`}
-                                </Text>
-                            </View>
-                        </>
-                    ) : running ? (
+                    {running ? (
                         <>
                             <View style={s.posMain}>
                                 <Text style={s.label}>{t('series:round.yourPosition')}</Text>
@@ -271,11 +219,10 @@ export function SeriesCard({
                 <View style={s.barRank}>
                     <Text style={s.barNum}>
                         {running
-                            ? (h.blind ? '#?' : heat ? ordinal(heat.rank) : `#${fmt(h.rank)}`)
+                            ? (h.blind ? '#?' : `#${fmt(h.rank)}`)
                             : f ? `#${fmt(f.rank)}` : t('series:round.days', { count: v.next.inDays })}
                     </Text>
-                    {running && heat && !h.blind && <Text style={s.barTag}>IN HEAT</Text>}
-                    {running && !h.blind && <MoveChip delta={heat ? heat.move : h.move} />}
+                    {running && !h.blind && <MoveChip delta={h.move} />}
                 </View>
                 <Text style={s.barDay}>{running ? t('series:round.dayOf', { day: h.day, days: v.round.days }) : f ? t('series:round.finalCaps') : t('series:round.toGo')}</Text>
             </Animated.View>
@@ -476,7 +423,6 @@ const s = StyleSheet.create({
     bar: { position: 'absolute', left: 0, right: 0, top: 0, height: SERIES_BAR_H - 2, flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16 },
     barRank: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
     barNum: { fontSize: 22, fontWeight: '200', color: GOLD, letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
-    barTag: { fontSize: 8, fontWeight: '600', letterSpacing: 1.4, color: TEXT_3 },
     barDay: { fontSize: 9, fontWeight: '600', letterSpacing: 1.6, color: TEXT_2 },
     top: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
     meta: { fontSize: 8, fontWeight: '600', letterSpacing: 1.8, lineHeight: 14, textAlign: 'right', color: hexA(BUTTER, 0.6) },

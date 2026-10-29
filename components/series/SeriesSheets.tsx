@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { fmt, type HeatMeta, type Scale } from '@/lib/dev/seriesPrototype';
+import { fmt, type Scale } from '@/lib/dev/seriesPrototype';
 import { CARD_BG, CARD_BORDER, DIM, EMBER, GOLD, GREEN, HAIR, MUTED, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
 import { BUTTER, hexA, SeriesLockup, useSeason } from './season';
 
@@ -137,7 +137,7 @@ export function InfoList({ rows, onRowLayout }: { rows: InfoRow[]; onRowLayout?:
 
 /** How the Series works, in six lines. What you can win has its own drawer. */
 export function RulesSheet({
-    visible, onClose, onPrizes, live = false, days = 15, need = 10, when = '16 Nov', boosts = false, blindMode = false, heat = null,
+    visible, onClose, onPrizes, live = false, days = 15, need = 10, when = '16 Nov', boosts = false, blindMode = false,
 }: {
     visible: boolean;
     onClose: () => void;
@@ -151,19 +151,10 @@ export function RulesSheet({
     /** Live: the round has boost moments / a Blind Mode (set in /admin/series). */
     boosts?: boolean;
     blindMode?: boolean;
-    /** Your heat, when there is one: it leads the list. */
-    heat?: HeatMeta | null;
 }) {
     const { t } = useTranslation();
-    // The heat rows and the !live lines are sample-only (the server has no heats yet).
-    const heatLine = heat
-        ? [heat.div > 1 ? `top ${heat.up} move up` : null, heat.down > 0 ? `bottom ${heat.down} drop` : null].filter(Boolean).join(', ')
-        : '';
+    // The !live lines are sample-only.
     const rows: InfoRow[] = [
-        ...(heat ? [{
-            key: 'heat', icon: 'people-outline' as const, title: `Your heat: ${heat.size} at your pace`,
-            line: heatLine ? `Set for the round · ${heatLine}` : 'Set for the round',
-        }] : []),
         {
             key: 'round', icon: 'calendar-outline', title: t('series:sheets.rules.round', { count: days }),
             line: live ? t('series:sheets.rules.winners', { date: when }) : '1–15 Nov · winners on the 16th',

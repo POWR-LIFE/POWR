@@ -13,12 +13,12 @@ import { DropReveal } from '@/components/drop/DropReveal';
 import { trackTap } from '@/lib/analytics';
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import {
-    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, seriesDate, type SeriesInviteBoard, useSeriesBoard, useSeriesExtras, useSeriesInviteBoard,
+    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, seriesDate, seriesHow, type SeriesInviteBoard, useSeriesBoard, useSeriesExtras, useSeriesInviteBoard,
 } from '@/lib/api/series';
 import { fetchProfile, type Profile } from '@/lib/api/user';
 import { dropSim, todayTarget, useDropPrototype } from '@/lib/dev/dropPrototype';
 import {
-    cityRanked, firstName, fmt, heatFromLine, type HeatInfo, type HeatMeta, type LensKey, ordinal, type RaceView, ROUND_MOMENTS, SERIES_PROTOTYPE, type SeriesState, STATE_INFO, youOf,
+    cityRanked, firstName, fmt, known, type LensKey, type RaceView, ROUND_MOMENTS, SERIES_PROTOTYPE, type SeriesState, STATE_INFO, youOf,
 } from '@/lib/dev/seriesPrototype';
 import { DROP_SERIES_POOL, dropProgress, formatSteps } from '@/lib/drop';
 import { scoringLine } from '@/lib/liveEventDisplay';
@@ -30,7 +30,6 @@ import {
     GOLD,
     GREEN,
     HAIR,
-    ORANGE,
     MoreLine,
     ROW_LAYOUT,
     SectionLabel,
@@ -54,7 +53,6 @@ import { fromLive, fromSim, type SeriesView } from './seriesView';
 import { useAlerts } from './useAlerts';
 import { useSeriesSim } from './useSeriesSim';
 
-type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 /** The games, in tab order (their labels are translated in the component). */
 /** Picking a city is hidden on the League for now (Jamie, 26 Oct): the start line's link and the City tab's picker. */
@@ -266,20 +264,15 @@ export function SeriesHome({
         if (!v.live) { sim.showToast('OPENS THE PHONE’S SHARE SHEET'); return; }
         Share.share({ message: `${seasonDef.name} · ${v.round.name}\n${share.big} ${share.line}\nhttps://powr.life` }).catch(() => {});
     };
-    // The race is showing your heat (sample only: the server has no heats yet).
-    const inHeat = v.view === 'heat' && !!v.heat;
     // What gets shared never leads with a place on the big board (pacers fill
-    // it): your place in your heat, else the places you climbed, else your points.
+    // it): the places you climbed, else your points.
     const myPts = youOf(v.board).p.pts;
     const dayLine = t('series:league.share.day', { day: v.hero.day, days: v.round.days });
-    // The heat headline is sample-only (the live board has no heats yet).
     const share = v.hero.blind
         ? { big: fmt(myPts), line: t('series:league.share.points', { dayLine }) }
-        : v.headline === 'heat' && v.heat
-            ? { big: ordinal(v.heat.rank).toUpperCase(), line: `IN MY HEAT · DIVISION ${v.heat.meta.div}${v.heat.move > 0 ? ` · ▲${v.heat.move} TODAY` : ''}` }
-            : v.hero.move > 0
-                ? { big: `▲${v.hero.move}`, line: t('series:league.share.climbed', { count: v.hero.move, points: fmt(myPts), dayLine }) }
-                : { big: fmt(myPts), line: t('series:league.share.points', { dayLine }) };
+        : v.hero.move > 0
+            ? { big: `▲${v.hero.move}`, line: t('series:league.share.climbed', { count: v.hero.move, points: fmt(myPts), dayLine }) }
+            : { big: fmt(myPts), line: t('series:league.share.points', { dayLine }) };
     const showAlerts = forceAlerts || alerts.needed;
 
     // What the Series pushes say, previewed in-app. One morning push carries the
@@ -379,43 +372,24 @@ export function SeriesHome({
                     {!v.live && (
                         <ViewSwitch
                             value={v.view}
-                            heat={!!v.heat}
                             onChange={(x) => { trackTap('series_view', { view: x }); sim.setView(x); }}
                             accessory={v.loop?.golden.state === 'showing'
                                 ? <GoldenPMark onFind={() => { trackTap('series_golden_found'); sim.findGoldenP(); setSheet('golden'); }} />
                                 : null}
                         />
                     )}
-                    {inHeat && v.heat ? (
-                        <HeatRow
-                            h={v.heat}
-                            blind={v.hero.blind}
-                            lit={lit}
-                            onRules={() => { trackTap('series_rules_open', { from: 'heat' }); setSheet('rules'); }}
-                        />
-                    ) : (
-                        <RivalRow
-                            v={v}
-                            lit={lit}
-                            onRules={() => { trackTap('series_rules_open'); setSheet('rules'); }}
-                            blindBack={blindCard?.back
-                                ? (/^\d/.test(blindCard.back)
-                                    ? t('series:league.rival.backAt', { time: blindCard.back })
-                                    : t('series:league.rival.backOn', { day: blindCard.back }))
-                                : undefined}
-                        />
-                    )}
-                    <Race v={v} hits={v.live ? {} : sim.hits} you={you} heat={inHeat ? v.heat : null} />
-                    {!v.live && (inHeat ? (
-                        <Pressable
-                            onPress={() => { trackTap('series_heat_full', { full: !v.heat?.full }); sim.setHeatFull(!v.heat?.full); }}
-                            style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.6 }]}
-                            accessibilityRole="button"
-                        >
-                            <Text style={s.linkText}>{v.heat?.full ? 'Show less' : 'View your whole heat'}</Text>
-                            <Ionicons name={v.heat?.full ? 'arrow-up' : 'arrow-down'} size={15} color={TEXT} />
-                        </Pressable>
-                    ) : (
+                    <RivalRow
+                        v={v}
+                        lit={lit}
+                        onRules={() => { trackTap('series_rules_open'); setSheet('rules'); }}
+                        blindBack={blindCard?.back
+                            ? (/^\d/.test(blindCard.back)
+                                ? t('series:league.rival.backAt', { time: blindCard.back })
+                                : t('series:league.rival.backOn', { day: blindCard.back }))
+                            : undefined}
+                    />
+                    <Race v={v} hits={v.live ? {} : sim.hits} you={you} />
+                    {!v.live && (
                         <Pressable
                             onPress={() => { trackTap('series_view', { view: v.view === 'around' ? 'top' : 'around' }); sim.setView(v.view === 'around' ? 'top' : 'around'); }}
                             style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.6 }]}
@@ -424,8 +398,7 @@ export function SeriesHome({
                             <Text style={s.linkText}>{v.view === 'around' ? 'View full rankings' : 'Back to around me'}</Text>
                             <Ionicons name={v.view === 'around' ? 'arrow-forward' : 'arrow-up'} size={15} color={TEXT} />
                         </Pressable>
-                    ))}
-                    {inHeat && v.heat && <Text style={s.roundNote}>{heatCaption(v.heat.meta)}</Text>}
+                    )}
                 </>
             )}
             {sim.tab === 'city' && running && (
@@ -722,7 +695,6 @@ export function SeriesHome({
                 when={v.round.prizesDay}
                 boosts={extras.moments.some((m) => (m.multiplier ?? 1) > 1)}
                 blindMode={extras.moments.some((m) => m.kind === 'blind')}
-                heat={v.heat?.meta ?? null}
                 onPrizes={running ? () => { setSheet(null); setTimeout(() => openPrizes('top3'), 350); } : undefined}
             />
             <ShareSheet
@@ -810,8 +782,8 @@ function PushPreview({ push, onPress }: { push: Push; onPress: () => void }) {
     );
 }
 
-/** Your heat, around me (the five either side of you on the big board) or its top. */
-function ViewSwitch({ value, heat, onChange, accessory }: { value: RaceView; heat: boolean; onChange: (v: RaceView) => void; accessory?: React.ReactNode }) {
+/** Around me (the five either side of you on the big board) or its top. */
+function ViewSwitch({ value, onChange, accessory }: { value: RaceView; onChange: (v: RaceView) => void; accessory?: React.ReactNode }) {
     const sc = useSeasonCard();
     const opt = (k: RaceView, label: string) => {
         const on = value === k;
@@ -830,7 +802,6 @@ function ViewSwitch({ value, heat, onChange, accessory }: { value: RaceView; hea
     return (
         <View style={s.segRow}>
             <View style={[s.seg, sc && { borderColor: sc.borderColor }]}>
-                {heat && opt('heat', 'My heat')}
                 {opt('around', 'Around me')}
                 {opt('top', 'Top 100')}
             </View>
@@ -839,67 +810,41 @@ function ViewSwitch({ value, heat, onChange, accessory }: { value: RaceView; hea
     );
 }
 
-/** Your heat in one line under the race: who's in it and what the lines mean. */
-function heatCaption(m: HeatMeta): string {
-    const lines = [
-        m.div > 1 ? `the top ${m.up} move up` : null,
-        m.down > 0 ? `the bottom ${m.down} drop` : null,
-    ].filter(Boolean).join(', ');
-    return `Division ${m.div} of ${m.divs}. ${m.size} people at your pace, set for the round.${lines ? ` At the end, ${lines}.` : ''}`;
-}
-
-/** Your heat's next line, said as something to do; how heats work a tap away. */
-function HeatRow({ h, blind, lit, onRules }: { h: HeatInfo; blind: boolean; lit: boolean; onRules: () => void }) {
-    const m = h.meta;
-    const walks = h.walks === 1 ? 'a 30-min walk' : `about ${h.walks} walks`;
-    const line: { icon: IconName; head: string; tail: string; tone: string } = blind
-        ? { icon: 'eye-off-outline', head: 'Ranks are hidden', tail: 'Points still count', tone: TEXT }
-        : h.status === 'up'
-            ? { icon: 'arrow-up-circle-outline', head: 'In the move-up places', tail: `${fmt(h.clear ?? 0)} pts clear of ${ordinal(m.up + 1)}`, tone: GREEN }
-            : h.status === 'drop'
-                ? { icon: 'alert-circle-outline', head: `${fmt(h.toSafe ?? 0)} pts out of the drop zone`, tail: `Suggested: ${walks}`, tone: ORANGE }
-                : m.div === 1
-                    ? { icon: 'trending-up-outline', head: h.toUp == null ? 'Top of your heat' : `${fmt(h.toUp)} pts to 1st`, tail: h.toUp == null ? 'Division 1 is the top' : `Suggested: ${walks}`, tone: TEXT }
-                    : { icon: 'trending-up-outline', head: `${fmt(h.toUp ?? 0)} pts to the top ${m.up}`, tail: `Suggested: ${walks}`, tone: TEXT };
-    return (
-        <View style={[s.rival, lit && { backgroundColor: 'rgba(232,210,0,0.06)', borderColor: 'rgba(232,210,0,0.4)' }]}>
-            <View style={[s.rivalIcon, line.tone !== TEXT && { borderColor: line.tone }]}>
-                <Ionicons name={line.icon} size={18} color={line.tone} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={s.rivalHead} numberOfLines={1}>{line.head}</Text>
-                <Text style={s.rivalTail} numberOfLines={1}>{line.tail}</Text>
-            </View>
-            <Pressable onPress={onRules} hitSlop={8} style={({ pressed }) => [s.inlineLink, pressed && { opacity: 0.6 }]} accessibilityRole="button">
-                <Text style={s.rulesLink}>How heats work</Text>
-                <Ionicons name="arrow-forward" size={13} color={TEXT_2} />
-            </Pressable>
-        </View>
-    );
-}
-
-/** The one to pass, said as something to do; the earning rules a tap away. */
+/**
+ * The next line on the board, said as something to do; the earning rules a
+ * tap away. It's the one to pass; with nobody above you (no member yet, only
+ * the crowd), it's the prize places. One board, one line: pacers fill the
+ * middle, so a place on its own is never the goal.
+ */
 function RivalRow({ v, lit, onRules, blindBack }: { v: SeriesView; lit: boolean; onRules: () => void; blindBack?: string }) {
     const { t } = useTranslation();
     const r = v.rival;
-    if (!r) return null;
-    const sealed = v.hero.blind || r.sealed;
+    const top3 = r ? null : toTop3(v);
+    if (!r && !top3) return null;
+    const sealed = v.hero.blind || !!r?.sealed;
+    // Nothing to chase: you're clear of your rival, or already in the prize places.
+    const clear = r ? r.ahead : top3?.gap === 0;
+    const how = r ? r.how : top3?.gap ? top3.how : t('series:league.rival.inTop3Line');
     const head = sealed
         ? t('series:league.rival.hidden')
-        : r.ahead
-            ? t('series:league.rival.clear', { gap: fmt(r.gap), name: r.p.name })
-            : t('series:league.rival.toPass', { gap: fmt(r.gap), name: r.p.name });
+        : r
+            ? r.ahead
+                ? t('series:league.rival.clear', { gap: fmt(r.gap), name: r.p.name })
+                : t('series:league.rival.toPass', { gap: fmt(r.gap), name: r.p.name })
+            : clear
+                ? t('series:league.rival.inTop3')
+                : t('series:league.rival.toTop3', { gap: fmt(top3?.gap ?? 0) });
     // The gap as one activity: "a 30-min walk", "about 3 walks". `how` is matched
     // as the sample writes it; anything else shows as it came.
-    const walks = r.how.match(/(\d+) walks?/);
+    const walks = how.match(/(\d+) walks?/);
     const tail = sealed
         // 'back Thu' is the sample's (live Blind Mode always says when it's back).
         ? t('series:league.rival.stillCount', { back: blindBack ?? 'back Thu' })
-        : r.ahead
-            ? r.how
-            : r.how.startsWith('One 30-min walk')
+        : clear
+            ? how
+            : how.startsWith('One 30-min walk')
                 ? t('series:league.rival.suggestWalk')
-                : walks ? t('series:league.rival.suggestWalks', { count: Number(walks[1]) }) : r.how;
+                : walks ? t('series:league.rival.suggestWalks', { count: Number(walks[1]) }) : how;
     return (
         <View style={[s.rival, lit && { backgroundColor: 'rgba(232,210,0,0.06)', borderColor: 'rgba(232,210,0,0.4)' }]}>
             <View style={s.rivalIcon}>
@@ -917,8 +862,23 @@ function RivalRow({ v, lit, onRules, blindBack }: { v: SeriesView; lit: boolean;
     );
 }
 
-/** Overall: the race. You against everyone (or your heat), on Series points. */
-function Race({ v, hits, you, heat }: { v: SeriesView; hits: Sim['hits']; you: You; heat: HeatInfo | null }) {
+/**
+ * With nobody to pass, the next line is the prize places: the points to the
+ * top 3 (the server always sends those rows), or 0 once you're in them.
+ */
+function toTop3(v: SeriesView): { gap: number; how: string } | null {
+    const all = known(v.board);
+    const me = all.find((k) => k.p.you);
+    if (!me) return null;
+    if (me.rank <= 3) return { gap: 0, how: '' };
+    const third = all.find((k) => k.rank === 3);
+    if (!third) return null;
+    const gap = Math.max(1, third.p.pts - me.p.pts + 1);
+    return { gap, how: seriesHow(gap, false) };
+}
+
+/** Overall: the race. You against everyone, on Series points. */
+function Race({ v, hits, you }: { v: SeriesView; hits: Sim['hits']; you: You }) {
     const { t } = useTranslation();
     const sc = useSeasonCard();
     return (
@@ -933,26 +893,13 @@ function Race({ v, hits, you, heat }: { v: SeriesView; hits: Sim['hits']; you: Y
                                 p={r.p}
                                 rank={r.rank}
                                 hit={hits[r.p.id]}
-                                title={r.dark || heat ? null : v.title(r.p, r.rank)}
+                                title={r.dark ? null : v.title(r.p, r.rank)}
                                 isMe={r.p.you}
                                 dark={r.dark}
                                 hideRank={r.hideRank}
                                 first={i === 0 || v.rows[i - 1].type !== 'lane'}
                                 you={you}
-                                sub={heat ? heatFromLine(r.p, heat.meta.div) : undefined}
-                                zone={heat ? zoneOf(heat.meta, r.rank) : null}
                             />
-                        );
-                    }
-                    if (r.type === 'zone') {
-                        const c = r.kind === 'up' ? GREEN : ORANGE;
-                        return (
-                            <Animated.View key={r.key} layout={ROW_LAYOUT} style={s.prize}>
-                                <View style={[s.prizeLine, { backgroundColor: hexA(c, 0.4) }]} />
-                                <Ionicons name={r.kind === 'up' ? 'arrow-up' : 'arrow-down'} size={10} color={hexA(c, 0.9)} />
-                                <Text style={[s.prizeText, { color: hexA(c, 0.9) }]}>{r.text}</Text>
-                                <View style={[s.prizeLine, { backgroundColor: hexA(c, 0.4) }]} />
-                            </Animated.View>
                         );
                     }
                     if (r.type === 'sep') {
@@ -978,13 +925,6 @@ function Race({ v, hits, you, heat }: { v: SeriesView; hits: Sim['hits']; you: Y
             </View>
         </>
     );
-}
-
-/** Which part of the heat a place is in: it colours the place number. */
-function zoneOf(m: HeatMeta, rank: number): 'up' | 'down' | 'mid' {
-    if (m.div > 1 && rank <= m.up) return 'up';
-    if (m.down > 0 && rank > m.size - m.down) return 'down';
-    return 'mid';
 }
 
 function VenueLogo({ event }: { event: LiveEvent }) {
@@ -1127,12 +1067,6 @@ function DevPanel({
             </View>
             {!showingLive && sim.inRound && (
                 <>
-                    <Text style={s.devSub}>HEAT · WHAT LEADS THE CARD AND HOME</Text>
-                    <View style={s.devRow}>
-                        {chip('HEADLINE: HEAT', sim.headline === 'heat', () => sim.setHeadline('heat'))}
-                        {chip('HEADLINE: OVERALL', sim.headline === 'overall', () => sim.setHeadline('overall'))}
-                        {chip('INTO THE TOP 5', false, sim.intoTopFive)}
-                    </View>
                     <Text style={s.devSub}>OVERALL</Text>
                     <View style={s.devRow}>
                         {chip('YOU OVERTAKE', false, sim.overtake)}

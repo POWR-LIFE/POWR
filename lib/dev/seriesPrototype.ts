@@ -65,8 +65,6 @@ export type Person = {
     flag?: string;
     /** Their place in the last round; null = new this round. */
     last?: number | null;
-    /** Your heat: where they came from last round (null = new this round). */
-    heatFrom?: 'up' | 'down' | 'held' | null;
     /** What they've earned (the icons under the name). */
     honours?: Honour[];
 };
@@ -100,7 +98,7 @@ export function sampleHonours(name: string, you = false): Honour[] {
 export type Seg = { base: number; people: Person[] };
 export type LensKey = 'overall' | 'city' | 'gym' | 'friends';
 export type Board = {
-    key: LensKey | 'heat';
+    key: LensKey;
     total: number;
     segs: Seg[];
     prizes: boolean;
@@ -115,15 +113,10 @@ export type Row =
     | { type: 'lane'; key: string; p: Person; rank: number; dark: boolean; hideRank?: boolean }
     | { type: 'sep'; key: string; n: number }
     | { type: 'prize'; key: string }
-    | { type: 'dark'; key: string }
-    /** Your heat's lines: who moves up a division, who drops one. */
-    | { type: 'zone'; key: string; kind: 'up' | 'down'; text: string };
+    | { type: 'dark'; key: string };
 
 export type Model = {
     boards: Record<LensKey, Board>;
-    /** Your heat (see createHeat): its own small board, fixed for the round. */
-    heat: Board;
-    heatMeta: HeatMeta;
     /** Points scale: 1 on the 5,000-entrant board, 0.25 at today's size. */
     k: number;
     rnd: () => number;
@@ -228,8 +221,6 @@ export function createModel(scale: Scale): Model {
         pid: 0,
         hour: scale === 'pitch' ? 212 : 9,
         pb: scale === 'pitch' ? 280 : 14,
-        heat: { key: 'heat', total: 0, segs: [], prizes: false },
-        heatMeta: { div: 1, divs: 1, size: 0, up: 0, down: 0 },
     };
     const acts = Object.keys(ACTS) as ActKey[];
     const P = (name: string, pts: number, o: PersonInit = {}): Person => ({
@@ -324,140 +315,7 @@ export function createModel(scale: Scale): Model {
         ])],
     };
 
-    // Your heat. The people either side of you on the big board are at your
-    // pace too, so they're in it as well (same names, same points).
-    const H = HEAT_PEOPLE.slice(0, pitch ? 30 : 24);
-    model.heat = {
-        key: 'heat',
-        total: H.length,
-        prizes: false,
-        segs: [{
-            base: 1,
-            people: H.map(([name, pts, from], i) => {
-                const mid = name === 'you' ? i + 2 : Math.max(1, i + 1 + Math.round((rnd() - 0.5) * 4));
-                const p = name === 'you' ? you(pts, mid) : P(name, pts, { mid });
-                p.heatFrom = from;
-                return p;
-            }),
-        }],
-    };
-    // At 5,000 in, six divisions; at today's size two, and you start in the second.
-    model.heatMeta = pitch
-        ? { div: 3, divs: 6, size: H.length, up: HEAT_UP, down: HEAT_DOWN }
-        : { div: 2, divs: 2, size: H.length, up: HEAT_UP, down: 0 };
     return model;
-}
-
-/*
- * Your heat: about 30 people at your pace (matched on the last four weeks'
- * points), fixed for the whole round. The top HEAT_UP move up a division next
- * round and the bottom HEAT_DOWN drop one, so every place in it counts. Real
- * members only. The big board stays above it as the prestige layer.
- */
-export const HEAT_UP = 5;
-export const HEAT_DOWN = 5;
-export type HeatMeta = { div: number; divs: number; size: number; up: number; down: number };
-const HEAT_PEOPLE: [string, number, Person['heatFrom']][] = [
-    ['Grace Lin', 10940, 'held'], ['Omar Farouk', 10610, 'down'], ['Isla Byrne', 10205, 'up'], ['Callum Reece', 9880, 'held'],
-    ['Niamh Kelly', 9640, 'up'], ['Ellie Moss', 9512, 'held'], ['Hannah Brooks', 9455, 'up'], ['Tom Fitzgerald', 9402, 'held'],
-    ['you', 9388, 'up'], ['Léa Laurent', 9371, 'down'], ['Rachel Tan', 9350, null], ['Arjun Mehta', 9120, 'held'],
-    ['Sofia Rossi', 8960, 'held'], ['Ewan Fraser', 8790, 'up'], ['Hana Sato', 8605, 'held'], ['Leon Wright', 8440, 'down'],
-    ['Mia Kowalski', 8180, 'held'], ['Ollie Grant', 7960, 'up'], ['Ruth Okoro', 7735, 'held'], ['Dan Pike', 7520, null],
-    ['Jade Moreno', 7290, 'held'], ['Kai Turner', 7060, 'down'], ['Freya Lund', 6840, 'held'], ['Seb Clarke', 6600, 'up'],
-    ['Anya Petrova', 6370, 'held'], ['Josh Ellery', 6110, 'held'], ['Lola Mensah', 5860, 'down'], ['Ryan Doherty', 5590, 'held'],
-    ['Tess Murray', 5300, null], ['Pablo Ruiz', 4980, 'held'],
-];
-
-/** Where you stand in your heat, and what the next line is worth. */
-export type HeatInfo = {
-    meta: HeatMeta;
-    rank: number;
-    /** Places since midnight (+ = up). */
-    move: number;
-    /** up = in the move-up places; drop = in the drop zone; mid = neither. */
-    status: 'up' | 'mid' | 'drop';
-    /** Points to reach the move-up places (mid / drop), or to pass 1st in the top division. */
-    toUp: number | null;
-    /** In the move-up places: your lead over the first place outside them. */
-    clear: number | null;
-    /** In the drop zone: points to climb out of it. */
-    toSafe: number | null;
-    /** toUp (or toSafe) as 30-minute walks. */
-    walks: number;
-};
-
-export function heatInfo(model: Model): HeatInfo {
-    const m = model.heatMeta;
-    const all = known(model.heat);
-    const me = all.find((k) => k.p.you)!;
-    const at = (rank: number) => all.find((k) => k.rank === rank)?.p.pts ?? 0;
-    const top = m.div === 1;
-    const inUp = !top && me.rank <= m.up;
-    const inDrop = m.down > 0 && me.rank > m.size - m.down;
-    const toUp = inUp ? null : top ? (me.rank === 1 ? null : at(1) - me.p.pts + 1) : at(m.up) - me.p.pts + 1;
-    const toSafe = inDrop ? at(m.size - m.down) - me.p.pts + 1 : null;
-    const walk = Math.max(1, Math.round(ACTS.walk.ppm * model.k * 30));
-    return {
-        meta: m,
-        rank: me.rank,
-        move: me.p.mid - me.rank,
-        status: inUp ? 'up' : inDrop ? 'drop' : 'mid',
-        toUp,
-        clear: inUp ? me.p.pts - at(m.up + 1) : null,
-        toSafe,
-        walks: Math.max(1, Math.ceil((toSafe ?? toUp ?? 0) / walk)),
-    };
-}
-
-/**
- * The heat as rows. Short (the default): the move-up places, the line, the
- * people either side of you, and the drop line; the bottom places show only
- * when you're near them. `full`: all of it.
- */
-export function heatRows(model: Model, state: SeriesState, full: boolean): Row[] {
-    const m = model.heatMeta;
-    const all = known(model.heat);
-    const me = all.find((k) => k.p.you)!;
-    const lane = (k: { p: Person; rank: number }): Extract<Row, { type: 'lane' }> => ({
-        type: 'lane', key: `h-${k.p.id}`, p: k.p, rank: k.rank, dark: isDark(state, k.rank, k.p), hideRank: state === 'blind',
-    });
-    if (state === 'blind') {
-        // A–Z, so the order gives nothing away; no lines either.
-        const rows = all.map(lane).sort((a, c) => (a.p.you ? -1 : c.p.you ? 1 : a.p.name.localeCompare(c.p.name)));
-        return [{ type: 'dark', key: 'dark' }, ...rows];
-    }
-    const upAt = m.div > 1 ? m.up : 0;
-    const downAt = m.down > 0 ? m.size - m.down + 1 : 0;
-    const want = (rank: number) => full
-        || rank <= Math.max(upAt, 3)
-        || Math.abs(rank - me.rank) <= 2
-        || (downAt > 0 && me.rank + 2 >= downAt && rank >= downAt);
-    const out: Row[] = [];
-    const upLine = (): Row => ({ type: 'zone', key: 'zone-up', kind: 'up', text: `TOP ${m.up} MOVE UP TO DIVISION ${m.div - 1}` });
-    const downLine = (): Row => ({ type: 'zone', key: 'zone-down', kind: 'down', text: `BOTTOM ${m.down} DROP TO DIVISION ${m.div + 1}` });
-    let prev = 0;
-    let sepN = 0;
-    all.filter((k) => want(k.rank)).forEach((k) => {
-        if (prev > 0 && k.rank - prev > 1) out.push({ type: 'sep', key: `hsep-${sepN++}`, n: k.rank - prev - 1 });
-        if (k.rank === downAt) out.push(downLine());
-        out.push(lane(k));
-        if (k.rank === upAt) out.push(upLine());
-        prev = k.rank;
-    });
-    // Short view, nowhere near the bottom: the people left, then where the drop starts.
-    if (prev < m.size) {
-        out.push({ type: 'sep', key: `hsep-${sepN++}`, n: m.size - prev });
-        if (downAt > 0) out.push(downLine());
-    }
-    return out;
-}
-
-/** Under a heat row's name: where they came from last round. */
-export function heatFromLine(p: Person, div: number): string {
-    if (p.heatFrom === 'up') return `Up from Division ${div + 1}`;
-    if (p.heatFrom === 'down') return `Down from Division ${div - 1}`;
-    if (p.heatFrom === 'held') return `Stayed in Division ${div}`;
-    return 'New this round';
 }
 
 export function known(b: Board): { p: Person; rank: number }[] {
@@ -503,8 +361,8 @@ export function rebalance(model: Model, b: Board) {
     while (sg.people.length - 1 - i > 6) sg.people.pop();
 }
 
-/** The race's views: your heat, the five around you on the big board, or its top (and you). */
-export type RaceView = 'heat' | 'around' | 'top';
+/** The race's views: the five around you on the big board, or its top (and you). */
+export type RaceView = 'around' | 'top';
 export function visibleRows(b: Board, state: SeriesState, view: RaceView = 'around'): Row[] {
     const all = known(b);
     const me = all.find((k) => k.p.you)!;

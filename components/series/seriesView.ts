@@ -14,7 +14,6 @@ import {
     type DuelResult,
     GYM_MIN,
     gamesOpen,
-    type HeatInfo,
     gymSessionPts,
     type LensKey,
     NEXT_ROUND,
@@ -102,10 +101,6 @@ export type SeriesView = {
     };
     /** Which slice of the race the rows show. */
     view: RaceView;
-    /** Your heat (sample only so far): your place in it and what the lines are worth. */
-    heat: (HeatInfo & { full: boolean }) | null;
-    /** What leads the screen: your place in your heat, or on the big board. */
-    headline: 'heat' | 'overall';
     rival: Rival | null;
     board: Board;
     rows: Row[];
@@ -233,8 +228,6 @@ export function fromSim(sim: Sim, name = 'Autumn Series'): SeriesView {
             pb: sim.pb,
         },
         view: sim.view,
-        heat: { ...sim.heat, full: sim.heatFull },
-        headline: sim.headline,
         rival: sim.rival,
         board: sim.board,
         rows: sim.rows,
@@ -355,8 +348,6 @@ export function fromLive(b: SeriesBoard, name = 'Series', blind = false): Series
             day: r.day, logged: me.days.length, need: r.draw_days, days, today: me.today, last: null, pb: null,
         },
         view: 'around',
-        heat: null,
-        headline: 'overall',
         rival,
         board,
         rows: visibleRows(board, blind ? 'blind' : 'day3'),

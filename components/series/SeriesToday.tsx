@@ -12,7 +12,7 @@ import {
     useSeriesBoard, useSeriesEnabled, useSeriesInviteBoard,
 } from '@/lib/api/series';
 import { DROP_PROTOTYPE, todayTarget, useDropPrototype } from '@/lib/dev/dropPrototype';
-import { type HeatInfo, ordinal, type Rival, SERIES_PROTOTYPE, type SeriesState } from '@/lib/dev/seriesPrototype';
+import { type Rival, SERIES_PROTOTYPE, type SeriesState } from '@/lib/dev/seriesPrototype';
 import { dropProgress, nextMove } from '@/lib/drop';
 import i18n, { getFormatLocale } from '@/lib/i18n';
 import { CARD_BG, CARD_BORDER, GOLD, GREEN, RED, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
@@ -70,8 +70,6 @@ export type SeriesToday = {
     total: number;
     /** Places since midnight (+ = up). */
     move: number;
-    /** Your heat, when it's what leads (sample only so far): Home shows that place instead. */
-    heat: HeatInfo | null;
     blind: boolean;
     day: number;
     days: number;
@@ -306,7 +304,7 @@ export function useSeriesHome(refreshKey?: number): SeriesHome {
             coming: null,
             today: {
                 source: 'live', season: def.name, slug: b.round.slug, roundName: v.round.name,
-                rank: v.hero.rank, total: v.hero.total, move: v.hero.move, heat: null, blind: v.hero.blind,
+                rank: v.hero.rank, total: v.hero.total, move: v.hero.move, blind: v.hero.blind,
                 day: v.hero.day, days: v.round.days,
                 draw: { logged: v.hero.logged, need: v.hero.need, todayLogged: !!v.hero.days[v.hero.day - 1] },
                 drawDots: v.hero.days, prizesOn: v.round.prizesOn,
@@ -332,8 +330,7 @@ export function useSeriesHome(refreshKey?: number): SeriesHome {
             coming: null,
             today: {
                 source: 'sample', season: def.name, slug: 'sample', roundName: v.round.name,
-                rank: v.hero.rank, total: v.hero.total, move: v.hero.move,
-                heat: v.headline === 'heat' ? v.heat : null, blind: v.hero.blind,
+                rank: v.hero.rank, total: v.hero.total, move: v.hero.move, blind: v.hero.blind,
                 day: v.hero.day, days: v.round.days,
                 draw: { logged: v.hero.logged, need: v.hero.need, todayLogged: !!v.hero.days[v.hero.day - 1] },
                 drawDots: v.hero.days, prizesOn: v.round.prizesOn,
@@ -477,9 +474,7 @@ const openLeague = (what: string) => {
 export function SeriesTopLine({ today }: { today: SeriesToday }) {
     const { t } = useTranslation();
     const sc = useSeasonCard();
-    // With heats, Home leads with your place in your heat, like the League card.
-    const h = today.heat;
-    const places = h ? h.move : today.move;
+    const places = today.move;
     const up = places > 0;
     const move = seriesNextMove(today, useDropMove(today));
     const unranked = today.points === 0 && !today.blind;
@@ -492,15 +487,14 @@ export function SeriesTopLine({ today }: { today: SeriesToday }) {
                 season: today.season,
                 place: today.blind
                     ? t('series:today.rankHiddenA11y')
-                    : unranked ? t('series:today.notRankedA11y') : h ? `${ordinal(h.rank)} in your heat` : t('series:today.numberA11y', { rank: today.rank }),
+                    : unranked ? t('series:today.notRankedA11y') : t('series:today.numberA11y', { rank: today.rank }),
                 move,
             })}
         >
             <View style={s.dot} />
             {unranked
                 ? <Text style={s.unranked}>{t('series:today.notRanked')}</Text>
-                : <Text style={s.rank}>{today.blind ? '#?' : h ? ordinal(h.rank) : `#${seriesNum(today.rank)}`}</Text>}
-            {h && !today.blind && !unranked && <Text style={s.unranked}>IN HEAT</Text>}
+                : <Text style={s.rank}>{today.blind ? '#?' : `#${seriesNum(today.rank)}`}</Text>}
             {!today.blind && !unranked && places !== 0 && (
                 <Text style={[s.move, { color: up ? GREEN : RED }]}>{up ? '▲' : '▼'} {Math.abs(places)}</Text>
             )}

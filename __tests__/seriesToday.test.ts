@@ -20,7 +20,7 @@ const moment = (m: Partial<TodayMoment>): TodayMoment => ({
     kind: 'power_hour', name: 'Power Hour', what: '', icon: 'timer-outline', endsAt: null, multiplier: 2, activities: null, topN: null, ...m,
 });
 const today = (over: Partial<SeriesToday> = {}): SeriesToday => ({
-    source: 'live', season: 'Autumn Series', slug: 'autumn-01', roundName: 'Round 01', rank: 82, total: 1550, move: 0, heat: null, blind: false,
+    source: 'live', season: 'Autumn Series', slug: 'autumn-01', roundName: 'Round 01', rank: 82, total: 1550, move: 0, blind: false,
     day: 6, days: 15, draw: { logged: 4, need: 10, todayLogged: true }, drawDots: [], prizesOn: 'on Mon 30 Nov',
     points: 59, pointsToday: 0, rival: rival(12), moment: null, nextMoment: null, around: [], news: null, cityName: null,
     prizes: { sample: false, places: [], named: {} }, gainFor: () => 0, ...over,

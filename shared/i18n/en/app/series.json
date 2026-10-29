@@ -296,7 +296,10 @@
       "suggestWalk": "Suggested: a 30-min walk",
       "suggestWalks_one": "Suggested: about {{count}} walk",
       "suggestWalks_other": "Suggested: about {{count}} walks",
-      "earningRules": "Earning rules"
+      "earningRules": "Earning rules",
+      "toTop3": "{{gap}} pts to the top 3",
+      "inTop3": "In the prize places",
+      "inTop3Line": "Every session keeps you there"
     },
     "race": {
       "more_one": "{{n}} more",

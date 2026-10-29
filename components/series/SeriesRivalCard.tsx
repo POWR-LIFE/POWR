@@ -9,7 +9,7 @@ import { useSeasonCard } from './season';
 import { CARD_BG, GOLD, GREEN, kit, MUTED, StatusChip } from '@/components/drop/cardKit';
 import { Avatar } from '@/components/social/Avatar';
 import { seriesNum } from '@/lib/api/series';
-import { ordinal, type Rival } from '@/lib/dev/seriesPrototype';
+import type { Rival } from '@/lib/dev/seriesPrototype';
 import type { Friend } from '@/lib/social/types';
 import { RED, RollNumber } from './SeriesLane';
 import { type SeriesToday, useDropMove } from './SeriesToday';
@@ -23,8 +23,8 @@ import { gapToday } from './todayMove';
  * live or, in dev builds before a round, the sample.
  *
  * It heads the Series block under your own progress (streak, rings, level),
- * and its header carries the Series and your place: "AUTUMN SERIES · 10TH IN
- * HEAT ▲1". It's Home's one "do this next": while today's Drop (dev) is still
+ * and its header carries the Series and your place: "AUTUMN SERIES · #313 ▲1".
+ * It's Home's one "do this next": while today's Drop (dev) is still
  * sealed, the goal line is the Drop's quicker route and what else it does
  * ("Walk 18 min opens today’s Drop · passes Arjun").
  */
@@ -148,12 +148,11 @@ export function SeriesRivalCard({ youName, today, rival }: { youName: string; to
 /** The Series block's header: which Series, your place and today's move, and the way to League. */
 function SeriesHeader({ today, onOpen }: { today: SeriesToday; onOpen: () => void }) {
     const { t } = useTranslation();
-    const h = today.heat;
     const unranked = today.points === 0 && !today.blind;
     const place = today.blind
         ? t('series:rival.rankHidden')
-        : unranked ? t('series:rival.notRanked') : h ? `${ordinal(h.rank).toUpperCase()} IN HEAT` : `#${seriesNum(today.rank)}`;
-    const move = today.blind || unranked ? 0 : h ? h.move : today.move;
+        : unranked ? t('series:rival.notRanked') : `#${seriesNum(today.rank)}`;
+    const move = today.blind || unranked ? 0 : today.move;
     return (
         <View style={kit.sectionRow}>
             <Text style={[kit.sectionLabel, styles.headLine]} numberOfLines={1}>
