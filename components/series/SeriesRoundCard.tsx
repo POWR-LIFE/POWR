@@ -9,7 +9,6 @@ import { HomeCard, type HomeStat, HomeNote, HomeStats } from '@/components/home/
 import { fontFamily } from '@/constants/tokens';
 import { trackTap } from '@/lib/analytics';
 import { seriesNum } from '@/lib/api/series';
-import { ordinal } from '@/lib/dev/seriesPrototype';
 import { type SeriesToday, seriesDrawChip, seriesNextMove, useDropMove } from './SeriesToday';
 import { BUTTER, hexA, mixHex, plainCard, useSeason } from './season';
 
@@ -32,7 +31,6 @@ export function SeriesRoundCard({ today: t }: { today: SeriesToday }) {
     // `t` is the round here, so the translator goes by another name.
     const { t: tr } = useTranslation();
     const r = t.rival;
-    const h = t.heat;
     const first = r ? r.p.name.split(' ')[0] : '';
     const unranked = t.points === 0 && !t.blind;
     // The Drop's quicker route, but only when it also passes your rival: else it's the Drop card's business.
@@ -43,9 +41,7 @@ export function SeriesRoundCard({ today: t }: { today: SeriesToday }) {
         ? { value: '?', label: tr('series:roundCard.rankHidden') }
         : unranked
             ? { value: '—', label: tr('series:roundCard.notRanked') }
-            : h
-                ? { value: ordinal(h.rank), label: 'In your heat', tone: 'gold', move: h.move }
-                : { value: `#${seriesNum(t.rank)}`, label: tr('series:roundCard.of', { n: seriesNum(t.total) }), tone: 'gold', move: t.move };
+            : { value: `#${seriesNum(t.rank)}`, label: tr('series:roundCard.of', { n: seriesNum(t.total) }), tone: 'gold', move: t.move };
     const gap: HomeStat = !r
         ? { value: '—', label: tr('series:roundCard.noRival') }
         : t.blind || r.sealed

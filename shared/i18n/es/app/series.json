@@ -296,7 +296,10 @@
       "suggestWalk": "Sugerencia: un paseo de 30 min",
       "suggestWalks_one": "Sugerencia: alrededor de {{count}} paseo",
       "suggestWalks_other": "Sugerencia: alrededor de {{count}} paseos",
-      "earningRules": "Reglas de puntos"
+      "earningRules": "Reglas de puntos",
+      "toTop3": "{{gap}} pts para el top 3",
+      "inTop3": "En los puestos con premio",
+      "inTop3Line": "Cada sesión te mantiene ahí"
     },
     "race": {
       "more_one": "{{n}} más",

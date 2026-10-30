@@ -22,8 +22,6 @@ export const GOLD = '#E8D200';
 export const GREEN = '#4ade80';
 export const RED = '#f87171';
 export const EMBER = '#E58A3A';
-/** At risk but still saveable (your heat's drop zone); red is for what's already lost. */
-export const ORANGE = '#f97316';
 export const SILVER = '#c0c0c0';
 export const BRONZE = '#cd7f32';
 // Cards match the rest of the app (Home's Together / This week, the event ticket).
@@ -175,7 +173,7 @@ export function RaceHeader() {
  * only on the top 3; under the name, the leader's tag or last round's place.
  */
 export function SeriesLane({
-    p, rank, hit, title, isMe, dark, first, you, hideRank, sub, zone = null,
+    p, rank, hit, title, isMe, dark, first, you, hideRank,
 }: {
     p: Person;
     rank: number;
@@ -187,19 +185,11 @@ export function SeriesLane({
     you: { name: string; initials: string; avatarUrl: string | null };
     /** Blind Mode: your own row keeps its points but not its place. */
     hideRank?: boolean;
-    /** The line under the name, in place of last round's place. */
-    sub?: string;
-    /**
-     * Your heat has no medals (its prize is a division): the move-up places
-     * show their place in green, the drop zone in orange.
-     */
-    zone?: 'up' | 'down' | 'mid' | null;
 }) {
     const { t } = useTranslation();
     const MEDAL: Record<number, string> = { 1: GOLD, 2: SILVER, 3: BRONZE };
-    const isTop = !dark && !zone && rank <= 3;
-    const zoneColour = zone === 'up' ? GREEN : zone === 'down' ? ORANGE : null;
-    const accent = isTop ? MEDAL[rank] : isMe ? GOLD : zoneColour;
+    const isTop = !dark && rank <= 3;
+    const accent = isTop ? MEDAL[rank] : isMe ? GOLD : null;
     const name = isMe ? `${you.name}${t('events:board.youSuffix')}` : p.name;
     const initials = isMe ? you.initials : initialsOf(p.name);
     // One tag at most: the leader's. Everyone else shows where they finished last round.
@@ -228,8 +218,6 @@ export function SeriesLane({
             <View style={s.middle}>
                 <View style={s.nameRow}>
                     <Text style={[s.name, isTop && { color: TEXT }, isMe && s.nameMe]} numberOfLines={1}>{name}</Text>
-                    {/* Your heat writes a sentence under the name, so there the honours sit beside it. */}
-                    {sub && honours.length > 0 && <HonourRow honours={honours} max={2} size={12} />}
                     {/* What a session just added, beside the name so it never sits on the row below. */}
                     {hit && !dark && (
                         <Animated.Text
@@ -246,11 +234,11 @@ export function SeriesLane({
                     three take the line, with a count (the column is ~110 px wide). */}
                 {(() => {
                     const many = honours.length > 3;
-                    const place = sub ?? (p.last == null ? t('series:lane.newThisRound') : honours.length ? t('series:lane.lastShort', { rank: fmt(p.last) }) : t('series:lane.lastRound', { rank: fmt(p.last) }));
+                    const place = p.last == null ? t('series:lane.newThisRound') : honours.length ? t('series:lane.lastShort', { rank: fmt(p.last) }) : t('series:lane.lastRound', { rank: fmt(p.last) });
                     return (
                         <View style={s.subRow}>
-                            {tag ? <TitlePill title={tag} /> : !(many && !sub) && <Text style={[s.sub, { flexShrink: 1 }]} numberOfLines={1}>{place}</Text>}
-                            {honours.length > 0 && !sub && (
+                            {tag ? <TitlePill title={tag} /> : !many && <Text style={[s.sub, { flexShrink: 1 }]} numberOfLines={1}>{place}</Text>}
+                            {honours.length > 0 && (
                                 <>
                                     {(tag || !many) && <View style={s.subDiv} />}
                                     <HonourRow honours={honours} max={tag ? 2 : 3} />

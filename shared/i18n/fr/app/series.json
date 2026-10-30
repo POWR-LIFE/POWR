@@ -296,7 +296,10 @@
       "suggestWalk": "Conseil : une marche de 30 min",
       "suggestWalks_one": "Conseil : environ {{count}} marche",
       "suggestWalks_other": "Conseil : environ {{count}} marches",
-      "earningRules": "Règles des points"
+      "earningRules": "Règles des points",
+      "toTop3": "{{gap}} pts pour le top 3",
+      "inTop3": "Dans les places à prix",
+      "inTop3Line": "Chaque séance t’y maintient"
     },
     "race": {
       "more_one": "{{n}} autre",

@@ -19,8 +19,6 @@ import {
     fmt,
     GOLDEN_FINDERS,
     GOLDEN_MINUTES,
-    heatInfo,
-    heatRows,
     isDark,
     known,
     lastWeekDuels,
@@ -69,12 +67,8 @@ const S = {
     state: 'day3' as SeriesState,
     /** Which game the League tab shows. */
     tab: 'overall' as LensKey,
-    /** The race: your heat, the five around you on the big board, or its top. */
-    view: 'heat' as RaceView,
-    /** Your heat: the short view or all of it. */
-    heatFull: false,
-    /** What leads the League tab and Home: your place in your heat, or on the big board. */
-    headline: 'heat' as 'heat' | 'overall',
+    /** The race: the five around you on the big board, or its top. */
+    view: 'around' as RaceView,
     paused: false,
     /** A round is running. Off = the off-season: Home falls back to Beat Me. */
     inRound: true,
@@ -154,7 +148,7 @@ function showToast(text: string, tone: Toast['tone'] = 'gold') {
 /** The same person on every board (you are `you` on all four): one person, one score. */
 function twins(p: Person): Person[] {
     const out: Person[] = [];
-    [...Object.values(S.model.boards), S.model.heat].forEach((b) => b.segs.forEach((sg) => sg.people.forEach((x) => {
+    Object.values(S.model.boards).forEach((b) => b.segs.forEach((sg) => sg.people.forEach((x) => {
         if (p.you ? x.you : !x.you && x.name === p.name) out.push(x);
     })));
     return out;
@@ -237,7 +231,6 @@ function land(p: Person, o: { act?: ActKey; min?: number; pts?: number } = {}) {
     const st = S.state;
     const before = known(b);
     const meBefore = before.find((k) => k.p.you)!.rank;
-    const heatBefore = heatInfo(m0);
     const rankBefore = before.find((k) => k.p === p)?.rank ?? 0;
     const act = o.act ?? pickAct(m0, p);
     const A = ACTS[act];
@@ -250,7 +243,6 @@ function land(p: Person, o: { act?: ActKey; min?: number; pts?: number } = {}) {
     const tw = twins(p).map((x) => ({ x, old: x.pts }));
     tw.forEach(({ x }) => { x.pts += pts; x.today += pts; x.totalEarned += pts; });
     Object.values(m0.boards).forEach((bb) => { sortBoard(bb); rebalance(m0, bb); });
-    sortBoard(m0.heat);
     m0.hour += 1;
     const after = known(b);
     const meAfter = after.find((k) => k.p.you)!.rank;
@@ -264,16 +256,7 @@ function land(p: Person, o: { act?: ActKey; min?: number; pts?: number } = {}) {
         onYou(act, pts);
         if (dropDouble && tapped()) showToast(`DROP 2× · +${fmt(pts)} ON YOUR ${ACTS[act].label.toUpperCase()}`);
     }
-    const heatAfter = heatInfo(m0);
-    if (p.you && S.view === 'heat' && heatAfter.rank < heatBefore.rank) {
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        if (S.tab === 'overall' && tapped()) {
-            const passed = known(m0.heat).find((k) => k.rank === heatAfter.rank + 1);
-            showToast(heatAfter.status === 'up' && heatBefore.status !== 'up'
-                ? `INTO THE TOP ${heatAfter.meta.up} · MOVING UP A DIVISION`
-                : `YOU PASSED ${(passed?.p.name ?? '').toUpperCase()} · ${ordinal(heatAfter.rank).toUpperCase()} IN YOUR HEAT`);
-        }
-    } else if (p.you && meAfter < meBefore && S.view !== 'heat') {
+    if (p.you && meAfter < meBefore) {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         // Said on the race only: on another tab it would name a board you can't see.
         if (S.tab === 'overall' && tapped()) {
@@ -292,12 +275,6 @@ function tick() {
     const me = youOf(b);
     // On your gym's tab you're often the one training there.
     if (S.tab === 'gym' && m0.rnd() < 0.15) { land(me.p, { act: 'gym' }); return; }
-    // Watching your heat: its people train too, not just the ones on the big board.
-    if (S.view === 'heat' && m0.rnd() < 0.45) {
-        const hp = known(m0.heat).filter((k) => !k.p.you);
-        land(hp[Math.floor(m0.rnd() * hp.length)].p);
-        return;
-    }
     const rows = visibleRows(b, S.state).filter((r): r is LaneRow => r.type === 'lane');
     const all = known(b);
     const front = rows.filter((x) => !x.p.you && (x.rank <= 5 || x.dark));
@@ -373,29 +350,6 @@ export const seriesSim = {
     setView(v: RaceView) {
         S.view = v;
         emit();
-    },
-    setHeatFull(v: boolean) {
-        S.heatFull = v;
-        emit();
-    },
-    setHeadline(h: 'heat' | 'overall') {
-        S.headline = h;
-        emit();
-    },
-    /** You close on the move-up line, then a session carries you over it. */
-    intoTopFive() {
-        fromTap(4500);
-        if (S.tab !== 'overall') seriesSim.setTab('overall');
-        S.view = 'heat';
-        const h = heatInfo(S.model);
-        if (h.status === 'up') { showToast('YOU’RE ALREADY IN THE MOVE-UP PLACES'); return; }
-        const line = known(S.model.heat).find((k) => k.rank === h.meta.up)!.p;
-        const me = youOf(race()).p;
-        twins(me).forEach((x) => { x.pts = line.pts - Math.round(30 * S.model.k); });
-        Object.values(S.model.boards).forEach((bb) => { sortBoard(bb); rebalance(S.model, bb); });
-        sortBoard(S.model.heat);
-        emit();
-        setTimeout(() => land(youOf(race()).p, { act: 'run', min: 38, pts: Math.round(95 * S.model.k) }), 1100);
     },
     setTab(t: LensKey) {
         S.tab = t;
@@ -526,7 +480,7 @@ export const seriesSim = {
         fromTap();
         if (S.tab !== 'overall') seriesSim.setTab('overall');
         // Pass the one above you on whatever the race is showing.
-        const all = known(S.view === 'heat' ? S.model.heat : race());
+        const all = known(race());
         const me = all.find((k) => k.p.you)!;
         const above = all.find((k) => k.rank === me.rank - 1);
         if (!above) { showToast('YOU’RE ALREADY TOP OF THIS BOARD'); return; }
@@ -618,11 +572,8 @@ export function useSeriesSim(active: boolean) {
         ...seriesSim,
         model: S.model,
         board,
-        rows: S.view === 'heat' ? heatRows(S.model, S.state, S.heatFull) : visibleRows(board, S.state, S.view),
+        rows: visibleRows(board, S.state, S.view),
         view: S.view,
-        heat: heatInfo(S.model),
-        heatFull: S.heatFull,
-        headline: S.headline,
         pb: S.model.pb,
         state: S.state,
         tab: S.tab,
