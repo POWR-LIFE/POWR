@@ -115,9 +115,41 @@ export default function Hero({ kicker = 'Live now', footnote = null }) {
             transition={{ duration: 6.5, ease: 'easeInOut', repeat: Infinity }}
             style={{ transformStyle: 'preserve-3d', rotateY: compact ? 0 : -16, rotateX: compact ? 0 : 4, rotate: compact ? 0 : 3 }}
           >
-            <PhoneFrame src="/app/home.webp" alt="POWR home screen" width={compact ? 250 : 322} topColor="#2d2d2d" priority />
+            <PhoneFrame src="/app/home.webp" alt="POWR home screen" width={compact ? 250 : 322} topColor="#062b28" priority />
           </motion.div>
         </motion.div>
+        {/* A session verifying itself beside the phone — the product's one
+            promise, floating off the screen. Desktop only: on a phone the
+            device peeks under the copy and there's no room beside it */}
+        {!compact && (
+          <motion.div
+            initial={{ opacity: 0, x: 44 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.9, ease: EASE, delay: 2.1 }}
+            style={{ position: 'absolute', left: -214, top: -150, zIndex: 4 }}
+          >
+            <motion.div
+              animate={{ y: [0, -9, 0] }}
+              transition={{ duration: 5.4, ease: 'easeInOut', repeat: Infinity, delay: 0.8 }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px 12px 12px', borderRadius: 16,
+                background: 'rgba(12,12,12,0.86)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)',
+                boxShadow: '0 24px 60px -24px rgba(0,0,0,0.9)', whiteSpace: 'nowrap',
+              }}
+            >
+              <span style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(0,204,102,0.12)', border: '1px solid rgba(0,204,102,0.35)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00CC66" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 12.5l5 5L20 6.5" /></svg>
+              </span>
+              <span>
+                <div style={{ fontSize: 10, letterSpacing: 2.2, color: '#00CC66', fontWeight: w.semiBold }}>SESSION VERIFIED</div>
+                <div style={{ fontSize: 14, color: pg.text, marginTop: 3, fontWeight: w.regular }}>ONE LDN · 52 min</div>
+              </span>
+              <span style={{ marginLeft: 6, padding: '5px 10px', borderRadius: 999, background: 'rgba(232,210,0,0.12)', border: '1px solid rgba(232,210,0,0.35)', color: pg.accent, fontSize: 12.5, fontWeight: w.semiBold }}>
+                +20 <span style={{ fontSize: 9, letterSpacing: 1.2, opacity: 0.8 }}>PTS</span>
+              </span>
+            </motion.div>
+          </motion.div>
+        )}
         {/* Gold underlight so the phone reads as lit by the product, not the video */}
         <div
           aria-hidden
