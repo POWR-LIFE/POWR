@@ -8,13 +8,14 @@ import {
     Trophy, Rocket, CalendarDays, Gift, ListOrdered, MapPin, Bot, Medal, Plus, Save, Trash2, Search, X, Check,
     RefreshCw, AlertTriangle, ShieldCheck, UserX, UserCheck, Megaphone, ImagePlus, LoaderCircle, ChevronLeft,
     ChevronRight, Shuffle, Eye, EyeOff, Bell, ExternalLink, Ticket, Crown, Zap, Timer, Flame, Flag, Lock,
-    TrendingUp, Sprout, Users,
+    TrendingUp, Sprout, Users, Copy, Pause, Play, Tv, KeyRound,
 } from 'lucide-react';
+import { newScreenKey, seriesScreenUrl } from '../../../../shared/seriesScreen.ts';
 
 /*
  * The Series, run from here, season by season: the launch switch, seasons and
- * their monthly rounds, prizes, the board (with pacers marked), cities, pacers
- * and the results.
+ * their monthly rounds, prizes, the board (with pacers marked), cities, pacers,
+ * the results, and the Series screen for TVs (one link for every TV).
  *
  * Server side: supabase/migrations/20261020150000_autumn_series.sql,
  * 20261022120000_series_pacers_and_cities.sql, 20261022150000_series_admin.sql.
@@ -31,6 +32,7 @@ const logAction = async (adminId, action, targetType, targetId, metadata = {}) =
 };
 
 const ACCENT = '#E8D200';
+const SCREEN_KEYS = ['series_screen', 'series_screen_key', 'series_screen_city'];
 const TABS = [
     { key: 'overview', label: 'Overview', icon: Rocket },
     { key: 'rounds', label: 'Seasons', icon: CalendarDays },
@@ -40,6 +42,7 @@ const TABS = [
     { key: 'cities', label: 'Cities', icon: MapPin },
     { key: 'pacers', label: 'Pacers', icon: Bot },
     { key: 'results', label: 'Results', icon: Medal },
+    { key: 'screens', label: 'Screens', icon: Tv },
 ];
 
 // ── Dates: rounds run London midnight to London midnight ─────────────────────
@@ -337,7 +340,8 @@ export default function SeriesManager() {
                     {tab === 'overview' && <OverviewTab round={round} season={seasons.find(x => x.id === round?.season_id) ?? season} />}
                     {tab === 'rounds' && <SeasonsTab seasons={seasons} rounds={rounds} focus={season}
                         onSaved={(s) => { loadRounds(); if (s) pickRound(s); }} />}
-                    {tab !== 'overview' && tab !== 'rounds' && !round && <Empty icon={CalendarDays} text="Pick a round, or add one on Seasons" />}
+                    {tab === 'screens' && <ScreensTab />}
+                    {tab !== 'overview' && tab !== 'rounds' && tab !== 'screens' && !round && <Empty icon={CalendarDays} text="Pick a round, or add one on Seasons" />}
                     {tab === 'prizes' && round && <PrizesTab key={round.id} round={round} />}
                     {tab === 'moments' && round && <MomentsTab key={round.id} round={round} />}
                     {tab === 'board' && round && <BoardTab key={round.id} round={round} />}
@@ -1811,6 +1815,135 @@ function ResultsTab({ round }) {
                 onConfirm={() => run('admin_series_announce', { p_slug: round.slug, p_on: true }, 'series_announce', 'Announced: the winners are in the app')} />
             <Confirm open={ask?.kind === 'hide'} danger title="Hide the winners from the app?" confirmLabel="Hide" onCancel={() => setAsk(null)}
                 onConfirm={() => run('admin_series_announce', { p_slug: round.slug, p_on: false }, 'series_unannounce', 'Hidden from the app')} />
+        </>
+    );
+}
+
+// ── Screens ──────────────────────────────────────────────────────────────────
+
+/**
+ * The Series on a TV: ONE screen for every TV, one link. It is not a gym's
+ * screen (nothing on it is per gym or per member), so it has no gym row: its
+ * key, its on/off switch and the city it names live in system_config
+ * (series_screen_key, series_screen, series_screen_city), created here on
+ * first use. powr.life/series-tv?k=<key>. Send the one link to any gym that
+ * wants it on a TV; a new key kills every copy of the old link at once.
+ */
+function ScreensTab() {
+    const toast = useToast();
+    const { user } = useAuth();
+    const [cfg, setCfg] = useState(null);
+    const [city, setCity] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [confirmKey, setConfirmKey] = useState(false);
+    // Open/Preview use this admin's own host so they work from localhost and
+    // branch previews; the copied link is canonical (powr.life).
+    const here = typeof window !== 'undefined' ? window.location.origin : 'https://powr.life';
+
+    const load = useCallback(async () => {
+        const { data, error } = await supabase.from('system_config').select('key, value').in('key', SCREEN_KEYS);
+        if (error) { toast.error(error.message); setCfg({}); return; }
+        const map = Object.fromEntries((data ?? []).map(r => [r.key, r.value]));
+        setCfg(map);
+        setCity(map.series_screen_city ?? 'London');
+    }, [toast]);
+    useEffect(() => { load(); }, [load]);
+
+    const write = async (rows, action, meta) => {
+        setBusy(true);
+        const stamp = { updated_at: new Date().toISOString(), updated_by: user.id };
+        const { error } = await supabase.from('system_config').upsert(rows.map(r => ({ ...r, ...stamp })), { onConflict: 'key' });
+        setBusy(false);
+        if (error) { toast.error(rpcError(error)); return false; }
+        await logAction(user.id, action, 'system_config', 'series_screen', meta);
+        await load();
+        return true;
+    };
+
+    const make = async () => {
+        if (await write([
+            { key: 'series_screen_key', value: newScreenKey(b => crypto.getRandomValues(b)), description: 'Key in the Series screen link (powr.life/series-tv?k=). Make a new one from Series → Screens to kill every old link.' },
+            { key: 'series_screen', value: 'on', description: 'The Series screen on TVs: on or off. Pauses every TV at once.' },
+            { key: 'series_screen_city', value: city.trim(), description: 'The city the Series screen speaks for ("all of London"). Blank names none.' },
+        ], 'series_screen_created', {})) toast.success('The Series screen link is made');
+    };
+    const setOn = async (on) => {
+        if (await write([{ key: 'series_screen', value: on ? 'on' : 'off' }], on ? 'series_screen_resumed' : 'series_screen_paused', {})) {
+            toast.success(on ? 'Series screen live on every TV' : 'Series screen paused on every TV');
+        }
+    };
+    const saveCity = async () => {
+        if (await write([{ key: 'series_screen_city', value: city.trim() }], 'series_screen_city', { city: city.trim() })) toast.success(city.trim() ? `The screen now speaks for ${city.trim()}` : 'The screen names no city');
+    };
+    const rotate = async () => {
+        setConfirmKey(false);
+        if (await write([{ key: 'series_screen_key', value: newScreenKey(b => crypto.getRandomValues(b)) }], 'series_screen_key_rotated', {})) toast.success('New link made: every TV on the old link goes blank until you open this one');
+    };
+    const copy = async (text) => {
+        try { await navigator.clipboard.writeText(text); toast.success('Link copied'); } catch { toast.error('Copy failed'); }
+    };
+
+    if (!cfg) return <Loading />;
+    const key = cfg.series_screen_key;
+    const on = cfg.series_screen !== 'off';
+    const link = key ? seriesScreenUrl(key) : null;
+
+    return (
+        <>
+            <Section title="The Series on TVs"
+                blurb="One screen for every TV. It plays by itself: the countdown to the round, how it works, the seven prizes, Squad Builder and a QR code to join. It reads the season, the round dates and the prizes from this page, so it changes as a round opens, runs and ends. Nothing on it is per gym, so send the same link to any gym that wants it on a TV."
+                right={<a className={btnQuiet} href={`${here}/series-tv?preview=sample`} target="_blank" rel="noopener noreferrer"><Eye size={13} /> Preview with sample data</a>}>
+                {!key ? (
+                    <div className={`${card} p-10 text-center`}>
+                        <Tv size={34} className="mx-auto text-[#CCCCCC] mb-4" />
+                        <p className="text-[11px] uppercase tracking-[0.3em] text-[#888888] font-black mb-6">The screen link isn’t made yet</p>
+                        <div className="flex items-center justify-center gap-3 flex-wrap">
+                            <Field label="City it speaks for" hint="“One leaderboard for all of London.” Blank says “everyone”.">
+                                <input className={`${input} w-56 bg-white`} value={city} onChange={e => setCity(e.target.value)} placeholder="London" />
+                            </Field>
+                            <button className={btnGold} disabled={busy} onClick={make}><KeyRound size={13} /> Make the link</button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className={`${card} p-6 sm:p-8 space-y-7`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex items-center gap-3">
+                                <Pill color={on ? '#10B981' : '#9CA3AF'}>{on ? 'Live on every TV' : 'Paused on every TV'}</Pill>
+                                <span className="text-[11.5px] text-[#999999]">Refreshes itself every minute.</span>
+                            </div>
+                            {on
+                                ? <button className={btnQuiet} disabled={busy} onClick={() => setOn(false)}><Pause size={13} /> Pause</button>
+                                : <button className={btnGold} disabled={busy} onClick={() => setOn(true)}><Play size={13} /> Resume</button>}
+                        </div>
+
+                        <div>
+                            <div className="text-[9.5px] font-black uppercase tracking-[0.25em] text-[#999999] mb-2">The link</div>
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <code className="text-[12px] font-mono text-[#555555] bg-[#F4F4F1] border border-[#EAEAE5] rounded-lg px-3 py-2 select-all break-all">{link}</code>
+                                <button className={btnGold} onClick={() => copy(link)}><Copy size={13} /> Copy link</button>
+                                <a className={btnQuiet} href={seriesScreenUrl(key, null, here)} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open</a>
+                            </div>
+                            <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">Open it in the TV’s browser and press F11. Anyone with the link can open it; if it gets out, make a new one.</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end border-t border-[#F0F0EC] pt-6 max-w-xl">
+                            <Field label="City it speaks for" hint="“One leaderboard for all of London.” Blank says “everyone”.">
+                                <input className={`${input} bg-white`} value={city} onChange={e => setCity(e.target.value)} placeholder="London"
+                                    onKeyDown={e => { if (e.key === 'Enter' && city.trim() !== (cfg.series_screen_city ?? '').trim()) saveCity(); }} />
+                            </Field>
+                            <button className={btnQuiet} disabled={busy || city.trim() === (cfg.series_screen_city ?? '').trim()} onClick={saveCity}><Save size={13} /> Save</button>
+                        </div>
+
+                        <div className="border-t border-[#F0F0EC] pt-6">
+                            <button className={btnDanger} disabled={busy} onClick={() => setConfirmKey(true)}><RefreshCw size={13} /> Make a new link</button>
+                        </div>
+                    </div>
+                )}
+            </Section>
+
+            <Confirm open={confirmKey} danger title="Make a new link?"
+                body="Every TV on the old link goes blank until you open the new one on it."
+                confirmLabel="Make a new link" onCancel={() => setConfirmKey(false)} onConfirm={rotate} />
         </>
     );
 }

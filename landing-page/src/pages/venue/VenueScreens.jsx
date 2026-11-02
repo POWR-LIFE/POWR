@@ -8,9 +8,8 @@ import { Page, Card, Micro, PageTitle, Spinner, Empty, BTN_GOLD, INPUT, LABEL, B
 import { fetchGymSummary, setupGymScreens, updateGymScreens } from './venueApi';
 import { boardUrl, gymSlug, VIEWINGS, VIEWING_LABEL } from '../../../../shared/gymBoard.ts';
 import { LEAGUE_RADII, leagueUrl } from '../../../../shared/gymLeague.ts';
-import { seriesScreenUrl } from '../../../../shared/seriesScreen.ts';
 
-// The gym's three TV screens, shown AS screens: each one is the real board,
+// The gym's two TV screens, shown AS screens: each one is the real board,
 // live, playing inside a television on the page (the same link the TV
 // opens, rendered at 1920×1080 and scaled to fit), with its controls
 // beside it. Every change goes through gym_board_setup / gym_board_update,
@@ -134,22 +133,20 @@ function ScreenRow({ eyebrow, title, blurb, live, src, sampleSrc, shortLink, cop
     return (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-5 lg:gap-8 items-start">
             <div>
-                <Television src={sample && sampleSrc ? sampleSrc : src} title={t('venueGrowth:screens.tvTitle', { title })} paused={!live} />
+                <Television src={sample ? sampleSrc : src} title={t('venueGrowth:screens.tvTitle', { title })} paused={!live} />
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1">
                     <div className="flex items-center gap-3 min-w-0">
                         <LivePill on={live} />
                         <span className="text-[11px] font-mono text-[#999] truncate">{shortLink}</span>
                     </div>
-                    {sampleSrc && (
-                        <div className="inline-flex rounded-full bg-[#F4F4F1] border border-[#E6E6E1] p-0.5" role="radiogroup" aria-label={t('venueGrowth:screens.previewShows')}>
-                            {[[false, t('venueGrowth:screens.yourGym')], [true, sampleLabel]].map(([v, l]) => (
-                                <button key={String(v)} type="button" role="radio" aria-checked={sample === v} onClick={() => setSample(v)}
-                                    className={`h-7 px-3 rounded-full text-[9px] font-black uppercase tracking-[0.15em] transition-all ${sample === v ? 'bg-[#1A1A1A] text-white' : 'text-[#888] hover:text-[#1A1A1A]'}`}>
-                                    {l}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                    <div className="inline-flex rounded-full bg-[#F4F4F1] border border-[#E6E6E1] p-0.5" role="radiogroup" aria-label={t('venueGrowth:screens.previewShows')}>
+                        {[[false, t('venueGrowth:screens.yourGym')], [true, sampleLabel]].map(([v, l]) => (
+                            <button key={String(v)} type="button" role="radio" aria-checked={sample === v} onClick={() => setSample(v)}
+                                className={`h-7 px-3 rounded-full text-[9px] font-black uppercase tracking-[0.15em] transition-all ${sample === v ? 'bg-[#1A1A1A] text-white' : 'text-[#888] hover:text-[#1A1A1A]'}`}>
+                                {l}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
@@ -262,9 +259,6 @@ export default function VenueScreens() {
     const radius = board.league_radius_km ?? 15;
     const viewing = board.viewing ?? 'standard';
     const leagueLive = board.league_enabled !== false;
-    const sUrl = seriesScreenUrl(board.slug, board.display_token);
-    // Missing before 20261102150000 is applied: the screen answers, so it reads as live.
-    const seriesLive = board.series_enabled !== false;
     const viewingLabel = (v) => (VIEWING_KEYS[v] ? t(VIEWING_KEYS[v].label) : VIEWING_LABEL[v]?.label);
     const viewingHint = (v) => (VIEWING_KEYS[v] ? t(VIEWING_KEYS[v].hint) : VIEWING_LABEL[v]?.hint);
 
@@ -334,21 +328,6 @@ export default function VenueScreens() {
                         ))}
                     </div>
                 </Setting>
-            </ScreenRow>
-
-            <ScreenRow
-                eyebrow={t('venueGrowth:screens.series.eyebrow')} title={t('venueGrowth:screens.series.title')}
-                blurb={t('venueGrowth:screens.series.blurb', { gym: gymName })}
-                live={seriesLive}
-                src={seriesScreenUrl(board.slug, board.display_token, null, here)}
-                shortLink={`powr.life/series/tv/${board.slug}`}
-                copyLink={() => copy(sUrl)}
-                openHref={seriesScreenUrl(board.slug, board.display_token, null, here)}
-                onPause={() => update({ series_enabled: false }, t('venueGrowth:screens.series.paused'))}
-                onResume={() => update({ series_enabled: true }, t('venueGrowth:screens.series.live'))}
-                acting={acting}
-            >
-                <p className="text-[12px] text-[#888] leading-relaxed">{t('venueGrowth:screens.series.note')}</p>
             </ScreenRow>
 
             <Card className="p-6 sm:p-8">

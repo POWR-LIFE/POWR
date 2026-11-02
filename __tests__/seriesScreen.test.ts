@@ -4,6 +4,7 @@ import {
   crowdAt,
   dateRange,
   isPlaceholderPrize,
+  newScreenKey,
   prizeChip,
   PRIZE_SLOTS,
   roundPhase,
@@ -27,9 +28,14 @@ const ROUND = {
 const NEXT = { ...ROUND, slug: 'autumn-02', name: 'Round 02', starts_at: '2026-12-15T00:00:00.000Z', ends_at: '2027-01-01T00:00:00.000Z', invite_from: null };
 
 describe('seriesScreenUrl', () => {
-  it('is the third screen on the same slug and key', () => {
-    expect(seriesScreenUrl('one-ldn', 'abc')).toBe('https://powr.life/series/tv/one-ldn?k=abc');
-    expect(seriesScreenUrl('one-ldn', 'abc', 'sample', 'http://localhost:5178/')).toBe('http://localhost:5178/series/tv/one-ldn?k=abc&preview=sample');
+  it('is one link for every TV, one segment (never under /series/, which is the invite preview)', () => {
+    expect(seriesScreenUrl('abc')).toBe('https://powr.life/series-tv?k=abc');
+    expect(seriesScreenUrl('abc', 'sample', 'http://localhost:5173/')).toBe('http://localhost:5173/series-tv?k=abc&preview=sample');
+  });
+  it('makes a 48-character hex key from the random source', () => {
+    const key = newScreenKey((b) => b.fill(171));
+    expect(key).toBe('ab'.repeat(24));
+    expect(newScreenKey((b) => { for (let i = 0; i < b.length; i++) b[i] = i; })).toMatch(/^[0-9a-f]{48}$/);
   });
 });
 
@@ -126,7 +132,7 @@ describe('prizes', () => {
 describe('sample', () => {
   it('is a complete payload', () => {
     const s = sampleSeriesScreen(Date.parse('2026-11-02T12:00:00Z'));
-    expect(s.gym.name).toBe('Sample Gym');
+    expect(s.city).toBe('London');
     expect(s.round?.name).toBe('Round 01');
     expect(seriesNumber(s.season?.number)).toBe('001');
   });

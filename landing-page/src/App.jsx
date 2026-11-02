@@ -1673,9 +1673,9 @@ export default function App() {
                     <Route path="/live/:slug" element={<LiveBoard />} />
                     <Route path="/gym/:slug" element={<GymBoard />} />
                     <Route path="/league/:slug" element={<GymLeague />} />
-                    {/* The gym's third screen. Two segments on purpose: /series/:code is the
-                        invite link (vercel.json rewrites it to series-invite-og). */}
-                    <Route path="/series/tv/:slug" element={<SeriesScreen />} />
+                    {/* The Series on a TV: one screen for every TV. Not under /series/: that is
+                        the invite link (vercel.json rewrites /series/:code to series-invite-og). */}
+                    <Route path="/series-tv" element={<SeriesScreen />} />
                     <Route path="/promo/:slug" element={<EventPromo />} />
                     <Route path="/partner-reward/:token" element={<PartnerRewardSubmit />} />
                     {/* "Affiliate" is the user-facing name (Jamie, 2026-08-26 — "creator" read as
