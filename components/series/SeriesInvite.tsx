@@ -10,7 +10,7 @@ import i18n from '@/lib/i18n';
 import { CARD_BG, CARD_BORDER, GOLD, HAIR, MoreLine, TEXT, TEXT_2, TEXT_3, YOU_LINE, YOU_TINT } from './SeriesLane';
 import { useSeasonCard } from './season';
 
-/** "1 more friend passes Tom", "You lead", "Bring 1 friend to get on the board". */
+/** "1 more friend passes Tom", "You lead the invite race", "Bring friends to race for Squad Builder". */
 export function inviteNext(b: SeriesInviteBoard): string {
     const me = b.me;
     if (me.rank == null) return i18n.t('series:invite.bringOne');
@@ -53,10 +53,12 @@ export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInvi
             </View>
 
             <View style={s.foot}>
+                {/* Two lines beside the button: "Bring friends to race for Squad
+                    Builder" is wider than the room left by INVITE on a phone. */}
                 <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={s.next} numberOfLines={1}>{inviteNext(b)}</Text>
+                    <Text style={s.next} numberOfLines={2}>{inviteNext(b)}</Text>
                     {b.me.joining > 0 && (
-                        <Text style={s.joining} numberOfLines={1}>
+                        <Text style={s.joining} numberOfLines={2}>
                             {t('series:invite.joining', { n: b.me.joining })}
                         </Text>
                     )}
@@ -109,8 +111,8 @@ const s = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14,
         borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: HAIR,
     },
-    next: { fontSize: 14, fontWeight: '400', color: TEXT },
-    joining: { marginTop: 2, fontSize: 11, fontWeight: '300', color: TEXT_2 },
+    next: { fontSize: 14, lineHeight: 18, fontWeight: '400', color: TEXT },
+    joining: { marginTop: 2, fontSize: 11, lineHeight: 14, fontWeight: '300', color: TEXT_2 },
     btn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 16, borderRadius: 18, backgroundColor: GOLD },
     btnText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2, color: '#0a0a0a' },
 });
