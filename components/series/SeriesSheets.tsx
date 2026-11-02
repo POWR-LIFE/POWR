@@ -42,7 +42,12 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
                 <View {...pan.panHandlers} style={s.grabZone} accessibilityRole="button" accessibilityLabel={t('series:sheets.close')}>
                     <View style={s.grab} />
                 </View>
-                {children}
+                {/* Sized to its content, scrolling only once it would pass the
+                    sheet's limit: the invite race with a full board and its
+                    note under it ran off the bottom of a small phone. */}
+                <ScrollView style={s.sheetScroll} bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                    {children}
+                </ScrollView>
             </Animated.View>
         </Modal>
     );
@@ -265,6 +270,7 @@ const s = StyleSheet.create({
         position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '86%', backgroundColor: '#161616',
         borderTopLeftRadius: 22, borderTopRightRadius: 22, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 20, paddingTop: 10,
     },
+    sheetScroll: { flexGrow: 0 },
     grabZone: { alignSelf: 'stretch', marginTop: -10, marginHorizontal: -20, paddingTop: 12, paddingBottom: 16, alignItems: 'center' },
     grab: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.28)' },
     sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },

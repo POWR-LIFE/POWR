@@ -280,7 +280,13 @@ export default function LeagueScreen() {
           <EventHubBackButton onPress={() => setOpenSlug(undefined)} />
         )}
         <View style={styles.titleBlock}>
-          <Text style={styles.title}>{t('events:league.title')}</Text>
+          {/* The bell and avatar share a row with the title alone, so the
+              line under it has the whole width: beside them "Autumn Series ·
+              Round 01 starts Sun 15 Nov" lost its date to an ellipsis. */}
+          <View style={styles.titleRow}>
+            <Text style={[styles.title, { flexShrink: 1 }]} numberOfLines={1}>{t('events:league.title')}</Text>
+            <HeaderActions />
+          </View>
           {!LEAGUE_LIVE && (hubMode || seriesHome) && openSlug && activeEvent && (
             <Text style={styles.titleSub} numberOfLines={1}>{activeEvent.name}</Text>
           )}
@@ -292,7 +298,6 @@ export default function LeagueScreen() {
             </Text>
           )}
         </View>
-        <HeaderActions />
       </View>
 
       {!LEAGUE_LIVE ? (
@@ -1893,7 +1898,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 10,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
-  titleBlock: { flex: 1, marginRight: 12 },
+  titleBlock: { flex: 1 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   title: { fontSize: 28, fontWeight: '200', letterSpacing: -0.4, color: TEXT },
   titleSub: { fontSize: 12, fontWeight: '400', color: 'rgba(255,255,255,0.6)', marginTop: 1 },
 
