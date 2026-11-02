@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    AlertTriangle, Check, Code2, Copy, FileText, FlaskConical, History, Loader2, Mail,
+    AlertTriangle, Check, Code2, Copy, FileText, FlaskConical, History, ImageUp, Loader2, Mail,
     Monitor, Plus, RefreshCw, Save, Send, Smartphone, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../App';
@@ -37,6 +37,25 @@ const STARTER_HTML = `<p style="margin:0 0 10px;font-size:11px;font-weight:700;l
     </td>
   </tr>
 </table>`;
+
+// Same limits as the admin-send-email function. Gmail clips HTML over 102 KB.
+const HTML_MAX_CHARS = 2_000_000;
+const GMAIL_CLIP_BYTES = 102 * 1024;
+const DATA_IMAGE_RE = /data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)/gi;
+const formatKB = (bytes) => `${Math.round(bytes / 1024).toLocaleString('en-GB')} KB`;
+
+// Unique base64 images in the HTML and their decoded weight.
+function embeddedImages(html) {
+    const seen = new Set();
+    let bytes = 0;
+    for (const m of html.matchAll(DATA_IMAGE_RE)) {
+        if (seen.has(m[0])) continue;
+        seen.add(m[0]);
+        const b64 = m[2];
+        bytes += Math.floor((b64.length * 3) / 4) - (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0);
+    }
+    return { count: seen.size, bytes };
+}
 
 const STATUS = {
     sending: { label: 'Sending',  className: 'bg-[#DBEAFE] text-[#1D4ED8]' },
@@ -134,6 +153,7 @@ export default function EmailTemplates() {
 
     const [testTo, setTestTo] = useState('');
     const [testing, setTesting] = useState(false);
+    const [extracting, setExtracting] = useState(false);
 
     const [audience, setAudience] = useState({ mode: 'all' });
     const [audienceCount, setAudienceCount] = useState(null);
@@ -188,6 +208,11 @@ export default function EmailTemplates() {
     // ── Preview: the server renders the draft with the caller's own data ────
     useEffect(() => {
         if (!draft) return;
+        if ((draft.html ?? '').length > HTML_MAX_CHARS) {
+            setRendering(false);
+            setPreviewError(`the HTML is ${draft.html.length.toLocaleString('en-GB')} characters, over the ${HTML_MAX_CHARS.toLocaleString('en-GB')} limit. Upload its embedded images to storage first (button above the editor).`);
+            return;
+        }
         let cancelled = false;
         setRendering(true);
         const t = setTimeout(async () => {
@@ -242,7 +267,12 @@ export default function EmailTemplates() {
             ? await supabase.from('email_templates').update(payload).eq('id', draft.id).select('*').single()
             : await supabase.from('email_templates').insert({ ...payload, created_by: user?.id ?? null }).select('*').single();
         setSaving(false);
-        if (result.error) { toast.error(result.error.message); return null; }
+        if (result.error) {
+            toast.error(result.error.code === '23514'
+                ? 'The HTML is longer than the database allows — upload its embedded images to storage or trim it'
+                : result.error.message);
+            return null;
+        }
         setDraft(result.data); setDirty(false);
         await loadTemplates(result.data.id);
         if (!silent) toast.success('Template saved');
@@ -284,6 +314,23 @@ export default function EmailTemplates() {
         const s = el.selectionStart, end = el.selectionEnd;
         update({ [field]: `${value.slice(0, s)}  ${value.slice(end)}` });
         requestAnimationFrame(() => el.setSelectionRange(s + 2, s + 2));
+    };
+
+    // Upload every base64 image to storage and point the HTML at the URLs.
+    const extractImages = async () => {
+        if (!draft) return;
+        setExtracting(true);
+        try {
+            const r = await callEmail({ action: 'extract_images', html: draft.html, template_id: draft.id ?? undefined });
+            update({ html: r.html });
+            const n = r.images?.length ?? 0;
+            toast.success(`${n} image${n === 1 ? '' : 's'} uploaded · HTML ${formatKB(r.before_chars)} → ${formatKB(r.after_chars)}`);
+            if (r.failed?.length) toast.error(`${r.failed.length} image${r.failed.length === 1 ? '' : 's'} could not be uploaded: ${r.failed[0].error}`);
+        } catch (e) {
+            toast.error(e.message || 'Upload failed');
+        } finally {
+            setExtracting(false);
+        }
     };
 
     // ── Test + send ─────────────────────────────────────────────────────────
@@ -356,6 +403,9 @@ export default function EmailTemplates() {
         : null;
 
     const warnings = preview?.warnings ?? [];
+    const embedded = useMemo(() => embeddedImages(draft?.html ?? ''), [draft?.html]);
+    const renderedKB = preview?.size_bytes ? formatKB(preview.size_bytes) : null;
+    const overClip = (preview?.size_bytes ?? 0) > GMAIL_CLIP_BYTES;
     const editorValue = tab === 'text' ? (draft?.text ?? '') : (draft?.html ?? '');
     const editorField = tab === 'text' ? 'text' : 'html';
     const sortedTemplates = useMemo(() => templates ?? [], [templates]);
@@ -472,7 +522,7 @@ export default function EmailTemplates() {
                                 role="switch"
                                 aria-checked={draft.use_shell !== false}
                                 onClick={() => update({ use_shell: draft.use_shell === false })}
-                                className={`relative w-10 h-6 rounded-full transition-colors ${draft.use_shell !== false ? 'bg-[#E8D200]' : 'bg-[#DDD]'}`}
+                                className={`relative w-10 h-6 shrink-0 rounded-full transition-colors ${draft.use_shell !== false ? 'bg-[#E8D200]' : 'bg-[#DDD]'}`}
                             >
                                 <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${draft.use_shell !== false ? 'left-[18px]' : 'left-0.5'}`} />
                             </button>
@@ -514,6 +564,26 @@ export default function EmailTemplates() {
                                 </button>
                             </div>
                         )}
+                        {embedded.count > 0 && (
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-2 rounded-xl border border-[#F3E4A3] bg-[#FFFBE6] px-4 py-3">
+                                <div className="flex items-start gap-2 text-xs text-[#7A6400]">
+                                    <ImageUp size={14} className="mt-0.5 shrink-0" />
+                                    <span>
+                                        <span className="font-semibold">{embedded.count} image{embedded.count === 1 ? '' : 's'} embedded as base64 ({formatKB(embedded.bytes)}).</span>{' '}
+                                        Gmail hides base64 images and the email would be clipped. Upload them to POWR storage and the HTML will link to them instead.
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={extractImages}
+                                    disabled={extracting}
+                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#111] text-white text-xs font-semibold hover:bg-[#333] disabled:opacity-40 shrink-0"
+                                >
+                                    {extracting ? <Loader2 size={13} className="animate-spin" /> : <ImageUp size={13} />}
+                                    {extracting ? 'Uploading…' : 'Upload images & link them'}
+                                </button>
+                            </div>
+                        )}
                         <textarea
                             ref={editorRef}
                             value={editorValue}
@@ -525,7 +595,12 @@ export default function EmailTemplates() {
                         />
                         <div className="flex items-center justify-between text-[11px] text-[#AAA] mt-1">
                             <span>{tab === 'html' ? 'Inline styles travel best. Scripts are removed before sending.' : ''}</span>
-                            <span>{editorValue.length.toLocaleString()} chars</span>
+                            <span>
+                                {editorValue.length.toLocaleString()} chars
+                                {tab === 'html' && renderedKB && (
+                                    <span className={overClip ? 'text-[#B45309] font-semibold' : ''}> · renders to {renderedKB}{overClip ? ' (Gmail clips over 102 KB)' : ''}</span>
+                                )}
+                            </span>
                         </div>
                     </div>
 

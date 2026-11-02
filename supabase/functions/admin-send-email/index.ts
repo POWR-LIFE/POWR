@@ -13,7 +13,8 @@
 //
 // Actions (POST JSON { action, … }):
 //   count   { audience }               → { recipients, opted_out, with_email }
-//   render  { template }               → { subject, html, text, warnings } merged for the caller
+//   render  { template }               → { subject, html, text, warnings, size_bytes } merged for the caller
+//   extract_images { html }            → embedded base64 images uploaded to storage, HTML re-linked
 //   test    { template, to? }          → one email to the caller or another admin
 //   send    { template_id, audience }  → creates the send, queues every recipient, then works it
 //   resume  { send_id }                → keeps working a paused or interrupted send
@@ -27,9 +28,13 @@ import { sendEmail } from '../_shared/mailgun.ts';
 import { SERVER_LANGUAGES } from '../_shared/i18n/index.ts';
 import {
   type AdminTemplate,
+  byteLength,
+  findEmbeddedImages,
+  formatKB,
   mergeVarsFor,
   renderAdminEmail,
   SAMPLE_VARS,
+  sizeWarnings,
   unknownMergeTags,
 } from '../_shared/emails/admin-template.ts';
 
@@ -37,6 +42,17 @@ const CONCURRENCY = 4;
 const TIME_BUDGET_MS = 90_000;
 const STALE_CLAIM_MS = 10 * 60_000;
 const RPC_CHUNK = 2000;
+// A pasted design export can be several MB before its images are extracted,
+// so the paste cap is generous; Gmail's 102 KB clip is reported as a warning.
+const HTML_MAX_CHARS = 2_000_000;
+const EXTRACT_MAX_CHARS = 20_000_000;
+const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const IMAGE_MAX_COUNT = 60;
+const ASSET_BUCKET = 'landing-page-assets';
+const IMAGE_EXT: Record<string, string> = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif',
+  'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/avif': 'avif', 'image/bmp': 'bmp',
+};
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const corsHeaders = {
@@ -143,18 +159,33 @@ function templateFromBody(raw: unknown): AdminTemplate | string {
   const text = String(t.text ?? '');
   if (subject.length > 200) return 'Subject is too long (200 characters max)';
   if (preheader.length > 300) return 'Preheader is too long (300 characters max)';
-  if (html.length > 400_000) return 'HTML is too long (400,000 characters max)';
+  if (html.length > HTML_MAX_CHARS) return `HTML is too long (${HTML_MAX_CHARS.toLocaleString('en-GB')} characters max) — extract its embedded images first`;
   if (text.length > 100_000) return 'Plain text is too long (100,000 characters max)';
   return { subject, preheader, html, text, use_shell: t.use_shell !== false };
 }
 
-function warningsFor(t: AdminTemplate): string[] {
+function warningsFor(t: AdminTemplate, renderedHtml: string): string[] {
   const unknown = unknownMergeTags(`${t.subject}\n${t.preheader}\n${t.html}\n${t.text}`);
   const out = unknown.map((tag) => `Unknown merge tag {{${tag}}} — it will be sent as written`);
   if (/<script\b/i.test(t.html)) out.push('Scripts never run in email — <script> blocks are removed before sending');
   if (t.use_shell && /<(html|body)\b/i.test(t.html)) out.push('The POWR shell is on but the HTML is a full document — turn the shell off or paste just the body');
   if (!t.use_shell && !/unsubscribe/i.test(t.html)) out.push('No unsubscribe link — add %unsubscribe_url% or turn the POWR shell on');
+  out.push(...sizeWarnings(t.html, renderedHtml));
   return out;
+}
+
+// Backed by a fresh ArrayBuffer (never a SharedArrayBuffer), which is what
+// crypto.subtle and Blob accept under the newer TypeScript array-buffer types.
+function base64ToBytes(b64: string) {
+  const bin = atob(b64);
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function sha256Hex(bytes: BufferSource): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function tally(admin: SupabaseClient, sendId: string) {
@@ -344,7 +375,56 @@ Deno.serve(async (req: Request) => {
       const me = (await recipientRows(admin, [user.id]))[0];
       const vars = me ? mergeVarsFor(me) : { ...SAMPLE_VARS, email: user.email ?? SAMPLE_VARS.email };
       const rendered = renderAdminEmail(template, vars, langOf(me?.language));
-      return json({ ...rendered, warnings: warningsFor(template), rendered_for: me ? 'you' : 'sample' });
+      return json({
+        ...rendered,
+        warnings: warningsFor(template, rendered.html),
+        size_bytes: byteLength(rendered.html),
+        rendered_for: me ? 'you' : 'sample',
+      });
+    }
+
+    // ── extract_images (base64 → storage, HTML re-linked) ─────────────────
+    // Design exports embed every image as a data: URI. Gmail never shows
+    // those and the HTML blows past its clip limit, so each unique image is
+    // uploaded once (content-addressed, public bucket) and the HTML points
+    // at the URL instead. Nothing else in the HTML is touched.
+    if (action === 'extract_images') {
+      const html = String(body.html ?? '');
+      if (html.length > EXTRACT_MAX_CHARS) {
+        return json({ error: `HTML is too long to process (${formatKB(EXTRACT_MAX_CHARS)} max)` }, 400);
+      }
+      const images = findEmbeddedImages(html);
+      if (images.length > IMAGE_MAX_COUNT) {
+        return json({ error: `Too many embedded images (${images.length}; ${IMAGE_MAX_COUNT} max)` }, 400);
+      }
+      let out = html;
+      const uploaded: { url: string; bytes: number; mime: string }[] = [];
+      const failed: { mime: string; bytes: number; error: string }[] = [];
+      for (const img of images) {
+        const ext = IMAGE_EXT[img.mime];
+        if (!ext) { failed.push({ mime: img.mime, bytes: img.bytes, error: 'Unsupported image type' }); continue; }
+        let bytes: ReturnType<typeof base64ToBytes>;
+        try { bytes = base64ToBytes(img.base64); } catch { failed.push({ mime: img.mime, bytes: img.bytes, error: 'Not valid base64' }); continue; }
+        if (bytes.length > IMAGE_MAX_BYTES) { failed.push({ mime: img.mime, bytes: bytes.length, error: `Over ${formatKB(IMAGE_MAX_BYTES)}` }); continue; }
+        const path = `email/templates/${(await sha256Hex(bytes)).slice(0, 32)}.${ext}`;
+        const { error: upErr } = await admin.storage.from(ASSET_BUCKET).upload(
+          path,
+          new Blob([bytes], { type: img.mime }),
+          { contentType: img.mime, upsert: true, cacheControl: '31536000' },
+        );
+        if (upErr) { failed.push({ mime: img.mime, bytes: bytes.length, error: upErr.message }); continue; }
+        const { data: { publicUrl } } = admin.storage.from(ASSET_BUCKET).getPublicUrl(path);
+        out = out.split(img.uri).join(publicUrl);
+        uploaded.push({ url: publicUrl, bytes: bytes.length, mime: img.mime });
+      }
+      await admin.from('admin_audit_log').insert({
+        admin_id: user.id,
+        action: 'email_extract_images',
+        target_type: 'email_template',
+        target_id: UUID_RE.test(String(body.template_id ?? '')) ? body.template_id : null,
+        metadata: { uploaded: uploaded.length, failed: failed.length, before_chars: html.length, after_chars: out.length },
+      });
+      return json({ html: out, images: uploaded, failed, before_chars: html.length, after_chars: out.length });
     }
 
     // ── test (one email to an admin inbox) ────────────────────────────────

@@ -143,3 +143,64 @@ export function renderAdminEmail(template: AdminTemplate, vars: MergeVars, lang 
   const text = applyMerge(template.text, vars, "text");
   return { subject, html, text };
 }
+
+// ── Size: Gmail clipping and base64 images ───────────────────────────────────
+
+/** Gmail shows "[Message clipped]" and hides the rest above this much HTML. */
+export const GMAIL_CLIP_BYTES = 102 * 1024;
+
+export interface EmbeddedImage {
+  /** The whole data: URI as it appears in the HTML (what to replace). */
+  uri: string;
+  mime: string;
+  base64: string;
+  /** Decoded size. */
+  bytes: number;
+}
+
+const DATA_IMAGE_RE = /data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)/gi;
+
+/**
+ * Base64 images embedded in the HTML (img src or a CSS url()), unique by
+ * content. Design exports embed images this way; Gmail refuses to show them
+ * and the HTML balloons past the clip limit, so the Email page offers to
+ * upload them to storage and link them instead.
+ */
+export function findEmbeddedImages(html: string): EmbeddedImage[] {
+  const seen = new Map<string, EmbeddedImage>();
+  for (const m of html.matchAll(DATA_IMAGE_RE)) {
+    if (seen.has(m[0])) continue;
+    const base64 = m[2];
+    const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+    seen.set(m[0], {
+      uri: m[0],
+      mime: m[1].toLowerCase(),
+      base64,
+      bytes: Math.floor((base64.length * 3) / 4) - padding,
+    });
+  }
+  return [...seen.values()];
+}
+
+export function byteLength(value: string): number {
+  return typeof TextEncoder === "undefined" ? value.length : new TextEncoder().encode(value).length;
+}
+
+export function formatKB(bytes: number): string {
+  return `${Math.round(bytes / 1024).toLocaleString("en-GB")} KB`;
+}
+
+/** Warnings about weight: embedded images (Gmail hides them) and the clip limit. */
+export function sizeWarnings(templateHtml: string, renderedHtml: string): string[] {
+  const out: string[] = [];
+  const embedded = findEmbeddedImages(templateHtml);
+  if (embedded.length) {
+    const total = embedded.reduce((n, img) => n + img.bytes, 0);
+    out.push(`${embedded.length} image${embedded.length === 1 ? "" : "s"} embedded as base64 (${formatKB(total)}) — Gmail hides base64 images; upload them to storage instead`);
+  }
+  const size = byteLength(renderedHtml);
+  if (size > GMAIL_CLIP_BYTES) {
+    out.push(`The email renders to ${formatKB(size)} — Gmail clips messages over ${formatKB(GMAIL_CLIP_BYTES)}, hiding the end (and the unsubscribe link)`);
+  }
+  return out;
+}

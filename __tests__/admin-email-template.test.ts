@@ -1,9 +1,12 @@
 import {
   applyMerge,
+  findEmbeddedImages,
+  GMAIL_CLIP_BYTES,
   listMergeTags,
   mergeVarsFor,
   renderAdminEmail,
   SAMPLE_VARS,
+  sizeWarnings,
   stripScripts,
   unknownMergeTags,
 } from '../supabase/functions/_shared/emails/admin-template';
@@ -98,5 +101,28 @@ describe('renderAdminEmail', () => {
     const fr = renderAdminEmail(template, jamie, 'fr').html;
     expect(fr).toContain('<html lang="fr">');
     expect(fr).not.toBe(en);
+  });
+});
+
+describe('embedded images and size', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+
+  test('finds unique data URIs in img src and CSS url()', () => {
+    const html = `<img src="${png}"><div style="background:url(${png})"></div><img src="data:image/jpeg;base64,/9j/4AAQ">`;
+    const images = findEmbeddedImages(html);
+    expect(images.map((i) => i.mime)).toEqual(['image/png', 'image/jpeg']);
+    expect(images[0].bytes).toBe(8);
+    expect(images[0].uri).toBe(png);
+  });
+
+  test('plain HTML has no size warnings', () => {
+    expect(sizeWarnings('<p>hi</p>', '<p>hi</p>')).toEqual([]);
+  });
+
+  test('warns about base64 images and Gmail clipping', () => {
+    const warnings = sizeWarnings(`<img src="${png}">`, 'x'.repeat(GMAIL_CLIP_BYTES + 1));
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain('1 image embedded as base64');
+    expect(warnings[1]).toContain('Gmail clips');
   });
 });
