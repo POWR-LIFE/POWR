@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle, Check, Code2, Copy, FileText, FlaskConical, History, ImageUp, Loader2, Mail,
-    Monitor, Plus, RefreshCw, Save, Send, Smartphone, Trash2, X,
+    Monitor, Plus, RefreshCw, Save, Send, Smartphone, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../App';
 import { supabase } from '../../lib/supabase';
@@ -130,6 +130,25 @@ const templatePayload = (t) => ({
 
 const callEmail = (body) => invokeFn('admin-send-email', body);
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Addresses tests were sent to from this browser. A convenience only: the list lives in
+// localStorage (which can be blocked or empty), and the server accepts any valid address.
+const RECENT_TESTS_KEY = 'powr.admin.email.recentTests';
+function readRecentTests() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(RECENT_TESTS_KEY) || '[]');
+        return Array.isArray(parsed) ? parsed.filter((e) => typeof e === 'string').slice(0, 5) : [];
+    } catch {
+        return [];
+    }
+}
+function rememberTestAddress(address) {
+    const next = [address, ...readRecentTests().filter((e) => e !== address)].slice(0, 5);
+    try { localStorage.setItem(RECENT_TESTS_KEY, JSON.stringify(next)); } catch { /* private window: skip */ }
+    return next;
+}
+
 const card = 'rounded-2xl border border-[#E6E6E1] bg-white overflow-hidden';
 
 /** One header style for every card on the page: step chip, uppercase title, actions on the right. */
@@ -169,9 +188,7 @@ export default function EmailTemplates() {
 
     const [testTo, setTestTo] = useState('');
     const [testing, setTesting] = useState(false);
-    const [testInboxes, setTestInboxes] = useState({ admins: [], inboxes: [] });   // who a test may go to
-    const [newInbox, setNewInbox] = useState('');
-    const [inboxBusy, setInboxBusy] = useState(false);
+    const [recentTests, setRecentTests] = useState(readRecentTests);   // addresses tests went to from this browser
     const [extracting, setExtracting] = useState(false);
 
     const [audience, setAudience] = useState({ mode: 'all' });
@@ -212,16 +229,7 @@ export default function EmailTemplates() {
         setHistory(data ?? []);
     }, []);
 
-    const loadTestInboxes = useCallback(async () => {
-        try {
-            const r = await callEmail({ action: 'test_inboxes' });
-            setTestInboxes({ admins: r.admins ?? [], inboxes: r.inboxes ?? [] });
-        } catch {
-            // The list is a convenience; the server still decides who a test may go to.
-        }
-    }, []);
-
-    useEffect(() => { loadTemplates(); loadHistory(); loadTestInboxes(); }, [loadTemplates, loadHistory, loadTestInboxes]);
+    useEffect(() => { loadTemplates(); loadHistory(); }, [loadTemplates, loadHistory]);
 
     useEffect(() => {
         if (!openSend) { setFailures([]); return; }
@@ -374,31 +382,11 @@ export default function EmailTemplates() {
                 to: testTo.trim() || undefined,
             });
             toast.success(`Test sent to ${r.sent_to}`);
+            setRecentTests(rememberTestAddress(r.sent_to));
         } catch (e) {
             toast.error(e.message || 'Test failed');
         } finally {
             setTesting(false);
-        }
-    };
-
-    const changeInbox = async (action, email) => {
-        const clean = email.trim().toLowerCase();
-        if (!clean) return;
-        setInboxBusy(true);
-        try {
-            const r = await callEmail({ action, email: clean });
-            setTestInboxes((s) => ({ ...s, inboxes: r.inboxes ?? [] }));
-            if (action === 'test_inbox_add') {
-                setNewInbox('');
-                setTestTo(clean);
-                toast.success(`${clean} can receive tests`);
-            } else {
-                toast.success(`${clean} removed`);
-            }
-        } catch (e) {
-            toast.error(e.message || 'Could not update the test inboxes');
-        } finally {
-            setInboxBusy(false);
         }
     };
 
@@ -446,6 +434,7 @@ export default function EmailTemplates() {
 
     const testBlocker = !draft?.subject?.trim() ? 'Add a subject to send a test'
         : !draft?.html?.trim() ? 'Add some HTML to send a test'
+        : testTo.trim() && !EMAIL_RE.test(testTo.trim()) ? 'That is not an email address'
         : null;
     const canSend = Boolean(draft?.id) && !dirty && draft?.subject?.trim() && draft?.html?.trim() && audienceCount > 0 && !sending;
     const sendBlocker = !draft?.id || dirty ? 'Save the template first'
@@ -722,14 +711,14 @@ export default function EmailTemplates() {
                     {/* 03 Test */}
                     <section className={card}>
                         <CardHeader step="3" title="Test">
-                            <span className="text-[11px] text-[#AAA] truncate">Your own merge data, subject prefixed [TEST]</span>
+                            <span className="text-[11px] text-[#AAA] truncate">Any address · your own merge data · subject prefixed [TEST]</span>
                         </CardHeader>
-                        <div className="px-5 py-4 space-y-3">
+                        <div className="px-5 py-4">
                             <div className="flex flex-wrap items-center gap-2">
                                 <FlaskConical size={15} className="text-[#999]" />
-                                <input value={testTo} onChange={(e) => setTestTo(e.target.value)} list="email-test-inboxes" className="w-72 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-3 py-2 text-sm text-[#111] focus:outline-none focus:border-[#E8D200]" placeholder="an admin or a test inbox" />
-                                <datalist id="email-test-inboxes">
-                                    {[...testInboxes.admins, ...testInboxes.inboxes].map((e) => <option key={e} value={e} />)}
+                                <input value={testTo} onChange={(e) => setTestTo(e.target.value)} list="email-test-recent" type="email" className="w-72 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-3 py-2 text-sm text-[#111] focus:outline-none focus:border-[#E8D200]" placeholder="any email address" />
+                                <datalist id="email-test-recent">
+                                    {recentTests.map((e) => <option key={e} value={e} />)}
                                 </datalist>
                                 <button
                                     onClick={sendTest}
@@ -741,27 +730,14 @@ export default function EmailTemplates() {
                                 </button>
                                 {testBlocker && <span className="text-[11px] font-medium text-[#8a7600]">{testBlocker}</span>}
                             </div>
-                            {/* Who a test may go to: every admin, plus inboxes listed here (system_config.email_test_inboxes). */}
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] text-[#999]">
-                                <span>Tests can go to</span>
-                                {testInboxes.admins.map((e) => (
-                                    <button key={e} type="button" onClick={() => setTestTo(e)} title="Use this inbox" className="rounded-full border border-[#E6E6E1] bg-[#FAFAF8] px-2 py-0.5 text-[#555] hover:border-[#CFCFCF]">
-                                        {e} <span className="text-[#BBB]">admin</span>
-                                    </button>
-                                ))}
-                                {testInboxes.inboxes.map((e) => (
-                                    <span key={e} className="flex items-center rounded-full border border-[#E6E6E1] bg-white text-[#555]">
-                                        <button type="button" onClick={() => setTestTo(e)} title="Use this inbox" className="pl-2 py-0.5 hover:text-[#111]">{e}</button>
-                                        <button type="button" onClick={() => changeInbox('test_inbox_remove', e)} disabled={inboxBusy} title={`Stop sending tests to ${e}`} className="px-1.5 py-0.5 text-[#BBB] hover:text-[#C0392B] disabled:opacity-40"><X size={11} /></button>
-                                    </span>
-                                ))}
-                                <form onSubmit={(e) => { e.preventDefault(); changeInbox('test_inbox_add', newInbox); }} className="flex items-center gap-1">
-                                    <input value={newInbox} onChange={(e) => setNewInbox(e.target.value)} type="email" placeholder="add a test inbox" className="w-44 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-2 py-1 text-[11px] text-[#111] focus:outline-none focus:border-[#E8D200]" />
-                                    <button type="submit" disabled={inboxBusy || !newInbox.trim()} className="flex items-center gap-1 rounded-lg border border-[#E6E6E1] bg-white px-2 py-1 text-[11px] font-medium text-[#333] hover:border-[#CFCFCF] disabled:opacity-40">
-                                        {inboxBusy ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}Add
-                                    </button>
-                                </form>
-                            </div>
+                            {recentTests.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5 mt-3 text-[11px] text-[#999]">
+                                    <span>Recent</span>
+                                    {recentTests.map((e) => (
+                                        <button key={e} type="button" onClick={() => setTestTo(e)} className="rounded-full border border-[#E6E6E1] bg-[#FAFAF8] px-2 py-0.5 text-[#555] hover:border-[#CFCFCF]">{e}</button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </section>
 
