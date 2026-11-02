@@ -13,6 +13,7 @@ import {
     LogOut,
     MapPin,
     Megaphone,
+    Mail,
     MessageSquare,
     MousePointerClick,
     Lock,
@@ -83,6 +84,7 @@ import CreatorPrograms from './pages/admin/CreatorPrograms';
 import AuditLog from './pages/admin/AuditLog';
 import Broadcast from './pages/admin/Broadcast';
 import Campaigns from './pages/admin/Campaigns';
+import EmailTemplates from './pages/admin/EmailTemplates';
 import FeaturedSchedule from './pages/admin/FeaturedSchedule';
 import GymDetail from './pages/admin/GymDetail';
 import GymRequests from './pages/admin/GymRequests';
@@ -560,6 +562,7 @@ const PATH_LABELS = {
     support: 'Support Tickets',
     broadcast: 'Broadcast',
     campaigns: 'Campaigns',
+    email: 'Email',
     'team-letters': 'Team Letters',
     notifications: 'Notifications',
     'streak-rescue': 'Streak Rescue',
@@ -1502,6 +1505,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Support',     path: '/admin/support',     icon: MessageSquare, badge: openTickets },
         { label: 'Broadcast',      path: '/admin/broadcast',      icon: Megaphone  },
         { label: 'Campaigns',      path: '/admin/campaigns',      icon: CalendarDays },
+        { label: 'Email',          path: '/admin/email',          icon: Mail         },
         { label: 'Studio',         path: '/admin/studio',         icon: Palette      },
         { label: 'Team Letters',   path: '/admin/team-letters',   icon: Newspaper    },
         { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
@@ -1773,6 +1777,7 @@ export default function App() {
                     <Route path="/admin/support" element={<ProtectedRoute><AdminLayout><SupportTickets /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/broadcast" element={<ProtectedRoute><AdminLayout><Broadcast /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/campaigns" element={<ProtectedRoute><AdminLayout><Campaigns /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/email" element={<ProtectedRoute><AdminLayout><EmailTemplates /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/team-letters" element={<ProtectedRoute><AdminLayout><TeamLetters /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/studio" element={<ProtectedRoute><AdminLayout><Studio /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/notifications" element={<ProtectedRoute><AdminLayout><NotificationManager /></AdminLayout></ProtectedRoute>} />

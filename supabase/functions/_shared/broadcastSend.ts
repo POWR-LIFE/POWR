@@ -70,8 +70,9 @@ async function timezoneUserIds(admin, tz: string): Promise<Set<string>> {
 }
 
 // Resolve the audience spec to the user-id set it targets. `null` means
-// "everyone with a token" (mode 'all', no timezone filter).
-async function audienceUserIds(admin, audience: Audience): Promise<Set<string> | null> {
+// "everyone" (mode 'all', no timezone filter). Exported so the admin email
+// send (admin-send-email) targets exactly the same people as a push would.
+export async function audienceUserIds(admin, audience: Audience): Promise<Set<string> | null> {
   const mode = audience.mode ?? 'all';
 
   if (mode === 'users') {

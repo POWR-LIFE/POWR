@@ -50,7 +50,18 @@ export async function callBroadcast(body) {
 // `initial` seeds the picker from a stored audience spec (editing a scheduled
 // row). Without it the picker mounts as Everyone and its first onChange would
 // silently overwrite the row's saved audience with { mode: 'all' }.
-export default function AudienceSelector({ onChange, initial }) {
+//
+// The Email page reuses the picker for mail: `counter(audience)` replaces the
+// push dry-run count (resolve to a number, or null for unknown), `devices`
+// false hides the platform / app-version filters (mail has no device), and
+// `noun(n)` names what is counted ("device" by default, "person" for mail).
+const pushCounter = async (audience) => {
+    const r = await callBroadcast({ dry_run: true, audience });
+    return r.error ? null : r.recipients;
+};
+const deviceNoun = (n) => (n === 1 ? 'device' : 'devices');
+
+export default function AudienceSelector({ onChange, initial, counter, devices = true, noun = deviceNoun }) {
     const init = initial && typeof initial === 'object' ? initial : {};
     const [mode, setMode]         = useState(init.mode ?? 'all');   // all | segment | users | event
     const [userType, setUserType] = useState(init.user_type ?? 'all');   // all | pro | normal
@@ -79,12 +90,14 @@ export default function AudienceSelector({ onChange, initial }) {
                    : mode === 'users'   ? { mode: 'users', user_ids: picked.map((u) => u.id) }
                    : mode === 'event'   ? { mode: 'event', event_id: eventId, event_name: ev?.name ?? init.event_name ?? '' }
                    : { mode: 'all' };
-        if (platform !== 'all') base.platforms = [platform];
-        if (belowValid) base.below_version = belowVersion.trim();
+        if (devices && platform !== 'all') base.platforms = [platform];
+        if (devices && belowValid) base.below_version = belowVersion.trim();
         return base;
-    }, [mode, userType, activities, picked, eventId, events, platform, belowVersion, belowValid]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [mode, userType, activities, picked, eventId, events, platform, belowVersion, belowValid, devices]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Refresh the recipient count whenever the audience spec changes (debounced).
+    const counterRef = useRef(counter);
+    counterRef.current = counter ?? pushCounter;
     useEffect(() => {
         if (mode === 'users' && picked.length === 0) { setCount(0); return; }
         if (mode === 'event' && !eventId) { setCount(0); return; }
@@ -92,8 +105,8 @@ export default function AudienceSelector({ onChange, initial }) {
         setChecking(true);
         const t = setTimeout(async () => {
             try {
-                const r = await callBroadcast({ dry_run: true, audience });
-                if (!cancelled) setCount(r.error ? null : r.recipients);
+                const n = await counterRef.current(audience);
+                if (!cancelled) setCount(typeof n === 'number' ? n : null);
             } catch {
                 if (!cancelled) setCount(null);
             } finally {
@@ -303,7 +316,7 @@ export default function AudienceSelector({ onChange, initial }) {
             )}
 
             {/* Device filters — apply on top of whichever mode is active */}
-            <div className="mt-4 pt-4 border-t border-[#F0F0EC] flex flex-wrap items-end gap-x-6 gap-y-3">
+            {devices && <div className="mt-4 pt-4 border-t border-[#F0F0EC] flex flex-wrap items-end gap-x-6 gap-y-3">
                 <div>
                     <div className="text-xs font-medium text-[#999] mb-1.5">Platform</div>
                     <div className="flex gap-1 p-1 rounded-lg bg-[#F4F4F1] w-fit">
@@ -338,14 +351,14 @@ export default function AudienceSelector({ onChange, initial }) {
                         <div className="text-[11px] text-[#B58900] mt-1">Needs the full x.y.z form — ignored until then.</div>
                     )}
                 </div>
-            </div>
+            </div>}
 
             <div className="flex items-center gap-2 mt-4 text-sm text-[#666]">
                 <Users size={15} />
                 {checking ? 'Counting…'
                     : count == null ? 'Audience unknown'
                     : <span>
-                        <span className="font-semibold text-[#111]">{count}</span> device{count === 1 ? '' : 's'} will receive this
+                        <span className="font-semibold text-[#111]">{count}</span> {noun(count)} will receive this
                         {mode === 'users' && picked.length > 0 && (
                             <span className="text-[#999]"> · {picked.length} {picked.length === 1 ? 'person' : 'people'}</span>
                         )}
