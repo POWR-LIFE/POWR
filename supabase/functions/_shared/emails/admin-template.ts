@@ -144,6 +144,279 @@ function endsTagName(ch: string | undefined): boolean {
   return ch === undefined || ch === ">" || ch === "/" || ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\f";
 }
 
+// ── Gmail dark mode: keep image-only blocks as designed ──────────────────────
+//
+// Gmail on iPhone recolours every email in dark mode (full lightness inversion)
+// and ignores the color-scheme tags, so a dark design turns light and a white
+// logo ends up on a light band. It leaves an element alone when the element has
+// a background IMAGE, so a block painted with a same-colour gradient keeps its
+// colour. Locking is only safe where nothing readable sits inside the block:
+// Gmail still flips text colours, and light text on a locked dark block would
+// turn dark on dark. So only blocks that hold an image and no text are locked
+// (logo bands, hero art). Everything else is left for Gmail to recolour, which
+// reads fine. Other clients see no change because the gradient is the colour
+// the block already had.
+//
+// This is a scanner, not a regular expression over tags: it tokenises the
+// markup, tracks open elements, and gives up (returns the input untouched) the
+// moment the markup is not well formed.
+
+const VOID_TAGS = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr",
+]);
+const RAW_TEXT_TAGS = new Set(["script", "style", "textarea", "title"]);
+/** Elements whose content we cannot judge: treat them as readable content. */
+const OPAQUE_TAGS = new Set([
+  "svg", "picture", "video", "audio", "canvas", "object", "iframe", "button", "select", "input", "textarea", "label",
+]);
+const LOCKABLE_TAGS = new Set(["td", "th", "table", "div"]);
+
+interface Tok {
+  kind: "text" | "comment" | "decl" | "raw" | "start" | "end";
+  raw: string;
+  name: string;
+  selfClose: boolean;
+}
+
+interface Attr {
+  name: string;
+  value: string;
+  /** Value range inside the tag's raw text, quotes excluded. */
+  vStart: number;
+  vEnd: number;
+}
+
+const isSpace = (c: string | undefined) => c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
+const isAsciiLetter = (c: string | undefined) => c !== undefined && ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z"));
+const isTagNameChar = (c: string | undefined) =>
+  c !== undefined && (isAsciiLetter(c) || (c >= "0" && c <= "9") || c === "-" || c === ":" || c === "_");
+
+/** Index of the ">" that ends the tag starting before `from`, skipping quoted attribute values; -1 if none. */
+function findTagEnd(html: string, from: number): number {
+  let quote = "";
+  for (let i = from; i < html.length; i++) {
+    const c = html[i];
+    if (quote) {
+      if (c === quote) quote = "";
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === ">") {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/** Split markup into tokens whose raw text concatenates back to the input; null if it is malformed. */
+function tokenizeHtml(html: string): Tok[] | null {
+  const toks: Tok[] = [];
+  let i = 0;
+  while (i < html.length) {
+    const lt = html.indexOf("<", i);
+    if (lt === -1) {
+      toks.push({ kind: "text", raw: html.slice(i), name: "", selfClose: false });
+      break;
+    }
+    if (lt > i) toks.push({ kind: "text", raw: html.slice(i, lt), name: "", selfClose: false });
+    if (html.startsWith("<!--", lt)) {
+      const end = html.indexOf("-->", lt + 4);
+      if (end === -1) return null;
+      toks.push({ kind: "comment", raw: html.slice(lt, end + 3), name: "", selfClose: false });
+      i = end + 3;
+      continue;
+    }
+    const second = html[lt + 1];
+    if (second === "!" || second === "?") {
+      const end = html.indexOf(">", lt);
+      if (end === -1) return null;
+      toks.push({ kind: "decl", raw: html.slice(lt, end + 1), name: "", selfClose: false });
+      i = end + 1;
+      continue;
+    }
+    const closing = second === "/";
+    const nameStart = lt + (closing ? 2 : 1);
+    if (!isAsciiLetter(html[nameStart])) {
+      toks.push({ kind: "text", raw: "<", name: "", selfClose: false });
+      i = lt + 1;
+      continue;
+    }
+    let nameEnd = nameStart;
+    while (nameEnd < html.length && isTagNameChar(html[nameEnd])) nameEnd++;
+    const end = findTagEnd(html, nameEnd);
+    if (end === -1) return null;
+    const name = html.slice(nameStart, nameEnd).toLowerCase();
+    const selfClose = !closing && html[end - 1] === "/";
+    toks.push({ kind: closing ? "end" : "start", raw: html.slice(lt, end + 1), name, selfClose });
+    i = end + 1;
+    if (!closing && !selfClose && RAW_TEXT_TAGS.has(name)) {
+      const close = indexOfTag(html, `</${name}`, i);
+      if (close === -1) return null;
+      toks.push({ kind: "raw", raw: html.slice(i, close), name: "", selfClose: false });
+      i = close;
+    }
+  }
+  return toks;
+}
+
+/** Attributes of a start tag, with where each value sits inside the raw text. */
+function parseAttrs(raw: string): { attrs: Attr[]; nameEnd: number } {
+  let i = 1;
+  while (i < raw.length && isTagNameChar(raw[i])) i++;
+  const nameEnd = i;
+  const attrs: Attr[] = [];
+  while (i < raw.length) {
+    while (i < raw.length && (isSpace(raw[i]) || raw[i] === "/")) i++;
+    if (i >= raw.length || raw[i] === ">") break;
+    const nameStart = i;
+    while (i < raw.length && !isSpace(raw[i]) && raw[i] !== "=" && raw[i] !== ">" && raw[i] !== "/") i++;
+    const name = raw.slice(nameStart, i).toLowerCase();
+    while (i < raw.length && isSpace(raw[i])) i++;
+    if (raw[i] !== "=") {
+      attrs.push({ name, value: "", vStart: i, vEnd: i });
+      continue;
+    }
+    i++;
+    while (i < raw.length && isSpace(raw[i])) i++;
+    const quote = raw[i];
+    let vStart: number;
+    let vEnd: number;
+    if (quote === '"' || quote === "'") {
+      vStart = i + 1;
+      vEnd = raw.indexOf(quote, vStart);
+      if (vEnd === -1) vEnd = raw.length - 1;
+      i = vEnd + 1;
+    } else {
+      vStart = i;
+      while (i < raw.length && !isSpace(raw[i]) && raw[i] !== ">") i++;
+      vEnd = i;
+    }
+    attrs.push({ name, value: raw.slice(vStart, vEnd), vStart, vEnd });
+  }
+  return { attrs, nameEnd };
+}
+
+/** A hex or rgb() colour exactly as written, or null for anything else (names, hsl, alpha, gradients). */
+function solidColour(value: string): string | null {
+  const v = value.replace(/\s*!important\s*$/i, "").trim();
+  const ok = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(v)
+    || /^rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$/i.test(v);
+  return ok ? v : null;
+}
+
+/**
+ * The solid background an element declares (style beats the bgcolor attribute),
+ * or null when it declares none, is unsure, or already paints an image.
+ */
+function declaredBackground(attrs: Attr[]): string | null {
+  const find = (n: string) => attrs.find((a) => a.name === n);
+  if (find("background")) return null;
+  const style = find("style")?.value ?? "";
+  const lower = style.toLowerCase();
+  if (lower.includes("url(") || lower.includes("gradient(") || lower.includes("background-image")) return null;
+  let sawBackground = false;
+  let colour: string | null = null;
+  for (const decl of style.split(";")) {
+    const colon = decl.indexOf(":");
+    if (colon === -1) continue;
+    const prop = decl.slice(0, colon).trim().toLowerCase();
+    if (prop === "background-color" || prop === "background") {
+      sawBackground = true;
+      colour = solidColour(decl.slice(colon + 1));
+    }
+  }
+  if (sawBackground) return colour;
+  return solidColour(find("bgcolor")?.value ?? "");
+}
+
+/** Tracking pixels and spacer gifs do not make a block "an image block". */
+function countsAsImage(attrs: Attr[]): boolean {
+  const find = (n: string) => attrs.find((a) => a.name === n);
+  const tiny = (v: string | undefined) => {
+    if (!v) return false;
+    const n = Number.parseFloat(v);
+    return Number.isFinite(n) && n <= 2;
+  };
+  if (tiny(find("width")?.value) || tiny(find("height")?.value)) return false;
+  const style = (find("style")?.value ?? "").toLowerCase();
+  return !/(?:^|;)\s*(?:width|height)\s*:\s*[0-2](?:px)?\s*(?:;|$)/.test(style);
+}
+
+/** Add the same-colour gradient to a start tag's style. Returns the tag unchanged if its style is malformed. */
+function addGradientLock(raw: string, colour: string): string {
+  const lock = `background-image:linear-gradient(${colour},${colour})`;
+  const { attrs, nameEnd } = parseAttrs(raw);
+  const style = attrs.find((a) => a.name === "style");
+  if (!style) return `${raw.slice(0, nameEnd)} style="${lock}"${raw.slice(nameEnd)}`;
+  const quoted = raw[style.vStart - 1] === '"' || raw[style.vStart - 1] === "'";
+  if (!quoted && style.value === "") return raw;
+  const before = style.value.trimEnd();
+  const glue = before === "" || before.endsWith(";") ? "" : ";";
+  return raw.slice(0, style.vStart) + before + glue + lock + raw.slice(style.vEnd);
+}
+
+interface OpenElement {
+  name: string;
+  idx: number;
+  hasText: boolean;
+  hasImg: boolean;
+}
+
+function lockImageOnlyBlocksUnsafe(html: string): string {
+  if (!html.includes("<")) return html;
+  const toks = tokenizeHtml(html);
+  if (toks === null) return html;
+
+  const stack: OpenElement[] = [];
+  const locks = new Map<number, string>();
+  for (let idx = 0; idx < toks.length; idx++) {
+    const t = toks[idx];
+    if (t.kind === "text") {
+      if (t.raw.trim() !== "") for (const o of stack) o.hasText = true;
+    } else if (t.kind === "start") {
+      const opaque = OPAQUE_TAGS.has(t.name);
+      if (t.name === "img") {
+        if (countsAsImage(parseAttrs(t.raw).attrs)) for (const o of stack) o.hasImg = true;
+      } else if (opaque) {
+        for (const o of stack) o.hasText = true;
+      }
+      if (!VOID_TAGS.has(t.name) && !t.selfClose) stack.push({ name: t.name, idx, hasText: opaque, hasImg: false });
+    } else if (t.kind === "end") {
+      let j = stack.length - 1;
+      while (j >= 0 && stack[j].name !== t.name) j--;
+      if (j < 0) continue;                       // a stray end tag: ignore it
+      const properlyNested = j === stack.length - 1;
+      const el = stack[j];
+      stack.length = j;
+      if (properlyNested && LOCKABLE_TAGS.has(el.name) && el.hasImg && !el.hasText) {
+        const colour = declaredBackground(parseAttrs(toks[el.idx].raw).attrs);
+        if (colour) locks.set(el.idx, colour);
+      }
+    }
+  }
+  if (locks.size === 0) return html;
+
+  let out = "";
+  for (let idx = 0; idx < toks.length; idx++) {
+    const colour = locks.get(idx);
+    out += colour ? addGradientLock(toks[idx].raw, colour) : toks[idx].raw;
+  }
+  return out;
+}
+
+/**
+ * Keep coloured blocks that hold only images (logo bands, hero art) as
+ * designed when Gmail on iPhone recolours the email in dark mode. Blocks with
+ * any text are left alone. Never throws: on anything unexpected it returns the
+ * HTML as it came in.
+ */
+export function lockImageOnlyBlocks(html: string): string {
+  try {
+    return lockImageOnlyBlocksUnsafe(html);
+  } catch {
+    return html;
+  }
+}
+
 export interface AdminTemplate {
   subject: string;
   preheader: string;
@@ -177,9 +450,11 @@ export function renderAdminEmail(template: AdminTemplate, vars: MergeVars, lang 
   const subject = applyMerge(template.subject, vars, "text");
   const preheader = applyMerge(template.preheader, vars, "text");
   const body = stripScripts(applyMerge(template.html, vars, "html"));
-  const html = template.use_shell
-    ? emailShell({ title: subject, preheader, rows: shellRow(body), lang })
-    : body;
+  const html = lockImageOnlyBlocks(
+    template.use_shell
+      ? emailShell({ title: subject, preheader, rows: shellRow(body), lang })
+      : body,
+  );
   const text = applyMerge(template.text, vars, "text");
   return { subject, html, text };
 }

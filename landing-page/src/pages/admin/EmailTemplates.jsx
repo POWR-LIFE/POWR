@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle, Check, Code2, Copy, FileText, FlaskConical, History, ImageUp, Loader2, Mail,
-    Monitor, Plus, RefreshCw, Save, Send, Smartphone, Trash2,
+    Monitor, Moon, Plus, RefreshCw, Save, Send, Smartphone, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../App';
 import { supabase } from '../../lib/supabase';
@@ -149,6 +149,16 @@ function rememberTestAddress(address) {
     return next;
 }
 
+// Gmail on iPhone recolours every email in dark mode: a full lightness inversion that leaves
+// images alone and also leaves blocks that paint a background image (the renderer gives
+// image-only blocks a same-colour gradient so they keep their colour). A CSS filter on the
+// preview reproduces it closely: against colours Gmail really produced it lands within 5/255
+// on large surfaces and within about 8/255 on a gold accent. Images and gradient blocks get
+// the exact inverse filter so they come out unchanged. An approximation, not Gmail itself.
+const GMAIL_DARK_FILTER = 'invert(1) hue-rotate(180deg) saturate(.65)';
+const GMAIL_DARK_UNDO = 'saturate(1.5385) hue-rotate(180deg) invert(1)';
+const GMAIL_DARK_CSS = `<style>img,picture,video,svg,[style*="linear-gradient"]{filter:${GMAIL_DARK_UNDO}}[style*="linear-gradient"] img{filter:none}</style>`;
+
 const card = 'rounded-2xl border border-[#E6E6E1] bg-white overflow-hidden';
 
 /** One header style for every card on the page: step chip, uppercase title, actions on the right. */
@@ -185,6 +195,7 @@ export default function EmailTemplates() {
     const [previewError, setPreviewError] = useState(null);
     const [rendering, setRendering] = useState(false);
     const [previewWidth, setPreviewWidth] = useState('desktop');
+    const [gmailDark, setGmailDark] = useState(false);   // preview as Gmail on iPhone shows it in dark mode
 
     const [testTo, setTestTo] = useState('');
     const [testing, setTesting] = useState(false);
@@ -799,6 +810,15 @@ export default function EmailTemplates() {
                                 </button>
                             ))}
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => setGmailDark((v) => !v)}
+                            aria-pressed={gmailDark}
+                            title="Show the email the way Gmail on iPhone shows it in dark mode (approximate)"
+                            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-medium transition-colors ${gmailDark ? 'bg-[#111] border-[#111] text-[#E8D200]' : 'bg-white border-[#E6E6E1] text-[#666] hover:border-[#CFCFCF]'}`}
+                        >
+                            <Moon size={13} /> Gmail dark
+                        </button>
                     </CardHeader>
                     {/* Inbox row */}
                     <div className="px-4 py-3 border-b border-[#F0F0EC] bg-[#FAFAF8]">
@@ -811,7 +831,9 @@ export default function EmailTemplates() {
                             </div>
                         </div>
                         <div className="text-[11px] text-[#AAA] mt-2">
-                            {preview?.rendered_for === 'you' ? 'Merge tags filled with your own data' : 'Merge tags filled with sample data'}
+                            {gmailDark
+                                ? 'Approximately how Gmail on iPhone shows this in dark mode. Blocks that hold only an image keep their colour; everything else is recoloured.'
+                                : preview?.rendered_for === 'you' ? 'Merge tags filled with your own data' : 'Merge tags filled with sample data'}
                         </div>
                     </div>
                     <div className="bg-[#EDEDEA] p-3 flex justify-center">
@@ -824,8 +846,8 @@ export default function EmailTemplates() {
                             <iframe
                                 title="Email preview"
                                 sandbox=""
-                                srcDoc={preview?.html ?? '<p style="font-family:Arial;color:#999;padding:24px;">Rendering…</p>'}
-                                style={{ width: previewWidth === 'mobile' ? 375 : '100%', height: 'max(520px, calc(100vh - 300px))', border: 0, background: '#fff', borderRadius: 12, transition: 'width .2s' }}
+                                srcDoc={`${preview?.html ?? '<p style="font-family:Arial;color:#999;padding:24px;">Rendering…</p>'}${gmailDark ? GMAIL_DARK_CSS : ''}`}
+                                style={{ width: previewWidth === 'mobile' ? 375 : '100%', height: 'max(520px, calc(100vh - 300px))', border: 0, background: '#fff', borderRadius: 12, transition: 'width .2s', filter: gmailDark ? GMAIL_DARK_FILTER : 'none' }}
                             />
                         )}
                     </div>
