@@ -8,13 +8,15 @@ import {
     Trophy, Rocket, CalendarDays, Gift, ListOrdered, MapPin, Bot, Medal, Plus, Save, Trash2, Search, X, Check,
     RefreshCw, AlertTriangle, ShieldCheck, UserX, UserCheck, Megaphone, ImagePlus, LoaderCircle, ChevronLeft,
     ChevronRight, Shuffle, Eye, EyeOff, Bell, ExternalLink, Ticket, Crown, Zap, Timer, Flame, Flag, Lock,
-    TrendingUp, Sprout, Users,
+    TrendingUp, Sprout, Users, Copy, Pause, Play, Tv,
 } from 'lucide-react';
+import { gymSlug } from '../../../../shared/gymBoard.ts';
+import { seriesScreenUrl } from '../../../../shared/seriesScreen.ts';
 
 /*
  * The Series, run from here, season by season: the launch switch, seasons and
- * their monthly rounds, prizes, the board (with pacers marked), cities, pacers
- * and the results.
+ * their monthly rounds, prizes, the board (with pacers marked), cities, pacers,
+ * the results, and the Series screen links for gym TVs.
  *
  * Server side: supabase/migrations/20261020150000_autumn_series.sql,
  * 20261022120000_series_pacers_and_cities.sql, 20261022150000_series_admin.sql.
@@ -40,6 +42,7 @@ const TABS = [
     { key: 'cities', label: 'Cities', icon: MapPin },
     { key: 'pacers', label: 'Pacers', icon: Bot },
     { key: 'results', label: 'Results', icon: Medal },
+    { key: 'screens', label: 'Screens', icon: Tv },
 ];
 
 // ── Dates: rounds run London midnight to London midnight ─────────────────────
@@ -337,7 +340,8 @@ export default function SeriesManager() {
                     {tab === 'overview' && <OverviewTab round={round} season={seasons.find(x => x.id === round?.season_id) ?? season} />}
                     {tab === 'rounds' && <SeasonsTab seasons={seasons} rounds={rounds} focus={season}
                         onSaved={(s) => { loadRounds(); if (s) pickRound(s); }} />}
-                    {tab !== 'overview' && tab !== 'rounds' && !round && <Empty icon={CalendarDays} text="Pick a round, or add one on Seasons" />}
+                    {tab === 'screens' && <ScreensTab />}
+                    {tab !== 'overview' && tab !== 'rounds' && tab !== 'screens' && !round && <Empty icon={CalendarDays} text="Pick a round, or add one on Seasons" />}
                     {tab === 'prizes' && round && <PrizesTab key={round.id} round={round} />}
                     {tab === 'moments' && round && <MomentsTab key={round.id} round={round} />}
                     {tab === 'board' && round && <BoardTab key={round.id} round={round} />}
@@ -1811,6 +1815,140 @@ function ResultsTab({ round }) {
                 onConfirm={() => run('admin_series_announce', { p_slug: round.slug, p_on: true }, 'series_announce', 'Announced: the winners are in the app')} />
             <Confirm open={ask?.kind === 'hide'} danger title="Hide the winners from the app?" confirmLabel="Hide" onCancel={() => setAsk(null)}
                 onConfirm={() => run('admin_series_announce', { p_slug: round.slug, p_on: false }, 'series_unannounce', 'Hidden from the app')} />
+        </>
+    );
+}
+
+// ── Screens ──────────────────────────────────────────────────────────────────
+
+/**
+ * The Series on gym TVs: one link per gym, sent from here. It rides the gym's
+ * existing screen row (gym_boards: slug + display_token, the wall's and Gym
+ * Clash's credential) as a third screen, powr.life/series/tv/<slug>?k=<token>.
+ * Pausing here blanks the Series screen only. A gym with no screens yet gets
+ * its row from the search below (the slug is made from its name; a custom
+ * one is set on the gym's Big screen tab).
+ */
+function ScreensTab() {
+    const toast = useToast();
+    const { user } = useAuth();
+    const [boards, setBoards] = useState(null);
+    const [q, setQ] = useState('');
+    const [hits, setHits] = useState([]);
+    const [busy, setBusy] = useState(null);
+    // Open/Preview use this admin's own host so they work from localhost and
+    // branch previews; the copied link is canonical (powr.life).
+    const here = typeof window !== 'undefined' ? window.location.origin : 'https://powr.life';
+
+    const load = useCallback(async () => {
+        const { data, error } = await supabase.from('gym_boards')
+            .select('partner_id, slug, display_token, series_enabled, created_at, partners!inner(name, city, active)')
+            .order('created_at');
+        if (error) { toast.error(error.message); setBoards([]); return; }
+        setBoards(data ?? []);
+    }, [toast]);
+    useEffect(() => { load(); }, [load]);
+
+    useEffect(() => {
+        if (q.trim().length < 2) { setHits([]); return undefined; }
+        const t = setTimeout(async () => {
+            const { data } = await supabase.from('partners').select('id, name, city')
+                .eq('category', 'gym').eq('active', true)
+                .ilike('name', `%${q.trim().replace(/[%,()]/g, ' ')}%`).order('name').limit(8);
+            const have = new Set((boards ?? []).map(b => b.partner_id));
+            setHits((data ?? []).filter(p => !have.has(p.id)));
+        }, 250);
+        return () => clearTimeout(t);
+    }, [q, boards]);
+
+    const add = async (p) => {
+        const slug = gymSlug(p.name);
+        if (slug.length < 2) { toast.error('That name makes no link'); return; }
+        setBusy(p.id);
+        const { error } = await supabase.from('gym_boards').insert({ partner_id: p.id, slug, created_by: user?.id ?? null });
+        setBusy(null);
+        if (error) {
+            toast.error(error.code === '23505' ? `The link name “${slug}” is taken: switch this gym on from its Big screen tab with another name` : rpcError(error));
+            return;
+        }
+        await logAction(user.id, 'gym_board_created', 'partner', p.id, { slug, from: 'series_screens' });
+        toast.success(`${p.name}: screens switched on`);
+        setQ(''); setHits([]);
+        load();
+    };
+
+    const setPaused = async (b, paused) => {
+        setBusy(b.partner_id);
+        const { error } = await supabase.from('gym_boards').update({ series_enabled: !paused, updated_at: new Date().toISOString() }).eq('partner_id', b.partner_id);
+        setBusy(null);
+        if (error) { toast.error(rpcError(error)); return; }
+        await logAction(user.id, paused ? 'gym_series_screen_paused' : 'gym_series_screen_resumed', 'partner', b.partner_id, { slug: b.slug });
+        setBoards(bs => bs.map(x => (x.partner_id === b.partner_id ? { ...x, series_enabled: !paused } : x)));
+        toast.success(paused ? `${b.partners.name}: Series screen paused` : `${b.partners.name}: Series screen live`);
+    };
+
+    const copy = async (text) => {
+        try { await navigator.clipboard.writeText(text); toast.success('Link copied'); } catch { toast.error('Copy failed'); }
+    };
+
+    if (!boards) return <Loading />;
+    const live = boards.filter(b => b.series_enabled !== false).length;
+    return (
+        <>
+            <Section title="The Series on gym TVs"
+                blurb="One link per gym, sent from here. The screen plays by itself: the countdown to the round, how it works, the seven prizes, Squad Builder and a QR code to join. It reads the season, the round dates and the prizes from this page, so it changes as a round opens, runs and ends. The key is the one the gym’s other two screens use; a new key on the gym’s Big screen tab changes this link too."
+                right={<a className={btnQuiet} href={`${here}/series/tv/sample?preview=sample`} target="_blank" rel="noopener noreferrer"><Eye size={13} /> Preview as a sample gym</a>}>
+                {boards.length === 0 ? <Empty icon={Tv} text="No gym has screens yet: add one below" /> : (
+                    <div className={`${card} divide-y divide-[#F4F4F1]`}>
+                        {boards.map(b => {
+                            const on = b.series_enabled !== false;
+                            const url = seriesScreenUrl(b.slug, b.display_token);
+                            const open = seriesScreenUrl(b.slug, b.display_token, null, here);
+                            return (
+                                <div key={b.partner_id} className="flex items-center gap-4 px-6 py-4 flex-wrap">
+                                    <div className="flex-1 min-w-[12rem]">
+                                        <div className="text-[13.5px] font-semibold text-[#1A1A1A]">
+                                            {b.partners.name}
+                                            {!b.partners.active && <span className="ml-2 text-[9px] font-black tracking-[0.15em] text-[#AAAAAA]">INACTIVE</span>}
+                                        </div>
+                                        <div className="text-[11.5px] text-[#999999]">{b.partners.city || 'No city'} · <span className="font-mono">powr.life/series/tv/{b.slug}</span></div>
+                                    </div>
+                                    <Pill color={on ? '#10B981' : '#9CA3AF'}>{on ? 'Live' : 'Paused'}</Pill>
+                                    <div className="flex items-center gap-2">
+                                        <button className={btnGold} onClick={() => copy(url)}><Copy size={13} /> Copy link</button>
+                                        <a className={btnQuiet} href={open} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open</a>
+                                        {on
+                                            ? <button className={btnQuiet} disabled={busy === b.partner_id} onClick={() => setPaused(b, true)}><Pause size={13} /> Pause</button>
+                                            : <button className={btnQuiet} disabled={busy === b.partner_id} onClick={() => setPaused(b, false)}><Play size={13} /> Resume</button>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <div className="px-6 py-3 text-[11.5px] text-[#999999]">{live} of {boards.length} live. Open the link in the TV’s browser and press F11; it refreshes itself.</div>
+                    </div>
+                )}
+            </Section>
+
+            <Section title="Add a gym" blurb="A gym that has no screens yet. Switching it on makes its link (and its wall and Gym Clash links on the same key).">
+                <div className="relative max-w-md">
+                    <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#AAAAAA]" />
+                    <input className={`${input} w-full pl-11 h-11 bg-white`} value={q} onChange={e => setQ(e.target.value)} placeholder="Search gyms by name" />
+                </div>
+                {hits.length > 0 && (
+                    <div className={`${card} divide-y divide-[#F4F4F1] mt-3 max-w-md`}>
+                        {hits.map(p => (
+                            <div key={p.id} className="flex items-center gap-3 px-5 py-3">
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[13px] font-semibold text-[#1A1A1A] truncate">{p.name}</div>
+                                    <div className="text-[11px] text-[#999999]">{p.city || 'No city'} · powr.life/series/tv/{gymSlug(p.name)}</div>
+                                </div>
+                                <button className={btnGold} disabled={busy === p.id} onClick={() => add(p)}><Tv size={13} /> Switch on</button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {q.trim().length >= 2 && hits.length === 0 && <p className="text-[11.5px] text-[#999999] mt-3">No active gym by that name without screens.</p>}
+            </Section>
         </>
     );
 }
