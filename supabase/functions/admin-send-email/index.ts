@@ -55,9 +55,6 @@ const IMAGE_EXT: Record<string, string> = {
 };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-/** system_config row holding the inboxes, besides the admins, that a test may go to (JSON array). */
-const TEST_INBOXES_KEY = 'email_test_inboxes';
-const TEST_INBOXES_MAX = 50;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -107,39 +104,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 /** Address + merge data rows for these user ids (null = everyone with an address). */
-/** Lower-cased emails of every admin account: the people a test may always go to. */
-async function adminEmails(admin: SupabaseClient): Promise<string[]> {
-  const { data: admins, error } = await admin.from('admin_roles').select('user_id');
-  if (error) throw new Error(error.message);
-  const rows = await recipientRows(admin, (admins ?? []).map((a: { user_id: string }) => a.user_id));
-  return rows.map((r) => r.email.toLowerCase());
-}
-
-/** The extra test inboxes admins have listed on the Email page, lower-cased. */
-async function testInboxes(admin: SupabaseClient): Promise<string[]> {
-  const { data, error } = await admin.from('system_config').select('value').eq('key', TEST_INBOXES_KEY).maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data?.value) return [];
-  try {
-    const parsed = JSON.parse(data.value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((e) => String(e).trim().toLowerCase()).filter((e) => EMAIL_RE.test(e));
-  } catch {
-    return [];
-  }
-}
-
-async function saveTestInboxes(admin: SupabaseClient, userId: string, inboxes: string[]): Promise<void> {
-  const { error } = await admin.from('system_config').upsert({
-    key: TEST_INBOXES_KEY,
-    value: JSON.stringify(inboxes),
-    description: 'Inboxes besides the admins that email tests may go to. Managed on the Email page.',
-    updated_at: new Date().toISOString(),
-    updated_by: userId,
-  }, { onConflict: 'key' });
-  if (error) throw new Error(error.message);
-}
-
 async function recipientRows(admin: SupabaseClient, userIds: string[] | null): Promise<Recipient[]> {
   if (userIds === null) {
     const { data, error } = await admin.rpc('admin_email_recipients', { p_user_ids: null });
@@ -464,49 +428,18 @@ Deno.serve(async (req: Request) => {
       return json({ html: out, images: uploaded, failed, before_chars: html.length, after_chars: out.length });
     }
 
-    // ── test inboxes (who a test may go to, besides the admins) ───────────
-    if (action === 'test_inboxes') {
-      const [admins, inboxes] = await Promise.all([adminEmails(admin), testInboxes(admin)]);
-      return json({ admins, inboxes });
-    }
-
-    if (action === 'test_inbox_add' || action === 'test_inbox_remove') {
-      const email = String(body.email ?? '').trim().toLowerCase();
-      if (!EMAIL_RE.test(email)) return json({ error: 'That is not an email address' }, 400);
-      const current = await testInboxes(admin);
-      const adding = action === 'test_inbox_add';
-      const next = adding
-        ? (current.includes(email) ? current : [...current, email])
-        : current.filter((e) => e !== email);
-      if (next.length > TEST_INBOXES_MAX) return json({ error: `Up to ${TEST_INBOXES_MAX} test inboxes` }, 400);
-      if (next.length !== current.length) {
-        await saveTestInboxes(admin, user.id, next);
-        await admin.from('admin_audit_log').insert({
-          admin_id: user.id,
-          action: adding ? 'email_test_inbox_add' : 'email_test_inbox_remove',
-          target_type: 'system_config',
-          target_id: null,
-          metadata: { email },
-        });
-      }
-      return json({ inboxes: next });
-    }
-
-    // ── test (one email to an admin or a listed test inbox) ───────────────
+    // ── test (one email to any address, with the caller's own merge data) ─
     if (action === 'test') {
       const template = templateFromBody(body.template);
       if (typeof template === 'string') return json({ error: template }, 400);
       if (!template.subject || !template.html.trim()) {
         return json({ error: 'Add a subject and some HTML before sending a test' }, 400);
       }
+      // Any address: a test is how an admin checks the email in a real inbox, member or not.
+      // It still carries a [TEST] subject and an audit row naming who sent it where.
       const to = String(body.to ?? user.email ?? '').trim().toLowerCase();
       if (!to) return json({ error: 'Your admin account has no email address' }, 400);
-      if (to !== (user.email ?? '').toLowerCase()) {
-        const [admins, inboxes] = await Promise.all([adminEmails(admin), testInboxes(admin)]);
-        if (!admins.includes(to) && !inboxes.includes(to)) {
-          return json({ error: 'Tests can only go to admin accounts or the test inboxes listed under Send a test' }, 400);
-        }
-      }
+      if (to.length > 320 || !EMAIL_RE.test(to)) return json({ error: 'That is not an email address' }, 400);
       const me = (await recipientRows(admin, [user.id]))[0];
       const vars = me ? mergeVarsFor({ ...me, email: to }) : { ...SAMPLE_VARS, email: to };
       const rendered = renderAdminEmail(template, vars, langOf(me?.language));
