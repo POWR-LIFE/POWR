@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle, Check, Code2, Copy, FileText, FlaskConical, History, ImageUp, Loader2, Mail,
-    Monitor, Plus, RefreshCw, Save, Send, Smartphone, Trash2,
+    Monitor, Plus, RefreshCw, Save, Send, Smartphone, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../App';
 import { supabase } from '../../lib/supabase';
@@ -153,6 +153,9 @@ export default function EmailTemplates() {
 
     const [testTo, setTestTo] = useState('');
     const [testing, setTesting] = useState(false);
+    const [testInboxes, setTestInboxes] = useState({ admins: [], inboxes: [] });   // who a test may go to
+    const [newInbox, setNewInbox] = useState('');
+    const [inboxBusy, setInboxBusy] = useState(false);
     const [extracting, setExtracting] = useState(false);
 
     const [audience, setAudience] = useState({ mode: 'all' });
@@ -193,7 +196,16 @@ export default function EmailTemplates() {
         setHistory(data ?? []);
     }, []);
 
-    useEffect(() => { loadTemplates(); loadHistory(); }, [loadTemplates, loadHistory]);
+    const loadTestInboxes = useCallback(async () => {
+        try {
+            const r = await callEmail({ action: 'test_inboxes' });
+            setTestInboxes({ admins: r.admins ?? [], inboxes: r.inboxes ?? [] });
+        } catch {
+            // The list is a convenience; the server still decides who a test may go to.
+        }
+    }, []);
+
+    useEffect(() => { loadTemplates(); loadHistory(); loadTestInboxes(); }, [loadTemplates, loadHistory, loadTestInboxes]);
 
     useEffect(() => {
         if (!openSend) { setFailures([]); return; }
@@ -350,6 +362,27 @@ export default function EmailTemplates() {
             toast.error(e.message || 'Test failed');
         } finally {
             setTesting(false);
+        }
+    };
+
+    const changeInbox = async (action, email) => {
+        const clean = email.trim().toLowerCase();
+        if (!clean) return;
+        setInboxBusy(true);
+        try {
+            const r = await callEmail({ action, email: clean });
+            setTestInboxes((s) => ({ ...s, inboxes: r.inboxes ?? [] }));
+            if (action === 'test_inbox_add') {
+                setNewInbox('');
+                setTestTo(clean);
+                toast.success(`${clean} can receive tests`);
+            } else {
+                toast.success(`${clean} removed`);
+            }
+        } catch (e) {
+            toast.error(e.message || 'Could not update the test inboxes');
+        } finally {
+            setInboxBusy(false);
         }
     };
 
@@ -620,7 +653,10 @@ export default function EmailTemplates() {
                     <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F0F0EC]">
                         <FlaskConical size={15} className="text-[#999]" />
                         <span className="text-xs text-[#999]">Send a test to</span>
-                        <input value={testTo} onChange={(e) => setTestTo(e.target.value)} className="w-64 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-3 py-1.5 text-sm text-[#111] focus:outline-none focus:border-[#E8D200]" placeholder="an admin's email" />
+                        <input value={testTo} onChange={(e) => setTestTo(e.target.value)} list="email-test-inboxes" className="w-64 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-3 py-1.5 text-sm text-[#111] focus:outline-none focus:border-[#E8D200]" placeholder="an admin or a test inbox" />
+                        <datalist id="email-test-inboxes">
+                            {[...testInboxes.admins, ...testInboxes.inboxes].map((e) => <option key={e} value={e} />)}
+                        </datalist>
                         <button
                             onClick={sendTest}
                             disabled={testing || Boolean(testBlocker)}
@@ -629,7 +665,29 @@ export default function EmailTemplates() {
                             {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                             {testing ? 'Sending…' : 'Send test'}
                         </button>
-                        <span className={`text-[11px] ${testBlocker ? 'text-[#8a7600] font-medium' : 'text-[#AAA]'}`}>{testBlocker ?? 'Admin inboxes only. Uses your own merge data, subject prefixed [TEST].'}</span>
+                        <span className={`text-[11px] ${testBlocker ? 'text-[#8a7600] font-medium' : 'text-[#AAA]'}`}>{testBlocker ?? 'Uses your own merge data, subject prefixed [TEST].'}</span>
+                    </div>
+
+                    {/* Who a test may go to: every admin, plus inboxes listed here (system_config.email_test_inboxes). */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] text-[#999]">
+                        <span>Tests can go to</span>
+                        {testInboxes.admins.map((e) => (
+                            <button key={e} type="button" onClick={() => setTestTo(e)} title="Use this inbox" className="rounded-full border border-[#E6E6E1] bg-[#FAFAF8] px-2 py-0.5 text-[#555] hover:border-[#CFCFCF]">
+                                {e} <span className="text-[#BBB]">admin</span>
+                            </button>
+                        ))}
+                        {testInboxes.inboxes.map((e) => (
+                            <span key={e} className="flex items-center rounded-full border border-[#E6E6E1] bg-white text-[#555]">
+                                <button type="button" onClick={() => setTestTo(e)} title="Use this inbox" className="pl-2 py-0.5 hover:text-[#111]">{e}</button>
+                                <button type="button" onClick={() => changeInbox('test_inbox_remove', e)} disabled={inboxBusy} title={`Stop sending tests to ${e}`} className="px-1.5 py-0.5 text-[#BBB] hover:text-[#C0392B] disabled:opacity-40"><X size={11} /></button>
+                            </span>
+                        ))}
+                        <form onSubmit={(e) => { e.preventDefault(); changeInbox('test_inbox_add', newInbox); }} className="flex items-center gap-1">
+                            <input value={newInbox} onChange={(e) => setNewInbox(e.target.value)} type="email" placeholder="add a test inbox" className="w-44 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-2 py-1 text-[11px] text-[#111] focus:outline-none focus:border-[#E8D200]" />
+                            <button type="submit" disabled={inboxBusy || !newInbox.trim()} className="flex items-center gap-1 rounded-lg border border-[#E6E6E1] bg-white px-2 py-1 text-[11px] font-medium text-[#333] hover:border-[#CFCFCF] disabled:opacity-40">
+                                {inboxBusy ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}Add
+                            </button>
+                        </form>
                     </div>
                 </section>
 
