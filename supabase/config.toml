@@ -649,6 +649,13 @@ verify_jwt = false
 # function. Gym and session ids are hashed before they leave.
 verify_jwt = false
 
+[functions.series-screen]
+# Public JSON feed for the Series screen on a gym's TV (powr.life/series/tv/<slug>).
+# Same credential as gym-board and gym-league: the gym's display_token (?k=),
+# checked in the function. Season, round dates, prizes and the start-line
+# crowd size — nothing per member.
+verify_jwt = false
+
 [functions.manage-gym-staff]
 # Gym portal logins and invites (powr.life/venue). validate/redeem run from a
 # signed-out setup page with the invite token as the credential; everything

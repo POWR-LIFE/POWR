@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { boardUrl, gymSlug, newDisplayToken, VIEWINGS, VIEWING_LABEL } from '../../../../shared/gymBoard.ts';
 import { LEAGUE_RADII, leagueUrl } from '../../../../shared/gymLeague.ts';
+import { seriesScreenUrl } from '../../../../shared/seriesScreen.ts';
 
 /**
  * "Big screen" tab on the admin partner profile — provisions and manages the
@@ -17,7 +18,10 @@ import { LEAGUE_RADII, leagueUrl } from '../../../../shared/gymLeague.ts';
  * The same row also carries the gym's second screen, the Gym League
  * (powr.life/league/<slug>?k=<token>): this gym racing every other POWR
  * gym, locally (within league_radius_km) and globally. Same token, its own
- * pause switch.
+ * pause switch. And the third, the Series screen
+ * (powr.life/series/tv/<slug>?k=<token>): the POWR Series as a reel for the
+ * gym floor — countdown, how it works, prizes, the QR to join. Same token,
+ * its own pause switch (series_enabled).
  */
 
 const BOARD_SIZES = [10, 25, 50];
@@ -154,6 +158,9 @@ export default function GymBoardPanel({ partner, adminId }) {
     const lUrl = leagueUrl(board.slug, board.display_token);
     const lOpen = (preview) => leagueUrl(board.slug, board.display_token, preview, here);
     const leagueOn = board.league_enabled !== false;
+    const sUrl = seriesScreenUrl(board.slug, board.display_token);
+    const sOpen = (preview) => seriesScreenUrl(board.slug, board.display_token, preview, here);
+    const seriesOn = board.series_enabled !== false;
     const radius = board.league_radius_km ?? 15;
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
@@ -333,6 +340,58 @@ export default function GymBoardPanel({ partner, adminId }) {
                                     ? <Btn icon={Pause} label="Pause league" onClick={() => update({ league_enabled: false }, 'League paused — the screen goes blank on its next refresh', 'gym_league_paused')} />
                                     : <Btn icon={Play} label="Resume league" tone="gold" onClick={() => update({ league_enabled: true }, 'League live', 'gym_league_resumed')} />}
                             </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* ── Series screen: the third screen on the same credential ── */}
+                <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden">
+                    <div className="p-10 border-b border-[#E6E6E1] flex items-start justify-between gap-6">
+                        <div>
+                            <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Series screen</h3>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">
+                                {seriesOn ? 'Live — the POWR Series on the gym floor' : 'Paused — the Series screen is blank'}
+                            </p>
+                        </div>
+                        <span className={`inline-flex items-center gap-2 h-8 px-3 rounded-full text-[10px] font-black uppercase tracking-[0.2em] ${seriesOn ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-[#F4F4F1] text-[#888888] border border-[#E6E6E1]'}`}>
+                            <span className={`w-2 h-2 rounded-full ${seriesOn ? 'bg-emerald-500' : 'bg-[#BBBBBB]'}`} />
+                            {seriesOn ? 'Live' : 'Paused'}
+                        </span>
+                    </div>
+                    <div className="p-10 space-y-8">
+                        <p className="text-[13px] text-[#555555] leading-relaxed">
+                            The POWR Series as a reel for <span className="font-semibold text-[#1A1A1A]">{partner.name}</span>&apos;s TV: the countdown
+                            to the round, how it works, the seven prizes, Squad Builder, and a QR code to join. Nothing to configure — it reads the
+                            season, the round dates and the prizes from <span className="font-semibold text-[#1A1A1A]">Series</span> in the admin, so it
+                            changes by itself as a round opens, runs and ends. Same link key as the leaderboard.
+                        </p>
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <Tv size={13} className="text-[#888888]" />
+                                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">Series screen display URL</span>
+                            </div>
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <code className="text-[12px] font-mono text-[#555555] bg-[#F4F4F1] border border-[#EAEAE5] rounded-lg px-3 py-2 select-all break-all">{sUrl}</code>
+                                <Btn icon={Copy} label="Copy" onClick={() => copy(sUrl)} />
+                                <Btn icon={ExternalLink} label="Open" href={sOpen(null)} />
+                                <a
+                                    href={sOpen('sample')}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center h-7 px-3 rounded-lg border text-[10px] font-bold uppercase tracking-[0.15em] transition-all bg-[#F4F4F1] border-[#E6E6E1] text-[#666666] hover:text-[#1A1A1A] hover:border-[#D8D8D2]"
+                                >
+                                    Preview as a sample gym
+                                </a>
+                            </div>
+                            <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
+                                Regenerating the leaderboard token above also changes this link. Prizes show on the screen as soon as they are
+                                entered on the round in Series; a place without a prize shows the day it will be revealed.
+                            </p>
+                        </div>
+                        <div className="border-t border-[#F0F0EC] pt-6">
+                            <span className="block text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">Status</span>
+                            {seriesOn
+                                ? <Btn icon={Pause} label="Pause Series screen" onClick={() => update({ series_enabled: false }, 'Series screen paused — it goes blank on its next refresh', 'gym_series_screen_paused')} />
+                                : <Btn icon={Play} label="Resume Series screen" tone="gold" onClick={() => update({ series_enabled: true }, 'Series screen live', 'gym_series_screen_resumed')} />}
                         </div>
                     </div>
                 </section>

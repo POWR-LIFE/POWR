@@ -153,6 +153,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import LiveBoard from './pages/LiveBoard';
 import GymBoard from './pages/GymBoard';
 import GymLeague from './pages/GymLeague';
+import SeriesScreen from './pages/SeriesScreen';
 import EventPromo from './pages/EventPromo';
 import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
@@ -1672,6 +1673,9 @@ export default function App() {
                     <Route path="/live/:slug" element={<LiveBoard />} />
                     <Route path="/gym/:slug" element={<GymBoard />} />
                     <Route path="/league/:slug" element={<GymLeague />} />
+                    {/* The gym's third screen. Two segments on purpose: /series/:code is the
+                        invite link (vercel.json rewrites it to series-invite-og). */}
+                    <Route path="/series/tv/:slug" element={<SeriesScreen />} />
                     <Route path="/promo/:slug" element={<EventPromo />} />
                     <Route path="/partner-reward/:token" element={<PartnerRewardSubmit />} />
                     {/* "Affiliate" is the user-facing name (Jamie, 2026-08-26 — "creator" read as
