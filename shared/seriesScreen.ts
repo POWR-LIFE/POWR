@@ -1,13 +1,16 @@
 /**
- * Series screen — pure helpers shared by the gym TV page
- * (landing-page/src/pages/SeriesScreen.jsx), the venue Screens page and the
- * admin Big screen tab. No React, no network: everything here is unit-testable.
+ * Series screen — pure helpers shared by the TV page
+ * (landing-page/src/pages/SeriesScreen.jsx) and the admin Series page's
+ * Screens tab. No React, no network: everything here is unit-testable.
  *
- * The third link on the gym's display token (powr.life/series/tv/<slug>?k=):
- * the POWR Series as a reel for the gym floor — the countdown to the round,
- * how it works, the seven prizes, Squad Builder, and the QR code to join.
- * Everything it says comes from the Series tables (season, round dates,
- * prizes, the start-line crowd), so the screen follows the calendar on its own.
+ * ONE screen for every TV (powr.life/series-tv?k=<key>): the POWR Series as a
+ * reel — the countdown to the round, how it works, the seven prizes, Squad
+ * Builder, and the QR code to join. It is not tied to a gym: nothing on it is
+ * per gym or per member. The key, the on/off switch and the city it names
+ * live in system_config (series_screen_key / series_screen / series_screen_city)
+ * and are run from /admin/series → Screens. Everything it says comes from the
+ * Series tables (season, round dates, prizes, the start-line crowd), so the
+ * screen follows the calendar on its own.
  */
 
 export type SeriesScreenSeason = {
@@ -47,9 +50,9 @@ export type SeriesScreenCrowd = {
 };
 
 export type SeriesScreenPayload = {
-  slug: string;
   tz: string;
-  gym: { name: string; city: string | null };
+  /** The city the screen speaks for ("all of London"); null = no city named. */
+  city: string | null;
   season: SeriesScreenSeason | null;
   round: SeriesScreenRound | null;
   next_round: SeriesScreenRound | null;
@@ -62,10 +65,23 @@ export type SeriesScreenPayload = {
 /** Where the QR sends a phone: the Series page redirects to the app or the store. */
 export const SERIES_JOIN_URL = 'https://powr.life/series';
 
-/** The screen's URL — same slug and token as the wall and Gym Clash, a third screen. */
-export function seriesScreenUrl(slug: string, token: string, preview?: string | null, origin = 'https://powr.life'): string {
-  const base = `${origin.replace(/\/+$/, '')}/series/tv/${slug}?k=${token}`;
+/**
+ * The screen's URL. One segment on purpose, and not under /series/: vercel.json
+ * rewrites /series/<anything> to the invite-link preview (series-invite-og).
+ */
+export function seriesScreenUrl(key: string, preview?: string | null, origin = 'https://powr.life'): string {
+  const base = `${origin.replace(/\/+$/, '')}/series-tv?k=${key}`;
   return preview ? `${base}&preview=${preview}` : base;
+}
+
+/** system_config keys behind the screen. */
+export const SCREEN_CONFIG_KEYS = ['series_screen', 'series_screen_key', 'series_screen_city'] as const;
+
+/** A fresh, unguessable link key: 48 hex characters from the caller's random source. */
+export function newScreenKey(random: (bytes: Uint8Array) => void): string {
+  const bytes = new Uint8Array(24);
+  random(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export type SeriesPhase = 'before' | 'live' | 'after';
@@ -264,17 +280,15 @@ export function seriesNumber(n: number | null | undefined): string {
 }
 
 /**
- * Sample payload for ?preview=sample — obviously a sample (the gym is called
- * Sample Gym), the Autumn Series calendar as seeded, one prize named so the
- * chip states show.
+ * Sample payload for ?preview=sample: the Autumn Series calendar as seeded, one
+ * prize named so the chip states show, a sample crowd.
  */
 export function sampleSeriesScreen(nowMs: number): SeriesScreenPayload {
   const starts = Date.UTC(2026, 10, 15);
   const ends = Date.UTC(2026, 11, 1);
   return {
-    slug: 'sample',
     tz: 'Europe/London',
-    gym: { name: 'Sample Gym', city: 'London' },
+    city: 'London',
     season: { slug: 'autumn-26', name: 'Autumn Series', look: 'autumn', number: 1, code: 'AS26' },
     round: {
       slug: 'autumn-01',

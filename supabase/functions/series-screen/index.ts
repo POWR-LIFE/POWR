@@ -2,17 +2,19 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 /**
- * Public JSON feed for the Series screen on a gym's TV
- * (powr.life/series/tv/<slug>?k=<display_token>).
+ * Public JSON feed for the Series screen on a TV (powr.life/series-tv?k=<key>).
  *
- * Third sibling of gym-board and gym-league: the TV can't log in, so access
- * is the gym's display_token — the same row, the same credential, a third
- * screen. verify_jwt = false; the token is the whole auth story, so the
- * explicit fields below are the contract of what may reach a wall.
+ * ONE screen for every TV, not a gym's: nothing on it is per gym or per
+ * member. The TV can't log in, so access is a single key kept in
+ * system_config (series_screen_key), made and rotated from /admin/series →
+ * Screens; series_screen = 'off' pauses every TV at once, and
+ * series_screen_city names the city the copy speaks for. verify_jwt = false;
+ * the key is the whole auth story, so the explicit fields below are the
+ * contract of what may reach a wall.
  *
- * Nothing per member is served. The screen shows the season, the round's
- * dates, the prizes entered in /admin/series, and the size of the crowd on
- * the start line (the same sum the app shows) — never a name.
+ * The screen shows the season, the round's dates, the prizes entered in
+ * /admin/series, and the size of the crowd on the start line (the same sum
+ * the app shows) — never a name.
  */
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -74,24 +76,20 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "GET") return json(405, { error: "method_not_allowed" });
 
-  const url = new URL(req.url);
-  const slug = url.searchParams.get("slug")?.trim();
-  const token = url.searchParams.get("k")?.trim();
-  if (!slug || !token) return json(400, { error: "missing_params" });
+  const key = new URL(req.url).searchParams.get("k")?.trim();
+  if (!key) return json(400, { error: "missing_params" });
 
-  // `*` on the board row so the screen keeps answering while series_enabled
-  // is still rolling out; only the fields named below ever leave.
-  const { data: board } = await admin
-    .from("gym_boards")
-    .select("*, partners!inner(name, city, active)")
-    .eq("slug", slug)
-    .single();
+  const { data: cfgRows } = await admin
+    .from("system_config")
+    .select("key, value")
+    .in("key", ["series_screen", "series_screen_key", "series_screen_city"]);
+  const cfg = Object.fromEntries((cfgRows ?? []).map((r: { key: string; value: string }) => [r.key, r.value]));
 
-  // A bad token gets the same shape as a bad slug, a paused screen or an
-  // inactive partner — no probing which slugs are real.
-  const partner = board?.partners as { name: string; city: string | null; active: boolean } | null | undefined;
-  if (!board || board.series_enabled === false || !partner?.active) return json(404, { error: "not_found" });
-  if (board.display_token !== token) return json(404, { error: "not_found" });
+  // A wrong key, a paused screen and a screen nobody has made yet all get the
+  // same answer — no probing which is which.
+  if (!cfg.series_screen_key || cfg.series_screen === "off" || cfg.series_screen_key !== key) {
+    return json(404, { error: "not_found" });
+  }
 
   const nowMs = Date.now();
   const season = await currentSeason();
@@ -124,9 +122,8 @@ Deno.serve(async (req: Request) => {
   }
 
   return json(200, {
-    slug: board.slug,
-    tz: board.tz ?? "Europe/London",
-    gym: { name: partner.name, city: partner.city ?? null },
+    tz: "Europe/London",
+    city: cfg.series_screen_city?.trim() || null,
     season: season ? { slug: season.slug, name: season.name, look: season.look, number: season.number, code: season.code } : null,
     round: pub(round),
     next_round: pub(next),

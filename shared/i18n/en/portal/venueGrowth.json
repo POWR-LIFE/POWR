@@ -206,14 +206,6 @@
       "radiusSet": "Nearby: gyms within {{km}} km",
       "km": "{{km}} km"
     },
-    "series": {
-      "eyebrow": "Screen 3",
-      "title": "POWR Series",
-      "blurb": "The POWR Series on your floor: the countdown to the round, how it works, the seven prizes and a QR code to join. It plays on its own and follows the Series calendar.",
-      "paused": "Series screen paused",
-      "live": "Series screen live",
-      "note": "Nothing to set. The screen reads the season, the round dates and the prizes from POWR, so it changes by itself as a round opens, runs and ends."
-    },
     "tv": {
       "eyebrow": "Putting it on the TV",
       "steps": {
@@ -230,7 +222,7 @@
           "body": "It refreshes itself, changes scene, and starts a new week every Monday. Nothing to touch."
         }
       },
-      "linksNote": "All three links share one key, and a link can only show its screen. Keep them to your screens: anyone with a link can open it.",
+      "linksNote": "Both links share one key, and a link can only show its board. Keep them to your screens: anyone with a link can open it.",
       "linksNoteOwner": "If one has got out, make a new key: every TV on the old links goes blank until you open the new ones.",
       "rotateConfirm": "Change the screen link? Any TV showing the old link goes blank until you open the new one on it.",
       "rotated": "New link made — open it on your TVs"
