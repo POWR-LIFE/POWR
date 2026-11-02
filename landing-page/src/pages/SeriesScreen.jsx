@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import {
     buildUpWindow,
@@ -16,15 +16,15 @@ import {
 } from '../../../shared/seriesScreen.ts';
 
 /**
- * Series screen — powr.life/series/tv/<slug>?k=<display_token>.
+ * Series screen — powr.life/series-tv?k=<key>.
  *
- * The gym's third screen: the POWR Series as a reel for the gym floor. A
- * TV stage at 16:9 — scenes rotate on the left (join, how it works, the
+ * ONE screen for every TV, not a gym's: the POWR Series as a reel. A TV
+ * stage at 16:9 — scenes rotate on the left (join, how it works, the
  * seven prizes, Squad Builder, the board, the giveaway); a fixed rail on
  * the right carries the live countdown, the start-line crowd and the QR
- * code to join. Same credential as the wall (GymBoard.jsx) and Gym Clash
- * (GymLeague.jsx): the venue Screens page and the admin Big screen tab
- * hand out the link.
+ * code to join. The link, its pause switch and the city it names are run
+ * from /admin/series → Screens (system_config); one link serves every gym.
+ * (Not under /series/: vercel.json sends /series/<x> to the invite preview.)
  *
  * Everything it says comes from the series-screen feed (season, round
  * dates, prizes entered in /admin/series, the crowd), so it follows the
@@ -39,7 +39,6 @@ const SCENE_MS = 11_000;
 const FONT_HREF = 'https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,300..800&display=swap';
 
 export default function SeriesScreen() {
-    const { slug } = useParams();
     const [params] = useSearchParams();
     const token = params.get('k') ?? '';
     const preview = params.get('preview') === 'sample' ? 'sample' : null;
@@ -60,11 +59,11 @@ export default function SeriesScreen() {
 
     useEffect(() => {
         if (preview) { setData(sampleSeriesScreen(Date.now())); return undefined; }
-        if (!slug || !token) return undefined;
+        if (!token) return undefined;
         let alive = true;
         const tick = async () => {
             try {
-                const res = await fetch(`${FN_BASE}?slug=${encodeURIComponent(slug)}&k=${encodeURIComponent(token)}`);
+                const res = await fetch(`${FN_BASE}?k=${encodeURIComponent(token)}`);
                 if (!alive) return;
                 if (res.status === 404) { setInvalid(true); return; }
                 if (!res.ok) return;
@@ -75,7 +74,7 @@ export default function SeriesScreen() {
         tick();
         const id = setInterval(tick, POLL_MS);
         return () => { alive = false; clearInterval(id); };
-    }, [slug, token, preview]);
+    }, [token, preview]);
 
     useEffect(() => {
         const id = setInterval(() => setNow(Date.now()), 1000);
@@ -88,15 +87,15 @@ export default function SeriesScreen() {
         return () => { document.title = prev; };
     }, [data?.season]);
 
-    if (!token && !preview) return <Shell><CenterNote big="This link is missing its key" small="Open it from the Screens page of your gym portal, or the admin: that link carries the key" /></Shell>;
-    if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Make a new link from the Screens page of your gym portal, or ask the POWR team" /></Shell>;
+    if (!token && !preview) return <Shell><CenterNote big="This link is missing its key" small="Copy the link from the Screens tab on the Series page of the admin: it carries the key" /></Shell>;
+    if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Make a new link from the Screens tab on the Series page of the admin" /></Shell>;
     if (!data) return <Shell><CenterNote big="POWR" small="Connecting…" pulse /></Shell>;
 
     return (
         <Shell>
             <Stage data={data} now={now} />
             {preview && (
-                <div className="ss-badge">Preview — sample gym, the live Series calendar</div>
+                <div className="ss-badge">Preview — sample data</div>
             )}
         </Shell>
     );
@@ -106,11 +105,11 @@ export default function SeriesScreen() {
 
 function Stage({ data, now }) {
     const tz = data.tz || 'Europe/London';
-    const { season, round, next_round: next, prizes = [], gym, crowd } = data;
+    const { season, round, next_round: next, prizes = [], crowd } = data;
     const clock = useMemo(() => seriesClock(round, next, now, tz), [round, next, now, tz]);
     const digits = countdownDigits(clock.targetMs, now);
     const waiting = crowdAt(crowd, now);
-    const city = gym?.city || null;
+    const city = data.city || null;
     const month = round ? monthOf(round.starts_at, tz) : '';
     const buildUp = round ? buildUpWindow(round, tz) : '';
     const live = round ? roundWindow(round, tz) : '';
@@ -242,7 +241,6 @@ function Stage({ data, now }) {
                     <img src="/series-screen/p-mark.png" alt="POWR" />
                     <span className="sep" aria-hidden="true" />
                     <span className="season"><b>{season?.name ?? 'POWR Series'}</b>{season ? <>&nbsp;&nbsp;{seriesNumber(season.number)}</> : null}{city ? <>&nbsp;&nbsp;·&nbsp;&nbsp;{city}</> : null}</span>
-                    {gym?.name && <><span className="sep" aria-hidden="true" /><span className="host">{gym.name}</span></>}
                 </div>
             } />
 
@@ -462,7 +460,6 @@ body.ss-idle .ss{cursor:none}
 .ss .top .sep{width:1px; height:calc(var(--u)*2.4); background:var(--line); flex:none}
 .ss .top b{color:var(--champagne); font-weight:600}
 .ss .top .season{white-space:nowrap}
-.ss .top .host{color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .ss .frames{position:relative; flex:1; min-height:0; margin-top:calc(var(--u)*1.2)}
 .ss .scene{position:absolute; inset:0; display:flex; align-items:center; gap:calc(var(--u)*4); opacity:0; transform:translateY(calc(var(--u)*1)); transition:opacity .9s ease, transform .9s ease; pointer-events:none}
 .ss .scene.on{opacity:1; transform:none; pointer-events:auto}
@@ -604,8 +601,7 @@ body.ss-idle .ss .fs{opacity:0}
   .ss .stage{grid-template-columns:minmax(0,1fr); height:auto; min-height:100%}
   .ss .scenes{min-height:calc(var(--u)*110)}
   .ss .top{flex-wrap:wrap; row-gap:calc(var(--u)*.8)}
-  .ss .top .host{flex-basis:100%; margin-left:calc(var(--u)*5)}
-  .ss .scene{flex-direction:column; align-items:flex-start; justify-content:center}
+    .ss .scene{flex-direction:column; align-items:flex-start; justify-content:center}
   .ss .shot{height:calc(var(--u)*46)}
   .ss .rail{border-left:0; border-top:1px solid var(--line); margin-right:0; flex-direction:row; flex-wrap:wrap; align-items:flex-end}
   .ss .prizes{grid-template-columns:repeat(2,minmax(0,1fr))}

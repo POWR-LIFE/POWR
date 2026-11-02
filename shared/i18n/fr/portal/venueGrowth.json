@@ -206,14 +206,6 @@
       "radiusSet": "À proximité : salles à moins de {{km}} km",
       "km": "{{km}} km"
     },
-    "series": {
-      "eyebrow": "Écran 3",
-      "title": "POWR Series",
-      "blurb": "La POWR Series sur votre plateau : le compte à rebours de la manche, le fonctionnement, les sept prix et un QR code pour participer. Il tourne tout seul et suit le calendrier de la Series.",
-      "paused": "Écran Series en pause",
-      "live": "Écran Series en direct",
-      "note": "Rien à régler. L’écran lit la saison, les dates de la manche et les prix depuis POWR : il change de lui-même quand une manche ouvre, se joue et se termine."
-    },
     "tv": {
       "eyebrow": "Installation sur la TV",
       "steps": {
@@ -230,7 +222,7 @@
           "body": "Il s’actualise, change de scène et démarre une nouvelle semaine chaque lundi. Rien à faire."
         }
       },
-      "linksNote": "Les trois liens partagent une même clé, et chaque lien n’affiche que son écran. Réservez-les à vos écrans : toute personne qui a un lien peut l’ouvrir.",
+      "linksNote": "Les deux liens partagent une même clé, et chaque lien n’affiche que son écran. Réservez-les à vos écrans : toute personne qui a un lien peut l’ouvrir.",
       "linksNoteOwner": "Si l’un d’eux a circulé, créez une nouvelle clé : toutes les TV sur les anciens liens s’éteignent jusqu’à ce que vous ouvriez les nouveaux.",
       "rotateConfirm": "Changer le lien des écrans ? Toute TV affichant l’ancien lien s’éteint jusqu’à ce que vous y ouvriez le nouveau.",
       "rotated": "Nouveau lien créé — ouvrez-le sur vos TV"

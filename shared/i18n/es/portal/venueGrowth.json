@@ -206,14 +206,6 @@
       "radiusSet": "Cerca: gimnasios a menos de {{km}} km",
       "km": "{{km}} km"
     },
-    "series": {
-      "eyebrow": "Pantalla 3",
-      "title": "POWR Series",
-      "blurb": "La POWR Series en tu sala: la cuenta atrás de la ronda, cómo funciona, los siete premios y un código QR para apuntarse. Se reproduce sola y sigue el calendario de la Series.",
-      "paused": "Pantalla Series en pausa",
-      "live": "Pantalla Series en directo",
-      "note": "Nada que configurar. La pantalla lee la temporada, las fechas de la ronda y los premios de POWR, así que cambia sola cuando una ronda abre, se juega y termina."
-    },
     "tv": {
       "eyebrow": "Ponerlo en el televisor",
       "steps": {
@@ -230,7 +222,7 @@
           "body": "Se actualiza sola, cambia de escena y empieza una semana nueva cada lunes. No hay que tocar nada."
         }
       },
-      "linksNote": "Los tres enlaces comparten una clave, y cada enlace solo muestra su pantalla. Úselos solo en sus pantallas: cualquiera que tenga un enlace puede abrirlo.",
+      "linksNote": "Los dos enlaces comparten una clave, y cada enlace solo muestra su pantalla. Úselos solo en sus pantallas: cualquiera que tenga un enlace puede abrirlo.",
       "linksNoteOwner": "Si alguno se ha filtrado, cree una clave nueva: todos los televisores con los enlaces antiguos se quedan en negro hasta que abra los nuevos.",
       "rotateConfirm": "¿Cambiar el enlace de las pantallas? Cualquier televisor con el enlace antiguo se queda en negro hasta que abra en él el nuevo.",
       "rotated": "Nuevo enlace creado: ábralo en sus televisores"

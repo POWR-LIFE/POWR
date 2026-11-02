@@ -650,10 +650,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.series-screen]
-# Public JSON feed for the Series screen on a gym's TV (powr.life/series/tv/<slug>).
-# Same credential as gym-board and gym-league: the gym's display_token (?k=),
-# checked in the function. Season, round dates, prizes and the start-line
-# crowd size — nothing per member.
+# Public JSON feed for the Series screen on a TV (powr.life/series-tv). One screen
+# for every TV: access is a single key in system_config (series_screen_key, ?k=),
+# checked in the function and run from /admin/series -> Screens. Season, round
+# dates, prizes and the start-line crowd size — nothing per gym or per member.
 verify_jwt = false
 
 [functions.manage-gym-staff]

@@ -8,15 +8,14 @@ import {
     Trophy, Rocket, CalendarDays, Gift, ListOrdered, MapPin, Bot, Medal, Plus, Save, Trash2, Search, X, Check,
     RefreshCw, AlertTriangle, ShieldCheck, UserX, UserCheck, Megaphone, ImagePlus, LoaderCircle, ChevronLeft,
     ChevronRight, Shuffle, Eye, EyeOff, Bell, ExternalLink, Ticket, Crown, Zap, Timer, Flame, Flag, Lock,
-    TrendingUp, Sprout, Users, Copy, Pause, Play, Tv,
+    TrendingUp, Sprout, Users, Copy, Pause, Play, Tv, KeyRound,
 } from 'lucide-react';
-import { gymSlug } from '../../../../shared/gymBoard.ts';
-import { seriesScreenUrl } from '../../../../shared/seriesScreen.ts';
+import { newScreenKey, seriesScreenUrl } from '../../../../shared/seriesScreen.ts';
 
 /*
  * The Series, run from here, season by season: the launch switch, seasons and
  * their monthly rounds, prizes, the board (with pacers marked), cities, pacers,
- * the results, and the Series screen links for gym TVs.
+ * the results, and the Series screen for TVs (one link for every TV).
  *
  * Server side: supabase/migrations/20261020150000_autumn_series.sql,
  * 20261022120000_series_pacers_and_cities.sql, 20261022150000_series_admin.sql.
@@ -33,6 +32,7 @@ const logAction = async (adminId, action, targetType, targetId, metadata = {}) =
 };
 
 const ACCENT = '#E8D200';
+const SCREEN_KEYS = ['series_screen', 'series_screen_key', 'series_screen_city'];
 const TABS = [
     { key: 'overview', label: 'Overview', icon: Rocket },
     { key: 'rounds', label: 'Seasons', icon: CalendarDays },
@@ -1822,133 +1822,128 @@ function ResultsTab({ round }) {
 // ── Screens ──────────────────────────────────────────────────────────────────
 
 /**
- * The Series on gym TVs: one link per gym, sent from here. It rides the gym's
- * existing screen row (gym_boards: slug + display_token, the wall's and Gym
- * Clash's credential) as a third screen, powr.life/series/tv/<slug>?k=<token>.
- * Pausing here blanks the Series screen only. A gym with no screens yet gets
- * its row from the search below (the slug is made from its name; a custom
- * one is set on the gym's Big screen tab).
+ * The Series on a TV: ONE screen for every TV, one link. It is not a gym's
+ * screen (nothing on it is per gym or per member), so it has no gym row: its
+ * key, its on/off switch and the city it names live in system_config
+ * (series_screen_key, series_screen, series_screen_city), created here on
+ * first use. powr.life/series-tv?k=<key>. Send the one link to any gym that
+ * wants it on a TV; a new key kills every copy of the old link at once.
  */
 function ScreensTab() {
     const toast = useToast();
     const { user } = useAuth();
-    const [boards, setBoards] = useState(null);
-    const [q, setQ] = useState('');
-    const [hits, setHits] = useState([]);
-    const [busy, setBusy] = useState(null);
+    const [cfg, setCfg] = useState(null);
+    const [city, setCity] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [confirmKey, setConfirmKey] = useState(false);
     // Open/Preview use this admin's own host so they work from localhost and
     // branch previews; the copied link is canonical (powr.life).
     const here = typeof window !== 'undefined' ? window.location.origin : 'https://powr.life';
 
     const load = useCallback(async () => {
-        const { data, error } = await supabase.from('gym_boards')
-            .select('partner_id, slug, display_token, series_enabled, created_at, partners!inner(name, city, active)')
-            .order('created_at');
-        if (error) { toast.error(error.message); setBoards([]); return; }
-        setBoards(data ?? []);
+        const { data, error } = await supabase.from('system_config').select('key, value').in('key', SCREEN_KEYS);
+        if (error) { toast.error(error.message); setCfg({}); return; }
+        const map = Object.fromEntries((data ?? []).map(r => [r.key, r.value]));
+        setCfg(map);
+        setCity(map.series_screen_city ?? 'London');
     }, [toast]);
     useEffect(() => { load(); }, [load]);
 
-    useEffect(() => {
-        if (q.trim().length < 2) { setHits([]); return undefined; }
-        const t = setTimeout(async () => {
-            const { data } = await supabase.from('partners').select('id, name, city')
-                .eq('category', 'gym').eq('active', true)
-                .ilike('name', `%${q.trim().replace(/[%,()]/g, ' ')}%`).order('name').limit(8);
-            const have = new Set((boards ?? []).map(b => b.partner_id));
-            setHits((data ?? []).filter(p => !have.has(p.id)));
-        }, 250);
-        return () => clearTimeout(t);
-    }, [q, boards]);
+    const write = async (rows, action, meta) => {
+        setBusy(true);
+        const stamp = { updated_at: new Date().toISOString(), updated_by: user.id };
+        const { error } = await supabase.from('system_config').upsert(rows.map(r => ({ ...r, ...stamp })), { onConflict: 'key' });
+        setBusy(false);
+        if (error) { toast.error(rpcError(error)); return false; }
+        await logAction(user.id, action, 'system_config', 'series_screen', meta);
+        await load();
+        return true;
+    };
 
-    const add = async (p) => {
-        const slug = gymSlug(p.name);
-        if (slug.length < 2) { toast.error('That name makes no link'); return; }
-        setBusy(p.id);
-        const { error } = await supabase.from('gym_boards').insert({ partner_id: p.id, slug, created_by: user?.id ?? null });
-        setBusy(null);
-        if (error) {
-            toast.error(error.code === '23505' ? `The link name “${slug}” is taken: switch this gym on from its Big screen tab with another name` : rpcError(error));
-            return;
+    const make = async () => {
+        if (await write([
+            { key: 'series_screen_key', value: newScreenKey(b => crypto.getRandomValues(b)), description: 'Key in the Series screen link (powr.life/series-tv?k=). Make a new one from Series → Screens to kill every old link.' },
+            { key: 'series_screen', value: 'on', description: 'The Series screen on TVs: on or off. Pauses every TV at once.' },
+            { key: 'series_screen_city', value: city.trim(), description: 'The city the Series screen speaks for ("all of London"). Blank names none.' },
+        ], 'series_screen_created', {})) toast.success('The Series screen link is made');
+    };
+    const setOn = async (on) => {
+        if (await write([{ key: 'series_screen', value: on ? 'on' : 'off' }], on ? 'series_screen_resumed' : 'series_screen_paused', {})) {
+            toast.success(on ? 'Series screen live on every TV' : 'Series screen paused on every TV');
         }
-        await logAction(user.id, 'gym_board_created', 'partner', p.id, { slug, from: 'series_screens' });
-        toast.success(`${p.name}: screens switched on`);
-        setQ(''); setHits([]);
-        load();
     };
-
-    const setPaused = async (b, paused) => {
-        setBusy(b.partner_id);
-        const { error } = await supabase.from('gym_boards').update({ series_enabled: !paused, updated_at: new Date().toISOString() }).eq('partner_id', b.partner_id);
-        setBusy(null);
-        if (error) { toast.error(rpcError(error)); return; }
-        await logAction(user.id, paused ? 'gym_series_screen_paused' : 'gym_series_screen_resumed', 'partner', b.partner_id, { slug: b.slug });
-        setBoards(bs => bs.map(x => (x.partner_id === b.partner_id ? { ...x, series_enabled: !paused } : x)));
-        toast.success(paused ? `${b.partners.name}: Series screen paused` : `${b.partners.name}: Series screen live`);
+    const saveCity = async () => {
+        if (await write([{ key: 'series_screen_city', value: city.trim() }], 'series_screen_city', { city: city.trim() })) toast.success(city.trim() ? `The screen now speaks for ${city.trim()}` : 'The screen names no city');
     };
-
+    const rotate = async () => {
+        setConfirmKey(false);
+        if (await write([{ key: 'series_screen_key', value: newScreenKey(b => crypto.getRandomValues(b)) }], 'series_screen_key_rotated', {})) toast.success('New link made: every TV on the old link goes blank until you open this one');
+    };
     const copy = async (text) => {
         try { await navigator.clipboard.writeText(text); toast.success('Link copied'); } catch { toast.error('Copy failed'); }
     };
 
-    if (!boards) return <Loading />;
-    const live = boards.filter(b => b.series_enabled !== false).length;
+    if (!cfg) return <Loading />;
+    const key = cfg.series_screen_key;
+    const on = cfg.series_screen !== 'off';
+    const link = key ? seriesScreenUrl(key) : null;
+
     return (
         <>
-            <Section title="The Series on gym TVs"
-                blurb="One link per gym, sent from here. The screen plays by itself: the countdown to the round, how it works, the seven prizes, Squad Builder and a QR code to join. It reads the season, the round dates and the prizes from this page, so it changes as a round opens, runs and ends. The key is the one the gym’s other two screens use; a new key on the gym’s Big screen tab changes this link too."
-                right={<a className={btnQuiet} href={`${here}/series/tv/sample?preview=sample`} target="_blank" rel="noopener noreferrer"><Eye size={13} /> Preview as a sample gym</a>}>
-                {boards.length === 0 ? <Empty icon={Tv} text="No gym has screens yet: add one below" /> : (
-                    <div className={`${card} divide-y divide-[#F4F4F1]`}>
-                        {boards.map(b => {
-                            const on = b.series_enabled !== false;
-                            const url = seriesScreenUrl(b.slug, b.display_token);
-                            const open = seriesScreenUrl(b.slug, b.display_token, null, here);
-                            return (
-                                <div key={b.partner_id} className="flex items-center gap-4 px-6 py-4 flex-wrap">
-                                    <div className="flex-1 min-w-[12rem]">
-                                        <div className="text-[13.5px] font-semibold text-[#1A1A1A]">
-                                            {b.partners.name}
-                                            {!b.partners.active && <span className="ml-2 text-[9px] font-black tracking-[0.15em] text-[#AAAAAA]">INACTIVE</span>}
-                                        </div>
-                                        <div className="text-[11.5px] text-[#999999]">{b.partners.city || 'No city'} · <span className="font-mono">powr.life/series/tv/{b.slug}</span></div>
-                                    </div>
-                                    <Pill color={on ? '#10B981' : '#9CA3AF'}>{on ? 'Live' : 'Paused'}</Pill>
-                                    <div className="flex items-center gap-2">
-                                        <button className={btnGold} onClick={() => copy(url)}><Copy size={13} /> Copy link</button>
-                                        <a className={btnQuiet} href={open} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open</a>
-                                        {on
-                                            ? <button className={btnQuiet} disabled={busy === b.partner_id} onClick={() => setPaused(b, true)}><Pause size={13} /> Pause</button>
-                                            : <button className={btnQuiet} disabled={busy === b.partner_id} onClick={() => setPaused(b, false)}><Play size={13} /> Resume</button>}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        <div className="px-6 py-3 text-[11.5px] text-[#999999]">{live} of {boards.length} live. Open the link in the TV’s browser and press F11; it refreshes itself.</div>
+            <Section title="The Series on TVs"
+                blurb="One screen for every TV. It plays by itself: the countdown to the round, how it works, the seven prizes, Squad Builder and a QR code to join. It reads the season, the round dates and the prizes from this page, so it changes as a round opens, runs and ends. Nothing on it is per gym, so send the same link to any gym that wants it on a TV."
+                right={<a className={btnQuiet} href={`${here}/series-tv?preview=sample`} target="_blank" rel="noopener noreferrer"><Eye size={13} /> Preview with sample data</a>}>
+                {!key ? (
+                    <div className={`${card} p-10 text-center`}>
+                        <Tv size={34} className="mx-auto text-[#CCCCCC] mb-4" />
+                        <p className="text-[11px] uppercase tracking-[0.3em] text-[#888888] font-black mb-6">The screen link isn’t made yet</p>
+                        <div className="flex items-center justify-center gap-3 flex-wrap">
+                            <Field label="City it speaks for" hint="“One leaderboard for all of London.” Blank says “everyone”.">
+                                <input className={`${input} w-56 bg-white`} value={city} onChange={e => setCity(e.target.value)} placeholder="London" />
+                            </Field>
+                            <button className={btnGold} disabled={busy} onClick={make}><KeyRound size={13} /> Make the link</button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className={`${card} p-6 sm:p-8 space-y-7`}>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex items-center gap-3">
+                                <Pill color={on ? '#10B981' : '#9CA3AF'}>{on ? 'Live on every TV' : 'Paused on every TV'}</Pill>
+                                <span className="text-[11.5px] text-[#999999]">Refreshes itself every minute.</span>
+                            </div>
+                            {on
+                                ? <button className={btnQuiet} disabled={busy} onClick={() => setOn(false)}><Pause size={13} /> Pause</button>
+                                : <button className={btnGold} disabled={busy} onClick={() => setOn(true)}><Play size={13} /> Resume</button>}
+                        </div>
+
+                        <div>
+                            <div className="text-[9.5px] font-black uppercase tracking-[0.25em] text-[#999999] mb-2">The link</div>
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <code className="text-[12px] font-mono text-[#555555] bg-[#F4F4F1] border border-[#EAEAE5] rounded-lg px-3 py-2 select-all break-all">{link}</code>
+                                <button className={btnGold} onClick={() => copy(link)}><Copy size={13} /> Copy link</button>
+                                <a className={btnQuiet} href={seriesScreenUrl(key, null, here)} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open</a>
+                            </div>
+                            <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">Open it in the TV’s browser and press F11. Anyone with the link can open it; if it gets out, make a new one.</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-end border-t border-[#F0F0EC] pt-6 max-w-xl">
+                            <Field label="City it speaks for" hint="“One leaderboard for all of London.” Blank says “everyone”.">
+                                <input className={`${input} bg-white`} value={city} onChange={e => setCity(e.target.value)} placeholder="London"
+                                    onKeyDown={e => { if (e.key === 'Enter' && city.trim() !== (cfg.series_screen_city ?? '').trim()) saveCity(); }} />
+                            </Field>
+                            <button className={btnQuiet} disabled={busy || city.trim() === (cfg.series_screen_city ?? '').trim()} onClick={saveCity}><Save size={13} /> Save</button>
+                        </div>
+
+                        <div className="border-t border-[#F0F0EC] pt-6">
+                            <button className={btnDanger} disabled={busy} onClick={() => setConfirmKey(true)}><RefreshCw size={13} /> Make a new link</button>
+                        </div>
                     </div>
                 )}
             </Section>
 
-            <Section title="Add a gym" blurb="A gym that has no screens yet. Switching it on makes its link (and its wall and Gym Clash links on the same key).">
-                <div className="relative max-w-md">
-                    <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#AAAAAA]" />
-                    <input className={`${input} w-full pl-11 h-11 bg-white`} value={q} onChange={e => setQ(e.target.value)} placeholder="Search gyms by name" />
-                </div>
-                {hits.length > 0 && (
-                    <div className={`${card} divide-y divide-[#F4F4F1] mt-3 max-w-md`}>
-                        {hits.map(p => (
-                            <div key={p.id} className="flex items-center gap-3 px-5 py-3">
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-[13px] font-semibold text-[#1A1A1A] truncate">{p.name}</div>
-                                    <div className="text-[11px] text-[#999999]">{p.city || 'No city'} · powr.life/series/tv/{gymSlug(p.name)}</div>
-                                </div>
-                                <button className={btnGold} disabled={busy === p.id} onClick={() => add(p)}><Tv size={13} /> Switch on</button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-                {q.trim().length >= 2 && hits.length === 0 && <p className="text-[11.5px] text-[#999999] mt-3">No active gym by that name without screens.</p>}
-            </Section>
+            <Confirm open={confirmKey} danger title="Make a new link?"
+                body="Every TV on the old link goes blank until you open the new one on it."
+                confirmLabel="Make a new link" onCancel={() => setConfirmKey(false)} onConfirm={rotate} />
         </>
     );
 }
