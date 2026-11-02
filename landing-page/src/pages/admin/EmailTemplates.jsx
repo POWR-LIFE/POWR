@@ -395,6 +395,9 @@ export default function EmailTemplates() {
     };
     const resume = (sendId) => runSend(callEmail({ action: 'resume', send_id: sendId }));
 
+    const testBlocker = !draft?.subject?.trim() ? 'Add a subject to send a test'
+        : !draft?.html?.trim() ? 'Add some HTML to send a test'
+        : null;
     const canSend = Boolean(draft?.id) && !dirty && draft?.subject?.trim() && draft?.html?.trim() && audienceCount > 0 && !sending;
     const sendBlocker = !draft?.id || dirty ? 'Save the template first'
         : !draft?.subject?.trim() ? 'Add a subject'
@@ -620,13 +623,13 @@ export default function EmailTemplates() {
                         <input value={testTo} onChange={(e) => setTestTo(e.target.value)} className="w-64 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-3 py-1.5 text-sm text-[#111] focus:outline-none focus:border-[#E8D200]" placeholder="an admin's email" />
                         <button
                             onClick={sendTest}
-                            disabled={testing || !draft.subject.trim() || !draft.html.trim()}
+                            disabled={testing || Boolean(testBlocker)}
                             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E6E6E1] bg-white text-sm font-medium text-[#333] hover:border-[#CFCFCF] disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                             {testing ? 'Sending…' : 'Send test'}
                         </button>
-                        <span className="text-[11px] text-[#AAA]">Admin inboxes only. Uses your own merge data, subject prefixed [TEST].</span>
+                        <span className={`text-[11px] ${testBlocker ? 'text-[#8a7600] font-medium' : 'text-[#AAA]'}`}>{testBlocker ?? 'Admin inboxes only. Uses your own merge data, subject prefixed [TEST].'}</span>
                     </div>
                 </section>
 
