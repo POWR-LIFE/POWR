@@ -89,19 +89,59 @@ export function applyMerge(source: string, vars: MergeVars, mode: "html" | "text
 }
 
 /**
- * Remove every <script> element. Runs until nothing changes, so a block hidden
- * inside another one's removal ("<scr<script></script>ipt>") cannot survive a
- * single pass. An opener with no closer is dropped to the end of the document.
+ * Remove every <script> element. No regular expression touches the markup:
+ * a scanner finds each "<script" opener (a real tag start is followed by
+ * whitespace, ">" or "/") and its "</script" closer, which browsers accept
+ * with anything before the ">" ("</script foo>", "</script\t\n>"). Runs
+ * until nothing changes, so a block hidden inside another one's removal
+ * ("<scr<script></script>ipt>") cannot survive a single pass. An opener with
+ * no closer is dropped to the end of the document.
  */
 export function stripScripts(html: string): string {
   let out = html;
   for (let i = 0; i < 20; i++) {
-    const next = out.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
+    const next = stripScriptsOnce(out);
     if (next === out) break;
     out = next;
   }
-  // Whatever opener is left has no closer: drop it and everything after it.
-  return out.replace(/<script\b[\s\S]*$/i, "");
+  return out;
+}
+
+const SCRIPT_OPEN = "<script";
+const SCRIPT_CLOSE = "</script";
+
+function stripScriptsOnce(html: string): string {
+  let out = "";
+  let pos = 0;
+  while (pos < html.length) {
+    const open = indexOfTag(html, SCRIPT_OPEN, pos);
+    if (open === -1) {
+      out += html.slice(pos);
+      break;
+    }
+    out += html.slice(pos, open);
+    const close = indexOfTag(html, SCRIPT_CLOSE, open + SCRIPT_OPEN.length);
+    if (close === -1) return out;
+    const gt = html.indexOf(">", close + SCRIPT_CLOSE.length);
+    if (gt === -1) return out;
+    pos = gt + 1;
+  }
+  return out;
+}
+
+/** Index of `tag` ("<script" / "</script", lower case) at or after `from`, ignoring case; -1 when absent. */
+function indexOfTag(html: string, tag: string, from: number): number {
+  let at = html.indexOf("<", from);
+  while (at !== -1) {
+    if (html.slice(at, at + tag.length).toLowerCase() === tag && endsTagName(html[at + tag.length])) return at;
+    at = html.indexOf("<", at + 1);
+  }
+  return -1;
+}
+
+/** The character after "<script" that makes it a tag rather than a longer word ("<scripts>"). */
+function endsTagName(ch: string | undefined): boolean {
+  return ch === undefined || ch === ">" || ch === "/" || ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\f";
 }
 
 export interface AdminTemplate {

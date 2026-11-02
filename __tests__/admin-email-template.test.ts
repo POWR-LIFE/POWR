@@ -64,6 +64,15 @@ describe('stripScripts', () => {
     expect(stripScripts('<p>a</p><script>never closed')).toBe('<p>a</p>');
   });
 
+  test('accepts the closers browsers accept, and only real script tags', () => {
+    expect(stripScripts('<p>a</p><script>x</script\t\n bar><p>b</p>')).toBe('<p>a</p><p>b</p>');
+    expect(stripScripts('<p>a</p><script src=x></script/><p>b</p>')).toBe('<p>a</p><p>b</p>');
+    expect(stripScripts('<p>a</p><ScRiPt\n>x</SCRIPT\r\n><p>b</p>')).toBe('<p>a</p><p>b</p>');
+    expect(stripScripts('<p>a</p><script>x</scripts><p>b</p>')).toBe('<p>a</p>');
+    expect(stripScripts('<scripts>keep</scripts><p>a</p>')).toBe('<scripts>keep</scripts><p>a</p>');
+    expect(stripScripts('<p>a</p><script>b<script>c</script>d')).toBe('<p>a</p>d');
+  });
+
   test('leaves ordinary HTML alone', () => {
     const html = '<table><tr><td style="color:#fff">{{first_name}}</td></tr></table>';
     expect(stripScripts(html)).toBe(html);
