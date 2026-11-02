@@ -20,6 +20,9 @@ const isBool = (v) => { const s = String(v).trim().toLowerCase(); return s === '
 // Numeric keys that render as a clamped +/- stepper instead of a free-text box.
 // Keyed by config key → { step, min, max, unit }. Value is stored as a plain
 // integer string. A stepper flips + saves in a single tap (no edit/confirm step).
+// Rows another admin page owns; editing their raw value here would only break that page.
+const HIDDEN_KEYS = new Set(['email_test_inboxes']);   // Email page → "Tests can go to"
+
 const STEPPERS = {
     min_gym_dwell_minutes: { step: 5, min: 5, max: 60, unit: 'min' },
     // Upgrade tier threshold. Setting it at/below the dwell threshold is allowed
@@ -304,7 +307,7 @@ export default function SystemConfig() {
             if (rows.length) { out.push({ ...g, rows }); count += rows.length; }
         }
 
-        const leftovers = configs.filter(c => !claimed.has(c.key) && matches(c));
+        const leftovers = configs.filter(c => !claimed.has(c.key) && !HIDDEN_KEYS.has(c.key) && matches(c));
         if (leftovers.length) {
             out.push({ id: 'other', title: 'Other', icon: SlidersHorizontal, accent: '#9CA3AF', blurb: 'Uncategorised parameters.', rows: leftovers });
             count += leftovers.length;

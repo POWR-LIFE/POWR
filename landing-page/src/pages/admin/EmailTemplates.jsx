@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle, Check, Code2, Copy, FileText, FlaskConical, History, ImageUp, Loader2, Mail,
-    Monitor, Plus, RefreshCw, Save, Send, Smartphone, Trash2,
+    Monitor, Plus, RefreshCw, Save, Send, Smartphone, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../App';
 import { supabase } from '../../lib/supabase';
@@ -130,6 +130,22 @@ const templatePayload = (t) => ({
 
 const callEmail = (body) => invokeFn('admin-send-email', body);
 
+const card = 'rounded-2xl border border-[#E6E6E1] bg-white overflow-hidden';
+
+/** One header style for every card on the page: step chip, uppercase title, actions on the right. */
+function CardHeader({ step, icon: Icon, title, children }) {
+    return (
+        <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-[#F0F0EC] min-h-[52px]">
+            <div className="flex items-center gap-2.5 text-xs font-semibold text-[#888] uppercase tracking-wide shrink-0">
+                {step && <span className="w-5 h-5 rounded-full bg-[#111] text-[#E8D200] text-[10px] font-bold flex items-center justify-center tracking-normal">{step}</span>}
+                {Icon && <Icon size={14} className="text-[#999]" />}
+                {title}
+            </div>
+            {children && <div className="flex items-center gap-2 min-w-0">{children}</div>}
+        </div>
+    );
+}
+
 function StatusBadge({ status }) {
     const meta = STATUS[status] ?? STATUS.paused;
     return <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${meta.className}`}>{meta.label}</span>;
@@ -153,6 +169,9 @@ export default function EmailTemplates() {
 
     const [testTo, setTestTo] = useState('');
     const [testing, setTesting] = useState(false);
+    const [testInboxes, setTestInboxes] = useState({ admins: [], inboxes: [] });   // who a test may go to
+    const [newInbox, setNewInbox] = useState('');
+    const [inboxBusy, setInboxBusy] = useState(false);
     const [extracting, setExtracting] = useState(false);
 
     const [audience, setAudience] = useState({ mode: 'all' });
@@ -193,7 +212,16 @@ export default function EmailTemplates() {
         setHistory(data ?? []);
     }, []);
 
-    useEffect(() => { loadTemplates(); loadHistory(); }, [loadTemplates, loadHistory]);
+    const loadTestInboxes = useCallback(async () => {
+        try {
+            const r = await callEmail({ action: 'test_inboxes' });
+            setTestInboxes({ admins: r.admins ?? [], inboxes: r.inboxes ?? [] });
+        } catch {
+            // The list is a convenience; the server still decides who a test may go to.
+        }
+    }, []);
+
+    useEffect(() => { loadTemplates(); loadHistory(); loadTestInboxes(); }, [loadTemplates, loadHistory, loadTestInboxes]);
 
     useEffect(() => {
         if (!openSend) { setFailures([]); return; }
@@ -353,6 +381,27 @@ export default function EmailTemplates() {
         }
     };
 
+    const changeInbox = async (action, email) => {
+        const clean = email.trim().toLowerCase();
+        if (!clean) return;
+        setInboxBusy(true);
+        try {
+            const r = await callEmail({ action, email: clean });
+            setTestInboxes((s) => ({ ...s, inboxes: r.inboxes ?? [] }));
+            if (action === 'test_inbox_add') {
+                setNewInbox('');
+                setTestTo(clean);
+                toast.success(`${clean} can receive tests`);
+            } else {
+                toast.success(`${clean} removed`);
+            }
+        } catch (e) {
+            toast.error(e.message || 'Could not update the test inboxes');
+        } finally {
+            setInboxBusy(false);
+        }
+    };
+
     const onAudienceChange = useCallback(({ audience, count }) => {
         setAudience(audience);
         setAudienceCount(count);
@@ -395,6 +444,9 @@ export default function EmailTemplates() {
     };
     const resume = (sendId) => runSend(callEmail({ action: 'resume', send_id: sendId }));
 
+    const testBlocker = !draft?.subject?.trim() ? 'Add a subject to send a test'
+        : !draft?.html?.trim() ? 'Add some HTML to send a test'
+        : null;
     const canSend = Boolean(draft?.id) && !dirty && draft?.subject?.trim() && draft?.html?.trim() && audienceCount > 0 && !sending;
     const sendBlocker = !draft?.id || dirty ? 'Save the template first'
         : !draft?.subject?.trim() ? 'Add a subject'
@@ -406,6 +458,7 @@ export default function EmailTemplates() {
     const embedded = useMemo(() => embeddedImages(draft?.html ?? ''), [draft?.html]);
     const renderedKB = preview?.size_bytes ? formatKB(preview.size_bytes) : null;
     const overClip = (preview?.size_bytes ?? 0) > GMAIL_CLIP_BYTES;
+    const shownWarnings = embedded.count > 0 ? warnings.filter((w) => !/base64/i.test(w)) : warnings;
     const editorValue = tab === 'text' ? (draft?.text ?? '') : (draft?.html ?? '');
     const editorField = tab === 'text' ? 'text' : 'html';
     const sortedTemplates = useMemo(() => templates ?? [], [templates]);
@@ -435,112 +488,165 @@ export default function EmailTemplates() {
     }
 
     return (
-        <div className="max-w-[1440px] mx-auto px-4 py-6">
-            <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-3">
-                    <Mail size={22} className="text-[#E8D200]" />
-                    <h1 className="text-xl font-bold text-[#111]">Email</h1>
+        <div className="max-w-[1520px] mx-auto px-4 py-6">
+            <div className="flex items-start justify-between gap-4 mb-5">
+                <div className="min-w-0 max-w-3xl">
+                    <div className="flex items-center gap-3">
+                        <Mail size={22} className="text-[#E8D200]" />
+                        <h1 className="text-xl font-bold text-[#111]">Email</h1>
+                    </div>
+                    <p className="text-sm text-[#777] mt-1">
+                        Write it, check the preview, test it in an inbox, then choose who gets it.
+                        Sent through Mailgun as <span className="text-[#333]">POWR &lt;hello@powr.life&gt;</span>; anyone who turned Product news off is left out.
+                    </p>
                 </div>
-                <button onClick={startNew} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E6E6E1] bg-white text-sm font-medium text-[#333] hover:border-[#CFCFCF]">
+                <button onClick={startNew} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E6E6E1] bg-white text-sm font-medium text-[#333] hover:border-[#CFCFCF] shrink-0">
                     <Plus size={15} /> New template
                 </button>
             </div>
-            <p className="text-sm text-[#777] mb-6">
-                Write the HTML, check the preview, send yourself a test, then pick who gets it.
-                Goes out through Mailgun from <span className="text-[#333]">POWR &lt;hello@powr.life&gt;</span>.
-                People who turned Product news off in the app are never included.
-            </p>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[240px_minmax(0,1fr)_480px] gap-4 items-start">
-                {/* Templates */}
-                <aside className="rounded-2xl border border-[#E6E6E1] bg-white overflow-hidden">
-                    <div className="px-4 py-3 border-b border-[#F0F0EC] text-xs font-semibold text-[#888] uppercase tracking-wide">Templates</div>
-                    <div className="divide-y divide-[#F0F0EC] max-h-[70vh] overflow-y-auto">
-                        {draft && !draft.id && (
-                            <div className="px-4 py-3 bg-[#FFFBE6]">
-                                <div className="text-sm font-semibold text-[#111] truncate">{draft.name || 'Untitled email'}</div>
-                                <div className="text-[11px] text-[#B59B00]">Unsaved</div>
-                            </div>
-                        )}
-                        {sortedTemplates.length === 0 && draft?.id === null && null}
-                        {sortedTemplates.map((t) => {
-                            const active = draft?.id === t.id;
-                            return (
-                                <button
-                                    key={t.id}
-                                    type="button"
-                                    onClick={() => chooseTemplate(t)}
-                                    className={`w-full text-left px-4 py-3 transition-colors ${active ? 'bg-[#F4F4F1]' : 'hover:bg-[#FAFAF8]'}`}
-                                >
-                                    <div className="text-sm font-semibold text-[#111] truncate">{t.name}</div>
-                                    <div className="text-xs text-[#888] truncate">{t.subject || 'No subject yet'}</div>
-                                    <div className="text-[11px] text-[#AAA] mt-0.5">
-                                        {t.last_sent_at ? `Sent ${timeAgo(t.last_sent_at)}` : `Edited ${timeAgo(t.updated_at)}`}
+            <div className="grid grid-cols-1 min-[1280px]:grid-cols-[minmax(0,1fr)_400px] min-[1560px]:grid-cols-[256px_minmax(0,1fr)_440px] gap-4 items-start">
+                {/* Rail: templates + what has gone out */}
+                <aside className="grid grid-cols-1 md:grid-cols-2 min-[1560px]:grid-cols-1 gap-4 items-start col-span-full min-[1560px]:col-span-1 min-[1560px]:sticky min-[1560px]:top-20">
+                    <section className={card}>
+                        <CardHeader icon={FileText} title={`Templates${sortedTemplates.length ? ` · ${sortedTemplates.length}` : ''}`} />
+                        <div className="divide-y divide-[#F0F0EC] max-h-[46vh] overflow-y-auto">
+                            {draft && !draft.id && (
+                                <div className="px-4 py-3 border-l-2 border-[#E8D200] bg-[#FFFBE6]">
+                                    <div className="text-sm font-semibold text-[#111] truncate">{draft.name || 'Untitled email'}</div>
+                                    <div className="text-[11px] text-[#B59B00]">Unsaved</div>
+                                </div>
+                            )}
+                            {sortedTemplates.map((t) => {
+                                const active = draft?.id === t.id;
+                                return (
+                                    <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() => chooseTemplate(t)}
+                                        className={`w-full text-left px-4 py-3 border-l-2 transition-colors ${active ? 'border-[#E8D200] bg-[#FFFDF0]' : 'border-transparent hover:bg-[#FAFAF8]'}`}
+                                    >
+                                        <div className="text-sm font-semibold text-[#111] truncate">{t.name}</div>
+                                        <div className="text-xs text-[#888] truncate">{t.subject || 'No subject yet'}</div>
+                                        <div className="text-[11px] text-[#AAA] mt-0.5">
+                                            {t.last_sent_at ? `Sent ${timeAgo(t.last_sent_at)}` : `Edited ${timeAgo(t.updated_at)}`}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                            {sortedTemplates.length === 0 && templates !== null && !(draft && !draft.id) && (
+                                <div className="px-4 py-6 text-sm text-[#AAA] text-center">No templates yet.</div>
+                            )}
+                        </div>
+                    </section>
+
+                    <section className={card}>
+                        <CardHeader icon={History} title="Recent sends" />
+                        <div className="divide-y divide-[#F0F0EC] max-h-[38vh] overflow-y-auto">
+                            {history.length === 0 && <div className="px-4 py-6 text-sm text-[#AAA] text-center">Nothing sent yet.</div>}
+                            {history.map((h) => {
+                                const resumable = h.status === 'paused' || (h.status === 'sending' && Date.now() - new Date(h.updated_at).getTime() > 2 * 60_000);
+                                const open = openSend === h.id;
+                                return (
+                                    <div key={h.id} className="px-4 py-3">
+                                        <button type="button" onClick={() => setOpenSend(open ? null : h.id)} className="w-full min-w-0 text-left">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-sm font-semibold text-[#111] truncate">{h.template_name}</span>
+                                                <StatusBadge status={h.status} />
+                                            </div>
+                                            <div className="text-xs text-[#888] truncate">{h.subject}</div>
+                                            <div className="flex items-center justify-between gap-2 text-[11px] mt-1">
+                                                <span className="text-[#B59B00] truncate">→ {audienceLabel(h.audience)}</span>
+                                                <span className="text-[#AAA] shrink-0">{h.sent_count}/{h.recipient_count} · {timeAgo(h.created_at)}</span>
+                                            </div>
+                                        </button>
+                                        {(h.failed_count > 0 || h.opted_out_count > 0 || resumable) && (
+                                            <div className="flex items-center justify-between gap-2 text-[11px] mt-1">
+                                                <span className="text-[#AAA]">
+                                                    {h.failed_count ? <span className="text-[#B91C1C]">{h.failed_count} failed</span> : null}
+                                                    {h.failed_count && h.opted_out_count ? ' · ' : ''}
+                                                    {h.opted_out_count ? `${h.opted_out_count} opted out` : ''}
+                                                </span>
+                                                {resumable && (
+                                                    <button onClick={() => resume(h.id)} disabled={sending} className="font-semibold text-[#8a7600] hover:underline disabled:opacity-40">Resume</button>
+                                                )}
+                                            </div>
+                                        )}
+                                        {open && h.failed_count > 0 && (
+                                            <div className="mt-2 rounded-lg bg-[#FEF2F2] px-3 py-2 text-xs text-[#991B1B] space-y-1">
+                                                {failures.length === 0 ? 'Loading…' : failures.map((f) => (
+                                                    <div key={f.email} className="flex gap-2"><span className="font-medium shrink-0">{f.email}</span><span className="text-[#B91C1C]/80 truncate">{f.error}</span></div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
-                                </button>
-                            );
-                        })}
-                        {sortedTemplates.length === 0 && templates !== null && (
-                            <div className="px-4 py-6 text-sm text-[#AAA] text-center">No templates yet.</div>
-                        )}
-                    </div>
+                                );
+                            })}
+                        </div>
+                    </section>
                 </aside>
 
-                {/* Editor */}
-                <section className="rounded-2xl border border-[#E6E6E1] bg-white p-5 space-y-4 min-w-0">
-                    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
-                        <div>
-                            <label className={labelClass}>Template name</label>
-                            <input value={draft.name} maxLength={120} onChange={(e) => update({ name: e.target.value })} className={fieldClass} placeholder="e.g. November Series launch" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button onClick={duplicate} title="Duplicate" className="p-2.5 rounded-xl border border-[#E6E6E1] text-[#666] hover:border-[#CFCFCF]"><Copy size={15} /></button>
-                            <button onClick={deleteTemplate} title="Delete" className="p-2.5 rounded-xl border border-[#E6E6E1] text-[#666] hover:border-[#F43F5E] hover:text-[#F43F5E]"><Trash2 size={15} /></button>
+                {/* Editor column: one card per step */}
+                <div className="space-y-4 min-w-0">
+                    {/* 01 Content */}
+                    <section className={card}>
+                        <CardHeader step="1" title="Content">
+                            <button onClick={duplicate} title="Duplicate" className="p-2 rounded-lg border border-[#E6E6E1] text-[#666] hover:border-[#CFCFCF]"><Copy size={14} /></button>
+                            <button onClick={deleteTemplate} title="Delete" className="p-2 rounded-lg border border-[#E6E6E1] text-[#666] hover:border-[#F43F5E] hover:text-[#F43F5E]"><Trash2 size={14} /></button>
                             <button
                                 onClick={() => saveDraft()}
                                 disabled={saving || !dirty}
-                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#111] text-white text-sm font-semibold hover:bg-[#333] disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#111] text-white text-xs font-semibold hover:bg-[#333] disabled:opacity-40 disabled:cursor-not-allowed"
                             >
-                                <Save size={15} />{saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+                                <Save size={13} />{saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
                             </button>
+                        </CardHeader>
+                        <div className="px-5 py-4 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className={labelClass}>Template name</label>
+                                    <input value={draft.name} maxLength={120} onChange={(e) => update({ name: e.target.value })} className={fieldClass} placeholder="e.g. November Series launch" />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Replies go to</label>
+                                    <input value={draft.reply_to} maxLength={320} onChange={(e) => update({ reply_to: e.target.value })} className={fieldClass} placeholder="support@powr.life" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className={labelClass}>Subject</label>
+                                <input value={draft.subject} maxLength={200} onChange={(e) => update({ subject: e.target.value })} className={fieldClass} placeholder="e.g. {{first_name}}, the Series starts Saturday" />
+                            </div>
+                            <div>
+                                <label className={labelClass}>Preheader <span className="normal-case font-normal text-[#AAA]">— the grey line after the subject in the inbox</span></label>
+                                <input value={draft.preheader} maxLength={300} onChange={(e) => update({ preheader: e.target.value })} className={fieldClass} placeholder="One line that makes them open it" />
+                            </div>
+                            <label className="flex items-center gap-3 cursor-pointer select-none rounded-xl border border-[#F0F0EC] bg-[#FAFAF8] px-4 py-3">
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={draft.use_shell !== false}
+                                    onClick={() => update({ use_shell: draft.use_shell === false })}
+                                    className={`relative w-10 h-6 shrink-0 rounded-full transition-colors ${draft.use_shell !== false ? 'bg-[#E8D200]' : 'bg-[#DDD]'}`}
+                                >
+                                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${draft.use_shell !== false ? 'left-[18px]' : 'left-0.5'}`} />
+                                </button>
+                                <span className="min-w-0">
+                                    <span className="block text-sm font-medium text-[#111]">POWR shell</span>
+                                    <span className="block text-xs text-[#999]">Logo header and footer with the unsubscribe link around your HTML. Off = your HTML is sent exactly as written.</span>
+                                </span>
+                            </label>
                         </div>
-                    </div>
+                    </section>
 
-                    <div>
-                        <label className={labelClass}>Subject</label>
-                        <input value={draft.subject} maxLength={200} onChange={(e) => update({ subject: e.target.value })} className={fieldClass} placeholder="e.g. {{first_name}}, the Series starts Saturday" />
-                    </div>
-                    <div>
-                        <label className={labelClass}>Preheader <span className="normal-case font-normal text-[#AAA]">— the grey line after the subject in the inbox</span></label>
-                        <input value={draft.preheader} maxLength={300} onChange={(e) => update({ preheader: e.target.value })} className={fieldClass} placeholder="One line that makes them open it" />
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-1">
-                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                            <button
-                                type="button"
-                                role="switch"
-                                aria-checked={draft.use_shell !== false}
-                                onClick={() => update({ use_shell: draft.use_shell === false })}
-                                className={`relative w-10 h-6 shrink-0 rounded-full transition-colors ${draft.use_shell !== false ? 'bg-[#E8D200]' : 'bg-[#DDD]'}`}
-                            >
-                                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${draft.use_shell !== false ? 'left-[18px]' : 'left-0.5'}`} />
-                            </button>
-                            <span className="text-sm text-[#333] whitespace-nowrap">POWR shell</span>
-                            <span className="text-xs text-[#999]">logo header + footer with the unsubscribe link; off = your HTML is sent exactly as written</span>
-                        </label>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-[#999]">Replies go to</span>
-                            <input value={draft.reply_to} maxLength={320} onChange={(e) => update({ reply_to: e.target.value })} className="w-52 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-3 py-1.5 text-sm text-[#111] focus:outline-none focus:border-[#E8D200]" />
-                        </div>
-                    </div>
-
-                    <div>
-                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                            <div className="flex gap-1 p-1 rounded-lg bg-[#F4F4F1] w-fit">
+                    {/* 02 HTML */}
+                    <section className={card}>
+                        <CardHeader step="2" title="Body">
+                            <div className="flex gap-1 p-1 rounded-lg bg-[#F4F4F1]">
                                 <Tab value="html" icon={Code2}>HTML</Tab>
                                 <Tab value="text" icon={FileText}>Plain text</Tab>
                             </div>
+                        </CardHeader>
+                        <div className="px-5 py-4 space-y-3">
                             <div className="flex flex-wrap items-center gap-1.5">
                                 <span className="text-[11px] text-[#999] mr-1">Insert</span>
                                 {MERGE_TAGS.map((m) => (
@@ -555,88 +661,155 @@ export default function EmailTemplates() {
                                     </button>
                                 ))}
                             </div>
-                        </div>
-                        {tab === 'text' && (
-                            <div className="flex items-center justify-between gap-3 mb-2 text-xs text-[#999]">
-                                <span>Sent alongside the HTML for clients that only show text. Blank = generated from the HTML when you save.</span>
-                                <button type="button" onClick={() => update({ text: htmlToText(draft.html) })} className="flex items-center gap-1 text-[#666] hover:text-[#111] shrink-0">
-                                    <RefreshCw size={12} /> Regenerate from HTML
-                                </button>
-                            </div>
-                        )}
-                        {embedded.count > 0 && (
-                            <div className="flex flex-wrap items-center justify-between gap-3 mb-2 rounded-xl border border-[#F3E4A3] bg-[#FFFBE6] px-4 py-3">
-                                <div className="flex items-start gap-2 text-xs text-[#7A6400]">
-                                    <ImageUp size={14} className="mt-0.5 shrink-0" />
-                                    <span>
-                                        <span className="font-semibold">{embedded.count} image{embedded.count === 1 ? '' : 's'} embedded as base64 ({formatKB(embedded.bytes)}).</span>{' '}
-                                        Gmail hides base64 images and the email would be clipped. Upload them to POWR storage and the HTML will link to them instead.
-                                    </span>
+                            {tab === 'text' && (
+                                <div className="flex items-center justify-between gap-3 text-xs text-[#999]">
+                                    <span>Sent alongside the HTML for clients that only show text. Blank = generated from the HTML when you save.</span>
+                                    <button type="button" onClick={() => update({ text: htmlToText(draft.html) })} className="flex items-center gap-1 text-[#666] hover:text-[#111] shrink-0">
+                                        <RefreshCw size={12} /> Regenerate from HTML
+                                    </button>
                                 </div>
+                            )}
+                            {embedded.count > 0 && (
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#F3E4A3] bg-[#FFFBE6] px-4 py-3">
+                                    <div className="flex items-start gap-2 text-xs text-[#7A6400]">
+                                        <ImageUp size={14} className="mt-0.5 shrink-0" />
+                                        <span>
+                                            <span className="font-semibold">{embedded.count} image{embedded.count === 1 ? '' : 's'} embedded as base64 ({formatKB(embedded.bytes)}).</span>{' '}
+                                            Gmail hides base64 images and clips the email. Upload them to POWR storage and the HTML links to them instead.
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={extractImages}
+                                        disabled={extracting}
+                                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#111] text-white text-xs font-semibold hover:bg-[#333] disabled:opacity-40 shrink-0"
+                                    >
+                                        {extracting ? <Loader2 size={13} className="animate-spin" /> : <ImageUp size={13} />}
+                                        {extracting ? 'Uploading…' : 'Upload images & link them'}
+                                    </button>
+                                </div>
+                            )}
+                            <textarea
+                                ref={editorRef}
+                                value={editorValue}
+                                onChange={(e) => update({ [editorField]: e.target.value })}
+                                onKeyDown={onEditorKeyDown}
+                                spellCheck={false}
+                                className="w-full min-h-[440px] rounded-xl border border-[#E6E6E1] bg-[#0F0F0F] text-[#E6E6E1] px-4 py-3 font-mono text-[12.5px] leading-relaxed resize-y focus:outline-none focus:border-[#E8D200]"
+                                placeholder={tab === 'text' ? 'Plain-text version…' : '<p>Your HTML…</p>'}
+                            />
+                            <div className="flex items-center justify-between gap-3 text-[11px] text-[#AAA]">
+                                <span>{tab === 'html' ? 'Inline styles travel best. Scripts are removed before sending.' : ''}</span>
+                                <span className="shrink-0">
+                                    {editorValue.length.toLocaleString()} chars
+                                    {tab === 'html' && renderedKB && (
+                                        <span className={overClip ? 'text-[#B45309] font-semibold' : ''}> · renders to {renderedKB}{overClip ? ' (Gmail clips over 102 KB)' : ''}</span>
+                                    )}
+                                </span>
+                            </div>
+                            {shownWarnings.length > 0 && (
+                                <div className="rounded-xl border border-[#F3E4A3] bg-[#FFFBE6] px-4 py-3 space-y-1">
+                                    {shownWarnings.map((w) => (
+                                        <div key={w} className="flex items-start gap-2 text-xs text-[#7A6400]">
+                                            <AlertTriangle size={13} className="mt-0.5 shrink-0" />{w}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+
+                    {/* 03 Test */}
+                    <section className={card}>
+                        <CardHeader step="3" title="Test">
+                            <span className="text-[11px] text-[#AAA] truncate">Your own merge data, subject prefixed [TEST]</span>
+                        </CardHeader>
+                        <div className="px-5 py-4 space-y-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <FlaskConical size={15} className="text-[#999]" />
+                                <input value={testTo} onChange={(e) => setTestTo(e.target.value)} list="email-test-inboxes" className="w-72 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-3 py-2 text-sm text-[#111] focus:outline-none focus:border-[#E8D200]" placeholder="an admin or a test inbox" />
+                                <datalist id="email-test-inboxes">
+                                    {[...testInboxes.admins, ...testInboxes.inboxes].map((e) => <option key={e} value={e} />)}
+                                </datalist>
                                 <button
-                                    type="button"
-                                    onClick={extractImages}
-                                    disabled={extracting}
-                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#111] text-white text-xs font-semibold hover:bg-[#333] disabled:opacity-40 shrink-0"
+                                    onClick={sendTest}
+                                    disabled={testing || Boolean(testBlocker)}
+                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#E6E6E1] bg-white text-sm font-medium text-[#333] hover:border-[#CFCFCF] disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
-                                    {extracting ? <Loader2 size={13} className="animate-spin" /> : <ImageUp size={13} />}
-                                    {extracting ? 'Uploading…' : 'Upload images & link them'}
+                                    {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                    {testing ? 'Sending…' : 'Send test'}
+                                </button>
+                                {testBlocker && <span className="text-[11px] font-medium text-[#8a7600]">{testBlocker}</span>}
+                            </div>
+                            {/* Who a test may go to: every admin, plus inboxes listed here (system_config.email_test_inboxes). */}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] text-[#999]">
+                                <span>Tests can go to</span>
+                                {testInboxes.admins.map((e) => (
+                                    <button key={e} type="button" onClick={() => setTestTo(e)} title="Use this inbox" className="rounded-full border border-[#E6E6E1] bg-[#FAFAF8] px-2 py-0.5 text-[#555] hover:border-[#CFCFCF]">
+                                        {e} <span className="text-[#BBB]">admin</span>
+                                    </button>
+                                ))}
+                                {testInboxes.inboxes.map((e) => (
+                                    <span key={e} className="flex items-center rounded-full border border-[#E6E6E1] bg-white text-[#555]">
+                                        <button type="button" onClick={() => setTestTo(e)} title="Use this inbox" className="pl-2 py-0.5 hover:text-[#111]">{e}</button>
+                                        <button type="button" onClick={() => changeInbox('test_inbox_remove', e)} disabled={inboxBusy} title={`Stop sending tests to ${e}`} className="px-1.5 py-0.5 text-[#BBB] hover:text-[#C0392B] disabled:opacity-40"><X size={11} /></button>
+                                    </span>
+                                ))}
+                                <form onSubmit={(e) => { e.preventDefault(); changeInbox('test_inbox_add', newInbox); }} className="flex items-center gap-1">
+                                    <input value={newInbox} onChange={(e) => setNewInbox(e.target.value)} type="email" placeholder="add a test inbox" className="w-44 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-2 py-1 text-[11px] text-[#111] focus:outline-none focus:border-[#E8D200]" />
+                                    <button type="submit" disabled={inboxBusy || !newInbox.trim()} className="flex items-center gap-1 rounded-lg border border-[#E6E6E1] bg-white px-2 py-1 text-[11px] font-medium text-[#333] hover:border-[#CFCFCF] disabled:opacity-40">
+                                        {inboxBusy ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}Add
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 04 Send */}
+                    <section className={card}>
+                        <CardHeader step="4" title="Send">
+                            <span className="text-[11px] text-[#AAA] truncate">{draft.name || 'this template'}</span>
+                        </CardHeader>
+                        <div className="px-5 py-4">
+                            <AudienceSelector onChange={onAudienceChange} counter={emailCounter} devices={false} noun={(n) => (n === 1 ? 'person' : 'people')} />
+                            {audienceStats && (audienceStats.opted_out > 0) && (
+                                <div className="text-xs text-[#999] mt-1 ml-6">
+                                    {audienceStats.opted_out} turned Product news off and won&apos;t get this.
+                                </div>
+                            )}
+
+                            {progress && (
+                                <div className="mt-4 rounded-xl bg-[#111] p-4 text-sm">
+                                    <div className="flex items-center justify-between text-white">
+                                        <span className="flex items-center gap-2">
+                                            {sending ? <Loader2 size={14} className="animate-spin text-[#E8D200]" /> : <Check size={14} className="text-[#E8D200]" />}
+                                            {sending ? 'Sending…' : progress.done ? 'Done' : 'Paused'}
+                                        </span>
+                                        <span className="text-[#BBB]">{progress.sent} sent · {progress.failed} failed · {progress.queued} to go</span>
+                                    </div>
+                                    <div className="h-1.5 rounded-full bg-[#2a2a2a] mt-3 overflow-hidden">
+                                        <div className="h-full bg-[#E8D200] transition-all" style={{ width: `${progress.recipients ? Math.round(((progress.sent + progress.failed) / progress.recipients) * 100) : 0}%` }} />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-between gap-3 mt-4 pt-4 border-t border-[#F0F0EC]">
+                                <span className={`text-xs ${sendBlocker ? 'text-[#8a7600] font-medium' : 'text-[#999]'}`}>{sendBlocker ?? `Sends "${draft.subject}" to ${audienceLabel(audience)}.`}</span>
+                                <button
+                                    onClick={() => setConfirm(true)}
+                                    disabled={!canSend}
+                                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#E8D200] text-[#080808] text-sm font-semibold hover:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                                >
+                                    <Send size={15} />{sending ? 'Sending…' : 'Send email'}
                                 </button>
                             </div>
-                        )}
-                        <textarea
-                            ref={editorRef}
-                            value={editorValue}
-                            onChange={(e) => update({ [editorField]: e.target.value })}
-                            onKeyDown={onEditorKeyDown}
-                            spellCheck={false}
-                            className="w-full min-h-[460px] rounded-xl border border-[#E6E6E1] bg-[#0F0F0F] text-[#E6E6E1] px-4 py-3 font-mono text-[12.5px] leading-relaxed resize-y focus:outline-none focus:border-[#E8D200]"
-                            placeholder={tab === 'text' ? 'Plain-text version…' : '<p>Your HTML…</p>'}
-                        />
-                        <div className="flex items-center justify-between text-[11px] text-[#AAA] mt-1">
-                            <span>{tab === 'html' ? 'Inline styles travel best. Scripts are removed before sending.' : ''}</span>
-                            <span>
-                                {editorValue.length.toLocaleString()} chars
-                                {tab === 'html' && renderedKB && (
-                                    <span className={overClip ? 'text-[#B45309] font-semibold' : ''}> · renders to {renderedKB}{overClip ? ' (Gmail clips over 102 KB)' : ''}</span>
-                                )}
-                            </span>
                         </div>
-                    </div>
+                    </section>
+                </div>
 
-                    {warnings.length > 0 && (
-                        <div className="rounded-xl border border-[#F3E4A3] bg-[#FFFBE6] px-4 py-3 space-y-1">
-                            {warnings.map((w) => (
-                                <div key={w} className="flex items-start gap-2 text-xs text-[#7A6400]">
-                                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />{w}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F0F0EC]">
-                        <FlaskConical size={15} className="text-[#999]" />
-                        <span className="text-xs text-[#999]">Send a test to</span>
-                        <input value={testTo} onChange={(e) => setTestTo(e.target.value)} className="w-64 rounded-lg border border-[#E6E6E1] bg-[#FAFAF8] px-3 py-1.5 text-sm text-[#111] focus:outline-none focus:border-[#E8D200]" placeholder="an admin's email" />
-                        <button
-                            onClick={sendTest}
-                            disabled={testing || !draft.subject.trim() || !draft.html.trim()}
-                            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E6E6E1] bg-white text-sm font-medium text-[#333] hover:border-[#CFCFCF] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                            {testing ? 'Sending…' : 'Send test'}
-                        </button>
-                        <span className="text-[11px] text-[#AAA]">Admin inboxes only. Uses your own merge data, subject prefixed [TEST].</span>
-                    </div>
-                </section>
-
-                {/* Preview */}
-                <section className="rounded-2xl border border-[#E6E6E1] bg-white overflow-hidden xl:sticky xl:top-4">
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#F0F0EC]">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-[#888] uppercase tracking-wide">
-                            Preview
-                            {rendering && <Loader2 size={12} className="animate-spin text-[#BBB]" />}
-                        </div>
+                {/* Preview: pinned while the editor scrolls */}
+                <section className={`${card} min-[1280px]:sticky min-[1280px]:top-20`}>
+                    <CardHeader icon={Monitor} title={<span className="flex items-center gap-2">Preview {rendering && <Loader2 size={12} className="animate-spin text-[#BBB]" />}</span>}>
                         <div className="flex gap-1 p-1 rounded-lg bg-[#F4F4F1]">
                             {[['desktop', Monitor], ['mobile', Smartphone]].map(([v, Icon]) => (
                                 <button
@@ -650,7 +823,7 @@ export default function EmailTemplates() {
                                 </button>
                             ))}
                         </div>
-                    </div>
+                    </CardHeader>
                     {/* Inbox row */}
                     <div className="px-4 py-3 border-b border-[#F0F0EC] bg-[#FAFAF8]">
                         <div className="flex items-center gap-2">
@@ -676,93 +849,9 @@ export default function EmailTemplates() {
                                 title="Email preview"
                                 sandbox=""
                                 srcDoc={preview?.html ?? '<p style="font-family:Arial;color:#999;padding:24px;">Rendering…</p>'}
-                                style={{ width: previewWidth === 'mobile' ? 375 : '100%', height: 760, border: 0, background: '#fff', borderRadius: 12, transition: 'width .2s' }}
+                                style={{ width: previewWidth === 'mobile' ? 375 : '100%', height: 'max(520px, calc(100vh - 300px))', border: 0, background: '#fff', borderRadius: 12, transition: 'width .2s' }}
                             />
                         )}
-                    </div>
-                </section>
-            </div>
-
-            {/* Send + history */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 items-start">
-                <section className="rounded-2xl border border-[#E6E6E1] bg-white p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                        <Send size={16} className="text-[#E8D200]" />
-                        <h2 className="text-sm font-semibold text-[#111]">Send <span className="font-normal text-[#999]">— {draft.name || 'this template'}</span></h2>
-                    </div>
-                    <AudienceSelector onChange={onAudienceChange} counter={emailCounter} devices={false} noun={(n) => (n === 1 ? 'person' : 'people')} />
-                    {audienceStats && (audienceStats.opted_out > 0) && (
-                        <div className="text-xs text-[#999] mt-1 ml-6">
-                            {audienceStats.opted_out} turned Product news off and won't get this.
-                        </div>
-                    )}
-
-                    {progress && (
-                        <div className="mt-4 rounded-xl bg-[#111] p-4 text-sm">
-                            <div className="flex items-center justify-between text-white">
-                                <span className="flex items-center gap-2">
-                                    {sending ? <Loader2 size={14} className="animate-spin text-[#E8D200]" /> : <Check size={14} className="text-[#E8D200]" />}
-                                    {sending ? 'Sending…' : progress.done ? 'Done' : 'Paused'}
-                                </span>
-                                <span className="text-[#BBB]">{progress.sent} sent · {progress.failed} failed · {progress.queued} to go</span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-[#2a2a2a] mt-3 overflow-hidden">
-                                <div className="h-full bg-[#E8D200] transition-all" style={{ width: `${progress.recipients ? Math.round(((progress.sent + progress.failed) / progress.recipients) * 100) : 0}%` }} />
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex items-center justify-between gap-3 mt-4 pt-4 border-t border-[#F0F0EC]">
-                        <span className="text-xs text-[#999]">{sendBlocker ?? `Sends "${draft.subject}" to ${audienceLabel(audience)}.`}</span>
-                        <button
-                            onClick={() => setConfirm(true)}
-                            disabled={!canSend}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#E8D200] text-[#080808] text-sm font-semibold hover:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                        >
-                            <Send size={15} />{sending ? 'Sending…' : 'Send email'}
-                        </button>
-                    </div>
-                </section>
-
-                <section className="rounded-2xl border border-[#E6E6E1] bg-white overflow-hidden">
-                    <div className="flex items-center gap-2 px-5 py-3.5 border-b border-[#F0F0EC]">
-                        <History size={16} className="text-[#999]" />
-                        <h2 className="text-sm font-semibold text-[#555]">Recent sends</h2>
-                    </div>
-                    <div className="divide-y divide-[#F0F0EC]">
-                        {history.length === 0 && <div className="px-5 py-6 text-sm text-[#AAA] text-center">Nothing sent yet.</div>}
-                        {history.map((h) => {
-                            const resumable = h.status === 'paused' || (h.status === 'sending' && Date.now() - new Date(h.updated_at).getTime() > 2 * 60_000);
-                            const open = openSend === h.id;
-                            return (
-                                <div key={h.id} className="px-5 py-3.5">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <button type="button" onClick={() => setOpenSend(open ? null : h.id)} className="min-w-0 text-left">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-semibold text-[#111] truncate">{h.template_name}</span>
-                                                <StatusBadge status={h.status} />
-                                            </div>
-                                            <div className="text-xs text-[#888] truncate">{h.subject}</div>
-                                            <div className="text-[11px] text-[#B59B00] mt-0.5">→ {audienceLabel(h.audience)}{h.opted_out_count ? <span className="text-[#AAA]"> · {h.opted_out_count} opted out</span> : null}</div>
-                                        </button>
-                                        <div className="text-right shrink-0">
-                                            <div className="text-xs text-[#666]">{h.sent_count}/{h.recipient_count} sent{h.failed_count ? <span className="text-[#B91C1C]"> · {h.failed_count} failed</span> : null}</div>
-                                            <div className="text-[11px] text-[#AAA]">{timeAgo(h.created_at)}</div>
-                                            {resumable && (
-                                                <button onClick={() => resume(h.id)} disabled={sending} className="mt-1 text-[11px] font-semibold text-[#8a7600] hover:underline disabled:opacity-40">Resume</button>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {open && h.failed_count > 0 && (
-                                        <div className="mt-2 rounded-lg bg-[#FEF2F2] px-3 py-2 text-xs text-[#991B1B] space-y-1">
-                                            {failures.length === 0 ? 'Loading…' : failures.map((f) => (
-                                                <div key={f.email} className="flex gap-2"><span className="font-medium shrink-0">{f.email}</span><span className="text-[#B91C1C]/80 truncate">{f.error}</span></div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
                     </div>
                 </section>
             </div>
@@ -775,9 +864,9 @@ export default function EmailTemplates() {
                             <h3 className="text-base font-bold text-[#111]">Send this email?</h3>
                         </div>
                         <p className="text-sm text-[#666] mb-5">
-                            Emails <span className="font-semibold text-[#111]">"{draft.subject}"</span> to{' '}
+                            Emails <span className="font-semibold text-[#111]">&ldquo;{draft.subject}&rdquo;</span> to{' '}
                             <span className="font-semibold text-[#111]">{audienceLabel(audience)}</span>
-                            {audienceCount != null && <> — {audienceCount} {audienceCount === 1 ? 'person' : 'people'}</>}. This can't be undone.
+                            {audienceCount != null && <> — {audienceCount} {audienceCount === 1 ? 'person' : 'people'}</>}. This can&apos;t be undone.
                         </p>
                         <div className="flex gap-2 justify-end">
                             <button onClick={() => setConfirm(false)} className="px-4 py-2 rounded-xl text-sm text-[#666] hover:bg-[#F4F4F1]">Cancel</button>
