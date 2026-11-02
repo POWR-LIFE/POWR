@@ -543,6 +543,10 @@ body.ss-idle .ss{cursor:none}
 .ss .rv{white-space:nowrap; margin-top:calc(var(--u)*.6); align-self:flex-start; font-size:calc(var(--u)*.95); font-weight:600; letter-spacing:.06em; color:var(--champagne); border:1px solid rgba(216,190,134,.45); border-radius:999px; padding:calc(var(--u)*.35) calc(var(--u)*.9)}
 .ss .rv.on{background:var(--champagne); color:var(--bg); border-color:var(--champagne)}
 .ss .prize.sb{border-color:var(--champagne)}
+/* Chips share one line: each card's chip sits on its bottom edge, however
+   long the line above it runs (the grid already makes the cards one height). */
+.ss .prize .how,.ss .place .pm{margin-bottom:calc(var(--u)*.4)}
+.ss .prize .rv,.ss .place .rv,.ss .sp .prize .rv,.ss .sp .place .rv{margin-top:auto}
 .ss .prizename{font-size:calc(var(--u)*3); font-weight:300; color:var(--champagne); letter-spacing:-.01em}
 .ss .sqdates{display:flex; gap:calc(var(--u)*3); border-top:1px solid var(--line); padding-top:calc(var(--u)*1.6); margin-top:calc(var(--u)*.6)}
 .ss .sqdates div{display:flex; flex-direction:column; gap:calc(var(--u)*.4)}
