@@ -16,7 +16,7 @@ import {
     seriesInviteLink,
     seriesInviteMessage,
     seriesInvitePath,
-    squadPrizeName,
+    squadPrize,
     startDay,
 } from '@/lib/seriesInvite';
 
@@ -94,19 +94,21 @@ test('link preview: POWR · the season; the round and its start, or that it is o
     );
 });
 
-describe('squadPrizeName — what the invite race note says the most friends wins', () => {
-    const row = (kind: string, name: string) => ({ kind, name });
+describe('squadPrize — what the Start Line and the invite race note say the most friends wins', () => {
+    const row = (kind: string, name: string, image_url: string | null = null) => ({ kind, name, image_url });
 
-    test('the Squad Builder prize by its name', () => {
-        expect(squadPrizeName([row('place', 'A Peloton'), row('patient_zero', 'A Theragun')])).toBe('A Theragun');
-        expect(squadPrizeName([row('patient_zero', '  Theragun Mini ')])).toBe('Theragun Mini');
+    test('the Squad Builder prize by its name and photo', () => {
+        expect(squadPrize([row('place', 'A Peloton'), row('patient_zero', 'Theragun Prime', 'https://x/y.png')]))
+            .toEqual({ name: 'Theragun Prime', imageUrl: 'https://x/y.png' });
+        expect(squadPrize([row('patient_zero', '  Theragun Mini ')])).toEqual({ name: 'Theragun Mini', imageUrl: null });
+        expect(squadPrize([{ kind: 'patient_zero', name: 'Theragun Mini' }])?.imageUrl).toBeNull();
     });
 
-    test('null until a real one is chosen, so the note keeps the prize title', () => {
-        expect(squadPrizeName([])).toBeNull();
-        expect(squadPrizeName([row('place', 'A Peloton')])).toBeNull();
-        expect(squadPrizeName([row('patient_zero', 'Prize to be announced')])).toBeNull();
-        expect(squadPrizeName([row('patient_zero', 'TBA')])).toBeNull();
-        expect(squadPrizeName([row('patient_zero', '  ')])).toBeNull();
+    test('null until a real one is chosen, so the screens keep the prize title', () => {
+        expect(squadPrize([])).toBeNull();
+        expect(squadPrize([row('place', 'A Peloton')])).toBeNull();
+        expect(squadPrize([row('patient_zero', 'Prize to be announced')])).toBeNull();
+        expect(squadPrize([row('patient_zero', 'TBA')])).toBeNull();
+        expect(squadPrize([row('patient_zero', '  ')])).toBeNull();
     });
 });

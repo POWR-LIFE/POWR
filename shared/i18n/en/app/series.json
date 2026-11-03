@@ -21,6 +21,8 @@
     "leads": "{{name}} leads ›",
     "inviteA11y": "Invite a friend",
     "invite": "INVITE A FRIEND",
+    "prizeEyebrow": "MOST FRIENDS BY THE GUN WINS",
+    "prizeA11y": "{{prize}}, for the most friends by the gun. Tap for the invite race",
     "fineRace": "Recruit. Get them moving. Win.",
     "fineBoard": "The board opens at midnight. Every verified session counts.",
     "city": "Pick the city you move for",
