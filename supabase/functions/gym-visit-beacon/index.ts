@@ -600,7 +600,7 @@ Deno.serve(async (req: Request) => {
       .from('gym_visits')
       .select('id, user_id, started_at, claimed_at, upgraded_at, last_proven_at, claimed_session_id')
       .is('ended_at', null)
-      .not('upgraded_at', 'is', null)
+      .not('claimed_at', 'is', null) // upgraded OR claimed-only: staleVisitVerdict applies just the 4h ceiling to the latter
       .limit(100);
     if (orphanErr) console.error('[gym-visit-beacon] stale-close scan failed', orphanErr);
 
