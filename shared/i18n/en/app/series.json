@@ -328,7 +328,7 @@
     "inviteRace": {
       "light": "The invite ",
       "bold": "race",
-      "note": "A friend counts once they join with your code and log a workout. Most friends by the gun is on course for Squad Builder."
+      "note": "A friend counts once they join with your code and log a workout. Most friends by the gun wins {{prize}}."
     },
     "citySheet": {
       "light": "Your ",
