@@ -94,6 +94,14 @@ export function staleVisitVerdict(visit: ReaperVisitRow, nowMs: number): ReaperV
   if (startedMs > 0 && nowMs - startedMs > MAX_OPEN_AFTER_UPGRADE_MS) {
     return { close: true, provenMs, closeReason: 'max_open_after_upgrade' };
   }
+  // Claimed but never upgraded: the upgrade stage may still be earning, so the
+  // silence rule must not apply — only the hard ceiling above. 2026-11-03 visit
+  // ece1034d (tokenless Android) sat open 12h because the scan skipped it.
+  // Reuses the 'max_open_after_upgrade' reason so history's reaper_closed
+  // predicate still matches it.
+  if (visit.claimed_at && !visit.upgraded_at) {
+    return { close: false, provenMs, closeReason: null };
+  }
   if (provenMs <= nowMs - STALE_SILENCE_MS) {
     return { close: true, provenMs, closeReason: 'stale_after_upgrade' };
   }

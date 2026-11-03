@@ -92,6 +92,27 @@ describe('staleVisitVerdict', () => {
   });
 
   describe('the ceiling silence-resetting cannot postpone', () => {
+    it('closes a claimed-but-never-upgraded visit only at the ceiling, not on silence', () => {
+      const young = NOW - 2 * 60 * MIN;
+      const quiet = staleVisitVerdict({
+        started_at: iso(young),
+        claimed_at: iso(young + 30 * MIN),
+        upgraded_at: null,
+        last_proven_at: iso(young),
+      }, NOW);
+      expect(quiet.close).toBe(false);
+
+      const old = NOW - (MAX_OPEN_AFTER_UPGRADE_MS + MIN);
+      const capped = staleVisitVerdict({
+        started_at: iso(old),
+        claimed_at: iso(old + 40 * MIN),
+        upgraded_at: null,
+        last_proven_at: iso(old),
+      }, NOW);
+      expect(capped.close).toBe(true);
+      expect(capped.closeReason).toBe('max_open_after_upgrade');
+    });
+
     it('closes a visit that has kept proving presence past the ceiling', () => {
       // A phone parked 20 m from the centroid proves presence honestly and
       // forever. Past the upgrade there is nothing left to earn, so it goes.
