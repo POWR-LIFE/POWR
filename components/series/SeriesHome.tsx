@@ -13,7 +13,7 @@ import { DropReveal } from '@/components/drop/DropReveal';
 import { trackTap } from '@/lib/analytics';
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import {
-    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, seriesDate, seriesHow, type SeriesInviteBoard, useSeriesBoard, useSeriesExtras, useSeriesInviteBoard,
+    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, seriesDate, seriesHow, type SeriesInviteBoard, useSeriesBoard, useSeriesExtras, useSeriesInviteBoard, useSquadPrize,
 } from '@/lib/api/series';
 import { fetchProfile, type Profile } from '@/lib/api/user';
 import { dropSim, todayTarget, useDropPrototype } from '@/lib/dev/dropPrototype';
@@ -44,7 +44,7 @@ import { NAMED, PrizeDetailSheet, type PrizeKey, PrizesSheet, prizeSetFrom, SAMP
 import { liveMomentCards, MomentStrip, sampleMomentCards, SERIES_BAR_H, SeriesCard } from './SeriesRound';
 import { hexA, LOCKUP_LINES, type LockupLine, SEASON_ORDER, SEASONS, seasonDev, useSeason, useSeasonCard } from './season';
 import { RulesSheet, ShareSheet, Sheet, SheetHead, YourFile } from './SeriesSheets';
-import { InviteBoardCard, InviteRaceNote } from './SeriesInvite';
+import { InviteBoardCard, InviteRaceNote, PrizeHero } from './SeriesInvite';
 import { SeriesInviteCard } from './SeriesInviteCard';
 import { type JoinRound, joinRoundOf, JoinRoundScreen, openSeriesJoin, roundDays } from './SeriesJoin';
 import { StartLine } from './StartLine';
@@ -194,6 +194,8 @@ export function SeriesHome({
     useEffect(() => { if (unavailable && live.loaded) onUnavailable?.(); }, [unavailable, live.loaded, onUnavailable]);
     const momentCards = v.live ? liveCards : sampleMomentCards(v.hero.day);
     const inviteBoard: SeriesInviteBoard | null = v.live || offRound ? (inviteLive?.open ? inviteLive : null) : sim.inviteBoard;
+    // What the invite race is for (the Start Line's row, the race sheet's photo and note): read once.
+    const squadPrize = useSquadPrize(inviteBoard?.round.slug);
     const prizeSet = useMemo(() => (v.live ? prizeSetFrom(extras.prizes) : SAMPLE_PRIZES), [v.live, extras.prizes]);
     const running = v.phase === 'running';
     // Before the first round: every game shows, and Overall says what's coming.
@@ -465,6 +467,7 @@ export function SeriesHome({
                     startsAt={Number.isFinite(startsAt) ? startsAt : Date.now()}
                     roundName={pre ? pre.name : v.round.name}
                     invite={inviteBoard}
+                    prize={squadPrize}
                     days={pre ? roundDays(pre).days : v.round.days}
                     need={pre ? pre.need : v.hero.need}
                     shift={crowdShift}
@@ -490,8 +493,9 @@ export function SeriesHome({
                 )}
                 <Sheet visible={sheet === 'race'} onClose={() => setSheet(null)}>
                     <SheetHead light={t('series:league.inviteRace.light')} bold={t('series:league.inviteRace.bold')} onClose={() => setSheet(null)} />
+                    {squadPrize && <PrizeHero prize={squadPrize} />}
                     {inviteBoard && <View style={{ marginHorizontal: -16 }}><InviteBoardCard board={inviteBoard} you={youLabel} onInvite={() => { setSheet(null); setTimeout(invite, 350); }} /></View>}
-                    <InviteRaceNote slug={inviteBoard?.round.slug ?? null} style={[s.roundNote, { marginTop: 12 }]} />
+                    <InviteRaceNote prize={squadPrize} style={[s.roundNote, { marginTop: 12 }]} />
                 </Sheet>
                 {inviteSheet}
                 <Sheet visible={sheet === 'city'} onClose={() => setSheet(null)}>

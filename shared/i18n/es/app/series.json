@@ -21,6 +21,8 @@
     "leads": "{{name}} va primero ›",
     "inviteA11y": "Invitar a un amigo",
     "invite": "INVITA A UN AMIGO",
+    "prizeEyebrow": "QUIEN TRAIGA MÁS AMIGOS ANTES DE THE GUN GANA",
+    "prizeA11y": "{{prize}}, para quien traiga más amigos antes de The Gun. Toca para ver la carrera",
     "fineRace": "Recluta. Ponlos en marcha. Gana.",
     "fineBoard": "La clasificación abre a medianoche. Cada entreno verificado cuenta.",
     "city": "Elige tu ciudad",

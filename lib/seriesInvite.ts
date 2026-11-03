@@ -106,14 +106,18 @@ export function buildSeriesShareMessage(opts: { seasonName: string; shareUrl: st
 /** What the admin leaves in a prize's name until the real one is chosen. */
 const UNANNOUNCED = /\b(to be announced|tba|tbc)\b/i;
 
+/** The Squad Builder prize as the app shows it: its name and photo (a storage URL, or none yet). */
+export type SquadPrize = { name: string; imageUrl: string | null };
+
 /**
- * The round's Squad Builder prize (the most friends brought in) by name, for
- * the invite race's note — "Most friends by the gun wins <name>". null while
- * there's no row yet or its name is still "Prize to be announced", so the note
- * falls back to the prize's title rather than reading "wins Prize to be
- * announced".
+ * The round's Squad Builder prize (the most friends brought in), for the
+ * Start Line and the invite race's note ("Most friends by the gun wins
+ * <name>"). null while there's no row yet or its name is still "Prize to be
+ * announced", so the screens fall back to the prize's title rather than
+ * reading "wins Prize to be announced".
  */
-export function squadPrizeName(rows: { kind: string; name: string }[]): string | null {
-    const name = rows.find((r) => r.kind === 'patient_zero')?.name?.trim();
-    return name && !UNANNOUNCED.test(name) ? name : null;
+export function squadPrize(rows: { kind: string; name: string; image_url?: string | null }[]): SquadPrize | null {
+    const row = rows.find((r) => r.kind === 'patient_zero');
+    const name = row?.name?.trim();
+    return row && name && !UNANNOUNCED.test(name) ? { name, imageUrl: row.image_url || null } : null;
 }

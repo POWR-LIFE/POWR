@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 import type { Honour, HonourKind, HonourTier } from '@/constants/honours';
 import i18n, { getFormatLocale } from '@/lib/i18n';
+import { type SquadPrize, squadPrize } from '@/lib/seriesInvite';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -273,6 +274,21 @@ export function useSeriesInviteBoard(active: boolean) {
         return () => { live = false; clearInterval(t); };
     }, [active, joined]);
     return board;
+}
+
+/**
+ * The round's Squad Builder prize (name + photo) once /admin/series has named
+ * it, else null; read once per round, never blocks the screen it sits on.
+ */
+export function useSquadPrize(slug: string | null | undefined): SquadPrize | null {
+    const [prize, setPrize] = useState<SquadPrize | null>(null);
+    useEffect(() => {
+        if (!slug) { setPrize(null); return undefined; }
+        let live = true;
+        void fetchSeriesPrizes(slug).then((rows) => { if (live) setPrize(squadPrize(rows)); });
+        return () => { live = false; };
+    }, [slug]);
+    return prize;
 }
 
 /** The latest round with announced winners, or null. */

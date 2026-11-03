@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -19,7 +20,9 @@ import Svg, { Defs, G, LinearGradient as SvgGradient, Path, Stop } from 'react-n
 
 import { HomeStats } from '@/components/home/HomeCard';
 import { crowdAt, crowdAtGun, type SeriesInviteBoard, seriesNum, seriesOrdinal } from '@/lib/api/series';
-import { GOLD, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
+import { storageImage } from '@/lib/storageImage';
+import type { SquadPrize } from '@/lib/seriesInvite';
+import { CARD_BG, CARD_BORDER, GOLD, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
 import {
     BOXES, type Cell, fillOrder, glyph, jitter, P_BOWL_CURVES, P_H, P_LEG_CURVES, P_W, seatsFor, SLANT,
 } from './pCrowd';
@@ -139,7 +142,7 @@ function Clock({ to, roundName, onZero }: { to: number; roundName: string; onZer
  * gold P (a heavy tap); it holds, swells and `onStarted` opens the board.
  */
 export function StartLine({
-    startsAt, roundName, invite, onInvite, onRace, onStarted, onCity, dev, days, need, shift = 0, onJoin,
+    startsAt, roundName, invite, prize, onInvite, onRace, onStarted, onCity, dev, days, need, shift = 0, onJoin,
 }: {
     startsAt: number;
     roundName: string;
@@ -150,6 +153,8 @@ export function StartLine({
     onJoin?: () => void;
     /** The invite race, while it's on; without it the screen is the countdown and the round's basics. */
     invite: SeriesInviteBoard | null;
+    /** The Squad Builder prize once /admin/series has named it: a row above the button, tap = the race. */
+    prize?: SquadPrize | null;
     onInvite: () => void;
     /** The whole invite race (a sheet). */
     onRace: () => void;
@@ -254,6 +259,7 @@ export function StartLine({
                             { value: seriesNum(need), label: t('series:start.drawDays') },
                         ]} />
                     </Pressable>
+                    {prize && <PrizeRow prize={prize} onPress={onRace} />}
                     <Pressable
                         onPress={() => { void Haptics.selectionAsync(); onInvite(); }}
                         style={({ pressed }) => [s.btn, pressed && { opacity: 0.85 }]}
@@ -766,6 +772,28 @@ function Band({ d, band, at, width, height, go }: {
 }
 
 /** The start line: a light runs along it now and then; at the gun it breaks from the middle. */
+/** What the invite race is for: the Squad Builder prize, its photo and name. Tap = the whole race. */
+function PrizeRow({ prize, onPress }: { prize: SquadPrize; onPress: () => void }) {
+    const { t } = useTranslation();
+    return (
+        <Pressable
+            onPress={() => { void Haptics.selectionAsync(); onPress(); }}
+            style={({ pressed }) => [s.prize, pressed && { opacity: 0.8 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t('series:start.prizeA11y', { prize: prize.name })}
+        >
+            {prize.imageUrl
+                ? <Image source={{ uri: storageImage(prize.imageUrl, 160, 160) ?? prize.imageUrl }} style={s.prizePic} contentFit="cover" />
+                : <View style={[s.prizePic, s.prizePicEmpty]}><Ionicons name="gift-outline" size={20} color={GOLD} /></View>}
+            <View style={s.prizeText}>
+                <Text style={s.prizeEyebrow} numberOfLines={1}>{t('series:start.prizeEyebrow')}</Text>
+                <Text style={s.prizeName} numberOfLines={1}>{prize.name}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={TEXT_3} />
+        </Pressable>
+    );
+}
+
 function StartLineBar({ go }: { go: SharedValue<number> }) {
     const [w, setW] = useState(0);
     const sweep = useSharedValue(0);
@@ -808,6 +836,15 @@ const s = StyleSheet.create({
     lineLabel: { textAlign: 'center', fontSize: 9, fontWeight: '600', letterSpacing: 2, color: TEXT_2 },
 
     stats: { marginTop: 6 },
+    prize: {
+        flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 7, paddingLeft: 7, paddingRight: 14,
+        borderRadius: 16, backgroundColor: CARD_BG, borderWidth: 1, borderColor: CARD_BORDER,
+    },
+    prizePic: { width: 48, height: 48, borderRadius: 11, backgroundColor: '#0b0b0b' },
+    prizePicEmpty: { alignItems: 'center', justifyContent: 'center' },
+    prizeText: { flex: 1, minWidth: 0 },
+    prizeEyebrow: { fontSize: 8, fontWeight: '700', letterSpacing: 1.4, color: TEXT_3 },
+    prizeName: { marginTop: 2, fontSize: 16, fontWeight: '300', color: TEXT },
     btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: 50, borderRadius: 25, backgroundColor: GOLD },
     btnText: { fontSize: 12, fontWeight: '800', letterSpacing: 1.5, color: '#0a0a0a' },
     city: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: -4 },

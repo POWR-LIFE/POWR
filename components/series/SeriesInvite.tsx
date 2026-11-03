@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, type StyleProp, StyleSheet, Text, type TextStyle, View } from 'react-native';
 
-import { crowdAt, fetchSeriesPrizes, type SeriesInviteBoard, seriesNum, seriesOrdinal } from '@/lib/api/series';
+import { crowdAt, type SeriesInviteBoard, seriesNum, seriesOrdinal } from '@/lib/api/series';
 import i18n from '@/lib/i18n';
-import { squadPrizeName } from '@/lib/seriesInvite';
+import type { SquadPrize } from '@/lib/seriesInvite';
+import { storageImage } from '@/lib/storageImage';
 import { CARD_BG, CARD_BORDER, GOLD, HAIR, MoreLine, TEXT, TEXT_2, TEXT_3, YOU_LINE, YOU_TINT } from './SeriesLane';
 import { useSeasonCard } from './season';
 
@@ -90,16 +92,29 @@ export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInvi
  * friends wins. The real prize's name once /admin/series has one, else the
  * prize's title (Squad Builder) so it never reads "wins Prize to be announced".
  */
-export function InviteRaceNote({ slug, style }: { slug: string | null; style?: StyleProp<TextStyle> }) {
+export function InviteRaceNote({ prize, style }: { prize: SquadPrize | null; style?: StyleProp<TextStyle> }) {
     const { t } = useTranslation();
-    const [prize, setPrize] = useState<string | null>(null);
-    useEffect(() => {
-        if (!slug) return undefined;
-        let live = true;
-        void fetchSeriesPrizes(slug).then((rows) => { if (live) setPrize(squadPrizeName(rows)); });
-        return () => { live = false; };
-    }, [slug]);
-    return <Text style={style}>{t('series:league.inviteRace.note', { prize: prize ?? 'Squad Builder' })}</Text>;
+    return <Text style={style}>{t('series:league.inviteRace.note', { prize: prize?.name ?? 'Squad Builder' })}</Text>;
+}
+
+/** What the invite race is for, big: the Squad Builder prize's photo and name. Only with a photo. */
+export function PrizeHero({ prize }: { prize: SquadPrize }) {
+    const { t } = useTranslation();
+    if (!prize.imageUrl) return null;
+    return (
+        <View style={s.hero}>
+            <Image
+                source={{ uri: storageImage(prize.imageUrl, 720, 720) ?? prize.imageUrl }}
+                style={s.heroPic}
+                contentFit="cover"
+                accessibilityLabel={prize.name}
+            />
+            <View style={s.heroText}>
+                <Text style={s.heroEyebrow}>{t('series:start.prizeEyebrow')}</Text>
+                <Text style={s.heroName} numberOfLines={2}>{prize.name}</Text>
+            </View>
+        </View>
+    );
 }
 
 function Row({ r, you, first }: { r: SeriesInviteBoard['rows'][number]; you: string; first: boolean }) {
@@ -129,6 +144,11 @@ const s = StyleSheet.create({
     name: { flexShrink: 1, fontSize: 14, fontWeight: '300', color: 'rgba(255,255,255,0.8)' },
     tag: { fontSize: 8.5, fontWeight: '700', letterSpacing: 0.8, color: TEXT_3 },
     count: { minWidth: 40, textAlign: 'right', fontSize: 17, fontWeight: '300', color: TEXT, fontVariant: ['tabular-nums'] },
+    hero: { marginBottom: 12, borderRadius: 16, overflow: 'hidden', backgroundColor: CARD_BG, borderWidth: 1, borderColor: CARD_BORDER },
+    heroPic: { width: '100%', aspectRatio: 16 / 10, maxHeight: 220, backgroundColor: '#0b0b0b' },
+    heroText: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14 },
+    heroEyebrow: { fontSize: 8, fontWeight: '700', letterSpacing: 1.4, color: TEXT_3 },
+    heroName: { marginTop: 3, fontSize: 20, fontWeight: '300', color: TEXT, letterSpacing: -0.2 },
     start: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
     startLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: HAIR },
     startText: { fontSize: 9, fontWeight: '600', letterSpacing: 1.8, color: TEXT_3 },
