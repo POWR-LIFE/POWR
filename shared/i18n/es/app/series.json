@@ -328,7 +328,7 @@
     "inviteRace": {
       "light": "La carrera de ",
       "bold": "invitaciones",
-      "note": "Un amigo cuenta cuando se une con tu código y registra un entreno. Con más amigos que nadie antes de The Gun, vas camino de Squad Builder."
+      "note": "Un amigo cuenta cuando se une con tu código y registra un entreno. Quien tenga más amigos antes de The Gun gana {{prize}}."
     },
     "citySheet": {
       "light": "Tu ",

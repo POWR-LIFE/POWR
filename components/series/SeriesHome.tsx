@@ -44,7 +44,7 @@ import { NAMED, PrizeDetailSheet, type PrizeKey, PrizesSheet, prizeSetFrom, SAMP
 import { liveMomentCards, MomentStrip, sampleMomentCards, SERIES_BAR_H, SeriesCard } from './SeriesRound';
 import { hexA, LOCKUP_LINES, type LockupLine, SEASON_ORDER, SEASONS, seasonDev, useSeason, useSeasonCard } from './season';
 import { RulesSheet, ShareSheet, Sheet, SheetHead, YourFile } from './SeriesSheets';
-import { InviteBoardCard } from './SeriesInvite';
+import { InviteBoardCard, InviteRaceNote } from './SeriesInvite';
 import { SeriesInviteCard } from './SeriesInviteCard';
 import { type JoinRound, joinRoundOf, JoinRoundScreen, openSeriesJoin, roundDays } from './SeriesJoin';
 import { StartLine } from './StartLine';
@@ -491,9 +491,7 @@ export function SeriesHome({
                 <Sheet visible={sheet === 'race'} onClose={() => setSheet(null)}>
                     <SheetHead light={t('series:league.inviteRace.light')} bold={t('series:league.inviteRace.bold')} onClose={() => setSheet(null)} />
                     {inviteBoard && <View style={{ marginHorizontal: -16 }}><InviteBoardCard board={inviteBoard} you={youLabel} onInvite={() => { setSheet(null); setTimeout(invite, 350); }} /></View>}
-                    <Text style={[s.roundNote, { marginTop: 12 }]}>
-                        {t('series:league.inviteRace.note')}
-                    </Text>
+                    <InviteRaceNote slug={inviteBoard?.round.slug ?? null} style={[s.roundNote, { marginTop: 12 }]} />
                 </Sheet>
                 {inviteSheet}
                 <Sheet visible={sheet === 'city'} onClose={() => setSheet(null)}>

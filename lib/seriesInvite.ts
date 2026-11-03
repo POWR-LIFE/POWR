@@ -102,3 +102,18 @@ export function buildSeriesShareSubtitle(opts: { roundName: string; startsAt: nu
 export function buildSeriesShareMessage(opts: { seasonName: string; shareUrl: string; startsAt: number; now?: number }): string {
     return seriesInviteMessage({ seasonName: opts.seasonName, link: opts.shareUrl, startsAt: opts.startsAt, now: opts.now });
 }
+
+/** What the admin leaves in a prize's name until the real one is chosen. */
+const UNANNOUNCED = /\b(to be announced|tba|tbc)\b/i;
+
+/**
+ * The round's Squad Builder prize (the most friends brought in) by name, for
+ * the invite race's note — "Most friends by the gun wins <name>". null while
+ * there's no row yet or its name is still "Prize to be announced", so the note
+ * falls back to the prize's title rather than reading "wins Prize to be
+ * announced".
+ */
+export function squadPrizeName(rows: { kind: string; name: string }[]): string | null {
+    const name = rows.find((r) => r.kind === 'patient_zero')?.name?.trim();
+    return name && !UNANNOUNCED.test(name) ? name : null;
+}

@@ -3,10 +3,11 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, type StyleProp, StyleSheet, Text, type TextStyle, View } from 'react-native';
 
-import { crowdAt, type SeriesInviteBoard, seriesNum, seriesOrdinal } from '@/lib/api/series';
+import { crowdAt, fetchSeriesPrizes, type SeriesInviteBoard, seriesNum, seriesOrdinal } from '@/lib/api/series';
 import i18n from '@/lib/i18n';
+import { squadPrizeName } from '@/lib/seriesInvite';
 import { CARD_BG, CARD_BORDER, GOLD, HAIR, MoreLine, TEXT, TEXT_2, TEXT_3, YOU_LINE, YOU_TINT } from './SeriesLane';
 import { useSeasonCard } from './season';
 
@@ -82,6 +83,23 @@ export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInvi
             </View>
         </View>
     );
+}
+
+/**
+ * The line under the invite race: what counts as a friend, and what the most
+ * friends wins. The real prize's name once /admin/series has one, else the
+ * prize's title (Squad Builder) so it never reads "wins Prize to be announced".
+ */
+export function InviteRaceNote({ slug, style }: { slug: string | null; style?: StyleProp<TextStyle> }) {
+    const { t } = useTranslation();
+    const [prize, setPrize] = useState<string | null>(null);
+    useEffect(() => {
+        if (!slug) return undefined;
+        let live = true;
+        void fetchSeriesPrizes(slug).then((rows) => { if (live) setPrize(squadPrizeName(rows)); });
+        return () => { live = false; };
+    }, [slug]);
+    return <Text style={style}>{t('series:league.inviteRace.note', { prize: prize ?? 'Squad Builder' })}</Text>;
 }
 
 function Row({ r, you, first }: { r: SeriesInviteBoard['rows'][number]; you: string; first: boolean }) {

@@ -16,6 +16,7 @@ import {
     seriesInviteLink,
     seriesInviteMessage,
     seriesInvitePath,
+    squadPrizeName,
     startDay,
 } from '@/lib/seriesInvite';
 
@@ -91,4 +92,21 @@ test('link preview: POWR · the season; the round and its start, or that it is o
     expect(buildSeriesShareSubtitle({ roundName: 'Round 01', startsAt, date: 'Sun 1 Nov', now: startsAt })).toBe(
         'Round 01 is on. Free to enter. Tap to get POWR and join me.',
     );
+});
+
+describe('squadPrizeName — what the invite race note says the most friends wins', () => {
+    const row = (kind: string, name: string) => ({ kind, name });
+
+    test('the Squad Builder prize by its name', () => {
+        expect(squadPrizeName([row('place', 'A Peloton'), row('patient_zero', 'A Theragun')])).toBe('A Theragun');
+        expect(squadPrizeName([row('patient_zero', '  Theragun Mini ')])).toBe('Theragun Mini');
+    });
+
+    test('null until a real one is chosen, so the note keeps the prize title', () => {
+        expect(squadPrizeName([])).toBeNull();
+        expect(squadPrizeName([row('place', 'A Peloton')])).toBeNull();
+        expect(squadPrizeName([row('patient_zero', 'Prize to be announced')])).toBeNull();
+        expect(squadPrizeName([row('patient_zero', 'TBA')])).toBeNull();
+        expect(squadPrizeName([row('patient_zero', '  ')])).toBeNull();
+    });
 });

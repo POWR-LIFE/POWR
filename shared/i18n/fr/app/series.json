@@ -328,7 +328,7 @@
     "inviteRace": {
       "light": "La course aux ",
       "bold": "invitations",
-      "note": "Un ami compte dès qu’il s’inscrit avec ton code et enregistre une séance. Avec le plus d’amis avant The Gun, tu es en route pour Squad Builder."
+      "note": "Un ami compte dès qu’il s’inscrit avec ton code et enregistre une séance. Celui qui a le plus d’amis avant The Gun gagne {{prize}}."
     },
     "citySheet": {
       "light": "Ta ",
