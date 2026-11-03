@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { type SeriesInviteBoard, seriesNum, seriesOrdinal } from '@/lib/api/series';
+import { crowdAt, type SeriesInviteBoard, seriesNum, seriesOrdinal } from '@/lib/api/series';
 import i18n from '@/lib/i18n';
 import { CARD_BG, CARD_BORDER, GOLD, HAIR, MoreLine, TEXT, TEXT_2, TEXT_3, YOU_LINE, YOU_TINT } from './SeriesLane';
 import { useSeasonCard } from './season';
@@ -27,11 +27,18 @@ export function inviteNext(b: SeriesInviteBoard): string {
  * your code AND logged a workout); the ones still to work out show as joining.
  * Everyone with none yet is on the start line, never given a place among
  * people tied on zero. The top of it when the round starts is on course for
- * Squad Builder. Real members only.
+ * Squad Builder. The rows are real members only; the start-line count is the
+ * whole crowd (members and the pacers filling it), the number Home shows.
  */
 export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInviteBoard; you: string; onInvite: () => void }) {
     const { t } = useTranslation();
     const sc = useSeasonCard();
+    // The crowd fills on a ramp towards the gun: re-read the clock now and then.
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 60_000);
+        return () => clearInterval(id);
+    }, []);
     // The top five, then you if you're further down.
     const top = b.rows.filter((r) => r.rank <= 5);
     const mine = b.rows.find((r) => r.you && r.rank > 5);
@@ -48,7 +55,7 @@ export function InviteBoardCard({ board: b, you, onInvite }: { board: SeriesInvi
             {mine && <Row r={mine} you={you} first={gap > 0} />}
             <View style={s.start}>
                 <View style={s.startLine} />
-                <Text style={s.startText}>{t('series:invite.startLine', { n: seriesNum(b.start_line) })}</Text>
+                <Text style={s.startText}>{t('series:invite.startLine', { n: seriesNum(crowdAt(b, now)) })}</Text>
                 <View style={s.startLine} />
             </View>
 
