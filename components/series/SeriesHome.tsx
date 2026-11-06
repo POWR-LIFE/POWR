@@ -624,6 +624,11 @@ export function SeriesHome({
                     </>
                 ) : (
                     <>
+                        {/* A live event runs on its own clock, not the round's: before
+                            a round or between rounds it still needs its way in, or a
+                            sealed board has no door at all once Home lets go of it
+                            (ONE LDN, 2026-11-06, the week before Round 01). */}
+                        {evTop && eventCard}
                         {v.live && extras.results && <WinnersCard results={extras.results} />}
                         {v.finish && !v.live && (
                             <Pressable
@@ -639,6 +644,7 @@ export function SeriesHome({
                         )}
                         {alertsCard}
                         {tabBody}
+                        {!evTop && eventCard && <View style={{ marginTop: 6 }}>{eventCard}</View>}
                         {rulesRow}
                     </>
                 )}

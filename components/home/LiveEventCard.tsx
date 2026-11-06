@@ -15,7 +15,7 @@ import {
     type LiveEvent,
 } from '@/lib/api/liveEvents';
 import i18n from '@/lib/i18n';
-import { eventStatusChip, isComingSoon, isVideoUrl, onStartLine, registrationLine, scoringLine, showsOnHome } from '@/lib/liveEventDisplay';
+import { eventStatusChip, isComingSoon, isJoinable, isVideoUrl, onStartLine, registrationLine, scoringLine, showsOnHome } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -151,6 +151,10 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
     // has no register sheet to open — the tap goes to the event's page on
     // League (dates, venue, prizes) and the pill says where things stand.
     const comingSoon = isComingSoon(event);
+    // The sealed night, for someone not in it: registration has closed (the
+    // server refuses a join once locked), so there is no sheet to open either —
+    // the tap goes to the event's page on League, where the sealed board is.
+    const closed = !registered && !comingSoon && !isJoinable(event);
 
     const media = event.promo_media_url;
     const isVideo = isVideoUrl(media);
@@ -161,11 +165,13 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
     // Preview keeps the register sheet reachable after joining so the flow can
     // be reset and run again; a real registration sends you to the tab that
     // owns the event from here on.
-    const opensSheet = !comingSoon && (!registered || !!event.is_preview);
+    const opensSheet = !comingSoon && !closed && (!registered || !!event.is_preview);
     const pill = comingSoon
         ? { label: t('home:liveEvent.pill.see'), a11y: t('home:liveEvent.a11y.see', { line: registrationLine(event) }) }
-        : registeredPill(event, board);
-    const outlinedPill = registered || comingSoon;
+        : closed
+            ? { label: t('home:liveEvent.pill.locked'), a11y: t('home:liveEvent.a11y.locked') }
+            : registeredPill(event, board);
+    const outlinedPill = registered || comingSoon || closed;
 
     return (
         <>
@@ -182,7 +188,7 @@ export function LiveEventCard({ event, active = true }: { event: LiveEvent; acti
                 accessibilityLabel={
                     comingSoon
                         ? t('home:liveEvent.a11y.card.comingSoon', { name: event.name, status: pill.a11y })
-                        : !registered
+                        : !registered && !closed
                         ? t('home:liveEvent.a11y.card.register', { name: event.name })
                         : event.is_preview
                             ? t('home:liveEvent.a11y.card.preview', { name: event.name })
