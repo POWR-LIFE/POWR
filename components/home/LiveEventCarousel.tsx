@@ -8,9 +8,9 @@ import {
     type NativeSyntheticEvent,
 } from 'react-native';
 
-import { LiveEventCard, showsOnHome } from '@/components/home/LiveEventCard';
+import { LiveEventCard } from '@/components/home/LiveEventCard';
 import { useLiveEvents } from '@/hooks/useLiveEvents';
-import { isVideoUrl } from '@/lib/liveEventDisplay';
+import { isVideoUrl, showsOnHome } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 

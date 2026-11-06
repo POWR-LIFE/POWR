@@ -5,11 +5,13 @@ import {
     gateProgress,
     inviteRewardLine,
     isComingSoon,
+    isJoinable,
     onStartLine,
     rankMove,
     registrationLine,
     revealMoment,
     scoringLine,
+    showsOnHome,
     splitStartLine,
 } from '@/lib/liveEventDisplay';
 
@@ -132,6 +134,55 @@ describe('Coming soon', () => {
         // "you missed it", so it stays "soon" until the status moves.
         jest.useFakeTimers().setSystemTime(new Date('2026-08-17T08:00:30+00:00'));
         expect(registrationLine({ registration_opens_at: '2026-08-17T08:00:00+00:00' })).toBe('Registration opens soon');
+    });
+});
+
+describe('showsOnHome', () => {
+    type HomeEvent = Parameters<typeof showsOnHome>[0];
+    const IN = { eligible: true, joined: true, disqualified: false };
+    const OUT = { eligible: true, joined: false, disqualified: false };
+    const ev = (over: Partial<HomeEvent>): HomeEvent => ({
+        status: 'live',
+        scope: 'opt_in',
+        viewer: IN,
+        ...over,
+    });
+
+    it('carries an event from Coming soon through live', () => {
+        expect(showsOnHome(ev({ status: 'announced', viewer: OUT }))).toBe(true);
+        expect(showsOnHome(ev({ status: 'scheduled', viewer: OUT }))).toBe(true);
+        expect(showsOnHome(ev({ status: 'live', viewer: OUT }))).toBe(true);
+    });
+
+    // The lifecycle cron moves live → locked at lock_at. Filtering on the
+    // raw status dropped the card for everyone on the night itself
+    // (ONE LDN, 2026-11-06). The event is still on: the board is sealed.
+    it('keeps the sealed night on Home for everyone, in it or not', () => {
+        expect(showsOnHome(ev({ status: 'locked', viewer: IN }))).toBe(true);
+        expect(showsOnHome(ev({ status: 'locked', viewer: OUT }))).toBe(true);
+    });
+
+    it('hands over to League once the winners are out', () => {
+        expect(showsOnHome(ev({ status: 'revealed' }))).toBe(false);
+        expect(showsOnHome(ev({ status: 'settled' }))).toBe(false);
+    });
+
+    it('never shows a global event, or to someone ineligible or disqualified', () => {
+        expect(showsOnHome(ev({ scope: 'global' }))).toBe(false);
+        expect(showsOnHome(ev({ status: 'locked', viewer: { ...OUT, eligible: false } }))).toBe(false);
+        expect(showsOnHome(ev({ status: 'locked', viewer: { ...IN, disqualified: true } }))).toBe(false);
+    });
+});
+
+describe('isJoinable', () => {
+    // Mirrors join_live_event: a REGISTER on a sealed card would only ever
+    // come back "This event can no longer be joined".
+    it('is open while scheduled or live, and only then', () => {
+        expect(isJoinable({ status: 'scheduled' })).toBe(true);
+        expect(isJoinable({ status: 'live' })).toBe(true);
+        for (const status of ['announced', 'locked', 'revealed', 'settled'] as const) {
+            expect(isJoinable({ status })).toBe(false);
+        }
     });
 });
 

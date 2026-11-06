@@ -52,6 +52,29 @@ export function isComingSoon(event: Pick<LiveEvent, 'status'>): boolean {
     return event.status === 'announced';
 }
 
+/** Registration is open. Mirrors join_live_event's status rule, so no surface
+ *  offers a REGISTER the server would refuse. */
+export function isJoinable(event: Pick<LiveEvent, 'status'>): boolean {
+    return event.status === 'scheduled' || event.status === 'live';
+}
+
+/** Whether Home carries this event at all — the carousel filters on it so a
+ *  card that would render nothing never takes a page. */
+export function showsOnHome(event: Pick<LiveEvent, 'status' | 'scope' | 'viewer'>): boolean {
+    // Coming soon rides along: it's on Home to be advertised, and the card
+    // says registration isn't open rather than offering it. The sealed night
+    // rides along too, for everyone: the lifecycle cron moves live → locked
+    // at lock_at, and the event is still on — the board is sealed for the
+    // reveal at the venue, not gone. Nobody can join it any more, so the card
+    // opens the sealed board instead of the register sheet (ONE LDN,
+    // 2026-11-06: the card vanished on the night itself). Once the winners
+    // are out the results live on League.
+    if (!isJoinable(event) && event.status !== 'locked' && !isComingSoon(event)) return false;
+    if (event.scope !== 'opt_in') return false;
+    if (!event.viewer.eligible || event.viewer.disqualified) return false;
+    return true;
+}
+
 /**
  * When a Coming soon event opens its doors — the one fact it has to sell.
  * "soon" when the admin hasn't set a time (they open it by hand), and also

@@ -197,7 +197,10 @@ export default function LeagueScreen() {
     if (!evStatus || segmentTouched.current) return;
     const inEvent = !!evJoined || evScope === 'global';
     const preWindow = evStatus === 'scheduled' || evStatus === 'announced';
-    setSegment(!preWindow && inEvent ? 'board' : 'event');
+    // Sealed or finished, there's nothing left to join: the board is the
+    // story for everyone, in it or not (Home's sealed card lands here).
+    const pastJoining = !preWindow && evStatus !== 'live';
+    setSegment((!preWindow && inEvent) || pastJoining ? 'board' : 'event');
   }, [evId, evStatus, evJoined, evScope]);
   const pickSegment = (next: EventSegment) => {
     segmentTouched.current = true;
