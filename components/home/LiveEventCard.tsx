@@ -15,7 +15,7 @@ import {
     type LiveEvent,
 } from '@/lib/api/liveEvents';
 import i18n from '@/lib/i18n';
-import { eventStatusChip, isComingSoon, isVideoUrl, onStartLine, registrationLine, scoringLine } from '@/lib/liveEventDisplay';
+import { eventStatusChip, isComingSoon, isVideoUrl, onStartLine, registrationLine, scoringLine, showsOnHome } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -102,21 +102,6 @@ function registeredPill(
     }
 
     return { label: i18n.t('home:liveEvent.pill.in'), a11y: i18n.t('home:liveEvent.a11y.registered') };
-}
-
-/** Whether Home carries this event at all — the carousel filters on it so a
- *  card that would render nothing never takes a page. */
-export function showsOnHome(event: LiveEvent): boolean {
-    // Coming soon rides along: it's on Home to be advertised, and the card
-    // says registration isn't open rather than offering it.
-    if (event.status !== 'scheduled' && event.status !== 'live' && !isComingSoon(event)) return false;
-    if (event.scope !== 'opt_in') return false;
-    if (!event.viewer.eligible || event.viewer.disqualified) return false;
-    // Locked means scores are being verified for the in-person reveal: there
-    // is nothing left to register for, so the card only survives the lock for
-    // people who are actually in the event.
-    if (event.is_locked && !event.viewer.joined) return false;
-    return true;
 }
 
 /**

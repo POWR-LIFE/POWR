@@ -52,6 +52,31 @@ export function isComingSoon(event: Pick<LiveEvent, 'status'>): boolean {
     return event.status === 'announced';
 }
 
+/** Whether Home carries this event at all — the carousel filters on it so a
+ *  card that would render nothing never takes a page. */
+export function showsOnHome(
+    event: Pick<LiveEvent, 'status' | 'scope' | 'is_locked' | 'viewer'>,
+): boolean {
+    // Coming soon rides along: it's on Home to be advertised, and the card
+    // says registration isn't open rather than offering it. 'locked' stays
+    // in too: the lifecycle cron moves live → locked at lock_at, and the
+    // card has to carry the people who are in it through to the reveal
+    // (ONE LDN, 2026-11-06: the card vanished on the night itself).
+    if (
+        event.status !== 'scheduled' &&
+        event.status !== 'live' &&
+        event.status !== 'locked' &&
+        !isComingSoon(event)
+    ) return false;
+    if (event.scope !== 'opt_in') return false;
+    if (!event.viewer.eligible || event.viewer.disqualified) return false;
+    // Locked means scores are being verified for the in-person reveal: there
+    // is nothing left to register for, so the card only survives the lock for
+    // people who are actually in the event.
+    if (event.is_locked && !event.viewer.joined) return false;
+    return true;
+}
+
 /**
  * When a Coming soon event opens its doors — the one fact it has to sell.
  * "soon" when the admin hasn't set a time (they open it by hand), and also

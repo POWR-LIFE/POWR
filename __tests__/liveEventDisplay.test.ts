@@ -10,6 +10,7 @@ import {
     registrationLine,
     revealMoment,
     scoringLine,
+    showsOnHome,
     splitStartLine,
 } from '@/lib/liveEventDisplay';
 
@@ -132,6 +133,50 @@ describe('Coming soon', () => {
         // "you missed it", so it stays "soon" until the status moves.
         jest.useFakeTimers().setSystemTime(new Date('2026-08-17T08:00:30+00:00'));
         expect(registrationLine({ registration_opens_at: '2026-08-17T08:00:00+00:00' })).toBe('Registration opens soon');
+    });
+});
+
+describe('showsOnHome', () => {
+    type HomeEvent = Parameters<typeof showsOnHome>[0];
+    const IN = { eligible: true, joined: true, disqualified: false };
+    const OUT = { eligible: true, joined: false, disqualified: false };
+    const ev = (over: Partial<HomeEvent>): HomeEvent => ({
+        status: 'live',
+        scope: 'opt_in',
+        is_locked: false,
+        viewer: IN,
+        ...over,
+    });
+
+    it('carries an event from Coming soon through live', () => {
+        expect(showsOnHome(ev({ status: 'announced', viewer: OUT }))).toBe(true);
+        expect(showsOnHome(ev({ status: 'scheduled', viewer: OUT }))).toBe(true);
+        expect(showsOnHome(ev({ status: 'live', viewer: OUT }))).toBe(true);
+    });
+
+    // The lifecycle cron moves live → locked at lock_at. Filtering on the
+    // raw status dropped the card for everyone on the night itself — the
+    // people in the event included (ONE LDN, 2026-11-06).
+    it('keeps a locked event on Home for the people in it', () => {
+        expect(showsOnHome(ev({ status: 'locked', is_locked: true, viewer: IN }))).toBe(true);
+        // The pre-cron shape: still 'live' in the column, past lock_at.
+        expect(showsOnHome(ev({ status: 'live', is_locked: true, viewer: IN }))).toBe(true);
+    });
+
+    it('drops a locked event for anyone not in it — nothing left to register for', () => {
+        expect(showsOnHome(ev({ status: 'locked', is_locked: true, viewer: OUT }))).toBe(false);
+        expect(showsOnHome(ev({ status: 'live', is_locked: true, viewer: OUT }))).toBe(false);
+    });
+
+    it('hands over to League once the winners are out', () => {
+        expect(showsOnHome(ev({ status: 'revealed', is_locked: true }))).toBe(false);
+        expect(showsOnHome(ev({ status: 'settled', is_locked: true }))).toBe(false);
+    });
+
+    it('never shows a global event, or to someone ineligible or disqualified', () => {
+        expect(showsOnHome(ev({ scope: 'global' }))).toBe(false);
+        expect(showsOnHome(ev({ viewer: { ...IN, eligible: false } }))).toBe(false);
+        expect(showsOnHome(ev({ viewer: { ...IN, disqualified: true } }))).toBe(false);
     });
 });
 
