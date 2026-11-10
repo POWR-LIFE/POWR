@@ -57,7 +57,7 @@ Deno.serve(async (req: Request) => {
   const dryRun = body.dry_run === true;
   const audience = body.audience ?? { mode: 'all' };
 
-  if (!['all', 'segment', 'users', 'event', undefined].includes(audience.mode)) {
+  if (!['all', 'segment', 'users', 'event', 'series', undefined].includes(audience.mode)) {
     return json({ error: `Unknown audience mode: ${audience.mode}` }, 400);
   }
   if (audience.mode === 'users' && (audience.user_ids ?? []).filter(Boolean).length === 0) {
@@ -66,6 +66,10 @@ Deno.serve(async (req: Request) => {
   const eventId = String(audience.event_id ?? '').trim();
   if (audience.mode === 'event' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) {
     return json({ error: 'No live event selected' }, 400);
+  }
+  const seasonId = String(audience.season_id ?? '').trim();
+  if (audience.mode === 'series' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seasonId)) {
+    return json({ error: 'No Series season selected' }, 400);
   }
   if (audience.below_version != null && !/^\d+\.\d+\.\d+$/.test(String(audience.below_version).trim())) {
     return json({ error: 'below_version must look like 1.4.11' }, 400);

@@ -152,8 +152,9 @@ export default function LeagueScreen() {
   // While the Series is on for the member (always in dev): the tab wears the Series' season; its name leads the line under the title.
   const season = useSeason();
   const seriesRest = seriesSub.startsWith(season.def.name) ? seriesSub.slice(season.def.name.length) : null;
-  // Home's rival card lands on the Series itself, not on an event left open.
-  useEffect(() => { if (focus === 'rival') setOpenSlug(undefined); }, [focus, eventPinnedAt]);
+  // Home's rival card, and an admin Series push (focus=series, Broadcast → Opens → Series),
+  // land on the Series itself, not on an event left open.
+  useEffect(() => { if (focus === 'rival' || focus === 'series') setOpenSlug(undefined); }, [focus, eventPinnedAt]);
   const showHub = hubMode && !openSlug;
   // Always resolve an event, even behind the hub: the first card's page is
   // then already loaded, and a single-event tab needs no extra request.

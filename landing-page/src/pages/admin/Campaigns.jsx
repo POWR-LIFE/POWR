@@ -4,16 +4,10 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import AudienceSelector, { audienceLabel } from '../../components/AudienceSelector';
+import { ROUTE_PRESETS } from '../../lib/pushRoutes';
 
 const TITLE_MAX = 65;
 const BODY_MAX = 178;
-
-const ROUTE_PRESETS = [
-    { label: 'Home',     value: '' },
-    { label: 'Rewards',  value: '/(tabs)/rewards' },
-    { label: 'Progress', value: '/(tabs)/progress' },
-    { label: 'Friends',  value: '/friends' },
-];
 
 // Calendar dot palette for new campaigns.
 const CAMPAIGN_COLORS = ['#E8D200', '#10B981', '#0EA5E9', '#8B5CF6', '#F97316', '#F43F5E', '#14B8A6'];
