@@ -4,18 +4,10 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import AudienceSelector, { audienceLabel, callBroadcast } from '../../components/AudienceSelector';
+import { ROUTE_PRESETS } from '../../lib/pushRoutes';
 
 const TITLE_MAX = 65;
 const BODY_MAX = 178; // Comfortably within APNs/FCM display limits.
-
-// Where tapping the notification lands. Keep to long-standing routes so older
-// app builds don't dead-end (the notification itself shows on any version).
-const ROUTE_PRESETS = [
-    { label: 'Home',     value: '' },
-    { label: 'Rewards',  value: '/(tabs)/rewards' },
-    { label: 'Progress', value: '/(tabs)/progress' },
-    { label: 'Friends',  value: '/friends' },
-];
 
 const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();

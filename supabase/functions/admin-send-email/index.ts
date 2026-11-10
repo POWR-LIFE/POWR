@@ -139,7 +139,7 @@ async function audienceRecipients(admin: SupabaseClient, audience: Audience) {
 
 /** Same audience checks as the push broadcast; device filters are ignored (mail has no device). */
 function audienceError(audience: Audience): string | null {
-  if (!['all', 'segment', 'users', 'event', undefined].includes(audience.mode)) {
+  if (!['all', 'segment', 'users', 'event', 'series', undefined].includes(audience.mode)) {
     return `Unknown audience mode: ${audience.mode}`;
   }
   if (audience.mode === 'users' && (audience.user_ids ?? []).filter(Boolean).length === 0) {
@@ -147,6 +147,9 @@ function audienceError(audience: Audience): string | null {
   }
   if (audience.mode === 'event' && !UUID_RE.test(String(audience.event_id ?? '').trim())) {
     return 'No live event selected';
+  }
+  if (audience.mode === 'series' && !UUID_RE.test(String(audience.season_id ?? '').trim())) {
+    return 'No Series season selected';
   }
   return null;
 }

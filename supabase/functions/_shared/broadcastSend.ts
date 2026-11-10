@@ -16,13 +16,20 @@ const PAGE = 1000; // PostgREST caps a select at 1000 rows.
 export const DEFAULT_TZ = 'Europe/London';
 
 export interface Audience {
-  mode?: 'all' | 'segment' | 'users' | 'event';
+  mode?: 'all' | 'segment' | 'users' | 'event' | 'series';
   user_ids?: string[];
   // mode 'event': everyone registered (live_event_participants, not
   // disqualified) for one live event. event_name is a display label the
   // admin UI stores alongside the id; the server never reads it.
   event_id?: string;
   event_name?: string;
+  // mode 'series': everyone who has joined one Series season (series_entries,
+  // the opt-in JOIN of 20261027120000). Joining is once a season, so the season
+  // is the unit. season_name is a display label the admin UI stores; the server
+  // never reads it. Pacers are not members (series_pacers, no profile) so they
+  // can never be in this set.
+  season_id?: string;
+  season_name?: string;
   user_type?: 'all' | 'pro' | 'normal'; // is_pro
   activities?: string[];                // matches profiles.activity_preferences (ANY of)
   // Device-level filters — applied per token row, not per user, so someone with
@@ -69,6 +76,8 @@ async function timezoneUserIds(admin, tz: string): Promise<Set<string>> {
   return ids;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Resolve the audience spec to the user-id set it targets. `null` means
 // "everyone" (mode 'all', no timezone filter). Exported so the admin email
 // send (admin-send-email) targets exactly the same people as a push would.
@@ -101,13 +110,34 @@ export async function audienceUserIds(admin, audience: Audience): Promise<Set<st
     const ids = new Set<string>();
     const eventId = String(audience.event_id ?? '').trim();
     // Invalid/empty UUID → nobody, never everyone (and avoids PostgREST uuid-cast errors).
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) return ids;
+    if (!UUID_RE.test(eventId)) return ids;
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await admin
         .from('live_event_participants')
         .select('user_id')
         .eq('event_id', eventId)
         .is('disqualified_at', null)
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) break;
+      data.forEach((r) => ids.add(r.user_id));
+      if (data.length < PAGE) break;
+    }
+    return ids;
+  }
+
+  if (mode === 'series') {
+    const ids = new Set<string>();
+    const seasonId = String(audience.season_id ?? '').trim();
+    // Same rule as 'event': a missing or malformed season is nobody, never everyone.
+    if (!UUID_RE.test(seasonId)) return ids;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await admin
+        .from('series_entries')
+        .select('user_id')
+        .eq('season_id', seasonId)
+        // Stable paging: the table's primary key is (season_id, user_id).
+        .order('user_id')
         .range(from, from + PAGE - 1);
       if (error) throw new Error(error.message);
       if (!data || data.length === 0) break;
