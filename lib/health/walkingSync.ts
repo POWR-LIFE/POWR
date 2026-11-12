@@ -22,6 +22,8 @@ import {
     fetchTodayWalkingPoints,
     saveHealthSnapshot,
     saveDailyStepWindows,
+    saveDailyStepHours,
+    fetchStepHoursWritten,
     WALKING_DAILY_CAP,
 } from '@/lib/api/activity';
 import {
@@ -243,6 +245,114 @@ export async function syncStepWindowsNow(): Promise<void> {
     });
 }
 
+// ── Steps per hour (admin "when are they active") ─────────────────────────────
+// Walking is stored as one row per day, so the time of day a member walks was
+// never kept. These read the phone store hour by hour into daily_step_hours.
+// Same proven range read as the windows above, 24 times — no new native API.
+
+/**
+ * The 25 local-hour edges of the day that starts at local midnight `dayStart`:
+ * hour h runs edges[h] → edges[h+1]. Built with setHours so a DST day is right:
+ * on the 25-hour day the repeated hour folds into one bucket, and on the
+ * 23-hour day the missing hour is an empty bucket. The 24 buckets always add up
+ * to the whole day.
+ */
+export function localHourEdges(dayStart: Date): Date[] {
+    const edges: Date[] = [];
+    for (let h = 0; h < 24; h++) {
+        const d = new Date(dayStart);
+        d.setHours(h, 0, 0, 0);
+        // Never step backwards (a skipped hour resolves forward onto the next one).
+        edges.push(edges.length && d < edges[edges.length - 1] ? edges[edges.length - 1] : d);
+    }
+    const end = new Date(dayStart);
+    end.setDate(end.getDate() + 1);
+    end.setHours(0, 0, 0, 0);
+    edges.push(end);
+    return edges;
+}
+
+/** Steps in each local hour of the day starting `dayStart`, read up to `until`. */
+async function readStepHours(dayStart: Date, until: Date): Promise<number[]> {
+    const edges = localHourEdges(dayStart);
+    const steps: number[] = [];
+    // Sequential, not 24 reads at once: Health Connect is an IPC call per read.
+    for (let h = 0; h < 24; h++) {
+        const start = edges[h];
+        const end = new Date(Math.min(+edges[h + 1], +until));
+        steps.push(start < end ? await getStepsInRange(start, end) : 0);
+    }
+    return steps;
+}
+
+const STEP_HOURS_MIN_GAP_MS = 10 * 60 * 1000;
+let _stepHoursSyncedAt = 0;
+
+/**
+ * Today's steps per hour so far. Re-reads every elapsed hour, not just the
+ * latest: a watch that syncs late back-dates its steps into earlier hours.
+ * At most every 10 minutes per JS context; best-effort, never throws.
+ */
+export async function syncStepHoursNow(): Promise<void> {
+    if (Platform.OS === 'web') return;
+    if (Date.now() - _stepHoursSyncedAt < STEP_HOURS_MIN_GAP_MS) return;
+    _stepHoursSyncedAt = Date.now();
+    try {
+        const user = await getSessionUser();
+        if (!user) return;
+        const now = new Date();
+        const steps = await readStepHours(atLocalHour(now, 0), now);
+        if (steps.every(s => s === 0)) return;
+        await saveDailyStepHours(user.id, localDateKey(now), steps);
+    } catch (e) {
+        console.warn('[walkingSync] step hours sync failed (non-fatal):', e);
+    }
+}
+
+let _stepHoursBackfilledFor: string | null = null;
+let _stepHoursBackfillInFlight: Promise<void> | null = null;
+
+/**
+ * Fills steps per hour for the last `daysBack` days from the phone store. A
+ * day is skipped once its row was written after that day ended (final), and
+ * one whole-day read skips days with no steps, so after the first run this is
+ * one query plus yesterday's 24 reads. Once per local day per JS context.
+ */
+export function backfillStepHours(daysBack = 30): Promise<void> {
+    if (Platform.OS === 'web') return Promise.resolve();
+    if (_stepHoursBackfillInFlight) return _stepHoursBackfillInFlight;
+    const today = localDateKey(new Date());
+    if (_stepHoursBackfilledFor === today) return Promise.resolve();
+    _stepHoursBackfilledFor = today;
+    _stepHoursBackfillInFlight = backfillStepHoursImpl(daysBack).finally(() => { _stepHoursBackfillInFlight = null; });
+    return _stepHoursBackfillInFlight;
+}
+
+async function backfillStepHoursImpl(daysBack: number): Promise<void> {
+    try {
+        const user = await getSessionUser();
+        if (!user) { _stepHoursBackfilledFor = null; return; }
+        const written = await fetchStepHoursWritten(user.id, localDateKey(startOfDaysAgo(daysBack)));
+        let filled = 0;
+        for (let i = 1; i <= daysBack; i++) {
+            const dayStart = startOfDaysAgo(i);
+            const dayEnd = startOfDaysAgo(i - 1); // next local midnight
+            const key = localDateKey(dayStart);
+            const at = written.get(key);
+            if (at && new Date(at) >= dayEnd) continue; // final
+            if ((await getStepsInRange(dayStart, dayEnd)) <= 0) continue;
+            const steps = await readStepHours(dayStart, dayEnd);
+            if (steps.every(s => s === 0)) continue;
+            await saveDailyStepHours(user.id, key, steps);
+            filled++;
+        }
+        if (filled) console.log(`[walkingSync] step hours back-filled for ${filled} day(s)`);
+    } catch (e) {
+        console.warn('[walkingSync] step hours backfill failed:', e);
+        _stepHoursBackfilledFor = null; // allow a retry on the next trigger
+    }
+}
+
 /** Reads `profiles.active_health_provider`, falls back to the native provider for this OS. */
 async function resolveActiveProviderId(): Promise<HealthProviderId | null> {
     try {
@@ -388,6 +498,9 @@ async function _syncWalkingNowImpl(): Promise<void> {
 
     // Record intraday step windows for time-of-day walking challenges.
     await syncStepWindowsNow();
+
+    // And steps per hour, for the admin profile's activity times.
+    await syncStepHoursNow();
 }
 
 // ── Multi-day backfill ────────────────────────────────────────────────────────
@@ -428,7 +541,13 @@ export function backfillWalkingDays(daysBack = 7): Promise<void> {
     const today = localDateKey(new Date());
     if (_backfilledFor === today) return Promise.resolve();
     _backfilledFor = today;
-    _backfillInFlight = backfillWalkingDaysImpl(daysBack).finally(() => { _backfillInFlight = null; });
+    _backfillInFlight = backfillWalkingDaysImpl(daysBack).finally(() => {
+        _backfillInFlight = null;
+        // Steps per hour ride the same daily trigger but are NOT awaited: the
+        // Drop waits on this promise for its target, and a first 30-day scan
+        // of hours should never hold that up.
+        backfillStepHours().catch(() => {});
+    });
     return _backfillInFlight;
 }
 

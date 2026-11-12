@@ -8,6 +8,8 @@ import { useAuth } from '../../App';
 import { levelFromEarned } from '../../lib/levels';
 import { formatMemberId, normalizeMemberId } from '../../../../shared/memberId.ts';
 import { countryName, countryFlag, COUNTRY_SOURCE_META } from '../../lib/country';
+import ActivityTimesPanel from './ActivityTimesPanel';
+import { resolveTimezone, sessionTimes } from '../../../../shared/activityTimes.ts';
 import {
     Lock,
     User, Activity, Award, Calendar, Clock, MapPin,
@@ -86,13 +88,6 @@ const timeAgo = (dateStr) => {
     return `${Math.floor(h / 24)}d ago`;
 };
 
-const formatSessionTime = (start, sec) => {
-    const dStart = new Date(start);
-    const dEnd = new Date(dStart.getTime() + sec * 1000);
-    const timeOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
-    return `${dStart.toLocaleTimeString([], timeOptions)} - ${dEnd.toLocaleTimeString([], timeOptions)}`;
-};
-
 // raw_gps.partnerId is NOT always a bare partner uuid. Older client rows store the
 // composite geofence key `<uuid>-<locationIdx>` (21 prod rows), which is not a valid uuid
 // and will 22P02 the whole partners lookup if passed to .in() unfiltered. Take the uuid
@@ -147,6 +142,9 @@ export default function UserProfile() {
     // need a complete recent window, the log needs deep history a page at a time. Reading
     // both off one capped fetch made the cards depend on how densely the user syncs.
     const [healthSummary, setHealthSummary] = useState(null);
+    // Steps per local hour (daily_step_hours) for the Activity Times card. null =
+    // couldn't be read; the card then says steps by hour aren't recorded yet.
+    const [stepHours, setStepHours] = useState(null);
     const [showAdjust, setShowAdjust] = useState(false);
     const [showVaultGrant, setShowVaultGrant] = useState(false);
     const [vgAmount, setVgAmount] = useState('');
@@ -235,6 +233,12 @@ export default function UserProfile() {
         [userId],
         { pageSize: 20 }
     );
+
+    // Session times read in the MEMBER's timezone, not the admin's browser — the same
+    // zone the Activity Times card uses. A day's step hours give a whole-day walking
+    // row its busiest hour.
+    const { tz: memberTz, reported: memberTzReported } = resolveTimezone(profile?.timezone);
+    const stepHoursByDate = new Map((stepHours || []).map(r => [r.date, r.steps]));
 
     const filteredSessions = sessions.filter(s => {
         let match = true;
@@ -672,6 +676,12 @@ export default function UserProfile() {
             // its filters over them in the browser, so a partial read is a wrong number
             // and a filter that finds nothing. They page under the hood, so this stays
             // correct as a user's history grows past the server's row cap.
+            // Step hours load alongside but can't fail the page: a read error leaves the
+            // Activity Times card without its steps row, nothing more.
+            const stepHoursP = fetchAllRows(
+                () => supabase.from('daily_step_hours').select('date, steps').eq('user_id', userId),
+                { orderBy: 'date' },
+            ).catch(() => null);
             const [p, s, t, str, r, vd] = await Promise.all([
                 supabase.from('profiles').select('*').eq('id', userId).single(),
                 fetchAllRows(() => supabase.from('activity_sessions').select('*').eq('user_id', userId)),
@@ -690,6 +700,7 @@ export default function UserProfile() {
             setStreak(str.data || null);
             setRedemptions(r.sort((a, b) => new Date(b.redeemed_at) - new Date(a.redeemed_at)));
             setVaultDeposits(vd);
+            setStepHours(await stepHoursP);
 
             // Venue names for the activity rows. One batched lookup keyed on every partner
             // this user's sessions reference, so a row created by the server RPC (which
@@ -1267,13 +1278,18 @@ export default function UserProfile() {
                         )}
                     </div>
 
+                    {/* When in the day they sleep, walk and work out */}
+                    {activeTab === 'activity' && (
+                        <ActivityTimesPanel sessions={sessions} stepHours={stepHours} timezone={profile.timezone} />
+                    )}
+
                     {/* Activity Timeline */}
                     {activeTab === 'activity' && (
                         <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <div className="p-10 border-b border-[#E6E6E1] flex items-center justify-between">
                                 <div>
                                     <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Activity Logs</h3>
-                                    <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Historical Telemetry Data</p>
+                                    <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Historical Telemetry Data · {memberTzReported ? `Times in ${memberTz}` : 'Times in UK time (no timezone reported)'}</p>
                                 </div>
                                 <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{filteredSessions.length} RECORDED</span>
                             </div>
@@ -1345,6 +1361,7 @@ export default function UserProfile() {
                                         ? venueName(session, partnerMap)
                                         : null;
                                     const TypeIcon = ACTIVITY_ICONS[session.type] || Activity;
+                                    const when = sessionTimes(session, memberTz, stepHoursByDate);
                                     return (
                                     <div
                                         key={session.id}
@@ -1377,7 +1394,7 @@ export default function UserProfile() {
                                                     <MapPin size={12} className="text-[#8a7600]" />
                                                     <span>{venue}</span>
                                                     <span className="text-[#555555]">•</span>
-                                                    <span>{formatSessionTime(session.started_at, session.duration_sec)}</span>
+                                                    {when && <span>{when.day} · {when.time}</span>}
                                                     {geoPartnerId && (
                                                         <span className="flex items-center gap-1 text-[#8a7600] opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <span className="text-[9px] uppercase tracking-[0.2em] font-black">View location</span>
@@ -1386,7 +1403,20 @@ export default function UserProfile() {
                                                     )}
                                                 </div>
                                             )}
-                                            {!venue && <div className="mb-2" />}
+                                            {!venue && (when ? (
+                                                <div className="text-[12px] text-[#222222] mb-3 font-medium flex items-center gap-2">
+                                                    <Calendar size={12} className="text-[#8a7600]" />
+                                                    <span>{when.day}</span>
+                                                    <span className="text-[#555555]">•</span>
+                                                    <span>{when.time}</span>
+                                                    {when.busiestHour && (
+                                                        <>
+                                                            <span className="text-[#555555]">•</span>
+                                                            <span className="text-[#666666]">Most steps {when.busiestHour}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            ) : <div className="mb-2" />)}
                                             <div className="flex items-center gap-6 text-[10px] font-black text-[#666666] uppercase tracking-[0.2em]">
                                                 {/* Walking rows are daily step buckets: duration_sec is 0 by design, steps
                                                     are the stat. The clock stays as a fallback so a row is never statless. */}
