@@ -58,7 +58,7 @@ const DAILY_TOTAL_MS = 6 * HOUR_MS;
  * short, so length alone doesn't catch it: 76 such prod rows on 2026-11-12.
  */
 const QUARTER_HOUR_MS = 15 * 60_000;
-const isDayTotalWalk = (start: number, span: number) =>
+export const isDayTotalWalk = (start: number, span: number) =>
     span >= DAILY_TOTAL_MS || start % QUARTER_HOUR_MS === 0;
 /** Longer than this is bad data, not an activity. */
 const MAX_SESSION_MS = 20 * HOUR_MS;
@@ -279,6 +279,79 @@ export function clockLabel(minutes: number): string {
     const mm = String(m % 60).padStart(2, '0');
     const twelve = h % 12 === 0 ? 12 : h % 12;
     return `${twelve}:${mm}${h < 12 ? 'am' : 'pm'}`;
+}
+
+// ── One session's times (the profile's Activity Logs rows) ───────────────────
+
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+function dayFormat(tz: string, withYear: boolean): Intl.DateTimeFormat {
+    const key = `${tz}|${withYear}`;
+    let f = dayFormats.get(key);
+    if (!f) {
+        f = new Intl.DateTimeFormat('en-GB', {
+            timeZone: tz, weekday: 'short', day: 'numeric', month: 'short',
+            ...(withYear ? { year: 'numeric' } : {}),
+        });
+        dayFormats.set(key, f);
+    }
+    return f;
+}
+const clocks = new Map<string, (ms: number) => LocalClock>();
+function cachedClock(tz: string) {
+    let c = clocks.get(tz);
+    if (!c) { c = localClock(tz); clocks.set(tz, c); }
+    return c;
+}
+
+export interface SessionTimes {
+    /** "Sat 8 Nov" (with the year when it isn't this year). */
+    day: string;
+    /** "6:05–6:50pm", "10:06pm – 7:07am", or "Whole day" / "Day so far" for a daily step total. */
+    time: string;
+    /** Daily step totals only, once that day's step hours exist: "8–9am". */
+    busiestHour: string | null;
+}
+
+/**
+ * When one session happened, in the member's timezone. A walking row that is
+ * the day's step total has no time of its own, so it reads "Whole day" — plus
+ * that day's busiest step hour when step hours were recorded for it.
+ */
+export function sessionTimes(
+    session: SessionLike & { duration_sec?: number | null },
+    tz: string,
+    stepHoursByDate?: Map<string, number[]> | null,
+    nowMs: number = Date.now(),
+): SessionTimes | null {
+    const start = Date.parse(session.started_at);
+    if (!Number.isFinite(start)) return null;
+    let end = session.ended_at ? Date.parse(session.ended_at) : NaN;
+    if (!Number.isFinite(end) && session.duration_sec) end = start + session.duration_sec * 1000;
+
+    const clock = cachedClock(tz);
+    const a = clock(start);
+    const thisYear = clock(nowMs).dateKey.slice(0, 4);
+    // en-GB puts a comma after the weekday once a year is in it; keep both forms "Tue 30 Dec".
+    const day = dayFormat(tz, a.dateKey.slice(0, 4) !== thisYear).format(new Date(start)).replace(/,/g, '');
+
+    if (session.type === 'walking' && (!Number.isFinite(end) || isDayTotalWalk(start, end - start))) {
+        const hours = stepHoursByDate?.get(a.dateKey);
+        let busiestHour: string | null = null;
+        if (hours && hours.length === 24 && hours.some(v => v > 0)) {
+            const top = hours.indexOf(Math.max(...hours));
+            busiestHour = hourRange(top, (top + 1) % 24);
+        }
+        // Today's total is still counting up until the day ends.
+        return { day, time: a.dateKey === clock(nowMs).dateKey ? 'Day so far' : 'Whole day', busiestHour };
+    }
+
+    const startLabel = clockLabel(a.hour * 60 + a.minute);
+    if (!Number.isFinite(end) || end <= start) return { day, time: startLabel, busiestHour: null };
+    const b = clock(end);
+    const endLabel = clockLabel(b.hour * 60 + b.minute);
+    const sameHalf = a.dateKey === b.dateKey && startLabel.slice(-2) === endLabel.slice(-2);
+    const time = sameHalf ? `${startLabel.slice(0, -2)}–${endLabel}` : `${startLabel} – ${endLabel}`;
+    return { day, time, busiestHour: null };
 }
 
 /** 260 → "4h 20m", 45 → "45m". */
