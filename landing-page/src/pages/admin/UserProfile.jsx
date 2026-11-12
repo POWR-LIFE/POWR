@@ -8,6 +8,7 @@ import { useAuth } from '../../App';
 import { levelFromEarned } from '../../lib/levels';
 import { formatMemberId, normalizeMemberId } from '../../../../shared/memberId.ts';
 import { countryName, countryFlag, COUNTRY_SOURCE_META } from '../../lib/country';
+import ActivityTimesPanel from './ActivityTimesPanel';
 import {
     Lock,
     User, Activity, Award, Calendar, Clock, MapPin,
@@ -147,6 +148,9 @@ export default function UserProfile() {
     // need a complete recent window, the log needs deep history a page at a time. Reading
     // both off one capped fetch made the cards depend on how densely the user syncs.
     const [healthSummary, setHealthSummary] = useState(null);
+    // Steps per local hour (daily_step_hours) for the Activity Times card. null =
+    // couldn't be read; the card then says steps by hour aren't recorded yet.
+    const [stepHours, setStepHours] = useState(null);
     const [showAdjust, setShowAdjust] = useState(false);
     const [showVaultGrant, setShowVaultGrant] = useState(false);
     const [vgAmount, setVgAmount] = useState('');
@@ -672,6 +676,12 @@ export default function UserProfile() {
             // its filters over them in the browser, so a partial read is a wrong number
             // and a filter that finds nothing. They page under the hood, so this stays
             // correct as a user's history grows past the server's row cap.
+            // Step hours load alongside but can't fail the page: a read error leaves the
+            // Activity Times card without its steps row, nothing more.
+            const stepHoursP = fetchAllRows(
+                () => supabase.from('daily_step_hours').select('date, steps').eq('user_id', userId),
+                { orderBy: 'date' },
+            ).catch(() => null);
             const [p, s, t, str, r, vd] = await Promise.all([
                 supabase.from('profiles').select('*').eq('id', userId).single(),
                 fetchAllRows(() => supabase.from('activity_sessions').select('*').eq('user_id', userId)),
@@ -690,6 +700,7 @@ export default function UserProfile() {
             setStreak(str.data || null);
             setRedemptions(r.sort((a, b) => new Date(b.redeemed_at) - new Date(a.redeemed_at)));
             setVaultDeposits(vd);
+            setStepHours(await stepHoursP);
 
             // Venue names for the activity rows. One batched lookup keyed on every partner
             // this user's sessions reference, so a row created by the server RPC (which
@@ -1266,6 +1277,11 @@ export default function UserProfile() {
                             </button>
                         )}
                     </div>
+
+                    {/* When in the day they sleep, walk and work out */}
+                    {activeTab === 'activity' && (
+                        <ActivityTimesPanel sessions={sessions} stepHours={stepHours} timezone={profile.timezone} />
+                    )}
 
                     {/* Activity Timeline */}
                     {activeTab === 'activity' && (

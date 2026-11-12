@@ -2086,6 +2086,40 @@ export async function saveDailyStepWindows(params: {
     if (error) console.warn('[stepWindows] upsert failed:', error.message);
 }
 
+/**
+ * Upsert one local day's steps per hour (24 entries, local hours 0..23) so the
+ * admin user profile can show when in the day a member walks. Separate from
+ * the challenge windows above: back-filled past days must not move a challenge.
+ */
+export async function saveDailyStepHours(userId: string, date: string, steps: number[]): Promise<void> {
+    if (steps.length !== 24) return;
+    const { error } = await supabase
+        .from('daily_step_hours')
+        .upsert(
+            {
+                user_id: userId,
+                date,
+                steps: steps.map(s => Math.max(0, Math.round(s))),
+                updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id,date' },
+        );
+    if (error) console.warn('[stepHours] upsert failed:', error.message);
+}
+
+/** When each step-hours row on or after `fromDate` (local YYYY-MM-DD) was last written. */
+export async function fetchStepHoursWritten(userId: string, fromDate: string): Promise<Map<string, string>> {
+    // Explicit user filter: an admin signed into the app can read every row
+    // through the admin policy, and RLS is the backstop, not the filter.
+    const { data, error } = await supabase
+        .from('daily_step_hours')
+        .select('date, updated_at')
+        .eq('user_id', userId)
+        .gte('date', fromDate);
+    if (error) throw error;
+    return new Map((data ?? []).map((r: { date: string; updated_at: string }) => [r.date, r.updated_at]));
+}
+
 export { WALKING_DAILY_CAP };
 
 // ── Monthly home-screen summary ───────────────────────────────────────────────
