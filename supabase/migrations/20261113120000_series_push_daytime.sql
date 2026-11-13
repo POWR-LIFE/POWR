@@ -4,12 +4,13 @@
 -- restatement; live prod matches it). Nothing here changes scoring, the
 -- board, pacers, the daily ceiling or who a push goes to.
 --
---   1. A moment that starts in the night pushes at 08:00 UK time that morning
---      instead of at its start (_series_moment_push_at). Eight of the ten
---      Autumn moments start at 00:00, so The Gun, Double Down, Blind Mode and
---      All In would otherwise buzz every phone at midnight. A moment that is
---      already over by 08:00 sends nothing. Moments from 08:00 on (Power Hour)
---      push at their start, as before.
+--   1. A moment that starts between midnight and 07:00 UK time pushes at
+--      08:00 that morning instead of at its start (_series_moment_push_at).
+--      Eight of the ten Autumn moments start at 00:00, so The Gun, Double
+--      Down, Blind Mode and All In would otherwise buzz every phone at
+--      midnight. A moment already over by 08:00 sends nothing. From 07:00 on
+--      a moment pushes at its start, as before: an early Power Hour (07:00)
+--      is meant to get people up, and the evening one (18:00) is on time.
 --   2. "X just passed you" goes out only between 08:00 and 21:00 the member's
 --      own time (the app's local-notification window). A pass in the night
 --      isn't saved for the morning: by then it's old news.
@@ -30,7 +31,7 @@ stable
 set search_path = public
 as $$
   select case
-    when (p_starts at time zone 'Europe/London')::time < time '08:00'
+    when (p_starts at time zone 'Europe/London')::time < time '07:00'
       then ((p_starts at time zone 'Europe/London')::date + time '08:00') at time zone 'Europe/London'
     else p_starts
   end
@@ -86,8 +87,8 @@ begin
 
   -- A moment starting: one push to everyone the Series is on for, once. Only
   -- within half an hour of its push time, so a late run never sends a stale
-  -- one. A moment that starts in the night (most start at 00:00) pushes at
-  -- 08:00 UK time instead, while it's still on: never a buzz at midnight.
+  -- one. A moment that starts in the night (00:00–07:00 UK; most start at
+  -- 00:00) pushes at 08:00 instead, while it's still on: never a midnight buzz.
   -- Logged per person like the others, so it counts toward the day's ceiling
   -- (at most one moment push a day each, and never a third Series push).
   for m in
@@ -288,5 +289,5 @@ $$;
 revoke all on function public.series_dispatch_pushes(boolean) from public, anon, authenticated;
 
 update public.notification_config
-   set description = 'Series: a round''s moment starts (Double Down, Power Hour, Blind Mode …): its name and line, once, to everyone the Series is on for. A moment that starts overnight pushes at 08:00 UK time. Each moment has its own push switch in /admin/series.'
+   set description = 'Series: a round''s moment starts (Double Down, Power Hour, Blind Mode …): its name and line, once, to everyone the Series is on for. A moment that starts between midnight and 07:00 UK time pushes at 08:00. Each moment has its own push switch in /admin/series.'
  where type = 'series_moment';
