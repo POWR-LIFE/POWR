@@ -20,6 +20,7 @@
 //  • Android force-stop (from Settings) blocks everything until the app is opened.
 
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import { defineTask } from '@/lib/taskFinishGuard';
 import { noteTask, reportHandled } from '@/lib/crashHandler';
 
@@ -114,7 +115,7 @@ export function extractData(raw: unknown, accepted: string[] = [VISIT_CHECK_TYPE
   return {};
 }
 
-defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
+async function handleWake({ data, error }: { data?: unknown; error?: unknown }): Promise<void> {
   if (error) {
     console.warn('[BackgroundNotification] task error:', error);
     return;
@@ -388,6 +389,82 @@ defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
     // and awaiting undefined is free.
     await rearmDone;
   }
+}
+
+/** iOS budget for one wake, measured from delivery to the moment the task
+ *  settles. Apple gives a background push 30 s to call its completion
+ *  handler, and expo-task-manager calls that handler only when this JS task
+ *  settles (EXTaskService runTasksWithReason, 14.0.9), with no timeout of
+ *  its own. taskFinishGuard can add up to MAX_HOLD_MS (5 s) on top, so 22 s
+ *  keeps the whole chain under 30.
+ *
+ *  WHY IT MATTERS (2026-11-13): iOS rations background pushes per app, and an
+ *  app that overruns its background time or never calls the completion handler
+ *  is a documented reason for the system to deliver it fewer. Our wake path has
+ *  awaits that are known to never settle (the frozen-response class noted
+ *  above, the health syncs and the sweep inside rearmDone), and nothing
+ *  bounded the task. Settling at the deadline does not cancel that work: it
+ *  carries on for as long as iOS lets the app run, exactly as it would after
+ *  an overrun. The difference is that iOS hears "done" on time. */
+export const IOS_WAKE_DEADLINE_MS = 22_000;
+
+type WakeOutcome = 'done' | 'deadline';
+
+/** Races the wake against IOS_WAKE_DEADLINE_MS on iOS; a straight await
+ *  elsewhere. Reports how long the wake took through `onSettled` (deadline or
+ *  not) and, when the deadline won, again through `onLateFinish` if the work
+ *  ever finishes. Exported for tests. */
+export async function runWithIosDeadline(
+  work: Promise<void>,
+  isIos: boolean,
+  onSettled: (outcome: WakeOutcome, ms: number) => void,
+  onLateFinish: (ms: number) => void,
+  deadlineMs: number = IOS_WAKE_DEADLINE_MS,
+): Promise<void> {
+  const startedAt = Date.now();
+  if (!isIos) {
+    await work;
+    return;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<WakeOutcome>((resolve) => {
+    timer = setTimeout(() => resolve('deadline'), deadlineMs);
+  });
+  // Node (jest) timers can be unref'd so a test whose work never settles does
+  // not hold the worker open; RN returns a number and this is a no-op there.
+  (timer as { unref?: () => void } | undefined)?.unref?.();
+  // handleWake catches its own errors, so `work` only ever fulfils; the catch is
+  // there so a future rejection still counts as a finish, not as a hang.
+  const finished = work.then(() => 'done' as const, () => 'done' as const);
+  const outcome = await Promise.race([finished, deadline]);
+  if (timer) clearTimeout(timer);
+  onSettled(outcome, Date.now() - startedAt);
+  if (outcome === 'deadline') {
+    void finished.then(() => onLateFinish(Date.now() - startedAt));
+  }
+}
+
+defineTask(BACKGROUND_NOTIFICATION_TASK, async (body: { data?: unknown; error?: unknown }) => {
+  // Only OUR wakes get timing telemetry: a foreign push or a display push
+  // costs nothing worth measuring, and one row per wake is plenty.
+  const ours = !body.error && extractData(body.data).type === VISIT_CHECK_TYPE;
+  const wakeKind = ours
+    ? (extractData(body.data).visit_id ? 'visit_check' : 'fence_refresh')
+    : null;
+  const report = (event: 'wake_task_done', detail: Record<string, unknown>) => {
+    if (!wakeKind) return;
+    // Fire-and-forget and lazily imported, like every other receipt here: the
+    // record must never cost the wake.
+    void import('@/lib/gymVisits')
+      .then(m => m.logGeofenceRegionEvent('wake', event, { type: wakeKind, ...detail }))
+      .catch(() => { /* telemetry only */ });
+  };
+  await runWithIosDeadline(
+    handleWake(body),
+    Platform.OS === 'ios',
+    (outcome, ms) => report('wake_task_done', { outcome, ms }),
+    (ms) => report('wake_task_done', { outcome: 'late_finish', ms }),
+  );
 });
 
 /** REBINDS the task so data-only pushes are delivered while backgrounded/closed.
