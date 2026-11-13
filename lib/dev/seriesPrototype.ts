@@ -363,13 +363,18 @@ export function rebalance(model: Model, b: Board) {
 
 /** The race's views: the five around you on the big board, or its top (and you). */
 export type RaceView = 'around' | 'top';
-export function visibleRows(b: Board, state: SeriesState, view: RaceView = 'around'): Row[] {
+/**
+ * `lead`: 'around' also shows the top N (the live board: the server always
+ * sends the top 3, so members can see who's leading). Never in Blind Mode,
+ * where the extra names would give the top away.
+ */
+export function visibleRows(b: Board, state: SeriesState, view: RaceView = 'around', lead = 0): Row[] {
     const all = known(b);
     const me = all.find((k) => k.p.you)!;
     const showAll = b.total <= 10;
     const want = new Set<number>();
     all.forEach((k) => {
-        const around = k.rank >= me.rank - 2 && k.rank <= me.rank + 2;
+        const around = (k.rank >= me.rank - 2 && k.rank <= me.rank + 2) || (state !== 'blind' && k.rank <= lead);
         // Top: everyone the sample holds at the top (the real board pages to 100), then you.
         const top = k.rank <= 100 || k.p.you;
         if (showAll || (view === 'around' ? around : top)) want.add(k.rank);
