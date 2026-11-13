@@ -147,7 +147,7 @@ export function sweepWitnessesOutside(
 }
 
 /**
- * The settle pays only a visit whose wake offer is exhausted (>= 2 nudges
+ * The settle pays only a visit whose wake offer went unanswered (>= 1 nudge
  * unanswered). A phone with no push token is never offered a wake, so its
  * nudge_count stays 0 and — before this — the settle never selected it: a
  * proven member who stayed was paid only if they opened the app. Field

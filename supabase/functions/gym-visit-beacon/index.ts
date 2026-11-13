@@ -1451,8 +1451,18 @@ Deno.serve(async (req: Request) => {
   }
 
   {
-    const SETTLE_GRACE_MIN = 5;
-    const SETTLE_MIN_NUDGES = 2;
+    // ONE unanswered wake, not two (2026-11-13). Measured over the 30 days to
+    // 2026-11-13: iOS answered the FIRST dwell nudge 0 of 91 times and the first
+    // upgrade nudge 0 of 73; the second rescued 5 of each. Waiting for nudge 2
+    // (5-min backoff + 2-min answer grace) put almost every iOS claim at ~38 min
+    // against a 30-min threshold to save ~5% of them a settle — and those 5% are
+    // still paid, just at settle trust instead of device trust. Android, the
+    // platform that does answer, answers in seconds, well inside the 2-min
+    // answer grace below, so a healthy device still always gets first claim.
+    // Grace drops with it: 5 min of grace sat on top of the first nudge's own
+    // 2-min right-of-way for no added protection.
+    const SETTLE_GRACE_MIN = 2;
+    const SETTLE_MIN_NUDGES = 1;
     // How long after the LAST nudge the device keeps right-of-way. Two minutes,
     // not NUDGE_BACKOFF_MS: a device that answers at all answers in seconds
     // (bench 2026-08-13: 2.4 s cold-start), while the nudge pass above re-stamps

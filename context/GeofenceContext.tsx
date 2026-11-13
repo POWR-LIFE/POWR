@@ -144,6 +144,9 @@ const EXIT_STREAK_KEY         = '@powr/exit_readings';
 // and a tally that resets per event would report "1" fifty times — which is the
 // noise we are removing. See noteSuppressedExit.
 const EXIT_NOISE_KEY          = '@powr/exit_noise_tally';
+// Late-open attempts spent on ONE session, keyed by its entryTimestamp so a new
+// check-in starts from zero. See lateOpenBudgetLeft.
+const LATE_OPEN_TRIES_KEY     = '@powr/late_open_tries';
 
 // Last time a sweep stamped proven presence (fix 2026-08-12). Module state, not
 // storage: a missed stamp costs one sweep interval of proof, nothing more.
@@ -1146,7 +1149,7 @@ function logRegionEvent(
     | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'visit_stream_ensured'
     | 'exit_noise_suppressed' | 'visit_close_deferred' | 'check_in_announced'
     | 'visit_open_attempt' | 'visit_open_result' | 'wake_step_hung' | 'stream_first_tick'
-    | 'check_in_banner' | 'check_in_open_deferred',
+    | 'check_in_banner' | 'check_in_open_deferred' | 'late_open_gave_up',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -4738,7 +4741,7 @@ export async function runVisitCheck(
   // The gate is `!visitId` — NOT `!active.visitId` — or a nonce wake that already
   // has a perfectly good server id would spend its window re-opening.
   let lateResolved = false;
-  if (inside && !visitId) {
+  if (inside && !visitId && await lateOpenBudgetLeft(active, 'wake_late_open')) {
     try {
       // Bounded: this is on the wake's critical path now, so a freeze here must
       // cost the open and not the confirm behind it.
@@ -5081,6 +5084,9 @@ async function heartbeatVisitStream(
     }
 
     if (!active.visitId) {
+      // Spent budget leaves the tick exactly where a failed open always has:
+      // nothing below may run without a visit id.
+      if (!(await lateOpenBudgetLeft(active, 'stream_late_open'))) return;
       // Late-open. openGymVisit fires exactly once, at check-in — but check-in can
       // RACE auth (fresh install: the entry fix landed 240 ms into login and the RPC
       // failed P0001 'not authenticated', field-caught 2026-07-14). Without a retry
@@ -5634,6 +5640,56 @@ let _approachFirstTickEmitted = false;
  *  rows had no identified source at all. `source` ends that.
  *
  *  Never throws: telemetry must not be able to break a check-in. */
+/** Late-open attempts allowed per session before the retry gives up. ~1 h at the
+ *  stream's 5-min cadence; a raced check-in resolves on its first retry or two. */
+const LATE_OPEN_MAX_TRIES = 12;
+
+/** Spends one late-open attempt for this session, or reports the budget gone.
+ *
+ *  ⚠ WHY A BUDGET AND NOT A "CLOSED" ANSWER (field 2026-11-13, visit dc01c3fc,
+ *  Android). The server closed the visit at 22:57 (stale_after_upgrade); the
+ *  phone, reading 100 m coarse fixes that landed 5 m from the venue, never saw
+ *  an exit and kept its local session. With no visitId stamped, every stream
+ *  tick and wake late-opened: 62 attempts in 10 h, each answered server-side
+ *  with `stale_entry_replayed` — and ZERO `visit_open_result` rows. The request
+ *  leaves, the reply never reaches JS before the headless task dies. So no
+ *  reply-borne signal ("that visit is closed") can stop this loop; only a
+ *  count kept BEFORE the call can.
+ *
+ *  Giving up costs only the beacon's support for this session: the local dwell
+ *  machine still claims directly (claim-points needs no visit id), and the
+ *  check-in's own open is never budgeted. Counted before the network call, on
+ *  purpose — an attempt whose reply is lost is exactly the one that must count.
+ *  Storage failure fails OPEN (allow the attempt): a lost counter costs one
+ *  extra RPC, never a session. */
+async function lateOpenBudgetLeft(
+  active: StoredGeofence,
+  source: 'wake_late_open' | 'stream_late_open',
+): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(LATE_OPEN_TRIES_KEY);
+    const prev = raw ? JSON.parse(raw) as { entry: number; n: number } : null;
+    const n = prev && prev.entry === active.entryTimestamp ? prev.n : 0;
+    if (n >= LATE_OPEN_MAX_TRIES) {
+      if (n === LATE_OPEN_MAX_TRIES) {
+        // Once per session: bump past the cap so this row is written only here.
+        await AsyncStorage.setItem(LATE_OPEN_TRIES_KEY, JSON.stringify({ entry: active.entryTimestamp, n: n + 1 }));
+        logRegionEvent(active.regionId ?? 'visit', 'late_open_gave_up', {
+          source,
+          tries:        n,
+          opened_entry: active.entryTimestamp,
+          age_min:      Math.round((Date.now() - active.entryTimestamp) / 60_000),
+        });
+      }
+      return false;
+    }
+    await AsyncStorage.setItem(LATE_OPEN_TRIES_KEY, JSON.stringify({ entry: active.entryTimestamp, n: n + 1 }));
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 async function openVisitTraced(
   source: 'check_in' | 'sweep_proven_stamp' | 'wake_late_open' | 'stream_late_open' | 'close_recovery',
   partnerId: string,
