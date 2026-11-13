@@ -95,7 +95,6 @@ describe('crowdAt', () => {
 });
 
 describe('prizes', () => {
-  const now = Date.parse('2026-11-02T12:00:00Z');
   it('lists seven ways to win in scene order', () => {
     expect(PRIZE_SLOTS.map((s) => s.title)).toEqual(['Champion', 'Contender', 'Challenger', 'Unbreakable', 'Level Up', 'Rookie of the Series', 'Squad Builder']);
   });
@@ -104,28 +103,23 @@ describe('prizes', () => {
     expect(isPlaceholderPrize('TBC')).toBe(true);
     expect(isPlaceholderPrize('Theragun Prime')).toBe(false);
   });
-  it('shows the prize once it is in the system, else the reveal day', () => {
+  it('shows the prize once it is in the system, else "To be announced" (never a date)', () => {
     const prizes = [{ kind: 'patient_zero', place: null, name: 'Theragun Prime', sponsor: null, detail: null, winners: 1 }];
-    const by = Object.fromEntries(PRIZE_SLOTS.map((s) => [s.key, prizeChip(s, prizes, ROUND, now, TZ)]));
+    const by = Object.fromEntries(PRIZE_SLOTS.map((s) => [s.key, prizeChip(s, prizes)]));
     expect(by['patient_zero']).toEqual({ text: 'Theragun Prime', on: true });
-    expect(by['rookie']).toEqual({ text: 'Revealed 15 Nov', on: false });
-    expect(by['biggest_mover']).toEqual({ text: 'Revealed 16 Nov', on: false });
-    expect(by['hot_streak']).toEqual({ text: 'Revealed 17 Nov', on: false });
-    expect(by['place-3']).toEqual({ text: 'Revealed 18 Nov', on: false });
-    expect(by['place-2']).toEqual({ text: 'Revealed 19 Nov', on: false });
-    expect(by['place-1']).toEqual({ text: 'Revealed 20 Nov', on: false });
+    for (const key of ['rookie', 'biggest_mover', 'hot_streak', 'place-3', 'place-2', 'place-1']) {
+      expect(by[key]).toEqual({ text: 'To be announced', on: false });
+    }
   });
-  it('never prints a reveal day that has passed', () => {
-    const slot = PRIZE_SLOTS.find((s) => s.key === 'rookie')!;
-    expect(prizeChip(slot, [], ROUND, Date.parse('2026-11-16T00:00:00Z'), TZ)).toEqual({ text: 'Announced soon', on: false });
+  it('treats a stand-in row as not entered', () => {
     const squad = PRIZE_SLOTS.find((s) => s.key === 'patient_zero')!;
-    expect(prizeChip(squad, [{ kind: 'patient_zero', place: null, name: 'Prize to be announced', sponsor: null, detail: null, winners: 1 }], ROUND, now, TZ))
-      .toEqual({ text: 'Announced soon', on: false });
+    expect(prizeChip(squad, [{ kind: 'patient_zero', place: null, name: 'Prize to be announced', sponsor: null, detail: null, winners: 1 }]))
+      .toEqual({ text: 'To be announced', on: false });
   });
   it('matches a place prize by its place', () => {
     const prizes = [{ kind: 'place', place: 2, name: 'Garmin Forerunner', sponsor: null, detail: null, winners: 1 }];
-    expect(prizeChip(PRIZE_SLOTS[1], prizes, ROUND, now, TZ)).toEqual({ text: 'Garmin Forerunner', on: true });
-    expect(prizeChip(PRIZE_SLOTS[0], prizes, ROUND, now, TZ).on).toBe(false);
+    expect(prizeChip(PRIZE_SLOTS[1], prizes)).toEqual({ text: 'Garmin Forerunner', on: true });
+    expect(prizeChip(PRIZE_SLOTS[0], prizes).on).toBe(false);
   });
 });
 

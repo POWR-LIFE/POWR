@@ -217,9 +217,8 @@ export const fmtInt = (n: number): string => Math.round(n).toLocaleString('en-GB
  * The seven ways to win, in the order the prizes scene shows them. Kinds are
  * series_prizes.kind; the words are the app's (Champion / Contender /
  * Challenger · Unbreakable · Level Up · Rookie of the Series · Squad Builder).
- * `reveal` = days after the gun that the prize behind it is announced, one a
- * day from the first day of the round, biggest last. Squad Builder is its
- * own race during the build-up, so its prize is named up front.
+ * A way to win with no prize entered reads "To be announced": the screen
+ * never promises a reveal date nobody has committed to.
  */
 export type PrizeSlot = {
   key: string;
@@ -228,17 +227,16 @@ export type PrizeSlot = {
   ord: number;
   title: string;
   how: string;
-  reveal: number | null;
 };
 
 export const PRIZE_SLOTS: readonly PrizeSlot[] = [
-  { key: 'place-1', kind: 'place', place: 1, ord: 1, title: 'Champion', how: 'Gold · Most points', reveal: 5 },
-  { key: 'place-2', kind: 'place', place: 2, ord: 2, title: 'Contender', how: 'Silver · Second-most points', reveal: 4 },
-  { key: 'place-3', kind: 'place', place: 3, ord: 3, title: 'Challenger', how: 'Bronze · Third-most points', reveal: 3 },
-  { key: 'hot_streak', kind: 'hot_streak', place: null, ord: 4, title: 'Unbreakable', how: 'Longest streak of active days', reveal: 2 },
-  { key: 'biggest_mover', kind: 'biggest_mover', place: null, ord: 5, title: 'Level Up', how: 'Climb the most places', reveal: 1 },
-  { key: 'rookie', kind: 'rookie', place: null, ord: 6, title: 'Rookie of the Series', how: 'Best newcomer this {month}', reveal: 0 },
-  { key: 'patient_zero', kind: 'patient_zero', place: null, ord: 7, title: 'Squad Builder', how: 'Recruit the most active friends', reveal: null },
+  { key: 'place-1', kind: 'place', place: 1, ord: 1, title: 'Champion', how: 'Gold · Most points' },
+  { key: 'place-2', kind: 'place', place: 2, ord: 2, title: 'Contender', how: 'Silver · Second-most points' },
+  { key: 'place-3', kind: 'place', place: 3, ord: 3, title: 'Challenger', how: 'Bronze · Third-most points' },
+  { key: 'hot_streak', kind: 'hot_streak', place: null, ord: 4, title: 'Unbreakable', how: 'Longest streak of active days' },
+  { key: 'biggest_mover', kind: 'biggest_mover', place: null, ord: 5, title: 'Level Up', how: 'Climb the most places' },
+  { key: 'rookie', kind: 'rookie', place: null, ord: 6, title: 'Rookie of the Series', how: 'Best newcomer this {month}' },
+  { key: 'patient_zero', kind: 'patient_zero', place: null, ord: 7, title: 'Squad Builder', how: 'Recruit the most active friends' },
 ];
 
 /** A prize row saved as a stand-in ("Prize to be announced") is not a prize yet. */
@@ -255,23 +253,12 @@ export type PrizeChip = { text: string; on: boolean };
 
 /**
  * The small chip under each prize: the prize itself once it is in the
- * system, else when it will be. A reveal day that has passed with nothing
- * entered says "Announced soon" rather than a date in the past.
+ * system, else "To be announced".
  */
-export function prizeChip(
-  slot: PrizeSlot,
-  prizes: SeriesScreenPrize[],
-  round: Pick<SeriesScreenRound, 'starts_at'> | null,
-  nowMs: number,
-  tz: string,
-): PrizeChip {
+export function prizeChip(slot: PrizeSlot, prizes: SeriesScreenPrize[]): PrizeChip {
   const row = prizeFor(slot, prizes);
   if (row && !isPlaceholderPrize(row.name)) return { text: row.name, on: true };
-  if (slot.reveal !== null && round) {
-    const revealMs = Date.parse(round.starts_at) + slot.reveal * DAY_MS;
-    if (nowMs < revealMs) return { text: `Revealed ${shortDate(revealMs, tz)}`, on: false };
-  }
-  return { text: 'Announced soon', on: false };
+  return { text: 'To be announced', on: false };
 }
 
 /** Number as the lockup prints it: 1 → "001". */
