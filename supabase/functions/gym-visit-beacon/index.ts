@@ -1128,6 +1128,7 @@ Deno.serve(async (req: Request) => {
       // pointless, the next cycle will ask again anyway.
       const TTL_SEC = stage === 'upgrade' ? 30 * 60 : 10 * 60;
       let sentDirect = 0;
+      let sentApns = 0;
       let failedDirect = 0;
       const viaExpo = [];
 
@@ -1152,7 +1153,10 @@ Deno.serve(async (req: Request) => {
           viaExpo.push(t); // no credentials for this platform — old path, unchanged behaviour
           continue;
         }
-        if (outcome.ok) sentDirect++; else failedDirect++;
+        if (outcome.ok) {
+          sentDirect++;
+          if (t.platform === 'ios') sentApns++;
+        } else failedDirect++;
         if (outcome.unregistered) {
           // The native token is dead or mismatched at the platform. Clear ONLY
           // device_token so the row's Expo token keeps the device reachable on
@@ -1169,6 +1173,11 @@ Deno.serve(async (req: Request) => {
         await admin.from('push_send_log').insert({
           user_id: visit.user_id,
           type: `gym_visit_check_${stage}`,
+          // Which wire carried it. Left empty before 2026-11-13, which made
+          // iOS direct sends look transport-less next to Expo rows. Deliberately
+          // NOT 'fcm_direct': the visible-push redelivery pass selects on that
+          // value, and a wake must never be resent by it.
+          transport: t.platform === 'ios' ? 'apns_wake' : 'fcm_wake',
           expo_push_token: t.device_token,
           status: outcome.ok ? 'accepted' : 'rejected',
           ticket_id: outcome.messageName ?? outcome.apnsId ?? null,
@@ -1216,7 +1225,11 @@ Deno.serve(async (req: Request) => {
           stage,
           queued: result.queued,
           failed: result.failed + failedDirect,
+          // ⚠ `fcm_direct` counts EVERY direct send, APNs included: the key
+          // predates the iOS direct path and is kept so old queries still add
+          // up. `apns_direct` is the iOS share of it (2026-11-13).
           fcm_direct: sentDirect,
+          apns_direct: sentApns,
           attempt: attempt ?? null,
         },
       });
