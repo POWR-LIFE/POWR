@@ -98,6 +98,8 @@ export type SeriesView = {
         /** Your place last round (null = new), and your best ever place. */
         last: number | null;
         pb: number | null;
+        /** Live: your Series points in the round (the server sends no last/best place). */
+        points?: number;
     };
     /** Which slice of the race the rows show. */
     view: RaceView;
@@ -116,7 +118,8 @@ export type SeriesView = {
     /** Why each shut game is shut. */
     locks: Partial<Record<LensKey, GameLock>>;
     finish: { rank: number; total: number; pct: number; climb: number | null; inDraw: boolean } | null;
-    next: { label: string; starts: string; inDays: number };
+    /** `none`: the round on screen has ended and no round is planned after it (the season is over). */
+    next: { label: string; starts: string; inDays: number; none?: boolean };
     eventNight: boolean;
     /** One gym session's points, for "about N sessions takes the crown". */
     gymSessionPts: number;
@@ -329,7 +332,7 @@ export function fromLive(b: SeriesBoard, name = 'Series', blind = false): Series
     const phase = b.state === 'running' ? 'running' : b.state === 'ended' ? 'between' : 'upcoming';
     const upcoming = b.next ?? r;
     const nextFor = phase === 'upcoming' ? r : upcoming;
-    const next = { label: nextFor.name, starts: seriesDate(nextFor.starts_at), inDays: daysUntil(nextFor.starts_at) };
+    const next = { label: nextFor.name, starts: seriesDate(nextFor.starts_at), inDays: daysUntil(nextFor.starts_at), none: phase === 'between' && !b.next };
     const days = Array.from({ length: r.days }, (_, i) => me.days.includes(i + 1));
     return {
         live: true,
@@ -341,16 +344,21 @@ export function fromLive(b: SeriesBoard, name = 'Series', blind = false): Series
         },
         header: phase === 'running'
             ? i18n.t('series:view.headerDay', { name, day: r.day, days: r.days })
-            : i18n.t('series:view.headerNext', { name, round: next.label, date: next.starts }),
+            : next.none
+                // The last round is over: never "Round 02 starts Tue 15 Dec" after 15 Dec.
+                ? i18n.t('series:view.headerDone', { name })
+                : i18n.t('series:view.headerNext', { name, round: next.label, date: next.starts }),
         band: null,
         hero: {
             rank: me.rank, move: me.rank_mid - me.rank, total: b.total, left: timeLeft(r.ends_at), badge: null, blind,
             day: r.day, logged: me.days.length, need: r.draw_days, days, today: me.today, last: null, pb: null,
+            points: me.points,
         },
         view: 'around',
         rival,
         board,
-        rows: visibleRows(board, blind ? 'blind' : 'day3'),
+        // Around you, and the top 3 above (the leaders), outside Blind Mode.
+        rows: visibleRows(board, blind ? 'blind' : 'day3', 'around', 3),
         title: () => null,
         tabs,
         open: { overall: true, city: !!c?.open, gym: gymOpen, friends: true },

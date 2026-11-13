@@ -81,19 +81,24 @@ export function SeriesComingCard({ coming: c }: { coming: SeriesComing }) {
         : <ComingCard coming={c} now={now} onJoin={openJoin} />;
 }
 
-function ComingCard({ coming: c, now, onJoin }: { coming: SeriesComing; now: number; onJoin?: () => void }) {
-    const { t } = useTranslation();
+/**
+ * The coming card's numbers, whatever the state. Never a dash: with no round
+ * planned after this one there's no clock, and with nothing true to show at
+ * all the list is empty (and the card stays away).
+ */
+export function comingStats(c: SeriesComing, now: number, t: (k: string, o?: Record<string, unknown>) => string): HomeStat[] {
     const upcoming = c.phase === 'upcoming';
     // Gold is for your own numbers: the countdown stays white.
-    const clock: HomeStat = c.next
+    // No round planned after this one (the season's over): no clock at all, never a dash.
+    const clock: HomeStat | null = c.next
         ? { value: countdown(c.next.startsAt - now), label: t('series:homeCards.toRound', { round: upcoming ? c.roundName : c.next.name }) }
-        : { value: '—', label: t('series:homeCards.nextSoon') };
+        : null;
     // You're in, before the round: the invite race, once its period is on.
     const inv = upcoming && !c.join ? c.invite : null;
     // Not in the invite race (yet): the crowd at the line and that you're in;
     // in it: your race place and friends in.
     const offRace = inv != null && inv.me.rank == null;
-    const items: HomeStat[] = inv && offRace
+    const items: HomeStat[] = (inv && offRace
         ? [
             { value: seriesNum(crowdAt(inv, now)), label: t('series:homeCards.onStartLine') },
             { value: t('series:homeCards.in'), label: t('series:homeCards.youreInRound', { round: c.roundName }), tone: 'green' },
@@ -119,25 +124,41 @@ function ComingCard({ coming: c, now, onJoin }: { coming: SeriesComing; now: num
         ]
         : upcoming
         ? [clock, { value: `${c.days}`, label: t('series:homeCards.roundDays') }, { value: `${c.need}`, label: t('series:homeCards.drawDays') }]
-        : [
-            c.finish
-                ? { value: `#${seriesNum(c.finish.rank)}`, label: t('series:homeCards.finishedOf', { n: seriesNum(c.finish.total) }), tone: 'gold' }
-                : { value: '—', label: t('series:homeCards.finished') },
-            c.finish
-                ? {
-                    value: c.finish.inDraw ? t('series:homeCards.in') : t('series:homeCards.out'),
-                    label: t('series:homeCards.theDraw'),
-                    tone: c.finish.inDraw ? 'green' : undefined,
-                }
-                : { value: '—', label: t('series:homeCards.theDraw') },
+        : c.finish
+        ? [
+            { value: `#${seriesNum(c.finish.rank)}`, label: t('series:homeCards.finishedOf', { n: seriesNum(c.finish.total) }), tone: 'gold' },
+            {
+                value: c.finish.inDraw ? t('series:homeCards.in') : t('series:homeCards.out'),
+                label: t('series:homeCards.theDraw'),
+                tone: c.finish.inDraw ? 'green' : undefined,
+            },
             clock,
-        ];
+        ]
+        // Joined after the round that ended (not on its board): you're in the next one.
+        : c.next
+        ? [
+            { value: t('series:homeCards.in'), label: t('series:homeCards.youreInRound', { round: c.next.name }), tone: 'green' },
+            { value: `${c.days}`, label: t('series:homeCards.roundDays') },
+            clock,
+        ]
+        : []).filter((x): x is HomeStat => x != null);
+    return items;
+}
+
+function ComingCard({ coming: c, now, onJoin }: { coming: SeriesComing; now: number; onJoin?: () => void }) {
+    const { t } = useTranslation();
+    const upcoming = c.phase === 'upcoming';
+    const inv = upcoming && !c.join ? c.invite : null;
+    const offRace = inv != null && inv.me.rank == null;
+    const items = comingStats(c, now, t);
     const dress = useSeriesDress(
         c.season,
         (inv || c.join) && upcoming && c.next
             ? t('series:homeCards.roundStarts', { round: c.roundName, date: seriesDate(new Date(c.next.startsAt).toISOString()) })
             : upcoming ? t('series:homeCards.startingSoon', { round: c.roundName }) : t('series:homeCards.roundFinished', { round: c.roundName }),
     );
+    // Nothing true to show (no finish, no round to come): no card.
+    if (!items.length) return null;
     // One button: JOIN while you're not in (it's the thing to do now), else the winners once they're out.
     const action = onJoin
         ? { icon: 'flag-outline' as const, label: t('series:join.button'), primary: true, onPress: onJoin }

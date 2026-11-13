@@ -172,7 +172,10 @@
     "drawDays": "Jours de Draw",
     "dayOf": "{{name}} · jour {{day}} sur {{days}}",
     "a11y": "{{season}}. {{place}}. {{gap}}. {{draw}}. Ensuite : {{move}}. Ouvre la Ligue.",
-    "next": "Ensuite"
+    "next": "Ensuite",
+    "racing": "En course",
+    "daysLeft_one": "Jour restant",
+    "daysLeft_other": "Jours restants"
   },
   "rival": {
     "youPassed": "Tu as dépassé {{name}}",
@@ -477,7 +480,7 @@
     "topPlacesWin": "Les premières places gagnent des prix",
     "squadBuilder": {
       "short": "Le plus d’amis amenés",
-      "how": "Le plus d’amis qui s’inscrivent avec ton code avant la manche ou pendant The Plague. Chacun compte dès qu’il enregistre une séance.",
+      "how": "Le plus d’amis qui s’inscrivent avec ton code avant le départ, ou pendant la manche quand elle n’a pas de course aux invitations. Chacun compte dès qu’il enregistre une séance.",
       "unit_one": "{{count}} ami",
       "unit_other": "{{count}} amis"
     },
@@ -634,7 +637,17 @@
     "momentOnNow": "EN COURS",
     "momentNext": "À SUIVRE",
     "momentDone": "TERMINÉ",
-    "revealedClose": "Dévoilé à l’approche"
+    "revealedClose": "Dévoilé à l’approche",
+    "seriesPts": "PTS SERIES",
+    "ptsToday": "+{{n}} aujourd’hui",
+    "moveToClimb": "bouge aujourd’hui pour grimper",
+    "daysLeftLabel": "JOURS RESTANTS",
+    "theDraw": "LE DRAW",
+    "daysLogged": "jours validés",
+    "theSeason": "LA SAISON",
+    "complete": "Terminée",
+    "inRound": "au {{round}}",
+    "allRoundsDone": "toutes les manches courues"
   },
   "lane": {
     "rank": "RANG",
@@ -671,7 +684,8 @@
     "headerDay": "{{name}} · Jour {{day}} sur {{days}}",
     "headerNext": "{{name}} · {{round}} le {{date}}",
     "yourGym": "Ta salle",
-    "duelEnds": "dim. 23:59"
+    "duelEnds": "dim. 23:59",
+    "headerDone": "{{name}} · terminée"
   },
   "move": {
     "walk": "Marche {{minutes}} min",

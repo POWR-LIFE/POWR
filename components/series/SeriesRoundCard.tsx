@@ -30,34 +30,11 @@ import { BUTTER, hexA, mixHex, plainCard, useSeason } from './season';
 export function SeriesRoundCard({ today: t }: { today: SeriesToday }) {
     // `t` is the round here, so the translator goes by another name.
     const { t: tr } = useTranslation();
-    const r = t.rival;
-    const first = r ? r.p.name.split(' ')[0] : '';
-    const unranked = t.points === 0 && !t.blind;
     // The Drop's quicker route, but only when it also passes your rival: else it's the Drop card's business.
     const drop = useDropMove(t);
     const move = seriesNextMove(t, drop?.passes ? drop : null);
 
-    const place: HomeStat = t.blind
-        ? { value: '?', label: tr('series:roundCard.rankHidden') }
-        : unranked
-            ? { value: '—', label: tr('series:roundCard.notRanked') }
-            : { value: `#${seriesNum(t.rank)}`, label: tr('series:roundCard.of', { n: seriesNum(t.total) }), tone: 'gold', move: t.move };
-    const gap: HomeStat = !r
-        ? { value: '—', label: tr('series:roundCard.noRival') }
-        : t.blind || r.sealed
-            ? { value: '?', label: tr('series:roundCard.ptsTo', { name: first }) }
-            : r.ahead
-                ? { value: seriesNum(r.gap), label: tr('series:roundCard.ptsClear', { name: first }), tone: 'green' }
-                : { value: seriesNum(r.gap), label: tr('series:roundCard.ptsTo', { name: first }) };
-    const chip = seriesDrawChip(t);
-    const { logged, need } = t.draw;
-    const draw: HomeStat = {
-        value: `${Math.min(logged, need)}/${need}`,
-        label: logged >= need
-            ? tr('series:roundCard.inDraw')
-            : chip?.tone === 'warn' ? tr('series:roundCard.drawMoveToday') : chip?.tone === 'out' ? tr('series:roundCard.drawOut') : tr('series:roundCard.drawDays'),
-        tone: logged >= need ? 'green' : chip?.tone === 'warn' ? 'orange' : chip?.tone === 'out' ? 'red' : undefined,
-    };
+    const { place, gap, draw } = roundCardStats(t, tr);
 
     const dress = useSeriesDress(t.season, tr('series:roundCard.dayOf', { name: t.roundName, day: t.day, days: t.days }));
 
@@ -81,6 +58,47 @@ export function SeriesRoundCard({ today: t }: { today: SeriesToday }) {
             <HomeNote icon="flash-outline" lead={tr('series:roundCard.next')} text={move} />
         </HomeCard>
     );
+}
+
+/**
+ * The card's three numbers: your place, the gap to your rival, your Draw days.
+ * Never a 0 or a dash (Jamie): until you have points, how many are racing;
+ * with no gap to show, the days left; with nothing logged, the days the Draw takes.
+ */
+export function roundCardStats(t: SeriesToday, tr: (k: string, o?: Record<string, unknown>) => string): { place: HomeStat; gap: HomeStat; draw: HomeStat } {
+    const r = t.rival;
+    const first = r ? r.p.name.split(' ')[0] : '';
+    const unranked = t.points === 0 && !t.blind;
+    // Days still to race, today included: the number to show until there's a rank or a gap.
+    const daysLeft: HomeStat = { value: `${Math.max(1, t.days - t.day + 1)}`, label: tr('series:roundCard.daysLeft', { count: Math.max(1, t.days - t.day + 1) }) };
+    // Never a 0 or a dash (Jamie): on 0 points, how many are racing, not a rank among everyone tied on zero.
+    const place: HomeStat = t.blind
+        ? { value: '?', label: tr('series:roundCard.rankHidden') }
+        : unranked
+            ? { value: seriesNum(t.total), label: tr('series:roundCard.racing') }
+            : { value: `#${seriesNum(t.rank)}`, label: tr('series:roundCard.of', { n: seriesNum(t.total) }), tone: 'gold', move: t.move };
+    const gap: HomeStat = !r || (r.gap === 0 && !(t.blind || r.sealed))
+        ? daysLeft
+        : t.blind || r.sealed
+            ? { value: '?', label: tr('series:roundCard.ptsTo', { name: first }) }
+            : r.ahead
+                ? { value: seriesNum(r.gap), label: tr('series:roundCard.ptsClear', { name: first }), tone: 'green' }
+                : { value: seriesNum(r.gap), label: tr('series:roundCard.ptsTo', { name: first }) };
+    const chip = seriesDrawChip(t);
+    const { logged, need } = t.draw;
+    const draw: HomeStat = logged >= need
+        ? { value: `${need}/${need}`, label: tr('series:roundCard.inDraw'), tone: 'green' }
+        : chip?.tone === 'out'
+            ? { value: tr('series:homeCards.out'), label: tr('series:roundCard.drawOut'), tone: 'red' }
+            : logged === 0
+                // Nothing logged yet: the days it takes, not 0/10.
+                ? { value: `${need}`, label: chip?.tone === 'warn' ? tr('series:roundCard.drawMoveToday') : tr('series:homeCards.drawDays'), tone: chip?.tone === 'warn' ? 'orange' : undefined }
+                : {
+                    value: `${logged}/${need}`,
+                    label: chip?.tone === 'warn' ? tr('series:roundCard.drawMoveToday') : tr('series:roundCard.drawDays'),
+                    tone: chip?.tone === 'warn' ? 'orange' : undefined,
+                };
+    return { place, gap, draw };
 }
 
 /**

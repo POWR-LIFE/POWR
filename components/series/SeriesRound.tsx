@@ -61,6 +61,8 @@ export function SeriesCard({
     const next = ROUND_MOMENTS.find((m) => m.day > h.day);
     const f = v.finish;
     const away = h.pb != null ? h.rank - h.pb : null;
+    // Live, the server sends no last-round or best place: your points and The Draw instead.
+    const liveStats = v.live && running && h.last == null && h.pb == null ? roundStats(v, t) : null;
     const [fullH, setFullH] = useState(0);
     const zero = useSharedValue(0);
     const y = scrollY ?? zero;
@@ -110,6 +112,16 @@ export function SeriesCard({
                                     {h.blind ? t('series:round.hiddenToday') : h.move ? t('series:round.moveToday', { arrow: h.move > 0 ? '▲' : '▼', n: Math.abs(h.move) }) : t('series:round.noMoveToday')}
                                 </Text>
                             </View>
+                            {liveStats ? liveStats.map((x) => (
+                                <React.Fragment key={x.label}>
+                                    <View style={s.posRule} />
+                                    <View style={s.posStat}>
+                                        <Text style={s.label}>{x.label}</Text>
+                                        <Text style={[s.statVal, x.tone && { color: x.tone }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{x.value}</Text>
+                                        <Text style={s.statSub} numberOfLines={1}>{x.sub}</Text>
+                                    </View>
+                                </React.Fragment>
+                            )) : (<>
                             <View style={s.posRule} />
                             <View style={s.posStat}>
                                 <Text style={s.label}>{t('series:round.lastRound')}</Text>
@@ -134,6 +146,7 @@ export function SeriesCard({
                                     {h.blind ? t('series:round.keepMoving') : away == null ? '' : away <= 0 ? t('series:round.newBest') : t('series:round.placesAway', { count: away, n: fmt(away) })}
                                 </Text>
                             </View>
+                            </>)}
                         </>
                     ) : !f ? (
                         // Before the round: when it starts, how long it runs, what gets you in The Draw.
@@ -175,11 +188,20 @@ export function SeriesCard({
                                 <Text style={s.statSub}>{t('series:round.drawnOn', { on: v.round.prizesOn })}</Text>
                             </View>
                             <View style={s.posRule} />
-                            <View style={s.posStat}>
-                                <Text style={s.label}>{t('series:round.nextRound')}</Text>
-                                <Text style={s.statVal}>{v.next.starts}</Text>
-                                <Text style={s.statSub}>{t('series:round.startsLevel')}</Text>
-                            </View>
+                            {v.next.none ? (
+                                // The season's last round is over: no next round to promise.
+                                <View style={s.posStat}>
+                                    <Text style={s.label}>{h.points ? t('series:round.seriesPts') : t('series:round.theSeason')}</Text>
+                                    <Text style={s.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{h.points ? fmt(h.points) : t('series:round.complete')}</Text>
+                                    <Text style={s.statSub} numberOfLines={1}>{h.points ? t('series:round.inRound', { round: v.round.name }) : t('series:round.allRoundsDone')}</Text>
+                                </View>
+                            ) : (
+                                <View style={s.posStat}>
+                                    <Text style={s.label}>{t('series:round.nextRound')}</Text>
+                                    <Text style={s.statVal}>{v.next.starts}</Text>
+                                    <Text style={s.statSub}>{t('series:round.startsLevel')}</Text>
+                                </View>
+                            )}
                         </>
                     )}
                 </View>
@@ -402,6 +424,32 @@ export function TitlesList({ titles }: { titles: DailyTitle[] }) {
             })}
         </View>
     );
+}
+
+/**
+ * The live round card's two numbers beside your place: your Series points
+ * (days left until you have some: never a 0) and The Draw (the days it takes
+ * until you've logged one, then logged of needed, then in or out).
+ */
+export function roundStats(v: SeriesView, t: (k: string, o?: Record<string, unknown>) => string): { label: string; value: string; sub: string; tone?: string }[] {
+    const h = v.hero;
+    const todayLogged = !!h.days[h.day - 1];
+    // Days still to come, today included unless it's already logged.
+    const left = Math.max(0, v.round.days - h.day + (todayLogged ? 0 : 1));
+    const daysLeft = Math.max(1, v.round.days - h.day + 1);
+    const points = h.points ?? 0;
+    const pts = points > 0
+        ? { label: t('series:round.seriesPts'), value: fmt(points), sub: h.today > 0 ? t('series:round.ptsToday', { n: fmt(h.today) }) : t('series:round.moveToClimb') }
+        : { label: t('series:round.daysLeftLabel'), value: fmt(daysLeft), sub: t('series:round.toDate', { date: v.round.lastDay }) };
+    const short = h.need - h.logged;
+    const draw = h.logged >= h.need
+        ? { label: t('series:round.theDraw'), value: t('series:round.drawIn'), sub: t('series:round.drawnOn', { on: v.round.prizesOn }), tone: GREEN }
+        : left < short
+            ? { label: t('series:round.theDraw'), value: t('series:round.drawOut'), sub: t('series:round.drawnOn', { on: v.round.prizesOn }) }
+            : h.logged === 0
+                ? { label: t('series:round.theDraw'), value: t('series:round.days', { count: h.need }), sub: t('series:round.toGetIn') }
+                : { label: t('series:round.theDraw'), value: `${h.logged}/${h.need}`, sub: t('series:round.daysLogged') };
+    return [pts, draw];
 }
 
 const s = StyleSheet.create({

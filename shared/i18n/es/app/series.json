@@ -172,7 +172,10 @@
     "drawDays": "Días de Draw",
     "dayOf": "{{name}} · día {{day}} de {{days}}",
     "a11y": "{{season}}. {{place}}. {{gap}}. {{draw}}. Siguiente: {{move}}. Abre la Liga.",
-    "next": "Siguiente"
+    "next": "Siguiente",
+    "racing": "En carrera",
+    "daysLeft_one": "Día restante",
+    "daysLeft_other": "Días restantes"
   },
   "rival": {
     "youPassed": "Has adelantado a {{name}}",
@@ -477,7 +480,7 @@
     "topPlacesWin": "Los primeros puestos ganan premios",
     "squadBuilder": {
       "short": "Más amigos traídos",
-      "how": "Más amigos que se unan con tu código antes de la ronda o durante The Plague. Cada uno cuenta cuando registra un entreno.",
+      "how": "Más amigos que se unan con tu código antes de la salida, o durante la ronda si no tiene carrera de invitaciones. Cada uno cuenta cuando registra un entreno.",
       "unit_one": "{{count}} amigo",
       "unit_other": "{{count}} amigos"
     },
@@ -634,7 +637,17 @@
     "momentOnNow": "AHORA",
     "momentNext": "PRÓXIMO",
     "momentDone": "HECHO",
-    "revealedClose": "Se revela cuando se acerca"
+    "revealedClose": "Se revela cuando se acerca",
+    "seriesPts": "PTS SERIES",
+    "ptsToday": "+{{n}} hoy",
+    "moveToClimb": "muévete hoy para subir",
+    "daysLeftLabel": "DÍAS RESTANTES",
+    "theDraw": "EL DRAW",
+    "daysLogged": "días registrados",
+    "theSeason": "LA TEMPORADA",
+    "complete": "Terminada",
+    "inRound": "en el {{round}}",
+    "allRoundsDone": "todas las rondas corridas"
   },
   "lane": {
     "rank": "POS.",
@@ -671,7 +684,8 @@
     "headerDay": "{{name}} · Día {{day}} de {{days}}",
     "headerNext": "{{name}} · {{round}} el {{date}}",
     "yourGym": "Tu gimnasio",
-    "duelEnds": "dom 23:59"
+    "duelEnds": "dom 23:59",
+    "headerDone": "{{name}} · terminada"
   },
   "move": {
     "walk": "Camina {{minutes}} min",

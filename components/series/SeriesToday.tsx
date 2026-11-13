@@ -242,8 +242,8 @@ export function liveComing(b: SeriesBoard, season: string, prizes: PrizeSet, win
     }
     return {
         ...base, phase: 'between', winners, invite: null,
-        // Not in the round that ended: the round to come is all there is to say.
-        ...(join && !b.me ? { days: roundDays(join).days, need: join.need } : null),
+        // Not in the round that ended (joined since, or not yet): the round to come is all there is to say.
+        ...(!b.me && b.join ? { days: roundDays({ startsAt: Date.parse(b.join.starts_at), endsAt: Date.parse(b.join.ends_at) }).days, need: b.join.draw_days } : null),
         next: b.next ? { name: b.next.name, startsAt: Date.parse(b.next.starts_at) } : null,
         finish: b.me ? { rank: b.me.rank, total: b.total, inDraw: b.me.days.length >= r.draw_days } : null,
     };

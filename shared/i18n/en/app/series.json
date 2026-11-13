@@ -172,7 +172,10 @@
     "drawDays": "Draw days",
     "dayOf": "{{name}} · day {{day}} of {{days}}",
     "a11y": "{{season}}. {{place}}. {{gap}}. {{draw}}. Next: {{move}}. Opens the League.",
-    "next": "Next"
+    "next": "Next",
+    "racing": "Racing",
+    "daysLeft_one": "Day left",
+    "daysLeft_other": "Days left"
   },
   "rival": {
     "youPassed": "You passed {{name}}",
@@ -477,7 +480,7 @@
     "topPlacesWin": "The top places win prizes",
     "squadBuilder": {
       "short": "Most friends brought in",
-      "how": "The most friends who join with your code before the round or during The Plague. Each counts once they log a workout.",
+      "how": "The most friends who join with your code before the gun, or during the round when it has no invite race. Each counts once they log a workout.",
       "unit_one": "{{count}} friend",
       "unit_other": "{{count}} friends"
     },
@@ -634,7 +637,17 @@
     "momentOnNow": "ON NOW",
     "momentNext": "NEXT",
     "momentDone": "DONE",
-    "revealedClose": "Revealed when it’s close"
+    "revealedClose": "Revealed when it’s close",
+    "seriesPts": "SERIES PTS",
+    "ptsToday": "+{{n}} today",
+    "moveToClimb": "move today to climb",
+    "daysLeftLabel": "DAYS LEFT",
+    "theDraw": "THE DRAW",
+    "daysLogged": "days logged",
+    "theSeason": "THE SEASON",
+    "complete": "Complete",
+    "inRound": "in {{round}}",
+    "allRoundsDone": "every round raced"
   },
   "lane": {
     "rank": "RANK",
@@ -671,7 +684,8 @@
     "headerDay": "{{name}} · Day {{day}} of {{days}}",
     "headerNext": "{{name}} · {{round}} starts {{date}}",
     "yourGym": "Your gym",
-    "duelEnds": "Sun 23:59"
+    "duelEnds": "Sun 23:59",
+    "headerDone": "{{name}} · complete"
   },
   "move": {
     "walk": "Walk {{minutes}} min",
