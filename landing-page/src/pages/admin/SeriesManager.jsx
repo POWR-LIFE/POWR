@@ -66,6 +66,13 @@ const fmtDay = (day) => new Date(`${String(day).slice(0, 10)}T12:00:00Z`).toLoca
 const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: LONDON }) : '—');
 const fmtN = (n) => (n == null ? '—' : Number(n).toLocaleString('en-GB'));
 
+// What's still to do on a round that has ended (the banner at the top).
+const UNSETTLED_NOTE = {
+    none: 'its results aren’t settled. Members are waiting on the winners: settle, check, confirm and announce.',
+    provisional: 'its results are drawn but not confirmed. Check them, then confirm and announce.',
+    confirmed: 'its results are confirmed but not announced, so members can’t see the winners yet.',
+};
+
 function roundState(r, now = Date.now()) {
     const s = new Date(r.starts_at).getTime();
     const e = new Date(r.ends_at).getTime();
@@ -224,6 +231,23 @@ export default function SeriesManager() {
     const [seasonsError, setSeasonsError] = useState(null);
     const [slug, setSlug] = useState(params.get('round'));
     const [seasonSlug, setSeasonSlug] = useState(params.get('season'));
+    const [unsettled, setUnsettled] = useState([]); // [{ round, state }] ended rounds whose winners aren't out
+
+    // A round that has ended but whose results aren't announced yet. From the
+    // day after it ends the page opens on the next round, so say it up top.
+    const loadUnsettled = useCallback(async (rs) => {
+        const ended = (rs ?? []).filter(r => r.published && roundState(r).key === 'ended');
+        if (!ended.length) { setUnsettled([]); return; }
+        const { data, error } = await supabase.from('series_results').select('round_id, status, announced_at')
+            .in('round_id', ended.map(r => r.id)).neq('status', 'void');
+        if (error) { setUnsettled([]); return; }
+        setUnsettled(ended.map(r => {
+            const live = (data ?? []).filter(x => x.round_id === r.id);
+            const state = !live.length ? 'none' : live.some(x => x.status === 'provisional') ? 'provisional'
+                : live.some(x => x.announced_at) ? 'announced' : 'confirmed';
+            return { round: r, state };
+        }).filter(x => x.state !== 'announced'));
+    }, []);
 
     const loadRounds = useCallback(async () => {
         const [r, se] = await Promise.all([
@@ -236,6 +260,7 @@ export default function SeriesManager() {
         setSeasonsError(se.error ? se.error.message : null);
         setRounds(rs);
         setSeasons(ss);
+        loadUnsettled(rs);
         const pick = (prev) => (prev && rs.some(x => x.slug === prev) ? prev : pickDefault(rs)?.slug ?? null);
         setSlug(prev => {
             const next = pick(prev);
@@ -243,7 +268,7 @@ export default function SeriesManager() {
             setSeasonSlug(sp => (sp && ss.some(x => x.slug === sp) ? sp : ss.find(x => x.id === owner)?.slug ?? ss[0]?.slug ?? null));
             return next;
         });
-    }, [toast]);
+    }, [toast, loadUnsettled]);
     useEffect(() => { loadRounds(); }, [loadRounds]);
 
     const season = seasons.find(x => x.slug === seasonSlug) ?? null;
@@ -255,6 +280,12 @@ export default function SeriesManager() {
         setParams(next, { replace: true });
     };
     const pickRound = (s) => { setSlug(s); go({ round: s }); };
+    const openResults = (r) => {
+        const se = seasons.find(x => x.id === r.season_id);
+        if (se) setSeasonSlug(se.slug);
+        setSlug(r.slug);
+        go({ season: se?.slug ?? null, round: r.slug, tab: 'results' });
+    };
     const pickSeason = (se) => {
         setSeasonSlug(se.slug);
         const inIt = (rounds ?? []).filter(r => r.season_id === se.id);
@@ -283,6 +314,17 @@ export default function SeriesManager() {
                     Couldn’t load the seasons ({seasonsError}). If the seasons migration was just applied, reload the page.
                 </div>
             )}
+            {unsettled.filter(u => !(tab === 'results' && u.round.slug === slug)).map(({ round: r, state }) => (
+                <div key={r.id} className="mb-6 flex items-center justify-between gap-4 px-5 py-4 rounded-2xl border border-[#F97316]/30 bg-[#FFF7ED] text-[13px] text-[#9A3412]">
+                    <span className="flex items-center gap-2.5">
+                        <AlertTriangle size={15} className="shrink-0" />
+                        <span>
+                            <b>{seasons.find(x => x.id === r.season_id)?.name ?? 'The Series'} · {r.name}</b> finished on {fmtDay(lastDay(r.ends_at))}: {UNSETTLED_NOTE[state]}
+                        </span>
+                    </span>
+                    <button className={btnGold} onClick={() => openResults(r)}><Medal size={13} /> Open Results</button>
+                </div>
+            ))}
             {seasons.length > 0 && (
                 <div className="mb-3 flex items-center gap-2 flex-wrap">
                     {seasons.map(se => {
@@ -347,7 +389,7 @@ export default function SeriesManager() {
                     {tab === 'board' && round && <BoardTab key={round.id} round={round} />}
                     {tab === 'cities' && round && <CitiesTab key={round.id} round={round} />}
                     {tab === 'pacers' && round && <PacersTab key={round.id} round={round} />}
-                    {tab === 'results' && round && <ResultsTab key={round.id} round={round} />}
+                    {tab === 'results' && round && <ResultsTab key={round.id} round={round} onChanged={() => loadUnsettled(rounds)} />}
                 </>
             )}
         </div>
@@ -887,11 +929,21 @@ const PRIZE_KINDS = [
 ];
 const ordinal = (n) => (n % 100 >= 11 && n % 100 <= 13 ? `${n}th` : `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] ?? 'th'}`);
 
+/** A failed prize save in words: which rule the row broke, not the constraint's name. */
+function prizeError(e, v) {
+    const what = v.kind === 'place' ? `a ${ordinal(v.place)} place prize` : `a ${PRIZE_KINDS.find(k => k.kind === v.kind)?.title ?? v.kind} prize`;
+    if (e?.code === '23505') return `This round already has ${what}. Edit that one instead (reload if you can’t see it).`;
+    if (e?.code === '42501') return 'Not allowed: only admins can change prizes. Sign in again and retry.';
+    if (/one_winner|winners = 1/i.test(e?.message ?? '')) return 'A place or named prize goes to one person: only Every Move Counts, Top city and the Golden P can have more winners.';
+    return `Couldn’t save: ${e?.message ?? 'something went wrong'}`;
+}
+
 function PrizesTab({ round }) {
     const toast = useToast();
     const { user } = useAuth();
     const [rows, setRows] = useState(null);
     const [draft, setDraft] = useState({}); // id or 'new-<kind>[-place]' -> row
+    const [savingAll, setSavingAll] = useState(false);
 
     const load = useCallback(async () => {
         const { data, error } = await supabase.from('series_prizes').select('*').eq('round_id', round.id).order('kind').order('place');
@@ -904,28 +956,52 @@ function PrizesTab({ round }) {
     const places = (rows ?? []).filter(r => r.kind === 'place').sort((a, b) => a.place - b.place);
     const val = (r) => draft[r.id] ?? r;
     const change = (r, patch) => setDraft(d => ({ ...d, [r.id]: { ...val(r), ...patch } }));
+    // Unsaved: an edited row, or a row added here and never saved. Saving one
+    // row must never throw the others away, so a save swaps in just that row.
+    const unsaved = (rows ?? []).filter(r => r.id.startsWith('new') || draft[r.id]);
+    const dropDraft = (id) => setDraft(d => { const { [id]: _gone, ...rest } = d; return rest; });
 
-    const save = async (r) => {
+    useEffect(() => {
+        if (!unsaved.length) return undefined;
+        const warn = (e) => { e.preventDefault(); e.returnValue = ''; };
+        window.addEventListener('beforeunload', warn);
+        return () => window.removeEventListener('beforeunload', warn);
+    }, [unsaved.length]);
+
+    const save = async (r, { quiet = false } = {}) => {
         const v = val(r);
-        if (!v.name?.trim()) { toast.error('A prize needs a name'); return; }
+        if (!v.name?.trim()) { toast.error(v.kind === 'place' ? `The ${ordinal(v.place)} place prize needs a name` : 'A prize needs a name'); return false; }
         const row = { round_id: round.id, kind: v.kind, place: v.kind === 'place' ? v.place : null, name: v.name.trim(),
             sponsor: v.sponsor?.trim() || null, detail: v.detail?.trim() || null, image_url: v.image_url ?? null,
             winners: v.kind === 'place' ? 1 : Math.max(1, Number(v.winners) || 1), updated_at: new Date().toISOString() };
         const res = r.id.startsWith('new')
             ? await supabase.from('series_prizes').insert(row).select().single()
             : await supabase.from('series_prizes').update(row).eq('id', r.id).select().single();
-        if (res.error) { toast.error(rpcError(res.error)); return; }
+        if (res.error) { toast.error(prizeError(res.error, v)); return false; }
         await logAction(user.id, r.id.startsWith('new') ? 'series_prize_create' : 'series_prize_update', 'series_prize', res.data.id, { round: round.slug, ...row });
-        toast.success('Prize saved');
-        load();
+        setRows(rs => rs.map(x => (x.id === r.id ? res.data : x)));
+        dropDraft(r.id);
+        if (!quiet) toast.success(`${v.name.trim()} saved`);
+        return true;
+    };
+    const saveAll = async () => {
+        setSavingAll(true);
+        let ok = 0;
+        for (const r of unsaved) {
+            if (await save(r, { quiet: true })) ok += 1;
+            else break;
+        }
+        setSavingAll(false);
+        if (ok) toast.success(`${ok} prize${ok === 1 ? '' : 's'} saved`);
     };
     const remove = async (r) => {
-        if (r.id.startsWith('new')) { setRows(rs => rs.filter(x => x.id !== r.id)); return; }
+        if (r.id.startsWith('new')) { setRows(rs => rs.filter(x => x.id !== r.id)); dropDraft(r.id); return; }
         const { error } = await supabase.from('series_prizes').delete().eq('id', r.id);
-        if (error) { toast.error(error.message); return; }
+        if (error) { toast.error(`Couldn’t remove it: ${error.message}`); return; }
         await logAction(user.id, 'series_prize_delete', 'series_prize', r.id, { round: round.slug, name: r.name });
+        setRows(rs => rs.filter(x => x.id !== r.id));
+        dropDraft(r.id);
         toast.success('Prize removed');
-        load();
     };
     const addPlace = () => {
         const next = (places.at(-1)?.place ?? 0) + 1;
@@ -936,7 +1012,18 @@ function PrizesTab({ round }) {
     if (!rows) return <Loading />;
     return (
         <>
-            <Section title="Places" blurb="Finishing places, won by points: 1st Champion (gold), 2nd Contender (silver), 3rd Challenger (bronze). The app shows these on the race and in “Ways to win”. Without any, settling still names a top 3."
+            {unsaved.length > 0 && (
+                <div className="sticky top-4 z-10 mb-8 flex items-center justify-between gap-4 px-5 py-3.5 rounded-2xl border border-[#F97316]/30 bg-[#FFF7ED] shadow-sm">
+                    <span className="flex items-center gap-2.5 text-[13px] text-[#9A3412]">
+                        <AlertTriangle size={15} className="shrink-0" />
+                        {unsaved.length} prize{unsaved.length === 1 ? '' : 's'} not saved yet: {unsaved.map(r => (r.kind === 'place' ? `${ordinal(r.place)} place` : PRIZE_KINDS.find(k => k.kind === r.kind)?.title ?? r.kind)).join(', ')}. Nothing reaches the app until it’s saved.
+                    </span>
+                    <button className={btnGold} onClick={saveAll} disabled={savingAll}>
+                        {savingAll ? <LoaderCircle size={13} className="animate-spin" /> : <Save size={13} />} Save all
+                    </button>
+                </div>
+            )}
+            <Section title="Places" blurb="Finishing places, won by points: 1st Champion (gold), 2nd Contender (silver), 3rd Challenger (bronze), one winner each. Settling names as many places as the highest one entered here (a top 3 if none): with only a 1st entered, only 1st is named, so add 2nd and 3rd. The app shows these on the race and in “Ways to win”."
                 right={<button className={btnQuiet} onClick={addPlace}><Plus size={13} /> Add a place</button>}>
                 {places.length === 0 ? <Empty icon={Trophy} text="No place prizes yet" /> : (
                     <div className="space-y-3">{places.map(r => <PrizeRow key={r.id} r={val(r)} dirty={!!draft[r.id] || r.id.startsWith('new')} onChange={p => change(r, p)} onSave={() => save(r)} onRemove={() => remove(r)} />)}</div>
@@ -963,16 +1050,16 @@ function PrizeRow({ r, many, dirty, onChange, onSave, onRemove }) {
             <div className="flex-1 min-w-0 grid grid-cols-2 gap-3">
                 <div className="col-span-2 flex items-center gap-3">
                     {r.kind === 'place' && <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[#B8A800] w-10 shrink-0">{ordinal(r.place)}</span>}
-                    <input className={`${input} flex-1`} value={r.name ?? ''} placeholder="Prize · e.g. Wellness day for two" onChange={e => onChange({ name: e.target.value })} />
+                    <input className={`${input} flex-1`} maxLength={120} value={r.name ?? ''} placeholder="Prize · e.g. Wellness day for two" onChange={e => onChange({ name: e.target.value })} />
                 </div>
-                <input className={input} value={r.sponsor ?? ''} placeholder="From · e.g. Mandarin Oriental" onChange={e => onChange({ sponsor: e.target.value })} />
+                <input className={input} maxLength={120} value={r.sponsor ?? ''} placeholder="From · e.g. Mandarin Oriental" onChange={e => onChange({ sponsor: e.target.value })} />
                 {many ? (
                     <div className="flex items-center gap-2">
                         <input type="number" min={1} max={100} className={`${input} w-24`} value={r.winners ?? 1} onChange={e => onChange({ winners: e.target.value })} />
                         <span className="text-[11px] text-[#999999]">winners</span>
                     </div>
                 ) : <div />}
-                <input className={`${input} col-span-2`} value={r.detail ?? ''} placeholder="One line · e.g. A 2-hour ritual with spa access" onChange={e => onChange({ detail: e.target.value })} />
+                <input className={`${input} col-span-2`} maxLength={240} value={r.detail ?? ''} placeholder="One line · e.g. A 2-hour ritual with spa access" onChange={e => onChange({ detail: e.target.value })} />
             </div>
             <div className="flex flex-col gap-2">
                 <button className={btnGold} onClick={onSave} disabled={!dirty}><Save size={13} /> Save</button>
@@ -1676,7 +1763,7 @@ const KIND_LABEL = { place: PLACE_NAMES.join(' · '), draw: 'Every Move Counts',
 const scoreOf = (r) => NAMED_KINDS.find(k => k.kind === r.kind)?.unit(r.score ?? 0);
 const STATUS_COLOR = { provisional: '#F97316', confirmed: '#10B981', void: '#9CA3AF' };
 
-function ResultsTab({ round }) {
+function ResultsTab({ round, onChanged }) {
     const toast = useToast();
     const { user } = useAuth();
     const [preview, setPreview] = useState(null);
@@ -1707,6 +1794,7 @@ function ResultsTab({ round }) {
         toast.success(typeof msg === 'function' ? msg(data) : msg);
         setAsk(null);
         load();
+        onChanged?.();
         return true;
     };
 

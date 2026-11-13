@@ -117,10 +117,8 @@ function Stage({ data, now }) {
     const giveawayWhere = city ? `a live giveaway in ${city}` : 'a live giveaway';
 
     const chips = useMemo(
-        () => Object.fromEntries(PRIZE_SLOTS.map((s) => [s.key, prizeChip(s, prizes, round, now, tz)])),
-        // The chips only move when a day turns or a prize lands, not every second.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [prizes, round, tz, Math.floor(now / 60_000)],
+        () => Object.fromEntries(PRIZE_SLOTS.map((s) => [s.key, prizeChip(s, prizes)])),
+        [prizes],
     );
     const slot = (key) => PRIZE_SLOTS.find((s) => s.key === key);
     const placeSlots = [slot('place-2'), slot('place-1'), slot('place-3')];
