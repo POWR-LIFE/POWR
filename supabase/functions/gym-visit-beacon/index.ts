@@ -566,10 +566,21 @@ Deno.serve(async (req: Request) => {
   // 16:42, still climbing. That is where the 12-hour session rows come from.
   //
   // WHY THIS IS SAFE TO DO EARLY, when 20260803100000 warns at length that
-  // closing early "is equivalent to abandoning the points": it is gated on
-  // upgraded_at. Past the upgrade there is nothing left to earn — the claim and
-  // the 40-min bonus are both banked — so ending the visit forfeits nothing. The
-  // dwell and upgrade stages are untouched; this only reaps what they finished.
+  // closing early "is equivalent to abandoning the points": it never closes a
+  // visit that can still earn. The scan takes every CLAIMED open visit, and the
+  // verdict (_shared/gymReaper.ts) treats the two kinds differently:
+  //   - upgraded: nothing is left to earn (the claim and the 40-min bonus are
+  //     both banked), so 20 minutes of silence or the 4 h ceiling closes it.
+  //   - claimed, never upgraded: the upgrade could still land, so silence never
+  //     closes it, only the 4 h ceiling. Prod 2026-11-14: of 113 server-settled
+  //     upgrades the latest came 83 min after check-in, so 4 h cuts off nothing
+  //     the settle pass would have paid. A device's own upgrade still pays after
+  //     the close, because upgrade-gym-tier judges an ended visit on its
+  //     recorded length.
+  // Before 2026-11-14 the scan required upgraded_at, so claimed-only visits sat
+  // open until the 12 h abandon cron (19 in the 60 days to 11-14; 14 of them
+  // with 12-hour sessions). Never-claimed visits stay with the abandon cron's
+  // 3 h unproven net and 12 h net. The dwell and upgrade stages are untouched.
   //
   // ended_at is the last PROVEN-inside moment, never now(): under-report a
   // session rather than inflate one. It costs a few minutes of tail on a real
