@@ -1146,7 +1146,7 @@ function logRegionEvent(
     | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'visit_stream_ensured'
     | 'exit_noise_suppressed' | 'visit_close_deferred' | 'check_in_announced'
     | 'visit_open_attempt' | 'visit_open_result' | 'wake_step_hung' | 'stream_first_tick'
-    | 'check_in_banner' | 'check_in_open_deferred',
+    | 'check_in_banner' | 'check_in_open_deferred' | 'session_expired',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -1409,6 +1409,12 @@ async function sweepForMissedCheckIn(openVisitId: string | null = null): Promise
       // no longer produce, so without this the sweep's exit backstop is silently a
       // no-op exactly when it is needed most.
       if (await finalizeSessionIfLocationRevoked()) return;
+
+      // The 12 h backstop, second cheapest and just as decisive. The sweep rides
+      // every fence_refresh wake, so a device whose stream is dead still gets it.
+      try {
+        if (await finalizeSessionIfOverdue(JSON.parse(active) as StoredGeofence, 'sweep')) return;
+      } catch { /* unparseable snapshot — the rest of the sweep copes as before */ }
 
       // Set when the wake's id heals a blank stored visit below. It has to live out
       // here because the `session_active` row at the bottom is built from
@@ -4222,6 +4228,59 @@ async function reconcileFix(): Promise<{ latitude: number; longitude: number; ac
   }
 }
 
+/** THE LOCAL 12 h BACKSTOP (2026-11-14) — a session older than any visit the
+ *  server will still credit is finalized, not carried forever.
+ *
+ *  The server reaps a visit at MAX_GYM_SESSION_SEC and refuses to backdate an
+ *  open past it; the foreground hook (hooks/useActiveGeofence) drops a session
+ *  past it on app-open. The HEADLESS paths had no such bound, and on a device
+ *  that never foregrounds that is the only path there is. Field 2026-11-12→14:
+ *  an Android user living ~6 m from a partner gym, every fix reporting ±100 m.
+ *  Coarse fixes skip the exit geometry by design (see evaluateLocationFix), the
+ *  sweep only closes on an unambiguous outside fix, so nothing could ever end
+ *  the session — and because its visit id was never stamped, every 5-min stream
+ *  tick re-ran the late-open with the 34-hour-old entry: 283 open_gym_visit
+ *  calls, each answered `stale_entry_replayed` with a visit the server had
+ *  closed the night before. The session also blocked any fresh check-in.
+ *
+ *  Same close as a location revocation, for the same reason: it ENDS AT THE LAST
+ *  PROVEN-INSIDE MOMENT (VISIT_TICK_KEY, floored at entry), never at discovery —
+ *  so whatever the evidence supports is still claimed, and the hours nobody
+ *  witnessed are not. Also capped at entry + the backstop itself.
+ *
+ *  Returns whether it closed the session. */
+async function finalizeSessionIfOverdue(
+  active: StoredGeofence,
+  via: 'stream_fix' | 'sweep',
+): Promise<boolean> {
+  if (typeof active.entryTimestamp !== 'number') return false;
+  const now = Date.now();
+  const ageMs = now - active.entryTimestamp;
+  if (ageMs <= MAX_GYM_SESSION_SEC * 1000) return false;
+
+  const tick = await AsyncStorage.getItem(VISIT_TICK_KEY)
+    .then(raw => Number(raw ?? 0))
+    .catch(() => 0);
+  const endedAtMs = Math.min(
+    Math.max(active.entryTimestamp, Number.isFinite(tick) ? tick : 0),
+    active.entryTimestamp + MAX_GYM_SESSION_SEC * 1000,
+  );
+
+  logRegionEvent(active.regionId ?? 'session', 'session_expired', {
+    via,
+    age_min:   Math.round(ageMs / 60_000),
+    dwell_min: Math.round((endedAtMs - active.entryTimestamp) / 60_000),
+    had_tick:  endedAtMs > active.entryTimestamp,
+    visit:     active.visitId ?? null,
+    recorded:  !!active.sessionRecorded,
+  });
+  console.warn(
+    `[Geofence] Session at "${active.partnerName}" is ${Math.round(ageMs / 3_600_000)}h old — ` +
+    `past the ${MAX_GYM_SESSION_SEC / 3600}h backstop. Closing it at the last proven-inside moment.`,
+  );
+  return finalizeActiveGeofence(undefined, endedAtMs);
+}
+
 /** LOCATION-OFF SESSION CLOSE (2026-08-09).
  *
  *  A session and the location permission feeding it are one mechanism, and until
@@ -5196,6 +5255,10 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords, fixTim
 
   const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
   const active: StoredGeofence | null = raw ? JSON.parse(raw) : null;
+
+  // Before ANY of the session work below — the coarse branch in particular is
+  // the one that kept a 34-hour session alive (see finalizeSessionIfOverdue).
+  if (active && await finalizeSessionIfOverdue(active, 'stream_fix')) return;
 
   if (active && isCoarse) {
     // Position untrusted: skip the EXIT geometry (assume still inside — the same
