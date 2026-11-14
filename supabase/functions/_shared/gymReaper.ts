@@ -1,5 +1,6 @@
-// Pure, dependency-free rule for when the orphaned-visit reaper may close an
-// upgraded gym visit, and what it may record as the end. NO Deno or React
+// Pure, dependency-free rule for when the orphaned-visit reaper may close a
+// claimed gym visit (upgraded, or claimed and never upgraded), and what it may
+// record as the end. NO Deno or React
 // Native APIs here, so both runtimes can import it:
 //   - edge function (Deno): import { ... } from '../_shared/gymReaper.ts'
 //   - jest (Node):          import { ... } from '@/supabase/functions/_shared/gymReaper'
@@ -44,6 +45,11 @@ export const STALE_SILENCE_MS = 20 * 60 * 1000;
  * Four hours from check-in: comfortably past any real gym visit (the upgrade
  * itself lands at 40 minutes), and well inside both the presence pass's 8 h
  * give-up and the 12 h abandon cron that is the outer net for everything else.
+ *
+ * Since 2026-11-14 it is also the ONLY close for a visit that was claimed and
+ * never upgraded (see staleVisitVerdict). The name and the close reason
+ * 'max_open_after_upgrade' predate that and are kept, because Live Ops' SQL
+ * predicates and older history rows match on them.
  */
 export const MAX_OPEN_AFTER_UPGRADE_MS = 4 * 60 * 60 * 1000;
 
@@ -70,7 +76,10 @@ const ms = (iso: string | null | undefined): number => {
 };
 
 /**
- * Should this upgraded, still-open visit be closed now, and at what end?
+ * Should this claimed, still-open visit be closed now, and at what end?
+ *
+ * Upgraded: on 20 minutes of silence, or at the 4 h ceiling. Claimed and never
+ * upgraded: at the 4 h ceiling only, since the upgrade could still land.
  *
  * `provenMs` takes the max of the moments presence was genuinely established:
  * the check-in itself, the two credit gates (each of which required a
@@ -93,6 +102,14 @@ export function staleVisitVerdict(visit: ReaperVisitRow, nowMs: number): ReaperV
 
   if (startedMs > 0 && nowMs - startedMs > MAX_OPEN_AFTER_UPGRADE_MS) {
     return { close: true, provenMs, closeReason: 'max_open_after_upgrade' };
+  }
+  // Claimed but never upgraded: the upgrade stage may still be earning, so the
+  // silence rule must not apply — only the hard ceiling above. 2026-11-03 visit
+  // ece1034d (tokenless Android) sat open 12h because the scan skipped it.
+  // Reuses the 'max_open_after_upgrade' reason so history's reaper_closed
+  // predicate still matches it.
+  if (visit.claimed_at && !visit.upgraded_at) {
+    return { close: false, provenMs, closeReason: null };
   }
   if (provenMs <= nowMs - STALE_SILENCE_MS) {
     return { close: true, provenMs, closeReason: 'stale_after_upgrade' };
