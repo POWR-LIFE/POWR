@@ -250,7 +250,7 @@ export async function logGeofenceRegionEvent(
     | 'rebind_failed' | 'visit_stream_ensured' | 'exit_noise_suppressed'
     | 'visit_close_deferred' | 'visit_open_attempt' | 'visit_open_result'
     | 'wake_step_hung' | 'stream_first_tick' | 'check_in_announced' | 'venue_nudge'
-    | 'check_in_banner' | 'check_in_open_deferred' | 'wake_task_done',
+    | 'check_in_banner' | 'check_in_open_deferred' | 'wake_task_done' | 'session_expired',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   const args = {
