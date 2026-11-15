@@ -2,7 +2,7 @@ import type { Honour } from '@/constants/honours';
 import type { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
-import { type SeriesBoard, type SeriesCity, seriesDate, seriesHow, timeLeft } from '@/lib/api/series';
+import { SERIES_BOARD_TOP, type SeriesBoard, type SeriesCity, seriesDate, seriesHow, timeLeft } from '@/lib/api/series';
 import {
     BLIND_HIDES,
     type Board,
@@ -274,7 +274,7 @@ const person = (
     honours: r.honours ?? [],
 });
 
-/** The rows the server sent (top 3 + around you) as runs of consecutive ranks. */
+/** The rows the server sent (top 20 + around you) as runs of consecutive ranks. */
 function boardOf(b: SeriesBoard): Board {
     const segs: Seg[] = [];
     [...b.rows].sort((x, y) => x.rank - y.rank).forEach((r) => {
@@ -357,8 +357,8 @@ export function fromLive(b: SeriesBoard, name = 'Series', blind = false): Series
         view: 'around',
         rival,
         board,
-        // Around you, and the top 3 above (the leaders), outside Blind Mode.
-        rows: visibleRows(board, blind ? 'blind' : 'day3', 'around', 3),
+        // Around you, and the top 20 above (the leaders), outside Blind Mode.
+        rows: visibleRows(board, blind ? 'blind' : 'day3', 'around', SERIES_BOARD_TOP),
         title: () => null,
         tabs,
         open: { overall: true, city: !!c?.open, gym: gymOpen, friends: true },

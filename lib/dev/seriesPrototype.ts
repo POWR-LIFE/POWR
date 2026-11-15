@@ -365,7 +365,7 @@ export function rebalance(model: Model, b: Board) {
 export type RaceView = 'around' | 'top';
 /**
  * `lead`: 'around' also shows the top N (the live board: the server always
- * sends the top 3, so members can see who's leading). Never in Blind Mode,
+ * sends the top 20, so members can see who's leading). Never in Blind Mode,
  * where the extra names would give the top away.
  */
 export function visibleRows(b: Board, state: SeriesState, view: RaceView = 'around', lead = 0): Row[] {

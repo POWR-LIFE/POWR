@@ -119,6 +119,24 @@ describe('League, live', () => {
         expect(v.rows.find((r) => r.type === 'sep')).toMatchObject({ n: 295 });
     });
 
+    it('shows the top 20, then the gap, then you', () => {
+        const top = Array.from({ length: 20 }, (_, i) => row(i + 1, 600 - i * 10));
+        const v = fromLive(board({ rows: [...top, row(299, 60), row(300, 59, true), row(301, 58), row(302, 50)] }), 'Autumn Series')!;
+        const lanes = v.rows.filter((r) => r.type === 'lane').map((r) => (r.type === 'lane' ? r.rank : 0));
+        expect(lanes).toEqual([...top.map((r) => r.rank), 299, 300, 301, 302]);
+        expect(v.rows.filter((r) => r.type === 'sep')).toEqual([expect.objectContaining({ n: 278 })]);
+        // The prize line still sits under the top 3.
+        expect(v.rows.findIndex((r) => r.type === 'prize')).toBe(3);
+    });
+
+    it('in the top 20 yourself: one run, no gap line', () => {
+        const top = Array.from({ length: 22 }, (_, i) => row(i + 1, 600 - i * 10, i + 1 === 12));
+        const v = fromLive(board({ me: { rank: 12, rank_mid: 12, points: 490, today: 0, days: [] }, rows: top }), 'Autumn Series')!;
+        const lanes = v.rows.filter((r) => r.type === 'lane').map((r) => (r.type === 'lane' ? r.rank : 0));
+        expect(lanes).toEqual(top.slice(0, 20).map((r) => r.rank));
+        expect(v.rows.some((r) => r.type === 'sep')).toBe(false);
+    });
+
     it('never in Blind Mode: the extra names would give the top away', () => {
         const v = fromLive(board(), 'Autumn Series', true)!;
         const lanes = v.rows.filter((r) => r.type === 'lane').map((r) => (r.type === 'lane' ? r.rank : 0)).sort((a, b) => a - b);

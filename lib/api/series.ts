@@ -57,9 +57,12 @@ export type SeriesBoard = {
     /** The round joining puts you in; null when there's none to join (or the Series is off for you). */
     join?: SeriesJoinRound | null;
     total: number;
-    /** Null until you've joined: the rows are then the top 3 on their own. */
+    /** Null until you've joined: the rows are then the top 20 on their own. */
     me: { rank: number; rank_mid: number; points: number; today: number; days: number[] } | null;
-    /** The top 3, plus the one above you, you and the two below. */
+    /**
+     * The top 20 (SERIES_BOARD_TOP), plus the one above you, you and the two
+     * below. A server before 20261115180000_series_board_top_20 sends the top 3.
+     */
     rows: SeriesRow[];
     rival: { user_id: string; name: string; rank: number; points: number; today: number; friend: boolean } | null;
     /** Missing before 20261022120000_series_pacers_and_cities. */
@@ -81,6 +84,9 @@ export type SeriesBoard = {
         open: { user_id: string; name: string }[];
     };
 };
+
+/** The leaders the League's race shows above the window around you (get_series_board sends them). */
+export const SERIES_BOARD_TOP = 20;
 
 /** null when the Series isn't on the server (yet), or the call fails: the screen falls back. */
 /** The board, or null when there's none for this member. Throws when it can't be read. */
