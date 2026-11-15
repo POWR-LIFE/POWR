@@ -1,4 +1,5 @@
--- Trophies count from the Series start, not from the start of time.
+-- Trophies count from the Series start, not from the start of time, and On
+-- Fire and Power can be earned within it.
 --
 -- Applies AFTER 20261027180000_honours.sql. Live prod also has
 -- 20261028120000_honours_hive_null_referrer, which isn't in the repo: it
@@ -13,10 +14,20 @@
 -- 1. _honour_from(): when the Series started, the first published round's
 --    start (Round 01, 15 Nov 2026 00:00 London). No published round: nothing
 --    counts yet.
--- 2. award_honours: active days, Strength sessions and Hive friends count
+-- 2. On Fire and Power, ladders a Series can climb. Counting from 15 Nov,
+--    the old ones (On Fire 10/20/40/60 weeks; Power 5/10 weeks of 4+ days,
+--    25 of 5+, 30 of 6+) put the first On Fire in mid-January, after
+--    Round 02. Jamie, 15 Nov, picked:
+--      on_fire  weeks with an active day   2 / 4 / 6 / 8
+--      power    weeks with 4+ / 5+ / 6+    4+ ×2 / 4+ ×4 / 5+ ×6 / 6+ ×8
+--    Earliest from 15 Nov: On Fire bronze 23 Nov (in Round 01), silver 7 Dec,
+--    gold 21 Dec, platinum 4 Jan; Power bronze 30 Nov (Round 01's last day),
+--    silver 14 Dec, gold 28 Dec, platinum 11 Jan. The rest are unchanged.
+--    The app's copy (constants/honours.ts) moves with it.
+-- 3. award_honours: active days, Strength sessions and Hive friends count
 --    from _honour_from(). A Hive friend counts once they convert on or after
 --    it. Wings, Diamond and the King were already per round: unchanged.
--- 3. Reset. Every Strength, On Fire, Power and Hive trophy held now came
+-- 4. Reset. Every Strength, On Fire, Power and Hive trophy held now came
 --    from before the Series, so they go, with their award log, and
 --    award_honours rebuilds from the Series start. A copy of what's removed
 --    is kept in honours_reset_20261115 / honour_awards_reset_20261115
@@ -39,7 +50,34 @@ as $$
 $$;
 revoke all on function public._honour_from() from public, anon, authenticated;
 
--- ── 2. The daily check, from the Series start ────────────────────────────────
+-- ── 2. The ladders: On Fire and Power, quicker ──────────────────────────────
+
+-- The metal a set of numbers earns. `d` carries the extra numbers per kind.
+create or replace function public._honour_tier(p_kind text, p_count int, d jsonb default '{}'::jsonb)
+returns text
+language sql
+immutable
+as $$
+  select case p_kind
+    when 'king' then case when p_count >= 1 then 'gold' end
+    when 'power' then case
+      when coalesce((d->>'w6')::int, 0) >= 8 then 'platinum'
+      when coalesce((d->>'w5')::int, 0) >= 6 then 'gold'
+      when p_count >= 4 then 'silver'
+      when p_count >= 2 then 'bronze' end
+    when 'on_fire'  then case when p_count >= 8 then 'platinum' when p_count >= 6 then 'gold' when p_count >= 4 then 'silver' when p_count >= 2 then 'bronze' end
+    when 'diamond'  then case when p_count >= 12 then 'platinum' when p_count >= 6  then 'gold' when p_count >= 3  then 'silver' when p_count >= 1  then 'bronze' end
+    when 'wings'    then case when coalesce((d->>'top')::boolean, false) then 'platinum' when p_count >= 30 then 'gold' when p_count >= 20 then 'silver' when p_count >= 10 then 'bronze' end
+    when 'hive'     then case
+      when coalesce((d->>'active')::int, 0) >= 30 then 'platinum'
+      when coalesce((d->>'active')::int, 0) >= 12 then 'gold'
+      when coalesce((d->>'active')::int, 0) >= 6  then 'silver'
+      when p_count >= 3 then 'bronze' end
+    when 'strength' then case when p_count >= 100 then 'platinum' when p_count >= 60 then 'gold' when p_count >= 30 then 'silver' when p_count >= 4 then 'bronze' end
+  end
+$$;
+
+-- ── 3. The daily check, from the Series start ────────────────────────────────
 
 create or replace function public.award_honours()
 returns void
@@ -176,7 +214,7 @@ end;
 $$;
 revoke all on function public.award_honours() from public, anon, authenticated;
 
--- ── 3. Reset: drop what came from before the Series, then rebuild ────────────
+-- ── 4. Reset: drop what came from before the Series, then rebuild ────────────
 
 create table if not exists public.honours_reset_20261115 as
   select * from public.honours where kind in ('strength', 'on_fire', 'power', 'hive');

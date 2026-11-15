@@ -5,7 +5,8 @@ import i18n from '@/lib/i18n';
  * moving, shown as small icons under their name on the Series board and kept
  * for good. The server decides who holds what (award_honours,
  * 20261027180000_honours.sql); this is how they look, sort and read, and the
- * same thresholds so the cabinet can say "34 of 40 weeks to gold".
+ * same thresholds so the cabinet can say "5 of 6 weeks to gold". On Fire
+ * and Power climb within a Series (20261115190000_honours_from_series_start).
  */
 export type HonourKind = 'king' | 'on_fire' | 'power' | 'diamond' | 'wings' | 'hive' | 'strength';
 export type HonourTier = 'bronze' | 'silver' | 'gold' | 'platinum';
@@ -28,8 +29,8 @@ export function honourTier(kind: HonourKind, count: number, detail: Record<strin
     const ladder = (b: number, s: number, g: number, p: number) => (count >= p ? 'platinum' : count >= g ? 'gold' : count >= s ? 'silver' : count >= b ? 'bronze' : null);
     switch (kind) {
         case 'king': return count >= 1 ? 'gold' : null;
-        case 'power': return n('w6') >= 30 ? 'platinum' : n('w5') >= 25 ? 'gold' : count >= 10 ? 'silver' : count >= 5 ? 'bronze' : null;
-        case 'on_fire': return ladder(10, 20, 40, 60);
+        case 'power': return n('w6') >= 8 ? 'platinum' : n('w5') >= 6 ? 'gold' : count >= 4 ? 'silver' : count >= 2 ? 'bronze' : null;
+        case 'on_fire': return ladder(2, 4, 6, 8);
         case 'diamond': return ladder(1, 3, 6, 12);
         case 'wings': return detail.top ? 'platinum' : count >= 30 ? 'gold' : count >= 20 ? 'silver' : count >= 10 ? 'bronze' : null;
         case 'hive': return n('active') >= 30 ? 'platinum' : n('active') >= 12 ? 'gold' : n('active') >= 6 ? 'silver' : count >= 3 ? 'bronze' : null;
@@ -38,7 +39,7 @@ export function honourTier(kind: HonourKind, count: number, detail: Record<strin
 }
 
 /**
- * What's left to the next metal, for the cabinet: "34 of 40 weeks to gold".
+ * What's left to the next metal, for the cabinet: "5 of 6 weeks to gold".
  * Null once there's nothing above (platinum, or the King).
  */
 export function honourNext(h: Honour): { tier: HonourTier; have: number; need: number; unit: string } | null {
@@ -48,8 +49,8 @@ export function honourNext(h: Honour): { tier: HonourTier; have: number; need: n
     if (!up || h.kind === 'king') return null;
     const step = (have: number, need: number, unit: string) => ({ tier: up, have, need, unit });
     switch (h.kind) {
-        case 'power': return up === 'silver' ? step(h.count, 10, 'weeks4') : up === 'gold' ? step(n('w5'), 25, 'weeks5') : step(n('w6'), 30, 'weeks6');
-        case 'on_fire': return step(h.count, { silver: 20, gold: 40, platinum: 60 }[up as 'silver' | 'gold' | 'platinum'], 'weeks');
+        case 'power': return up === 'silver' ? step(h.count, 4, 'weeks4') : up === 'gold' ? step(n('w5'), 6, 'weeks5') : step(n('w6'), 8, 'weeks6');
+        case 'on_fire': return step(h.count, { silver: 4, gold: 6, platinum: 8 }[up as 'silver' | 'gold' | 'platinum'], 'weeks');
         case 'diamond': return step(h.count, { silver: 3, gold: 6, platinum: 12 }[up as 'silver' | 'gold' | 'platinum'], 'rounds');
         case 'wings': return up === 'platinum' ? step(0, 1, 'top') : step(h.count, { silver: 20, gold: 30 }[up as 'silver' | 'gold'], 'places');
         case 'hive': return step(n('active'), { silver: 6, gold: 12, platinum: 30 }[up as 'silver' | 'gold' | 'platinum'], 'friends');
