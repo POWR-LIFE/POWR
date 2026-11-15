@@ -468,7 +468,8 @@ function OverviewTab({ round, season }) {
 
     if (!cfg) return <Loading />;
     const st = round ? roundState(round) : null;
-    const safe = pacers && (pacers.top_pacer == null || pacers.real_third == null || pacers.top_pacer < pacers.real_third);
+    // The leader is always a real member (20261115120000): a pacer may sit at #2 or #3 on a quiet start.
+    const safe = pacers && (pacers.top_pacer == null || pacers.real_first == null || pacers.top_pacer < pacers.real_first || pacers.top_pacer === 0);
     const noConfig = !cfg.series_live;
 
     return (
@@ -538,11 +539,11 @@ function OverviewTab({ round, season }) {
                             <Stat label="Came back" value={fmtN(stats?.came_back)} sub={`moved in week 1 and again after · ${fmtN(stats?.week1_movers)} in week 1`} />
                         </div>
                     </Section>
-                    <Section title="Prize safety" blurb="Pacers are capped under the real #3 and every result is drawn from members only.">
+                    <Section title="Prize safety" blurb="The leader is always a real member. Pacers stay under the real #3, or on a quiet start under the leader up to 20 points, so one can sit at #2 or #3 until the real #3 catches up. Every result is drawn from members only.">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <Stat label="Highest pacer" value={fmtN(pacers?.top_pacer)} sub={`real #3 is on ${fmtN(pacers?.real_third)}`}
+                            <Stat label="Highest pacer" value={fmtN(pacers?.top_pacer)} sub={`real #1 on ${fmtN(pacers?.real_first)} · #3 on ${fmtN(pacers?.real_third)} · ceiling ${fmtN(pacers?.pacer_ceiling)}`}
                                 tone={safe ? '#10B981' : '#E11D48'} />
-                            <Stat label="Pacers seated" value={fmtN(pacers?.seated)} sub={`${fmtN(pacers?.target)} + ${fmtN(pacers?.growth)}/day − ${fmtN(pacers?.members)} members`} />
+                            <Stat label="Pacers seated" value={fmtN(pacers?.seated)} sub={`board of ${fmtN(pacers?.size)} − ${fmtN(pacers?.members)} members`} />
                             <Stat label="Prizes set" value={fmtN(prizeCount)} sub={prizeCount ? 'see Prizes' : 'none yet: the app shows “to be announced”'} tone={prizeCount ? undefined : '#F97316'} />
                             <Stat label="Results"
                                 value={{ none: 'Not settled', provisional: 'To check', confirmed: 'Confirmed', announced: 'Announced' }[resultsState] ?? '—'}
@@ -819,8 +820,8 @@ function SeasonsTab({ seasons, rounds, focus, onSaved }) {
                             <Field label="Invite race opens" hint="Friends who join from here until the round starts count for Squad Builder. Opens by itself when the Series goes on; empty = none.">
                                 <input type="date" className={input} value={edit.invite ?? ''} onChange={e => set({ invite: e.target.value })} />
                             </Field>
-                            <Field label="Board size on day 1" hint="Pacers fill the gap to this; 0 = no pacers"><input type="number" min={0} className={input} value={edit.pacer_target} onChange={e => set({ pacer_target: e.target.value })} /></Field>
-                            <Field label="Board grows by (a day)" hint="So the size doesn’t sit still"><input type="number" min={0} className={input} value={edit.pacer_growth} onChange={e => set({ pacer_growth: e.target.value })} /></Field>
+                            <Field label="Board size on day 1" hint="Pacers fill the gap; it opens 1–4% under this so it’s never a round number. 0 = no pacers"><input type="number" min={0} className={input} value={edit.pacer_target} onChange={e => set({ pacer_target: e.target.value })} /></Field>
+                            <Field label="Board grows by (a day)" hint="On average: each day is 40–160% of this, arriving 06:00–22:00"><input type="number" min={0} className={input} value={edit.pacer_growth} onChange={e => set({ pacer_growth: e.target.value })} /></Field>
                             <Field label="City: real members to rank"><input type="number" min={1} className={input} value={edit.city_min_members} onChange={e => set({ city_min_members: e.target.value })} /></Field>
                             <Field label="City: ranked cities to open"><input type="number" min={1} className={input} value={edit.city_min_cities} onChange={e => set({ city_min_cities: e.target.value })} /></Field>
                         </div>
@@ -1712,14 +1713,14 @@ function PacersTab({ round }) {
     }, [list, q, offOnly]);
 
     if (!sum || !list) return <Loading />;
-    const safe = sum.top_pacer == null || sum.real_third == null || sum.top_pacer < sum.real_third;
+    const safe = sum.top_pacer == null || sum.real_first == null || sum.top_pacer < sum.real_first || sum.top_pacer === 0;
     return (
         <>
-            <Section title="Seats" blurb={`Board size ${fmtN(sum.target)} on day 1, +${sum.growth} a day; every real member takes a seat, so each one who joins retires a pacer (the slowest first). Change the size on Seasons (edit a round).`}>
+            <Section title="Seats" blurb={`The board opens 1–4% under ${fmtN(sum.target)} and grows about ${sum.growth} a day, through the day, so the count never sits on a round number. Every real member takes a seat, so each one who joins retires a pacer (the slowest first). Change the size on Seasons (edit a round).`}>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
-                    <Stat label={`Seats on day ${sum.day}`} value={fmtN(sum.seats)} sub={`${fmtN(sum.target)} + ${sum.growth} × ${sum.day - 1} − ${fmtN(sum.members)} members`} />
+                    <Stat label={`Seats on day ${sum.day}`} value={fmtN(sum.seats)} sub={`board of ${fmtN(sum.size)} − ${fmtN(sum.members)} members`} />
                     <Stat label="Seated now" value={fmtN(sum.seated)} sub={sum.seated < sum.seats ? 'fewer than seats: name clashes with members are skipped' : 'every seat filled'} />
-                    <Stat label="Highest pacer" value={fmtN(sum.top_pacer)} sub={`real #3 on ${fmtN(sum.real_third)}`} tone={safe ? '#10B981' : '#E11D48'} />
+                    <Stat label="Highest pacer" value={fmtN(sum.top_pacer)} sub={`real #1 on ${fmtN(sum.real_first)} · #3 on ${fmtN(sum.real_third)} · ceiling ${fmtN(sum.pacer_ceiling)}`} tone={safe ? '#10B981' : '#E11D48'} />
                     <Stat label="Pool" value={fmtN(sum.pool)} sub={`${fmtN(sum.disabled)} switched off · ${fmtN(sum.planned_days)} planned sessions`} />
                 </div>
                 <div className={`${card} px-6 py-4 flex items-center gap-6 flex-wrap text-[12.5px] text-[#666666]`}>

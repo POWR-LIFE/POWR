@@ -18,6 +18,9 @@
 -- give it is the start-line crowd for the rail, so it gets the SAME numbers
 -- get_series_invite_board gives the app (real members + the pacers' ramp):
 -- the TV and the phone in front of it agree. Service role only.
+--
+-- Not applied to prod as of 15 Nov. Apply it AFTER
+-- 20261115120000_series_board_spark.sql: the crowd reads _series_board_size.
 -- =============================================================
 
 -- The members and crowd pieces of get_series_invite_board (20261026150000),
@@ -44,9 +47,10 @@ as $$
   )
   select jsonb_build_object(
     'real', (select count(*) from members m where m.listed),
+    -- The board's opening size (20261115120000), as get_series_invite_board.
     'pacers_at_gun', least(
       (select count(*) from public.series_pacers sp where not sp.disabled),
-      greatest(0, r.pacer_target - (select count(*) from members))),
+      greatest(0, public._series_board_size(r.id, r.starts_at) - (select count(*) from members))),
     'ramp_from', coalesce(r.invite_from, r.starts_at - interval '14 days'),
     'ramp_to', r.starts_at,
     'base', r.crowd_base)
