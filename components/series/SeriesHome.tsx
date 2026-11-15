@@ -838,7 +838,10 @@ function RivalRow({ v, lit, onRules, blindBack }: { v: SeriesView; lit: boolean;
         : r
             ? r.ahead
                 ? t('series:league.rival.clear', { gap: fmt(r.gap), name: r.p.name })
-                : t('series:league.rival.toPass', { gap: fmt(r.gap), name: r.p.name })
+                // Level (both on 0 on day 1): "0 pts to pass" read as broken.
+                : r.gap === 0
+                    ? t('series:league.rival.level', { name: r.p.name })
+                    : t('series:league.rival.toPass', { gap: fmt(r.gap), name: r.p.name })
             : clear
                 ? t('series:league.rival.inTop3')
                 : t('series:league.rival.toTop3', { gap: fmt(top3?.gap ?? 0) });

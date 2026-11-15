@@ -115,8 +115,11 @@ export type InfoRow = {
 };
 const TONE_C = { gold: GOLD, green: GREEN, muted: TEXT_3, ember: EMBER };
 
-/** The drawers' one layout: rows, nothing to read twice. */
-export function InfoList({ rows, onRowLayout }: { rows: InfoRow[]; onRowLayout?: (key: string, y: number) => void }) {
+/**
+ * The drawers' one layout: rows, nothing to read twice. `wrap` lets a line run
+ * to two (How it works: a rule cut off at one line didn't say how it works).
+ */
+export function InfoList({ rows, onRowLayout, wrap = false }: { rows: InfoRow[]; onRowLayout?: (key: string, y: number) => void; wrap?: boolean }) {
     return (
         <View style={s.info}>
             {rows.map((r, i) => (
@@ -130,8 +133,8 @@ export function InfoList({ rows, onRowLayout }: { rows: InfoRow[]; onRowLayout?:
                         )}
                     <View style={{ flex: 1, minWidth: 0 }}>
                         {r.eyebrow && <Text style={[s.infoEyebrow, { color: r.eyebrow.color }]}>{r.eyebrow.text}</Text>}
-                        <Text style={s.infoTitle} numberOfLines={1}>{r.title}</Text>
-                        {r.line ? <Text style={s.infoLine} numberOfLines={1}>{r.line}</Text> : null}
+                        <Text style={s.infoTitle} numberOfLines={wrap ? 2 : 1}>{r.title}</Text>
+                        {r.line ? <Text style={s.infoLine} numberOfLines={wrap ? 2 : 1}>{r.line}</Text> : null}
                     </View>
                     {r.right ? <Text style={[s.infoRight, { color: TONE_C[r.tone ?? 'muted'] }]}>{r.right}</Text> : null}
                 </View>
@@ -140,7 +143,11 @@ export function InfoList({ rows, onRowLayout }: { rows: InfoRow[]; onRowLayout?:
     );
 }
 
-/** How the Series works, in six lines. What you can win has its own drawer. */
+/**
+ * How the Series works, in six rows. Each line says what you do and what it
+ * gets you (Elliot, 15 Nov: "the round's moments: they never stack" and "a
+ * draw: be active on 10" didn't). What you can win has its own drawer.
+ */
 export function RulesSheet({
     visible, onClose, onPrizes, live = false, days = 15, need = 10, when = '16 Nov', boosts = false, blindMode = false,
 }: {
@@ -180,7 +187,7 @@ export function RulesSheet({
     return (
         <Sheet visible={visible} onClose={onClose}>
             <SheetHead light={t('series:sheets.rules.light')} bold={t('series:sheets.rules.bold')} onClose={onClose} />
-            <InfoList rows={rows} />
+            <InfoList rows={rows} wrap />
             {onPrizes && (
                 <Pressable onPress={onPrizes} style={({ pressed }) => [s.sheetLink, pressed && { opacity: 0.6 }]} accessibilityRole="button">
                     <Text style={s.sheetLinkText}>{t('series:sheets.rules.prizesLink')}</Text>
@@ -261,7 +268,7 @@ const s = StyleSheet.create({
     infoIcon: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(232,210,0,0.25)', backgroundColor: 'rgba(232,210,0,0.06)' },
     infoEyebrow: { fontSize: 8, fontWeight: '700', letterSpacing: 1.6, marginBottom: 1 },
     infoTitle: { fontSize: 15, fontWeight: '400', color: TEXT },
-    infoLine: { marginTop: 2, fontSize: 12, fontWeight: '300', color: TEXT_2 },
+    infoLine: { marginTop: 2, fontSize: 12, lineHeight: 16, fontWeight: '300', color: TEXT_2 },
     infoRight: { fontSize: 9, fontWeight: '700', letterSpacing: 1.3, textAlign: 'right' },
     sheetLink: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingVertical: 10 },
     sheetLinkText: { fontSize: 15, fontWeight: '400', color: TEXT },
