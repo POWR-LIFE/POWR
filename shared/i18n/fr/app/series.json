@@ -655,7 +655,6 @@
     "member": "MEMBRE",
     "today": "AUJ.",
     "points": "POINTS",
-    "newThisRound": "Première manche",
     "lastRound": "Manche précédente #{{rank}}",
     "lastShort": "Manche préc. #{{rank}}"
   },

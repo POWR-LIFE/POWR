@@ -655,7 +655,6 @@
     "member": "MEMBER",
     "today": "TODAY",
     "points": "POINTS",
-    "newThisRound": "New this round",
     "lastRound": "Last round #{{rank}}",
     "lastShort": "Last #{{rank}}"
   },

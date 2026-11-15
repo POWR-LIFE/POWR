@@ -231,16 +231,19 @@ export function SeriesLane({
                 </View>
                 {/* The line under the name: the leader's tag or last round's place,
                     then their honours. Three or fewer sit after the place; more than
-                    three take the line, with a count (the column is ~110 px wide). */}
+                    three take the line, with a count (the column is ~110 px wide).
+                    Someone with no last round has no place; with nothing else to
+                    show the line goes and the name sits centred in the row. */}
                 {(() => {
                     const many = honours.length > 3;
-                    const place = p.last == null ? t('series:lane.newThisRound') : honours.length ? t('series:lane.lastShort', { rank: fmt(p.last) }) : t('series:lane.lastRound', { rank: fmt(p.last) });
+                    const place = p.last == null || many ? null : honours.length ? t('series:lane.lastShort', { rank: fmt(p.last) }) : t('series:lane.lastRound', { rank: fmt(p.last) });
+                    if (!tag && !place && honours.length === 0) return null;
                     return (
                         <View style={s.subRow}>
-                            {tag ? <TitlePill title={tag} /> : !many && <Text style={[s.sub, { flexShrink: 1 }]} numberOfLines={1}>{place}</Text>}
+                            {tag ? <TitlePill title={tag} /> : !!place && <Text style={[s.sub, { flexShrink: 1 }]} numberOfLines={1}>{place}</Text>}
                             {honours.length > 0 && (
                                 <>
-                                    {(tag || !many) && <View style={s.subDiv} />}
+                                    {(!!tag || !!place) && <View style={s.subDiv} />}
                                     <HonourRow honours={honours} max={tag ? 2 : 3} />
                                 </>
                             )}
