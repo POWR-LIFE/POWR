@@ -146,6 +146,26 @@ describe('stuck heuristics', () => {
     expect(alerts.map(a => a.key)).not.toContain('presence_stale');
   });
 
+  it('ignores a last_confirmed_at that is only the claim write stamping itself', () => {
+    // b286499a, 2026-11-13: proven at check-in, relayed claim 38m later wrote
+    // claimed_at and last_confirmed_at from the same instant — no fix behind it.
+    const claimedAt = ago(7);
+    const alerts = visitAlerts(
+      boardRow({ started_at: ago(46), claimed_at: claimedAt, last_proven_at: ago(46), last_confirmed_at: claimedAt }),
+      NOW,
+    );
+    expect(alerts.map(a => a.key)).toContain('presence_stale');
+  });
+
+  it('ignores a last_confirmed_at that is only the upgrade write stamping itself', () => {
+    const upgradedAt = ago(2);
+    const alerts = visitAlerts(
+      boardRow({ started_at: ago(60), claimed_at: ago(25), upgraded_at: upgradedAt, last_proven_at: ago(50), last_confirmed_at: upgradedAt }),
+      NOW,
+    );
+    expect(alerts.map(a => a.key)).toContain('presence_stale');
+  });
+
   it('never calls a CLOSED visit stuck — a short walk-through is a finished story', () => {
     const alerts = visitAlerts(
       boardRow({ started_at: ago(120), ended_at: ago(60), status: 'closed', close_reason: 'exit', last_proven_at: ago(120) }),

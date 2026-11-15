@@ -288,9 +288,20 @@ export function visitAlerts(row: AlertInput, now: number = Date.now()): Alert[] 
   // Presence is proven by a fresh fix, so the newer of the two stamps is the one
   // that matters — last_confirmed_at moves on any confirm, last_proven_at only
   // on one that cleared the accuracy gate.
+  //
+  // ⚠ A last_confirmed_at that IS a credit write's own stamp is not a confirm.
+  // claim-points (11b) and upgrade-gym-tier write claimed_at/upgraded_at and
+  // last_confirmed_at from the same `nowIso`, with no fix behind it. Field
+  // 2026-11-13, visit b286499a (iOS, wake-starved): proven once at check-in,
+  // then a relayed claim 38 min later bumped last_confirmed_at — the board read
+  // "7m" while the device had been silent for 45. Equal to the millisecond to
+  // claimed_at or upgraded_at means it came from the credit write; drop it.
   if (open) {
     const provenMin = minutesSince(row.last_proven_at, now);
-    const confirmedMin = minutesSince(row.last_confirmed_at, now);
+    const confirmedMs = ms(row.last_confirmed_at);
+    const stampedByCredit = confirmedMs != null
+      && (confirmedMs === ms(row.claimed_at) || confirmedMs === ms(row.upgraded_at));
+    const confirmedMin = stampedByCredit ? null : minutesSince(row.last_confirmed_at, now);
     const freshest =
       provenMin == null ? confirmedMin
       : confirmedMin == null ? provenMin
