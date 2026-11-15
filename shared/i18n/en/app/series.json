@@ -736,7 +736,7 @@
     },
     "strength": {
       "name": "Strength",
-      "line": "Strength sessions, all time"
+      "line": "Strength sessions in the Series"
     },
     "tier": {
       "bronze": "Bronze",

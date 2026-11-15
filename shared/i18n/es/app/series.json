@@ -736,7 +736,7 @@
     },
     "strength": {
       "name": "Strength",
-      "line": "Sesiones de fuerza, en total"
+      "line": "Sesiones de fuerza en la Series"
     },
     "tier": {
       "bronze": "Bronce",
