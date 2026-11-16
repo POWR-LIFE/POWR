@@ -415,7 +415,7 @@
       "yourCity": "YOUR CITY",
       "members_one": "{{n}} member",
       "members_other": "{{n}} members",
-      "note": "Ranked per member, so a small city can beat a big one. When the round closes, 5 members of the top city win a Nutrition Reset."
+      "note": "Ranked per member, so a small city can beat a big one."
     },
     "lock": {
       "right": "opening soon",

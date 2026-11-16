@@ -415,7 +415,7 @@
       "yourCity": "TA VILLE",
       "members_one": "{{n}} membre",
       "members_other": "{{n}} membres",
-      "note": "Classement par membre : une petite ville peut battre une grande. À la fin de la manche, 5 membres de la ville en tête gagnent un Nutrition Reset."
+      "note": "Classement par membre : une petite ville peut battre une grande."
     },
     "lock": {
       "right": "bientôt ouvert",
