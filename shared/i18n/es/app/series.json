@@ -415,7 +415,7 @@
       "yourCity": "TU CIUDAD",
       "members_one": "{{n}} miembro",
       "members_other": "{{n}} miembros",
-      "note": "Se clasifica por miembro, así que una ciudad pequeña puede ganar a una grande. Al cerrar la ronda, 5 miembros de la ciudad en cabeza se llevan un Nutrition Reset."
+      "note": "Se clasifica por miembro, así que una ciudad pequeña puede ganar a una grande."
     },
     "lock": {
       "right": "abre pronto",
