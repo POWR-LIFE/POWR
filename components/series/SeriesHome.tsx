@@ -43,7 +43,8 @@ import { DuelResults, GoldenPMark, GoldenPSheet, TodayReadouts } from './SeriesD
 import { NAMED, PrizeDetailSheet, type PrizeKey, PrizesSheet, prizeSetFrom, SAMPLE_PRIZES, type PrizeState, WaysToWin, WinnersCard } from './SeriesPrizes';
 import { liveMomentCards, MomentStrip, sampleMomentCards, SERIES_BAR_H, SeriesCard } from './SeriesRound';
 import { hexA, LOCKUP_LINES, type LockupLine, SEASON_ORDER, SEASONS, seasonDev, useSeason, useSeasonCard } from './season';
-import { RulesSheet, ShareSheet, Sheet, SheetHead, YourFile } from './SeriesSheets';
+import { HowToWinSheet } from './HowToWinSheet';
+import { ShareSheet, Sheet, SheetHead, YourFile } from './SeriesSheets';
 import { InviteBoardCard, InviteRaceNote, PrizeHero } from './SeriesInvite';
 import { SeriesInviteCard } from './SeriesInviteCard';
 import { type JoinRound, joinRoundOf, JoinRoundScreen, openSeriesJoin, roundDays } from './SeriesJoin';
@@ -696,16 +697,26 @@ export function SeriesHome({
             )}
             {push && <PushPreview push={push} onPress={() => setPush(null)} />}
 
-            <RulesSheet
+            <HowToWinSheet
                 visible={sheet === 'rules'}
                 onClose={() => setSheet(null)}
-                live={v.live}
+                span={v.round.span}
                 days={v.round.days}
-                need={v.hero.need}
-                when={v.round.prizesDay}
-                boosts={extras.moments.some((m) => (m.multiplier ?? 1) > 1)}
-                blindMode={extras.moments.some((m) => m.kind === 'blind')}
-                onPrizes={running ? () => { setSheet(null); setTimeout(() => openPrizes('top3'), 350); } : undefined}
+                winners={v.round.prizesDay}
+                lastDay={v.round.lastShort}
+                onBoard={running ? () => {
+                    trackTap('series_rules_board');
+                    setSheet(null);
+                    // The board sits at the top of Overall, under the pinned card.
+                    const go = () => scrollRef.current?.scrollTo({ y: 0, animated: true });
+                    if (onOverall) setTimeout(go, 250); else { sim.setTab('overall'); setTimeout(go, 350); }
+                } : undefined}
+                onPrize={running ? (k) => {
+                    trackTap('series_rules_prize', { prize: k });
+                    setSheet(null);
+                    // The top three open the whole list (the places, then everything else); a title, its own drawer.
+                    setTimeout(() => (k === 'top3' ? openPrizes('top3') : openPrize(k)), 350);
+                } : undefined}
             />
             <ShareSheet
                 visible={sheet === 'share'}

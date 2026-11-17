@@ -515,6 +515,32 @@ export function seriesDate(iso: string): string {
     }
 }
 
+const SERIES_TZ = 'Europe/London';
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "30 Nov": a day without its weekday. */
+export function seriesDay(iso: string): string {
+    const d = new Date(iso);
+    try {
+        return d.toLocaleDateString(getFormatLocale(), { day: 'numeric', month: 'short', timeZone: SERIES_TZ }).replace(',', '');
+    } catch {
+        return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+    }
+}
+
+/**
+ * A round's first to last day: "15–30 Nov" ("Nov 15–30" where the month comes
+ * first), or "28 Nov – 5 Dec" across two months.
+ */
+export function seriesSpan(fromIso: string, toIso: string): string {
+    const from = seriesDay(fromIso);
+    const to = seriesDay(toIso);
+    const num = (x: string) => x.match(/\d+/)?.[0] ?? x;
+    if (from.replace(/\d+/, '') !== to.replace(/\d+/, '')) return `${from} – ${to}`;
+    // One month: write it once, where the locale puts it.
+    return /^\d/.test(to) ? `${num(from)}–${to}` : `${from}–${num(to)}`;
+}
+
 /** "12d 04h" until a moment; "0d 00h" once it has passed. */
 export function timeLeft(iso: string, now = Date.now()): string {
     const ms = Math.max(0, new Date(iso).getTime() - now);

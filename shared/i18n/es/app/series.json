@@ -371,21 +371,31 @@
       "bold": "puesto",
       "cta": "COMPARTIR"
     },
-    "rules": {
-      "light": "Cómo ",
-      "bold": "funciona",
-      "round_one": "Gana quien sume más puntos en {{count}} día",
-      "round_other": "Gana quien sume más puntos en {{count}} días",
-      "winners": "Ganadores el {{date}}",
-      "score": "Tus puntos POWR son tu marcador",
-      "scoreLine": "Solo cuentan tus primeros 120 minutos activos del día",
-      "boost": "Boosts de hasta 2×",
-      "boostLine": "Algunos días y horas suman más, un boost cada vez",
-      "drawLine": "Registra una sesión {{need}} de los {{days}} días y entras en el sorteo",
-      "blindLine": "Durante un tiempo todos los puestos se ocultan, también el tuyo",
-      "one": "Un premio por persona",
-      "oneLine": "Si ganas dos, el siguiente se lleva el otro",
-      "prizesLink": "Lo que puedes ganar"
+    "win": {
+      "title": "Cómo ganar",
+      "days_one": "{{count}} día",
+      "days_other": "{{count}} días",
+      "winners": "Ganadores el <b>{{date}}</b>",
+      "how": "CÓMO FUNCIONA",
+      "move": "Muévete",
+      "moveLine": "Entreno, carrera, paseo o bici: todo suma puntos",
+      "climb": "Escala",
+      "climbLine": "Los puntos te suben en la clasificación",
+      "win": "Gana",
+      "winLine": "Ocupa un puesto con premio el {{date}}",
+      "top": "LO ALTO DE LA CLASIFICACIÓN",
+      "onPoints": "{{ord}} en puntos",
+      "titles": "TÍTULOS PARA TODOS",
+      "lines": {
+        "unbreakable": "La racha más larga",
+        "levelUp": "Más puestos escalados",
+        "rookie": "Mejor recién llegado",
+        "squadBuilder": "Más amigos traídos"
+      },
+      "oneEach": "<b>Un premio por persona.</b>\nSi ganas dos, el siguiente se lleva el otro.",
+      "board": "VER LA CLASIFICACIÓN",
+      "boardA11y": "Ver la clasificación",
+      "prizeA11y": "{{title}}, {{line}}. Abre el premio"
     }
   },
   "tabs": {

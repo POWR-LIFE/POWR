@@ -2,7 +2,7 @@ import type { Honour } from '@/constants/honours';
 import type { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
-import { SERIES_BOARD_TOP, type SeriesBoard, type SeriesCity, seriesDate, seriesHow, timeLeft } from '@/lib/api/series';
+import { SERIES_BOARD_TOP, type SeriesBoard, type SeriesCity, seriesDate, seriesDay, seriesHow, seriesSpan, timeLeft } from '@/lib/api/series';
 import {
     BLIND_HIDES,
     type Board,
@@ -77,8 +77,10 @@ export type SeriesView = {
     /**
      * The round on screen: its slug (live only), name and length, and when its
      * prizes land ("on the 16th" for prose, "16 Nov" where space is short).
+     * `span` is its first to last day ("15–30 Nov") and `lastShort` the last
+     * day without its weekday ("30 Nov").
      */
-    round: { slug: string | null; name: string; days: number; prizesOn: string; prizesDay: string; lastDay: string };
+    round: { slug: string | null; name: string; days: number; prizesOn: string; prizesDay: string; lastDay: string; span: string; lastShort: string };
     header: string;
     band: { icon: IconName; text: string; right: string | null; tone: 'gold' | 'rain' | 'dark' } | null;
     hero: {
@@ -210,7 +212,7 @@ export function fromSim(sim: Sim, name = 'Autumn Series'): SeriesView {
     return {
         live: false,
         phase: sim.inRound ? 'running' : upcoming ? 'upcoming' : 'between',
-        round: { slug: null, name: 'Round 01', days: 15, prizesOn: 'on the 16th', prizesDay: '16 Nov', lastDay: 'Sun 15 Nov' },
+        round: { slug: null, name: 'Round 01', days: 15, prizesOn: 'on the 16th', prizesDay: '16 Nov', lastDay: 'Sun 15 Nov', span: '1–15 Nov', lastShort: '15 Nov' },
         header: sim.inRound
             ? `${name} · Day ${info.day} of 15${info.moment ? ` · ${info.moment}` : ''}`
             : `${name} · ${next.label} starts ${next.starts}`,
@@ -334,13 +336,16 @@ export function fromLive(b: SeriesBoard, name = 'Series', blind = false): Series
     const nextFor = phase === 'upcoming' ? r : upcoming;
     const next = { label: nextFor.name, starts: seriesDate(nextFor.starts_at), inDays: daysUntil(nextFor.starts_at), none: phase === 'between' && !b.next };
     const days = Array.from({ length: r.days }, (_, i) => me.days.includes(i + 1));
+    const lastIso = new Date(new Date(r.ends_at).getTime() - 12 * 3_600_000).toISOString();
     return {
         live: true,
         phase,
         round: {
             slug: r.slug, name: r.name, days: r.days, prizesOn: i18n.t('series:view.prizesOn', { date: seriesDate(r.ends_at) }), prizesDay: seriesDate(r.ends_at),
             // ends_at is the midnight after the last day
-            lastDay: seriesDate(new Date(new Date(r.ends_at).getTime() - 12 * 3_600_000).toISOString()),
+            lastDay: seriesDate(lastIso),
+            span: seriesSpan(r.starts_at, lastIso),
+            lastShort: seriesDay(lastIso),
         },
         header: phase === 'running'
             ? i18n.t('series:view.headerDay', { name, day: r.day, days: r.days })

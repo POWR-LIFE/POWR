@@ -371,21 +371,31 @@
       "bold": "rank",
       "cta": "SHARE"
     },
-    "rules": {
-      "light": "How it ",
-      "bold": "works",
-      "round_one": "Most points in {{count}} day wins",
-      "round_other": "Most points in {{count}} days wins",
-      "winners": "Winners on {{date}}",
-      "score": "Your POWR points are your score",
-      "scoreLine": "Only your first 120 active minutes a day count",
-      "boost": "Boosts up to 2×",
-      "boostLine": "Some days and hours score extra, one boost at a time",
-      "drawLine": "Log a session on {{need}} of the {{days}} days to enter the prize draw",
-      "blindLine": "For a while every rank is hidden, yours too",
-      "one": "One prize each",
-      "oneLine": "Win two and the next in line takes the other",
-      "prizesLink": "What you can win"
+    "win": {
+      "title": "How to win",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "winners": "Winners <b>{{date}}</b>",
+      "how": "HOW IT WORKS",
+      "move": "Move",
+      "moveLine": "Any workout, run, walk or ride earns points",
+      "climb": "Climb",
+      "climbLine": "Points move you up the board",
+      "win": "Win",
+      "winLine": "Hold a prize spot on {{date}}",
+      "top": "TOP OF THE BOARD",
+      "onPoints": "{{ord}} on points",
+      "titles": "TITLES ANYONE CAN WIN",
+      "lines": {
+        "unbreakable": "Longest streak",
+        "levelUp": "Most places climbed",
+        "rookie": "Best newcomer",
+        "squadBuilder": "Most friends brought in"
+      },
+      "oneEach": "<b>One prize each.</b>\nWin two and the next in line takes the other.",
+      "board": "VIEW LEADERBOARD",
+      "boardA11y": "View the leaderboard",
+      "prizeA11y": "{{title}}, {{line}}. Opens the prize"
     }
   },
   "tabs": {

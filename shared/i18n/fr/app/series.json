@@ -371,21 +371,31 @@
       "bold": "rang",
       "cta": "PARTAGER"
     },
-    "rules": {
-      "light": "Comment ça ",
-      "bold": "marche",
-      "round_one": "Le plus de points en {{count}} jour l’emporte",
-      "round_other": "Le plus de points en {{count}} jours l’emporte",
-      "winners": "Résultats le {{date}}",
-      "score": "Tes points POWR font ton score",
-      "scoreLine": "Seules tes 120 premières minutes actives du jour comptent",
-      "boost": "Boosts jusqu’à 2×",
-      "boostLine": "Certains jours et heures rapportent plus, un boost à la fois",
-      "drawLine": "Fais une séance {{need}} jours sur {{days}} pour entrer au tirage au sort",
-      "blindLine": "Pendant un temps, tous les rangs sont masqués, le tien aussi",
-      "one": "Un prix chacun",
-      "oneLine": "Si tu en gagnes deux, le suivant prend l’autre",
-      "prizesLink": "Ce que tu peux gagner"
+    "win": {
+      "title": "Comment gagner",
+      "days_one": "{{count}} jour",
+      "days_other": "{{count}} jours",
+      "winners": "Résultats le <b>{{date}}</b>",
+      "how": "COMMENT ÇA MARCHE",
+      "move": "Bouge",
+      "moveLine": "Séance, course, marche ou vélo : tout rapporte des points",
+      "climb": "Grimpe",
+      "climbLine": "Tes points te font monter au classement",
+      "win": "Gagne",
+      "winLine": "Tiens une place primée le {{date}}",
+      "top": "EN TÊTE DU CLASSEMENT",
+      "onPoints": "{{ord}} aux points",
+      "titles": "TITRES OUVERTS À TOUS",
+      "lines": {
+        "unbreakable": "La plus longue série",
+        "levelUp": "Le plus de places gagnées",
+        "rookie": "Meilleur nouveau venu",
+        "squadBuilder": "Le plus d’amis amenés"
+      },
+      "oneEach": "<b>Un prix chacun.</b>\nGagnes-en deux et le suivant prend l’autre.",
+      "board": "VOIR LE CLASSEMENT",
+      "boardA11y": "Voir le classement",
+      "prizeA11y": "{{title}}, {{line}}. Ouvre le prix"
     }
   },
   "tabs": {
