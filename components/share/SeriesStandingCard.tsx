@@ -216,7 +216,7 @@ export const SeriesStandingCard = forwardRef<View, SeriesStandingCardProps>(
                                 <Text
                                     allowFontScaling={false}
                                     numberOfLines={1}
-                                    style={[styles.kind, { fontSize: 16 * s, lineHeight: 20 * s, marginTop: 14 * s, color: col.any ? TEXT : GHOST_TEXT }]}
+                                    style={[styles.kind, { fontSize: 16 * s, lineHeight: 20 * s, marginTop: 14 * s, color: col.any ? GOLD : GHOST_TEXT }]}
                                 >
                                     {honourName(col.kind)}
                                 </Text>
