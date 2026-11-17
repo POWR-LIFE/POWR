@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, type ImageSource } from 'expo-image';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { fmt, type Scale } from '@/lib/dev/seriesPrototype';
 import { CARD_BG, CARD_BORDER, DIM, EMBER, GOLD, GREEN, HAIR, MUTED, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
@@ -12,13 +13,29 @@ import { BUTTER, hexA, SeriesLockup, useSeason } from './season';
 const ON_GOLD = '#0a0a0a';
 
 /**
+ * A sheet's own look, over the season's: its ground, a light from the top
+ * right corner (a colour and how strong it is there), rounder corners, and
+ * room to run up to the status bar.
+ */
+export type SheetLook = { bg: string; glow: string; glowOpacity: number; radius?: number; tall?: boolean };
+
+/**
  * A bottom sheet in the app's dark style. The handle works: drag it down to
  * close (it springs back if you let go early), or tap it.
  */
-export function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
+export function Sheet({ visible, onClose, children, look, footer }: {
+    visible: boolean;
+    onClose: () => void;
+    children: React.ReactNode;
+    look?: SheetLook;
+    /** Pinned under the scrolling part: a button that must never fall below the fold. */
+    footer?: React.ReactNode;
+}) {
     const { t } = useTranslation();
     const insets = useSafeAreaInsets();
+    const { height } = useWindowDimensions();
     const { tint } = useSeason();
+    const corner = look?.radius ?? 22;
     const drag = useRef(new Animated.Value(0)).current;
     useEffect(() => { if (visible) drag.setValue(0); }, [visible, drag]);
     const pan = useMemo(() => PanResponder.create({
@@ -38,7 +55,27 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
             <Pressable style={s.scrim} onPress={onClose} accessibilityLabel={t('series:sheets.close')} />
-            <Animated.View style={[s.sheet, tint && { backgroundColor: tint.sheet }, { paddingBottom: Math.max(28, insets.bottom + 12), transform: [{ translateY: drag }] }]}>
+            <Animated.View
+                style={[
+                    s.sheet, tint && { backgroundColor: tint.sheet },
+                    look && { backgroundColor: look.bg, borderTopLeftRadius: corner, borderTopRightRadius: corner },
+                    look?.tall && { maxHeight: height - insets.top - 12 },
+                    { paddingBottom: Math.max(28, insets.bottom + 12), transform: [{ translateY: drag }] },
+                ]}
+            >
+                {look && (
+                    <View pointerEvents="none" style={[s.glow, { borderTopLeftRadius: corner, borderTopRightRadius: corner }]}>
+                        <Svg width="100%" height="100%">
+                            <Defs>
+                                <RadialGradient id="sheetGlow" cx="100%" cy="0%" rx="85%" ry="100%" fx="100%" fy="0%">
+                                    <Stop offset="0" stopColor={look.glow} stopOpacity={look.glowOpacity} />
+                                    <Stop offset="1" stopColor={look.glow} stopOpacity={0} />
+                                </RadialGradient>
+                            </Defs>
+                            <Rect width="100%" height="100%" fill="url(#sheetGlow)" />
+                        </Svg>
+                    </View>
+                )}
                 <View {...pan.panHandlers} style={s.grabZone} accessibilityRole="button" accessibilityLabel={t('series:sheets.close')}>
                     <View style={s.grab} />
                 </View>
@@ -48,6 +85,7 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
                 <ScrollView style={s.sheetScroll} bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                     {children}
                 </ScrollView>
+                {footer}
             </Animated.View>
         </Modal>
     );
@@ -143,61 +181,6 @@ export function InfoList({ rows, onRowLayout, wrap = false }: { rows: InfoRow[];
     );
 }
 
-/**
- * How the Series works, in six rows. Each line says what you do and what it
- * gets you (Elliot, 15 Nov: "the round's moments: they never stack" and "a
- * draw: be active on 10" didn't). What you can win has its own drawer.
- */
-export function RulesSheet({
-    visible, onClose, onPrizes, live = false, days = 15, need = 10, when = '16 Nov', boosts = false, blindMode = false,
-}: {
-    visible: boolean;
-    onClose: () => void;
-    onPrizes?: () => void;
-    /** Live data: only the rules the server runs (boosts and Blind Mode when the round has them). */
-    live?: boolean;
-    days?: number;
-    need?: number;
-    /** The day the winners land: "Sun 16 Nov" (the sentence around it is translated here). */
-    when?: string;
-    /** Live: the round has boost moments / a Blind Mode (set in /admin/series). */
-    boosts?: boolean;
-    blindMode?: boolean;
-}) {
-    const { t } = useTranslation();
-    // The !live lines are sample-only.
-    const rows: InfoRow[] = [
-        {
-            key: 'round', icon: 'calendar-outline', title: t('series:sheets.rules.round', { count: days }),
-            line: live ? t('series:sheets.rules.winners', { date: when }) : '1–15 Nov · winners on the 16th',
-        },
-        { key: 'score', icon: 'walk-outline', title: t('series:sheets.rules.score'), line: t('series:sheets.rules.scoreLine') },
-        ...(live && !boosts ? [] : [{
-            key: 'boost', icon: 'flash-outline' as const, title: t('series:sheets.rules.boost'),
-            line: live ? t('series:sheets.rules.boostLine') : 'Streaks, the Drop and the round’s moments',
-        }]),
-        // Every Move Counts and Blind Mode are names: they stay as they are in every language.
-        { key: 'draw', icon: 'ticket-outline', title: 'Every Move Counts', line: t('series:sheets.rules.drawLine', { need, days }) },
-        ...(live && !blindMode ? [] : [{
-            key: 'blind', icon: 'eye-off-outline' as const, title: 'Blind Mode',
-            line: live ? t('series:sheets.rules.blindLine') : 'Every rank hidden for 48 hours',
-        }]),
-        { key: 'one', icon: 'gift-outline', title: t('series:sheets.rules.one'), line: t('series:sheets.rules.oneLine') },
-    ];
-    return (
-        <Sheet visible={visible} onClose={onClose}>
-            <SheetHead light={t('series:sheets.rules.light')} bold={t('series:sheets.rules.bold')} onClose={onClose} />
-            <InfoList rows={rows} wrap />
-            {onPrizes && (
-                <Pressable onPress={onPrizes} style={({ pressed }) => [s.sheetLink, pressed && { opacity: 0.6 }]} accessibilityRole="button">
-                    <Text style={s.sheetLinkText}>{t('series:sheets.rules.prizesLink')}</Text>
-                    <Ionicons name="arrow-forward" size={15} color={TEXT} />
-                </Pressable>
-            )}
-        </Sheet>
-    );
-}
-
 /** The end-of-round summary: one card per member, made to be shared. */
 export function YourFile({
     visible, onClose, scale, onShare, prizes = [],
@@ -270,14 +253,13 @@ const s = StyleSheet.create({
     infoTitle: { fontSize: 15, fontWeight: '400', color: TEXT },
     infoLine: { marginTop: 2, fontSize: 12, lineHeight: 16, fontWeight: '300', color: TEXT_2 },
     infoRight: { fontSize: 9, fontWeight: '700', letterSpacing: 1.3, textAlign: 'right' },
-    sheetLink: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingVertical: 10 },
-    sheetLinkText: { fontSize: 15, fontWeight: '400', color: TEXT },
     scrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
     sheet: {
         position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '86%', backgroundColor: '#161616',
         borderTopLeftRadius: 22, borderTopRightRadius: 22, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 20, paddingTop: 10,
     },
     sheetScroll: { flexGrow: 0 },
+    glow: { position: 'absolute', top: 0, left: 0, right: 0, height: 360, overflow: 'hidden' },
     grabZone: { alignSelf: 'stretch', marginTop: -10, marginHorizontal: -20, paddingTop: 12, paddingBottom: 16, alignItems: 'center' },
     grab: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.28)' },
     sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
