@@ -10,6 +10,9 @@
  * locally rather than round-tripping through the web page. We must therefore
  * accept every shape the code can legitimately arrive in:
  *   • the full https smart-link  …?to=add-friend&ref=ABC123ZZ
+ *   • the Series invite link  https://powr.life/series/ABC123ZZ (the Series
+ *     share card's QR: shorter, so the code has bigger dots and scans from
+ *     a smaller picture; the web sends a person to the smart-link)
  *   • the custom-scheme deep link  powr://add-friend?ref=ABC123ZZ
  *   • a bare code  ABC123ZZ  (e.g. printed plainly under the QR)
  *   • the display form of the same code, ABC1 23ZZ — it is also the member's
@@ -29,6 +32,8 @@ const BARE_CODE = /^[A-Z0-9]{6,10}$/i;
 /** The 8-char code in its display form — `ABC1 23ZZ` / `ABC1-23ZZ` (see shared/memberId). */
 const DISPLAY_CODE = /^([A-Z0-9]{4})[\s-]([A-Z0-9]{4})$/i;
 const REF_PARAM = /[?&]ref=([A-Z0-9]{6,10})/i;
+/** powr.life/series/<code> only: any other site's /series/ path is not a friend code. */
+const SERIES_LINK = /^(?:https?:\/\/)?(?:www\.)?powr\.life\/series\/([A-Z0-9]{6,10})\/?(?:[?#].*)?$/i;
 
 /**
  * Extract the referral code from a scanned QR payload, or `null` if it isn't a
@@ -41,6 +46,10 @@ export function parseReferralCode(scanned: string | null | undefined): string | 
   // A ref= param anywhere in the link (any order, http/https/powr scheme).
   const param = value.match(REF_PARAM);
   if (param) return param[1].toUpperCase();
+
+  // The Series invite link: the code is the path.
+  const series = value.match(SERIES_LINK);
+  if (series) return series[1].toUpperCase();
 
   // Otherwise a plain code printed on its own.
   if (BARE_CODE.test(value)) return value.toUpperCase();

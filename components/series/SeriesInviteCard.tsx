@@ -142,8 +142,9 @@ export function SeriesInviteCard({ board, code, seasonName, startsAt, onCard }: 
                     >
                         <Ionicons name="qr-code-outline" size={16} color={DIM} />
                     </Pressable>
-                    {/* The same invite as SHARE, as a picture: the season's card
-                        with your code on it, for Stories and chats that want an image. */}
+                    {/* The same invite as SHARE, as a picture for Stories and chats:
+                        your standing card (place, round, trophies, QR) once you're
+                        racing, the season's card with your code before. */}
                     {onCard && (
                         <Pressable
                             style={({ pressed }) => [s.roundBtn, pressed && { opacity: 0.7 }]}

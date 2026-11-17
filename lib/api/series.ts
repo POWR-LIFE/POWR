@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import type { Honour, HonourKind, HonourTier } from '@/constants/honours';
 import i18n, { getFormatLocale } from '@/lib/i18n';
 import { type SquadPrize, squadPrize } from '@/lib/seriesInvite';
-import { supabase } from '@/lib/supabase';
+import type { RoundTotals } from '@/lib/seriesShareCard';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 /**
  * The Autumn Series on the server (supabase/migrations/20261020150000_autumn_series.sql).
@@ -115,6 +116,36 @@ async function attachHonours(board: SeriesBoard): Promise<void> {
         by.set(h.user_id, list);
     }
     board.rows.forEach((r) => { r.honours = by.get(r.user_id) ?? []; });
+}
+
+/**
+ * Your round so far for the share card: steps (the day's walking session),
+ * run and ride km, gym visits and other workouts since `fromIso`. Your own
+ * rows only (RLS), and only those the Series would count: not manual, not
+ * flagged, no sleep. A failed read is null and the card shows other numbers.
+ */
+export async function fetchSeriesRoundTotals(fromIso: string): Promise<RoundTotals | null> {
+    const user = await getSessionUser();
+    if (!user) return null;
+    const { data, error } = await supabase
+        .from('activity_sessions')
+        .select('type, steps, distance_m')
+        .eq('user_id', user.id)
+        .gte('started_at', fromIso)
+        .neq('type', 'sleep')
+        .neq('verification', 'manual')
+        .or('flagged.is.null,flagged.eq.false')
+        .limit(1000);
+    if (error || !Array.isArray(data)) return null;
+    const t: RoundTotals = { steps: 0, runKm: 0, gym: 0, rideKm: 0, workouts: 0 };
+    for (const r of data as { type: string; steps: number | null; distance_m: number | null }[]) {
+        if (r.type === 'walking') t.steps += r.steps ?? 0;
+        else if (r.type === 'running') t.runKm += (r.distance_m ?? 0) / 1000;
+        else if (r.type === 'cycling') t.rideKm += (r.distance_m ?? 0) / 1000;
+        else if (r.type === 'gym') t.gym += 1;
+        else t.workouts += 1;
+    }
+    return t;
 }
 
 /** Have you joined? An older server has no joining (everyone's in), so a missing answer is yes. */

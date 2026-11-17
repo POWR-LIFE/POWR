@@ -752,7 +752,40 @@
     "days": "DAYS",
     "entry": "ENTRY",
     "free": "Free",
-    "dayOf": "{{round}} · day {{day}} of {{days}}"
+    "dayOf": "{{round}} · day {{day}} of {{days}}",
+    "final": "{{round}} · final",
+    "cityRank": "{{city}} rank",
+    "seriesRank": "Series rank",
+    "climb": "Places climbed today",
+    "racingLabel": "Racing",
+    "stat": {
+      "steps": "Steps",
+      "run": "Run",
+      "gym": "Gym visits",
+      "ride": "Ride",
+      "workouts": "Workouts",
+      "points": "Series points",
+      "daysLeft": "Days left"
+    },
+    "cabinet": "Trophy cabinet",
+    "ofTotal": "of {{total}}",
+    "toWin": "{{total}} to win",
+    "next": "Next",
+    "progress": {
+      "weeks": "{{have}} of {{need}} weeks",
+      "weeks4": "{{have}} of {{need}} weeks of 4+ days",
+      "weeks5": "{{have}} of {{need}} weeks of 5+ days",
+      "weeks6": "{{have}} of {{need}} weeks of 6+ days",
+      "rounds": "{{have}} of {{need}} rounds",
+      "places": "{{have}} of {{need}} places",
+      "friends": "{{have}} of {{need}} active friends",
+      "sessions": "{{have}} of {{need}} sessions",
+      "top": "Reach Nº 1 from outside the top 10"
+    },
+    "squad": "Join my squad",
+    "scan": "Scan to download POWR and start climbing",
+    "scanOrCode": "Scan, or download POWR and use my code",
+    "everyMove": "Every move counts."
   },
   "shareLink": {
     "title": "POWR · {{season}}",
