@@ -752,7 +752,40 @@
     "days": "DÍAS",
     "entry": "ENTRADA",
     "free": "Gratis",
-    "dayOf": "{{round}} · día {{day}} de {{days}}"
+    "dayOf": "{{round}} · día {{day}} de {{days}}",
+    "final": "{{round}} · final",
+    "cityRank": "Puesto en {{city}}",
+    "seriesRank": "Puesto Series",
+    "climb": "Puestos subidos hoy",
+    "racingLabel": "Compitiendo",
+    "stat": {
+      "steps": "Pasos",
+      "run": "Carrera",
+      "gym": "Visitas al gym",
+      "ride": "Bici",
+      "workouts": "Entrenos",
+      "points": "Puntos Series",
+      "daysLeft": "Días restantes"
+    },
+    "cabinet": "Vitrina de trofeos",
+    "ofTotal": "de {{total}}",
+    "toWin": "{{total}} por ganar",
+    "next": "Siguiente",
+    "progress": {
+      "weeks": "{{have}} de {{need}} semanas",
+      "weeks4": "{{have}} de {{need}} semanas de 4+ días",
+      "weeks5": "{{have}} de {{need}} semanas de 5+ días",
+      "weeks6": "{{have}} de {{need}} semanas de 6+ días",
+      "rounds": "{{have}} de {{need}} rondas",
+      "places": "{{have}} de {{need}} puestos",
+      "friends": "{{have}} de {{need}} amigos activos",
+      "sessions": "{{have}} de {{need}} sesiones",
+      "top": "Llegar al Nº 1 desde fuera del top 10"
+    },
+    "squad": "Únete a mi equipo",
+    "scan": "Escanea para descargar POWR y empezar a subir",
+    "scanOrCode": "Escanea, o descarga POWR y usa mi código",
+    "everyMove": "Cada movimiento cuenta."
   },
   "shareLink": {
     "title": "POWR · {{season}}",

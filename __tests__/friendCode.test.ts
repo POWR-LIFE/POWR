@@ -18,6 +18,16 @@ describe('parseReferralCode', () => {
     expect(parseReferralCode('powr://add-friend?ref=ABC123ZZ')).toBe('ABC123ZZ');
   });
 
+  it('pulls the code out of the Series invite link (the share card QR)', () => {
+    expect(parseReferralCode('https://powr.life/series/ABC123ZZ')).toBe('ABC123ZZ');
+    expect(parseReferralCode('https://www.powr.life/series/abc123zz/')).toBe('ABC123ZZ');
+    expect(parseReferralCode('powr.life/series/ABC123ZZ?utm=x')).toBe('ABC123ZZ');
+    // Only powr.life's: another site's /series/ path is not a friend code.
+    expect(parseReferralCode('https://example.com/series/ABC123ZZ')).toBeNull();
+    expect(parseReferralCode('https://powr.life/series/ABC123ZZ/extra')).toBeNull();
+    expect(parseReferralCode('https://powr.life/series')).toBeNull();
+  });
+
   it('accepts a bare code printed on its own', () => {
     expect(parseReferralCode('ABC123ZZ')).toBe('ABC123ZZ');
   });

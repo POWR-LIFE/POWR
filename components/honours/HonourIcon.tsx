@@ -50,7 +50,11 @@ export const TIER_COLOUR: Record<HonourTier, string> = { platinum: '#E3ECF5', go
 
 let seq = 0;
 
-export function HonourIcon({ kind, tier, size = 14 }: { kind: HonourKind; tier: HonourTier; size?: number }) {
+/**
+ * `color` draws it flat in that colour instead of its metal: a piece not won
+ * yet, ghosted in the share card's cabinet.
+ */
+export function HonourIcon({ kind, tier, size = 14, color }: { kind: HonourKind; tier: HonourTier; size?: number; color?: string }) {
     // Gradient ids are global to the screen's SVG tree: one per instance.
     const id = useRef(`hn${++seq}`).current;
     const [a, b, c, d] = TIER_STOPS[tier];
@@ -66,7 +70,7 @@ export function HonourIcon({ kind, tier, size = 14 }: { kind: HonourKind; tier: 
                 </LinearGradient>
             </Defs>
             <G
-                stroke={`url(#${id})`}
+                stroke={color ?? `url(#${id})`}
                 strokeWidth={2.6}
                 strokeLinecap="round"
                 strokeLinejoin="round"

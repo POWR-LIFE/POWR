@@ -605,7 +605,9 @@ export function SeriesHome({
                         <View style={s.links}>
                             <Pressable
                                 style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.6 }]}
-                                onPress={() => { void Haptics.selectionAsync(); trackTap('series_share_open'); setSheet('share'); }}
+                                // Your standing card (/share-series): place, round, trophies, QR,
+                                // with Share / Post / Save. It replaced the square rank sheet.
+                                onPress={() => { void Haptics.selectionAsync(); trackTap('series_share_open'); router.push({ pathname: '/share-series', params: cardRound }); }}
                                 accessibilityRole="button"
                             >
                                 <Text style={s.linkText}>{t('series:league.links.share')}</Text>
