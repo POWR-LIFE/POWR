@@ -18,8 +18,9 @@ import { captureRef } from 'react-native-view-shot';
 import { useSeason } from '@/components/series/season';
 import { SeriesShareCard } from '@/components/share/SeriesShareCard';
 import { SeriesStandingCard, STANDING_CARD_RATIO } from '@/components/share/SeriesStandingCard';
+import { PREVIEW_HEIGHT, PREVIEW_WIDTH, SeriesStandingPreview } from '@/components/share/SeriesStandingPreview';
 import { tracked } from '@/lib/analytics';
-import { fetchSeriesBoard, fetchSeriesRoundTotals, type SeriesBoard, seriesDate } from '@/lib/api/series';
+import { fetchSeriesBoard, fetchSeriesRoundTotals, type SeriesBoard, seriesDate, seriesNum } from '@/lib/api/series';
 import { publishShareImage } from '@/lib/api/share';
 import { fetchProfile } from '@/lib/api/user';
 import { SERIES_PROTOTYPE } from '@/lib/dev/seriesPrototype';
@@ -28,6 +29,7 @@ import {
   buildSeriesShareMessage,
   buildSeriesShareSubtitle,
   buildSeriesShareTitle,
+  buildSeriesStandingTitle,
   seriesInvitePath,
 } from '@/lib/seriesInvite';
 import { type CardClimb, type CardStat, cardClimb, cardRank, cardStats, type RoundTotals } from '@/lib/seriesShareCard';
@@ -39,7 +41,10 @@ const TEXT  = '#F2F2F2';
 const DIM   = 'rgba(255,255,255,0.5)';
 const MUTED = 'rgba(255,255,255,0.25)';
 
-/** Must stay in step with share-event and the og:image size share-card-og declares. */
+/**
+ * The invite card's link image: must stay in step with share-event and the
+ * og:image size share-card-og declares when a card has no preview_path.
+ */
 const OG_IMAGE_WIDTH  = 720;
 const OG_IMAGE_HEIGHT = 1280;
 /** The standing card is 4:5 (feed-post shape), so its captures are too. */
@@ -82,7 +87,9 @@ function ActionButton({ icon, label, onPress, loading, disabled, primary }: {
  * joined: the Series invite card, 9:16, as before.
  *
  * Same doors as every other card: **Share** publishes the card and sends a
- * link whose preview IS the card (WhatsApp, iMessage…), landing a friend on
+ * link whose preview IS the card (WhatsApp, iMessage…); the standing card
+ * also sends a landscape copy (SeriesStandingPreview) as the preview image,
+ * so chats draw it large instead of as a thumbnail. The link lands a friend on
  * add-friend with the sharer's code — the same invite the card's SHARE
  * sends, with a picture; **Post** hands the full-res image to the Stories
  * apps, where the card itself carries the code; **Save** keeps the image.
@@ -167,6 +174,7 @@ export default function ShareSeriesScreen() {
 
   const cardRef = useRef<View>(null);
   const readyRef = useRef(false);
+  const previewRef = useRef<View>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<'share' | 'post' | 'save' | null>(null);
@@ -206,13 +214,19 @@ export default function ShareSeriesScreen() {
         height: standing ? Math.round(OG_IMAGE_WIDTH * STANDING_CARD_RATIO) : OG_IMAGE_HEIGHT,
         result: 'tmpfile',
       });
+      // The wide copy chat apps show large. Best effort: without it the link
+      // still previews, as the small thumbnail of the card.
+      const previewUri = live && previewRef.current
+        ? await captureRef(previewRef, { format: 'jpg', quality: 0.85, width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT, result: 'tmpfile' }).catch(() => null)
+        : null;
       const round = live?.roundName ?? roundName;
       const from = mine ? Date.parse(mine.round.starts_at) : startsAt;
       const shareUrl = await publishShareImage(uri, {
-        title: buildSeriesShareTitle(def.name),
+        title: live ? buildSeriesStandingTitle({ seasonName: def.name, rank: seriesNum(live.rank), city: live.city }) : buildSeriesShareTitle(def.name),
         subtitle: buildSeriesShareSubtitle({ roundName: round, startsAt: from, date: seriesDate(new Date(from).toISOString()) }),
         referralCode,
         appPath: seriesInvitePath(referralCode),
+        previewUri,
       });
       await Share.share({ message: buildSeriesShareMessage({ seasonName: def.name, shareUrl, startsAt: from }) });
     } catch (e) {
@@ -297,6 +311,12 @@ export default function ShareSeriesScreen() {
             onReady={() => { readyRef.current = true; }}
           />
         )}
+        {/* The link preview, laid out off-screen and captured on Share. */}
+        {!loading && card && (
+          <View style={styles.previewPrep} pointerEvents="none">
+            <SeriesStandingPreview ref={previewRef} testID="series-standing-preview" def={def} {...card} width={PREVIEW_WIDTH / 2} />
+          </View>
+        )}
         {!loading && !standing && valid && (
           <SeriesShareCard
             ref={cardRef}
@@ -366,6 +386,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 12 },
   errorText: { color: '#f87171', fontSize: 13, textAlign: 'center' },
   sampleNote: { color: GOLD, fontSize: 11, letterSpacing: 0.4, textAlign: 'center' },
+  previewPrep: { position: 'absolute', top: 0, left: -9999 },
   footer: { paddingHorizontal: 24, paddingTop: 8, gap: 14 },
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: 32 },
   action: { alignItems: 'center', gap: 8 },

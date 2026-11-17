@@ -87,6 +87,18 @@ export function buildSeriesShareTitle(seasonName: string): string {
     return i18n.t('series:shareLink.title', { season: seasonName });
 }
 
+/**
+ * The standing card's bold line: your place, where, and the season, so the
+ * chat reads it before the picture loads ("#123 in London · Autumn Series").
+ * `rank` comes formatted (seriesNum), as on the card.
+ */
+export function buildSeriesStandingTitle(opts: { seasonName: string; rank: string; city: string | null }): string {
+    const { rank } = opts;
+    return opts.city
+        ? i18n.t('series:shareLink.standing', { rank, city: opts.city, season: opts.seasonName })
+        : i18n.t('series:shareLink.standingBoard', { rank, season: opts.seasonName });
+}
+
 /** Grey line beneath it — the round and when it starts (or that it's on), the entry, the ask. */
 export function buildSeriesShareSubtitle(opts: { roundName: string; startsAt: number; date: string; now?: number }): string {
     const { roundName, startsAt, date, now = Date.now() } = opts;
@@ -105,6 +117,9 @@ export function buildSeriesShareMessage(opts: { seasonName: string; shareUrl: st
 
 /** What the admin leaves in a prize's name until the real one is chosen. */
 const UNANNOUNCED = /\b(to be announced|tba|tbc)\b/i;
+
+/** A prize name that's still a placeholder ("TBC", "To be announced"). */
+export const isUnannounced = (name: string | null | undefined) => !name?.trim() || UNANNOUNCED.test(name);
 
 /** The Squad Builder prize as the app shows it: its name and photo (a storage URL, or none yet). */
 export type SquadPrize = { name: string; imageUrl: string | null };

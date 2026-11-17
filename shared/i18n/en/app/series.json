@@ -800,7 +800,9 @@
   "shareLink": {
     "title": "POWR · {{season}}",
     "starts": "{{round}} starts {{date}}. Free to enter. Tap to get POWR and join me.",
-    "onNow": "{{round}} is on. Free to enter. Tap to get POWR and join me."
+    "onNow": "{{round}} is on. Free to enter. Tap to get POWR and join me.",
+    "standing": "#{{rank}} in {{city}} · {{season}}",
+    "standingBoard": "#{{rank}} · {{season}}"
   },
   "shareScreen": {
     "title": "Share the Series",
