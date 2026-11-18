@@ -800,7 +800,9 @@
   "shareLink": {
     "title": "POWR · {{season}}",
     "starts": "{{round}} commence le {{date}}. Entrée gratuite. Touche, installe POWR et rejoins-moi.",
-    "onNow": "{{round}} est en cours. Entrée gratuite. Touche, installe POWR et rejoins-moi."
+    "onNow": "{{round}} est en cours. Entrée gratuite. Touche, installe POWR et rejoins-moi.",
+    "standing": "N° {{rank}} à {{city}} · {{season}}",
+    "standingBoard": "N° {{rank}} · {{season}}"
   },
   "shareScreen": {
     "title": "Partager la Série",

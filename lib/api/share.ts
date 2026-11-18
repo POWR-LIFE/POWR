@@ -513,6 +513,27 @@ export interface ShareImageMeta {
    * never become an open redirect). Omit for the default /app?ref= bounce.
    */
   appPath?: string | null;
+  /**
+   * A landscape copy for the link preview (1200×630, e.g. SeriesStandingPreview).
+   * Chat apps draw a wide image large across the bubble and a tall one as a
+   * small thumbnail, so share-card-og serves this as og:image when present.
+   */
+  previewUri?: string | null;
+}
+
+/** A captured image into the public `share-cards` bucket, under the member's folder. */
+async function uploadShareImage(uri: string, path: string): Promise<void> {
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  const { error } = await supabase.storage
+    .from('share-cards')
+    .upload(path, bytes, { contentType: 'image/jpeg' });
+  if (error) throw new Error(error.message);
 }
 
 /**
@@ -527,33 +548,40 @@ export async function publishShareImage(imageUri: string, meta: ShareImageMeta):
 
   // Owner's folder satisfies the storage policy; the random suffix is what keeps
   // a card unguessable in a public bucket.
-  const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+  const base = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const path = `${base}.jpg`;
+  await uploadShareImage(imageUri, path);
 
-  const base64 = await FileSystem.readAsStringAsync(imageUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  // The preview is extra: if it fails the link still previews (as a thumbnail).
+  let previewPath: string | null = null;
+  if (meta.previewUri) {
+    try {
+      await uploadShareImage(meta.previewUri, `${base}-og.jpg`);
+      previewPath = `${base}-og.jpg`;
+    } catch {
+      previewPath = null;
+    }
+  }
 
-  const { error: uploadError } = await supabase.storage
-    .from('share-cards')
-    .upload(path, bytes, { contentType: 'image/jpeg' });
-  if (uploadError) throw new Error(uploadError.message);
-
-  const { data, error } = await supabase
+  const row = {
+    user_id: user.id,
+    image_path: path,
+    title: meta.title,
+    subtitle: meta.subtitle,
+    referral_code: meta.referralCode,
+    app_path: meta.appPath ?? null,
+  };
+  let { data, error } = await supabase
     .from('share_cards')
-    .insert({
-      user_id: user.id,
-      image_path: path,
-      title: meta.title,
-      subtitle: meta.subtitle,
-      referral_code: meta.referralCode,
-      app_path: meta.appPath ?? null,
-    })
+    // Cast: the generated row type predates preview_path.
+    .insert((previewPath ? { ...row, preview_path: previewPath } : row) as typeof row)
     .select('id')
     .single();
-  if (error) throw new Error(error.message);
+  // A server without the preview_path column yet: the card without it.
+  if (error && previewPath && /preview_path/.test(error.message)) {
+    ({ data, error } = await supabase.from('share_cards').insert(row).select('id').single());
+  }
+  if (error || !data) throw new Error(error?.message ?? 'Share card not saved');
 
   return `${SITE}/s/${data.id}`;
 }

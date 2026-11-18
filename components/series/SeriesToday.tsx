@@ -8,8 +8,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { trackTap } from '@/lib/analytics';
 import {
-    fetchSeriesMoments, fetchSeriesPrizes, fetchSeriesResults, type SeriesBoard, seriesClock, type SeriesInviteBoard, type SeriesMoment, seriesNum,
-    useSeriesBoard, useSeriesEnabled, useSeriesInviteBoard,
+    fetchSeriesMoments, fetchSeriesResults, type SeriesBoard, seriesClock, type SeriesInviteBoard, type SeriesMoment, seriesNum,
+    useSeriesBoard, useSeriesEnabled, useSeriesInviteBoard, useSeriesPrizeRows,
 } from '@/lib/api/series';
 import { DROP_PROTOTYPE, todayTarget, useDropPrototype } from '@/lib/dev/dropPrototype';
 import { type Rival, SERIES_PROTOTYPE, type SeriesState } from '@/lib/dev/seriesPrototype';
@@ -145,16 +145,10 @@ function useMoments(slug: string | null, active: boolean): SeriesMoment[] {
 
 const NO_PRIZES = prizeSetFrom([]);
 
-/** A round's prizes from /admin/series, read once per round. */
-function usePrizes(slug: string | null): PrizeSet {
-    const [got, setGot] = useState<{ slug: string; prizes: PrizeSet } | null>(null);
-    useEffect(() => {
-        if (!slug) return undefined;
-        let live = true;
-        void fetchSeriesPrizes(slug).then((rows) => { if (live) setGot({ slug, prizes: prizeSetFrom(rows) }); });
-        return () => { live = false; };
-    }, [slug]);
-    return got && got.slug === slug ? got.prizes : NO_PRIZES;
+/** A round's prizes from /admin/series, read again whenever Home comes into view. */
+function usePrizes(slug: string | null, active: boolean): PrizeSet {
+    const rows = useSeriesPrizeRows(slug, active);
+    return useMemo(() => (rows.length ? prizeSetFrom(rows) : NO_PRIZES), [rows]);
 }
 
 /** Whether a finished round's winners have been announced. */
@@ -280,7 +274,7 @@ export function useSeriesHome(refreshKey?: number): SeriesHome {
     const sim = useSeriesSim(focused && SERIES_PROTOTYPE && !running);
     // The coming round's prizes: this round's while it runs, else the next one's.
     const prizeSlug = !enabled || !b ? null : b.state === 'ended' ? (b.next?.slug ?? b.round.slug) : b.round.slug;
-    const livePrizes = usePrizes(prizeSlug);
+    const livePrizes = usePrizes(prizeSlug, focused);
     const winners = useWinnersOut(enabled && b?.state === 'ended' ? b.round.slug : null);
     // Before a round: the invite race, once its invite period is on.
     const invite = useSeriesInviteBoard(focused && enabled && b?.state === 'upcoming');

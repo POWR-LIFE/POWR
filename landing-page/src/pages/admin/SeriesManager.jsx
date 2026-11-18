@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
@@ -330,7 +330,7 @@ export default function SeriesManager() {
                             <b>{seasons.find(x => x.id === r.season_id)?.name ?? 'The Series'} · {r.name}</b> finished on {fmtDay(lastDay(r.ends_at))}: {UNSETTLED_NOTE[state]}
                         </span>
                     </span>
-                    <button className={btnGold} onClick={() => openResults(r)}><Medal size={13} /> Open Results</button>
+                    <button className={btnGold} data-leaves-prizes onClick={() => openResults(r)}><Medal size={13} /> Open Results</button>
                 </div>
             ))}
             {seasons.length > 0 && (
@@ -339,7 +339,7 @@ export default function SeriesManager() {
                         const st = seasonState(se);
                         const on = se.slug === seasonSlug;
                         return (
-                            <button key={se.id} onClick={() => pickSeason(se)}
+                            <button key={se.id} data-leaves-prizes={on ? undefined : true} onClick={() => pickSeason(se)}
                                 className={`flex items-center gap-3 h-14 pl-2 pr-4 rounded-2xl border text-left transition-all ${on ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white' : 'bg-white border-[#E6E6E1] text-[#555555] hover:border-[#D8D8D2]'}`}>
                                 <span className="w-10 h-10 rounded-xl shrink-0" style={{ background: LOOKS[se.look]?.colour ?? '#333' }} />
                                 <span>
@@ -362,7 +362,7 @@ export default function SeriesManager() {
                         const st = roundState(r);
                         const on = r.slug === slug;
                         return (
-                            <button key={r.id} onClick={() => pickRound(r.slug)}
+                            <button key={r.id} data-leaves-prizes={on ? undefined : true} onClick={() => pickRound(r.slug)}
                                 className={`h-8 px-3 rounded-full border text-[11px] font-semibold transition-all ${on ? 'bg-[#E8D200] border-[#E8D200] text-[#080808]' : 'bg-white border-[#E6E6E1] text-[#555555] hover:border-[#D8D8D2]'}`}>
                                 {r.name} · {fmtDay(londonDay(r.starts_at))}
                                 {!r.published ? <span className="ml-1.5 text-[8.5px] font-black tracking-[0.12em] text-[#F97316]">DRAFT</span>
@@ -377,7 +377,7 @@ export default function SeriesManager() {
                 {TABS.map(t => {
                     const on = t.key === tab;
                     return (
-                        <button key={t.key} onClick={() => go({ tab: t.key })}
+                        <button key={t.key} data-leaves-prizes={on ? undefined : true} onClick={() => go({ tab: t.key })}
                             className={`flex items-center gap-2 h-11 px-4 -mb-px border-b-2 text-[11px] font-bold uppercase tracking-[0.22em] whitespace-nowrap transition-all ${on ? 'border-[#B8A800] text-[#1A1A1A]' : 'border-transparent text-[#AAAAAA] hover:text-[#555555]'}`}>
                             <t.icon size={14} strokeWidth={on ? 2.4 : 1.8} /> {t.label}
                         </button>
@@ -937,6 +937,8 @@ const PRIZE_KINDS = [
     { kind: 'golden', title: 'Golden P', icon: Crown, blurb: 'For whoever finds it (the Golden P isn’t live on the server yet).', many: true },
 ];
 const ordinal = (n) => (n % 100 >= 11 && n % 100 <= 13 ? `${n}th` : `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] ?? 'th'}`);
+/** A prize row in words: "2nd place", "Unbreakable". */
+const prizeLabel = (r) => (r.kind === 'place' ? `${ordinal(r.place)} place` : PRIZE_KINDS.find(k => k.kind === r.kind)?.title ?? r.kind);
 
 /** A failed prize save in words: which rule the row broke, not the constraint's name. */
 function prizeError(e, v) {
@@ -968,7 +970,9 @@ function PrizesTab({ round }) {
     // Unsaved: an edited row, or a row added here and never saved. Saving one
     // row must never throw the others away, so a save swaps in just that row.
     const unsaved = (rows ?? []).filter(r => r.id.startsWith('new') || draft[r.id]);
+    const unsavedNames = unsaved.map(prizeLabel).join(', ');
     const dropDraft = (id) => setDraft(d => { const { [id]: _gone, ...rest } = d; return rest; });
+    const box = useRef(null);
 
     useEffect(() => {
         if (!unsaved.length) return undefined;
@@ -976,6 +980,23 @@ function PrizesTab({ round }) {
         window.addEventListener('beforeunload', warn);
         return () => window.removeEventListener('beforeunload', warn);
     }, [unsaved.length]);
+
+    // Another tab, round or season, or another admin page, unmounts this tab
+    // and throws unsaved rows away without a page unload: ask before any click
+    // that leaves. Capture phase, so a cancel stops the click before React
+    // (and a router Link) ever sees it.
+    useEffect(() => {
+        if (!unsavedNames) return undefined;
+        const guard = (e) => {
+            const el = e.target instanceof Element ? e.target.closest('a[href], [data-leaves-prizes]') : null;
+            if (!el || box.current?.contains(el) || el.getAttribute('target') === '_blank') return;
+            if (window.confirm(`Not saved yet: ${unsavedNames}. Leave without saving? Nothing reaches the app until it’s saved.`)) return;
+            e.preventDefault();
+            e.stopPropagation();
+        };
+        document.addEventListener('click', guard, true);
+        return () => document.removeEventListener('click', guard, true);
+    }, [unsavedNames]);
 
     const save = async (r, { quiet = false } = {}) => {
         const v = val(r);
@@ -1020,12 +1041,12 @@ function PrizesTab({ round }) {
 
     if (!rows) return <Loading />;
     return (
-        <>
+        <div ref={box}>
             {unsaved.length > 0 && (
                 <div className="sticky top-4 z-10 mb-8 flex items-center justify-between gap-4 px-5 py-3.5 rounded-2xl border border-[#F97316]/30 bg-[#FFF7ED] shadow-sm">
                     <span className="flex items-center gap-2.5 text-[13px] text-[#9A3412]">
                         <AlertTriangle size={15} className="shrink-0" />
-                        {unsaved.length} prize{unsaved.length === 1 ? '' : 's'} not saved yet: {unsaved.map(r => (r.kind === 'place' ? `${ordinal(r.place)} place` : PRIZE_KINDS.find(k => k.kind === r.kind)?.title ?? r.kind)).join(', ')}. Nothing reaches the app until it’s saved.
+                        {unsaved.length} prize{unsaved.length === 1 ? '' : 's'} not saved yet: {unsavedNames}. Nothing reaches the app until it’s saved.
                     </span>
                     <button className={btnGold} onClick={saveAll} disabled={savingAll}>
                         {savingAll ? <LoaderCircle size={13} className="animate-spin" /> : <Save size={13} />} Save all
@@ -1048,7 +1069,7 @@ function PrizesTab({ round }) {
                     </Section>
                 );
             })}
-        </>
+        </div>
     );
 }
 

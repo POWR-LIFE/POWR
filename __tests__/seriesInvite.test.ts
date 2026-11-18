@@ -11,6 +11,7 @@ import {
     buildSeriesShareMessage,
     buildSeriesShareSubtitle,
     buildSeriesShareTitle,
+    buildSeriesStandingTitle,
     ordinalDay,
     REFERRAL_BONUS_POINTS,
     seriesInviteLink,
@@ -92,6 +93,11 @@ test('link preview: POWR · the season; the round and its start, or that it is o
     expect(buildSeriesShareSubtitle({ roundName: 'Round 01', startsAt, date: 'Sun 1 Nov', now: startsAt })).toBe(
         'Round 01 is on. Free to enter. Tap to get POWR and join me.',
     );
+});
+
+test('standing link preview: your place, your city, the season', () => {
+    expect(buildSeriesStandingTitle({ seasonName: 'Autumn Series', rank: '123', city: 'London' })).toBe('#123 in London · Autumn Series');
+    expect(buildSeriesStandingTitle({ seasonName: 'Autumn Series', rank: '1,204', city: null })).toBe('#1,204 · Autumn Series');
 });
 
 describe('squadPrize — what the Start Line and the invite race note say the most friends wins', () => {

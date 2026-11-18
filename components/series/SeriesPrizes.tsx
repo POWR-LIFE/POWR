@@ -5,11 +5,14 @@ import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { fontFamily } from '@/constants/tokens';
 import { trackTap } from '@/lib/analytics';
 import { NAMED_PRIZES, type NamedPrize, type PrizeRace, type PrizeRaceEntry, type SeriesPrize, type SeriesResults } from '@/lib/api/series';
 import { fmt } from '@/lib/dev/seriesPrototype';
 import i18n from '@/lib/i18n';
+import { isUnannounced } from '@/lib/seriesInvite';
 import { storageImage } from '@/lib/storageImage';
+import { PLACE_TIERS, PlaceRing, TITLES, TitleGlyph, type TitleGlyphKind, titleNo } from './PrizeGlyphs';
 import { BRONZE, CARD_BG, CARD_BORDER, GOLD, GREEN, HAIR, SectionLabel, SILVER, TEXT, TEXT_2, TEXT_3 } from './SeriesLane';
 import { InfoList, type InfoRow, Sheet, SheetHead } from './SeriesSheets';
 import { useSeasonCard } from './season';
@@ -127,7 +130,7 @@ const MEDALS = [GOLD, SILVER, BRONZE];
 const placeRows = (P: PrizeSet): InfoRow[] => (P.places.length
     ? P.places.map((x, i) => ({
         key: `place-${i + 1}`, img: x.img, icon: x.img ? undefined : 'trophy-outline' as const,
-        eyebrow: { text: (PLACE_NAMES[i] ?? placeOrdinal(i + 1)).toUpperCase(), color: MEDALS[i] ?? TEXT_3 }, title: x.name, line: x.by ?? x.line ?? '',
+        eyebrow: { text: (PLACE_NAMES[i] ?? placeOrdinal(i + 1)).toUpperCase(), color: MEDALS[i] ?? TEXT_3 }, title: isUnannounced(x.name) ? tba() : x.name, line: x.by ?? x.line ?? '',
     }))
     : [{ key: 'place-1', icon: 'trophy-outline' as const, title: tba(), line: i18n.t('series:prizes.topPlacesWin') }]);
 
@@ -242,85 +245,131 @@ function tilesFor(p: PrizeState): Tile[] {
 }
 const toneColor = (t: Tone) => (t === 'ok' ? GREEN : t === 'gold' ? GOLD : TEXT_2);
 
-/** What you can win, under the race: one tile per prize, with where you stand on it. */
-export function PrizeRow({ state, onOpen }: { state: PrizeState; onOpen: (k: PrizeKey) => void }) {
-    const { t } = useTranslation();
-    const sc = useSeasonCard();
-    return (
-        <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.row}
-            snapToInterval={184}
-            decelerationRate="fast"
-        >
-            {tilesFor(state).map((tile) => (
-                <Pressable
-                    key={tile.key}
-                    onPress={() => { trackTap('series_prize_open', { prize: tile.key }); onOpen(tile.key); }}
-                    style={({ pressed }) => [s.tile, sc, tile.lead && s.tileLead, pressed && { opacity: 0.8 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('series:prizes.tileA11y', { title: tile.title, prize: tile.prize, status: tile.status.toLowerCase() })}
-                >
-                    <View style={s.pic}>
-                        {tile.img
-                            ? <Image source={tile.img} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
-                            : (
-                                <View style={[StyleSheet.absoluteFill, s.icoBox]}>
-                                    <LinearGradient colors={['rgba(232,210,0,0.14)', 'rgba(232,210,0,0)']} style={StyleSheet.absoluteFill} start={{ x: 0.5, y: 0.2 }} end={{ x: 0.5, y: 1 }} />
-                                    <Ionicons name={tile.icon} size={30} color={GOLD} />
-                                </View>
-                            )}
-                        <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']} style={s.picFade} />
-                        <View style={s.status}><Text style={[s.statusText, { color: toneColor(tile.tone) }]}>{tile.status}</Text></View>
-                    </View>
-                    <View style={s.body}>
-                        <Text style={s.tTitle} numberOfLines={1}>{tile.title.toUpperCase()}</Text>
-                        <Text style={s.tPrize} numberOfLines={2}>{tile.prize}</Text>
-                        <Text style={s.tHow} numberOfLines={2}>{tile.how}</Text>
-                    </View>
-                </Pressable>
-            ))}
-        </ScrollView>
-    );
+/** One way to win, as the Ways to win carousel shows it. */
+type Way = {
+    key: string;
+    /** The drawer a tap opens (the three places share the top three's). */
+    open: PrizeKey;
+    mark: { ring: number } | { glyph: TitleGlyphKind; no?: string } | { icon: IconName };
+    title: string;
+    /** The prize, or null while it's still to be announced ("TBC" counts as not yet). */
+    prize: string | null;
+    img?: ImageSource;
+    /** Where you stand (caps, in its tone), else how it's won (tone null). */
+    line: string;
+    tone: Tone | null;
+};
+
+/**
+ * The ways to win in the How to win sheet's order and marks: 1–3 on points,
+ * the four titles (04–07), then the Draw and anything the admin adds on top.
+ * A title shows its race once somebody's on course, else how it's won.
+ */
+function waysFor(p: PrizeState): Way[] {
+    const P = p.prizes;
+    const tiles = tilesFor(p);
+    const tile = (k: PrizeKey) => tiles.find((x) => x.key === k);
+    const real = (x?: PrizeItem) => (x && !isUnannounced(x.name) ? x.name : null);
+    const ranked = !p.notYet && !p.blind;
+    const places: Way[] = PLACE_NAMES.map((title, i) => {
+        const x = P.places[i];
+        const mine = ranked && p.rank === i + 1;
+        return {
+            key: `place-${i + 1}`, open: 'top3', mark: { ring: i + 1 }, title, prize: real(x), img: x?.img,
+            line: mine ? i18n.t('series:prizes.status.yourRank', { rank: i + 1 }) : i18n.t('series:sheets.win.onPoints', { ord: placeOrdinal(i + 1) }),
+            tone: mine ? 'gold' : null,
+        };
+    });
+    const how: Record<NamedPrize, string> = {
+        hot_streak: i18n.t('series:sheets.win.lines.unbreakable'),
+        biggest_mover: i18n.t('series:sheets.win.lines.levelUp'),
+        rookie: i18n.t('series:sheets.win.lines.rookie'),
+        patient_zero: i18n.t('series:sheets.win.lines.squadBuilder'),
+    };
+    const titles: Way[] = TITLES.map(({ key, glyph }) => {
+        const x = P.named[key];
+        const e = p.race[key];
+        const racing = !p.notYet && (!!e?.leader || !!e?.you || !!e?.sealed);
+        const st = racing ? raceStatus(key, e, p) : null;
+        return {
+            key, open: key, mark: { glyph, no: titleNo(key) }, title: NAMED[key].title, prize: real(x), img: x?.img,
+            line: st?.status ?? how[key], tone: st?.tone ?? null,
+        };
+    });
+    const draw = tile('draw');
+    const extras: Way[] = (['golden', 'city'] as const).flatMap((k) => {
+        const x = tile(k);
+        return x ? [{ key: k, open: k, mark: { icon: x.icon ?? (k === 'city' ? 'location-outline' : 'star-outline') }, title: x.title, prize: x.prize, img: x.img, line: x.status, tone: x.tone }] : [];
+    });
+    return [
+        ...places,
+        ...titles,
+        ...(draw ? [{
+            key: 'draw', open: 'draw' as const, mark: { glyph: 'ticket' as const }, title: draw.title,
+            prize: P.draw && !isUnannounced(P.draw.name) ? `${P.draw.winners} × ${P.draw.name}` : null, img: P.draw?.img,
+            line: draw.status, tone: draw.tone,
+        }] : []),
+        ...extras,
+    ];
 }
 
-/** Ways to win, as one list: each prize, what's on offer and where you stand. Tap for the full sheet. */
+const WAY_W = 132;
+const WAY_GAP = 8;
+
+function WayMark({ mark }: { mark: Way['mark'] }) {
+    if ('ring' in mark) return <PlaceRing n={mark.ring} tier={PLACE_TIERS[mark.ring - 1] ?? 'bronze'} size={30} />;
+    if ('glyph' in mark) {
+        return (
+            <View style={s.wayGlyph}>
+                <TitleGlyph kind={mark.glyph} size={26} />
+                {mark.no ? <Text style={s.wayNo}>{mark.no}</Text> : null}
+            </View>
+        );
+    }
+    return <View style={s.wayGlyph}><Ionicons name={mark.icon} size={24} color={TEXT} /></View>;
+}
+
+/**
+ * Ways to win, as a carousel: the How to win sheet's rings and title marks,
+ * the prize where there is one (in gold, with its picture) and where you
+ * stand. Each card opens that prize's drawer.
+ */
 export function WaysToWin({ state, onOpen }: { state: PrizeState; onOpen: (k: PrizeKey) => void }) {
     const { t } = useTranslation();
     const sc = useSeasonCard();
-    const P = state.prizes;
     const TBA = t('series:prizes.tba');
-    const NAME: Partial<Record<PrizeKey, string>> = { top3: PLACE_NAMES.join(' · '), draw: 'Every Move Counts', city: t('series:prizes.city.title') };
-    const SUB: Partial<Record<PrizeKey, string>> = {
-        top3: P.places.length ? (P.places.length > 1 ? t('series:prizes.andMore', { name: P.places[0].name }) : P.places[0].name) : TBA,
-        draw: P.draw ? `${P.draw.winners} × ${P.draw.name}` : TBA,
-    };
-    const order: PrizeKey[] = ['top3', ...NAMED_PRIZES, 'draw', 'golden', 'city', 'event'];
-    // The event has its own card on the page, so it isn't repeated here.
-    const tiles = tilesFor(state).filter((x) => x.key !== 'event').sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
     return (
-        <View style={[s.list, sc]}>
-            {tiles.map((tile, i) => (
-                <Pressable
-                    key={tile.key}
-                    onPress={() => { trackTap('series_prize_open', { prize: tile.key }); onOpen(tile.key); }}
-                    style={({ pressed }) => [s.wRow, i > 0 && s.yrRule, pressed && { opacity: 0.7 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('series:prizes.tileA11y', { title: NAME[tile.key] ?? tile.title, prize: SUB[tile.key] ?? tile.prize, status: tile.status.toLowerCase() })}
-                >
-                    {tile.img
-                        ? <Image source={tile.img} style={s.wThumb} contentFit="cover" />
-                        : <View style={[s.wThumb, s.wIcon]}><Ionicons name={tile.icon ?? 'trophy-outline'} size={20} color={GOLD} /></View>}
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                        {/* Two lines: "Champion · Contender · Challenger" won't fit one on a phone. */}
-                        <Text style={s.wTitle} numberOfLines={2}>{NAME[tile.key] ?? tile.title}</Text>
-                        <Text style={s.wSub} numberOfLines={1}>{SUB[tile.key] ?? tile.prize}</Text>
-                        <Text style={[s.wStatus, { color: toneColor(tile.tone) }]} numberOfLines={1}>{tile.status}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={TEXT_3} />
-                </Pressable>
-            ))}
+        <View>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.wayRow}
+                snapToInterval={WAY_W + WAY_GAP}
+                decelerationRate="fast"
+            >
+                {waysFor(state).map((w) => {
+                    const on = !!w.prize;
+                    return (
+                        <Pressable
+                            key={w.key}
+                            onPress={() => { trackTap('series_prize_open', { prize: w.open }); onOpen(w.open); }}
+                            style={({ pressed }) => [s.way, sc, on && s.wayOn, pressed && { opacity: 0.75 }]}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('series:prizes.tileA11y', { title: w.title, prize: w.prize ?? TBA, status: w.line.toLowerCase() })}
+                        >
+                            {on && <LinearGradient colors={['rgba(232,210,0,0.11)', 'rgba(232,210,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 0.9 }} style={StyleSheet.absoluteFill} />}
+                            <View style={s.wayTop}>
+                                <WayMark mark={w.mark} />
+                                {w.img && <Image source={w.img} style={s.wayThumb} contentFit="cover" transition={150} />}
+                            </View>
+                            <Text style={s.wayTitle} numberOfLines={2}>{w.title}</Text>
+                            <View style={{ flex: 1 }} />
+                            <Text style={[s.wayPrize, !on && s.wayTba]} numberOfLines={1}>{w.prize ?? TBA}</Text>
+                            <Text style={w.tone ? [s.wayStatus, { color: toneColor(w.tone) }] : s.wayHow} numberOfLines={2}>{w.tone ? w.line.split(' · ').join('\n') : w.line}</Text>
+                        </Pressable>
+                    );
+                })}
+            </ScrollView>
             <Text style={s.oneEach}>{t('series:prizes.oneEach')}</Text>
         </View>
     );
@@ -533,18 +582,20 @@ export function PrizesSheet({ visible, focus, state, onClose }: { visible: boole
 }
 
 const s = StyleSheet.create({
-    row: { paddingHorizontal: 16, gap: 8 },
-    tile: { width: 176, borderRadius: 16, overflow: 'hidden', backgroundColor: CARD_BG, borderWidth: 1, borderColor: CARD_BORDER },
-    tileLead: { borderColor: 'rgba(232,210,0,0.4)' },
-    pic: { width: '100%', aspectRatio: 3 / 2, backgroundColor: '#0b0b0b', overflow: 'hidden' },
-    icoBox: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b0b0b' },
-    picFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '45%' },
+    wayRow: { paddingHorizontal: 16, gap: WAY_GAP },
+    way: { width: WAY_W, borderRadius: 16, overflow: 'hidden', backgroundColor: CARD_BG, borderWidth: 1, borderColor: CARD_BORDER, padding: 12 },
+    wayOn: { borderColor: 'rgba(232,210,0,0.32)' },
+    wayTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 32 },
+    wayGlyph: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    wayNo: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 1.6, color: 'rgba(255,255,255,0.42)' },
+    wayThumb: { width: 32, height: 32, borderRadius: 9, backgroundColor: '#0b0b0b' },
+    wayTitle: { marginTop: 10, fontFamily: fontFamily.regular, fontSize: 15, lineHeight: 19, color: TEXT },
+    wayPrize: { marginTop: 8, fontFamily: fontFamily.regular, fontSize: 13, lineHeight: 17, color: GOLD },
+    wayTba: { fontFamily: fontFamily.light, color: 'rgba(255,255,255,0.42)' },
+    wayHow: { marginTop: 3, fontFamily: fontFamily.light, fontSize: 12, lineHeight: 16, color: 'rgba(255,255,255,0.62)' },
+    wayStatus: { marginTop: 5, fontFamily: fontFamily.semiBold, fontSize: 8.5, lineHeight: 12, letterSpacing: 1.2 },
     status: { position: 'absolute', left: 10, top: 10, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.62)' },
     statusText: { fontSize: 8, fontWeight: '700', letterSpacing: 1.3 },
-    body: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 13, gap: 2 },
-    tTitle: { fontSize: 9, fontWeight: '700', letterSpacing: 1.6, color: TEXT_3 },
-    tPrize: { marginTop: 2, fontSize: 14, fontWeight: '400', lineHeight: 18, color: TEXT },
-    tHow: { marginTop: 3, fontSize: 11, fontWeight: '300', lineHeight: 15, color: TEXT_3 },
 
     sub: { fontSize: 12, fontWeight: '300', color: TEXT_3 },
     dHero: { width: '100%', aspectRatio: 16 / 10, maxHeight: 220, borderRadius: 16, overflow: 'hidden', backgroundColor: '#0b0b0b', marginTop: 6 },
@@ -557,7 +608,7 @@ const s = StyleSheet.create({
     dMeta: { marginTop: 10, fontSize: 12, fontWeight: '300', color: TEXT_3 },
     dBtn: { marginTop: 18, height: 46, borderRadius: 23, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
     dBtnText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, color: '#0a0a0a' },
-    oneEach: { paddingHorizontal: 14, paddingTop: 2, paddingBottom: 12, fontSize: 11, fontWeight: '300', color: TEXT_3, textAlign: 'center' },
+    oneEach: { paddingHorizontal: 24, paddingTop: 10, fontSize: 11, fontWeight: '300', color: TEXT_3, textAlign: 'center' },
     foot: { marginTop: 12, marginBottom: 4, fontSize: 11, fontWeight: '300', color: TEXT_3, textAlign: 'center' },
     list: { marginHorizontal: 16, borderRadius: 18, backgroundColor: CARD_BG, borderWidth: 1, borderColor: CARD_BORDER, overflow: 'hidden' },
     wRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, paddingVertical: 12 },

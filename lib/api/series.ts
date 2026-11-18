@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
 
 import type { Honour, HonourKind, HonourTier } from '@/constants/honours';
 import i18n, { getFormatLocale } from '@/lib/i18n';
@@ -200,15 +201,51 @@ export type SeriesPrize = {
     winners: number;
 };
 
-/** The round's prizes; [] when none are set yet (or the call fails). */
-export async function fetchSeriesPrizes(slug: string): Promise<SeriesPrize[]> {
+/** The round's prizes ([] when none are set yet), or null when the call fails. */
+async function readSeriesPrizes(slug: string): Promise<SeriesPrize[] | null> {
     const { data, error } = await supabase
         .from('series_prizes')
         .select('id, kind, place, name, sponsor, detail, image_url, winners, series_rounds!inner(slug)')
         .eq('series_rounds.slug', slug)
         .order('place', { ascending: true, nullsFirst: false });
-    if (error || !data) return [];
+    if (error || !data) return null;
     return (data as unknown as (SeriesPrize & { series_rounds: unknown })[]).map(({ series_rounds: _r, ...p }) => p);
+}
+
+/** The round's prizes; [] when none are set yet (or the call fails). */
+export async function fetchSeriesPrizes(slug: string): Promise<SeriesPrize[]> {
+    return (await readSeriesPrizes(slug)) ?? [];
+}
+
+const NO_PRIZE_ROWS: SeriesPrize[] = [];
+// The last prizes read for each round: a screen that opens again starts from
+// them instead of "To be announced", and every screen shares one answer.
+const prizeCache = new Map<string, SeriesPrize[]>();
+
+/**
+ * A round's prizes as set in /admin/series. Read again every time the screen
+ * comes into view (`active`) and every time the app comes back to the front,
+ * so a prize saved in the admin shows without closing the app. A failed read
+ * keeps the prizes already on screen.
+ */
+export function useSeriesPrizeRows(slug: string | null | undefined, active: boolean): SeriesPrize[] {
+    const [got, setGot] = useState<{ slug: string; rows: SeriesPrize[] } | null>(null);
+    useEffect(() => {
+        if (!slug || !active) return undefined;
+        let live = true;
+        const read = () => {
+            void readSeriesPrizes(slug).then((rows) => {
+                if (!live || !rows) return;
+                prizeCache.set(slug, rows);
+                setGot({ slug, rows });
+            });
+        };
+        read();
+        const sub = AppState.addEventListener('change', (state) => { if (state === 'active') read(); });
+        return () => { live = false; sub.remove(); };
+    }, [slug, active]);
+    if (!slug) return NO_PRIZE_ROWS;
+    return got?.slug === slug ? got.rows : (prizeCache.get(slug) ?? NO_PRIZE_ROWS);
 }
 
 /**
@@ -315,17 +352,12 @@ export function useSeriesInviteBoard(active: boolean) {
 
 /**
  * The round's Squad Builder prize (name + photo) once /admin/series has named
- * it, else null; read once per round, never blocks the screen it sits on.
+ * it, else null; read again whenever the screen comes into view, never blocks
+ * the screen it sits on.
  */
-export function useSquadPrize(slug: string | null | undefined): SquadPrize | null {
-    const [prize, setPrize] = useState<SquadPrize | null>(null);
-    useEffect(() => {
-        if (!slug) { setPrize(null); return undefined; }
-        let live = true;
-        void fetchSeriesPrizes(slug).then((rows) => { if (live) setPrize(squadPrize(rows)); });
-        return () => { live = false; };
-    }, [slug]);
-    return prize;
+export function useSquadPrize(slug: string | null | undefined, active = true): SquadPrize | null {
+    const rows = useSeriesPrizeRows(slug, active);
+    return useMemo(() => squadPrize(rows), [rows]);
 }
 
 /** The latest round with announced winners, or null. */
@@ -362,17 +394,17 @@ export async function fetchSeriesPrizeRace(slug: string): Promise<PrizeRace> {
  * A round's prizes, its moments, who's on course for each prize and (between
  * rounds) its winners, while the screen is in view. Moments and the race are
  * re-read every minute: a secret moment appears when it starts, Blind Mode has
- * to switch on on time, and the race moves with every session.
+ * to switch on on time, and the race moves with every session. The prizes are
+ * re-read each time the screen comes into view (`active`).
  */
-export function useSeriesExtras(slug: string | null, between: boolean) {
-    const [prizes, setPrizes] = useState<SeriesPrize[]>([]);
+export function useSeriesExtras(slug: string | null, between: boolean, active = true) {
+    const prizes = useSeriesPrizeRows(slug, active);
     const [moments, setMoments] = useState<SeriesMoment[]>([]);
     const [results, setResults] = useState<SeriesResults | null>(null);
     const [race, setRace] = useState<PrizeRace>({});
     useEffect(() => {
         if (!slug) return undefined;
         let live = true;
-        void fetchSeriesPrizes(slug).then((p) => { if (live) setPrizes(p); });
         const readMoments = () => {
             void fetchSeriesMoments(slug).then((m) => { if (live) setMoments(m); });
             if (!between) void fetchSeriesPrizeRace(slug).then((r) => { if (live) setRace(r); });

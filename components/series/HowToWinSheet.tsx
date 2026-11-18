@@ -1,15 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef } from 'react';
+import React from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, Path, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
-import { HonourIcon, TIER_STOPS } from '@/components/honours/HonourIcon';
-import type { HonourTier } from '@/constants/honours';
 import { fontFamily } from '@/constants/tokens';
 import type { NamedPrize } from '@/lib/api/series';
 import { GOLD, TEXT } from './SeriesLane';
+import { PLACE_TIERS, PlaceRing, TITLES, TitleGlyph, titleNo } from './PrizeGlyphs';
 import { NAMED, PLACE_NAMES, type PrizeKey } from './SeriesPrizes';
 import { Sheet, type SheetLook } from './SeriesSheets';
 import { placeOrdinal } from './seriesView';
@@ -21,53 +19,6 @@ const FAINT = 'rgba(255,255,255,0.42)';
 /** The button's gold, lit from the top. */
 const CTA = ['#E2CE47', '#A39539'] as const;
 const ON_CTA = '#11150d';
-
-const TIERS: HonourTier[] = ['gold', 'silver', 'bronze'];
-
-/** The titles anyone can win, numbered on from the top three (04–07). */
-const TITLES: { key: NamedPrize; glyph: 'on_fire' | 'wings' | 'star' | 'hive' }[] = [
-    { key: 'hot_streak', glyph: 'on_fire' },
-    { key: 'biggest_mover', glyph: 'wings' },
-    { key: 'rookie', glyph: 'star' },
-    { key: 'patient_zero', glyph: 'hive' },
-];
-
-/** A star in the honour icons' hand: 64 box, 2.6 stroke. */
-const STAR = 'M32 7 L39.05 23.29 L56.73 24.97 L43.41 36.71 L47.28 54.03 L32 45 L16.72 54.03 L20.59 36.71 L7.27 24.97 L24.95 23.29 Z';
-
-function Glyph({ kind, size = 30 }: { kind: (typeof TITLES)[number]['glyph']; size?: number }) {
-    if (kind !== 'star') return <HonourIcon kind={kind} tier="silver" size={size} color={TEXT} />;
-    return (
-        <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-            <Path d={STAR} stroke={TEXT} strokeWidth={2.6} strokeLinejoin="round" />
-        </Svg>
-    );
-}
-
-let seq = 0;
-
-/** 1, 2, 3 in a ring of their metal. */
-function PlaceRing({ n, tier, size = 40 }: { n: number; tier: HonourTier; size?: number }) {
-    const id = useRef(`htw${++seq}`).current;
-    const [a, b, c, d] = TIER_STOPS[tier];
-    const r = size / 2 - 1.5;
-    return (
-        <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-            <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
-                <Defs>
-                    <SvgGradient id={id} x1="0" y1="0" x2={String(size)} y2={String(size)} gradientUnits="userSpaceOnUse">
-                        <Stop offset="0" stopColor={a} />
-                        <Stop offset="0.38" stopColor={b} />
-                        <Stop offset="0.7" stopColor={c} />
-                        <Stop offset="1" stopColor={d} />
-                    </SvgGradient>
-                </Defs>
-                <Circle cx={size / 2} cy={size / 2} r={r} stroke={`url(#${id})`} strokeWidth={2} fill="none" />
-            </Svg>
-            <Text style={s.ringNo} allowFontScaling={false}>{n}</Text>
-        </View>
-    );
-}
 
 /**
  * How to win a round, on one sheet: the round's dates, three steps, the top
@@ -176,7 +127,7 @@ export function HowToWinSheet({
                             accessibilityRole={onPrize ? 'button' : undefined}
                             accessibilityLabel={onPrize ? t('series:sheets.win.prizeA11y', { title: name, line }) : `${name}, ${line}`}
                         >
-                            <PlaceRing n={i + 1} tier={TIERS[i]} />
+                            <PlaceRing n={i + 1} tier={PLACE_TIERS[i]} />
                             <Text style={s.placeName} numberOfLines={1} adjustsFontSizeToFit>{name}</Text>
                             <Text style={s.placeLine} numberOfLines={1} adjustsFontSizeToFit>{line}</Text>
                         </Pressable>
@@ -189,7 +140,7 @@ export function HowToWinSheet({
                 {rows.map((row) => (
                     <View key={row[0].key} style={s.tileRow}>
                         {row.map((x) => {
-                            const no = String(TITLES.indexOf(x) + 4).padStart(2, '0');
+                            const no = titleNo(x.key);
                             const name = NAMED[x.key].title;
                             return (
                                 <Pressable
@@ -201,7 +152,7 @@ export function HowToWinSheet({
                                     accessibilityLabel={onPrize ? t('series:sheets.win.prizeA11y', { title: name, line: lines[x.key] }) : `${name}, ${lines[x.key]}`}
                                 >
                                     <View style={s.tileIcon}>
-                                        <Glyph kind={x.glyph} />
+                                        <TitleGlyph kind={x.glyph} />
                                         <Text style={s.tileNo}>{no}</Text>
                                     </View>
                                     <View style={{ flex: 1, minWidth: 0 }}>
@@ -250,7 +201,6 @@ const s = StyleSheet.create({
 
     places: { flexDirection: 'row', gap: 8 },
     place: { flex: 1, alignItems: 'center', paddingTop: 15, paddingBottom: 15, paddingHorizontal: 6 },
-    ringNo: { fontFamily: fontFamily.light, fontSize: 18, color: TEXT },
     placeName: { fontFamily: fontFamily.regular, fontSize: 16, color: TEXT, marginTop: 10 },
     placeLine: { fontFamily: fontFamily.light, fontSize: 13, color: SOFT, marginTop: 3 },
 

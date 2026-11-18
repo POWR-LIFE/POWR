@@ -183,7 +183,7 @@ export function SeriesHome({
 
     const liveBase = live.board ? fromLive(live.board, seasonDef.name) : null;
     // The round's prizes and moments from /admin/series, and its winners once announced.
-    const extras = useSeriesExtras(!sample && liveBase ? liveBase.round.slug : null, !sample && liveBase?.phase === 'between');
+    const extras = useSeriesExtras(!sample && liveBase ? liveBase.round.slug : null, !sample && liveBase?.phase === 'between', focused);
     const liveCards = useMemo(() => liveMomentCards(extras.moments), [extras.moments]);
     // Blind Mode on: the same board, ranks hidden.
     const blindCard = liveCards.find((m) => m.kind === 'blind' && m.state === 'live');
@@ -195,8 +195,8 @@ export function SeriesHome({
     useEffect(() => { if (unavailable && live.loaded) onUnavailable?.(); }, [unavailable, live.loaded, onUnavailable]);
     const momentCards = v.live ? liveCards : sampleMomentCards(v.hero.day);
     const inviteBoard: SeriesInviteBoard | null = v.live || offRound ? (inviteLive?.open ? inviteLive : null) : sim.inviteBoard;
-    // What the invite race is for (the Start Line's row, the race sheet's photo and note): read once.
-    const squadPrize = useSquadPrize(inviteBoard?.round.slug);
+    // What the invite race is for (the Start Line's row, the race sheet's photo and note).
+    const squadPrize = useSquadPrize(inviteBoard?.round.slug, focused);
     const prizeSet = useMemo(() => (v.live ? prizeSetFrom(extras.prizes) : SAMPLE_PRIZES), [v.live, extras.prizes]);
     const running = v.phase === 'running';
     // Before the first round: every game shows, and Overall says what's coming.

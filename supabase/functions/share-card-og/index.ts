@@ -20,6 +20,12 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SITE = "https://powr.life";
 /** Mirrors share_cards.app_path's CHECK: the /app smart-link and nothing else. */
 const APP_PATH_RE = /^\/app(\?[A-Za-z0-9%._~&=-]*)?$/;
+/** Mirrors share_cards.preview_path's CHECK: one file in a member's folder. */
+const PREVIEW_PATH_RE = /^[0-9a-f-]{36}\/[A-Za-z0-9_-]+\.jpg$/;
+/** A card's own image (the 9:16 cards; share-event and share-series capture at this). */
+const CARD_SIZE = { width: 720, height: 1280 };
+/** A card's landscape preview: the shape chat apps draw large. */
+const PREVIEW_SIZE = { width: 1200, height: 630 };
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -36,10 +42,11 @@ function page(opts: {
   title: string;
   description: string;
   image: string;
+  size: { width: number; height: number };
   url: string;
   appLink: string;
 }): string {
-  const { title, description, image, url, appLink } = opts;
+  const { title, description, image, size, url, appLink } = opts;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -55,8 +62,8 @@ function page(opts: {
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:image" content="${esc(image)}">
 <meta property="og:image:type" content="image/jpeg">
-<meta property="og:image:width" content="720">
-<meta property="og:image:height" content="1280">
+<meta property="og:image:width" content="${size.width}">
+<meta property="og:image:height" content="${size.height}">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${esc(title)}">
@@ -86,15 +93,23 @@ Deno.serve(async (req: Request) => {
   // the link is already out in someone's chat thread.
   if (!id) return Response.redirect(`${SITE}/app`, 302);
 
+  // "*" rather than a column list, so this still reads the row on a database
+  // that doesn't have preview_path yet (the function can deploy first).
   const { data: card } = await admin
     .from("share_cards")
-    .select("image_path, title, subtitle, referral_code, app_path")
+    .select("*")
     .eq("id", id)
     .maybeSingle();
 
   if (!card) return Response.redirect(`${SITE}/app`, 302);
 
-  const image = `${SUPABASE_URL}/storage/v1/object/public/share-cards/${card.image_path}`;
+  // The landscape preview when the card has one (WhatsApp draws it large),
+  // else the card itself (a tall image: WhatsApp's small thumbnail).
+  const preview =
+    typeof card.preview_path === "string" && PREVIEW_PATH_RE.test(card.preview_path)
+      ? card.preview_path
+      : null;
+  const image = `${SUPABASE_URL}/storage/v1/object/public/share-cards/${preview ?? card.image_path}`;
   // A card may name where its humans land (a prize card → its event). The
   // row is member-written, so the path is only honoured when it is the /app
   // smart-link — the same shape the column's CHECK enforces — and never
@@ -122,6 +137,7 @@ Deno.serve(async (req: Request) => {
       title: card.title,
       description: card.subtitle ?? "Get rewarded for every workout.",
       image,
+      size: preview ? PREVIEW_SIZE : CARD_SIZE,
       url: `${SITE}/s/${id}`,
       appLink,
     }),
