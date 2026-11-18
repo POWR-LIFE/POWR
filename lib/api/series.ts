@@ -661,3 +661,75 @@ export function useSeriesBoard(active: boolean) {
     }, [active, refresh, joined]);
     return { board, loaded, refresh };
 }
+
+/**
+ * A bounty an admin put on a member (get_series_bounties, 20261118160000).
+ * The first member who was below them when it went on and climbs above them
+ * on Series points claims it and wins `prize`. Never points. `you` is null when
+ * it's on you or you aren't in the round; `you.gap` = the points you need to go
+ * above them (0 or less: you're past them and the claim lands within a minute;
+ * null in Blind Mode or when you were ahead at the start). `target.points` is
+ * null in Blind Mode.
+ */
+export type SeriesBounty = {
+    id: string;
+    status: 'live' | 'claimed' | 'ended';
+    prize: string;
+    detail: string | null;
+    sponsor: string | null;
+    image_url: string | null;
+    placed_at: string;
+    ends_at: string | null;
+    claimed_at: string | null;
+    target: { user_id: string; name: string; avatar_url: string | null; you: boolean; points: number | null };
+    claimer: { user_id: string; name: string; avatar_url: string | null; you: boolean } | null;
+    you: { can_claim: boolean; gap: number | null } | null;
+};
+export type SeriesBounties = { round: string; blind: boolean; bounties: SeriesBounty[] };
+
+/** The round's live bounties and the ones claimed in the last day; null on any error (or before the migration). */
+export async function fetchSeriesBounties(slug: string): Promise<SeriesBounties | null> {
+    const { data, error } = await supabase.rpc('get_series_bounties', { p_slug: slug });
+    if (error || !data || !Array.isArray((data as SeriesBounties).bounties)) return null;
+    return data as SeriesBounties;
+}
+
+const NO_BOUNTIES: SeriesBounty[] = [];
+
+/**
+ * The round's bounties while the screen is in view: read on focus, every
+ * minute (a new one or a claim lands on the minute) and, while one is live, a
+ * moment after anyone earns (the gap moves with every session). A failed read
+ * keeps what's on screen.
+ */
+export function useSeriesBounties(slug: string | null, active: boolean): SeriesBounty[] {
+    const [got, setGot] = useState<{ slug: string; rows: SeriesBounty[] } | null>(null);
+    useEffect(() => {
+        if (!slug || !active) return undefined;
+        let live = true;
+        // No live bounty: nothing on screen moves with a session, so ticks don't re-read.
+        let anyLive = false;
+        const read = () => {
+            void fetchSeriesBounties(slug).then((b) => {
+                if (!live || !b) return;
+                anyLive = b.bounties.some((x) => x.status === 'live');
+                setGot({ slug, rows: b.bounties });
+            });
+        };
+        read();
+        const t = setInterval(read, 60_000);
+        let settle: ReturnType<typeof setTimeout> | null = null;
+        const off = subscribeSeriesTicks(() => {
+            if (!anyLive) return;
+            if (settle) clearTimeout(settle);
+            settle = setTimeout(() => { settle = null; read(); }, TICK_SETTLE_MS);
+        });
+        return () => {
+            live = false;
+            clearInterval(t);
+            if (settle) clearTimeout(settle);
+            off();
+        };
+    }, [slug, active]);
+    return slug && got?.slug === slug ? got.rows : NO_BOUNTIES;
+}

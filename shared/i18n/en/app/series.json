@@ -808,5 +808,21 @@
     "title": "Share the Series",
     "postDialog": "Post the Series",
     "missing": "The Series isn’t available to share."
+  },
+  "bounty": {
+    "tag": "BOUNTY",
+    "on": "BOUNTY · ON {{name}}",
+    "onYou": "THERE'S A BOUNTY ON YOU",
+    "claimed": "BOUNTY CLAIMED",
+    "endsIn": "ENDS IN {{left}}",
+    "chase": "Overtake {{name}} to win it",
+    "chaseGap": "Overtake {{name}} to win it · {{gap}} pts to go",
+    "claiming": "You're past {{name}}: it's yours in a minute",
+    "blind": "Overtake {{name}} to win it · claims wait for Blind Mode to lift",
+    "ahead": "For the chasers: you were ahead of {{name}} when it went on",
+    "you": "Whoever overtakes you wins it. Stay ahead.",
+    "wonByYou": "You overtook {{name}} and won it",
+    "wonOffYou": "{{name}} overtook you and took it",
+    "won": "{{claimer}} overtook {{name}} and took it"
   }
 }

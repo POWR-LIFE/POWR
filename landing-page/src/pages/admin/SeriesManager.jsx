@@ -8,7 +8,7 @@ import {
     Trophy, Rocket, CalendarDays, Gift, ListOrdered, MapPin, Bot, Medal, Plus, Save, Trash2, Search, X, Check,
     RefreshCw, AlertTriangle, ShieldCheck, UserX, UserCheck, Megaphone, ImagePlus, LoaderCircle, ChevronLeft,
     ChevronRight, Shuffle, Eye, EyeOff, Bell, ExternalLink, Ticket, Crown, Zap, Timer, Flame, Flag, Lock,
-    TrendingUp, Sprout, Users, Copy, Pause, Play, Tv, KeyRound,
+    TrendingUp, Sprout, Users, Copy, Pause, Play, Tv, KeyRound, Crosshair,
 } from 'lucide-react';
 import { newScreenKey, seriesScreenUrl } from '../../../../shared/seriesScreen.ts';
 
@@ -37,6 +37,7 @@ const TABS = [
     { key: 'overview', label: 'Overview', icon: Rocket },
     { key: 'rounds', label: 'Seasons', icon: CalendarDays },
     { key: 'prizes', label: 'Prizes', icon: Gift },
+    { key: 'bounties', label: 'Bounties', icon: Crosshair },
     { key: 'moments', label: 'Moments', icon: Zap },
     { key: 'board', label: 'Board', icon: ListOrdered },
     { key: 'cities', label: 'Cities', icon: MapPin },
@@ -240,6 +241,8 @@ export default function SeriesManager() {
     const [slug, setSlug] = useState(params.get('round'));
     const [seasonSlug, setSeasonSlug] = useState(params.get('season'));
     const [unsettled, setUnsettled] = useState([]); // [{ round, state }] ended rounds whose winners aren't out
+    // The member the Board tab's "Bounty" picked, for the Bounties tab to open on.
+    const [bountyFor, setBountyFor] = useState(null);
 
     // A round that has ended but whose results aren't announced yet. From the
     // day after it ends the page opens on the next round, so say it up top.
@@ -394,7 +397,8 @@ export default function SeriesManager() {
                     {tab !== 'overview' && tab !== 'rounds' && tab !== 'screens' && !round && <Empty icon={CalendarDays} text="Pick a round, or add one on Seasons" />}
                     {tab === 'prizes' && round && <PrizesTab key={round.id} round={round} />}
                     {tab === 'moments' && round && <MomentsTab key={round.id} round={round} />}
-                    {tab === 'board' && round && <BoardTab key={round.id} round={round} />}
+                    {tab === 'bounties' && round && <BountiesTab key={round.id} round={round} preset={bountyFor} onPresetUsed={() => setBountyFor(null)} />}
+                    {tab === 'board' && round && <BoardTab key={round.id} round={round} onBounty={(m) => { setBountyFor(m); go({ tab: 'bounties' }); }} />}
                     {tab === 'cities' && round && <CitiesTab key={round.id} round={round} />}
                     {tab === 'pacers' && round && <PacersTab key={round.id} round={round} />}
                     {tab === 'results' && round && <ResultsTab key={round.id} round={round} onChanged={() => loadUnsettled(rounds)} />}
@@ -1125,6 +1129,277 @@ function PrizeImage({ value, onChange }) {
 // ── Moments ──────────────────────────────────────────────────────────────────
 
 // What each moment does on the server (20261023090000_series_moments.sql).
+// ── Bounties ─────────────────────────────────────────────────────────────────
+// 20261118160000_series_bounties.sql. Put a bounty on a member with a prize:
+// the first member who was below them then and climbs above them wins it.
+// Members already ahead can't claim it. Checked every minute (held in Blind
+// Mode). Never points, and apart from the one-prize-each results.
+
+const BOUNTY_ENDED = { admin: 'Ended here', expired: 'End time passed', round_over: 'Round finished', target_out: 'They left the board' };
+const BLANK_BOUNTY = { prize: '', detail: '', sponsor: '', image_url: null, ends: '' };
+const sentence = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+
+function BountiesTab({ round, preset, onPresetUsed }) {
+    const toast = useToast();
+    const { user } = useAuth();
+    const [list, setList] = useState(null);
+    const [loadError, setLoadError] = useState(null);
+    const [members, setMembers] = useState(null); // admin_series_board, members only
+    const [filter, setFilter] = useState('');
+    const filterRef = useRef('');
+    const [target, setTarget] = useState(null);
+    const [form, setForm] = useState(BLANK_BOUNTY);
+    const [confirming, setConfirming] = useState(false);
+    const [ending, setEnding] = useState(null);
+    const formRef = useRef(null);
+    const st = roundState(round);
+    const running = st.key === 'running';
+
+    const load = useCallback(async () => {
+        const { data, error } = await supabase.rpc('admin_series_bounties', { p_slug: round.slug });
+        if (error) { setLoadError(error); setList(l => l ?? []); return; }
+        setLoadError(null);
+        setList(data ?? []);
+    }, [round.slug]);
+    // Everyone in the round, best first (up to 200; the filter goes to the server).
+    const loadMembers = useCallback(async (term) => {
+        const { data, error } = await supabase.rpc('admin_series_board', { p_slug: round.slug, p_offset: 0, p_limit: 200, p_real_only: true, p_search: term || null });
+        if (error) { toast.error(rpcError(error)); setMembers(m => m ?? { rows: [], matches: 0 }); return; }
+        // Members only (the server already leaves pacers out): a pacer can never carry a bounty.
+        setMembers({ rows: (data?.rows ?? []).filter(r => !r.pacer), matches: data?.matches ?? 0 });
+    }, [round.slug, toast]);
+    useEffect(() => { load(); }, [load]);
+    useEffect(() => {
+        filterRef.current = filter.trim();
+        const t = setTimeout(() => loadMembers(filter.trim()), filter ? 250 : 0);
+        return () => clearTimeout(t);
+    }, [filter, loadMembers]);
+    // Claims land on the minute and points move: keep both current while it's open.
+    useEffect(() => {
+        const t = setInterval(() => { load(); loadMembers(filterRef.current); }, 30_000);
+        return () => clearInterval(t);
+    }, [load, loadMembers]);
+    const pick = (m) => {
+        setTarget(m);
+        setForm(BLANK_BOUNTY);
+        setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    };
+    // "Bounty" on the Board tab opens here with that member picked.
+    useEffect(() => {
+        if (!preset) return;
+        pick(preset);
+        onPresetUsed?.();
+    }, [preset, onPresetUsed]);
+
+    const live = (list ?? []).filter(b => b.status === 'live');
+    const done = (list ?? []).filter(b => b.status !== 'live');
+    const hunted = new Set(live.map(b => b.target.user_id));
+    const onTarget = target && live.find(b => b.target.user_id === target.user_id);
+    const set = (patch) => setForm(f => ({ ...f, ...patch }));
+    // Before 20261118160000 is applied the bounty functions don't exist yet.
+    const notApplied = loadError && /admin_series_bounties|could not find the function|PGRST202/i.test(`${loadError.code ?? ''} ${loadError.message ?? ''}`);
+
+    const place = async () => {
+        const args = {
+            p_slug: round.slug, p_user: target.user_id, p_prize: form.prize.trim(),
+            p_detail: form.detail.trim() || null, p_sponsor: form.sponsor.trim() || null,
+            p_image_url: form.image_url ?? null, p_ends_at: form.ends ? londonValue(form.ends) : null,
+        };
+        const { data, error } = await supabase.rpc('admin_series_place_bounty', args);
+        if (error) { toast.error(sentence(rpcError(error))); return; }
+        await logAction(user.id, 'series_bounty_place', 'user', target.user_id, {
+            round: round.slug, bounty: data.id, name: target.name, prize: args.p_prize, sponsor: args.p_sponsor,
+            detail: args.p_detail, ends_at: args.p_ends_at, ahead: data.ahead, chasers: data.chasers,
+        });
+        toast.success(`Bounty on ${target.name}: ${data.chasers} member${data.chasers === 1 ? '' : 's'} can claim it`);
+        setConfirming(false);
+        setTarget(null);
+        setForm(BLANK_BOUNTY);
+        load();
+    };
+    const end = async () => {
+        const { error } = await supabase.rpc('admin_series_end_bounty', { p_id: ending.id });
+        if (error) { toast.error(sentence(rpcError(error))); return; }
+        await logAction(user.id, 'series_bounty_end', 'user', ending.target.user_id, { round: round.slug, bounty: ending.id, name: ending.target.name, prize: ending.prize });
+        toast.success(`Bounty on ${ending.target.name} ended`);
+        setEnding(null);
+        load();
+    };
+
+    if (!list) return <Loading />;
+    return (
+        <>
+            {loadError && (
+                <div className="mb-8 flex items-start gap-2.5 px-5 py-4 rounded-2xl border border-[#F43F5E]/30 bg-[#FFF1F2] text-[13px] text-[#BE123C]">
+                    <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                    <span>{notApplied
+                        ? <>Bounties aren’t switched on in this database yet: the <b>series_bounties</b> migration (20261118160000) hasn’t been applied. You can see the members below, but placing a bounty will fail until it is.</>
+                        : <>Couldn’t load the bounties: {loadError.message}</>}</span>
+                </div>
+            )}
+
+            <Section title="Live" blurb="On now. ‘Can claim’ = members on the board who weren’t ahead of them when it went on."
+                right={<button className={btnQuiet} onClick={load}><RefreshCw size={13} /> Refresh</button>}>
+                {live.length === 0 ? <div className={`${card} px-6 py-5 text-[12.5px] text-[#999999]`}>{notApplied ? 'Nothing yet: bounties aren’t switched on.' : 'No bounty on anyone right now. Pick a member below.'}</div> : (
+                    <div className={`${card} divide-y divide-[#F0F0EC]`}>
+                        {live.map(b => <BountyLine key={b.id} b={b} right={<button className={btnDanger} onClick={() => setEnding(b)}><X size={13} /> End</button>} />)}
+                    </div>
+                )}
+            </Section>
+
+            <Section title="Put a bounty on someone"
+                blurb="Everyone in the round, best first. The first member who’s below them now and climbs above them on Series points wins the prize; anyone already ahead can’t claim it, so someone near the top makes the best race. Checked every minute, held in Blind Mode. Never points, separate from the round’s other prizes, no pushes: the app shows a BOUNTY tag on their row and a card on the Overall tab.">
+                {!running ? (
+                    <div className={`${card} px-6 py-5 text-[12.5px] text-[#999999]`}>
+                        {st.key === 'upcoming' ? `${round.name} hasn’t started: a bounty can go on once it’s running.` : `${round.name} has finished.`}
+                    </div>
+                ) : (
+                    <>
+                        {target && (
+                            <div ref={formRef} className={`${card} p-5 mb-4 border-[#E58A3A]/40`}>
+                                <div className="flex items-center gap-4 mb-5 pb-5 border-b border-[#F0F0EC]">
+                                    <div className="w-10 h-10 rounded-full bg-[#E58A3A]/10 text-[#C2410C] flex items-center justify-center shrink-0"><Crosshair size={17} /></div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[15px] font-semibold text-[#1A1A1A]">
+                                            Bounty on <Link to={`/admin/users/${target.user_id}`} className="hover:underline">{target.name}</Link>
+                                            {target.member_id && <span className="ml-2 text-[11px] font-mono text-[#AAAAAA]">{target.member_id}</span>}
+                                        </div>
+                                        <div className="text-[12px] text-[#888888]">{target.place ? `Member place #${target.place} · ` : ''}{fmtN(target.points)} pts now</div>
+                                    </div>
+                                    <button className={btnQuiet} onClick={() => setTarget(null)}><X size={13} /> Cancel</button>
+                                </div>
+                                {onTarget ? (
+                                    <p className="text-[12.5px] text-[#9A3412]">{target.name} already has a live bounty ({onTarget.prize}). End it above to put a new one on them.</p>
+                                ) : (
+                                    <div className="flex items-start gap-5">
+                                        <PrizeImage value={form.image_url} onChange={url => set({ image_url: url })} />
+                                        <div className="flex-1 min-w-0 grid grid-cols-2 gap-3">
+                                            <input autoFocus className={`${input} col-span-2`} maxLength={80} value={form.prize} placeholder="Prize · e.g. £50 Gymshark voucher" onChange={e => set({ prize: e.target.value })} />
+                                            <input className={input} maxLength={60} value={form.sponsor} placeholder="From · e.g. Gymshark (optional)" onChange={e => set({ sponsor: e.target.value })} />
+                                            <div className="flex items-center gap-2">
+                                                <input type="datetime-local" className={`${input} flex-1`} value={form.ends}
+                                                    min={londonInput(new Date().toISOString())} max={londonInput(round.ends_at)} onChange={e => set({ ends: e.target.value })} />
+                                                {form.ends && <button className="text-[#AAAAAA] hover:text-[#1A1A1A]" onClick={() => set({ ends: '' })} title="No end time"><X size={14} /></button>}
+                                            </div>
+                                            <input className={`${input} col-span-2`} maxLength={200} value={form.detail} placeholder="Note for the team (not shown in the app) · e.g. Gymshark send the code" onChange={e => set({ detail: e.target.value })} />
+                                            <p className="col-span-2 text-[11px] text-[#999999]">Ends (London) is optional: with none it runs until someone claims it, you end it or the round finishes.</p>
+                                        </div>
+                                        <button className={btnGold} disabled={!form.prize.trim()} onClick={() => setConfirming(true)}><Crosshair size={13} /> Place</button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className={`${card} overflow-hidden`}>
+                            <div className="flex items-center gap-4 px-6 py-4 border-b border-[#F0F0EC]">
+                                <div className="relative flex-1 max-w-md">
+                                    <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#AAAAAA]" />
+                                    <input className={`${input} w-full pl-11 h-11 bg-white`} value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter by name, username or POWR ID" />
+                                </div>
+                                {members && <span className="ml-auto text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black">
+                                    {fmtN(members.matches)} {filter.trim() ? 'matching' : `member${members.matches === 1 ? '' : 's'} in ${round.name}`}
+                                </span>}
+                            </div>
+                            {!members ? <Loading /> : members.rows.length === 0 ? (
+                                <div className="px-6 py-5 text-[12.5px] text-[#999999]">{filter.trim() ? `Nobody in ${round.name} matches “${filter.trim()}”.` : `Nobody has joined ${round.name} yet.`}</div>
+                            ) : (
+                                <table className="w-full text-[13px]">
+                                    <thead>
+                                        <tr className="text-[9.5px] font-black uppercase tracking-[0.22em] text-[#999999] border-b border-[#F0F0EC]">
+                                            <th className="text-left px-6 py-3 w-24">Member place</th>
+                                            <th className="text-left px-2 py-3">Name</th>
+                                            <th className="text-right px-2 py-3">Today</th>
+                                            <th className="text-right px-2 py-3">Points</th>
+                                            <th className="px-6 py-3 w-[190px]" />
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#F4F4F1]">
+                                        {members.rows.map(r => {
+                                            const has = hunted.has(r.user_id);
+                                            const picked = target?.user_id === r.user_id;
+                                            return (
+                                                <tr key={r.user_id} className={picked ? 'bg-[#FFF7ED]' : 'hover:bg-[#FAFAF8]'}>
+                                                    <td className="px-6 py-3 tabular-nums font-mono">{r.real_rank <= 3 ? <span className="font-bold text-[#B8A800]">{r.real_rank}</span> : r.real_rank}</td>
+                                                    <td className="px-2 py-3">
+                                                        <span className="mr-2">{flag(r.country)}</span>
+                                                        <Link to={`/admin/users/${r.user_id}`} className="font-medium text-[#1A1A1A] hover:underline">{r.name}</Link>
+                                                        {r.member_id && <span className="ml-2 text-[10.5px] font-mono text-[#AAAAAA]">{r.member_id}</span>}
+                                                        {has && <span className="ml-2"><Pill color="#E58A3A"><Crosshair size={10} /> Bounty</Pill></span>}
+                                                    </td>
+                                                    <td className="px-2 py-3 text-right tabular-nums">{r.today ? `+${r.today}` : ''}</td>
+                                                    <td className="px-2 py-3 text-right tabular-nums font-semibold">{fmtN(r.points)}</td>
+                                                    <td className="px-6 py-2 text-right">
+                                                        {has ? <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#AAAAAA]">Has one</span>
+                                                            : picked ? <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#C2410C]">Picked</span>
+                                                                : <button className={btnQuiet} onClick={() => pick({ user_id: r.user_id, name: r.name, member_id: r.member_id, points: r.points, place: r.real_rank })}><Crosshair size={13} /> Put a bounty</button>}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+                            {members && members.matches > members.rows.length && (
+                                <div className="px-6 py-3 border-t border-[#F0F0EC] text-[11px] text-[#999999]">Showing the top {fmtN(members.rows.length)} of {fmtN(members.matches)}: filter to find anyone else.</div>
+                            )}
+                        </div>
+                    </>
+                )}
+            </Section>
+
+            <Section title="Claimed and ended" blurb="Winners here are yours to deliver: they aren’t part of Results.">
+                {done.length === 0 ? <div className={`${card} px-6 py-5 text-[12.5px] text-[#999999]`}>None yet.</div> : (
+                    <div className={`${card} divide-y divide-[#F0F0EC]`}>
+                        {done.map(b => <BountyLine key={b.id} b={b} />)}
+                    </div>
+                )}
+            </Section>
+
+            <Confirm open={confirming} title={`Put a bounty on ${target?.name}?`}
+                body={`Prize: ${form.prize.trim()}${form.sponsor.trim() ? ` (from ${form.sponsor.trim()})` : ''}. ${form.ends ? `Ends ${form.ends.replace('T', ' at ')} (London) unless it’s claimed first.` : 'Runs until it’s claimed, you end it or the round finishes.'} It shows in the app straight away.`}
+                confirmLabel="Place bounty" onCancel={() => setConfirming(false)} onConfirm={place} />
+            <Confirm open={!!ending} danger title={`End the bounty on ${ending?.target.name}?`}
+                body={`${ending?.prize}. Nobody wins it, and it leaves the app within a minute.`}
+                confirmLabel="End bounty" onCancel={() => setEnding(null)} onConfirm={end} />
+        </>
+    );
+}
+
+function BountyLine({ b, right }) {
+    const claimed = b.status === 'claimed';
+    return (
+        <div className="flex items-center gap-5 px-6 py-4">
+            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-[#E58A3A]/10 flex items-center justify-center text-[#C2410C]">
+                {b.image_url ? <img src={storageImage(b.image_url, 128)} alt="" className="w-full h-full object-cover" /> : <Crosshair size={18} />}
+            </div>
+            <div className="flex-1 min-w-0">
+                <div className="text-[13.5px] text-[#1A1A1A]">
+                    <span className="font-semibold">{b.prize}</span>{b.sponsor && <span className="text-[#888888]"> · {b.sponsor}</span>}
+                    <span className="text-[#888888]"> on </span>
+                    <Link to={`/admin/users/${b.target.user_id}`} className="font-semibold hover:underline">{b.target.name}</Link>
+                    {b.target.member_id && <span className="ml-1.5 text-[10.5px] font-mono text-[#AAAAAA]">{b.target.member_id}</span>}
+                </div>
+                <div className="text-[12px] text-[#888888] mt-0.5">
+                    {b.status === 'live' && <>
+                        {b.target.place ? `#${b.target.place} · ` : ''}{fmtN(b.target.points)} pts now · {fmtN(b.chasers)} can claim · {fmtN(b.ahead)} {b.ahead === 1 ? 'was' : 'were'} ahead · placed {fmtWhen(b.created_at)} · {b.ends_at ? `ends ${fmtWhen(b.ends_at)}` : 'no end time'}
+                    </>}
+                    {claimed && <>
+                        Claimed {fmtWhen(b.claimed_at)} by{' '}
+                        {b.claimer ? <Link to={`/admin/users/${b.claimer.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{b.claimer.name}</Link> : 'a deleted account'}
+                        {b.claimer?.member_id && <span className="ml-1 font-mono text-[10.5px] text-[#AAAAAA]">{b.claimer.member_id}</span>}
+                        {' '}({fmtN(b.claimer_points)} pts vs {fmtN(b.target_points)}) · placed {fmtWhen(b.created_at)}
+                    </>}
+                    {b.status === 'ended' && <>{BOUNTY_ENDED[b.end_reason] ?? 'Ended'} {fmtWhen(b.ended_at)} · nobody won it · placed {fmtWhen(b.created_at)}</>}
+                </div>
+            </div>
+            {b.status === 'live' && <Pill color="#E58A3A"><Crosshair size={10} /> Live</Pill>}
+            {claimed && <Pill color="#10B981"><Check size={10} /> Claimed</Pill>}
+            {b.status === 'ended' && <Pill color="#9CA3AF">Ended</Pill>}
+            {right}
+        </div>
+    );
+}
+
 const MOMENT_KINDS = {
     gun:         { label: 'The Gun', icon: Flag, blurb: 'The round opens. An announcement, nothing else.', boost: false,
                    name: 'The Gun', line: 'The board is live. Every verified session counts from now.' },
@@ -1436,7 +1711,7 @@ function MomentsTab({ round }) {
 const PAGE = 50;
 const flag = (code) => (code ? String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1f1e6 + c.charCodeAt(0) - 65)) : '');
 
-function BoardTab({ round }) {
+function BoardTab({ round, onBounty }) {
     const toast = useToast();
     const { user } = useAuth();
     const [q, setQ] = useState('');
@@ -1448,15 +1723,20 @@ function BoardTab({ round }) {
     const [act, setAct] = useState(null); // { kind: 'exclude' | 'city', row }
     const [allRounds, setAllRounds] = useState(false);
     const [city, setCity] = useState('');
+    const [hunted, setHunted] = useState(new Set()); // members with a live bounty on them
+    const running = roundState(round).key === 'running';
 
     const load = useCallback(async () => {
-        const [b, x] = await Promise.all([
+        const [b, x, h] = await Promise.all([
             supabase.rpc('admin_series_board', { p_slug: round.slug, p_offset: page * PAGE, p_limit: PAGE, p_real_only: realOnly, p_search: search || null }),
             supabase.from('series_exclusions').select('*, profiles(display_name, username)').or(`round_id.eq.${round.id},round_id.is.null`).order('created_at', { ascending: false }),
+            supabase.rpc('admin_series_bounties', { p_slug: round.slug }),
         ]);
         if (b.error) toast.error(b.error.message);
         setBoard(b.data ?? { rows: [], total: 0, members: 0, pacers: 0, matches: 0 });
         setExclusions(x.data ?? []);
+        // Before the bounties migration this errors: no tags, nothing else changes.
+        setHunted(new Set((h.data ?? []).filter(v => v.status === 'live').map(v => v.target.user_id)));
     }, [round.slug, round.id, page, realOnly, search, toast]);
     useEffect(() => { load(); }, [load]);
 
@@ -1513,7 +1793,7 @@ function BoardTab({ round }) {
                                     <th className="text-right px-2 py-3">Today</th>
                                     <th className="text-right px-2 py-3">Days</th>
                                     <th className="text-right px-2 py-3">Points</th>
-                                    <th className="px-6 py-3 w-[150px]" />
+                                    <th className="px-6 py-3 w-[210px]" />
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[#F4F4F1]">
@@ -1525,6 +1805,7 @@ function BoardTab({ round }) {
                                             <span className="mr-2">{flag(r.country)}</span>
                                             {r.pacer ? r.name : <Link to={`/admin/users/${r.user_id}`} className="font-medium hover:underline">{r.name}</Link>}
                                             {r.pacer && <span className="ml-2"><Pill color="#9CA3AF"><Bot size={10} /> Pacer</Pill></span>}
+                                            {hunted.has(r.user_id) && <span className="ml-2"><Pill color="#E58A3A"><Crosshair size={10} /> Bounty</Pill></span>}
                                             {r.member_id && <span className="ml-2 text-[10.5px] font-mono text-[#AAAAAA]">{r.member_id}</span>}
                                         </td>
                                         <td className="px-2 py-3">{r.city ?? <span className="text-[#CCCCCC]">—</span>}</td>
@@ -1533,6 +1814,7 @@ function BoardTab({ round }) {
                                         <td className="px-2 py-3 text-right tabular-nums font-semibold">{fmtN(r.points)}</td>
                                         <td className="px-6 py-2 text-right whitespace-nowrap">
                                             {!r.pacer && <>
+                                                {running && !hunted.has(r.user_id) && <button className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#C2410C] hover:underline mr-3" onClick={() => onBounty?.({ user_id: r.user_id, name: r.name, member_id: r.member_id, points: r.points, place: r.real_rank })}>Bounty</button>}
                                                 <button className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#8a7600] hover:underline mr-3" onClick={() => { setCity(r.city ?? ''); setAct({ kind: 'city', row: r }); }}>City</button>
                                                 <button className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#E11D48] hover:underline" onClick={() => { setAllRounds(false); setAct({ kind: 'exclude', row: r }); }}>Exclude</button>
                                             </>}

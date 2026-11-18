@@ -13,7 +13,7 @@ import { DropReveal } from '@/components/drop/DropReveal';
 import { trackTap } from '@/lib/analytics';
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import {
-    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, seriesDate, seriesHow, type SeriesInviteBoard, useSeriesBoard, useSeriesExtras, useSeriesInviteBoard, useSquadPrize,
+    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, seriesDate, seriesHow, type SeriesInviteBoard, useSeriesBoard, useSeriesBounties, useSeriesExtras, useSeriesInviteBoard, useSquadPrize,
 } from '@/lib/api/series';
 import { fetchProfile, type Profile } from '@/lib/api/user';
 import { dropSim, todayTarget, useDropPrototype } from '@/lib/dev/dropPrototype';
@@ -44,6 +44,7 @@ import { NAMED, PrizeDetailSheet, type PrizeKey, PrizesSheet, prizeSetFrom, SAMP
 import { liveMomentCards, MomentStrip, sampleMomentCards, SERIES_BAR_H, SeriesCard } from './SeriesRound';
 import { hexA, LOCKUP_LINES, type LockupLine, SEASON_ORDER, SEASONS, seasonDev, useSeason, useSeasonCard } from './season';
 import { HowToWinSheet } from './HowToWinSheet';
+import { BountyCard } from './SeriesBounty';
 import { ShareSheet, Sheet, SheetHead, YourFile } from './SeriesSheets';
 import { InviteBoardCard, InviteRaceNote, PrizeHero } from './SeriesInvite';
 import { SeriesInviteCard } from './SeriesInviteCard';
@@ -185,6 +186,9 @@ export function SeriesHome({
     // The round's prizes and moments from /admin/series, and its winners once announced.
     const extras = useSeriesExtras(!sample && liveBase ? liveBase.round.slug : null, !sample && liveBase?.phase === 'between', focused);
     const liveCards = useMemo(() => liveMomentCards(extras.moments), [extras.moments]);
+    // Bounties an admin put on members (20261118160000): live data only, while the round runs.
+    const bounties = useSeriesBounties(!sample && liveBase?.phase === 'running' ? liveBase.round.slug : null, focused);
+    const bountyOn = useMemo(() => new Set(bounties.filter((b) => b.status === 'live').map((b) => b.target.user_id)), [bounties]);
     // Blind Mode on: the same board, ranks hidden.
     const blindCard = liveCards.find((m) => m.kind === 'blind' && m.state === 'live');
     const blindNow = !!blindCard;
@@ -391,7 +395,8 @@ export function SeriesHome({
                                 : t('series:league.rival.backOn', { day: blindCard.back }))
                             : undefined}
                     />
-                    <Race v={v} hits={v.live ? {} : sim.hits} you={you} />
+                    {v.live && <BountyCard bounties={bounties} />}
+                    <Race v={v} hits={v.live ? {} : sim.hits} you={you} bountyOn={v.live ? bountyOn : undefined} />
                     {!v.live && (
                         <Pressable
                             onPress={() => { trackTap('series_view', { view: v.view === 'around' ? 'top' : 'around' }); sim.setView(v.view === 'around' ? 'top' : 'around'); }}
@@ -902,7 +907,7 @@ function toTop3(v: SeriesView): { gap: number; how: string } | null {
 }
 
 /** Overall: the race. You against everyone, on Series points. */
-function Race({ v, hits, you }: { v: SeriesView; hits: Sim['hits']; you: You }) {
+function Race({ v, hits, you, bountyOn }: { v: SeriesView; hits: Sim['hits']; you: You; bountyOn?: Set<string> }) {
     const { t } = useTranslation();
     const sc = useSeasonCard();
     return (
@@ -918,6 +923,7 @@ function Race({ v, hits, you }: { v: SeriesView; hits: Sim['hits']; you: You }) 
                                 rank={r.rank}
                                 hit={hits[r.p.id]}
                                 title={r.dark ? null : v.title(r.p, r.rank)}
+                                bounty={!!bountyOn?.has(r.p.id)}
                                 isMe={r.p.you}
                                 dark={r.dark}
                                 hideRank={r.hideRank}

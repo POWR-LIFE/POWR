@@ -808,5 +808,21 @@
     "title": "Compartir la Serie",
     "postDialog": "Publicar la Serie",
     "missing": "La Serie no se puede compartir."
+  },
+  "bounty": {
+    "tag": "RECOMPENSA",
+    "on": "RECOMPENSA · POR {{name}}",
+    "onYou": "HAY UNA RECOMPENSA POR TI",
+    "claimed": "RECOMPENSA COBRADA",
+    "endsIn": "TERMINA EN {{left}}",
+    "chase": "Supera a {{name}} para ganarla",
+    "chaseGap": "Supera a {{name}} para ganarla · faltan {{gap}} pts",
+    "claiming": "Ya has superado a {{name}}: será tuya en un minuto",
+    "blind": "Supera a {{name}} para ganarla · nadie la cobra hasta que acabe el Blind Mode",
+    "ahead": "Es para quienes persiguen: ibas por delante de {{name}} cuando se puso",
+    "you": "Quien te supere se la lleva. Mantente por delante.",
+    "wonByYou": "Superaste a {{name}} y la ganaste",
+    "wonOffYou": "{{name}} te superó y se la llevó",
+    "won": "{{claimer}} superó a {{name}} y se la llevó"
   }
 }
