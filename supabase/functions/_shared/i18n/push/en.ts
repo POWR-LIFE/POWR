@@ -330,9 +330,22 @@ const push: Catalog = {
   seriesPassed: {
     title: "{{name}} just passed you",
     body: "You're #{{rank}} in the {{series}}, {{gap}} pts behind. {{how}}",
+    // The place you lost was the lead, or one of the places that win a prize.
+    bodyLead: "You've lost the lead in the {{series}}. You're #{{rank}}, {{gap}} pts behind. {{how}}",
+    bodyPrize: "You're out of the prize places in the {{series}}. You're #{{rank}}, {{gap}} pts behind. {{how}}",
     howRun: "One run gets it back.",
     howGym: "One gym session gets it back.",
     howMany: "About {{n}} sessions get it back.",
+  },
+  // series_climbed: you moved up the board. The "how" line is seriesRival's.
+  seriesClimbed: {
+    title: "You're up to #{{rank}}",
+    body: "You've climbed the {{series}} board. #{{above}} is {{gap}} pts ahead. {{how}}",
+    titlePrize: "You're in the prize places",
+    bodyPrize: "You're #{{rank}} in the {{series}}. #{{above}} is {{gap}} pts ahead. {{how}}",
+    titleLead: "You're #1",
+    bodyLead: "You've taken the lead in the {{series}}, {{gap}} pts clear of #2. One session today keeps you there.",
+    bodyLeadLevel: "You've taken the lead in the {{series}}, level on points with #2. One session today keeps you there.",
   },
   seriesMoment: {
     title: "It’s on",

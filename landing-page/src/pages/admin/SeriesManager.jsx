@@ -228,6 +228,7 @@ const monthSpan = (se) => {
 const SERIES_PUSHES = [
     ['series_rival', '08:00 rival'],
     ['series_passed', 'Someone passed you'],
+    ['series_climbed', 'You climbed'],
     ['series_trophy', 'Trophies'],
 ];
 

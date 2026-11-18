@@ -309,9 +309,20 @@ const push: Catalog = {
   seriesPassed: {
     title: "{{name}} vient de te dépasser",
     body: "Tu es n° {{rank}} au classement {{series}}, à {{gap}} pts. {{how}}",
+    bodyLead: "Tu n’es plus en tête du classement {{series}}. Tu es n° {{rank}}, à {{gap}} pts. {{how}}",
+    bodyPrize: "Tu sors des places primées du classement {{series}}. Tu es n° {{rank}}, à {{gap}} pts. {{how}}",
     howRun: "Une course et tu reprends ta place.",
     howGym: "Une séance à la salle et tu reprends ta place.",
     howMany: "Environ {{n}} séances et tu reprends ta place.",
+  },
+  seriesClimbed: {
+    title: "Te voilà n° {{rank}}",
+    body: "Tu grimpes au classement {{series}}. Le n° {{above}} a {{gap}} pts d’avance. {{how}}",
+    titlePrize: "Tu es dans les places primées",
+    bodyPrize: "Tu es n° {{rank}} au classement {{series}}. Le n° {{above}} a {{gap}} pts d’avance. {{how}}",
+    titleLead: "Tu es n° 1",
+    bodyLead: "Tu prends la tête du classement {{series}}, avec {{gap}} pts d’avance sur le n° 2. Une séance aujourd’hui et tu y restes.",
+    bodyLeadLevel: "Tu prends la tête du classement {{series}}, à égalité de points avec le n° 2. Une séance aujourd’hui et tu y restes.",
   },
   seriesMoment: {
     title: "C’est parti",
