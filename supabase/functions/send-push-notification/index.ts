@@ -65,6 +65,9 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'series_passed':
     case 'series_moment':
       return 'social';
+    // A trophy is a win, not a nudge: it sits with the level-ups.
+    case 'series_trophy':
+      return 'rewards';
     case 'reward_unlocked':
     case 'points_milestone':
     case 'vault_unlocked':
@@ -266,6 +269,7 @@ async function processOne(
     : type === 'series_rival' ? 'series_updates'
     : type === 'series_passed' ? 'series_updates'
     : type === 'series_moment' ? 'series_updates'
+    : type === 'series_trophy' ? 'series_updates'
     : type === 'event_rank_daily' ? null
     : type === 'event_gate_reminder' ? null
     // Registrant one-offs: same reasoning as the pulses above.
