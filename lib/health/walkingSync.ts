@@ -412,6 +412,15 @@ export function syncWalkingNow(): Promise<void> {
 }
 
 async function _syncWalkingNowImpl(): Promise<void> {
+    // No session, no sync. Without this, a signed-out install still woke every
+    // 30 minutes and inserted its steps as anon: user_id defaults to auth.uid(),
+    // so RLS refused every row (2026-11-18: 49 refusals a day from one Android
+    // install, alongside the geofence telemetry riding the same wake).
+    if (!(await getSessionUser())) {
+        console.log('[walkingSync] no signed-in session — skipping sync.');
+        return;
+    }
+
     const activeId = await resolveActiveProviderId();
 
     // Walking is native-first: the phone's health store is the fastest source
@@ -553,6 +562,9 @@ export function backfillWalkingDays(daysBack = 7): Promise<void> {
 
 async function backfillWalkingDaysImpl(daysBack: number): Promise<void> {
     try {
+        // Same rule as the daily sync: an anon insert can only be refused. Reset
+        // the day gate so the backfill runs once the user is signed in again.
+        if (!(await getSessionUser())) { _backfilledFor = null; return; }
         const activeId = await resolveActiveProviderId();
         const verification = verificationForProvider(activeId);
         const source = snapshotSourceFor(activeId);

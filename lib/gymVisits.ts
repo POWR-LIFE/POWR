@@ -276,6 +276,13 @@ export async function logGeofenceRegionEvent(
   }
 
   try {
+    // Signed out, supabase-js would send this as anon. EXECUTE is granted to
+    // authenticated only, and the RPC drops a null auth.uid() anyway, so the
+    // call can only fail (2026-11-18: ~96 "permission denied" a day from one
+    // signed-out Android install). This branch touches auth regardless —
+    // supabase.rpc reads the same session to pick its token.
+    const { data: { session } } = await withNetworkTimeout(supabase.auth.getSession(), 'auth.getSession');
+    if (!session) return;
     const { error } = await withNetworkTimeout(
       supabase.rpc('log_geofence_region_event', args), 'log_geofence_region_event',
     );

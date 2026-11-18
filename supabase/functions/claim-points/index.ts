@@ -1219,7 +1219,10 @@ Deno.serve(async (req) => {
 
     // Highest-cost active reward still locked (cost > balance) but within 85%
     // reach (cost <= balance / 0.85). Order by cost DESC → the biggest one near.
-    const maxReachableCost = newBalance / WITHIN_REACH_PCT;
+    // Floored: powr_cost is an integer column, and PostgREST passes the bound
+    // through verbatim — 1684 / 0.85 = 1981.176… was refused as invalid integer
+    // input, so the nudge silently never fired unless the balance divided by 17.
+    const maxReachableCost = Math.floor(newBalance / WITHIN_REACH_PCT);
     const { data: target } = await supabase
       .from('rewards')
       .select('id, title, powr_cost')
