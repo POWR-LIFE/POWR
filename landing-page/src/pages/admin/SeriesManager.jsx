@@ -222,6 +222,14 @@ const monthSpan = (se) => {
     return `${f(se.starts_on)} – ${f(se.ends_on)}`;
 };
 
+// The Series' own push types, as the switch line under the live switch shows
+// them. Each is switched in /admin/notifications.
+const SERIES_PUSHES = [
+    ['series_rival', '08:00 rival'],
+    ['series_passed', 'Someone passed you'],
+    ['series_trophy', 'Trophies'],
+];
+
 export default function SeriesManager() {
     const toast = useToast();
     const [params, setParams] = useSearchParams();
@@ -420,7 +428,7 @@ function OverviewTab({ round, season }) {
     const load = useCallback(async () => {
         const [c, n] = await Promise.all([
             supabase.from('system_config').select('key, value, updated_at').in('key', ['series_live', 'series_testers']),
-            supabase.from('notification_config').select('type, enabled').in('type', ['series_rival', 'series_passed']),
+            supabase.from('notification_config').select('type, enabled').in('type', SERIES_PUSHES.map(([t]) => t)),
         ]);
         const map = Object.fromEntries((c.data ?? []).map(r => [r.key, r]));
         setCfg(map);
@@ -505,12 +513,12 @@ function OverviewTab({ round, season }) {
                         </div>
                         <div className="mt-5 pt-5 border-t border-[#F0F0EC] flex items-center gap-6 flex-wrap text-[12px] text-[#666666]">
                             <span className="flex items-center gap-2"><Bell size={14} className="text-[#999999]" /> Pushes:</span>
-                            {['series_rival', 'series_passed'].map(t => {
+                            {SERIES_PUSHES.map(([t, label]) => {
                                 const row = pushes.find(p => p.type === t);
                                 return (
                                     <span key={t} className="flex items-center gap-2">
                                         <span className={`w-2 h-2 rounded-full ${row?.enabled ? 'bg-[#10B981]' : 'bg-[#DDDDDD]'}`} />
-                                        {t === 'series_rival' ? '08:00 rival' : 'Someone passed you'} · {row ? (row.enabled ? 'on' : 'off') : 'missing'}
+                                        {label} · {row ? (row.enabled ? 'on' : 'off') : 'missing'}
                                     </span>
                                 );
                             })}
