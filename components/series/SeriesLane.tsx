@@ -173,7 +173,7 @@ export function RaceHeader() {
  * only on the top 3; under the name, the leader's tag or last round's place.
  */
 export function SeriesLane({
-    p, rank, hit, title, isMe, dark, first, you, hideRank,
+    p, rank, hit, title, isMe, dark, first, you, hideRank, bounty,
 }: {
     p: Person;
     rank: number;
@@ -185,6 +185,8 @@ export function SeriesLane({
     you: { name: string; initials: string; avatarUrl: string | null };
     /** Blind Mode: your own row keeps its points but not its place. */
     hideRank?: boolean;
+    /** An admin put a bounty on them (get_series_bounties): its tag beats the leader's. */
+    bounty?: boolean;
 }) {
     const { t } = useTranslation();
     const MEDAL: Record<number, string> = { 1: GOLD, 2: SILVER, 3: BRONZE };
@@ -192,8 +194,9 @@ export function SeriesLane({
     const accent = isTop ? MEDAL[rank] : isMe ? GOLD : null;
     const name = isMe ? `${you.name}${t('events:board.youSuffix')}` : p.name;
     const initials = isMe ? you.initials : initialsOf(p.name);
-    // One tag at most: the leader's. Everyone else shows where they finished last round.
-    const tag = title === 'leader' ? title : null;
+    // One tag at most: a bounty's, else the leader's. Everyone else shows where
+    // they finished last round. A sealed row shows neither.
+    const tag: TitleKey | null = dark ? null : bounty ? 'bounty' : title === 'leader' ? title : null;
     // Their honours (the small line icons); a sealed row keeps nothing but its name.
     const honours = dark ? [] : p.honours ?? [];
     return (
@@ -240,7 +243,7 @@ export function SeriesLane({
                     if (!tag && !place && honours.length === 0) return null;
                     return (
                         <View style={s.subRow}>
-                            {tag ? <TitlePill title={tag} /> : !!place && <Text style={[s.sub, { flexShrink: 1 }]} numberOfLines={1}>{place}</Text>}
+                            {tag ? <TitlePill title={tag} label={tag === 'bounty' ? t('series:bounty.tag') : undefined} /> : !!place && <Text style={[s.sub, { flexShrink: 1 }]} numberOfLines={1}>{place}</Text>}
                             {honours.length > 0 && (
                                 <>
                                     {(!!tag || !!place) && <View style={s.subDiv} />}

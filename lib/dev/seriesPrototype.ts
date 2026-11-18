@@ -28,7 +28,7 @@ export const ACTS: Record<ActKey, { label: string; icon: IconName; min: [number,
     swim: { label: 'Swim', icon: 'water-outline', min: [20, 45], ppm: 6.0, outdoor: false },
 };
 
-export type TitleKey = 'leader' | 'hot' | 'mover' | 'under' | 'rookie' | 'early' | 'giant' | 'crown' | 'pack';
+export type TitleKey = 'leader' | 'hot' | 'mover' | 'under' | 'rookie' | 'early' | 'giant' | 'crown' | 'pack' | 'bounty';
 export const TITLES: Record<TitleKey, { label: string; icon: IconName; ember?: boolean }> = {
     leader: { label: 'LEADER', icon: 'ribbon-outline' },
     hot: { label: 'HOT STREAK', icon: 'flame' },
@@ -39,6 +39,8 @@ export const TITLES: Record<TitleKey, { label: string; icon: IconName; ember?: b
     giant: { label: 'GIANT KILLER', icon: 'flash-outline' },
     crown: { label: 'CROWN HOLDER', icon: 'trophy-outline' },
     pack: { label: 'PACK WINNER', icon: 'people-outline' },
+    // An admin's bounty on a member (20261118160000): overtake them to win it.
+    bounty: { label: 'BOUNTY', icon: 'locate-outline', ember: true },
 };
 /** The titles a round can award you, for the collection in Your File. */
 /** Titles that give away places: they sit out Blind Mode. */

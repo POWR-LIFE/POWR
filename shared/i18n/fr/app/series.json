@@ -808,5 +808,21 @@
     "title": "Partager la Série",
     "postDialog": "Publier la Série",
     "missing": "La Série ne peut pas être partagée."
+  },
+  "bounty": {
+    "tag": "PRIME",
+    "on": "PRIME · SUR {{name}}",
+    "onYou": "IL Y A UNE PRIME SUR TOI",
+    "claimed": "PRIME REMPORTÉE",
+    "endsIn": "FIN DANS {{left}}",
+    "chase": "Dépasse {{name}} pour la gagner",
+    "chaseGap": "Dépasse {{name}} pour la gagner · encore {{gap}} pts",
+    "claiming": "Tu as dépassé {{name}} : elle est à toi dans une minute",
+    "blind": "Dépasse {{name}} pour la gagner · rien n’est remporté avant la fin du Blind Mode",
+    "ahead": "Pour les chasseurs : tu étais devant {{name}} quand elle a été posée",
+    "you": "Celui ou celle qui te dépasse la gagne. Reste devant.",
+    "wonByYou": "Tu as dépassé {{name}} et tu l’as gagnée",
+    "wonOffYou": "{{name}} t’a dépassé·e et l’a remportée",
+    "won": "{{claimer}} a dépassé {{name}} et l’a remportée"
   }
 }
