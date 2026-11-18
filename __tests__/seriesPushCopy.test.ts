@@ -55,3 +55,81 @@ describe('series_moment', () => {
         expect(buildMessage('series_moment', {}, 'fr').title).toBe('C’est parti');
     });
 });
+
+/**
+ * series_trophy (20261118120000): the morning after award_honours, the top
+ * metal of each trophy reached since the last push. The numbers come from
+ * honours.count / detail, read by the same ladders as _honour_tier.
+ */
+describe('series_trophy', () => {
+    const one = (item: Record<string, unknown>, lang = 'en', series: string | undefined = 'Autumn Series') =>
+        buildMessage('series_trophy', { items: [item], series }, lang);
+
+    it('names the trophy, the metal and what earned it', () => {
+        const msg = one({ kind: 'strength', tier: 'bronze', count: 4, detail: {} });
+        expect(msg.title).toBe('New trophy: Strength Bronze');
+        expect(msg.body).toBe('For 4 strength sessions in the Autumn Series. It’s next to your name on the board.');
+        expect(msg.data).toMatchObject({ type: 'series_trophy', route: '/(tabs)/league?focus=series' });
+    });
+
+    it('reads each ladder the way the server awards it', () => {
+        expect(one({ kind: 'on_fire', tier: 'bronze', count: 2, detail: {} }).body).toContain('For 2 weeks with a session');
+        expect(one({ kind: 'power', tier: 'silver', count: 4, detail: { w5: 1, w6: 0 } }).body).toContain('For 4 weeks of 4+ active days');
+        expect(one({ kind: 'power', tier: 'gold', count: 7, detail: { w5: 6, w6: 2 } }).body).toContain('For 6 weeks of 5+ active days');
+        expect(one({ kind: 'power', tier: 'platinum', count: 9, detail: { w5: 8, w6: 8 } }).body).toContain('For 8 weeks of 6+ active days');
+        expect(one({ kind: 'diamond', tier: 'bronze', count: 1, detail: {} }).body).toContain('For moving every day of a round');
+        expect(one({ kind: 'diamond', tier: 'silver', count: 3, detail: {} }).body).toContain('For moving every day of 3 rounds');
+        expect(one({ kind: 'wings', tier: 'bronze', count: 12, detail: { top: false } }).body).toContain('For climbing 12 places in a round');
+        expect(one({ kind: 'wings', tier: 'platinum', count: 40, detail: { top: true } }).body).toContain('For reaching Nº 1 from outside the top 10');
+        expect(one({ kind: 'hive', tier: 'bronze', count: 3, detail: { active: 1 } }).body).toContain('For bringing in 3 friends');
+        expect(one({ kind: 'hive', tier: 'silver', count: 8, detail: { active: 6 } }).body).toContain('For 6 friends who stayed active');
+        expect(one({ kind: 'strength', tier: 'silver', count: 1, detail: {} }).body).toContain('For 1 strength session');
+    });
+
+    it('never says 0: a missing number drops the reason', () => {
+        const msg = one({ kind: 'power', tier: 'gold', count: 7, detail: {} });
+        expect(msg.title).toBe('New trophy: Power Gold');
+        expect(msg.body).toBe('It’s next to your name on the Autumn Series board.');
+    });
+
+    it('lists several, top metal first as the server sends them', () => {
+        const two = buildMessage('series_trophy', { series: 'Autumn Series', items: [
+            { kind: 'on_fire', tier: 'silver', count: 4, detail: {} },
+            { kind: 'diamond', tier: 'bronze', count: 1, detail: {} },
+        ] }, 'en');
+        expect(two.title).toBe('2 new trophies');
+        expect(two.body).toBe('On Fire Silver and Diamond Bronze in the Autumn Series. They’re next to your name on the board.');
+        const three = buildMessage('series_trophy', { series: 'Autumn Series', items: [
+            { kind: 'wings', tier: 'silver', count: 22, detail: {} },
+            { kind: 'diamond', tier: 'bronze', count: 1, detail: {} },
+            { kind: 'strength', tier: 'bronze', count: 4, detail: {} },
+        ] }, 'en');
+        expect(three.title).toBe('3 new trophies');
+        expect(three.body).toBe('Wings Silver, Diamond Bronze and Strength Bronze in the Autumn Series. They’re next to your name on the board.');
+    });
+
+    it('crowns the King with the round they won', () => {
+        const king = one({ kind: 'king', tier: 'gold', count: 1, detail: {}, round: 'Round 01' });
+        expect(king.title).toBe('You’re the King');
+        expect(king.body).toBe('You won Round 01 of the Autumn Series. The crown sits next to your name until the next round is won.');
+        expect(one({ kind: 'king', tier: 'gold', count: 1, detail: {} }).body).toBe('You won the round in the Autumn Series. The crown sits next to your name until the next round is won.');
+    });
+
+    it('drops what it does not know and says "the Series" with no season name', () => {
+        const msg = buildMessage('series_trophy', { items: [{ kind: 'unicorn', tier: 'gold' }, { kind: 'strength', tier: 'bronze', count: 4 }] }, 'en');
+        expect(msg.title).toBe('New trophy: Strength Bronze');
+        expect(msg.body).toBe('For 4 strength sessions in the Series. It’s next to your name on the board.');
+        expect(buildMessage('series_trophy', {}, 'en').title).toBe('New trophy');
+    });
+
+    it('speaks French and Spanish, trophy names in English as in the app', () => {
+        const fr = one({ kind: 'strength', tier: 'silver', count: 30, detail: {} }, 'fr');
+        expect(fr.title).toBe('Nouveau trophée : Strength Argent');
+        expect(fr.body).toBe('Pour 30 séances de muscu, au classement Autumn Series. Tu le vois à côté de ton nom.');
+        const es = one({ kind: 'on_fire', tier: 'bronze', count: 2, detail: {} }, 'es');
+        expect(es.title).toBe('Nuevo trofeo: On Fire Bronce');
+        expect(es.body).toBe('Por 2 semanas con una sesión en la Autumn Series. Ya está junto a tu nombre en la tabla.');
+        expect(one({ kind: 'diamond', tier: 'bronze', count: 1, detail: {} }, 'es').body).toContain('Por moverte cada día de una ronda');
+        expect(one({ kind: 'king', tier: 'gold', count: 1, detail: {}, round: 'Round 01' }, 'fr').title).toBe('La couronne est à toi');
+    });
+});

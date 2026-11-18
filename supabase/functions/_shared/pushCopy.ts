@@ -86,7 +86,10 @@ export type NotificationType =
   | 'series_passed'
   // A round's moment starting (Double Down, Power Hour, Blind Mode …), set in
   // /admin/series: its name and line as written there.
-  | 'series_moment';
+  | 'series_moment'
+  // A new trophy or metal (award_honours overnight → series_dispatch_pushes,
+  // 08:00–21:00 the member's time): every metal since the last push.
+  | 'series_trophy';
 
 /** One push, ready for deliverVisiblePush (which adds the per-device `to`). */
 export interface PushMessage {
@@ -132,6 +135,70 @@ export const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   // A Power Hour is over in an hour; nothing a moment says is news after two.
   series_moment:           2 * 60 * 60,
 };
+
+// ── Series trophies (series_trophy) ─────────────────────────────────────────
+
+const TROPHY_KINDS = ['king', 'power', 'on_fire', 'diamond', 'wings', 'hive', 'strength'] as const;
+const TROPHY_TIERS = ['bronze', 'silver', 'gold', 'platinum'] as const;
+type TrophyKind = (typeof TROPHY_KINDS)[number];
+type TrophyTier = (typeof TROPHY_TIERS)[number];
+interface TrophyItem {
+  kind: TrophyKind;
+  tier: TrophyTier;
+  count: number;
+  detail: Record<string, unknown>;
+  round?: string;
+}
+
+/** The payload's items, the unknown ones dropped (an older or newer server). */
+export function seriesTrophyItems(raw: unknown): TrophyItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((x) => {
+    const kind = x?.kind as TrophyKind;
+    const tier = x?.tier as TrophyTier;
+    if (!TROPHY_KINDS.includes(kind) || !TROPHY_TIERS.includes(tier)) return [];
+    const count = Math.max(0, Math.round(Number(x?.count ?? 0)) || 0);
+    const detail = x?.detail && typeof x.detail === 'object' ? x.detail as Record<string, unknown> : {};
+    return [{ kind, tier, count, detail, round: typeof x?.round === 'string' ? x.round : undefined }];
+  });
+}
+
+/** "Strength Bronze": the trophy's name (kept in English, as in the app) and its metal. */
+function seriesTrophyName(lang: string, item: TrophyItem): string {
+  if (item.kind === 'king') return tPush(lang, 'seriesTrophy.name.king');
+  return tPush(lang, 'seriesTrophy.named', {
+    name: tPush(lang, `seriesTrophy.name.${item.kind}`),
+    tier: tPush(lang, `seriesTrophy.tier.${item.tier}`),
+  });
+}
+
+/**
+ * What earned it, from the numbers award_honours keeps (honours.count/detail),
+ * by the same ladders as _honour_tier: Power's gold and platinum are weeks of
+ * 5+ and 6+ days, the Hive's silver and up are friends who stayed active.
+ * Null when the number is missing, so the push never says "0".
+ */
+function seriesTrophyWhy(lang: string, item: TrophyItem): string | null {
+  const d = (k: string) => Math.max(0, Math.round(Number(item.detail[k] ?? 0)) || 0);
+  const say = (key: string, n: number) =>
+    n > 0 ? tPush(lang, `seriesTrophy.why.${key}`, { count: pluralCount(lang, n, n === 1), n: plain(lang, n) }) : null;
+  switch (item.kind) {
+    case 'on_fire': return say('weeks', item.count);
+    case 'power':
+      if (item.tier === 'platinum') return say('weeks6', d('w6'));
+      if (item.tier === 'gold') return say('weeks5', d('w5'));
+      return say('weeks4', item.count);
+    case 'diamond': return say('rounds', item.count);
+    case 'wings':
+      if (item.tier === 'platinum') return tPush(lang, 'seriesTrophy.why.top');
+      return say('places', item.count);
+    case 'hive':
+      if (item.tier === 'bronze') return say('friends', item.count);
+      return say('active', d('active'));
+    case 'strength': return say('sessions', item.count);
+    default: return null;
+  }
+}
 
 /** The one session that closes a Series gap, as the app says it (SeriesHome). */
 function seriesHow(lang: string, gap: number, kind: 'rival' | 'passed'): string {
@@ -852,6 +919,47 @@ export function buildMessage(
           sound: 'default',
           channelId: 'powr_default_v2',
           priority: 'high',
+        };
+      }
+      case 'series_trophy': {
+        // series_dispatch_pushes, the morning after award_honours: the top
+        // metal of each trophy reached since the last push, top metal first.
+        // The King only ever comes once the round's result is announced.
+        const items = seriesTrophyItems(payload.items);
+        const series = String(payload.series ?? '').trim() || tPush(lang, 'seriesRival.series');
+        const data = { type, route: '/(tabs)/league?focus=series' };
+        const base = { data, sound: 'default' as const, channelId: 'powr_default_v2', priority: 'high' as const };
+        if (items.length === 1 && items[0].kind === 'king') {
+          const round = String(items[0].round ?? '').trim();
+          return {
+            ...base,
+            title: tPush(lang, 'seriesTrophy.titleKing'),
+            body: round
+              ? tPush(lang, 'seriesTrophy.bodyKing', { round, series })
+              : tPush(lang, 'seriesTrophy.bodyKingNoRound', { series }),
+          };
+        }
+        if (items.length === 1) {
+          const why = seriesTrophyWhy(lang, items[0]);
+          return {
+            ...base,
+            title: tPush(lang, 'seriesTrophy.title', { trophy: seriesTrophyName(lang, items[0]) }),
+            body: why
+              ? tPush(lang, 'seriesTrophy.body', { why, series })
+              : tPush(lang, 'seriesTrophy.bodyNoWhy', { series }),
+          };
+        }
+        if (items.length === 0) {
+          return { ...base, title: tPush(lang, 'seriesTrophy.titleNone'), body: tPush(lang, 'seriesTrophy.bodyNoWhy', { series }) };
+        }
+        const names = items.map((i) => seriesTrophyName(lang, i));
+        const list = names.length === 2
+          ? tPush(lang, 'seriesTrophy.listTwo', { a: names[0], b: names[1] })
+          : tPush(lang, 'seriesTrophy.listMany', { rest: names.slice(0, -1).join(', '), last: names[names.length - 1] });
+        return {
+          ...base,
+          title: tPush(lang, 'seriesTrophy.titleMany', { n: plain(lang, items.length) }),
+          body: tPush(lang, 'seriesTrophy.bodyMany', { list, series }),
         };
       }
       case 'event_rank_daily': {
