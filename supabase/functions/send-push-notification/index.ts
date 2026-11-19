@@ -35,7 +35,7 @@ const FEED_EXCLUDED: Set<NotificationType> = new Set([
   // logged: the event it names stays joinable until it locks.
   'event_kickoff', 'event_doors_open',
   // A Series gap or pass is stale within hours; the board is the record.
-  'series_rival', 'series_passed', 'series_moment', 'series_climbed',
+  'series_rival', 'series_passed', 'series_moment', 'series_placement',
 ]);
 
 // Coarse bucket the client renders an icon/accent from.
@@ -64,7 +64,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'series_rival':
     case 'series_passed':
     case 'series_moment':
-    case 'series_climbed':
+    case 'series_placement':
       return 'social';
     // A trophy is a win, not a nudge: it sits with the level-ups.
     case 'series_trophy':
@@ -271,7 +271,7 @@ async function processOne(
     : type === 'series_passed' ? 'series_updates'
     : type === 'series_moment' ? 'series_updates'
     : type === 'series_trophy' ? 'series_updates'
-    : type === 'series_climbed' ? 'series_updates'
+    : type === 'series_placement' ? 'series_updates'
     : type === 'event_rank_daily' ? null
     : type === 'event_gate_reminder' ? null
     // Registrant one-offs: same reasoning as the pulses above.

@@ -1,4 +1,4 @@
--- Series: a push when your place on the board goes up.
+-- Series: your place on the board, at the end of your day.
 --
 -- Applies AFTER 20261118160000_series_bounties.sql (which restates nothing
 -- here). Live prod's series_dispatch_pushes matched 20261118120000 (checked
@@ -6,50 +6,46 @@
 -- changed. Nothing here changes scoring, the board, pacers or who wins what.
 --
 -- Jamie, 18 Nov: "We don't currently have push notifications for placement
--- changes for the series do we. We need them in".
+-- changes for the series do we. We need them in", then "Can we do the
+-- notifications so it's at the end of the day based on the users local time.
+-- Whatever that may be".
 --
--- Going down already had one (series_passed, "<name> just passed you"). Going
--- up had none. This adds it, and lets the passed push say when the place you
--- lost was the lead or a prize place.
---
---   1. series_place_marks: per member and round, the place we last counted
---      from (the board rank, the rank among members only, and the points).
---   2. series_climbed, a new notification type, seeded OFF (switch it on in
+--   1. series_place_marks: per member and round, where you stood when your
+--      own day began (your timezone's midnight): board rank, rank among
+--      members only, points. Re-marked at the first run of each local day.
+--   2. series_placement, a new notification type, seeded OFF (switch it on in
 --      the admin Notifications tab). It rides the member's "Autumn Series"
 --      switch (notification_preferences.series_updates) like the others.
---   3. series_dispatch_pushes (every 15 min) sends it when you're higher on
---      the board than your mark:
---        * only when you passed a member, never just a pacer: the climb is
---          counted on the members-only rank, so a pacer running past you and
---          back again is never news. The push says your board place (#6), the
---          same number the app shows.
---        * only when you banked points since the mark. Someone leaving the
---          board lifts your rank without you doing anything; that isn't news.
---        * 08:00–21:00 the member's own time. A climb from a 06:30 session
---          isn't lost: the mark waits and the push goes at 08:00. Never in
---          Blind Mode (every rank is hidden); a climb in the dark pushes when
---          the ranks come back.
---        * one climb push a day. A bigger one can still follow it the same
---          day: taking #1, or moving into the prize places (the round's place
---          prizes, 3 if none are set, as admin_series_settle counts them).
---          Each of those once a day too.
---        * counts toward the Series' 2-a-day ceiling. Never within an hour of
---          another Series push to the same person (a trophy at 08:00 and a
---          climb in the same run would land together), and never beside a
---          moment push. Those wait, they aren't dropped. On a climb day the
---          08:00 rival push stands aside, as on a moment or trophy day.
---        * a member passing you (your members-only rank gets worse) moves your
---          mark down to where you now are, so passing them back is a climb.
---          While the push is off, or the Series is off for someone, marks
---          follow the board: switching it on never pushes an old climb.
+--   3. series_dispatch_pushes (every 15 min) sends it once, between 20:00 and
+--      21:00 your own time (21:00 is where Series pushes stop for the night),
+--      when your place today moved:
+--        * up: you passed a member and banked points today. "Up to #6 today ·
+--          you started the day at #16". Your first points of the round count
+--          as up (a mark on 0 points is last place).
+--        * down: a member got past you, and you've taken part (points > 0).
+--          "Down to #9 today · you started the day at #7".
+--        * taking or losing #1, and moving into or out of the prize places
+--          (the round's place prizes, 3 if none are set, as
+--          admin_series_settle counts them), say so.
+--        * counted on members only: pacers run all day (Round 01 has ~1,475),
+--          so a place moved only by pacers is never news, either way. The push
+--          gives your board place (#6), the number the app shows; it never
+--          counts places, which pacers would make meaningless ("up 98").
+--        * both your board place and your members-only place must agree on
+--          the direction, so "up from #16" is always true.
+--        * never in Blind Mode (every rank is hidden). Counts toward the
+--          Series' 2-a-day ceiling. Within the hour, never straight after
+--          another Series push or beside a moment push: it waits for a later
+--          run in the hour, and if the hour runs out, that day goes unsaid.
+--        * once it has gone, the "<name> just passed you" push stands aside for
+--          the rest of your day: tonight's push already said where you are.
 --   4. series_passed's payload adds `was` (your place at the last check) and
 --      `places` (how many places win), so the copy can say "You've lost the
---      lead" or "You're out of the prize places". Who it goes to is
---      unchanged.
+--      lead" or "You're out of the prize places". Who it goes to is unchanged.
 --
--- Deploy send-push-notification (the series_climbed copy and the passed
--- variants) BEFORE applying this. While series_climbed is off the dispatcher
--- only keeps the marks.
+-- Deploy send-push-notification (the series_placement copy and the passed
+-- variants) BEFORE applying this. While series_placement is off the
+-- dispatcher only keeps the marks.
 --
 -- Idempotent: safe to run twice.
 
@@ -60,10 +56,12 @@ create table if not exists public.series_place_marks (
   user_id     uuid not null references public.profiles(id) on delete cascade,
   -- The board rank (pacers in), as the app shows it.
   rank        int not null,
-  -- The rank among members only: what a climb is counted on.
+  -- The rank among members only: what a move is counted on.
   member_rank int not null,
-  -- 0: not on the board yet. Any member above you then counts as a climb.
+  -- 0: not on the board yet. Any member below you tonight is then a climb.
   points      int not null,
+  -- The member's own date this mark is the start of.
+  local_day   date not null,
   marked_at   timestamptz not null default now(),
   primary key (round_id, user_id)
 );
@@ -72,12 +70,10 @@ alter table public.series_place_marks enable row level security;
 
 -- ── 2. The type ─────────────────────────────────────────────────────────────
 
--- daily_cap 2: one plain climb and one milestone (#1, the prize places) a day.
--- The dispatcher holds each to once a day; the Series ceiling holds the total.
 insert into public.notification_config (type, category, description, class, daily_cap, enabled) values
-  ('series_climbed', 'social',
-   'Series: you moved up the board. At most one a day, plus one more if you take #1 or move into the prize places. Only when you passed a member (never just a pacer), between 08:00 and 21:00 your time; a climb overnight pushes at 08:00. Never in Blind Mode. Counts toward the Series 2-a-day ceiling.',
-   'social', 2, false)
+  ('series_placement', 'social',
+   'Series: where you finished the day on the board, up or down, against where you started it. Once a day between 20:00 and 21:00 your time. Only when a member passed you or you passed one (never just a pacer); says when you took or lost #1 or the prize places. Never in Blind Mode. Counts toward the Series 2-a-day ceiling.',
+   'social', 1, false)
 on conflict (type) do nothing;
 
 -- ── 3. The dispatcher ───────────────────────────────────────────────────────
@@ -97,10 +93,11 @@ declare
   v_locked  int := 0;
   v_moments int := 0;
   v_trophies int := 0;
-  v_climbed int := 0;
+  v_placed  int := 0;
   v_tseries text;
   v_places  int;
   v_blind   boolean;
+  v_dir     text;
   v_mile    text;
   t         record;
   m         record;
@@ -110,7 +107,7 @@ declare
 begin
   select coalesce(array_agg(type), '{}') into v_on
     from public.notification_config
-   where type in ('series_rival', 'series_passed', 'series_moment', 'series_trophy', 'series_climbed') and enabled;
+   where type in ('series_rival', 'series_passed', 'series_moment', 'series_trophy', 'series_placement') and enabled;
 
   -- Duels run all year, so they close whether or not a round is on.
   if not p_dry_run then
@@ -257,10 +254,11 @@ begin
                       where b.round_id = v_round.id and b.kind = 'blind'
                         and now() >= b.starts_at and now() < b.ends_at);
 
-  -- You climbed (20261118180000): higher among members than your mark, with
-  -- points banked since, and higher on the board too. A mark on 0 points is
-  -- last place: your first points of the round put you on the board. Held for
-  -- the daytime, for Blind Mode to lift and for a quiet hour, not dropped.
+  -- Your day on the board (20261118180000): once, between 20:00 and 21:00
+  -- your own time, where you stand against where your day began. Up when you
+  -- passed a member and banked points today (a mark on 0 points is last
+  -- place); down when a member got past you. Your board place has to agree,
+  -- so "up from #16" is always true. See the header for the rest.
   for r in
     with st as materialized (
       select f.user_id, f.pacer, f.points, row_number() over (order by f.points desc, f.pacer, f.user_id)::int as rank
@@ -273,23 +271,27 @@ begin
        where not st.pacer
     )
     select me.user_id, me.rank, me.member_rank, me.points, pr.timezone,
-           mk.rank as was_rank, mk.points as was_points,
+           mk.rank as was_rank, mk.member_rank as was_member_rank, mk.points as was_points,
            ab.points as above_points,
            (select x.points from st x where x.rank = 2) as second_points
       from mem me
-      join public.series_place_marks mk on mk.round_id = v_round.id and mk.user_id = me.user_id
       join public.profiles pr on pr.id = me.user_id
+      join public.series_place_marks mk on mk.round_id = v_round.id and mk.user_id = me.user_id
+           and mk.local_day = public._series_local_now(pr.timezone)::date
       left join st ab on ab.rank = me.rank - 1
-     where 'series_climbed' = any (v_on)
+     where 'series_placement' = any (v_on)
        and not v_blind
-       and me.points > mk.points
-       and me.member_rank < case when mk.points = 0 then (select count(*) from mem) else mk.member_rank end
-       and (mk.points = 0 or me.rank < mk.rank)
+       and me.points > 0
+       and ((me.points > mk.points
+             and me.member_rank < case when mk.points = 0 then (select count(*) from mem) else mk.member_rank end
+             and (mk.points = 0 or me.rank < mk.rank))
+         or (mk.points > 0 and me.member_rank > mk.member_rank and me.rank > mk.rank))
        and public._series_enabled_for(me.user_id) and not public._series_is_demo(me.user_id)
-       and public._series_local_now(pr.timezone)::time >= '08:00'
+       and public._series_local_now(pr.timezone)::time >= '20:00'
        and public._series_local_now(pr.timezone)::time < '21:00'
        and public._series_pushes_today(me.user_id, pr.timezone) < public._series_push_cap()
-       -- Never within an hour of another Series push to you (this run's too).
+       -- Never straight after another Series push to you (this run's too):
+       -- it waits for a later run in the hour.
        and not exists (select 1 from public.series_push_log pl
                         where pl.user_id = me.user_id and pl.sent_at > now() - interval '1 hour')
        and not exists (select 1 from public.series_moments mm
@@ -299,44 +301,43 @@ begin
                           and now() >= public._series_moment_push_at(mm.starts_at) - interval '15 minutes'
                           and now() < public._series_moment_push_at(mm.starts_at) + interval '30 minutes')
   loop
-    -- Taking #1, or moving into the prize places, is bigger news: it can
-    -- follow the day's climb push. Each kind once a day.
-    v_mile := case when r.rank = 1 then 'lead'
-                   when r.rank <= v_places and (r.was_points = 0 or r.was_rank > v_places) then 'prize' end;
+    v_dir := case when r.was_points > 0 and r.member_rank > r.was_member_rank then 'down' else 'up' end;
+    v_mile := case
+      when v_dir = 'up' and r.rank = 1 then 'lead'
+      when v_dir = 'up' and r.rank <= v_places and (r.was_points = 0 or r.was_rank > v_places) then 'prize'
+      when v_dir = 'down' and r.was_rank = 1 then 'lost_lead'
+      when v_dir = 'down' and r.was_rank <= v_places and r.rank > v_places then 'out_of_prizes'
+    end;
     if p_dry_run then
-      v_climbed := v_climbed + 1;
+      v_placed := v_placed + 1;
       continue;
     end if;
     insert into public.series_push_log (user_id, kind, local_day)
-    values (r.user_id, case when v_mile is null then 'climbed' else 'climbed_top' end,
-            public._series_local_now(r.timezone)::date)
+    values (r.user_id, 'place', public._series_local_now(r.timezone)::date)
     on conflict do nothing;
     if found then
-      v_climbed := v_climbed + 1;
+      v_placed := v_placed + 1;
       v_targets := v_targets || jsonb_build_object(
-        'target_user_id', r.user_id, 'type', 'series_climbed',
+        'target_user_id', r.user_id, 'type', 'series_placement',
         'payload', jsonb_build_object(
+          'dir', v_dir,
           'rank', r.rank,
+          -- Where your day began. Null on your first points of the round.
+          'was', case when r.was_points > 0 then r.was_rank end,
           'milestone', v_mile,
           -- At #1, your lead over #2; else the points to the place above.
           'gap', case when r.rank = 1 then r.points - coalesce(r.second_points, 0)
                       else coalesce(r.above_points, r.points) - r.points end,
           'series', v_series));
     end if;
-    -- Counted from here, pushed or not: a second climb the same day isn't
-    -- saved for tomorrow morning.
-    update public.series_place_marks
-       set rank = r.rank, member_rank = r.member_rank, points = r.points, marked_at = now()
-     where round_id = v_round.id and user_id = r.user_id;
   end loop;
 
-  -- The marks. A new member is marked where they stand. A member passed by a
-  -- member (their members-only rank got worse) is marked where they now are,
-  -- so passing them back is a climb. With the push off, or the Series off for
-  -- them, marks follow the board, so switching it on never pushes an old climb.
+  -- The marks: everyone on the board, where they stand at the first run of
+  -- their own day (just after their midnight), and anyone new where they
+  -- stand when they first appear.
   if not p_dry_run then
-    insert into public.series_place_marks as mk (round_id, user_id, rank, member_rank, points, marked_at)
-    select v_round.id, s.user_id, s.rank, s.member_rank, s.points, now()
+    insert into public.series_place_marks as mk (round_id, user_id, rank, member_rank, points, local_day, marked_at)
+    select v_round.id, s.user_id, s.rank, s.member_rank, s.points, public._series_local_now(pr.timezone)::date, now()
       from (
         select st.user_id, st.points, st.rank, row_number() over (order by st.rank)::int as member_rank
           from (select f.user_id, f.pacer, f.points,
@@ -345,13 +346,11 @@ begin
                  where f.listed) st
          where not st.pacer
       ) s
+      join public.profiles pr on pr.id = s.user_id
     on conflict (round_id, user_id) do update
-      set rank = excluded.rank, member_rank = excluded.member_rank,
-          points = excluded.points, marked_at = excluded.marked_at
-      where excluded.member_rank > mk.member_rank
-         or not ('series_climbed' = any (v_on))
-         or not public._series_enabled_for(excluded.user_id)
-         or public._series_is_demo(excluded.user_id);
+      set rank = excluded.rank, member_rank = excluded.member_rank, points = excluded.points,
+          local_day = excluded.local_day, marked_at = excluded.marked_at
+      where excluded.local_day > mk.local_day;
   end if;
 
   -- A member passed you since the last check. Never a pacer: the strongest
@@ -393,6 +392,10 @@ begin
        and not exists (select 1 from public.series_moments b
                         where b.round_id = v_round.id and b.kind = 'blind'
                           and now() >= b.starts_at and now() < b.ends_at)
+       -- Tonight's placement push already said where you are.
+       and not exists (select 1 from public.series_push_log pl
+                        where pl.user_id = me.user_id and pl.kind = 'place'
+                          and pl.local_day = public._series_local_now(pr.timezone)::date)
   loop
     if p_dry_run then
       v_passed := v_passed + 1;
@@ -416,8 +419,6 @@ begin
   -- (never a pacer). Skipped on a day a moment push is still to come or has
   -- already reached you: on a moment day the moment IS the morning push, so
   -- an overnight moment (pushed at 08:00) never lands beside a rival push.
-  -- The same on a trophy or climb day: a 06:30 session's climb pushes at 08:00
-  -- (it runs first, above) and the rival push stands aside.
   for r in
     with st as materialized (
       select f.user_id, f.pacer, f.points, row_number() over (order by f.points desc, f.pacer, f.user_id)::int as rank
@@ -461,7 +462,7 @@ begin
                           and public._series_local_date(public._series_moment_push_at(mm.starts_at), pr.timezone)
                               = public._series_local_now(pr.timezone)::date)
        and not exists (select 1 from public.series_push_log pl
-                        where pl.user_id = me.user_id and pl.kind in ('moment', 'trophy', 'climbed', 'climbed_top')
+                        where pl.user_id = me.user_id and pl.kind in ('moment', 'trophy')
                           and pl.local_day = public._series_local_now(pr.timezone)::date)
   loop
     if p_dry_run then
@@ -501,7 +502,7 @@ begin
   end if;
 
   return jsonb_build_object('round', v_round.slug, 'passed', v_passed, 'rival', v_rival,
-                            'moments', v_moments, 'trophies', v_trophies, 'climbed', v_climbed,
+                            'moments', v_moments, 'trophies', v_trophies, 'placement', v_placed,
                             'cities_locked', v_locked, 'dry_run', p_dry_run);
 end;
 $$;

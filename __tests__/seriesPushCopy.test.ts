@@ -174,47 +174,73 @@ describe('series_passed, the place you lost', () => {
 });
 
 /**
- * series_climbed (20261118180000): you passed a member and banked points since
- * the place we last counted from. Taking #1 and moving into the prize places
- * have their own lines; the gap turns into the session that closes it, with
- * the rival push's thresholds.
+ * series_placement (20261118180000): once between 20:00 and 21:00 the member's
+ * own time, where they finished the day against where it began. Up past a
+ * member, or down because one passed you; the lead and the prize places have
+ * their own lines. The gap turns into the session that closes it.
  */
-describe('series_climbed', () => {
-    it('gives your new place and the next one up', () => {
-        const msg = buildMessage('series_climbed', { rank: 6, milestone: null, gap: 12, series: 'Autumn Series' }, 'en');
-        expect(msg.title).toBe("You're up to #6");
-        expect(msg.body).toBe("You've climbed the Autumn Series board. #5 is 12 pts ahead. One gym session does it.");
-        expect(msg.data).toMatchObject({ type: 'series_climbed', route: '/(tabs)/league?focus=rival' });
+describe('series_placement', () => {
+    const day = (payload: Record<string, unknown>, lang = 'en') =>
+        buildMessage('series_placement', { series: 'Autumn Series', ...payload }, lang);
+
+    it('up: your place tonight and where you started the day', () => {
+        const msg = day({ dir: 'up', rank: 6, was: 16, gap: 12 });
+        expect(msg.title).toBe('Up to #6 today');
+        expect(msg.body).toBe('You started the day at #16 in the Autumn Series. #5 is 12 pts ahead. One gym session does it.');
+        expect(msg.data).toMatchObject({ type: 'series_placement', route: '/(tabs)/league?focus=rival' });
         expect(msg.priority).toBe('high');
     });
 
-    it('says when you are into the prize places', () => {
-        const msg = buildMessage('series_climbed', { rank: 3, milestone: 'prize', gap: 5, series: 'Autumn Series' }, 'en');
-        expect(msg.title).toBe("You're in the prize places");
-        expect(msg.body).toBe("You're #3 in the Autumn Series. #2 is 5 pts ahead. One run does it.");
+    it('down: the same, with how to get it back', () => {
+        const msg = day({ dir: 'down', rank: 9, was: 7, gap: 6 });
+        expect(msg.title).toBe('Down to #9 today');
+        expect(msg.body).toBe('You started the day at #7 in the Autumn Series. #8 is 6 pts ahead. One run gets it back.');
     });
 
-    it('says when you take the lead, and by how much', () => {
-        const msg = buildMessage('series_climbed', { rank: 1, milestone: 'lead', gap: 20, series: 'Winter Series' }, 'en');
-        expect(msg.title).toBe("You're #1");
-        expect(msg.body).toBe("You've taken the lead in the Winter Series, 20 pts clear of #2. One session today keeps you there.");
-        const level = buildMessage('series_climbed', { rank: 1, milestone: 'lead', gap: 0, series: 'Winter Series' }, 'en');
-        expect(level.body).toBe("You've taken the lead in the Winter Series, level on points with #2. One session today keeps you there.");
+    it('your first points of the round', () => {
+        const msg = day({ dir: 'up', rank: 238, was: null, gap: 2 });
+        expect(msg.title).toBe('Up to #238 today');
+        expect(msg.body).toBe('Your first points in the Autumn Series. #237 is 2 pts ahead. One run does it.');
     });
 
-    it('never says 0 pts to the place above, and falls back to "the Series"', () => {
-        expect(buildMessage('series_climbed', { rank: 4, gap: 0 }, 'en').body)
-            .toBe("You've climbed the Series board. #3 is 1 pts ahead. One run does it.");
-        expect(buildMessage('series_climbed', { rank: 9, gap: 44 }, 'en').body).toContain('About 3 sessions do it.');
+    it('into and out of the prize places', () => {
+        const into = day({ dir: 'up', rank: 3, was: 7, milestone: 'prize', gap: 5 });
+        expect(into.title).toBe('In the prize places: #3');
+        expect(into.body).toBe('You started the day at #7 in the Autumn Series. #2 is 5 pts ahead. One run does it.');
+        const out = day({ dir: 'down', rank: 4, was: 3, milestone: 'out_of_prizes', gap: 18 });
+        expect(out.title).toBe('Out of the prize places: #4');
+        expect(out.body).toBe('You started the day at #3 in the Autumn Series. #3 is 18 pts ahead. One gym session gets it back.');
+    });
+
+    it('taking the lead, by how much or level on points', () => {
+        const lead = day({ dir: 'up', rank: 1, was: 2, milestone: 'lead', gap: 20 });
+        expect(lead.title).toBe("You're #1 tonight");
+        expect(lead.body).toBe('You took the lead in the Autumn Series today, 20 pts clear of #2. One session tomorrow keeps you there.');
+        expect(day({ dir: 'up', rank: 1, was: 2, milestone: 'lead', gap: 0 }).body)
+            .toBe('You took the lead in the Autumn Series today, level on points with #2. One session tomorrow keeps you there.');
+    });
+
+    it('losing the lead', () => {
+        const msg = day({ dir: 'down', rank: 2, was: 1, milestone: 'lost_lead', gap: 34 });
+        expect(msg.title).toBe('You lost the lead today');
+        expect(msg.body).toBe("You're #2 in the Autumn Series, 34 pts behind #1. About 3 sessions get it back.");
+    });
+
+    it('never says 0 pts to the place above, and says "the Series" with no season name', () => {
+        expect(buildMessage('series_placement', { dir: 'up', rank: 4, was: 6, gap: 0 }, 'en').body)
+            .toBe('You started the day at #6 in the Series. #3 is 1 pts ahead. One run does it.');
     });
 
     it('speaks Spanish and French', () => {
-        expect(buildMessage('series_climbed', { rank: 6, gap: 8, series: 'Autumn Series' }, 'es').title).toBe('Subes al n.º 6');
-        expect(buildMessage('series_climbed', { rank: 6, gap: 8, series: 'Autumn Series' }, 'es').body)
-            .toBe('Has escalado en la clasificación de la Autumn Series. El n.º 5 va 8 pts por delante. Con una carrera basta.');
-        expect(buildMessage('series_climbed', { rank: 1, milestone: 'lead', gap: 9, series: 'Autumn Series' }, 'es').title).toBe('Vas en cabeza');
-        expect(buildMessage('series_climbed', { rank: 3, milestone: 'prize', gap: 8, series: 'Autumn Series' }, 'fr').title).toBe('Tu es dans les places primées');
-        expect(buildMessage('series_climbed', { rank: 6, gap: 8, series: 'Autumn Series' }, 'fr').body)
-            .toBe('Tu grimpes au classement Autumn Series. Le n° 5 a 8 pts d’avance. Une course suffit.');
+        expect(day({ dir: 'up', rank: 6, was: 16, gap: 8 }, 'es').title).toBe('Subes al n.º 6 hoy');
+        expect(day({ dir: 'up', rank: 6, was: 16, gap: 8 }, 'es').body)
+            .toBe('Empezaste el día en el n.º 16 de la Autumn Series. El n.º 5 va 8 pts por delante. Con una carrera basta.');
+        expect(day({ dir: 'down', rank: 9, was: 7, gap: 8 }, 'es').title).toBe('Bajas al n.º 9 hoy');
+        expect(day({ dir: 'up', rank: 1, was: 2, milestone: 'lead', gap: 9 }, 'es').title).toBe('Esta noche vas en cabeza');
+        expect(day({ dir: 'down', rank: 9, was: 7, gap: 8 }, 'fr').title).toBe('Tu recules au n° 9 aujourd’hui');
+        expect(day({ dir: 'up', rank: 6, was: 16, gap: 8 }, 'fr').body)
+            .toBe('Tu as commencé la journée n° 16 au classement Autumn Series. Le n° 5 a 8 pts d’avance. Une course suffit.');
+        expect(day({ dir: 'down', rank: 2, was: 1, milestone: 'lost_lead', gap: 8 }, 'fr').title).toBe('Tu n’es plus en tête');
+        expect(day({ dir: 'up', rank: 3, was: 7, milestone: 'prize', gap: 8 }, 'fr').title).toBe('Dans les places primées\u00a0: n° 3');
     });
 });

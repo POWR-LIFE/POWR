@@ -90,9 +90,9 @@ export type NotificationType =
   // A new trophy or metal (award_honours overnight → series_dispatch_pushes,
   // 08:00–21:00 the member's time): every metal since the last push.
   | 'series_trophy'
-  // You moved up the board (series_dispatch_pushes): your new place, or the
-  // lead, or into the prize places. The other half of series_passed.
-  | 'series_climbed';
+  // Where you finished the day on the board, up or down (series_dispatch_pushes,
+  // once between 20:00 and 21:00 the member's own time).
+  | 'series_placement';
 
 /** One push, ready for deliverVisiblePush (which adds the per-device `to`). */
 export interface PushMessage {
@@ -135,7 +135,8 @@ export const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   // already be undone.
   series_rival:            6 * 60 * 60,
   series_passed:           3 * 60 * 60,
-  series_climbed:          3 * 60 * 60,
+  // "Tonight" is wrong by the morning.
+  series_placement:        3 * 60 * 60,
   // A Power Hour is over in an hour; nothing a moment says is news after two.
   series_moment:           2 * 60 * 60,
 };
@@ -919,42 +920,53 @@ export function buildMessage(
           priority: 'high',
         };
       }
-      case 'series_climbed': {
-        // series_dispatch_pushes: you passed a member and banked points since
-        // the place we last counted from. milestone 'lead' (you took #1) or
-        // 'prize' (into the places that win); else a plain climb. The gap is to
-        // the place above, or at #1 your lead over #2 (0: level on points).
+      case 'series_placement': {
+        // series_dispatch_pushes, once between 20:00 and 21:00 the member's own
+        // time: where they finished the day against where it began. dir 'up' or
+        // 'down'; milestone 'lead', 'prize', 'lost_lead' or 'out_of_prizes';
+        // `was` is null on your first points of the round. The gap is to the
+        // place above, or at #1 your lead over #2 (0: level on points).
         const rank = Math.round(Number(payload.rank));
+        const was = Math.round(Number(payload.was));
         const series = String(payload.series ?? '').trim() || tPush(lang, 'seriesRival.series');
         const raw = Math.round(Number(payload.gap ?? 0));
+        const down = payload.dir === 'down';
+        const mile = typeof payload.milestone === 'string' ? payload.milestone : null;
         const base = {
           data: { type, route: '/(tabs)/league?focus=rival' },
           sound: 'default' as const,
           channelId: 'powr_default_v2',
           priority: 'high' as const,
         };
-        if (rank === 1 || payload.milestone === 'lead') {
+        if (!down && (rank === 1 || mile === 'lead')) {
           const lead = Number.isFinite(raw) ? Math.max(0, raw) : 0;
           return {
             ...base,
-            title: tPush(lang, 'seriesClimbed.titleLead'),
+            title: tPush(lang, 'seriesPlacement.titleLead'),
             body: lead > 0
-              ? tPush(lang, 'seriesClimbed.bodyLead', { series, gap: grouped(lang, lead) })
-              : tPush(lang, 'seriesClimbed.bodyLeadLevel', { series }),
+              ? tPush(lang, 'seriesPlacement.bodyLead', { series, gap: grouped(lang, lead) })
+              : tPush(lang, 'seriesPlacement.bodyLeadLevel', { series }),
           };
         }
         const place = Number.isFinite(rank) && rank > 1 ? rank : null;
+        const from = Number.isFinite(was) && was > 0 ? was : null;
         const gap = Math.max(1, Number.isFinite(raw) ? raw : 1);
         const vars = {
           series,
           rank: place ? `${place}` : '?',
           above: place ? `${place - 1}` : '?',
+          was: from ? `${from}` : '?',
           gap: grouped(lang, gap),
-          how: seriesHow(lang, gap, 'rival'),
+          how: seriesHow(lang, gap, down ? 'passed' : 'rival'),
         };
-        return payload.milestone === 'prize'
-          ? { ...base, title: tPush(lang, 'seriesClimbed.titlePrize'), body: tPush(lang, 'seriesClimbed.bodyPrize', vars) }
-          : { ...base, title: tPush(lang, 'seriesClimbed.title', vars), body: tPush(lang, 'seriesClimbed.body', vars) };
+        if (down && mile === 'lost_lead') {
+          return { ...base, title: tPush(lang, 'seriesPlacement.titleLostLead'), body: tPush(lang, 'seriesPlacement.bodyLostLead', vars) };
+        }
+        const title = down
+          ? (mile === 'out_of_prizes' ? 'seriesPlacement.titleOut' : 'seriesPlacement.titleDown')
+          : (mile === 'prize' ? 'seriesPlacement.titlePrize' : 'seriesPlacement.titleUp');
+        const body = from ? 'seriesPlacement.bodyFrom' : down ? 'seriesPlacement.bodyNow' : 'seriesPlacement.bodyFirst';
+        return { ...base, title: tPush(lang, title, vars), body: tPush(lang, body, vars) };
       }
       case 'series_moment': {
         // series_dispatch_pushes, once, when a moment starts. The name and line

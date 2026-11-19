@@ -337,15 +337,22 @@ const push: Catalog = {
     howGym: "One gym session gets it back.",
     howMany: "About {{n}} sessions get it back.",
   },
-  // series_climbed: you moved up the board. The "how" line is seriesRival's.
-  seriesClimbed: {
-    title: "You're up to #{{rank}}",
-    body: "You've climbed the {{series}} board. #{{above}} is {{gap}} pts ahead. {{how}}",
-    titlePrize: "You're in the prize places",
-    bodyPrize: "You're #{{rank}} in the {{series}}. #{{above}} is {{gap}} pts ahead. {{how}}",
-    titleLead: "You're #1",
-    bodyLead: "You've taken the lead in the {{series}}, {{gap}} pts clear of #2. One session today keeps you there.",
-    bodyLeadLevel: "You've taken the lead in the {{series}}, level on points with #2. One session today keeps you there.",
+  // series_placement: where you finished the day on the board, against where
+  // you started it (20:00–21:00 your time). The "how" line is seriesRival's on
+  // the way up and seriesPassed's on the way down.
+  seriesPlacement: {
+    titleUp: "Up to #{{rank}} today",
+    titleDown: "Down to #{{rank}} today",
+    titlePrize: "In the prize places: #{{rank}}",
+    titleOut: "Out of the prize places: #{{rank}}",
+    titleLead: "You're #1 tonight",
+    titleLostLead: "You lost the lead today",
+    bodyFrom: "You started the day at #{{was}} in the {{series}}. #{{above}} is {{gap}} pts ahead. {{how}}",
+    bodyFirst: "Your first points in the {{series}}. #{{above}} is {{gap}} pts ahead. {{how}}",
+    bodyNow: "You're #{{rank}} in the {{series}}. #{{above}} is {{gap}} pts ahead. {{how}}",
+    bodyLead: "You took the lead in the {{series}} today, {{gap}} pts clear of #2. One session tomorrow keeps you there.",
+    bodyLeadLevel: "You took the lead in the {{series}} today, level on points with #2. One session tomorrow keeps you there.",
+    bodyLostLead: "You're #{{rank}} in the {{series}}, {{gap}} pts behind #{{above}}. {{how}}",
   },
   seriesMoment: {
     title: "It’s on",
