@@ -17,6 +17,7 @@ import { withNetworkTimeout } from '@/lib/networkTimeout';
 // headless context. The value import stays dynamic, below, for that reason.
 import type { CheckInNotifyResult } from '@/lib/notifications';
 import type { CheckInFix } from '@/lib/gymVisits';
+import type { LocationExitVerdict } from '@/lib/health/gymPresence';
 import { supabase } from '@/lib/supabase';
 import { getGymDwellMinutes, getGymUpgradeMinutes, getLocationCloseMode, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
 
@@ -1149,7 +1150,8 @@ function logRegionEvent(
     | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'visit_stream_ensured'
     | 'exit_noise_suppressed' | 'visit_close_deferred' | 'check_in_announced'
     | 'visit_open_attempt' | 'visit_open_result' | 'wake_step_hung' | 'stream_first_tick'
-    | 'check_in_banner' | 'check_in_open_deferred' | 'session_expired' | 'late_open_gave_up',
+    | 'check_in_banner' | 'check_in_open_deferred' | 'session_expired' | 'late_open_gave_up'
+    | 'location_exit',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -5305,18 +5307,58 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords, fixTim
     // assume inside so we never drop a session on incomplete data. EXIT keeps a
     // small hysteresis (not the entry radius) so GPS noise can't flap a real
     // session out early — entry detection itself stays exactly at the radius.
-    let stillInside = true;
+    //
+    // ⚠ ONE FIX IS NOT A DEPARTURE. This branch used to close on the first fix
+    // past radius + 50 m — accuracy up to 99 m, any session age, and nothing
+    // logged. Field 2026-11-10 → 11-20: ~30% of visits closed inside 60 s of
+    // check-in with the last confirmed fix still inside the fence. The decision
+    // now lives in locationExitVerdict (grace + bounded accuracy + corroboration,
+    // the same rules the sweep backstop and the wake reconciler already used).
+    let verdict: LocationExitVerdict = 'inside';
     if (active.latitude != null && active.longitude != null && active.radius != null) {
       const dist = haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude);
-      stillInside = dist <= active.radius + LOCATION_EXIT_HYSTERESIS_M;
+      const prior = Number((await AsyncStorage.getItem(EXIT_STREAK_KEY).catch(() => null)) ?? 0);
+      const { locationExitVerdict } = await import('@/lib/health/gymPresence');
+      const v = locationExitVerdict({
+        distanceM:     dist,
+        radiusM:       active.radius,
+        hysteresisM:   LOCATION_EXIT_HYSTERESIS_M,
+        accuracyM:     coords.accuracy ?? null,
+        sessionAgeMs:  Date.now() - active.entryTimestamp,
+        priorReadings: Number.isFinite(prior) ? prior : 0,
+      });
+      verdict = v.verdict;
+      if (v.readings > 0) {
+        await AsyncStorage.setItem(EXIT_STREAK_KEY, String(v.readings)).catch(() => {});
+      } else {
+        await AsyncStorage.removeItem(EXIT_STREAK_KEY).catch(() => {});
+      }
+      if (verdict !== 'inside') {
+        // Never silent again: every outside reading, and whether it closed.
+        logRegionEvent(active.regionId ?? 'stream', 'location_exit', {
+          verdict,
+          distance_m:  Math.round(dist),
+          bound_m:     Math.round(v.boundM),
+          acc_m:       coords.accuracy != null ? Math.round(coords.accuracy) : null,
+          decisive:    v.decisive,
+          readings:    v.readings,
+          visit_age_s: Math.round((Date.now() - active.entryTimestamp) / 1000),
+          visit:       active.visitId ?? null,
+        });
+      }
     }
-    if (stillInside) {
+    if (verdict === 'exit') {
+      // Location-detected EXIT — the native exit event may never arrive when closed.
+      await finalizeActiveGeofence();
+    } else if (verdict === 'inside') {
       await heartbeatVisitStream(active, coords, fixTimestamp);
       await advanceActiveSession(active);
       await selfPollIfWakeStarved(active, coords, fixTimestamp);
     } else {
-      // Location-detected EXIT — the native exit event may never arrive when closed.
-      await finalizeActiveGeofence();
+      // Outside but not proven gone: keep the session alive on time (dwell is
+      // time-based), but do NOT heartbeat — an outside fix must never stamp
+      // presence or bill minutes.
+      await advanceActiveSession(active);
     }
     return;
   }
