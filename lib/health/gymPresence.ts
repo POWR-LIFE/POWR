@@ -148,6 +148,73 @@ export function exitBoundM(radiusM: number, hysteresisM: number, accuracyM: numb
 export const EXIT_READINGS_REQUIRED = 2;
 
 /**
+ * No stream fix may END a visit this soon after check-in.
+ *
+ * Field 2026-11-10 → 11-20: 48 visits closed as `exit` inside 60 s of check-in,
+ * ~30% of all visits. 45 of them had a last confirmed fix INSIDE the radius and
+ * 47 had no OS exit at all; 26c0407c (2026-11-20) was closed one second after the
+ * device had itself refuted the OS exit at 15 m. The killer was the dwell stream's
+ * location-exit branch: one fix past radius + 50 m, accuracy up to 99 m, with no
+ * age grace — the exact noise the first minute after an enter produces while the
+ * fused provider settles. Every other exit path already had a grace
+ * (RECONCILE_MIN_SESSION_AGE_MS) or corroboration (the sweep backstop).
+ *
+ * A genuine walk-by inside this window simply stays open a little longer; it is
+ * far under the dwell threshold, so nothing is credited for it.
+ */
+export const LOCATION_EXIT_GRACE_MS = 3 * 60 * 1000;
+
+/**
+ * Accuracy at or under which ONE outside fix is decisive by itself. Anything
+ * vaguer (or missing) must be corroborated by EXIT_READINGS_REQUIRED in a row.
+ * 35 m is the largest fence radius in use: a fix this good placing the user past
+ * radius + hysteresis + accuracy is not GPS wobble.
+ */
+export const DECISIVE_EXIT_ACCURACY_M = 35;
+
+export type LocationExitVerdict =
+  /** Within the (bounded) exit test — stay open, reset the streak. */
+  | 'inside'
+  /** Outside, but the visit is too young for a fix to end it. */
+  | 'grace'
+  /** Outside, not yet corroborated — count it, keep the visit open. */
+  | 'pending'
+  /** Outside and decisive or corroborated — close. */
+  | 'exit';
+
+export interface LocationExitInput {
+  distanceM: number;
+  radiusM: number;
+  hysteresisM: number;
+  accuracyM: number | null;
+  sessionAgeMs: number;
+  /** Consecutive outside readings already banked before this one. */
+  priorReadings: number;
+}
+
+/**
+ * The dwell stream's exit decision, as a pure function. Returns the verdict and
+ * the streak to persist (0 when inside; unchanged during grace so a pre-grace
+ * reading can never corroborate a post-grace one).
+ */
+export function locationExitVerdict(i: LocationExitInput): {
+  verdict: LocationExitVerdict;
+  readings: number;
+  boundM: number;
+  decisive: boolean;
+} {
+  const boundM = exitBoundM(i.radiusM, i.hysteresisM, i.accuracyM);
+  const decisive = i.accuracyM != null && i.accuracyM <= DECISIVE_EXIT_ACCURACY_M;
+  if (!(i.distanceM > boundM)) return { verdict: 'inside', readings: 0, boundM, decisive };
+  if (!(i.sessionAgeMs >= LOCATION_EXIT_GRACE_MS)) {
+    return { verdict: 'grace', readings: 0, boundM, decisive };
+  }
+  const readings = Math.max(0, i.priorReadings) + 1;
+  const verdict = decisive || readings >= EXIT_READINGS_REQUIRED ? 'exit' : 'pending';
+  return { verdict, readings, boundM, decisive };
+}
+
+/**
  * How old a fix may be and still justify BILLING the time up to now.
  *
  * The dwell stream delivers roughly every 60 s while checked in, so two minutes

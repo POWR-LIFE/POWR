@@ -364,3 +364,64 @@ describe('fixCreditsPresence — strict to credit, loose to close', () => {
     expect(fixCreditsPresence({ fixTrusted: true, distanceM: 70, radiusM: RADIUS, accuracyM: 0 })).toBe(false);
   });
 });
+
+// ─── locationExitVerdict — the dwell stream's exit decision ─────────────────
+//
+// Field 2026-11-10 → 11-20: ~30% of visits were closed inside 60 s of check-in
+// by ONE stream fix past radius + 50 m, with the last confirmed fix still inside.
+describe('locationExitVerdict', () => {
+  const {
+    locationExitVerdict,
+    LOCATION_EXIT_GRACE_MS,
+    DECISIVE_EXIT_ACCURACY_M,
+    EXIT_READINGS_REQUIRED,
+  } = jest.requireActual('@/lib/health/gymPresence') as typeof import('@/lib/health/gymPresence');
+
+  const base = { radiusM: 25, hysteresisM: 50, accuracyM: 20, sessionAgeMs: 10 * MIN, priorReadings: 0 };
+
+  it('stays inside within the bounded exit test, and resets the streak', () => {
+    const v = locationExitVerdict({ ...base, distanceM: 60, priorReadings: 1 });
+    expect(v.verdict).toBe('inside');
+    expect(v.readings).toBe(0);
+  });
+
+  it('never closes a visit inside the post-check-in grace, even on a precise far fix', () => {
+    // 26c0407c / c03141c8 shape: 10 s old, one wild fix.
+    const v = locationExitVerdict({ ...base, distanceM: 400, accuracyM: 10, sessionAgeMs: 10_000 });
+    expect(v.verdict).toBe('grace');
+    expect(v.readings).toBe(0);
+  });
+
+  it('a grace-window reading cannot corroborate a post-grace one', () => {
+    const inGrace = locationExitVerdict({ ...base, distanceM: 200, accuracyM: 80, sessionAgeMs: LOCATION_EXIT_GRACE_MS - 1 });
+    const after = locationExitVerdict({ ...base, distanceM: 200, accuracyM: 80, sessionAgeMs: LOCATION_EXIT_GRACE_MS, priorReadings: inGrace.readings });
+    expect(after.verdict).toBe('pending');
+  });
+
+  it('one coarse outside fix is pending, not an exit', () => {
+    const v = locationExitVerdict({ ...base, distanceM: 150, accuracyM: 80 });
+    expect(v.verdict).toBe('pending');
+    expect(v.readings).toBe(1);
+  });
+
+  it('a missing accuracy is never decisive on its own', () => {
+    expect(locationExitVerdict({ ...base, distanceM: 500, accuracyM: null }).verdict).toBe('pending');
+  });
+
+  it('closes on corroborated coarse readings', () => {
+    const v = locationExitVerdict({ ...base, distanceM: 150, accuracyM: 80, priorReadings: EXIT_READINGS_REQUIRED - 1 });
+    expect(v.verdict).toBe('exit');
+  });
+
+  it('closes on one decisive fix past the grace', () => {
+    const v = locationExitVerdict({ ...base, distanceM: 200, accuracyM: DECISIVE_EXIT_ACCURACY_M });
+    expect(v.verdict).toBe('exit');
+    expect(v.decisive).toBe(true);
+  });
+
+  it('exit is always reachable — a vague fix far away still closes once corroborated', () => {
+    const v = locationExitVerdict({ ...base, distanceM: 2000, accuracyM: 900, priorReadings: 1 });
+    expect(v.boundM).toBe(25 + 50 + 30);
+    expect(v.verdict).toBe('exit');
+  });
+});
