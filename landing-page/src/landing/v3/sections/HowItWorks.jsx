@@ -1,28 +1,32 @@
+import { useEffect, useRef, useState } from 'react';
+import { useInView } from 'framer-motion';
 import { pg, w } from '../../theme';
 import { useCompact } from '../../stages/shared';
 import { storageImage } from '../../../lib/storage';
 import { DEMO_GYM, WEARABLES } from '../data';
-import { CARD, Check, Head, Pts, Reveal, Section } from '../ui';
+import { CARD, Check, CountUp, DrawLine, Head, Item, Pts, Section, Stagger } from '../ui';
 
 /**
  * 02 — The plan. Three moves, each with the real app surface that does it.
- * Static cards that reveal once — this is the explainer, it has to be
- * skimmable in five seconds, not scrubbed for thirty.
+ * The cards converge — left, below, right — along a gold thread that draws
+ * itself behind them, and each surface wakes up as it lands: the session
+ * timer ticks, the receipt totals itself, the code card catches the light.
+ * Still skimmable in five seconds; the motion is the explanation, not a show.
  */
 const STEPS = [
   {
-    n: '01', title: 'Show up.',
-    body: 'Walk into any partner gym and the session starts on its own — no check-in button, no QR code. Runs, rides, swims, sleep and steps arrive from the wearable you already own.',
+    n: '01', title: 'Show up.', from: 'left',
+    body: 'Walk into any partner gym and the session starts on its own — no check-in button, no QR code. Runs, rides, swims, sleep and steps arrive through Apple Health or Health Connect, from the watch, ring or app you already own.',
     demo: <SessionCard />,
     foot: <WearableRow />,
   },
   {
-    n: '02', title: 'Get verified. Get paid.',
-    body: 'Every session is checked — where you were, for how long, what your device recorded — and the points land without you touching anything. Keep a streak and your workouts multiply.',
+    n: '02', title: 'Get verified. Get paid.', from: 'up',
+    body: 'Every session is checked — where you were, for how long, what your device recorded — and the points land without you touching anything. Keep a streak and a gym session pays up to three times over.',
     demo: <Receipt />,
   },
   {
-    n: '03', title: 'Spend it.',
+    n: '03', title: 'Spend it.', from: 'right',
     body: 'Points are a currency at the checkout of brands that respect the work. Redeem in a tap; the code lands in your wallet, ready when you are.',
     demo: <CodeCard />,
   },
@@ -37,9 +41,11 @@ export default function HowItWorks() {
         title="Move. Get verified. Earn. Spend."
         lede="POWR recognises what you already do. Nothing to log, nothing to remember — the app watches the door, your wearable watches the rest."
       />
-      <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : 'repeat(3, 1fr)', gap: compact ? 18 : 22 }}>
-        {STEPS.map((s, i) => (
-          <Reveal key={s.n} delay={compact ? 0 : i * 0.12} amount={0.2}>
+      <Stagger gap={0.14} amount={0.15} style={{ position: 'relative', display: 'grid', gridTemplateColumns: compact ? '1fr' : 'repeat(3, 1fr)', gap: compact ? 18 : 22 }}>
+        {/* The thread the three moves hang on — visible in the gaps between cards */}
+        {!compact && <DrawLine soft style={{ position: 'absolute', left: '-4%', right: '-4%', top: 52, width: 'auto', zIndex: 0 }} duration={1.8} delay={0.2} />}
+        {STEPS.map((s) => (
+          <Item key={s.n} from={compact ? 'up' : s.from} style={{ position: 'relative', zIndex: 1 }}>
             <article style={{ ...CARD, padding: 'clamp(22px, 2.2vw, 30px)', height: '100%', display: 'flex', flexDirection: 'column', gap: 18 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
                 <span style={{ color: pg.accent, fontSize: 12, fontWeight: w.semiBold, letterSpacing: 3 }}>{s.n}</span>
@@ -49,9 +55,9 @@ export default function HowItWorks() {
               <div style={{ paddingTop: 8 }}>{s.demo}</div>
               {s.foot}
             </article>
-          </Reveal>
+          </Item>
         ))}
-      </div>
+      </Stagger>
     </Section>
   );
 }
@@ -63,9 +69,23 @@ const APP_CARD = {
 };
 const GREEN = '#00CC66';
 
+/* The session clock, running once the card is on screen */
+function useElapsed(start) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, amount: 0.5 });
+  const [s, setS] = useState(start);
+  useEffect(() => {
+    if (!inView) return undefined;
+    const t = setInterval(() => setS((v) => v + 1), 1000);
+    return () => clearInterval(t);
+  }, [inView]);
+  return [ref, `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`];
+}
+
 function SessionCard() {
+  const [ref, elapsed] = useElapsed(52 * 60 + 14);
   return (
-    <div style={{ ...APP_CARD, padding: 16 }}>
+    <div ref={ref} style={{ ...APP_CARD, padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ width: 40, height: 40, borderRadius: 12, background: '#fff', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
           <img src={storageImage(DEMO_GYM.logo, 96)} alt="" width={40} height={40} style={{ width: 30, height: 30, objectFit: 'contain' }} />
@@ -73,12 +93,12 @@ function SessionCard() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: w.semiBold, color: pg.text }}>ONE LDN</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: GREEN, boxShadow: `0 0 8px ${GREEN}` }} />
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: GREEN, boxShadow: `0 0 8px ${GREEN}`, animation: 'powrBreathe 2.2s ease-in-out infinite' }} />
             <span style={{ fontSize: 9.5, letterSpacing: 2, color: GREEN, fontWeight: w.semiBold }}>SESSION ACTIVE</span>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 26, fontWeight: w.extraLight, letterSpacing: -0.8, color: pg.text, lineHeight: 1 }}>52:14</div>
+          <div style={{ fontSize: 26, fontWeight: w.extraLight, letterSpacing: -0.8, color: pg.text, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{elapsed}</div>
           <div style={{ fontSize: 9, letterSpacing: 2, color: pg.textMuted, marginTop: 4 }}>ELAPSED</div>
         </div>
       </div>
@@ -95,42 +115,41 @@ function SessionCard() {
 function WearableRow() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', paddingTop: 4 }}>
-      <span style={{ fontSize: 10, letterSpacing: 2, color: pg.textMuted, fontWeight: w.semiBold }}>ALSO FROM</span>
-      {WEARABLES.map((wb) => (
+      <span style={{ fontSize: 10, letterSpacing: 2, color: pg.textMuted, fontWeight: w.semiBold }}>APPLE HEALTH · HEALTH CONNECT</span>
+      {WEARABLES.filter((wb) => wb.id !== 'apple-health').map((wb) => (
         <img key={wb.id} src={`/wearables/${wb.id}.png`} alt={wb.name} title={wb.name} height={14} style={{ height: 14, width: 'auto', opacity: 0.6 }} />
       ))}
-      <span style={{ fontSize: 11, color: pg.textMuted }}>+15 more</span>
     </div>
   );
 }
 
 const ROWS = [
-  { icon: '▮', label: 'Gym', detail: 'ONE LDN · 52 min', pts: 20, color: '#E8D200' },
-  { icon: '▮', label: 'Run', detail: '5.2 km · 26:40', pts: 8, color: '#FF9944' },
-  { icon: '▮', label: 'Sleep', detail: '7h 42m', pts: 4, color: '#6366F1' },
-  { icon: '▮', label: 'Streak ×1.5', detail: '12 days · workouts', pts: 14, color: '#E8D200', bonus: true },
+  { label: 'Gym', detail: 'ONE LDN · 52 min', pts: 20, color: '#E8D200' },
+  { label: 'Run', detail: '5.2 km · 26:40', pts: 8, color: '#FF9944' },
+  { label: 'Sleep', detail: '7h 42m', pts: 4, color: '#6366F1' },
+  { label: 'Streak ×1.5', detail: '5 days · gym +10, run +2', pts: 12, color: '#E8D200', bonus: true },
 ];
 
 function Receipt() {
   return (
-    <div style={{ ...APP_CARD, padding: '6px 16px 14px' }}>
+    <Stagger gap={0.12} delay={0.3} amount={0.5} style={{ ...APP_CARD, padding: '6px 16px 14px' }}>
       {ROWS.map((r) => (
-        <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <Item key={r.label} from="left" dist={0.4} duration={0.6} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: r.color, boxShadow: `0 0 10px ${r.color}55`, flexShrink: 0 }} />
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ fontSize: 13.5, color: pg.text, fontWeight: w.medium }}>{r.label}</span>
             <span style={{ fontSize: 12, color: pg.textMuted, marginLeft: 8 }}>{r.detail}</span>
           </span>
           <span style={{ fontSize: 14, fontWeight: w.semiBold, color: r.bonus ? pg.accent : pg.text, letterSpacing: -0.2 }}>+{r.pts}</span>
-        </div>
+        </Item>
       ))}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', paddingTop: 12 }}>
+      <Item from="up" dist={0.4} duration={0.6} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', paddingTop: 12 }}>
         <span style={{ fontSize: 10, letterSpacing: 2.4, color: pg.textMuted, fontWeight: w.semiBold }}>TODAY</span>
-        <span style={{ fontSize: 30, fontWeight: w.extraLight, color: pg.accent, letterSpacing: -1, lineHeight: 1 }}>
-          +46 <span style={{ fontSize: 11, letterSpacing: 1.5, fontWeight: w.semiBold, opacity: 0.8 }}>PTS</span>
+        <span style={{ fontSize: 30, fontWeight: w.extraLight, color: pg.accent, letterSpacing: -1, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          <CountUp to={44} prefix="+" duration={1600} /> <span style={{ fontSize: 11, letterSpacing: 1.5, fontWeight: w.semiBold, opacity: 0.8 }}>PTS</span>
         </span>
-      </div>
-    </div>
+      </Item>
+    </Stagger>
   );
 }
 
@@ -140,6 +159,8 @@ function CodeCard() {
   return (
     <div style={{ ...APP_CARD, padding: 16, position: 'relative', overflow: 'hidden' }}>
       <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'radial-gradient(120% 90% at 100% 0%, rgba(144,0,254,0.22), transparent 55%)', pointerEvents: 'none' }} />
+      {/* The light that sweeps a freshly minted code */}
+      <div aria-hidden style={{ position: 'absolute', top: -20, bottom: -20, left: 0, width: '34%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)', animation: 'powrSheen 7s ease-in-out 1.4s infinite', pointerEvents: 'none' }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ width: 36, height: 36, borderRadius: 10, background: '#111', border: '1px solid rgba(255,255,255,0.1)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>

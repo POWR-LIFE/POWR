@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { pg, w } from '../../theme';
 import { CHAINS, searchGyms } from '../data';
-import { CARD, Check, Head, Reveal, Search, Section, fmt } from '../ui';
+import { CARD, Check, Head, Item, Reveal, Search, Section, Stagger, fmt } from '../ui';
 
 /**
  * 04 — Is your gym on POWR? A live search over the partners table. The one
- * question every visitor actually has, answered before they download.
+ * question every visitor actually has, answered before they download. The
+ * search bar settles in from a touch smaller; the chains cascade under it.
  */
 export default function GymFinder({ stats }) {
   const [q, setQ] = useState('');
@@ -32,46 +33,49 @@ export default function GymFinder({ stats }) {
         title="Is your gym on POWR?"
         lede={`${fmt(stats.partners)} partner gyms across the UK — chains and independents. Type yours.`}
       />
-      <Reveal amount={0.3} style={{ maxWidth: 680, margin: '0 auto' }}>
-        <label
-          style={{
-            ...CARD, borderRadius: 999, display: 'flex', alignItems: 'center', gap: 12, padding: '6px 8px 6px 20px',
-            borderColor: q ? 'rgba(232,210,0,0.45)' : 'rgba(255,255,255,0.12)', transition: 'border-color 0.3s',
-            boxShadow: q ? '0 0 0 4px rgba(232,210,0,0.06)' : 'none',
-          }}
-        >
-          <Search />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search a gym, studio or chain…"
-            autoComplete="off"
-            aria-label="Search partner gyms"
+      <div style={{ maxWidth: 680, margin: '0 auto' }}>
+        <Reveal from="up" scale={0.94} amount={0.3}>
+          <label
             style={{
-              flex: 1, background: 'transparent', border: 0, outline: 'none', color: pg.text, fontSize: 17, fontWeight: w.light,
-              fontFamily: 'inherit', padding: '12px 0', minWidth: 0,
+              ...CARD, borderRadius: 999, display: 'flex', alignItems: 'center', gap: 12, padding: '6px 8px 6px 20px',
+              borderColor: q ? 'rgba(232,210,0,0.45)' : 'rgba(255,255,255,0.12)', transition: 'border-color 0.3s, box-shadow 0.3s',
+              boxShadow: q ? '0 0 0 4px rgba(232,210,0,0.06)' : 'none',
             }}
-          />
-          <span style={{ fontSize: 11, color: pg.textMuted, padding: '0 12px', whiteSpace: 'nowrap' }}>{busy ? 'searching…' : rows ? `${rows.length} found` : ''}</span>
-        </label>
+          >
+            <Search />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search a gym, studio or chain…"
+              autoComplete="off"
+              aria-label="Search partner gyms"
+              style={{
+                flex: 1, background: 'transparent', border: 0, outline: 'none', color: pg.text, fontSize: 17, fontWeight: w.light,
+                fontFamily: 'inherit', padding: '12px 0', minWidth: 0,
+              }}
+            />
+            <span style={{ fontSize: 11, color: pg.textMuted, padding: '0 12px', whiteSpace: 'nowrap' }}>{busy ? 'searching…' : rows ? `${rows.length} found` : ''}</span>
+          </label>
+        </Reveal>
 
         <div style={{ marginTop: 14, minHeight: 120 }}>
           {rows === null && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            <Stagger gap={0.05} delay={0.3} amount={0.3} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
               {CHAINS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setQ(c)}
-                  style={{
-                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: pg.textSec, borderRadius: 999,
-                    padding: '8px 14px', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', fontWeight: w.light,
-                  }}
-                >
-                  {c}
-                </button>
+                <Item key={c} from="up" dist={0.4} scale={0.9} duration={0.6}>
+                  <button
+                    type="button"
+                    onClick={() => setQ(c)}
+                    style={{
+                      background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: pg.textSec, borderRadius: 999,
+                      padding: '8px 14px', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', fontWeight: w.light,
+                    }}
+                  >
+                    {c}
+                  </button>
+                </Item>
               ))}
-            </div>
+            </Stagger>
           )}
           {rows && rows.length > 0 && (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, ...CARD, borderRadius: 18, overflow: 'hidden' }}>
@@ -104,10 +108,10 @@ export default function GymFinder({ stats }) {
             </div>
           )}
         </div>
-        <div style={{ marginTop: 22, textAlign: 'center', fontSize: 12, color: pg.textMuted, lineHeight: 1.6 }}>
-          Gym sessions are verified by presence: your phone inside the gym's geofence for the whole session. Thirty minutes pays 15, forty pays 20.
-        </div>
-      </Reveal>
+        <Reveal from="up" dist={0.5} delay={0.5} amount={0.5} style={{ marginTop: 22, textAlign: 'center', fontSize: 12, color: pg.textMuted, lineHeight: 1.6 }}>
+          Gym sessions are verified by presence: your phone inside the gym&apos;s geofence for the whole session. Thirty minutes pays 15, forty pays 20.
+        </Reveal>
+      </div>
     </Section>
   );
 }

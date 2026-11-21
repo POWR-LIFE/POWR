@@ -1,12 +1,13 @@
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { pg, w } from '../../theme';
 import { useCompact } from '../../stages/shared';
-import { CARD, EASE, Eyebrow, Lede, Reveal, Section, fmt } from '../ui';
+import { CARD, EASE, Eyebrow, GhostNumeral, Lede, Parallax, Reveal, Section, fmt } from '../ui';
 
 /**
  * 01 — The claim. The master positioning line, set as four lines that land
- * one after another, beside the proof of it: every partner gym in the UK
- * as a gold dot. The country draws itself out of the data.
+ * from the left one after another, beside the proof of it: every partner
+ * gym in the UK as a gold dot, arriving from the right and drifting slower
+ * than the page. The country draws itself out of the data.
  */
 const LINES = [
   { text: 'Strava owns the road.', tone: 'dim' },
@@ -17,23 +18,24 @@ const LINES = [
 
 export default function Claim({ stats }) {
   const compact = useCompact(960);
+  const reduce = useReducedMotion();
   return (
     <Section
       id="claim"
-      style={{ overflow: 'hidden' }}
       inner={{
         display: 'grid', gridTemplateColumns: compact ? '1fr' : '1.15fr 0.85fr',
         gap: compact ? 44 : 64, alignItems: 'center',
       }}
     >
-      <div>
-        <Reveal><Eyebrow>01 — The claim</Eyebrow></Reveal>
+      <GhostNumeral n="01" style={{ top: compact ? '-0.4em' : '-0.3em' }} />
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <Reveal from="left" dist={0.6}><Eyebrow>01 — The claim</Eyebrow></Reveal>
         <div style={{ marginTop: 24 }}>
           {LINES.map((l, i) => (
             <motion.div
               key={l.text}
-              initial={{ opacity: 0, y: 26 }}
-              whileInView={{ opacity: 1, y: 0 }}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, x: -44 }}
+              whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true, amount: 0.6 }}
               transition={{ duration: 0.9, ease: EASE, delay: 0.14 * i }}
               style={{
@@ -56,8 +58,10 @@ export default function Claim({ stats }) {
         </Reveal>
       </div>
 
-      <Reveal delay={0.2}>
-        <MapPanel count={stats.partners} compact={compact} />
+      <Reveal from="right" dist={1.2} delay={0.2} amount={0.2} style={{ position: 'relative', zIndex: 1 }}>
+        <Parallax y={[36, -36]}>
+          <MapPanel count={stats.partners} compact={compact} />
+        </Parallax>
       </Reveal>
     </Section>
   );
@@ -97,36 +101,42 @@ function MapPanel({ count, compact }) {
         decoding="async"
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', maxWidth: 'none' }}
       />
-      {/* City labels — same projection as the render, so the clusters read as a map */}
-      {CITIES.map((c) => (
-        <span
+      {/* City labels — same projection as the render, lighting up north to south */}
+      {CITIES.map((c, i) => (
+        <motion.span
           key={c.name}
           aria-hidden
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.6, delay: 0.5 + i * 0.09 }}
           style={{
             position: 'absolute', left: `${c.x}%`, top: `${c.y}%`, transform: 'translate(8px, -50%)',
             fontSize: compact ? 9 : 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.42)', fontWeight: w.medium, whiteSpace: 'nowrap',
           }}
         >
           {c.name}
-        </span>
+        </motion.span>
       ))}
       {/* London */}
       <div aria-hidden style={{ position: 'absolute', left: '75.8%', top: '80.5%' }}>
         <span style={{ position: 'absolute', left: -14, top: -14, width: 28, height: 28, borderRadius: '50%', border: '1px solid rgba(232,210,0,0.7)', animation: 'powrPulse 2.6s ease-out infinite' }} />
         <span style={{ position: 'absolute', left: -4, top: -4, width: 8, height: 8, borderRadius: '50%', background: pg.accent, boxShadow: '0 0 14px rgba(232,210,0,0.9)' }} />
       </div>
-      <div
-        style={{
-          position: 'absolute', left: 0, bottom: compact ? -8 : 12, ...CARD, borderRadius: 16, padding: '12px 16px 12px 14px',
-          display: 'flex', gap: 14, alignItems: 'center', background: 'rgba(12,12,12,0.86)', backdropFilter: 'blur(8px)',
-        }}
-      >
-        <span style={{ fontSize: 30, fontWeight: w.extraLight, color: pg.text, letterSpacing: -1, lineHeight: 1 }}>{fmt(count)}</span>
-        <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <span style={{ fontSize: 10.5, letterSpacing: 2.4, color: pg.accent, fontWeight: w.semiBold }}>PARTNER GYMS</span>
-          <span style={{ fontSize: 11.5, color: pg.textSec, fontWeight: w.light }}>Every one pinned. Every one pays.</span>
-        </span>
-      </div>
+      <Reveal from="up" delay={0.75} amount={0.1} style={{ position: 'absolute', left: 0, bottom: compact ? -8 : 12 }}>
+        <div
+          style={{
+            ...CARD, borderRadius: 16, padding: '12px 16px 12px 14px',
+            display: 'flex', gap: 14, alignItems: 'center', background: 'rgba(12,12,12,0.86)', backdropFilter: 'blur(8px)',
+          }}
+        >
+          <span style={{ fontSize: 30, fontWeight: w.extraLight, color: pg.text, letterSpacing: -1, lineHeight: 1 }}>{fmt(count)}</span>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span style={{ fontSize: 10.5, letterSpacing: 2.4, color: pg.accent, fontWeight: w.semiBold }}>PARTNER GYMS</span>
+            <span style={{ fontSize: 11.5, color: pg.textSec, fontWeight: w.light }}>Every one pinned. Every one pays.</span>
+          </span>
+        </div>
+      </Reveal>
     </div>
   );
 }
