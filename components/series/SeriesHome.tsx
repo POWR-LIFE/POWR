@@ -22,7 +22,7 @@ import {
 } from '@/lib/dev/seriesPrototype';
 import { DROP_SERIES_POOL, dropProgress, formatSteps } from '@/lib/drop';
 import { scoringLine } from '@/lib/liveEventDisplay';
-import { type Climb, defaultRival, sampleClimb, samplePath, type SeriesPath } from '@/lib/seriesPath';
+import { type Climb, defaultRival, moveKey, paceGap, planPlaces, racePlan, sampleClimb, samplePath, type SeriesPath, tallyTo } from '@/lib/seriesPath';
 import { memberInitials, memberLabel } from '@/lib/memberName';
 import {
     CARD_BG,
@@ -249,6 +249,35 @@ export function SeriesHome({
         : pathsReal
             ? (pathsLive.me ? { rank: pathsLive.me.rank, ladder: pathsLive.me.ladder } : null)
             : SERIES_PROTOTYPE && meLane && third ? sampleClimb(meLane.rank, meLane.p.pts, third.p.pts) : null;
+    // The line above the board is the drawer's way in. With nobody to pass it
+    // points at the prize places, which is the drawer's own race (you against
+    // the #3), so it says what the drawer says: the same plan, the same sums.
+    const roundDay = v.phase === 'running' ? v.hero.day : v.round.days;
+    const roundLeft = Math.max(1, v.round.days - roundDay + 1);
+    const lineTail = useMemo((): { text: string; said: string } | undefined => {
+        if (v.rival || v.phase !== 'running' || v.hero.blind || !meLane || !mePath || meLane.rank <= 3) return undefined;
+        const third = podium.find((x) => x.rank === 3);
+        const theirs = third ? paths.get(third.id) : undefined;
+        if (!third || !theirs) return undefined;
+        const plan = racePlan(tallyTo(mePath, Infinity), tallyTo(theirs, Infinity), roundDay, roundLeft);
+        if (!plan || plan.kind === 'ahead') return undefined;
+        const sessions = (n: number) => t(`series:path.moves.${moveKey(plan.type)}`, { count: n });
+        // The drawer's headline in a line; its full sentence for a screen reader.
+        if (plan.kind === 'finish') {
+            return {
+                text: t('series:league.rival.planFinish', { what: sessions(plan.sessions) }),
+                said: `${sessions(plan.sessions)} ${t('series:path.finish3', { name: firstName(third.name) })}`,
+            };
+        }
+        const places = planPlaces(plan, climb);
+        if (places <= 0) return undefined;
+        return {
+            // "gym visit": the sessions line without its number.
+            text: `▲${fmt(places)} ${t('series:path.heroClimb', { what: sessions(1).replace(/^[\d\s.,\u00a0\u202f]+/, '') })}`,
+            said: `${sessions(1)} ${t('series:path.climbTail', { count: places, n: fmt(places) }).replace(/<\/?g>/g, '')}`,
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [v.rival, v.phase, v.hero.blind, meLane?.rank, mePath, paths, podium.map((x) => `${x.id}:${x.rank}:${x.name}`).join('|'), roundDay, roundLeft, climb?.rank, climb?.ladder, t]);
     const sideOf = (id: string | null | undefined): PathSide | null => {
         const r = id ? lanes.find((x) => x.p.id === id) : undefined;
         const p = id ? paths.get(id) : undefined;
@@ -451,6 +480,7 @@ export function SeriesHome({
                         lit={lit}
                         onRules={() => { trackTap('series_rules_open'); setSheet('rules'); }}
                         onStory={meLane && canOpen(meLane.p.id) ? () => openPath(meLane.p.id) : undefined}
+                        plan={lineTail}
                         blindBack={blindCard?.back
                             ? (/^\d/.test(blindCard.back)
                                 ? t('series:league.rival.backAt', { time: blindCard.back })
@@ -918,12 +948,14 @@ function ViewSwitch({ value, onChange, accessory }: { value: RaceView; onChange:
  * the crowd), it's the prize places. One board, one line: pacers fill the
  * middle, so a place on its own is never the goal.
  */
-function RivalRow({ v, lit, onRules, onStory, blindBack }: {
+function RivalRow({ v, lit, onRules, onStory, plan, blindBack }: {
     v: SeriesView;
     lit: boolean;
     onRules: () => void;
     /** Opens "you vs the podium" (the story): the line is its way in whenever there's one to show. */
     onStory?: () => void;
+    /** The drawer's plan for the prize places, in its words, when it has one (see lineTail). */
+    plan?: { text: string; said: string };
     blindBack?: string;
 }) {
     const { t } = useTranslation();
@@ -933,7 +965,8 @@ function RivalRow({ v, lit, onRules, onStory, blindBack }: {
     const sealed = v.hero.blind || !!r?.sealed;
     // Nothing to chase: you're clear of your rival, or already in the prize places.
     const clear = r ? r.ahead : top3?.gap === 0;
-    const how = r ? r.how : top3?.gap ? top3.how : t('series:league.rival.inTop3Line');
+    const planned = !r && !!top3?.gap && !!plan;
+    const how = r ? r.how : top3?.gap ? plan?.text ?? top3.how : t('series:league.rival.inTop3Line');
     const head = sealed
         ? t('series:league.rival.hidden')
         : r
@@ -964,7 +997,7 @@ function RivalRow({ v, lit, onRules, onStory, blindBack }: {
                 disabled={!onStory || sealed}
                 style={({ pressed }) => [s.rivalTap, pressed && { opacity: 0.7 }]}
                 accessibilityRole={onStory && !sealed ? 'button' : undefined}
-                accessibilityLabel={onStory && !sealed ? `${head}. ${tail}. ${t('series:path.openStory')}` : undefined}
+                accessibilityLabel={onStory && !sealed ? `${head}. ${planned && !clear ? plan?.said : tail}. ${t('series:path.openStory')}` : undefined}
             >
                 {/* With a story to play, the icon says so. */}
                 <View style={[s.rivalIcon, onStory && !sealed && { borderColor: 'rgba(232,210,0,0.55)' }]}>
@@ -972,7 +1005,8 @@ function RivalRow({ v, lit, onRules, onStory, blindBack }: {
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={s.rivalHead} numberOfLines={1}>{head}</Text>
-                    <Text style={s.rivalTail} numberOfLines={1}>{tail}</Text>
+                    {/* Two lines: French and Spanish say the same plan in more letters. */}
+                    <Text style={s.rivalTail} numberOfLines={2}>{tail}</Text>
                 </View>
             </Pressable>
             <Pressable onPress={onRules} hitSlop={8} style={({ pressed }) => [s.inlineLink, pressed && { opacity: 0.6 }]} accessibilityRole="button">
@@ -995,7 +1029,12 @@ function toTop3(v: SeriesView): { gap: number; how: string } | null {
     const third = all.find((k) => k.rank === 3);
     if (!third) return null;
     const gap = Math.max(1, third.p.pts - me.p.pts + 1);
-    return { gap, how: seriesHow(gap, false) };
+    // The sessions that finish you in the prize places, not the ones that reach
+    // where the #3 stands today (paceGap); the drawer's own plan replaces this
+    // line whenever its paths are in (RivalRow's `plan`).
+    const day = v.phase === 'running' ? v.hero.day : v.round.days;
+    const chase = v.live ? Math.max(gap, paceGap(me.p.pts, third.p.pts, day, Math.max(1, v.round.days - day + 1)) + 1) : gap;
+    return { gap, how: seriesHow(chase, false) };
 }
 
 /** Overall: the race. You against everyone, on Series points. */

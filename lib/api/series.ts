@@ -498,9 +498,12 @@ export async function respondToDuel(duelId: string, accept: boolean): Promise<vo
 }
 
 /**
- * A Series gap as the one session that closes it. POWR pays by tier: a run
- * 5–10, a gym visit 15–20. Mirrored by seriesHow in
- * supabase/functions/_shared/pushCopy.ts so the push and the screen agree.
+ * A Series gap as the sessions that close it. POWR pays by tier: a run 5–10,
+ * a gym visit 15–20. The screen passes the gap that finishes you ahead of them
+ * (lib/seriesPath paceGap: they keep earning), so past one session the line
+ * says "to finish ahead". seriesHow in supabase/functions/_shared/pushCopy.ts
+ * has the same sizes but still counts today's gap ("do it"): give it the
+ * round's day and length before the rival push and the screen can agree again.
  */
 export function seriesHow(gap: number, ahead: boolean): string {
     if (ahead) return i18n.t('series:api.howClear');

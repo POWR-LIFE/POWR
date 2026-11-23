@@ -18,7 +18,7 @@ import { fontFamily } from '@/constants/tokens';
 import { seriesNum } from '@/lib/api/series';
 import { firstName, fmt } from '@/lib/dev/seriesPrototype';
 import {
-    activeDaysTo, type Climb, cumulative, OTHER, placesFor, pointsMix, racePace, racePlan, raceRows, rankAfter, type SeriesPath, tallyTo,
+    activeDaysTo, type Climb, climbWindow, cumulative, moveKey, OTHER, planPlaces, pointsMix, racePace, racePlan, raceRows, rankAfter, type SeriesPath, spreadClimb, tallyTo,
 } from '@/lib/seriesPath';
 import { cabinet, nextHonour } from '@/lib/seriesShareCard';
 import { GOLD, GREEN, RED, RollNumber, TEXT } from './SeriesLane';
@@ -52,8 +52,7 @@ const rivalColour = (rank: number | null) => TIER_COLOUR[rivalTier(rank)];
 /** The shares of a ring, biggest first: the yellow, then butter and greys, not a colour per activity. */
 const MIX_TONES = [GOLD, '#D9D2BC', 'rgba(255,255,255,0.42)', 'rgba(255,255,255,0.2)'];
 /** Activities the copy has words for; anything else reads as "other". */
-const KNOWN = ['gym', 'walking', 'running', 'cycling', 'swimming', 'hiit', 'sports', 'yoga', 'dance'];
-const known = (type: string) => (KNOWN.includes(type) ? type : OTHER);
+const known = moveKey;
 /** The most one session of each pays (claim-points calcBasePoints' top tier): the "ways to earn" row. */
 const TOP_PTS: Record<string, number> = { gym: 20, hiit: 20, running: 10, cycling: 10, swimming: 10, sports: 10, dance: 8, yoga: 6, walking: 5 };
 const EARN_DEFAULT = ['gym', 'walking', 'running', 'cycling'];
@@ -240,26 +239,31 @@ function MixRing({ mix, size, label }: { mix: { type: string; pts: number; pct: 
 }
 
 /**
- * The climb: the whole board as a line, the top at the right. Your dot steps
- * up it a session at a time, from where you are to where three would put you.
+ * The climb: the board as a line, the top at the right. Your dot steps up it
+ * a session at a time, from where you are to where three would put you. The
+ * line is the whole board unless the climb would be too small to see on it
+ * (climbWindow).
  */
 function ClimbTrack({ width, from, to, total, stepMs }: { width: number; from: number; to: number[]; total: number; stepMs: number }) {
     const { t } = useTranslation();
     const pad = 8;
-    const x = (r: number) => pad + (1 - (Math.min(total, Math.max(1, r)) - 1) / Math.max(1, total - 1)) * (width - pad * 2);
-    const x0 = x(from);
+    const end = to[to.length - 1] ?? from;
+    // Near the top a climb is a sliver of the whole board: close in until it shows.
+    const low = climbWindow(from, end, total);
+    const x = (r: number) => pad + (1 - (Math.min(low, Math.max(1, r)) - 1) / Math.max(1, low - 1)) * (width - pad * 2);
+    // ...and never draw the two dots on top of each other.
+    const { x0, xs } = spreadClimb(x(from), to.map(x), width - pad);
     const at = useSharedValue(x0);
     useEffect(() => {
         at.value = x0;
-        if (to.length === 0) return;
+        if (xs.length === 0) return;
         at.value = withDelay(PLAN_AT, withSequence(
-            ...to.map((r, k) => withDelay(k ? Math.max(0, stepMs - 360) : 0, withTiming(x(r), { duration: 360, easing: Easing.out(Easing.cubic) }))),
+            ...xs.map((px, k) => withDelay(k ? Math.max(0, stepMs - 360) : 0, withTiming(px, { duration: 360, easing: Easing.out(Easing.cubic) }))),
         ));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [at, x0, to.join(','), width, total]);
+    }, [at, x0, xs.join(','), width, low]);
     const dot = useAnimatedStyle(() => ({ transform: [{ translateX: at.value - 7 }] }));
     const trail = useAnimatedStyle(() => ({ left: x0, width: Math.max(0, at.value - x0) }));
-    const end = to[to.length - 1] ?? from;
     return (
         <View style={{ width, marginTop: 22 }}>
             <View style={s.climbTop}>
@@ -419,7 +423,7 @@ export function SeriesPathSheet({
 
     const planType = plan && plan.kind !== 'ahead' ? plan.type : null;
     const per = plan && plan.kind !== 'ahead' ? Math.round(plan.per) : 0;
-    const stepPlaces = planType ? placesFor(climb, per) : 0;
+    const stepPlaces = planPlaces(plan, climb);
     const climbing = plan?.kind === 'climb' && stepPlaces > 0;
     const pace = plan?.kind === 'finish' ? racePace(plan.sessions, daysLeft, plan.type) : null;
     const left = t('series:path.daysLeftCount', { count: Math.max(1, daysLeft) });

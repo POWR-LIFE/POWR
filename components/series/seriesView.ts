@@ -3,6 +3,7 @@ import type { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
 import { SERIES_BOARD_TOP, type SeriesBoard, type SeriesCity, seriesDate, seriesDay, seriesHow, seriesSpan, timeLeft } from '@/lib/api/series';
+import { paceGap } from '@/lib/seriesPath';
 import {
     BLIND_HIDES,
     type Board,
@@ -303,10 +304,15 @@ export function fromLive(b: SeriesBoard, name = 'Series', blind = false): Series
         ? (() => {
             const gap = Math.abs(b.rival.points - me.points);
             const ahead = me.rank === 1;
+            // The gap is today's; the sessions are the ones that finish you ahead of
+            // them (they keep earning), as the drawer on the board counts them.
+            const chase = !ahead && b.rival.points >= me.points
+                ? paceGap(me.points, b.rival.points, r.day, Math.max(1, r.days - r.day + 1))
+                : gap;
             return {
                 p: person(b.rival, b.rival.rank, false),
                 rank: b.rival.rank, gap, ahead, friend: b.rival.friend, sealed: false,
-                how: seriesHow(gap, ahead),
+                how: seriesHow(chase, ahead),
                 share: me.today / Math.max(1, me.today + b.rival.today),
                 meRank: me.rank, mePts: me.points, meToday: me.today,
             };

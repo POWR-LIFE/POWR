@@ -28,6 +28,10 @@ export const OTHER = 'other';
 
 export const EMPTY_TALLY: Tally = { total: 0, pts: {}, n: {} };
 
+/** Activities the copy has words for (series:path.moves.*); anything else reads as "other". */
+const MOVE_TYPES = ['gym', 'walking', 'running', 'cycling', 'swimming', 'hiit', 'sports', 'yoga', 'dance'];
+export const moveKey = (type: string): string => (MOVE_TYPES.includes(type) ? type : OTHER);
+
 /** Everything up to and including `day` (Infinity = the whole round so far). */
 export function tallyTo(path: Pick<SeriesPath, 'days'> | null | undefined, day: number): Tally {
     const t: Tally = { total: 0, pts: {}, n: {} };
@@ -205,6 +209,21 @@ export function racePlan(you: Tally, them: Tally, day: number, daysLeft: number)
 }
 
 /**
+ * racePlan's sum from the two totals alone, for a line that has no paths to
+ * read (your rival on the board): the points that finish you ahead of them,
+ * with both of you run on to the end of the round at your pace so far. Never
+ * less than the gap today: passing them where they stand always takes that.
+ * `day` and `daysLeft` as racePlan's.
+ */
+export function paceGap(you: number, them: number, day: number, daysLeft: number): number {
+    const gap = Math.max(0, them - you);
+    const d = Math.max(1, day);
+    const rest = Math.max(0, daysLeft - 1);
+    const end = Math.round(them + (them / d) * rest) - Math.round(you + (you / d) * rest);
+    return Math.max(gap, end);
+}
+
+/**
  * The other ways to the same finish: every activity either of you has points
  * from, as extra sessions of it alone, fewest first, only those that fit one a
  * day in the days left.
@@ -247,6 +266,45 @@ export function placesFor(climb: Climb | null | undefined, pts: number): number 
 /** Your place after `pts` more points (your place now when the ladder can't say). */
 export function rankAfter(climb: Climb, pts: number): number {
     return climb.rank - placesFor(climb, pts);
+}
+
+/**
+ * The places one session of the plan's activity moves you up (0 when you lead,
+ * or the ladder can't say). The drawer's headline and the line above the
+ * board both read this, so they can't disagree.
+ */
+export function planPlaces(plan: RacePlan | null | undefined, climb: Climb | null | undefined): number {
+    return plan && plan.kind !== 'ahead' ? placesFor(climb, Math.round(plan.per)) : 0;
+}
+
+/**
+ * The place at the left end of the climb track (the top is always the right
+ * end). The whole board, when the climb is big enough to see on it. Near the
+ * top it isn't: #28 to #5 of 1,537 is 1.5% of the line, two dots on top of
+ * each other. So the track closes in on the top until the climb covers `min`
+ * of it, and never so far that you fall off the left end.
+ */
+export function climbWindow(from: number, end: number, total: number, min = 0.2): number {
+    const whole = Math.max(2, Math.round(total), Math.round(from));
+    const travel = Math.max(0, from - end);
+    if (travel <= 0 || travel / (whole - 1) >= min) return whole;
+    return Math.min(whole, Math.max(Math.round(from), Math.ceil(1 + travel / min)));
+}
+
+/**
+ * The climb's stops along the track, in px, never bunched. Far from the top a
+ * small climb is still a sliver (climbWindow can't close in past your own
+ * place), so a move shorter than `min` px is drawn `min` long, its steps in
+ * proportion, sliding left when it would run off the right end. The places
+ * under the track stay exact; only the picture is given room.
+ */
+export function spreadClimb(x0: number, xs: number[], right: number, min = 18): { x0: number; xs: number[] } {
+    const end = xs[xs.length - 1];
+    if (end == null) return { x0, xs };
+    const span = end - x0;
+    if (span <= 0 || span >= min) return { x0, xs };
+    const start = Math.min(x0, right - min);
+    return { x0: start, xs: xs.map((x) => start + ((x - x0) / span) * min) };
 }
 
 /**
