@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import type { Honour, HonourKind, HonourTier } from '@/constants/honours';
 import i18n, { getFormatLocale } from '@/lib/i18n';
 import { type SquadPrize, squadPrize } from '@/lib/seriesInvite';
+import type { SeriesPath } from '@/lib/seriesPath';
 import type { RoundTotals } from '@/lib/seriesShareCard';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
@@ -732,4 +733,47 @@ export function useSeriesBounties(slug: string | null, active: boolean): SeriesB
         };
     }, [slug, active]);
     return slug && got?.slug === slug ? got.rows : NO_BOUNTIES;
+}
+
+/**
+ * "How they got here" (get_series_paths, 20261119120000): the board's top 3
+ * and you, a day at a time, by activity. The server decides who's in it (never
+ * a pacer, nobody else in Blind Mode), so a row opens only when its path came
+ * back. `missing`: the server has no such function yet (dev falls back to a
+ * sample). Any other failure keeps what's on screen.
+ */
+export type SeriesPaths = {
+    round: string;
+    blind: boolean;
+    /** Your place and where 1 to 200 more points would put you (null: not in the round, or Blind Mode). */
+    me?: { rank: number; points: number; ladder: number[] } | null;
+    paths: SeriesPath[];
+};
+
+export async function fetchSeriesPaths(slug: string): Promise<SeriesPaths | 'missing' | null> {
+    const { data, error } = await supabase.rpc('get_series_paths', { p_slug: slug });
+    if (error) return error.code === 'PGRST202' || error.code === '42883' ? 'missing' : null;
+    if (!data || !Array.isArray((data as SeriesPaths).paths)) return null;
+    return data as SeriesPaths;
+}
+
+const NO_PATHS: SeriesPath[] = [];
+
+/**
+ * The paths while the board is in view, read again whenever `key` changes
+ * (pass something that moves with the board's points, so a new session or a
+ * new leader re-reads it).
+ */
+export function useSeriesPaths(slug: string | null, active: boolean, key: string): { paths: SeriesPath[]; missing: boolean; me: SeriesPaths['me'] } {
+    const [got, setGot] = useState<{ slug: string; paths: SeriesPath[]; missing: boolean; me: SeriesPaths['me'] } | null>(null);
+    useEffect(() => {
+        if (!slug || !active) return undefined;
+        let live = true;
+        void fetchSeriesPaths(slug).then((r) => {
+            if (!live || r === null) return;
+            setGot(r === 'missing' ? { slug, paths: NO_PATHS, missing: true, me: null } : { slug, paths: r.paths, missing: false, me: r.me ?? null });
+        });
+        return () => { live = false; };
+    }, [slug, active, key]);
+    return slug && got?.slug === slug ? got : { paths: NO_PATHS, missing: false, me: null };
 }

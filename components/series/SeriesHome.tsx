@@ -13,7 +13,7 @@ import { DropReveal } from '@/components/drop/DropReveal';
 import { trackTap } from '@/lib/analytics';
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import {
-    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, seriesDate, seriesHow, type SeriesInviteBoard, useSeriesBoard, useSeriesBounties, useSeriesExtras, useSeriesInviteBoard, useSquadPrize,
+    challengeFriend, NAMED_PRIZES, pickSeriesCity, respondToDuel, seriesDate, seriesHow, type SeriesInviteBoard, useSeriesBoard, useSeriesBounties, useSeriesExtras, useSeriesInviteBoard, useSeriesPaths, useSquadPrize,
 } from '@/lib/api/series';
 import { fetchProfile, type Profile } from '@/lib/api/user';
 import { dropSim, todayTarget, useDropPrototype } from '@/lib/dev/dropPrototype';
@@ -22,6 +22,7 @@ import {
 } from '@/lib/dev/seriesPrototype';
 import { DROP_SERIES_POOL, dropProgress, formatSteps } from '@/lib/drop';
 import { scoringLine } from '@/lib/liveEventDisplay';
+import { type Climb, defaultRival, sampleClimb, samplePath, type SeriesPath } from '@/lib/seriesPath';
 import { memberInitials, memberLabel } from '@/lib/memberName';
 import {
     CARD_BG,
@@ -48,6 +49,7 @@ import { BountyCard } from './SeriesBounty';
 import { ShareSheet, Sheet, SheetHead, YourFile } from './SeriesSheets';
 import { InviteBoardCard, InviteRaceNote, PrizeHero } from './SeriesInvite';
 import { SeriesInviteCard } from './SeriesInviteCard';
+import { type PathSide, SeriesPathSheet } from './SeriesPathSheet';
 import { type JoinRound, joinRoundOf, JoinRoundScreen, openSeriesJoin, roundDays } from './SeriesJoin';
 import { StartLine } from './StartLine';
 import { CityClash, CityPicker, Duels, GameTabs, GymCrown, LockedGame } from './SeriesTabs';
@@ -155,7 +157,9 @@ export function SeriesHome({
     const alerts = useAlerts();
     const [forceAlerts, setForceAlerts] = useState(false);
     const [profile, setProfile] = useState<Profile | null>(null);
-    const [sheet, setSheet] = useState<'rules' | 'share' | 'file' | 'golden' | 'prizes' | 'prize' | 'race' | 'invite' | 'dev' | 'city' | null>(null);
+    const [sheet, setSheet] = useState<'rules' | 'share' | 'file' | 'golden' | 'prizes' | 'prize' | 'race' | 'invite' | 'dev' | 'city' | 'path' | null>(null);
+    // Who the replay sheet races you against (a podium member), or null for one round on its own.
+    const [raceWith, setRaceWith] = useState<string | null>(null);
     // Dev: fire the gun in a few seconds, to see the start line break.
     const [gunAt, setGunAt] = useState<number | null>(null);
     // Dev: run the start line's crowd ahead, to watch it fill.
@@ -196,6 +200,63 @@ export function SeriesHome({
     // Sample data is for design work: only dev builds ever fall back to it.
     const v: SeriesView = (!sample && liveView) || fromSim(sim, seasonDef.name);
     const unavailable = !SERIES_PROTOTYPE && !liveView && !offRound;
+    // "How they got here" (get_series_paths, 20261119120000): the server sends
+    // the top 3 (never a pacer) and you; read again whenever their points move.
+    const pathKey = live.board ? live.board.rows.filter((r) => r.rank <= 3 || r.you).map((r) => `${r.user_id}:${r.points}`).join('|') : '';
+    const pathsLive = useSeriesPaths(!sample && liveBase && liveBase.phase !== 'upcoming' ? liveBase.round.slug : null, focused, pathKey);
+    const paths = useMemo(() => {
+        const m = new Map<string, SeriesPath>();
+        if (v.live && !(SERIES_PROTOTYPE && pathsLive.missing)) {
+            pathsLive.paths.forEach((p) => m.set(p.user_id, p));
+            return m;
+        }
+        // Dev only: the sample board, or a server without get_series_paths yet.
+        if (!SERIES_PROTOTYPE) return m;
+        const days = Math.max(1, v.phase === 'running' ? v.hero.day : v.round.days);
+        v.rows.forEach((r) => {
+            if (r.type !== 'lane' || r.dark) return;
+            if (!(r.p.you || (r.rank <= 3 && !v.hero.blind && r.p.pts > 0))) return;
+            m.set(r.p.id, samplePath(r.p.id, r.p.pts, days, r.p.you));
+        });
+        return m;
+    }, [v.live, v.rows, v.hero.blind, v.hero.day, v.phase, v.round.days, pathsLive]);
+    // Who you can be compared with: the podium (never you, never a sealed row,
+    // nobody in Blind Mode). Your own row opens too, even before your first
+    // points, whenever there's someone on the podium to set you against.
+    type Lane = Extract<SeriesView['rows'][number], { type: 'lane' }>;
+    const lanes = v.rows.filter((r): r is Lane => r.type === 'lane' && !r.dark);
+    const meLane = lanes.find((r) => r.p.you) ?? null;
+    const mePath = meLane ? paths.get(meLane.p.id) ?? null : null;
+    const podium = v.hero.blind
+        ? []
+        : lanes.filter((r) => !r.p.you && r.rank <= 3 && (paths.get(r.p.id)?.days.length ?? 0) > 0).map((r) => ({ id: r.p.id, rank: r.rank, name: r.p.name }));
+    const canOpen = (id: string) => (meLane?.p.id === id
+        ? !!mePath && podium.length > 0
+        : podium.some((x) => x.id === id));
+    const openPath = (id: string) => {
+        const mine = meLane?.p.id === id;
+        const rival = mine ? defaultRival(v.hero.blind || meLane?.hideRank ? null : meLane?.rank ?? null, podium)?.id ?? null : id;
+        trackTap('series_path_open', { rank: lanes.find((r) => r.p.id === id)?.rank ?? 0, you: mine, race: !!mePath && !!rival });
+        setRaceWith(rival);
+        setSheet('path');
+    };
+    // Where more points would put you: the server's ladder; in dev (sample
+    // paths), an even climb to the podium.
+    const pathsReal = v.live && !(SERIES_PROTOTYPE && pathsLive.missing);
+    const third = lanes.find((r) => r.rank === 3);
+    const climb: Climb | null = v.hero.blind
+        ? null
+        : pathsReal
+            ? (pathsLive.me ? { rank: pathsLive.me.rank, ladder: pathsLive.me.ladder } : null)
+            : SERIES_PROTOTYPE && meLane && third ? sampleClimb(meLane.rank, meLane.p.pts, third.p.pts) : null;
+    const sideOf = (id: string | null | undefined): PathSide | null => {
+        const r = id ? lanes.find((x) => x.p.id === id) : undefined;
+        const p = id ? paths.get(id) : undefined;
+        if (!r || !p) return null;
+        // Their photo, when the board sent one (the sample has none).
+        const avatarUrl = r.p.you ? you.avatarUrl : live.board?.rows.find((x) => x.user_id === id)?.avatar_url ?? null;
+        return { path: p, name: r.p.you ? you.name : r.p.name, flag: r.p.flag, avatarUrl, rank: r.hideRank || v.hero.blind ? null : r.rank, honours: r.p.honours };
+    };
     useEffect(() => { if (unavailable && live.loaded) onUnavailable?.(); }, [unavailable, live.loaded, onUnavailable]);
     const momentCards = v.live ? liveCards : sampleMomentCards(v.hero.day);
     const inviteBoard: SeriesInviteBoard | null = v.live || offRound ? (inviteLive?.open ? inviteLive : null) : sim.inviteBoard;
@@ -389,6 +450,7 @@ export function SeriesHome({
                         v={v}
                         lit={lit}
                         onRules={() => { trackTap('series_rules_open'); setSheet('rules'); }}
+                        onStory={meLane && canOpen(meLane.p.id) ? () => openPath(meLane.p.id) : undefined}
                         blindBack={blindCard?.back
                             ? (/^\d/.test(blindCard.back)
                                 ? t('series:league.rival.backAt', { time: blindCard.back })
@@ -396,7 +458,7 @@ export function SeriesHome({
                             : undefined}
                     />
                     {v.live && <BountyCard bounties={bounties} />}
-                    <Race v={v} hits={v.live ? {} : sim.hits} you={you} bountyOn={v.live ? bountyOn : undefined} />
+                    <Race v={v} hits={v.live ? {} : sim.hits} you={you} bountyOn={v.live ? bountyOn : undefined} canOpen={canOpen} onPath={openPath} />
                     {!v.live && (
                         <Pressable
                             onPress={() => { trackTap('series_view', { view: v.view === 'around' ? 'top' : 'around' }); sim.setView(v.view === 'around' ? 'top' : 'around'); }}
@@ -702,6 +764,20 @@ export function SeriesHome({
             )}
             {push && <PushPreview push={push} onPress={() => setPush(null)} />}
 
+            <SeriesPathSheet
+                visible={sheet === 'path'}
+                onClose={() => setSheet(null)}
+                you={mePath ? sideOf(meLane?.p.id) : null}
+                rival={sideOf(raceWith)}
+                rivals={podium}
+                onRival={(id) => { trackTap('series_path_rival', { rank: podium.find((x) => x.id === id)?.rank ?? 0 }); setRaceWith(id); }}
+                day={v.phase === 'running' ? v.hero.day : v.round.days}
+                daysLeft={Math.max(1, v.round.days - (v.phase === 'running' ? v.hero.day : v.round.days) + 1)}
+                climb={climb}
+                boardTotal={v.hero.total}
+                ended={v.phase !== 'running'}
+                onSeen={(section) => trackTap('series_path_section', { section, rival: podium.find((x) => x.id === raceWith)?.rank ?? 0 })}
+            />
             <HowToWinSheet
                 visible={sheet === 'rules'}
                 onClose={() => setSheet(null)}
@@ -842,7 +918,14 @@ function ViewSwitch({ value, onChange, accessory }: { value: RaceView; onChange:
  * the crowd), it's the prize places. One board, one line: pacers fill the
  * middle, so a place on its own is never the goal.
  */
-function RivalRow({ v, lit, onRules, blindBack }: { v: SeriesView; lit: boolean; onRules: () => void; blindBack?: string }) {
+function RivalRow({ v, lit, onRules, onStory, blindBack }: {
+    v: SeriesView;
+    lit: boolean;
+    onRules: () => void;
+    /** Opens "you vs the podium" (the story): the line is its way in whenever there's one to show. */
+    onStory?: () => void;
+    blindBack?: string;
+}) {
     const { t } = useTranslation();
     const r = v.rival;
     const top3 = r ? null : toTop3(v);
@@ -876,13 +959,22 @@ function RivalRow({ v, lit, onRules, blindBack }: { v: SeriesView; lit: boolean;
                 : walks ? t('series:league.rival.suggestWalks', { count: Number(walks[1]) }) : how;
     return (
         <View style={[s.rival, lit && { backgroundColor: 'rgba(232,210,0,0.06)', borderColor: 'rgba(232,210,0,0.4)' }]}>
-            <View style={s.rivalIcon}>
-                <Ionicons name={sealed ? 'eye-off-outline' : 'trending-up-outline'} size={18} color={TEXT} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={s.rivalHead} numberOfLines={1}>{head}</Text>
-                <Text style={s.rivalTail} numberOfLines={1}>{tail}</Text>
-            </View>
+            <Pressable
+                onPress={onStory}
+                disabled={!onStory || sealed}
+                style={({ pressed }) => [s.rivalTap, pressed && { opacity: 0.7 }]}
+                accessibilityRole={onStory && !sealed ? 'button' : undefined}
+                accessibilityLabel={onStory && !sealed ? `${head}. ${tail}. ${t('series:path.openStory')}` : undefined}
+            >
+                {/* With a story to play, the icon says so. */}
+                <View style={[s.rivalIcon, onStory && !sealed && { borderColor: 'rgba(232,210,0,0.55)' }]}>
+                    <Ionicons name={sealed ? 'eye-off-outline' : onStory ? 'play' : 'trending-up-outline'} size={onStory && !sealed ? 15 : 18} color={onStory && !sealed ? GOLD : TEXT} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.rivalHead} numberOfLines={1}>{head}</Text>
+                    <Text style={s.rivalTail} numberOfLines={1}>{tail}</Text>
+                </View>
+            </Pressable>
             <Pressable onPress={onRules} hitSlop={8} style={({ pressed }) => [s.inlineLink, pressed && { opacity: 0.6 }]} accessibilityRole="button">
                 <Text style={s.rulesLink}>{t('series:league.rival.earningRules')}</Text>
                 <Ionicons name="arrow-forward" size={13} color={TEXT_2} />
@@ -907,7 +999,15 @@ function toTop3(v: SeriesView): { gap: number; how: string } | null {
 }
 
 /** Overall: the race. You against everyone, on Series points. */
-function Race({ v, hits, you, bountyOn }: { v: SeriesView; hits: Sim['hits']; you: You; bountyOn?: Set<string> }) {
+function Race({ v, hits, you, bountyOn, canOpen, onPath }: {
+    v: SeriesView;
+    hits: Sim['hits'];
+    you: You;
+    bountyOn?: Set<string>;
+    /** Whose row opens the race (get_series_paths: the podium and you). */
+    canOpen?: (id: string) => boolean;
+    onPath?: (id: string) => void;
+}) {
     const { t } = useTranslation();
     const sc = useSeasonCard();
     return (
@@ -929,6 +1029,7 @@ function Race({ v, hits, you, bountyOn }: { v: SeriesView; hits: Sim['hits']; yo
                                 hideRank={r.hideRank}
                                 first={i === 0 || v.rows[i - 1].type !== 'lane'}
                                 you={you}
+                                onPress={!r.dark && onPath && canOpen?.(r.p.id) ? () => onPath(r.p.id) : undefined}
                             />
                         );
                     }
@@ -1203,6 +1304,7 @@ const s = StyleSheet.create({
     segOn: { backgroundColor: 'rgba(255,255,255,0.08)' },
     segText: { fontSize: 13, fontWeight: '400', color: TEXT_3 },
     rival: { marginHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 4, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' },
+    rivalTap: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
     rivalIcon: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
     rivalHead: { fontSize: 15, fontWeight: '400', color: TEXT },
     rivalTail: { marginTop: 2, fontSize: 12, fontWeight: '300', color: TEXT_2 },

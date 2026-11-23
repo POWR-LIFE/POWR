@@ -23,13 +23,15 @@ export type SheetLook = { bg: string; glow: string; glowOpacity: number; radius?
  * A bottom sheet in the app's dark style. The handle works: drag it down to
  * close (it springs back if you let go early), or tap it.
  */
-export function Sheet({ visible, onClose, children, look, footer }: {
+export function Sheet({ visible, onClose, children, look, footer, onScrollY }: {
     visible: boolean;
     onClose: () => void;
     children: React.ReactNode;
     look?: SheetLook;
     /** Pinned under the scrolling part: a button that must never fall below the fold. */
     footer?: React.ReactNode;
+    /** Where the content is scrolled to and how much of it shows, for a sheet whose parts play as they come into view. */
+    onScrollY?: (y: number, viewH: number) => void;
 }) {
     const { t } = useTranslation();
     const insets = useSafeAreaInsets();
@@ -82,7 +84,15 @@ export function Sheet({ visible, onClose, children, look, footer }: {
                 {/* Sized to its content, scrolling only once it would pass the
                     sheet's limit: the invite race with a full board and its
                     note under it ran off the bottom of a small phone. */}
-                <ScrollView style={s.sheetScroll} bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <ScrollView
+                    style={s.sheetScroll}
+                    bounces={false}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    onLayout={onScrollY ? (e) => onScrollY(0, e.nativeEvent.layout.height) : undefined}
+                    onScroll={onScrollY ? (e) => onScrollY(e.nativeEvent.contentOffset.y, e.nativeEvent.layoutMeasurement.height) : undefined}
+                    scrollEventThrottle={onScrollY ? 48 : undefined}
+                >
                     {children}
                 </ScrollView>
                 {footer}
