@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
-import { type StyleProp, StyleSheet, Text, type TextStyle, View } from 'react-native';
+import { Pressable, type StyleProp, StyleSheet, Text, type TextStyle, View } from 'react-native';
 import Animated, {
     Easing,
     FadeIn,
@@ -173,7 +173,7 @@ export function RaceHeader() {
  * only on the top 3; under the name, the leader's tag or last round's place.
  */
 export function SeriesLane({
-    p, rank, hit, title, isMe, dark, first, you, hideRank, bounty,
+    p, rank, hit, title, isMe, dark, first, you, hideRank, bounty, onPress,
 }: {
     p: Person;
     rank: number;
@@ -187,6 +187,8 @@ export function SeriesLane({
     hideRank?: boolean;
     /** An admin put a bounty on them (get_series_bounties): its tag beats the leader's. */
     bounty?: boolean;
+    /** Their round replayed (get_series_paths): only rows the server sent a path for. */
+    onPress?: () => void;
 }) {
     const { t } = useTranslation();
     const MEDAL: Record<number, string> = { 1: GOLD, 2: SILVER, 3: BRONZE };
@@ -221,6 +223,8 @@ export function SeriesLane({
             <View style={s.middle}>
                 <View style={s.nameRow}>
                     <Text style={[s.name, isTop && { color: TEXT }, isMe && s.nameMe]} numberOfLines={1}>{name}</Text>
+                    {/* Opens their round, replayed. */}
+                    {onPress && <Ionicons name="play-circle-outline" size={13} color={accent ?? TEXT_3} style={{ marginLeft: -1 }} />}
                     {/* What a session just added, beside the name so it never sits on the row below. */}
                     {hit && !dark && (
                         <Animated.Text
@@ -264,6 +268,15 @@ export function SeriesLane({
                     <RollNumber value={p.pts} style={[s.pts, isTop && { color: TEXT }, isMe && s.ptsMe]} />
                 )}
             </View>
+            {/* Last, so it sits over the row and takes the tap (a sibling under it never would). */}
+            {onPress && (
+                <Pressable
+                    onPress={onPress}
+                    style={({ pressed }) => [StyleSheet.absoluteFill, pressed && { backgroundColor: 'rgba(255,255,255,0.05)' }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('series:path.open', { name })}
+                />
+            )}
         </Animated.View>
     );
 }
