@@ -145,7 +145,7 @@ import VenueClashNights from './pages/venue/VenueClashNights';
 import VenuePartners from './pages/venue/VenuePartners';
 import { Gate } from './pages/venue/packages';
 import LandingV2 from './landing/LandingV2';
-import LandingV3 from './landing/v3/LandingV3';
+import HomeStory from './landing/story/HomeStory';
 import PartnersPage from './landing/partners/PartnersPage';
 import AffiliatesPage from './landing/affiliates/AffiliatesPage';
 import CookiePolicy from './pages/CookiePolicy';
@@ -1654,8 +1654,10 @@ export default function App() {
         <ToastProvider>
             <AuthProvider>
                 <Routes>
-                    {/* The homepage: the conversion-first page (reviewed at /v3, promoted 2026-09-13) */}
-                    <Route path="/" element={<LandingV3 />} />
+                    {/* The homepage: one session told in three acts (tonight, this week,
+                        this season), promoted 2026-11-24. It replaced the conversion-first
+                        page (landing/v3), which is no longer routed; /v3 still lands here. */}
+                    <Route path="/" element={<HomeStory />} />
                     <Route path="/v3" element={<Navigate to="/" replace />} />
                     {/* The scroll-driven film that was the homepage before — kept as "The story".
                         /v2 was its review URL; both keep resolving. */}

@@ -15,7 +15,7 @@ import { SectionTag, CopyPanel, GhostWord, MobileCopyDock, useCompact } from './
  */
 const PANELS = [
   { range: [0.20, 0.26, 0.36, 0.40], title: 'Every verified gym, on one map.',
-    body: 'Thousands of partner gyms, pinned and ready. POWR knows exactly where your points live.' },
+    body: 'Thousands of gyms, pinned and ready. POWR knows exactly where your points live.' },
   { range: [0.42, 0.48, 0.55, 0.59], title: 'Just show up. We do the rest.',
     body: 'Cross the door and POWR checks you in automatically — no buttons, no QR codes, nothing to fumble with.' },
   { range: [0.61, 0.66, 0.74, 0.78], title: 'Every visit, genuinely counted.',
