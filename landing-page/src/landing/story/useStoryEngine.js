@@ -297,6 +297,21 @@ export function useStoryEngine(rootRef, liveRef) {
       tiles.forEach((t) => io.observe(t));
     }
 
+    /* A scene change shows a large picture for the first time (a backdrop, a phone
+       screen), and decoding it in that frame is a visible hitch. Decode them one
+       at a time in idle moments instead, while the visitor is still on the hero. */
+    const idle = window.requestIdleCallback
+      ? (fn) => window.requestIdleCallback(fn, { timeout: 1500 })
+      : (fn) => setTimeout(fn, 250);
+    const toWarm = [...story.querySelectorAll('.hs-bd > img, .hs-view img, .hs-lvstrip img')];
+    function warmNext() {
+      if (stopped || !toWarm.length) return;
+      const img = toWarm.shift();
+      const next = () => idle(warmNext);
+      if (img.decode) img.decode().then(next, next); else next();
+    }
+    idle(warmNext);
+
     layout();
     measure();
 
