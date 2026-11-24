@@ -142,11 +142,11 @@ export default function HomeStory() {
 
               <div className="hs-backdrop" aria-hidden="true">
                 <div className="hs-bd hs-bd-hero"><video id="heroVid" src={HERO_VIDEO} poster="/landing-story/hero-poster.webp" autoPlay muted loop playsInline></video></div>
-                <div className="hs-bd hs-bd-walk"><video id="walkVid" src="/landing-story/walkin.mp4" poster="/landing-story/walkin-a.webp" muted playsInline preload="metadata"></video></div>
-                <div className="hs-bd hs-bd-map"><img src="/gym-map.webp" alt="" /></div>
+                <div className="hs-bd hs-bd-walk"><canvas id="walkCanvas" width="960" height="540" /></div>
+                <div className="hs-bd hs-bd-map"><img src="/landing-story/gym-map-alpha.webp" alt="" /></div>
                 <div className="hs-bd hs-bd-train"><img src="/landing-story/ph-pullup.webp" alt="" /></div>
                 <div className="hs-bd hs-bd-week"><img src="/landing-story/ph-runner.webp" alt="" /></div>
-                <div className="hs-bd hs-bd-season"><img src="/landing-story/startline.webp" alt="" /></div>
+                <div className="hs-bd hs-bd-season"><img src="/landing-story/startline-alpha.webp" alt="" /></div>
                 <div className="hs-actword hs-aw-tonight">Tonight</div>
                 <div className="hs-actword hs-aw-week">This week</div>
                 <div className="hs-actword hs-aw-season">This season</div>
@@ -167,7 +167,7 @@ export default function HomeStory() {
                             <img src="/landing-story/home.webp" alt="" />
                           </div>
                           <div className="hs-view hs-lock" data-view="lock">
-                            <img className="hs-lock-wall" src="/landing-story/walkin-b.webp" alt="" />
+                            <img className="hs-lock-wall" src="/landing-story/lock-wall.webp" alt="" />
                             <div className="hs-lock-top">
                               <svg viewBox="0 0 24 24"><path d="M7 10V7.5a5 5 0 0 1 10 0V10h.5A1.5 1.5 0 0 1 19 11.5v8a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-8A1.5 1.5 0 0 1 6.5 10zm2 0h6V7.5a3 3 0 0 0-6 0z"/></svg>
                               <span className="hs-lock-date">{monday}</span>
@@ -215,7 +215,7 @@ export default function HomeStory() {
 
               <div className="hs-steps">
 
-                <article className="hs-step hs-hero hs-is-on" id="top" data-key="top" data-len="90" data-at="0" data-view="home" data-sb="17:54">
+                <article className="hs-step hs-hero hs-is-on" id="top" data-key="top" data-len="70" data-at="0" data-view="home" data-sb="17:54">
                   <div className="hs-copy">
                     <span className="hs-when"><i></i>Every move counts</span>
                     <h1>Your workout is<br /><b>worth something.</b></h1>
@@ -234,7 +234,7 @@ export default function HomeStory() {
                   </div>
                 </article>
 
-                <article className="hs-step" id="walk-in" data-key="walk" data-act="tonight" data-len="130" data-at=".62" data-view="lock">
+                <article className="hs-step" id="walk-in" data-key="walk" data-act="tonight" data-len="120" data-at=".62" data-view="lock">
                   <div className="hs-copy">
                     <span className="hs-when"><i></i>Tonight · <span id="walkWhen">18:02</span></span>
                     <h2>Walk in.<br /><b>That's the check-in.</b></h2>
@@ -243,7 +243,7 @@ export default function HomeStory() {
                   </div>
                 </article>
 
-                <article className="hs-step" id="coverage" data-key="map" data-act="tonight" data-len="90" data-at=".6" data-view="lock">
+                <article className="hs-step" id="coverage" data-key="map" data-act="tonight" data-len="70" data-at=".6" data-view="lock">
                   <div className="hs-copy">
                     <span className="hs-when"><i></i>Where it works</span>
                     <div className="hs-count">
@@ -270,7 +270,7 @@ export default function HomeStory() {
                   </div>
                 </article>
 
-                <article className="hs-step" id="train" data-key="train" data-act="tonight" data-len="140" data-at=".5" data-view="lock">
+                <article className="hs-step" id="train" data-key="train" data-act="tonight" data-len="110" data-at=".5" data-view="lock">
                   <div className="hs-copy">
                     <span className="hs-when"><i></i>Tonight · <span id="trainWhen">18:47</span></span>
                     <h2>Train like you<br /><b>always do.</b></h2>
@@ -287,7 +287,7 @@ export default function HomeStory() {
                   </div>
                 </article>
 
-                <article className="hs-step" id="earn" data-key="earn" data-act="tonight" data-len="100" data-at=".6" data-view="home" data-sb="18:47">
+                <article className="hs-step" id="earn" data-key="earn" data-act="tonight" data-len="70" data-at=".6" data-view="home" data-sb="18:47">
                   <div className="hs-copy">
                     <span className="hs-when"><i></i>Tonight · 18:47</span>
                     <div className="hs-bignum" id="plus" aria-hidden="true">+20</div>
@@ -297,7 +297,7 @@ export default function HomeStory() {
                   </div>
                 </article>
 
-                <article className="hs-step hs-right" id="week" data-key="stack" data-act="week" data-len="100" data-at=".85" data-view="progress" data-sb="07:12">
+                <article className="hs-step hs-right" id="week" data-key="stack" data-act="week" data-len="80" data-at=".85" data-view="progress" data-sb="07:12">
                   <div className="hs-copy">
                     <span className="hs-when"><i></i>This week</span>
                     <h2>Five sessions.<br /><b>One hundred points.</b></h2>
@@ -324,7 +324,7 @@ export default function HomeStory() {
                   </div>
                 </article>
 
-                <article className="hs-step hs-right" id="spend" data-key="spend" data-act="week" data-len="110" data-at=".8" data-view="rewards" data-sb="18:20">
+                <article className="hs-step hs-right" id="spend" data-key="spend" data-act="week" data-len="80" data-at=".8" data-view="rewards" data-sb="18:20">
                   <div className="hs-copy">
                     <span className="hs-when"><i></i>Friday</span>
                     <h2>Points buy<br /><b>real things.</b></h2>
@@ -347,7 +347,7 @@ export default function HomeStory() {
                   </div>
                 </article>
 
-                <article className="hs-step" id="series" data-key="series" data-act="season" data-len="110" data-at=".5" data-view="league" data-sb="18:20">
+                <article className="hs-step" id="series" data-key="series" data-act="season" data-len="80" data-at=".5" data-view="league" data-sb="18:20">
                   <div className="hs-copy">
                     <span className="hs-when"><i></i>This season</span>
                     <h2>Then there's<br /><b>the Series.</b></h2>
@@ -367,7 +367,7 @@ export default function HomeStory() {
                   </div>
                 </article>
 
-                <article className="hs-step" id="levels" data-key="levels" data-act="season" data-len="90" data-at=".5" data-view="profile" data-sb="18:20">
+                <article className="hs-step" id="levels" data-key="levels" data-act="season" data-len="70" data-at=".5" data-view="profile" data-sb="18:20">
                   <div className="hs-copy">
                     <span className="hs-when"><i></i>And every season after</span>
                     <h2>Twenty levels.<br /><b>All yours to climb.</b></h2>
