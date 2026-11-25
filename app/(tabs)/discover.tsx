@@ -1,4 +1,5 @@
 import { HeaderActions } from '@/components/HeaderActions';
+import { rememberHomeGym } from '@/lib/geofence/armedSet';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { teamHeading, teamLine } from '@/shared/gymTeam';
 import PermissionFixScreen, { type PermissionFixKind } from '@/components/PermissionFixScreen';
@@ -523,7 +524,10 @@ export default function DiscoverScreen() {
         .select('preferred_gym_id')
         .eq('id', user.id)
         .single();
-      if (data) setPreferredGymId(data.preferred_gym_id ?? null);
+      if (data) {
+        setPreferredGymId(data.preferred_gym_id ?? null);
+        void rememberHomeGym(data.preferred_gym_id ?? null);
+      }
     })();
   }, []);
 
@@ -553,7 +557,11 @@ export default function DiscoverScreen() {
       .from('profiles')
       .update({ preferred_gym_id: newValue })
       .eq('id', user.id);
-    if (!error) setPreferredGymId(newValue);
+    if (!error) {
+      setPreferredGymId(newValue);
+      // The home gym holds a reserved slot on the phone's watch list.
+      void rememberHomeGym(newValue);
+    }
     setSavingPreferred(false);
   }, [preferredGymId, savingPreferred]);
 

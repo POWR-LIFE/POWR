@@ -168,6 +168,56 @@ describe('staleVisitVerdict', () => {
   });
 });
 
+describe('staleVisitVerdict — "still here" is not silence (2026-11-25)', () => {
+  // ONE LDN, 2026-09-07: a member 36-37 m from a 30 m pin answered every presence
+  // ask. Sharp fixes were refused as proof, the proof clock stalled, and twenty
+  // minutes later she was closed as silent and told "Session complete" while
+  // still training. A `near` answer now stamps last_present_at.
+  const upgraded = {
+    started_at:  iso(NOW - 90 * MIN),
+    claimed_at:  iso(NOW - 60 * MIN),
+    upgraded_at: iso(NOW - 50 * MIN),
+  };
+
+  it('keeps a visit open while the device keeps answering from just outside the circle', () => {
+    const verdict = staleVisitVerdict({
+      ...upgraded,
+      last_proven_at:  iso(NOW - 25 * MIN),  // proof stalled past the silence window
+      last_present_at: iso(NOW - 4 * MIN),   // but she answered four minutes ago
+    }, NOW);
+    expect(verdict.close).toBe(false);
+  });
+
+  it('still closes once presence goes quiet too — and ends at the last PROOF, not the last presence', () => {
+    const lastProof = NOW - 45 * MIN;
+    const verdict = staleVisitVerdict({
+      ...upgraded,
+      last_proven_at:  iso(lastProof),
+      last_present_at: iso(NOW - STALE_SILENCE_MS - MIN),
+    }, NOW);
+    expect(verdict).toMatchObject({ close: true, closeReason: 'stale_after_upgrade' });
+    // near keeps a visit open; it never bills.
+    expect(verdict.provenMs).toBe(lastProof);
+  });
+
+  it('behaves exactly as before for a row with no presence stamp', () => {
+    const row = { ...upgraded, last_proven_at: iso(NOW - 25 * MIN) };
+    expect(staleVisitVerdict(row, NOW)).toEqual(staleVisitVerdict({ ...row, last_present_at: null }, NOW));
+    expect(staleVisitVerdict(row, NOW).close).toBe(true);
+  });
+
+  it('does not let presence postpone the four-hour ceiling', () => {
+    const verdict = staleVisitVerdict({
+      started_at:      iso(NOW - MAX_OPEN_AFTER_UPGRADE_MS - MIN),
+      claimed_at:      iso(NOW - 3 * 60 * MIN),
+      upgraded_at:     iso(NOW - 3 * 60 * MIN),
+      last_proven_at:  iso(NOW - 2 * MIN),
+      last_present_at: iso(NOW - MIN),
+    }, NOW);
+    expect(verdict).toMatchObject({ close: true, closeReason: 'max_open_after_upgrade' });
+  });
+});
+
 describe('sessionBelongsToVisit', () => {
   // Visit b899021c, exactly as it happened (2026-08-22): the second same-day
   // check-in at POWR was stamped with the morning visit's session, and the reaper

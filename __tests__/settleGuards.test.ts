@@ -3,8 +3,9 @@
  * a visit the device has disowned. Both read gym_visit_events; both are pure.
  */
 import {
-  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepCorroboratesPresence,
-  sweepWitnessesOutside,
+  EXIT_REFUTE_WINDOW_MS,
+  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, lastResumedIso, standingExits,
+  sweepCorroboratesPresence, sweepWitnessesOutside,
 } from '@/supabase/functions/_shared/settleGuards';
 
 const T0 = '2026-09-07T11:19:08.078Z';   // started_at
@@ -187,5 +188,77 @@ describe('sweepCorroboratesPresence', () => {
     expect(sweepCorroboratesPresence(rows, null, BOUND)).toBe(false);
     expect(sweepCorroboratesPresence(rows, 'garbage', BOUND)).toBe(false);
     expect(sweepCorroboratesPresence(rows, START, NaN)).toBe(false);
+  });
+});
+
+describe('disownedAnswers — a resumed visit starts with a clean slate (2026-11-25)', () => {
+  const outside = (at: string) => ({ event: 'confirmed_outside', created_at: at, detail: { reason: 'no_active_session' } });
+
+  it('ignores an answer given while the visit was closed, before it was resumed', () => {
+    const events = [outside('2026-11-25T10:05:00Z')];
+    expect(disownedAnswers(events)).toBe(1);
+    expect(disownedAnswers(events, '2026-11-25T10:12:00Z')).toBe(0);
+  });
+
+  it('still counts an answer given after the resume', () => {
+    const events = [outside('2026-11-25T10:05:00Z'), outside('2026-11-25T10:20:00Z')];
+    expect(disownedAnswers(events, '2026-11-25T10:12:00Z')).toBe(1);
+  });
+
+  it('finds the latest resume among a visit’s events', () => {
+    expect(lastResumedIso([
+      { event: 'resumed', created_at: '2026-11-25T10:12:00Z' },
+      { event: 'confirmed_outside', created_at: '2026-11-25T10:30:00Z' },
+      { event: 'resumed', created_at: '2026-11-25T10:40:00Z' },
+    ])).toBe('2026-11-25T10:40:00Z');
+    expect(lastResumedIso([{ event: 'confirmed_outside', created_at: '2026-11-25T10:30:00Z' }])).toBeNull();
+  });
+});
+
+describe('standingExits — an exit the phone refuted is not a departure (2026-11-25)', () => {
+  // 2026-09-14, ONE LDN: a proven, four-times-nudged, silent iPhone was skipped by
+  // 80 consecutive settle runs because of an arm-burst exit, two seconds after
+  // check-in, that the app had itself refuted from 5 m.
+  const row = (event: string, at: string) => ({ event, created_at: at });
+
+  it('a refuted exit leaves nothing standing', () => {
+    expect(standingExits([
+      row('exit', '2026-09-14T05:14:11Z'),
+      row('exit_refuted', '2026-09-14T05:14:13Z'),
+    ])).toBe(0);
+  });
+
+  it('pairs them even when the two fire-and-forget rows land out of order', () => {
+    expect(standingExits([
+      row('exit_refuted', '2026-09-14T05:14:10Z'),
+      row('exit', '2026-09-14T05:14:11Z'),
+    ])).toBe(0);
+  });
+
+  it('a real exit stands', () => {
+    expect(standingExits([row('exit', '2026-09-14T06:56:47Z')])).toBe(1);
+  });
+
+  it('a refutation cancels ONE exit: the later, real departure still counts', () => {
+    expect(standingExits([
+      row('exit', '2026-09-14T05:14:11Z'),
+      row('exit_refuted', '2026-09-14T05:14:13Z'),
+      row('exit', '2026-09-14T06:56:47Z'),
+    ])).toBe(1);
+  });
+
+  it('a refutation minutes away is about something else', () => {
+    expect(standingExits([
+      row('exit', '2026-09-14T05:14:11Z'),
+      row('exit_refuted', new Date(Date.parse('2026-09-14T05:14:11Z') + EXIT_REFUTE_WINDOW_MS + 1_000).toISOString()),
+    ])).toBe(1);
+  });
+
+  it('never removes an exit it cannot read', () => {
+    expect(standingExits([row('exit', 'not a date'), row('exit_refuted', '2026-09-14T05:14:13Z')])).toBe(1);
+  });
+
+  it('no rows, no exits', () => {
+    expect(standingExits([])).toBe(0);
   });
 });

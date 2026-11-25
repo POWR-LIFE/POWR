@@ -127,15 +127,25 @@ const regionEvents = (event: string) =>
     .filter(([, e]) => e === event)
     .map(([regionId, , detail]) => ({ regionId, detail }));
 
+/** The FIRST inside reading, taken 40 s ago — so the fix a test drives next is
+ *  the second one and opens the visit. Since 2026-11-25 one reading alone is a
+ *  candidate, never a check-in (lib/geofence/zone.ts). */
+const seedFirstReading = (regionId: string) =>
+  AsyncStorage.setItem('@powr/entry_candidate', JSON.stringify({
+    regionId, firstSeenAtMs: Date.now() - 40_000, lastSeenAtMs: Date.now() - 40_000, readings: 1,
+  }));
+
 /** Drive a clean fix onto a seeded gym with NO active session → check-in. */
-const driveCheckIn = () =>
-  mockTasks[LOCATION_TRACKING_TASK]({
+const driveCheckIn = async () => {
+  await seedFirstReading('partner-home-0');
+  return mockTasks[LOCATION_TRACKING_TASK]({
     data: { locations: [{
       coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 20 },
       timestamp: Date.now(),
     }] },
     error: null,
   });
+};
 
 describe('check-in reports a dwell stream it could not start', () => {
   let restorePlatform: PropertyDescriptor | undefined;

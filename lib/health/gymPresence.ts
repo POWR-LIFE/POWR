@@ -10,6 +10,8 @@
  * strong, conservative correction signal.
  */
 
+import { proofBoundM, venueBand } from '@/lib/geofence/zone';
+
 /** A timestamped step sample from HealthKit / Health Connect. */
 export type StepSample = { startMs: number; endMs: number; steps: number };
 
@@ -214,6 +216,67 @@ export function locationExitVerdict(i: LocationExitInput): {
   return { verdict, readings, boundM, decisive };
 }
 
+// ─── The foreground (Home screen) departure check ───────────────────────────
+
+/** Same hysteresis as the engine's LOCATION_EXIT_HYSTERESIS_M and zone NEAR_BAND_M. */
+const HOME_EXIT_HYSTERESIS_M = 50;
+/** Outside readings must span at least this long. Two fixes five seconds apart
+ *  are the same GPS wander measured twice. */
+export const HOME_EXIT_MIN_SPAN_MS = 20 * 1000;
+/** Distinct outside fixes required before the foreground check may close. */
+export const HOME_EXIT_READINGS = 2;
+
+export interface OutsideStreak {
+  /** Which session the streak belongs to — a new check-in starts from zero. */
+  entryTimestamp: number;
+  firstFixAtMs: number;
+  lastFixAtMs: number;
+  readings: number;
+}
+
+/**
+ * What ONE reading from the foreground poll (hooks/useActiveGeofence) does to
+ * its run of outside readings. Pure.
+ *
+ * The poll used to end a visit on a single reading at radius + accuracy — the
+ * tightest exit rule in the system, running every 5 s while the member looked at
+ * the app. It now shares the exit bound and the grace with every other
+ * departure test, and needs HOME_EXIT_READINGS different fixes spanning
+ * HOME_EXIT_MIN_SPAN_MS.
+ */
+export function homeExitStep(
+  streak: OutsideStreak | null,
+  reading: {
+    entryTimestamp: number;
+    distanceM: number;
+    radiusM: number;
+    accuracyM: number | null;
+    fixAtMs: number;
+    nowMs: number;
+  },
+): { streak: OutsideStreak | null; close: boolean; outside: boolean; boundM: number } {
+  const boundM = exitBoundM(reading.radiusM, HOME_EXIT_HYSTERESIS_M, reading.accuracyM);
+  const outside = reading.distanceM > boundM;
+  if (!outside) return { streak: null, close: false, outside, boundM };
+  // Too young for any fix to end it — and a reading taken inside the grace may
+  // not corroborate one taken after it.
+  if (reading.nowMs - reading.entryTimestamp < LOCATION_EXIT_GRACE_MS) {
+    return { streak: null, close: false, outside, boundM };
+  }
+  const same = streak != null && streak.entryTimestamp === reading.entryTimestamp;
+  if (!same) {
+    return {
+      streak: { entryTimestamp: reading.entryTimestamp, firstFixAtMs: reading.fixAtMs, lastFixAtMs: reading.fixAtMs, readings: 1 },
+      close: false, outside, boundM,
+    };
+  }
+  // The same cached fix polled again is one reading, not two.
+  if (reading.fixAtMs <= streak!.lastFixAtMs) return { streak, close: false, outside, boundM };
+  const next: OutsideStreak = { ...streak!, lastFixAtMs: reading.fixAtMs, readings: streak!.readings + 1 };
+  const close = next.readings >= HOME_EXIT_READINGS && next.lastFixAtMs - next.firstFixAtMs >= HOME_EXIT_MIN_SPAN_MS;
+  return { streak: next, close, outside, boundM };
+}
+
 /**
  * How old a fix may be and still justify BILLING the time up to now.
  *
@@ -268,7 +331,41 @@ export function fixCreditsPresence(opts: {
   // describes WHEN it was true, and this test had no opinion about that at all —
   // while the very same event logged `stream_fix_age_s: 219` beside the verdict.
   if (fixAgeMs != null && fixAgeMs > MAX_CREDIT_FIX_AGE_MS) return false;
-  return distanceM <= radiusM + (accuracyM ?? 0);
+  // The error bar is CAPPED (2026-11-25, lib/geofence/zone.ts). It used to be
+  // `radius + accuracy` with no ceiling, which made a blurry fix prove presence
+  // from further away than a sharp one — up to radius + 100 m on the coarsest
+  // fix this function still trusts. Same inversion, and the same cap, as the
+  // exit bound's (EXIT_ACCURACY_CREDIT_CAP_M). A reading past the proof bound
+  // but short of the exit bound is `near`: it keeps the visit open (see
+  // nearKeepsVisitOpen) and bills nothing.
+  return distanceM <= proofBoundM(radiusM, accuracyM);
+}
+
+/**
+ * Does this fix show the member is still AT the venue, even though it is not
+ * good enough to bill?
+ *
+ * The `near` band exists because a real building is bigger than its circle.
+ * Field 2026-09-07 (ONE LDN): a member 36-37 m from a 30 m pin answered every
+ * wake, was refused as proof each time, and was timed out as silent while
+ * still training. A `near` answer tells the server "do not close me" without
+ * moving the clock that decides what is paid.
+ *
+ * Same trust and freshness tests as fixCreditsPresence — a stale or coarse
+ * reading vouches for nothing in either band.
+ */
+export function nearKeepsVisitOpen(opts: {
+  fixTrusted: boolean;
+  distanceM: number | null;
+  radiusM: number | null;
+  accuracyM: number | null;
+  fixAgeMs?: number | null;
+}): boolean {
+  const { fixTrusted, distanceM, radiusM, accuracyM, fixAgeMs } = opts;
+  if (!fixTrusted) return false;
+  if (distanceM == null || radiusM == null) return false;
+  if (fixAgeMs != null && fixAgeMs > MAX_CREDIT_FIX_AGE_MS) return false;
+  return venueBand(distanceM, radiusM, accuracyM) !== 'gone';
 }
 
 /**

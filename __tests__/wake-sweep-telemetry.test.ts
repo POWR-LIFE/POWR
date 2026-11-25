@@ -113,7 +113,7 @@ jest.mock('@/lib/supabase', () => ({
   },
 }));
 
-import { sweepForMissedCheckInFromWake } from '@/context/GeofenceContext';
+import { ENTRY_SEEK, sweepForMissedCheckInFromWake } from '@/context/GeofenceContext';
 import { openGymVisit, confirmGymVisit } from '@/lib/gymVisits';
 
 const mockConfirmGymVisit = confirmGymVisit as jest.Mock;
@@ -143,12 +143,24 @@ function sweepRows(): Array<Record<string, unknown>> {
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
+  // This file pins which fix the SWEEP hands over. The engine's own follow-up —
+  // fetching a second reading for a first one (seekEntryConfirmation) — takes an
+  // acquisition of its own and is covered in geofence-entry-confirm.test.ts.
+  ENTRY_SEEK.attempts = 0;
   mockLocation.getBackgroundPermissionsAsync.mockResolvedValue({ status: 'granted' } as never);
   mockLocation.getLastKnownPositionAsync.mockResolvedValue(null as never);
   await seedPartnerMap({
     'partner-1-0': { name: 'The Gym', dbId: 'partner-1', lat: GYM.lat, lng: GYM.lng, radius: GYM.radius },
   });
 });
+
+/** The FIRST inside reading, taken 40 s ago — so the fix a test drives next is
+ *  the second one and opens the visit. Since 2026-11-25 one reading alone is a
+ *  candidate, never a check-in (lib/geofence/zone.ts). */
+const seedFirstReading = (regionId: string) =>
+  AsyncStorage.setItem('@powr/entry_candidate', JSON.stringify({
+    regionId, firstSeenAtMs: Date.now() - 40_000, lastSeenAtMs: Date.now() - 40_000, readings: 1,
+  }));
 
 async function seedPartnerMap(map: Record<string, unknown>) {
   await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify(map));
@@ -222,6 +234,7 @@ describe('presence sweep telemetry', () => {
   });
 
   it("emits a checked_in row (via:'sweep') when the cached fix is inside a partner radius", async () => {
+    await seedFirstReading('partner-1-0');
     mockLocation.getLastKnownPositionAsync.mockResolvedValue(
       fixAt({ latitude: GYM.lat, longitude: GYM.lng }) as never,
     );
@@ -263,7 +276,9 @@ describe('approach-pending escalation', () => {
     mockLocation.getLastKnownPositionAsync.mockResolvedValue(
       fixAt({ latitude: GYM.lat + 0.0008, longitude: GYM.lng }, 19, 240_000) as never,
     );
-    // The truth: standing on the gym's centre.
+    // The truth: standing on the gym's centre — and a first reading already
+    // banked, so this acquired fix is the one that opens the visit.
+    await seedFirstReading('partner-1-0');
     mockLocation.getCurrentPositionAsync.mockResolvedValue(
       fixAt({ latitude: GYM.lat, longitude: GYM.lng }, 12) as never,
     );

@@ -15,7 +15,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
-import { ACTIVE_GEOFENCE_KEY, CHECKIN_POLL, resetNativeEventDebounceForTests } from '@/context/GeofenceContext';
+import { ACTIVE_GEOFENCE_KEY, CHECKIN_POLL, ENTRY_SEEK, resetNativeEventDebounceForTests } from '@/context/GeofenceContext';
 
 // The ENTER branch awaits pollForCheckIn — deliberately, so the OS holds the task
 // open while the user walks the last stretch to the 25 m radius. Drive it with zero
@@ -169,8 +169,19 @@ jest.mock('@/lib/supabase', () => ({
 const fixInside = { latitude: GYM.lat, longitude: GYM.lng, accuracy: 8 };
 const fixFarAway = { latitude: 51.6, longitude: -0.3, accuracy: 8 };
 
-const driveLocationFix = (coords: object) =>
-  mockTasks[LOCATION_TRACKING_TASK]({ data: { locations: [{ coords }] }, error: null });
+const driveLocationFix = (coords: object, timestamp?: number) =>
+  mockTasks[LOCATION_TRACKING_TASK]({
+    data: { locations: [timestamp != null ? { coords, timestamp } : { coords }] },
+    error: null,
+  });
+
+/** A check-in is TWO inside readings at least 30 s apart (2026-11-25,
+ *  lib/geofence/zone.ts) — one reading cannot tell arriving from passing. The
+ *  gap is measured on the fixes' own timestamps, so no test has to wait. */
+async function driveCheckIn() {
+  await driveLocationFix(fixInside, Date.now() - 40_000);
+  await driveLocationFix(fixInside, Date.now());
+}
 
 const driveNativeGeofence = (eventType: 1 | 2) =>
   mockTasks[GEOFENCE_TASK_NAME]({ data: { eventType, region: { identifier: REGION_ID } }, error: null });
@@ -232,6 +243,9 @@ beforeEach(async () => {
     };
   });
   resetNativeEventDebounceForTests();
+  // The engine goes and fetches the second reading itself (seekEntryConfirmation);
+  // these tests supply it directly, so the loop — and its real 10 s waits — is off.
+  ENTRY_SEEK.attempts = 0;
   await AsyncStorage.clear();
   mockInserts = [];
   mockClaimResponse = { data: { earned: 30, push_delivered: true, within_reach: null }, error: null };
@@ -257,15 +271,25 @@ describe('geofence → notification flow', () => {
     expect(mockNotifyCheckIn).not.toHaveBeenCalled();
     expect(await readActive()).toBeNull();
 
-    await driveLocationFix(fixInside);
+    // ONE inside reading is a candidate, not a check-in: a car or a walk past
+    // the door produces exactly this and nothing after it.
+    await driveLocationFix(fixInside, Date.now() - 40_000);
+    expect(mockNotifyCheckIn).not.toHaveBeenCalled();
+    expect(await readActive()).toBeNull();
+
+    // The second, 40 s later, opens the visit — and the visit starts at the FIRST.
+    const before = Date.now();
+    await driveLocationFix(fixInside, Date.now());
 
     expect(mockNotifyCheckIn).toHaveBeenCalledWith(GYM.name, REGION_ID);
-    expect(await readActive()).toMatchObject({ partnerId: GYM.dbId, regionId: REGION_ID });
+    const active = await readActive();
+    expect(active).toMatchObject({ partnerId: GYM.dbId, regionId: REGION_ID });
+    expect(active.entryTimestamp).toBeLessThanOrEqual(before - 39_000);
     expect(mockInvoke).not.toHaveBeenCalled(); // nothing claimed yet — the dwell hasn't run
   });
 
   it('claims in the background at the dwell threshold and leaves the push to the server', async () => {
-    await driveLocationFix(fixInside);
+    await driveCheckIn();
     await simulateDwell(35);
 
     await driveLocationFix(fixInside); // still inside — advances the dwell state machine
@@ -299,7 +323,7 @@ describe('geofence → notification flow', () => {
     (AppState as any).currentState = 'active';
     mockClaimResponse = { data: { earned: 30, push_delivered: false, within_reach: null }, error: null };
 
-    await driveLocationFix(fixInside);
+    await driveCheckIn();
     await simulateDwell(35);
     await driveLocationFix(fixInside);
 
@@ -308,7 +332,7 @@ describe('geofence → notification flow', () => {
 
   it('closes the visit on native EXIT without re-claiming an already-claimed session', async () => {
     (AppState as any).currentState = 'active'; // claim completes directly, sessionId lands
-    await driveLocationFix(fixInside);
+    await driveCheckIn();
     await simulateDwell(35);
     await driveLocationFix(fixInside);
     mockInvoke.mockClear();
@@ -324,7 +348,7 @@ describe('geofence → notification flow', () => {
   });
 
   it('claims on exit when the dwell was never advanced in the background', async () => {
-    await driveLocationFix(fixInside);
+    await driveCheckIn();
     await simulateDwell(35);
 
     // No in-gym fix ever landed (the closed-app starvation case) — the EXIT is the
@@ -341,7 +365,7 @@ describe('geofence → notification flow', () => {
   });
 
   it('leaving before the threshold claims nothing and notifies nothing', async () => {
-    await driveLocationFix(fixInside);
+    await driveCheckIn();
     await simulateDwell(12);
 
     await driveLocationFix(fixFarAway); // location-detected exit

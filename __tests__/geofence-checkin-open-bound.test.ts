@@ -120,15 +120,25 @@ const readActive = async () => {
   return raw ? JSON.parse(raw) as { regionId?: string; visitId?: string | null; entryTimestamp: number } : null;
 };
 
+/** The FIRST inside reading, taken 40 s ago — so the fix a test drives next is
+ *  the second one and opens the visit. Since 2026-11-25 one reading alone is a
+ *  candidate, never a check-in (lib/geofence/zone.ts). */
+const seedFirstReading = (regionId: string) =>
+  AsyncStorage.setItem('@powr/entry_candidate', JSON.stringify({
+    regionId, firstSeenAtMs: Date.now() - 40_000, lastSeenAtMs: Date.now() - 40_000, readings: 1,
+  }));
+
 /** A clean fix on the seeded gym with no active session → check-in. */
-const driveCheckIn = () =>
-  mockTasks[LOCATION_TRACKING_TASK]({
+const driveCheckIn = async () => {
+  await seedFirstReading('partner-home-0');
+  return mockTasks[LOCATION_TRACKING_TASK]({
     data: { locations: [{
       coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 20 },
       timestamp: Date.now(),
     }] },
     error: null,
   });
+};
 
 describe('the check-in open is bounded, and a late answer still stamps', () => {
   let restorePlatform: PropertyDescriptor | undefined;
@@ -197,10 +207,11 @@ describe('the check-in open is bounded, and a late answer still stamps', () => {
   // starts with a proof clock. 23 of 77 real iOS sessions in the prior 30 days
   // closed with none, and the beacon's settle refuses a NULL clock — so a phone
   // that never answers a wake was paid only on app-open.
-  it('carries the entry fix on the open — distance, accuracy, trust and age, never coordinates', async () => {
+  it('carries the entry fix on the open — distance, accuracy, trust, age and the offset from the pin, never coordinates', async () => {
     mockOpenGymVisit.mockImplementationOnce(async () => 'visit-fixed');
     const taken = Date.now() - 4_000;
 
+    await seedFirstReading('partner-home-0');
     await mockTasks[LOCATION_TRACKING_TASK]({
       data: { locations: [{ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 20 }, timestamp: taken }] },
       error: null,
@@ -218,10 +229,17 @@ describe('the check-in open is bounded, and a late answer still stamps', () => {
       accuracy_m:  20,
       fix_trusted: true,
       fix_age_s:   expect.any(Number),
+      // 2026-11-25: which way the member stood from the pin, in whole metres —
+      // what lets a wrong pin be seen. On the pin itself that is (0, 0).
+      dx_m:        0,
+      dy_m:        0,
     });
     expect((fix.fix_age_s as number)).toBeGreaterThanOrEqual(3);
     expect((fix.fix_age_s as number)).toBeLessThanOrEqual(6);
-    expect(Object.keys(fix).sort()).toEqual(['accuracy_m', 'distance_m', 'fix_age_s', 'fix_trusted']);
+    // The whole list, pinned: an offset is not a location, and nothing that IS
+    // one (latitude, longitude) may ever ride this call.
+    expect(Object.keys(fix).sort()).toEqual(['accuracy_m', 'distance_m', 'dx_m', 'dy_m', 'fix_age_s', 'fix_trusted']);
+    expect(JSON.stringify(fix)).not.toMatch(/lat|lng|lon|coord/i);
     expect(regionEvents('visit_open_attempt')[0].detail.fix_carried).toBe(true);
   });
 });

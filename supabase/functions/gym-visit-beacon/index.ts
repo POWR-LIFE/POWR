@@ -31,7 +31,8 @@ import { EXIT_SETTLE_LOOKBACK_MS, EXIT_SETTLE_RIGHT_OF_WAY_MS, exitSettleDue, ex
 import { exitPushCopy, exitPushDefaultCopy, exitPushEndedWhileOff, exitPushPassOpen, type ExitPushSwitchRow } from '../_shared/exitPushSwitch.ts';
 import { languagesFor } from '../_shared/i18n/index.ts';
 import {
-  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, sweepCorroboratesPresence,
+  deviceContradictsPresence, disownedAnswers, lastInsideWordIso, lastResumedIso, standingExits,
+  sweepCorroboratesPresence,
   sweepWitnessesOutside, SWEEP_WITNESSES_REQUIRED,
 } from '../_shared/settleGuards.ts';
 import { MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
@@ -609,7 +610,7 @@ Deno.serve(async (req: Request) => {
   {
     const { data: orphans, error: orphanErr } = await admin
       .from('gym_visits')
-      .select('id, user_id, started_at, claimed_at, upgraded_at, last_proven_at, claimed_session_id')
+      .select('id, user_id, started_at, claimed_at, upgraded_at, last_proven_at, last_present_at, claimed_session_id')
       .is('ended_at', null)
       .not('claimed_at', 'is', null) // upgraded OR claimed-only: staleVisitVerdict applies just the 4h ceiling to the latter
       .limit(100);
@@ -1134,10 +1135,14 @@ Deno.serve(async (req: Request) => {
       if (nonceErr) console.error('[gym-visit-beacon] nonce stamp failed (wake will fall back to JWT)', nonceErr);
 
       const payload = { type: 'gym_visit_check', visit_id: visit.id, stage, nonce: nonceErr ? undefined : nonce };
-      // Upgrade nudges get the doze-survival TTL (see the dwell sender above);
-      // presence checks stay short — delivering one long after the fact is
-      // pointless, the next cycle will ask again anyway.
-      const TTL_SEC = stage === 'upgrade' ? 30 * 60 : 10 * 60;
+      // 30 min for BOTH stages (2026-11-25). This read
+      // `stage === 'upgrade' ? 30 * 60 : 10 * 60`, with a comment about "presence
+      // checks" — but presence asks go out through their own sender above, on
+      // 30 minutes. What this line shortened was the DWELL nudge: the one that
+      // carries the claim, and the exact case the 2026-08-13 note above describes
+      // ("a 10-min TTL meant deferred became expired"). A late nudge is harmless
+      // for the same reasons given there.
+      const TTL_SEC = 30 * 60;
       let sentDirect = 0;
       let sentApns = 0;
       let failedDirect = 0;
@@ -1338,8 +1343,9 @@ Deno.serve(async (req: Request) => {
           .from('gym_visit_events')
           .select('event, created_at, detail')
           .eq('visit_id', v.id)
-          .eq('event', 'confirmed_outside');
-        const answers = disownedAnswers(evs ?? []);
+          .in('event', ['confirmed_outside', 'resumed']);
+        // Only answers since the last resume are about the visit that is live now.
+        const answers = disownedAnswers(evs ?? [], lastResumedIso(evs ?? []));
         if (answers === 0) continue;
 
         const endedAtIso = v.last_proven_at && Date.parse(v.last_proven_at) > Date.parse(v.started_at)
@@ -1521,18 +1527,40 @@ Deno.serve(async (req: Request) => {
       }
     };
 
-    const noExitSince = async (v: { user_id: string; region_id: string | null; started_at: string }) => {
+    const noExitSince = async (v: { id?: string; user_id: string; region_id: string | null; started_at: string }) => {
       if (!v.region_id) return true;
+      // A RESUMED visit (open_gym_visit, 2026-11-25) keeps the exit that closed
+      // its first leg in the table, and that exit can post-date the shifted
+      // started_at. It is about a close that has since been undone, so the
+      // question is asked from the resume onwards.
+      let since = v.started_at;
+      if (v.id) {
+        const { data: resumes } = await admin
+          .from('gym_visit_events')
+          .select('event, created_at')
+          .eq('visit_id', v.id)
+          .eq('event', 'resumed')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        const resumedAt = lastResumedIso(resumes ?? []);
+        if (resumedAt && Date.parse(resumedAt) > Date.parse(since)) since = resumedAt;
+      }
       // Prefix match: venue region ids share the partner uuid with a location
       // suffix ('<uuid>-0'), and an exit can be recorded against any of them.
-      const { count } = await admin
+      // exit_refuted rides along so an exit the phone itself took back does not
+      // read as a departure — see standingExits.
+      const { data: rows, error } = await admin
         .from('geofence_region_events')
-        .select('id', { count: 'exact', head: true })
+        .select('event, created_at')
         .eq('user_id', v.user_id)
-        .eq('event', 'exit')
+        .in('event', ['exit', 'exit_refuted'])
         .like('region_id', `${v.region_id.slice(0, 36)}%`)
-        .gt('created_at', v.started_at);
-      return (count ?? 0) === 0;
+        .gt('created_at', since)
+        .order('created_at', { ascending: true })
+        .limit(200);
+      // A failed read answers as it always has (the old `count ?? 0`).
+      if (error) return true;
+      return standingExits(rows ?? []) === 0;
     };
 
     // Stage 1: unclaimed visits past dwell + grace with an exhausted wake offer.

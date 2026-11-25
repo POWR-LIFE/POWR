@@ -48,12 +48,82 @@ export interface VisitEventRow {
 }
 
 /** How many wakes the device answered with "I hold no session for this". */
-export function disownedAnswers(events: VisitEventRow[]): number {
+export function disownedAnswers(events: VisitEventRow[], sinceIso?: string | null): number {
+  // `sinceIso` — only answers AFTER this count. A resumed visit (open_gym_visit,
+  // 2026-11-25) was closed and re-opened: a wake answered in between found no
+  // session on the phone, said so, and is not about the visit that is live now.
+  const since = sinceIso ? Date.parse(sinceIso) : NaN;
   let n = 0;
   for (const e of events) {
-    if (e.event === 'confirmed_outside' && e.detail?.reason === 'no_active_session') n++;
+    if (e.event !== 'confirmed_outside' || e.detail?.reason !== 'no_active_session') continue;
+    if (Number.isFinite(since)) {
+      const at = Date.parse(e.created_at);
+      if (Number.isFinite(at) && at <= since) continue;
+    }
+    n++;
   }
   return n;
+}
+
+/** When the visit was last RESUMED, from its own event rows; null if never. */
+export function lastResumedIso(events: Array<{ event: string; created_at: string }>): string | null {
+  let best: string | null = null;
+  let bestMs = -Infinity;
+  for (const e of events) {
+    if (e.event !== 'resumed') continue;
+    const at = Date.parse(e.created_at);
+    if (Number.isFinite(at) && at > bestMs) { bestMs = at; best = e.created_at; }
+  }
+  return best;
+}
+
+/** How long either side of an `exit` row a matching `exit_refuted` may sit. The
+ *  phone logs both, fire-and-forget, around one bounded verification (up to a
+ *  10 s acquisition), so they land seconds apart and not always in order. */
+export const EXIT_REFUTE_WINDOW_MS = 90 * 1000;
+
+/**
+ * How many `exit` rows still stand once the ones the phone itself REFUTED are
+ * taken out.
+ *
+ * The settle's "user observably left" test counted raw `exit` rows. Every iOS
+ * check-in re-arms ~20 regions and the arm burst can emit an exit two seconds
+ * after the visit opens — which the app verifies against a fresh fix and refutes
+ * (nativeExitRefuted → `exit_refuted`). The count never looked at that row.
+ * Field 2026-09-14: a proven, four-times-nudged, silent iPhone was skipped by 80
+ * consecutive settle runs because of a 2-second-old exit it had refuted at 5 m.
+ * 60 days to 2026-11-25: 11 proven visits carried a mid-visit exit row, 10 of
+ * them refuted.
+ *
+ * Each refutation cancels at most ONE exit, the nearest unpaired one.
+ */
+export function standingExits(rows: Array<{ event: string; created_at: string }>): number {
+  const exits: number[] = [];
+  const refuted: number[] = [];
+  for (const r of rows) {
+    const at = Date.parse(r.created_at);
+    if (!Number.isFinite(at)) {
+      // An unreadable exit still counts: this guard may only ever REMOVE an exit
+      // on positive evidence.
+      if (r.event === 'exit') exits.push(NaN);
+      continue;
+    }
+    if (r.event === 'exit') exits.push(at);
+    else if (r.event === 'exit_refuted') refuted.push(at);
+  }
+  let standing = 0;
+  for (const exitAt of exits) {
+    if (!Number.isFinite(exitAt)) { standing++; continue; }
+    let bestIdx = -1;
+    let bestGap = Infinity;
+    for (let i = 0; i < refuted.length; i++) {
+      const gap = Math.abs(refuted[i] - exitAt);
+      if (gap <= EXIT_REFUTE_WINDOW_MS && gap < bestGap) { bestGap = gap; bestIdx = i; }
+    }
+    if (bestIdx >= 0) refuted.splice(bestIdx, 1);
+    else standing++;
+  }
+  return standing;
 }
 
 /**

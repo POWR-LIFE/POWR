@@ -18,6 +18,13 @@ import { withNetworkTimeout } from '@/lib/networkTimeout';
 import type { CheckInNotifyResult } from '@/lib/notifications';
 import type { CheckInFix } from '@/lib/gymVisits';
 import type { LocationExitVerdict } from '@/lib/health/gymPresence';
+// Pure and import-free, so a static import costs a headless boot nothing.
+import {
+  ENTRY_BACKDATE_CAP_MS, ENTRY_CANDIDATE_TTL_MS, ENTRY_CONFIRM_MIN_GAP_MS, ENTRY_CONFIRM_MIN_GAP_WAKE_MS,
+  ENTRY_FIX_MAX_AGE_MS, entryDecision, goneBoundM, pinOffsetM, resumedStartMs, scanForEntry,
+  type ClosedVisitSnapshot, type EntryCandidate, type EntryScan,
+} from '@/lib/geofence/zone';
+import { clearArmPriority, noteVisitedRegion, pickArmedSet, readArmPriority, rememberHomeGym } from '@/lib/geofence/armedSet';
 import { supabase } from '@/lib/supabase';
 import { getGymDwellMinutes, getGymUpgradeMinutes, getLocationCloseMode, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
 
@@ -140,6 +147,13 @@ const VISIT_TICK_THROTTLE_KEY = '@powr/last_visit_tick_beat';   // liveness only
 // Consecutive outside readings behind the exit backstop. See EXIT_READINGS_REQUIRED:
 // this is the corroboration that replaced the unbounded accuracy term.
 const EXIT_STREAK_KEY         = '@powr/exit_readings';
+// The first inside reading, waiting for a second (lib/geofence/zone.ts). Storage,
+// not module state: the two readings routinely arrive in different JS contexts.
+const ENTRY_CANDIDATE_KEY     = '@powr/entry_candidate';
+// The visit that most recently ended, kept so a re-entry at the same venue
+// minutes later RESUMES it instead of starting again from zero. See
+// resumedStartMs — written by finalize, consumed once by the next check-in.
+const LAST_CLOSED_VISIT_KEY   = '@powr/last_closed_visit';
 // Running tally of arm-burst EXITs we declined to write a row for. Storage, not
 // module state: a headless geofencing context can be torn down between events,
 // and a tally that resets per event would report "1" fifty times — which is the
@@ -152,6 +166,21 @@ const LATE_OPEN_TRIES_KEY     = '@powr/late_open_tries';
 // Last time a sweep stamped proven presence (fix 2026-08-12). Module state, not
 // storage: a missed stamp costs one sweep interval of proof, nothing more.
 let _lastSweepProvenStampAt = 0;
+
+// When THIS JS process came up. Telemetry only (see `proc_age_s` on the
+// check_in_announced row).
+//
+// WHY (2026-11-25). In 54 of 202 paid iPhone visits over 30 days the phone's last
+// message came within ~10 seconds of check-in, even though its approach stream
+// had been ticking right up to it — and those visits answered 2 of 166 server
+// wakes, against a normal rate for the rest. It is per-member (one member: 10 of
+// 12 visits; several: none), which is the signature of an app that had been
+// swiped away and was relaunched by the region ENTER: iOS does not deliver
+// background pushes to a force-quit app. Nothing in the app can see "I was
+// force-quit" — but a process that is seconds old at check-in was dead just
+// before it, and that is the same fact. A small proc_age_s on a silent visit
+// confirms the theory; a large one refutes it.
+const PROCESS_STARTED_AT_MS = Date.now();
 
 // ⚠ Mirrors LAST_WAKE_AT_KEY in lib/backgroundNotificationTask.ts and must stay
 // equal to it. Duplicated rather than imported for the same reason that module
@@ -294,8 +323,15 @@ const LOCATION_UPDATE_OPTIONS: Location.LocationTaskOptions = {
 // drives delivery — a fix every 60 s regardless of movement. deferredUpdatesInterval
 // is deliberately omitted: batching would defer exactly the ticks we need. Cost is
 // bounded to the length of a visit; the foreground service is already running.
+//
+// ⚠ HIGH, NOT BALANCED (2026-11-25). Balanced is PRIORITY_BALANCED_POWER_ACCURACY,
+// whose nominal answer is exactly 100 m — the figure the entry and exit gates turn
+// away. 30 days to 11-25: 93 % of Android in-visit readings reported exactly 100,
+// and 1,451 of them placed the member within 25 m of the pin. Asking for a tier
+// whose best answer IS the threshold was self-defeating. The cost is bounded to
+// the visit, and the foreground service is already running for it.
 export const DWELL_LOCATION_OPTIONS: Location.LocationTaskOptions = {
-  accuracy:                         Location.Accuracy.Balanced,
+  accuracy:                         Location.Accuracy.High,
   timeInterval:                     60_000,
   distanceInterval:                 0,   // ← time-driven: MUST stay 0, see above
   pausesUpdatesAutomatically:       false,
@@ -509,6 +545,10 @@ interface StoredGeofence {
                              // the recorded duration stays the true session length
   visitId?:         string;  // server-side beacon record; lets the server wake this
                              // device at the dwell/upgrade thresholds (see lib/gymVisits)
+  resumeOf?:        string;  // the server visit this session RESUMES (re-entry at the
+                             // same venue minutes after a close). Sent on every open
+                             // so the server re-opens that visit instead of minting
+                             // a second one — see setActiveAndNotify.
   userId?:          string;  // who this session belongs to. Sign-out did not clear
                              // geofence state and this blob carried no owner, so a
                              // session opened by one account could be finalized —
@@ -516,6 +556,16 @@ interface StoredGeofence {
                              // signed in next. Two prod sessions (9decdee4 /
                              // bb50a5f3, different users) share raw_gps
                              // entryTimestamp 1785473225472 on one device.
+}
+
+/** The visit that most recently ended on this device (LAST_CLOSED_VISIT_KEY). */
+interface LastClosedVisit extends ClosedVisitSnapshot {
+  regionId?:        string;
+  visitId?:         string;
+  sessionRecorded?: boolean;
+  pointsPending?:   boolean;
+  sessionId?:       string;
+  tierUpgraded?:    boolean;
 }
 
 // ─── Partner geometry cache (nationwide) ─────────────────────────────────────
@@ -749,6 +799,9 @@ interface ArmMeta {
   centerLng:      number;
   sentinelRadius: number;
   armedAt:        number;
+  /** Region ids handed to the OS. Telemetry only: lets a check-in say whether
+   *  its venue had a wake ring at all (see setActiveAndNotify `armed`). */
+  ids?:           string[];
 }
 
 // Signature of the last region set actually handed to the OS (this JS context).
@@ -822,14 +875,19 @@ async function armNativeRegionsUnserialized(
   let regions: Location.LocationRegion[];
   let meta: ArmMeta | null = null;
 
+  let priorityCount = 0;
   if (fix) {
-    const sorted = entries
-      .map(([id, e]) => ({ id, e, dist: haversineMetres(fix.latitude, fix.longitude, e.lat!, e.lng!) }))
-      .sort((a, b) => a.dist - b.dist)
-      .slice(0, MAX_REGIONS - 1);
+    // THE MEMBER'S OWN VENUES FIRST, THEN THE NEAREST (2026-11-25,
+    // lib/geofence/armedSet.ts). This was nearest-(N-1) and nothing else, so in a
+    // dense city a member's own gym could rank below the cut from wherever the
+    // app last armed and have no wake ring at all.
+    const pick = pickArmedSet(entries, fix, MAX_REGIONS - 1, await readArmPriority());
+    const sorted = pick.chosen;
+    priorityCount = pick.priorityCount;
     // Sentinel sized just inside the armed envelope: leaving it means the
-    // nearest-N membership has likely changed.
-    const envelope = sorted[sorted.length - 1]?.dist ?? SENTINEL_MIN_RADIUS_M;
+    // nearest-N membership has likely changed. The envelope is the NEAREST fill
+    // only — a reserved gym across town must not stretch it.
+    const envelope = pick.envelopeM ?? SENTINEL_MIN_RADIUS_M;
     const sentinelRadius = Math.min(Math.max(envelope * 0.8, SENTINEL_MIN_RADIUS_M), SENTINEL_MAX_RADIUS_M);
     regions = sorted.map(({ id, e }) => ({
       identifier:    id,
@@ -850,7 +908,10 @@ async function armNativeRegionsUnserialized(
       notifyOnEnter: false,
       notifyOnExit:  true,
     });
-    meta = { centerLat: fix.latitude, centerLng: fix.longitude, sentinelRadius, armedAt: Date.now() };
+    meta = {
+      centerLat: fix.latitude, centerLng: fix.longitude, sentinelRadius, armedAt: Date.now(),
+      ids: sorted.map(x => x.id),
+    };
   } else {
     // No fix at all (rare — e.g. boot before any location): arm an arbitrary
     // subset with no sentinel; the first real fix re-arms properly.
@@ -985,6 +1046,8 @@ async function armNativeRegionsUnserialized(
       acc_m:      fix?.accuracy != null ? Math.round(fix.accuracy) : null,
       age_s:      fix?.ageMs != null ? Math.round(fix.ageMs / 1000) : null,
       via:        opts.via ?? null,
+      // How many slots went to the member's own venues rather than the nearest.
+      priority:   priorityCount,
     });
   } catch (err) {
     console.warn('[Geofence] Failed to arm native regions:', err);
@@ -1151,7 +1214,7 @@ function logRegionEvent(
     | 'exit_noise_suppressed' | 'visit_close_deferred' | 'check_in_announced'
     | 'visit_open_attempt' | 'visit_open_result' | 'wake_step_hung' | 'stream_first_tick'
     | 'check_in_banner' | 'check_in_open_deferred' | 'session_expired' | 'late_open_gave_up'
-    | 'location_exit',
+    | 'location_exit' | 'entry_candidate' | 'entry_rejected' | 'visit_resumed',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -1297,7 +1360,8 @@ async function pollForCheckIn(regionId: string): Promise<void> {
         ? cached
         : (await acquireFixPreferHigh(CHECKIN_POLL.fixTimeoutMs - 3_000, 3_000)) ?? cached;
       if (fix) {
-        await evaluateLocationFix(fix.coords, fix.timestamp);
+        // noSeek: this loop IS the retry — its next pass takes the second reading.
+        await evaluateLocationFix(fix.coords, fix.timestamp, { via: 'enter_poll', noSeek: true });
         // Re-check immediately rather than at the top of the next pass: that cost a
         // whole interval of the task's life and one redundant position read every
         // time the poll actually succeeded — which is the common case.
@@ -1312,6 +1376,20 @@ async function pollForCheckIn(regionId: string): Promise<void> {
     if (attempt < CHECKIN_POLL.attempts - 1) {
       await new Promise(resolve => setTimeout(resolve, CHECKIN_POLL.intervalMs));
     }
+  }
+  // The poll ran out with a first reading still waiting for its second — the
+  // member crossed the fence on one of the last passes. Finish the job rather
+  // than leave it to whichever fix happens along next.
+  try {
+    const pending = await readEntryCandidate();
+    if (pending && !(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY))) {
+      await seekEntryConfirmation(pending.regionId, { via: 'enter_poll' });
+      if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) {
+        logRegionEvent(regionId, 'checked_in', { via: 'enter_poll', attempt: CHECKIN_POLL.attempts });
+      }
+    }
+  } catch (err) {
+    console.warn('[Geofence] Check-in poll confirmation failed:', err);
   }
 }
 
@@ -1787,6 +1865,7 @@ async function sweepForMissedCheckIn(openVisitId: string | null = null): Promise
                   const res = await confirmGymVisit(visitId, true, {
                     stage:       'sweep',
                     distance_m:  Math.round(dist),
+                    ...(pinOffsetM({ lat: a.latitude, lng: a.longitude }, fix.coords) ?? {}),
                     accuracy_m:  acc != null ? Math.round(acc) : null,
                     fix_trusted: trusted,
                     fix_age_s:   Math.round(fixAgeMs / 1000),
@@ -1923,6 +2002,20 @@ async function sweepForMissedCheckIn(openVisitId: string | null = null): Promise
         if (acquired) { fix = acquired; fixSrc = 'acquired'; }
       }
     }
+    // A STALE CACHE NEAR A VENUE EARNS ONE FRESH FIX (2026-11-25). The front door
+    // no longer accepts a reading older than ENTRY_FIX_MAX_AGE_MS — a ten-minute-old
+    // position used to be able to open a visit here — so a cached fix that points
+    // at a wake ring, or a first reading still waiting for its second, is the cue
+    // to look again now. Same bounded ladder as the approach case above; a cache
+    // that is fresh, or nowhere near a venue, costs nothing extra.
+    if (approachAgeS == null && cached && Date.now() - cached.timestamp > ENTRY_FIX_MAX_AGE_MS) {
+      const pendingEntry = await readEntryCandidate();
+      const nearCached = await nearestPartnerMetres(cached.coords);
+      if (pendingEntry || (nearCached.nearest_m != null && nearCached.nearest_m <= APPROACH_RADIUS_M)) {
+        const acquired = await acquireFixPreferHigh(CHECKIN_POLL.fixTimeoutMs - 3_000, 3_000);
+        if (acquired) { fix = acquired; fixSrc = 'acquired'; }
+      }
+    }
     if (!fix) {
       // The prime suspect on iOS: BASELINE_STREAM_MODE is 'off', so with the app
       // swiped nothing feeds the OS cache and it ages past ten minutes.
@@ -1940,7 +2033,8 @@ async function sweepForMissedCheckIn(openVisitId: string | null = null): Promise
       outcome: 'handoff',
       acc_m:   fix.coords.accuracy != null ? Math.round(fix.coords.accuracy) : null,
       age_s:   Math.round((Date.now() - fix.timestamp) / 1000),
-      ...(approachAgeS != null ? { approach_age_s: approachAgeS, fix_src: fixSrc } : {}),
+      ...(approachAgeS != null ? { approach_age_s: approachAgeS } : {}),
+      ...(approachAgeS != null || fixSrc === 'acquired' ? { fix_src: fixSrc } : {}),
       ...(await nearestPartnerMetres(fix.coords)),
     });
     // Healthy. Recorded like every other branch so a granted permission
@@ -1948,7 +2042,9 @@ async function sweepForMissedCheckIn(openVisitId: string | null = null): Promise
     // next sweep — no foreground probe, no dismissal bookkeeping.
     await recordBackgroundHealth('handoff', String(status));
 
-    await evaluateLocationFix(fix.coords, fix.timestamp);
+    // wake: a first reading found here is confirmed on the shorter gap, inside
+    // the life this wake has (see ENTRY_CONFIRM_MIN_GAP_WAKE_MS).
+    await evaluateLocationFix(fix.coords, fix.timestamp, { via: 'sweep', wake: true });
 
     // Mirrors pollForCheckIn's row exactly, so "which detector started this
     // session?" is one query across both. Until this lands, every checked_in row
@@ -2023,6 +2119,10 @@ function logEnterScan(
   nearestM: number | null,
   nearestId: string | null,
   scanned: number,
+  /** The nearest venue's pin, when known — so a near miss says which WAY the
+   *  member stood from it. A member who keeps turning up 40 m east of a pin is
+   *  how a wrong pin shows itself. */
+  nearestPin?: { lat?: number | null; lng?: number | null } | null,
 ): void {
   const now = Date.now();
   if (now - (lastEnterScanLogAt[reason] ?? 0) < 5 * 60_000) return;
@@ -2032,6 +2132,7 @@ function logEnterScan(
     acc_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
     nearest_m: nearestM != null ? Math.round(nearestM) : null,
     scanned,
+    ...((nearestPin && pinOffsetM(nearestPin, coords)) || {}),
   });
 }
 
@@ -3222,9 +3323,20 @@ async function upgradeGymTier(sessionId: string, partnerName?: string, visitId?:
  *  withdraw the iOS mark banners whose copy promises points that won't bank.
  *  `regionId` is the composite UI key so the notification cooldown dedups
  *  against the native ENTER path for the same gym. */
-async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry, fix?: EntryFix): Promise<void> {
+async function setActiveAndNotify(
+  regionId: string,
+  entry: PartnerMapEntry,
+  fix?: EntryFix,
+  /** When the FIRST inside reading was taken (the second-reading rule). The
+   *  visit starts there, so confirming costs the member no minutes — clamped,
+   *  because a start further back than the cap is a guess. */
+  startAtMs?: number,
+): Promise<void> {
   if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
-  const entryTimestamp = Date.now();
+  const nowMs = Date.now();
+  let entryTimestamp = startAtMs != null && Number.isFinite(startAtMs)
+    ? Math.min(Math.max(startAtMs, nowMs - ENTRY_BACKDATE_CAP_MS), nowMs)
+    : nowMs;
 
   // Stamp the owner so a session can never be finalized — or its exit-claim
   // replayed — under a different account after a sign-out/switch. Best-effort:
@@ -3242,6 +3354,33 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry, fix?
   // unowned — the same best-effort outcome the old catch produced.
   const ownerId = (await readBackgroundAuth())?.userId;
 
+  // RESUME, DON'T RESTART (2026-11-25). A re-entry at the same venue within
+  // RESUME_WINDOW_MS of a close is the same visit: the exit that ended it was
+  // either false (GPS wobble at the ring edge) or a few minutes at the door.
+  // Field 11-16: a continuous 52-minute session recorded as 24 + 15½, neither
+  // half reaching the threshold — no check-in at all. The clock restarts at the
+  // old start plus the time away, so the gap itself is never billed. Consumed
+  // once: the snapshot is cleared whether or not it matched.
+  let resumed: LastClosedVisit | null = null;
+  try {
+    const rawClosed = await AsyncStorage.getItem(LAST_CLOSED_VISIT_KEY);
+    if (rawClosed) {
+      await AsyncStorage.removeItem(LAST_CLOSED_VISIT_KEY);
+      const closed = JSON.parse(rawClosed) as LastClosedVisit;
+      const start = resumedStartMs(closed, { partnerId: entry.dbId, startAtMs: entryTimestamp, userId: ownerId ?? null });
+      if (start != null) {
+        resumed = closed;
+        logRegionEvent(regionId, 'visit_resumed', {
+          gap_s:     Math.round((entryTimestamp - closed.endedAtMs) / 1000),
+          prior_min: Math.round((closed.endedAtMs - closed.entryTimestamp) / 60_000),
+          visit:     closed.visitId ?? null,
+          recorded:  !!closed.sessionRecorded,
+        });
+        entryTimestamp = start;
+      }
+    }
+  } catch { /* an unreadable snapshot is simply a new visit */ }
+
   await AsyncStorage.setItem(
     ACTIVE_GEOFENCE_KEY,
     JSON.stringify({
@@ -3253,7 +3392,16 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry, fix?
       longitude:      entry.lng,
       radius:         entry.radius,
       userId:         ownerId,
-    }),
+      // What the first leg had already earned, so the dwell machine neither
+      // claims twice nor forgets the bonus is still owed.
+      ...(resumed ? {
+        ...(resumed.sessionRecorded != null ? { sessionRecorded: resumed.sessionRecorded } : {}),
+        ...(resumed.pointsPending   != null ? { pointsPending:   resumed.pointsPending }   : {}),
+        ...(resumed.sessionId       != null ? { sessionId:       resumed.sessionId }       : {}),
+        ...(resumed.tierUpgraded    != null ? { tierUpgraded:    resumed.tierUpgraded }    : {}),
+        ...(resumed.visitId         != null ? { resumeOf:        resumed.visitId }         : {}),
+      } : {}),
+    } satisfies StoredGeofence),
   );
   console.log(`[Geofence] Location task: entered "${entry.name}".`);
 
@@ -3313,8 +3461,14 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry, fix?
   // row now carries the verdict, including the throw.
   let notifyResult: CheckInNotifyResult | 'threw' = 'threw';
   try {
-    const { notifyCheckInAvailable } = await import('@/lib/notifications');
-    notifyResult = await notifyCheckInAvailable(entry.name, regionId);
+    if (resumed) {
+      // Already told once. Finalize cleared the venue's cooldown when the first
+      // leg closed, so without this a resume would say "You're in" a second time.
+      notifyResult = 'cooldown';
+    } else {
+      const { notifyCheckInAvailable } = await import('@/lib/notifications');
+      notifyResult = await notifyCheckInAvailable(entry.name, regionId);
+    }
   } catch (err) {
     // The old comment here promised "server announce will cover (android)". That
     // pass was DELETED on 2026-08-07 once both platforms' headless local banners
@@ -3328,7 +3482,25 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry, fix?
   // `announced_at` cannot answer this — the client skips that mark whenever it is
   // backgrounded without a usable token, i.e. on every headless check-in, which is
   // why 08-17's Android banner could only be confirmed by the tester's own eyes.
-  logRegionEvent(regionId, 'check_in_announced', { notified: notifyResult });
+  //
+  // `armed`: was this venue in the set the OS was watching? false means the
+  // check-in happened WITHOUT a wake ring — the app was open, or a server sweep
+  // found it — which is the direct measure of the dense-city gap the reserved
+  // slots exist to close (lib/geofence/armedSet.ts). null = no arm on record.
+  let armedHere: boolean | null = null;
+  try {
+    const metaRaw = await AsyncStorage.getItem(ARM_META_KEY);
+    const ids = metaRaw ? (JSON.parse(metaRaw) as ArmMeta).ids : undefined;
+    if (Array.isArray(ids)) armedHere = ids.includes(regionId);
+  } catch { /* telemetry only */ }
+  logRegionEvent(regionId, 'check_in_announced', {
+    notified:   notifyResult,
+    armed:      armedHere,
+    proc_age_s: Math.round((Date.now() - PROCESS_STARTED_AT_MS) / 1000),
+    app_state:  String(AppState.currentState),
+  });
+  // This venue is now one of theirs: it keeps a reserved slot on the watch list.
+  void noteVisitedRegion(regionId, nowMs);
 
   // The pre-scheduled iOS 30/40-minute banners are GONE (2026-08-07). They
   // existed because iOS could not be relied on to wake at a threshold — a
@@ -3366,7 +3538,9 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry, fix?
   // this behaves exactly as before — the await hangs — never worse.
   let visitId: string | null = null;
   try {
-    const opened = openVisitTraced('check_in', entry.dbId, regionId, entryTimestamp, null, buildCheckInFix(entry, fix));
+    const opened = openVisitTraced(
+      'check_in', entry.dbId, regionId, entryTimestamp, null, buildCheckInFix(entry, fix), resumed?.visitId ?? null,
+    );
     let bound: ReturnType<typeof setTimeout> | undefined;
     visitId = await Promise.race([
       opened,
@@ -3434,6 +3608,9 @@ export function buildCheckInFix(
     accuracy_m:  coords.accuracy != null ? Math.round(coords.accuracy) : null,
     fix_trusted: coords.accuracy == null || coords.accuracy <= MAX_FIX_ACCURACY_M,
     fix_age_s:   ageS,
+    // Which WAY the member stood from the pin, not just how far — what lets a
+    // wrong pin be seen and moved. An offset, never a coordinate.
+    ...(pinOffsetM(entry, coords) ?? {}),
   };
 }
 
@@ -3726,6 +3903,12 @@ export async function clearGeofenceStateOnSignOut(departingUserId?: string): Pro
   await AsyncStorage.removeItem(VISIT_TICK_KEY).catch(() => {});
   await AsyncStorage.removeItem(VISIT_TICK_THROTTLE_KEY).catch(() => {});
   await AsyncStorage.removeItem(LOCATION_LOSS_KEY).catch(() => {});
+  // Neither may cross accounts: a first reading or a just-closed visit belongs to
+  // whoever was signed in when it was written.
+  await AsyncStorage.removeItem(ENTRY_CANDIDATE_KEY).catch(() => {});
+  await AsyncStorage.removeItem(LAST_CLOSED_VISIT_KEY).catch(() => {});
+  // The home gym and visited list describe a person, not a phone.
+  await clearArmPriority();
   _lastTickAtMs = 0;
 
   // Backfill ownership on anything banked before the stamp existed (or before the
@@ -3783,6 +3966,25 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
     // write the exit outbox entry.
     return false;
   }
+
+  // Remember what is ending BEFORE it is removed, so a re-entry minutes from now
+  // can resume it (setActiveAndNotify). Best-effort: without it the next check-in
+  // is simply a new visit, which is what every check-in was before.
+  try {
+    const snapshot: LastClosedVisit = {
+      partnerId:       active.partnerId,
+      regionId:        active.regionId,
+      entryTimestamp:  active.entryTimestamp,
+      endedAtMs,
+      userId:          active.userId ?? null,
+      visitId:         active.visitId ?? active.resumeOf,
+      sessionRecorded: active.sessionRecorded,
+      pointsPending:   active.pointsPending,
+      sessionId:       active.sessionId,
+      tierUpgraded:    active.tierUpgraded,
+    };
+    await AsyncStorage.setItem(LAST_CLOSED_VISIT_KEY, JSON.stringify(snapshot));
+  } catch { /* non-fatal */ }
 
   try {
     await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
@@ -3863,6 +4065,7 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
     try {
       visitId = await openVisitTraced(
         'close_recovery', active.partnerId, active.regionId, active.entryTimestamp, active.visitId ?? null,
+        null, active.resumeOf ?? null,
       );
     } catch { /* offline — fall through to the queue below */ }
     logRegionEvent(active.regionId ?? 'exit', 'visit_stamp_skipped', {
@@ -4254,9 +4457,9 @@ async function reconcileFix(): Promise<{ latitude: number; longitude: number; ac
  *  witnessed are not. Also capped at entry + the backstop itself.
  *
  *  Returns whether it closed the session. */
-async function finalizeSessionIfOverdue(
-  active: StoredGeofence,
-  via: 'stream_fix' | 'sweep',
+export async function finalizeSessionIfOverdue(
+  active: Pick<StoredGeofence, 'entryTimestamp' | 'regionId' | 'partnerName' | 'visitId' | 'sessionRecorded'>,
+  via: 'stream_fix' | 'sweep' | 'home_poll',
 ): Promise<boolean> {
   if (typeof active.entryTimestamp !== 'number') return false;
   const now = Date.now();
@@ -4887,6 +5090,7 @@ export async function runVisitCheck(
     const detail = {
       stage,
       distance_m: distance != null ? Math.round(distance) : null,
+      ...(pinOffsetM({ lat: active.latitude, lng: active.longitude }, coords) ?? {}),
       accuracy_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
       fix_trusted: fixTrusted,
       // Top-level, not just inside `trace`, because the SERVER's v_proven mirror
@@ -5119,7 +5323,7 @@ async function heartbeatVisitStream(
     // The credit floor moves only on a fix that would pass the same test the wake
     // confirm and the wake reconciler use. Everything below this line still runs:
     // liveness, the late-open retry and the dwell machine are unaffected.
-    const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
+    const { fixCreditsPresence, nearKeepsVisitOpen } = await import('@/lib/health/gymPresence');
     const distanceM = (active.latitude != null && active.longitude != null)
       ? haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude)
       : null;
@@ -5143,6 +5347,17 @@ async function heartbeatVisitStream(
     if (credits) {
       await AsyncStorage.setItem(VISIT_TICK_KEY, String(now));
     }
+    // NEAR (2026-11-25): past the proof bound but short of the exit bound. It moves
+    // no credit floor and bills nothing — it exists so the server knows the member
+    // is still at the venue and does not time the visit out as silent (the ONE LDN
+    // 09-07 close, mid-workout, of a member answering every wake from 37 m).
+    const near = !credits && nearKeepsVisitOpen({
+      fixTrusted,
+      distanceM,
+      radiusM: active.radius ?? null,
+      accuracyM: coords.accuracy ?? null,
+      fixAgeMs,
+    });
 
     if (!active.visitId) {
       // Spent budget leaves the tick exactly where a failed open always has:
@@ -5157,6 +5372,7 @@ async function heartbeatVisitStream(
       // re-uses an already-open visit, so a racing double-open is a no-op.
       const visitId = await openVisitTraced(
         'stream_late_open', active.partnerId, active.regionId, active.entryTimestamp, active.visitId ?? null,
+        null, active.resumeOf ?? null,
       );
       if (!visitId) return; // still unauthenticated/offline — next interval retries
       const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
@@ -5194,7 +5410,7 @@ async function heartbeatVisitStream(
     // 30 s on 2026-08-11. This function is awaited ahead of advanceActiveSession
     // and its docstring swears never to delay the dwell machine; the race is what
     // makes that promise structural instead of hopeful.
-    if (credits) {
+    if (credits || near) {
       const { confirmGymVisit } = await import('@/lib/gymVisits');
       // `timedOut` rather than a shared {ok:false}: a bounded await that reports
       // the timeout as a failure makes "the round-trip is slow" and "the server
@@ -5209,6 +5425,8 @@ async function heartbeatVisitStream(
           confirmGymVisit(active.visitId, true, {
             stage:       'stream',
             source:      'heartbeat',
+            band:        credits ? 'inside' : 'near',
+            ...(pinOffsetM({ lat: active.latitude, lng: active.longitude }, coords) ?? {}),
             distance_m:  distanceM != null ? Math.round(distanceM) : null,
             accuracy_m:  coords.accuracy != null ? Math.round(coords.accuracy) : null,
             fix_trusted: fixTrusted,
@@ -5242,7 +5460,242 @@ async function heartbeatVisitStream(
   } catch { /* diagnostic only — never let it affect the claim */ }
 }
 
-async function evaluateLocationFix(coords: Location.LocationObjectCoords, fixTimestamp?: number): Promise<void> {
+// ─── Check-in: the second reading ────────────────────────────────────────────
+// The rule, and the numbers behind it, live in lib/geofence/zone.ts. This block is
+// the storage and the plumbing around it.
+
+async function readEntryCandidate(): Promise<EntryCandidate | null> {
+  try {
+    const raw = await AsyncStorage.getItem(ENTRY_CANDIDATE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as EntryCandidate;
+    return typeof c?.regionId === 'string'
+      && typeof c?.firstSeenAtMs === 'number'
+      && typeof c?.lastSeenAtMs === 'number'
+      ? c
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeEntryCandidate(c: EntryCandidate | null): Promise<void> {
+  try {
+    if (c) await AsyncStorage.setItem(ENTRY_CANDIDATE_KEY, JSON.stringify(c));
+    else await AsyncStorage.removeItem(ENTRY_CANDIDATE_KEY);
+  } catch { /* a lost first reading costs one more reading, never a wrong check-in */ }
+}
+
+/** How a fix reached the front door, and what it is allowed to do there. */
+export interface EntryOpts {
+  /** Names the path on every row this fix writes. */
+  via?: 'stream' | 'enter_poll' | 'sweep' | 'foreground' | 'startup' | 'confirm' | 'precise';
+  /** A server wake: confirms on the shorter gap (ENTRY_CONFIRM_MIN_GAP_WAKE_MS). */
+  wake?: boolean;
+  /** The caller runs its own retry loop — do not start seekEntryConfirmation. */
+  noSeek?: boolean;
+  /** This fix IS the precise re-read of a coarse one. Never re-read again. */
+  precise?: boolean;
+}
+
+type EntryOutcome =
+  | { outcome: 'entered' | 'rejected' | 'none' }
+  | { outcome: 'candidate'; regionId: string };
+
+let lastEntryRejectLogAt: Record<string, number> = {};
+
+/** ONE front door for every path that can start a visit: the stream, the enter
+ *  poll, the wake sweep and both foreground checks. They used to carry three
+ *  hand-copies of the same loop, each taking the first circle it happened to
+ *  reach. Applies the nearest-venue pick the caller already made, the age and
+ *  speed gates, and the second-reading rule. */
+async function considerEntry(
+  partnerMap: Record<string, PartnerMapEntry>,
+  scan: EntryScan<PartnerMapEntry>,
+  coords: Location.LocationObjectCoords,
+  fixTimestamp: number | undefined,
+  opts: EntryOpts,
+): Promise<EntryOutcome> {
+  const now = Date.now();
+  const stored = await readEntryCandidate();
+  const accM = coords.accuracy != null ? Math.round(coords.accuracy) : null;
+
+  if (!scan.match) {
+    // Not inside any circle. A first reading survives a wobble into the near
+    // band; a fix clearly away from that venue, or simple age, ends it.
+    if (stored) {
+      const e = partnerMap[stored.regionId];
+      const expired = now - stored.lastSeenAtMs > ENTRY_CANDIDATE_TTL_MS;
+      const left = !e || e.lat == null || e.lng == null
+        || haversineMetres(coords.latitude, coords.longitude, e.lat, e.lng) > goneBoundM(e.radius ?? 100, coords.accuracy);
+      if (expired || left) {
+        await writeEntryCandidate(null);
+        logRegionEvent(stored.regionId, 'entry_candidate', {
+          outcome:  expired ? 'expired' : 'left',
+          readings: stored.readings,
+          age_s:    Math.round((now - stored.firstSeenAtMs) / 1000),
+          via:      opts.via ?? null,
+        });
+      }
+    }
+    return { outcome: 'none' };
+  }
+
+  const { regionId, entry, distanceM } = scan.match;
+  const decision = entryDecision({
+    regionId,
+    fixAtMs:   typeof fixTimestamp === 'number' ? fixTimestamp : null,
+    nowMs:     now,
+    speedMps:  coords.speed,
+    candidate: stored,
+    minGapMs:  opts.wake ? ENTRY_CONFIRM_MIN_GAP_WAKE_MS : ENTRY_CONFIRM_MIN_GAP_MS,
+  });
+
+  if (decision.verdict === 'stale' || decision.verdict === 'too_fast') {
+    // Throttled like the coarse rows: the approach stream ticks every 8 s.
+    if (now - (lastEntryRejectLogAt[decision.verdict] ?? 0) >= 5 * 60_000) {
+      lastEntryRejectLogAt[decision.verdict] = now;
+      logRegionEvent(regionId, 'entry_rejected', {
+        reason:     decision.verdict,
+        distance_m: Math.round(distanceM),
+        acc_m:      accM,
+        age_s:      typeof fixTimestamp === 'number' ? Math.round((now - fixTimestamp) / 1000) : null,
+        speed_mps:  coords.speed != null && coords.speed >= 0 ? Math.round(coords.speed * 10) / 10 : null,
+        via:        opts.via ?? null,
+      });
+    }
+    return { outcome: 'rejected' };
+  }
+
+  if (decision.verdict === 'enter') {
+    await writeEntryCandidate(null);
+    logRegionEvent(regionId, 'entry_candidate', {
+      outcome:    'confirmed',
+      gap_s:      Math.round((decision.gapMs ?? 0) / 1000),
+      readings:   (stored?.readings ?? 0) + 1,
+      distance_m: Math.round(distanceM),
+      acc_m:      accM,
+      via:        opts.via ?? null,
+    });
+    await setActiveAndNotify(regionId, entry, { coords, timestamp: fixTimestamp }, decision.startAtMs);
+    return { outcome: 'entered' };
+  }
+
+  await writeEntryCandidate(decision.candidate);
+  const isFirst = !stored
+    || stored.regionId !== regionId
+    || decision.candidate?.firstSeenAtMs !== stored.firstSeenAtMs;
+  if (isFirst) {
+    logRegionEvent(regionId, 'entry_candidate', {
+      outcome:    'first',
+      distance_m: Math.round(distanceM),
+      acc_m:      accM,
+      via:        opts.via ?? null,
+    });
+  }
+  return { outcome: 'candidate', regionId };
+}
+
+/** Mutable so tests can drive the loop without real waits — same reason, and the
+ *  same shape, as CHECKIN_POLL. */
+export const ENTRY_SEEK = {
+  attempts:     3,
+  retryMs:      10 * 1000,
+  fixTimeoutMs: 8 * 1000,
+};
+
+// Single-flight lease. A lease, not a lock: RN timers can freeze with a suspended
+// process, and a frozen loop must not block every later one.
+let _entrySeekSince: number | null = null;
+const ENTRY_SEEK_STALE_MS = 3 * 60 * 1000;
+
+export function resetEntrySeekForTests(): void {
+  _entrySeekSince = null;
+  lastEntryRejectLogAt = {};
+  _lastPreciseRetryAt = { dwell: 0, enter: 0 };
+}
+
+/** Goes and gets the second reading, rather than hoping one arrives.
+ *
+ *  A member who walks in and stands at reception produces no further stream
+ *  fixes — both streams are displacement-gated — so a first reading left to wait
+ *  would wait until they next moved ten metres. This holds the approach stream
+ *  (which is also what keeps an iOS process alive past its wake window), waits
+ *  out the gap, takes a fresh fix and puts it through the same front door.
+ *
+ *  Bounded in both directions, like pollForCheckIn. If it never completes — a
+ *  suspended process freezes its timers — nothing is lost: the first reading
+ *  stays stored, and ANY later inside fix within its lifetime confirms it with
+ *  the start backdated. */
+async function seekEntryConfirmation(regionId: string, opts: EntryOpts): Promise<void> {
+  if (ENTRY_SEEK.attempts <= 0) return;
+  const held = _entrySeekSince;
+  if (held != null && Date.now() - held < ENTRY_SEEK_STALE_MS) return;
+  const mine = Date.now();
+  _entrySeekSince = mine;
+  try {
+    const approaching = (await AsyncStorage.getItem(APPROACH_STATE_KEY).catch(() => null)) != null;
+    if (!approaching) await enterApproach(regionId);
+
+    const gapMs = opts.wake ? ENTRY_CONFIRM_MIN_GAP_WAKE_MS : ENTRY_CONFIRM_MIN_GAP_MS;
+    for (let attempt = 0; attempt < ENTRY_SEEK.attempts; attempt++) {
+      const pending = await readEntryCandidate();
+      if (!pending || pending.regionId !== regionId) return; // confirmed by another path, or dropped
+      if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
+
+      // +1 s so the confirming fix's own timestamp clears the gap.
+      const untilGap = Math.max(0, pending.firstSeenAtMs + gapMs + 1_000 - Date.now());
+      const waitMs = attempt === 0 ? untilGap : Math.max(untilGap, ENTRY_SEEK.retryMs);
+      if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+      if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
+
+      const fix = await acquireFixPreferHigh(ENTRY_SEEK.fixTimeoutMs - 3_000, 3_000);
+      if (!fix) continue;
+      await evaluateLocationFix(fix.coords, fix.timestamp, { ...opts, via: 'confirm', noSeek: true });
+    }
+  } catch (err) {
+    console.warn('[Geofence] Entry confirmation loop failed:', err);
+  } finally {
+    if (_entrySeekSince === mine) _entrySeekSince = null;
+  }
+}
+
+// ─── A precise reading in place of a coarse one ──────────────────────────────
+// A coarse fix used to be thrown away at both gates. Near a venue that is the
+// moment a precise one is worth paying for: 30 days to 2026-11-25, Android
+// discarded 5,480 would-be entry readings and 1,455 in-visit ones as coarse.
+// Throttled per purpose, bounded like every acquisition in this file, and never
+// taken on a fix that is itself the result of this (opts.precise).
+let _lastPreciseRetryAt: Record<'dwell' | 'enter', number> = { dwell: 0, enter: 0 };
+const PRECISE_RETRY_MIN_MS: Record<'dwell' | 'enter', number> = { dwell: 2 * 60_000, enter: 60_000 };
+const PRECISE_RETRY_TIMEOUT_MS = 6 * 1000;
+
+async function preciseFixInsteadOf(kind: 'dwell' | 'enter'): Promise<Location.LocationObject | null> {
+  const now = Date.now();
+  if (now - _lastPreciseRetryAt[kind] < PRECISE_RETRY_MIN_MS[kind]) return null;
+  _lastPreciseRetryAt[kind] = now;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const fix = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).catch(() => null),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), PRECISE_RETRY_TIMEOUT_MS); }),
+    ]);
+    if (!fix || fix.coords?.accuracy == null || fix.coords.accuracy >= MAX_FIX_ACCURACY_M) return null;
+    // An "acquired" fix can be a cached pin wearing a new request (the 08-11 lesson).
+    if (typeof fix.timestamp === 'number' && Date.now() - fix.timestamp > ENTRY_FIX_MAX_AGE_MS) return null;
+    return fix;
+  } catch {
+    return null;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function evaluateLocationFix(
+  coords: Location.LocationObjectCoords,
+  fixTimestamp?: number,
+  opts: EntryOpts = {},
+): Promise<void> {
   // A coarse fix can't be trusted against a tight radius — it must never fire a
   // false "You're in" from far away (ENTER) or flap a real session out early
   // (EXIT). But dwell progression (advanceActiveSession) is purely TIME-based and
@@ -5280,6 +5733,16 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords, fixTim
     // sweep (which returns early on session_active) is no backstop for exits.
     // Kept as-is deliberately — rejecting coarse fixes wholesale is what starved
     // entire in-gym dwells on 07-03/07-11 — but it is no longer SILENT.
+    //
+    // One precise reading first (2026-11-25). If the GPS can answer, the whole
+    // question goes away: that fix runs the geometry, proves presence or shows
+    // a departure. If it cannot, everything below is exactly as it was.
+    if (!opts.precise) {
+      const precise = await preciseFixInsteadOf('dwell');
+      if (precise) {
+        return evaluateLocationFix(precise.coords, precise.timestamp, { ...opts, precise: true, via: 'precise' });
+      }
+    }
     logCoarseRejection('dwell_tick', coords, active);
     await heartbeatVisitStream(active, coords, fixTimestamp);
     await advanceActiveSession(active);
@@ -5293,6 +5756,19 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords, fixTim
     // every indoor fix was >100 m and returned HERE, so nothing could ever
     // correct it. armNativeRegions itself no-ops inside the sentinel envelope.
     logCoarseRejection('enter_blocked', coords, null);
+    // A coarse fix cannot check anyone in — but one that puts a venue inside its
+    // own error bar is the cue to go and get a fix that can. Bounded, throttled,
+    // and only when a wake ring is plausibly in reach, so a phone on a train does
+    // not wake the GPS at every station.
+    if (!opts.precise) {
+      const near = await nearestPartnerMetres(coords);
+      if (near.nearest_m != null && near.nearest_m <= APPROACH_RADIUS_M + Math.min(coords.accuracy ?? 0, 500)) {
+        const precise = await preciseFixInsteadOf('enter');
+        if (precise) {
+          return evaluateLocationFix(precise.coords, precise.timestamp, { ...opts, precise: true, via: 'precise' });
+        }
+      }
+    }
     if (coords.accuracy != null && coords.accuracy <= ARM_FIX_MAX_ACCURACY_M) {
       await armNativeRegions(
         { latitude: coords.latitude, longitude: coords.longitude },
@@ -5376,30 +5852,26 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords, fixTim
     return;
   }
 
-  let withinAnyApproach = false;
-  let nearestM: number | null = null;
-  let nearestId: string | null = null;
-  let scanned = 0;
-  for (const [regionId, entry] of Object.entries(partnerMap)) {
-    if (entry.lat == null || entry.lng == null) continue;
-    scanned++;
-    const dist = haversineMetres(coords.latitude, coords.longitude, entry.lat, entry.lng);
-    if (nearestM == null || dist < nearestM) { nearestM = dist; nearestId = regionId; }
-    // Exact partner radius — no accuracy buffer added, so a 25 m circle means 25 m.
-    if (dist <= (entry.radius ?? 100)) {
-      await setActiveAndNotify(regionId, entry, { coords, timestamp: fixTimestamp });
-      return;
-    }
-    if (dist <= APPROACH_RADIUS_M) withinAnyApproach = true;
-  }
+  // NEAREST venue whose circle holds the fix — not the first one the loop meets
+  // (lib/geofence/zone.ts scanForEntry). Exact partner radius, no accuracy
+  // buffer: a 25 m circle means 25 m.
+  const scan = scanForEntry(partnerMap, coords, APPROACH_RADIUS_M);
+  const entered = await considerEntry(partnerMap, scan, coords, fixTimestamp, opts);
+  if (entered.outcome === 'entered') return;
+  const withinAnyApproach = scan.withinApproach;
 
   // Scanned the whole map from inside the approach ring and still did not check
   // in. Usually legitimate — 120 m ring, 25 m fence — but it is also the only
-  // shape the above failure could take if the map were merely INCOMPLETE rather
+  // shape a missed check-in could take if the map were merely INCOMPLETE rather
   // than absent, so it must not be silent either. Bounded to the ring so a user
-  // walking past a town's worth of gyms does not generate a row per fix.
-  if (withinAnyApproach) {
-    logEnterScan('no_match_in_ring', coords, nearestM, nearestId, scanned);
+  // walking past a town's worth of gyms does not generate a row per fix. A fix
+  // that IS inside a circle and was held back writes its own row instead
+  // (entry_candidate / entry_rejected).
+  if (withinAnyApproach && entered.outcome === 'none') {
+    logEnterScan(
+      'no_match_in_ring', coords, scan.nearestM, scan.nearestId, scan.scanned,
+      scan.nearestId ? partnerMap[scan.nearestId] : null,
+    );
   }
 
   // Outside every approach ring — if the stream is still escalated (the native
@@ -5416,6 +5888,12 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords, fixTim
     { latitude: coords.latitude, longitude: coords.longitude },
     { via: 'drift' },
   );
+
+  // A first reading is pending: go and get the second (see seekEntryConfirmation).
+  // Last, so nothing above waits on it; skipped for callers that loop themselves.
+  if (entered.outcome === 'candidate' && !opts.noSeek) {
+    await seekEntryConfirmation(entered.regionId, opts);
+  }
 }
 
 /** Re-registers native geofencing + the location stream from the cached partner
@@ -5533,6 +6011,7 @@ defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
       // newest element can be minutes old by the time the OS hands it over, and
       // that gap is exactly what the credit floor must know about.
       locations[locations.length - 1].timestamp,
+      { via: 'stream' },
     );
   } catch (err) {
     console.warn('[Geofence] evaluateLocationFix failed:', err);
@@ -5803,6 +6282,8 @@ async function openVisitTraced(
   storedVisit: string | null,
   /** Only the 'check_in' source has one: the fix that decided the entry. */
   fix: CheckInFix | null = null,
+  /** The closed visit this session resumes, when it does. */
+  resumeOf: string | null = null,
 ): Promise<string | null> {
   const rid = regionId ?? 'visit';
   logRegionEvent(rid, 'visit_open_attempt', {
@@ -5811,11 +6292,12 @@ async function openVisitTraced(
     opened_entry:  entryTimestamp,
     app_state:     AppState.currentState,
     fix_carried:   fix != null,
+    ...(resumeOf ? { resume_of: resumeOf } : {}),
   });
   const startedAt = Date.now();
   try {
     const { openGymVisit } = await import('@/lib/gymVisits');
-    const id = await openGymVisit(partnerId, regionId, entryTimestamp, fix);
+    const id = await openGymVisit(partnerId, regionId, entryTimestamp, fix, resumeOf);
     logRegionEvent(rid, 'visit_open_result', {
       source,
       resolved: !!id,
@@ -5947,6 +6429,7 @@ async function selfPollIfWakeStarved(
       stage:       elapsed >= prodUpgradeMs() ? 'upgrade' : 'dwell',
       source:      'wake_starved_self_poll',
       distance_m:  distance != null ? Math.round(distance) : null,
+      ...(pinOffsetM({ lat: active.latitude, lng: active.longitude }, coords) ?? {}),
       accuracy_m:  acc != null ? Math.round(acc) : null,
       fix_trusted: fixTrusted,
       // ⚠ WAS `fix_age_ms: 0`, AND THAT KEY IS NOT READ. confirm_gym_visit_v2
@@ -6365,22 +6848,22 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           // an in-memory proximity scan. setActiveAndNotify only touches the
           // network/DB once we're actually inside a partner radius, so there's no
           // Supabase query every 30 s for the common case of not being at a gym.
-          const loc = await Location.getLastKnownPositionAsync().catch(() => null);
+          // maxAge (2026-11-25): this read had NO age limit at all, so opening the
+          // app could check a member in on wherever the OS last saw them.
+          const loc = await Location.getLastKnownPositionAsync({ maxAge: ENTRY_FIX_MAX_AGE_MS }).catch(() => null);
           // Ignore coarse fixes — a low-accuracy position can't be trusted against a
           // tight radius and would otherwise match a gym from far away.
           if (loc && (loc.coords.accuracy == null || loc.coords.accuracy <= MAX_FIX_ACCURACY_M)) {
             const map = await readPartnerMap();
             if (map) {
-              for (const [regionId, entry] of Object.entries(map)) {
-                if (entry.lat == null || entry.lng == null) continue;
-                // Exact partner radius — no accuracy buffer added.
-                if (haversineMetres(loc.coords.latitude, loc.coords.longitude, entry.lat, entry.lng) <= (entry.radius ?? 100)) {
-                  // No-ops if a session is already active or a gym was already
-                  // logged today; dedups against the native ENTER notification.
-                  await setActiveAndNotify(regionId, entry, { coords: loc.coords, timestamp: loc.timestamp });
-                  break;
-                }
-              }
+              // Same front door as every other path: nearest venue, exact radius,
+              // and a second reading before a visit opens. No-ops if a session is
+              // already active.
+              const scan = scanForEntry(map, loc.coords, APPROACH_RADIUS_M);
+              const res = await considerEntry(map, scan, loc.coords, loc.timestamp, { via: 'foreground' });
+              // Not awaited: the second reading is ~30 s away and this callback
+              // also drives the dwell timer.
+              if (res.outcome === 'candidate') void seekEntryConfirmation(res.regionId, { via: 'foreground' });
             }
           }
         } catch { /* non-fatal */ }
@@ -6649,6 +7132,20 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       // 13 km away and built the whole watch list around the wrong town (their
       // own gym missed the nearest-49 cut at rank 65). getArmFix screens every
       // source to ≤1 km and never hangs.
+      // The member's home gym, cached where the headless arm can read it
+      // (profiles.preferred_gym_id → lib/geofence/armedSet). Foreground only,
+      // bounded, and best-effort: a miss leaves the previous value in place.
+      try {
+        const auth = await readBackgroundAuth();
+        if (auth?.userId) {
+          const { data } = await withNetworkTimeout(
+            supabase.from('profiles').select('preferred_gym_id').eq('id', auth.userId).maybeSingle(),
+            'home_gym',
+          );
+          if (data) await rememberHomeGym((data as { preferred_gym_id?: string | null }).preferred_gym_id ?? null);
+        }
+      } catch { /* non-fatal */ }
+
       const userPos = await getArmFix();
       await armNativeRegions(userPos, { force: true, via: 'startup_refresh' });
       setIsMonitoring(true);
@@ -6740,16 +7237,11 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         if (loc && (loc.coords.accuracy == null || loc.coords.accuracy <= MAX_FIX_ACCURACY_M)) {
           const map = await readPartnerMap();
           if (map) {
-            for (const [regionId, entry] of Object.entries(map)) {
-              if (entry.lat == null || entry.lng == null) continue;
-              const dist = haversineMetres(loc.coords.latitude, loc.coords.longitude, entry.lat, entry.lng);
-              // Exact partner radius — no accuracy buffer added, so a 25 m circle means 25 m.
-              if (dist <= (entry.radius ?? 100)) {
-                // No-ops if a session is already active or a gym was already logged today.
-                await setActiveAndNotify(regionId, entry, { coords: loc.coords, timestamp: loc.timestamp });
-                break;
-              }
-            }
+            // Same front door as every other path (see considerEntry). No-ops if a
+            // session is already active.
+            const scan = scanForEntry(map, loc.coords, APPROACH_RADIUS_M);
+            const res = await considerEntry(map, scan, loc.coords, loc.timestamp, { via: 'startup' });
+            if (res.outcome === 'candidate') void seekEntryConfirmation(res.regionId, { via: 'startup' });
           }
         }
       } catch { /* non-fatal — geofencing is still active */ }
