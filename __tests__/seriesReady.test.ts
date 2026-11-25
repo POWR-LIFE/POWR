@@ -112,6 +112,20 @@ describe('League, live', () => {
         ...over,
     });
 
+    it('counts the sessions that finish you ahead of your rival, not the ones that reach them today', () => {
+        const rivalOf = (points: number) => ({ user_id: 'u299', name: 'Racer 299', rank: 299, points, today: 0, friend: false });
+        // Day 6 of 16: you on 59 (9.8 a day), them on 119 (19.8 a day). 60 apart today (4 sessions at 15),
+        // 317 − 157 = 160 apart at the end at those paces: 11 sessions.
+        const v = fromLive(board({ rival: rivalOf(119) } as Partial<SeriesBoard>), 'Autumn Series')!;
+        expect(v.rival).toMatchObject({ gap: 60, how: 'About 11 sessions to finish ahead' });
+        // A point apart with ten days to go still reads as one session.
+        expect(fromLive(board({ rival: rivalOf(60) } as Partial<SeriesBoard>), 'Autumn Series')!.rival?.how).toBe('One run does it');
+        // On the last day there is no more round to run on: today's gap.
+        const last = board({ rival: rivalOf(119) } as Partial<SeriesBoard>);
+        last.round = { ...last.round, day: 16 };
+        expect(fromLive(last, 'Autumn Series')!.rival?.how).toBe('About 4 sessions to finish ahead');
+    });
+
     it('shows the leaders above you, with the gap between', () => {
         const v = fromLive(board(), 'Autumn Series')!;
         const lanes = v.rows.filter((r) => r.type === 'lane').map((r) => (r.type === 'lane' ? r.rank : 0));

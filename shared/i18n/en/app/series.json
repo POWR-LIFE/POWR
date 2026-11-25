@@ -259,8 +259,8 @@
     "howClear": "One session today keeps you clear",
     "howRun": "One run does it",
     "howGym": "One gym session does it",
-    "howSessions_one": "About {{count}} session does it",
-    "howSessions_other": "About {{count}} sessions do it",
+    "howSessions_one": "About {{count}} session to finish ahead",
+    "howSessions_other": "About {{count}} sessions to finish ahead",
     "clockDH": "{{d}}d {{h}}h",
     "clockHM": "{{h}}h {{m}}m",
     "clockM": "{{m}}m",
@@ -304,6 +304,7 @@
       "suggestWalks_other": "Suggested: about {{count}} walks",
       "earningRules": "Earning rules",
       "toTop3": "{{gap}} pts to the top 3",
+      "planFinish": "≈{{what}} to finish ahead",
       "inTop3": "In the prize places",
       "inTop3Line": "Every session keeps you there"
     },

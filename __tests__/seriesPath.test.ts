@@ -1,6 +1,6 @@
 import {
-    activeDaysTo, cumulative, defaultRival, EMPTY_TALLY, OTHER, placesFor, planOptions, pointsMix, raceOptions, racePace, racePlan, raceRows, raceTarget, rankAfter,
-    sampleClimb, samplePath, type SeriesPath, sessionValues, tallyTo, topActivity,
+    activeDaysTo, climbWindow, cumulative, defaultRival, EMPTY_TALLY, moveKey, OTHER, paceGap, placesFor, planOptions, planPlaces, pointsMix, raceOptions, racePace, racePlan,
+    raceRows, raceTarget, rankAfter, sampleClimb, samplePath, type SeriesPath, sessionValues, spreadClimb, tallyTo, topActivity,
 } from '@/lib/seriesPath';
 
 const d = (day: number, acts: [string, number, number?][]) => ({
@@ -158,6 +158,113 @@ describe('racePlan', () => {
     it('says your lead when you are ahead, and nothing when level on everything', () => {
         expect(racePlan(her, me, 5, 12)).toEqual({ kind: 'ahead', lead: 108 });
         expect(racePlan(me, me, 5, 12)).toBeNull();
+    });
+});
+
+describe('paceGap (the board line, from the two totals)', () => {
+    it('is racePlan\'s gap at the end of the round, not today\'s', () => {
+        const me = tallyTo(you, Infinity);
+        const close = { total: 70, pts: { gym: 60, walking: 10 }, n: { gym: 3, walking: 5 } };
+        const p = racePlan(me, close, 5, 12);
+        // 224 − 166: the same two finishes the drawer runs you both on to.
+        expect(paceGap(52, 70, 5, 12)).toBe(58);
+        expect(p && p.kind === 'finish' && p.themEnd - p.youEnd).toBe(58);
+    });
+
+    it('on the last day is today\'s gap', () => {
+        expect(paceGap(52, 70, 16, 1)).toBe(18);
+    });
+
+    it('is never less than passing them where they stand', () => {
+        for (const [a, b, day, left] of [[4, 5, 10, 2], [0, 1, 1, 16], [99, 100, 3, 14], [59, 60, 6, 11]]) {
+            expect(paceGap(a, b, day, left)).toBeGreaterThanOrEqual(b - a);
+        }
+    });
+
+    it('is nothing to chase when you are level or ahead', () => {
+        expect(paceGap(70, 70, 5, 12)).toBe(0);
+        expect(paceGap(80, 70, 5, 12)).toBe(0);
+    });
+});
+
+describe('planPlaces (one number for the drawer and the board line)', () => {
+    const climb = { rank: 612, ladder: Array.from({ length: 200 }, (_, i) => 612 - (i + 1) * 4) };
+
+    it('is the places one session of the plan\'s activity climbs', () => {
+        // A 19.3-point gym visit rounds to 19 points: 612 → 536.
+        const plan = racePlan(tallyTo(you, Infinity), tallyTo(ava, Infinity), 5, 12);
+        expect(plan?.kind).toBe('climb');
+        expect(planPlaces(plan, climb)).toBe(76);
+        expect(planPlaces(plan, climb)).toBe(placesFor(climb, 19));
+    });
+
+    it('is 0 when you lead, with no plan, or with no ladder', () => {
+        expect(planPlaces({ kind: 'ahead', lead: 10 }, climb)).toBe(0);
+        expect(planPlaces(null, climb)).toBe(0);
+        expect(planPlaces({ kind: 'climb', type: 'gym', per: 20, themRate: 30 }, null)).toBe(0);
+    });
+});
+
+describe('climbWindow (the climb track\'s left end)', () => {
+    it('is the whole board when the climb shows on it', () => {
+        // The live #729: three gym visits to #99 is 41% of a 1,537-row board.
+        expect(climbWindow(729, 99, 1537)).toBe(1537);
+        expect(climbWindow(1537, 1100, 1537)).toBe(1537);
+    });
+
+    it('closes in on the top when the climb would be a sliver', () => {
+        // The live #28: to #5 is 1.5% of the board, two dots on top of each other.
+        const low = climbWindow(28, 5, 1537);
+        expect(low).toBe(116);
+        const x = (r: number) => 1 - (r - 1) / (low - 1);
+        expect(x(5) - x(28)).toBeCloseTo(0.2, 2);
+    });
+
+    it('never puts you off the left end, and never shows more than the board', () => {
+        expect(climbWindow(4, 3, 1537)).toBe(6);
+        // It can't close in past your own place: spreadClimb gives that one its room.
+        expect(climbWindow(40, 39, 41)).toBe(40);
+        expect(climbWindow(1500, 1490, 1537)).toBe(1500);
+        for (const [from, end, total] of [[28, 5, 1537], [612, 361, 1537], [4, 3, 10], [2, 1, 2], [900, 899, 900]]) {
+            const low = climbWindow(from, end, total);
+            expect(low).toBeGreaterThanOrEqual(from);
+            expect(low).toBeLessThanOrEqual(Math.max(total, from));
+        }
+    });
+
+    it('is the whole board when there is no climb to show', () => {
+        expect(climbWindow(28, 28, 1537)).toBe(1537);
+    });
+});
+
+describe('spreadClimb (the two dots never sit on each other)', () => {
+    it('leaves a climb that shows alone', () => {
+        expect(spreadClimb(100, [140, 180, 220], 327)).toEqual({ x0: 100, xs: [140, 180, 220] });
+    });
+
+    it('draws a short climb 18px long, its steps in proportion', () => {
+        // #40 to #39 on a 40-place line: 8px of travel.
+        expect(spreadClimb(8, [10, 12, 16], 327)).toEqual({ x0: 8, xs: [12.5, 17, 26] });
+    });
+
+    it('slides left when the room would run off the right end', () => {
+        const r = spreadClimb(321, [323, 325, 326], 327);
+        expect(r.x0).toBe(309);
+        expect(r.xs[2]).toBe(327);
+        expect(r.xs[0]).toBeGreaterThan(r.x0);
+    });
+
+    it('has nothing to spread with no steps, or no movement', () => {
+        expect(spreadClimb(50, [], 327)).toEqual({ x0: 50, xs: [] });
+        expect(spreadClimb(50, [50, 50, 50], 327)).toEqual({ x0: 50, xs: [50, 50, 50] });
+    });
+});
+
+describe('moveKey', () => {
+    it('keeps the activities the copy has words for, and calls the rest other', () => {
+        expect(moveKey('gym')).toBe('gym');
+        expect(moveKey('walking')).toBe('walking');
+        expect(moveKey('pilates')).toBe(OTHER);
     });
 });
 
