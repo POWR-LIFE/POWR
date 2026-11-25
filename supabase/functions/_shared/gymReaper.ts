@@ -60,6 +60,10 @@ export interface ReaperVisitRow {
   /** ⚠ NOT last_confirmed_at. See the header — that column has four writers and
    *  three of them are bookkeeping. */
   last_proven_at?: string | null;
+  /** Last fresh, trusted fix that placed the member inside OR near the venue
+   *  (confirm_gym_visit_v2, zone band inside|near). Evidence the visit is still
+   *  live; never evidence of billable time. */
+  last_present_at?: string | null;
 }
 
 export interface ReaperVerdict {
@@ -111,7 +115,17 @@ export function staleVisitVerdict(visit: ReaperVisitRow, nowMs: number): ReaperV
   if (visit.claimed_at && !visit.upgraded_at) {
     return { close: false, provenMs, closeReason: null };
   }
-  if (provenMs <= nowMs - STALE_SILENCE_MS) {
+  // SILENCE is measured from the later of proof and presence (2026-11-25).
+  // Field 2026-09-07, ONE LDN: a member 36-37 m from a 30 m pin answered every
+  // presence ask, each answer was refused as proof, and this closed her visit
+  // as "silent" twenty minutes after the last one that passed — "Session
+  // complete" mid-workout. A `near` answer is the device saying "still here".
+  //
+  // ⚠ provenMs — what the caller stamps as ended_at — is NOT moved by it. A
+  // visit that does go quiet still ends at its last PROOF: near keeps a visit
+  // open, it never bills.
+  const heardMs = Math.max(provenMs, ms(visit.last_present_at));
+  if (heardMs <= nowMs - STALE_SILENCE_MS) {
     return { close: true, provenMs, closeReason: 'stale_after_upgrade' };
   }
   return { close: false, provenMs, closeReason: null };

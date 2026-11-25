@@ -8,6 +8,24 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    // Dev server only. Vite tells the browser to keep pre-bundled packages for
+    // a year without ever rechecking them, trusting the ?v= tag on the URL.
+    // Here that tag does not move when the bundle is rebuilt (it is derived
+    // from node_modules/.package-lock.json, which only changes on an npm
+    // install), so a browser can be left holding a file that imports a chunk
+    // that no longer exists, and the page dies with "The file does not exist
+    // ... which is in the optimize deps directory" (25 Nov). no-cache makes
+    // the browser recheck; a file that has not changed still comes back 304.
+    //
+    // It is a named plugin and not a plain server.headers entry on purpose:
+    // plugin names feed the ?v= tag, so adding this one moved the tag off
+    // f5a5deb6, the value browsers hold year-long stale copies under. Remove
+    // or rename it and the tag changes again; back to f5a5deb6 if removed.
+    {
+      name: 'revalidate-prebundled-deps',
+      apply: 'serve',
+      config: () => ({ server: { headers: { 'Cache-Control': 'no-cache' } } }),
+    },
   ],
   server: {
     fs: {

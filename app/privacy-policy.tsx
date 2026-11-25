@@ -30,7 +30,7 @@ export default function PrivacyPolicyScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.updated}>Last updated: 7 October 2026</Text>
+        <Text style={styles.updated}>Last updated: 25 November 2026</Text>
 
         <Section title="1. Who We Are">
           POWR ("we", "us", "our") operates the POWR mobile application and website at powr.life.
@@ -42,7 +42,7 @@ export default function PrivacyPolicyScreen() {
           We collect the following categories of information:{'\n\n'}
           • Account information: name, email address, and profile details you provide when you register.{'\n\n'}
           • Health and fitness data: step counts, workout sessions, distance walked or run, and other activity data synced from your device or connected wearables (e.g. Apple Health, Google Health Connect, Fitbit).{'\n\n'}
-          • Location data: approximate location used to verify gym visits and show nearby partner rewards. We only access location when you grant permission.{'\n\n'}
+          • Location data: approximate location used to verify gym visits and show nearby partner rewards. While you are at a partner venue, we also store where your phone is relative to that venue's map pin, to verify your visit and keep venue locations accurate. We only access location when you grant permission.{'\n\n'}
           • Usage data: how you interact with the app, features you use, and crash reports to help us improve the service.
         </Section>
 

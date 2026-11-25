@@ -18,13 +18,18 @@ import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '@/lib/supabase';
 
 /** What the check-in knew about the fix that put the user inside the circle.
- *  Same keys confirm_gym_visit_v2 reads for every other proof writer. Distance
- *  and accuracy only — never coordinates. */
+ *  Same keys confirm_gym_visit_v2 reads for every other proof writer. Distance,
+ *  accuracy and (2026-11-25) the offset from the pin — never coordinates. */
 export interface CheckInFix {
   distance_m: number | null;
   accuracy_m: number | null;
   fix_trusted: boolean;
   fix_age_s: number | null;
+  /** The fix's offset from the venue's pin, whole metres east / north — present
+   *  only for a reading at the venue (lib/geofence/zone.ts pinOffsetM). Lets the
+   *  pin be corrected; never a latitude or longitude. */
+  dx_m?: number;
+  dy_m?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +158,12 @@ export async function openGymVisit(
    *  which is what lets the beacon's settle pay a phone that never answers a
    *  wake. Omitted on the late-open paths, which have no fix of their own. */
   fix?: CheckInFix | null,
+  /** The CLOSED visit this check-in resumes (2026-11-25): a re-entry at the same
+   *  venue minutes after an exit. The server re-opens that visit instead of
+   *  minting a second one, so a false exit no longer splits a session in two.
+   *  Rides inside p_fix so the RPC's argument list — which PostgREST resolves by
+   *  name — is unchanged; a server that predates the bridge simply ignores it. */
+  resumeVisitId?: string | null,
 ): Promise<string | null> {
   const args: Record<string, unknown> = {
     p_partner_id: partnerId,
@@ -164,7 +175,9 @@ export async function openGymVisit(
   // fix-less open keeps the exact wire shape the pre-20260906170000 signature
   // accepts — the late-open paths cannot break on a bundle that outruns the
   // migration, and only the check-in itself depends on the new column.
-  if (fix) args.p_fix = fix;
+  if (fix || resumeVisitId) {
+    args.p_fix = { ...(fix ?? {}), ...(resumeVisitId ? { resume_visit: resumeVisitId } : {}) };
+  }
 
   // THE call that must survive a screen-off wake. Everything downstream — every
   // nudge, every nonce, the server-side claim — hangs off this visit existing,
@@ -251,7 +264,7 @@ export async function logGeofenceRegionEvent(
     | 'visit_close_deferred' | 'visit_open_attempt' | 'visit_open_result'
     | 'wake_step_hung' | 'stream_first_tick' | 'check_in_announced' | 'venue_nudge'
     | 'check_in_banner' | 'check_in_open_deferred' | 'wake_task_done' | 'session_expired' | 'late_open_gave_up'
-    | 'location_exit',
+    | 'location_exit' | 'entry_candidate' | 'entry_rejected' | 'visit_resumed',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   const args = {

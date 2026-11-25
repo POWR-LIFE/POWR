@@ -22,7 +22,7 @@ export default function PrivacyPolicy() {
 
             <main className="max-w-3xl mx-auto px-6 py-16 pb-32">
                 <h1 className="text-4xl font-light tracking-tight mb-2">Privacy Policy</h1>
-                <p className="text-[#444] text-sm mb-12">Last updated: 7 October 2026</p>
+                <p className="text-[#444] text-sm mb-12">Last updated: 25 November 2026</p>
 
                 <div className="space-y-10 text-[#B0B0B0] text-[15px] leading-relaxed">
                     <section>
@@ -40,7 +40,7 @@ export default function PrivacyPolicy() {
                         <ul className="list-disc pl-6 space-y-2">
                             <li><strong className="text-[#F2F2F2]">Account information:</strong> name, email address, and profile details you provide when you register.</li>
                             <li><strong className="text-[#F2F2F2]">Health and fitness data:</strong> step counts, workout sessions, distance walked or run, and other activity data synced from your device or connected wearables (e.g. Apple Health, Google Health Connect, Fitbit).</li>
-                            <li><strong className="text-[#F2F2F2]">Location data:</strong> approximate location used to verify gym visits and show nearby partner rewards. We only access location when you grant permission.</li>
+                            <li><strong className="text-[#F2F2F2]">Location data:</strong> approximate location used to verify gym visits and show nearby partner rewards. While you are at a partner venue, we also store where your phone is relative to that venue's map pin, to verify your visit and keep venue locations accurate. We only access location when you grant permission.</li>
                             <li><strong className="text-[#F2F2F2]">Usage data:</strong> how you interact with the app, features you use, and crash reports to help us improve the service.</li>
                             <li><strong className="text-[#F2F2F2]">Waitlist data:</strong> email address and optional website URL submitted via our waitlist forms.</li>
                             <li><strong className="text-[#F2F2F2]">Affiliate programme data:</strong> if you join our invite-only affiliate programme, a public profile (name, photo, short bio), the number of people who tap your link and sign up with your code (never who they are), and — only if you choose to provide it — a postal address so we can send you physical rewards you have earned.</li>

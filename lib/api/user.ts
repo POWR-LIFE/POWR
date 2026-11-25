@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { rememberHomeGym } from '@/lib/geofence/armedSet';
 
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { isHandleFree } from '@/lib/onboarding/username';
@@ -176,6 +177,9 @@ export async function setPreferredGym(gymId: string | null): Promise<{ error: st
         .from('profiles')
         .update({ preferred_gym_id: gymId })
         .eq('id', user.id);
+    // Keep the geofence engine's copy in step: the home gym holds a reserved slot
+    // on the phone's watch list (lib/geofence/armedSet).
+    if (!error) await rememberHomeGym(gymId);
     return { error: error?.message ?? null };
 }
 
