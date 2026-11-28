@@ -85,7 +85,7 @@ export const END_WITNESS_BASES = ['exit_witness', 'capped_12h'] as const;
  *  close_gym_visit now caps such an end and writes `witness_gap_capped`, which
  *  is deliberately NOT in END_WITNESS_BASES; this bound judges exit rows written
  *  before that cap by their own `proof_gap_s`. Mirrored in SQL by
- *  gym_visit_end_witnessed_at (20261128090000). 3 h sits above every honest
+ *  gym_visit_end_witnessed_at (20261128083041). 3 h sits above every honest
  *  stationary-lifter gap seen in 60 days of exits (max 167 min). */
 export const WITNESS_MAX_GAP_SEC = 3 * 60 * 60;
 

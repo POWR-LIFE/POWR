@@ -74,7 +74,7 @@ export interface BoardRow {
   upgrade_minutes: number;
   is_test: boolean;
   /** A wake was due and the user had no push token to wake (nudge_failed:no_tokens,
-   *  not since followed by a nudge_sent). Optional: arrives only from 20261128090000. */
+   *  not since followed by a nudge_sent). Optional: arrives only from 20261128083041. */
   wake_path_missing?: boolean;
   /** approach_age_s from a device row seen in the last 30 min, more than 30 min
    *  after this visit closed: the high-accuracy stream is still escalated with
