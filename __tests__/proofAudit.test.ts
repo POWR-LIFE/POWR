@@ -4,6 +4,7 @@ import {
   shouldFlagUnproven,
   unprovenExcessSec,
   UNPROVEN_EXCESS_FLAG_SEC,
+  WITNESS_MAX_GAP_SEC,
 } from '@/supabase/functions/_shared/proofAudit';
 
 const MIN = 60;
@@ -65,6 +66,28 @@ describe('proofAudit', () => {
       expect(exitWitnessedAtFromExitEvent({ end_basis: 'proof_clamp', ended_at: at(50) })).toBeNull();
       expect(exitWitnessedAtFromExitEvent({ end_basis: 'enter_elsewhere', ended_at: at(50) })).toBeNull();
       expect(exitWitnessedAtFromExitEvent(null)).toBeNull();
+    });
+
+    it('a witness after more than WITNESS_MAX_GAP_SEC of silence vouches for nothing (2026-11-27)', () => {
+      // Visit 14ab4b5b: proven once at check-in, no push token, exit witnessed
+      // 11.9 h later 236 m away. The 42,902 s session passed as fully proven.
+      const detail = { end_basis: 'exit_witness', ended_at: at(715), proof_gap_s: 42_756 };
+      expect(exitWitnessedAtFromExitEvent(detail)).toBeNull();
+      expect(shouldFlagUnproven({
+        durationSec: 42_902,
+        visitStartedAt: T0,
+        lastProvenAt: at(2),
+        exitWitnessedAt: exitWitnessedAtFromExitEvent(detail),
+      })).toBe(true);
+      // The new close basis is not a witness either.
+      expect(exitWitnessedAtFromExitEvent({ end_basis: 'witness_gap_capped', ended_at: at(182) })).toBeNull();
+    });
+
+    it('the honest stationary-lifter gap is still a witness — at and under the cap', () => {
+      expect(exitWitnessedAtFromExitEvent({ end_basis: 'exit_witness', ended_at: at(167), proof_gap_s: 167 * MIN })).toBe(at(167));
+      expect(exitWitnessedAtFromExitEvent({ end_basis: 'exit_witness', ended_at: at(180), proof_gap_s: WITNESS_MAX_GAP_SEC })).toBe(at(180));
+      // Rows from before proof_gap_s existed keep their old reading.
+      expect(exitWitnessedAtFromExitEvent({ end_basis: 'exit_witness', ended_at: at(50) })).toBe(at(50));
     });
 
     it('flags a geofence claim that resolved NO visit at all — zero evidence', () => {

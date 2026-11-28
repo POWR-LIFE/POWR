@@ -1214,7 +1214,8 @@ function logRegionEvent(
     | 'exit_noise_suppressed' | 'visit_close_deferred' | 'check_in_announced'
     | 'visit_open_attempt' | 'visit_open_result' | 'wake_step_hung' | 'stream_first_tick'
     | 'check_in_banner' | 'check_in_open_deferred' | 'session_expired' | 'late_open_gave_up'
-    | 'location_exit' | 'entry_candidate' | 'entry_rejected' | 'visit_resumed',
+    | 'location_exit' | 'entry_candidate' | 'entry_rejected' | 'visit_resumed'
+    | 'approach_expired',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -2228,6 +2229,57 @@ async function exitApproach(expectedRegionId?: string): Promise<void> {
     const next = visitStreamMode(Platform.OS, { sessionActive, approaching: false });
     await setLocationStreamMode(next);
     console.log(`[Geofence] Left approach ring — location stream → ${next}.`);
+  }
+}
+
+/** How long an approach may stay escalated with NO session behind it before the
+ *  stream is stood down. The stream resolves a real walk-in in seconds; the
+ *  longest field approach that still checked in took under 3 minutes. */
+export const APPROACH_MAX_MS = 30 * 60_000;
+
+/** THE APPROACH BACKSTOP (2026-11-28). exitApproach used to have exactly two
+ *  callers that could fire with no visit: a native EXIT of the ring, and a
+ *  TRUSTED fix outside every ring (evaluateLocationFix). A coarse fix returns
+ *  early at `enter_blocked` and reaches neither, so a phone that sits indoors
+ *  near a venue — every fix ±100 m — kept the 8 s / 10 m high-accuracy stream
+ *  running indefinitely. Field 2026-11-27→28, Android, Newbury: the visit was
+ *  reaped at 20:29, the approach flag (set at the 16:37 entry) was never cleared,
+ *  and the device wrote 128 stream_first_tick + 108 coarse_rejected rows
+ *  overnight with approach_age_s at 55,550.
+ *
+ *  Never touches a live session: an approach behind an ACTIVE visit is the
+ *  check-in stream doing its job. Returns whether it stood the stream down. */
+export async function expireStaleApproach(via: 'stream_fix'): Promise<boolean> {
+  try {
+    if ((await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) != null) return false;
+    const raw = await AsyncStorage.getItem(APPROACH_STATE_KEY);
+    if (!raw) return false;
+    const approach = JSON.parse(raw) as { regionId?: string; since?: number };
+    const ageMs = typeof approach.since === 'number' ? Date.now() - approach.since : Number.POSITIVE_INFINITY;
+    if (ageMs <= APPROACH_MAX_MS) return false;
+    logRegionEvent(approach.regionId ?? 'approach', 'approach_expired', {
+      via,
+      approach_age_s: Number.isFinite(ageMs) ? Math.round(ageMs / 1000) : null,
+    });
+    await exitApproach();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A session just ended while still inside the approach ring: give the approach
+ *  a fresh APPROACH_MAX_MS from NOW (a false exit's re-entry must still be
+ *  caught), rather than inheriting the age of the entry that opened the visit. */
+async function restartApproachClock(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(APPROACH_STATE_KEY);
+    if (!raw) return false;
+    const approach = JSON.parse(raw) as { regionId?: string; since?: number };
+    await AsyncStorage.setItem(APPROACH_STATE_KEY, JSON.stringify({ ...approach, since: Date.now() }));
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -4026,8 +4078,12 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
   // ring (a location-detected EXIT can land before the native ring fires) → keep
   // the approach stream; otherwise back to the battery-friendly baseline. Leaving
   // the time-driven stream running would burn battery for the rest of the day.
+  //
+  // The approach flag was stamped at the ENTRY that opened this visit, so its age
+  // is the visit's age. Restart its clock here: the ring keeps its 30 minutes to
+  // catch a re-entry, then expireStaleApproach stands it down even on coarse fixes.
   try {
-    const approaching = (await AsyncStorage.getItem(APPROACH_STATE_KEY)) != null;
+    const approaching = await restartApproachClock();
     await setLocationStreamMode(visitStreamMode(Platform.OS, { sessionActive: false, approaching }));
   } catch { /* non-fatal — worst case the stream stays in its prior mode */ }
 
@@ -5720,6 +5776,11 @@ async function evaluateLocationFix(
   // Before ANY of the session work below — the coarse branch in particular is
   // the one that kept a 34-hour session alive (see finalizeSessionIfOverdue).
   if (active && await finalizeSessionIfOverdue(active, 'stream_fix')) return;
+
+  // No session, and an approach that has outlived any real walk-in: stand the
+  // high-accuracy stream down BEFORE the coarse early-return below, which is the
+  // branch that kept it alive all night (see expireStaleApproach).
+  if (!active) await expireStaleApproach('stream_fix');
 
   if (active && isCoarse) {
     // Position untrusted: skip the EXIT geometry (assume still inside — the same

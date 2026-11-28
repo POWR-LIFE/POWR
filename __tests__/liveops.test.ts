@@ -181,6 +181,29 @@ describe('stuck heuristics', () => {
     expect(visitAlerts(boardRow({ unanswered_nudge_streak: 3 }), NOW).map(a => a.key)).toContain('wake_starved');
   });
 
+  it('badges an open visit with no wake path — the streak can never see it (2026-11-27)', () => {
+    const alerts = visitAlerts(boardRow({ wake_path_missing: true, unanswered_nudge_streak: 0 }), NOW);
+    expect(alerts.map(a => a.key)).toContain('wake_path_missing');
+    expect(alerts.find(a => a.key === 'wake_path_missing')?.severity).toBe('bad');
+    // History, not a chase: a closed visit does not badge.
+    expect(visitAlerts(boardRow({ wake_path_missing: true, ended_at: ago(1) }), NOW).map(a => a.key))
+      .not.toContain('wake_path_missing');
+    // An RPC that predates the field drops the badge, never prints undefined.
+    expect(visitAlerts(boardRow(), NOW).map(a => a.key)).not.toContain('wake_path_missing');
+  });
+
+  it('badges a closed visit whose device is still streaming its approach (2026-11-28)', () => {
+    const closed = { started_at: ago(300), ended_at: ago(120), claimed_at: ago(270), upgraded_at: ago(260) };
+    const alert = visitAlerts(boardRow({ ...closed, approach_live_age_s: 55_550 }), NOW)
+      .find(a => a.key === 'approach_stuck');
+    expect(alert?.detail).toBe('high-accuracy stream on 15h 25m, visit closed');
+    expect(visitAlerts(boardRow({ ...closed, approach_live_age_s: null }), NOW).map(a => a.key))
+      .not.toContain('approach_stuck');
+    // An open visit's approach is the check-in stream doing its job.
+    expect(visitAlerts(boardRow({ approach_live_age_s: 4_000 }), NOW).map(a => a.key))
+      .not.toContain('approach_stuck');
+  });
+
   it('badges accepted-but-never-drawn pushes', () => {
     const alerts = visitAlerts(boardRow({ undrawn_push_count: 2 }), NOW);
     const alert = alerts.find(a => a.key === 'push_never_drew');

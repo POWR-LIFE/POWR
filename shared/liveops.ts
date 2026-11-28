@@ -73,6 +73,13 @@ export interface BoardRow {
   dwell_minutes: number;
   upgrade_minutes: number;
   is_test: boolean;
+  /** A wake was due and the user had no push token to wake (nudge_failed:no_tokens,
+   *  not since followed by a nudge_sent). Optional: arrives only from 20261128090000. */
+  wake_path_missing?: boolean;
+  /** approach_age_s from a device row seen in the last 30 min, more than 30 min
+   *  after this visit closed: the high-accuracy stream is still escalated with
+   *  nothing to check in to. Null when not seen. Optional, same migration. */
+  approach_live_age_s?: number | null;
 }
 
 export interface RawEvent {
@@ -230,6 +237,8 @@ export type AlertKey =
   | 'presence_stale'
   | 'wake_starved'
   | 'push_never_drew'
+  | 'wake_path_missing'
+  | 'approach_stuck'
   | 'ota_behind';
 
 export interface Alert {
@@ -248,7 +257,9 @@ export interface Alert {
  */
 export type AlertInput =
   Pick<BoardRow, 'started_at' | 'ended_at' | 'claimed_at' | 'upgraded_at' | 'last_proven_at' | 'last_confirmed_at'>
-  & Partial<Pick<BoardRow, 'dwell_minutes' | 'upgrade_minutes' | 'unanswered_nudge_streak' | 'undrawn_push_count'>>;
+  & Partial<Pick<BoardRow,
+      'dwell_minutes' | 'upgrade_minutes' | 'unanswered_nudge_streak' | 'undrawn_push_count'
+      | 'wake_path_missing' | 'approach_live_age_s'>>;
 
 /** ` (threshold 30m)`, or nothing at all when the RPC did not send one. */
 function thresholdClause(minutes: number | null | undefined): string {
@@ -323,6 +334,30 @@ export function visitAlerts(row: AlertInput, now: number = Date.now()): Alert[] 
       label: 'WAKE STARVED',
       detail: `${nudgeStreak} wakes with no device response`,
       severity: 'bad',
+    });
+  }
+
+  // The wake-starved streak counts nudge_SENT rows. With no push token the beacon
+  // writes ONE nudge_failed per stage and sends nothing, so the streak can never
+  // reach WAKE_STARVED_STREAK — field 2026-11-27, visit 14ab4b5b sat at streak 0
+  // for 12 silent hours. Open visits only: once closed it is history, not a chase.
+  if (open && row.wake_path_missing) {
+    alerts.push({
+      key: 'wake_path_missing',
+      label: 'NO WAKE PATH',
+      detail: 'no push token — the server cannot wake this device',
+      severity: 'bad',
+    });
+  }
+
+  // Closed visit, device still streaming high-accuracy location for it. Field
+  // 2026-11-28, Newbury: 15 h of 8 s fixes after a reaper close.
+  if (!open && typeof row.approach_live_age_s === 'number') {
+    alerts.push({
+      key: 'approach_stuck',
+      label: 'APPROACH STUCK',
+      detail: `high-accuracy stream on ${formatDuration(row.approach_live_age_s)}, visit closed`,
+      severity: 'warn',
     });
   }
 
