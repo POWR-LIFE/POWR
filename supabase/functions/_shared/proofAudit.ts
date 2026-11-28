@@ -45,7 +45,8 @@ export interface ProofAuditInputs {
    *  Null when the visit never proved once. */
   lastProvenAt?: string | null;
   /** gym_visits.ended_at when close_gym_visit closed the visit on an END
-   *  WITNESS (exit event `end_basis` = 'exit_witness' | 'capped_12h'). The
+   *  WITNESS (exit event `end_basis` = 'exit_witness' | 'capped_12h', and a
+   *  proof gap no longer than WITNESS_MAX_GAP_SEC). The
    *  visit engine already believes the device was present until that moment
    *  (20260906170000), so the audit must too — otherwise a claim that settles
    *  on the way out is flagged at "proven 0" while the visit that produced it
@@ -76,11 +77,25 @@ export function provenSec(i: ProofAuditInputs): number {
  *  the SQL reconcile so both readers agree on what an end witness is. */
 export const END_WITNESS_BASES = ['exit_witness', 'capped_12h'] as const;
 
+/** The longest proof gap an exit fence may vouch for (2026-11-28). An exit proves
+ *  when the phone NOTICED it was outside, not when the member left; after hours
+ *  of silence it proves nothing. Field 2026-11-27, visit 14ab4b5b: proven once
+ *  at check-in, no push token so no wake could land, exit witnessed 11.9 h later
+ *  236 m away — and the 42,902 s session passed this audit as fully proven.
+ *  close_gym_visit now caps such an end and writes `witness_gap_capped`, which
+ *  is deliberately NOT in END_WITNESS_BASES; this bound judges exit rows written
+ *  before that cap by their own `proof_gap_s`. Mirrored in SQL by
+ *  gym_visit_end_witnessed_at (20261128083041). 3 h sits above every honest
+ *  stationary-lifter gap seen in 60 days of exits (max 167 min). */
+export const WITNESS_MAX_GAP_SEC = 3 * 60 * 60;
+
 export function exitWitnessedAtFromExitEvent(
-  detail: { end_basis?: string | null; ended_at?: string | null } | null | undefined,
+  detail: { end_basis?: string | null; ended_at?: string | null; proof_gap_s?: number | string | null } | null | undefined,
 ): string | null {
   if (!detail) return null;
   if (!END_WITNESS_BASES.includes(detail.end_basis as typeof END_WITNESS_BASES[number])) return null;
+  const gap = Number(detail.proof_gap_s ?? 0);
+  if (Number.isFinite(gap) && gap > WITNESS_MAX_GAP_SEC) return null;
   return detail.ended_at ?? null;
 }
 

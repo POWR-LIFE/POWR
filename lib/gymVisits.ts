@@ -264,7 +264,8 @@ export async function logGeofenceRegionEvent(
     | 'visit_close_deferred' | 'visit_open_attempt' | 'visit_open_result'
     | 'wake_step_hung' | 'stream_first_tick' | 'check_in_announced' | 'venue_nudge'
     | 'check_in_banner' | 'check_in_open_deferred' | 'wake_task_done' | 'session_expired' | 'late_open_gave_up'
-    | 'location_exit' | 'entry_candidate' | 'entry_rejected' | 'visit_resumed',
+    | 'location_exit' | 'entry_candidate' | 'entry_rejected' | 'visit_resumed'
+    | 'approach_expired',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   const args = {
